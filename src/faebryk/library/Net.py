@@ -15,23 +15,36 @@ class Net(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
+
     part_of = F.Electrical.MakeChild()
 
+
     # ----------------------------------------
-    #                 traits
+    #                 functions
     # ----------------------------------------
-    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+    def get_connected_pads(self) -> set[F.Footprints.is_pad]:
+        connected_pads: set[F.Footprints.is_pad] = set()
+
+        # get all electricals connected to net
+        for electrical in self.part_of.get()._is_interface.get().get_connected():
+
+            # if those electricals have a is_lead trait, we're in buisness
+            if is_lead := electrical.try_get_trait(F.Lead.is_lead):
+
+                # and if that is_lead has associated pads...
+                if has_associated_pads := is_lead.try_get_trait(F.Lead.has_associated_pads):
+
+                    # add those pads to the set!
+                    for is_pad in has_associated_pads.get_pads():
+                        connected_pads.add(is_pad)
+
+        return connected_pads
+
 
     # ----------------------------------------
     #                WIP
     # ----------------------------------------
-    def get_connected_pads(self) -> dict[F.Footprints.GenericPad, F.Footprints.GenericFootprint]:
-        return {
-            pad: fp
-            for mif in self.part_of.get()._is_interface.get().get_connected()
-            if (fp := mif.get_parent_of_type(F.Footprints.GenericFootprint)) is not None
-            and (pad := mif.get_parent_of_type(F.Footprints.GenericPad)) is not None
-        }
 
     def get_footprints(self) -> set[F.Footprints.GenericFootprint]:
         return {

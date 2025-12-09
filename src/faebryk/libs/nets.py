@@ -37,12 +37,30 @@ def bind_nets_from_kicad_pads(tg: fbrk.TypeGraph, g: fabll.graph.GraphView) -> s
 
     return fbrk_nets
 
-def bind_nets_from_electricals(tg: fbrk.TypeGraph, g: fabll.graph.GraphView) -> set[F.Net]:
+def bind_kicad_nets_to_fbrk_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView) -> set[F.Net]:
+    """
+    Runs during:
+    - load-pcb
+    - prepare-nets
+
+    Gets fbrk nets and maps them to kicad nets.
+    """
+
+    # get named fbrk nets
+    for fbrk_net in 
+
+    # for electrical with lead connected to net, 
+
+def bind_electricals_to_fbrk_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView) -> set[F.Net]:
     """
     Runs during:
     - prepare-nets
 
-    Pulls nets from electricals and maps them to fbrk nets.
+    Groups electricals into buses, assigns net name, and returns nets
+
+    TODO
+    - there's probably a sorting step missing here
+    - should consider naming and stuff
     """
     fbrk_nets: set[F.Net] = set()
     buses = fabll.is_interface.group_into_buses(F.Electrical.bind_typegraph(tg).get_instances(g=g))
@@ -71,7 +89,7 @@ def test_bind_nets_from_electricals(capsys):
     for left, right in pairwise(bus_2):
         left._is_interface.get().connect_to(right)
 
-    nets = bind_nets_from_electricals(tg, g)
+    nets = bind_electricals_to_fbrk_nets(tg, g)
 
     with capsys.disabled():
         print("")

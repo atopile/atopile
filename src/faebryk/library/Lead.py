@@ -66,7 +66,7 @@ class can_attach_to_any_pad(fabll.Node):
         Match the first pad that is available.
         """
         claimed_pads = [
-            pad.get_pad()
+            pad.get_pads()
             for pad in fabll.Traits.get_implementors(
                 has_associated_pads.bind_typegraph(self.tg), g=self.g
             )
@@ -153,9 +153,9 @@ class has_associated_pads(fabll.Node):
     pad_ptr_ = F.Collections.Pointer.MakeChild()
 
     # TODO make get_pads to handle one to many connections
-    def get_pad(self) -> F.Footprints.is_pad:
+    def get_pads(self) -> set[F.Footprints.is_pad]:
         """The pad associated with this node"""
-        return self.pad_ptr_.get().deref().cast(F.Footprints.is_pad)
+        return set(self.pad_ptr_.get().deref().cast(F.Footprints.is_pad))
 
     @classmethod
     def MakeChild(cls, pad: fabll._ChildField[fabll.Node]) -> fabll._ChildField[Self]:
@@ -186,7 +186,7 @@ def test_is_lead():
         pad=pad.is_pad_.get(), parent=lead
     )
 
-    connected_pad = lead.get_trait(has_associated_pads).get_pad()
+    connected_pad = lead.get_trait(has_associated_pads).get_pads()
     assert connected_pad.is_same(pad.is_pad_.get())
 
 

@@ -202,6 +202,8 @@ class PCB_Transformer:
         """Bind footprints and nets from the PCB to the graph."""
         import faebryk.library._F as F
 
+        # footprint attach to pads
+        # pad attach to leads
         for node, fp in PCB_Transformer.map_footprints(self.tg, self.pcb).items():
             if node.has_trait(F.Footprints.has_associated_footprint):
                 self.bind_footprint(fp, node)
@@ -228,6 +230,7 @@ class PCB_Transformer:
                     value=value,
                 )
 
+        # net attach
         for f_net, pcb_net in self.map_nets().items():
             self.bind_net(pcb_net, f_net)
 
@@ -379,7 +382,11 @@ class PCB_Transformer:
         known_nets: dict["F.Net", KiCadPCBNet] = {}
         mapped_net_names = set()
 
+<<<<<<< HEAD
         kicad_nets_by_name: dict[str, KiCadPCBNet] = {
+=======
+        kicad_nets_by_name: dict[str, KiCadNet] = {
+>>>>>>> ea130535 (rework net get_connected_pads)
             n.name: n for n in self.pcb.nets if n.name is not None
         }
 
