@@ -1565,6 +1565,13 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         tg = self.tg
         typenode = tg.get_type_by_name(type_identifier=self.t._type_identifier())
         if typenode is not None:
+            existing = TypeNodeBoundTG.__TYPE_NODE_MAP__.get(typenode)
+            if existing is not None and existing.t is not self.t:
+                raise FabLLException(
+                    f"Type name collision: '{self.t._type_identifier()}' already "
+                    f"registered by {existing.t.__module__}.{existing.t.__qualname__}, "
+                    f"cannot register {self.t.__module__}.{self.t.__qualname__}"
+                )
             return typenode
         typenode = tg.add_type(identifier=self.t._type_identifier())
         TypeNodeBoundTG.__TYPE_NODE_MAP__[typenode] = self
@@ -2944,6 +2951,47 @@ def test_copy_into_basic():
 
     assert n2.isinstance(N)
     assert inner2.isinstance(Inner)
+
+
+def test_type_name_collision_raises_error():
+    """
+    Test that registering two different classes with the same name raises an error.
+    """
+
+    import pytest
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class MyType(Node):  # type: ignore[no-redef]
+        pass
+
+    # First registration should succeed
+    MyType.bind_typegraph(tg).get_or_create_type()
+
+    # Define a different class with the same __name__
+    class MyType(Node):  # noqa: F811
+        some_field: int = 42
+
+    # Second registration with same name but different class should raise
+    with pytest.raises(FabLLException, match="Type name collision"):
+        MyType.bind_typegraph(tg).get_or_create_type()
+
+
+def test_same_class_multiple_get_or_create_type_succeeds():
+    """Test that calling get_or_create_type multiple times on the same class works."""
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class MyType(Node):
+        pass
+
+    bound = MyType.bind_typegraph(tg)
+
+    # Multiple calls should return the same type node
+    type1 = bound.get_or_create_type()
+    type2 = bound.get_or_create_type()
+    assert type1.node().is_same(other=type2.node())
 
 
 if __name__ == "__main__":
