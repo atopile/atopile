@@ -398,9 +398,13 @@ class Strings(fabll.Node):
         )
 
     def pretty_str(self) -> str:
+        MAX_LENGTH = 20
         values = self.get_values()
         if len(values) == 1:
-            return values[0]
+            return (
+                f"'{values[0][:MAX_LENGTH].replace('\n', '\\n')}"
+                f"{'...' if len(values[0]) > MAX_LENGTH else ''}'"
+            )
         return str(values)
 
 

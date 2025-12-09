@@ -267,6 +267,8 @@ class is_expression(fabll.Node):
                 return op_out
             return str(op)
 
+        expr_name = fabll.Traits(self).get_obj_raw().get_type_name()
+
         formatted_operands = [format_operand(op) for op in self.get_operands()]
         out = ""
         if style.placement == is_expression.ReprStyle.Placement.PREFIX:
@@ -277,17 +279,17 @@ class is_expression(fabll.Node):
         elif style.placement == is_expression.ReprStyle.Placement.EMBRACE:
             out = f"{symbol}{', '.join(formatted_operands)}{style.symbol}"
         elif len(formatted_operands) == 0:
-            out = f"{type(self).__name__}{symbol_suffix}()"
+            out = f"{expr_name}{symbol_suffix}()"
         elif style.placement == is_expression.ReprStyle.Placement.POSTFIX:
             if len(formatted_operands) == 1:
                 out = f"{formatted_operands[0]}{symbol}"
             else:
                 out = f"({', '.join(formatted_operands)}){symbol}"
         elif len(formatted_operands) == 1:
-            out = f"{type(self).__name__}{symbol_suffix}({formatted_operands[0]})"
+            out = f"{expr_name}{symbol_suffix}({formatted_operands[0]})"
         elif lit_suffix and len(formatted_operands) > 2:
             out = (
-                f"{type(self).__name__}{symbol_suffix}{lit_suffix}"
+                f"{expr_name}{symbol_suffix}{lit_suffix}"
                 f"({', '.join(formatted_operands)})"
             )
         elif style.placement == is_expression.ReprStyle.Placement.INFIX:

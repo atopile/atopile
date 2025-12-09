@@ -545,7 +545,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
         # ¬!(¬A v ¬B v C) -> ¬!(¬!A v ¬!B v C), ¬!C
         if expr.try_get_trait(F.Expressions.is_predicate):
             # ¬!( v )
-            if op_or := op.try_cast(F.Expressions.Or):
+            if op_or := fabll.Traits(op).get_obj_raw().try_cast(F.Expressions.Or):
                 # FIXME remove this shortcut
                 # should be handle in more general way
                 # maybe we need to terminate non-predicates too

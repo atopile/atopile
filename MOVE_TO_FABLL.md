@@ -78,6 +78,7 @@ expr_factory
 solver todo
 
 - [ ] mark exprs as literal during expr_mutation, then flag to solver that it needs to run flatten_literals afterwards
+- [ ] re-enable has_usage_example MakeChild and has_simple_value_representation
 
 NOTE TO SELF MONDAY
 
