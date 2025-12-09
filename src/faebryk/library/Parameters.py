@@ -129,12 +129,19 @@ class is_parameter_operatable(fabll.Node):
         )
 
     def compact_repr(
-        self, context: "ReprContext | None" = None, use_name: bool = False
+        self,
+        context: "ReprContext | None" = None,
+        use_name: bool = False,
+        no_lit_suffix: bool = False,
     ) -> str:
         if p := self.as_parameter.get():
-            return p.compact_repr(context=context, use_name=use_name)
+            return p.compact_repr(
+                context=context, use_name=use_name, no_lit_suffix=no_lit_suffix
+            )
         if e := self.as_expression.get():
-            return e.compact_repr(context=context, use_name=use_name)
+            return e.compact_repr(
+                context=context, use_name=use_name, no_lit_suffix=no_lit_suffix
+            )
 
         assert False
 
@@ -263,7 +270,10 @@ class is_parameter(fabll.Node):
     as_operand = fabll.Traits.ImpliedTrait(can_be_operand)
 
     def compact_repr(
-        self, context: "ReprContext | None" = None, use_name: bool = False
+        self,
+        context: "ReprContext | None" = None,
+        use_name: bool = False,
+        no_lit_suffix: bool = False,
     ) -> str:
         """
         Unit only printed if not dimensionless.
@@ -313,7 +323,11 @@ class is_parameter(fabll.Node):
         unitstr = ""
 
         out = f"{letter}{unitstr}"
-        out += self.as_parameter_operatable.get()._get_lit_suffix()
+        out += (
+            self.as_parameter_operatable.get()._get_lit_suffix()
+            if not no_lit_suffix
+            else ""
+        )
 
         return out
 

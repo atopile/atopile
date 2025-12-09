@@ -4,7 +4,7 @@
 import logging
 import math
 from itertools import pairwise
-from typing import Callable, cast
+from typing import Callable
 
 import pytest
 
@@ -87,8 +87,18 @@ def _extract_and_check(
     if isinstance(expected, F.Literals.LiteralNodes):
         expected = expected.can_be_operand.get()
     if not isinstance(expected, F.Parameters.can_be_operand):
-        return extracted.equals_singleton(expected)
-    return extracted.equals(expected.as_literal.force_get())
+        matches = extracted.equals_singleton(expected)
+        if not matches:
+            print(f"Expected {expected} but got {extracted.pretty_str()}")
+        return matches
+
+    matches = extracted.equals(expected.as_literal.force_get())
+    if not matches:
+        print(
+            f"Expected {expected.as_literal.force_get().pretty_str()}"
+            f" but got {extracted.pretty_str()}"
+        )
+    return matches
 
 
 def test_solve_phase_one():
@@ -275,7 +285,7 @@ def test_subset_of_literal():
     )
     # for p in (p0, p1, p2):
     #     assert solver.inspect_get_known_supersets(
-    #         p.get_sibling_trait(F.Parameters.is_parameter)
+    #         p.as_parameter.force_get()
     #     ) == E.lit_op_range((0.0, 0.0))
 
 
@@ -505,7 +515,7 @@ def test_symmetric_inequality_correlated():
     p0_lit = _extract(p0, repr_map)
     p1_lit = _extract(p1, repr_map)
     assert p0_lit.equals(p1_lit)
-    assert p0_lit.equals(lit.get_sibling_trait(F.Literals.is_literal))
+    assert p0_lit.equals(lit.as_literal.force_get())
 
 
 @pytest.mark.parametrize(
@@ -568,7 +578,12 @@ def test_super_simple_literal_folding(
     assert _extract_and_check(expr, repr_map, expected)
 
 
-def test_literal_folding_add_multiplicative():
+def test_literal_folding_add_multiplicative_1():
+    """
+    expr := (A + (A * 2) + (A * 5) + B + (A * B * 2)) - B
+    expr <=! 100 # need predicate for solver
+    => 8A + 2AB
+    """
     E = BoundExpressions()
     A = E.parameter_op(units=E.U.dl)
     B = E.parameter_op(units=E.U.dl)
@@ -595,38 +610,49 @@ def test_literal_folding_add_multiplicative():
     )
     rep_A = repr_map.map_forward(A.as_parameter_operatable.force_get()).maps_to
     rep_B = repr_map.map_forward(B.as_parameter_operatable.force_get()).maps_to
-    assert isinstance(
-        fabll.Traits(rep_add).get_obj_raw(),
-        F.Expressions.Add,
-    )
+    assert rep_A is not None
+    assert rep_B is not None
+
     context = repr_map.output_print_context
-    assert (
-        len(
-            cast(F.Expressions.Add, fabll.Traits(rep_add).get_obj_raw())
-            .operands.get()
-            .as_list()
-        )
-        == 2
-    ), f"{rep_add.compact_repr(context)}"
-    mul1, mul2 = (
-        cast(F.Expressions.Add, fabll.Traits(rep_add).get_obj_raw())
-        .operands.get()
-        .as_list()
+    operands = (
+        fabll.Traits(rep_add)
+        .get_obj(F.Expressions.Add)
+        .is_expression.get()
+        .get_operands()
     )
+    assert len(operands) == 2, f"{rep_add.compact_repr(context)}"
+    mul1, mul2 = operands
 
     mulexp1 = fabll.Traits(mul1).get_obj(F.Expressions.Multiply)
     mulexp2 = fabll.Traits(mul2).get_obj(F.Expressions.Multiply)
 
-    # TODO: What is this trying to test?
-    assert any(
-        set(m.operands.get().as_list()) == [rep_A, 8] for m in (mulexp1, mulexp2)
-    )
-    assert any(
-        set(m.operands.get().as_list()) == [rep_A, rep_B, 2] for m in (mulexp1, mulexp2)
-    )
+    # Really fucked up way to test: rep_app = 8A + 2AB
+    expecteds: list[tuple[set[F.Parameters.is_parameter_operatable], float]] = [
+        ({rep_A}, 8),
+        ({rep_A, rep_B}, 2),
+    ]
+    for expected_ops, expected_lit in expecteds:
+        found = False
+        for mul in (mulexp1, mulexp2):
+            if (
+                next(
+                    iter(mul.is_expression.get().get_operand_literals().values())
+                ).equals_singleton(expected_lit)
+                and set(mul.is_expression.get().get_operand_operatables())
+                == expected_ops
+            ):
+                found = True
+                break
+
+        assert found
 
 
 def test_literal_folding_add_multiplicative_2():
+    """
+    expr := A + (A * 2) + 10 + (5 * A) + 0 + B
+    expr <=! 100 # need predicate for solver
+    => 8A + B + 10
+    """
     E = BoundExpressions()
     A = E.parameter_op(units=E.U.dl)
     B = E.parameter_op(units=E.U.dl)
@@ -644,23 +670,35 @@ def test_literal_folding_add_multiplicative_2():
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
-    rep_add = repr_map.map_forward(expr.as_parameter_operatable.force_get()).maps_to
-    a_res = repr_map.map_forward(A.as_parameter_operatable.force_get()).maps_to
-    b_res = repr_map.map_forward(B.as_parameter_operatable.force_get()).maps_to
-    assert isinstance(rep_add, F.Expressions.Add)
-    assert a_res is not None
+    rep_add = not_none(
+        repr_map.map_forward(expr.as_parameter_operatable.force_get()).maps_to
+    )
+    a_res = not_none(
+        repr_map.map_forward(A.as_parameter_operatable.force_get()).maps_to
+    )
+    b_res = not_none(
+        repr_map.map_forward(B.as_parameter_operatable.force_get()).maps_to
+    )
+
+    rep_add_obj = fabll.Traits(rep_add).get_obj(F.Expressions.Add)
+
     a_ops = [
         op
-        for op in a_res.get_operations()
-        if isinstance(op, F.Expressions.Multiply) and (8) in op.operands.get().as_list()
+        for op in a_res.get_operations(F.Expressions.Multiply)
+        if any(
+            lit
+            for lit in op.is_expression.get().get_operand_literals().values()
+            if lit.equals_singleton(8)
+        )
     ]
     assert len(a_ops) == 1
     mul = next(iter(a_ops))
-    assert set(rep_add.operands.get().as_list()) == {
-        b_res,
-        (10),
-        mul,
-    }
+    add_ops = rep_add_obj.is_expression.get().get_operand_operatables()
+    add_ops_lits = rep_add_obj.is_expression.get().get_operand_literals()
+    assert len(add_ops_lits) == 1 and next(
+        iter(add_ops_lits.values())
+    ).equals_singleton(10)
+    assert add_ops == {b_res, mul.is_parameter_operatable.get()}
 
 
 def test_transitive_subset():
@@ -1410,7 +1448,9 @@ def test_ss_single_into_alias():
         (F.Expressions.IsSuperset.c, False),
     ],
 )
-def test_find_contradiction_by_predicate(op, invert):
+def test_find_contradiction_by_predicate(
+    op: Callable[..., F.Parameters.can_be_operand], invert: bool
+):
     """
     A > B, A is [0, 10], B is [20, 30], A further uncorrelated B
     -> [0,10] > [20, 30]
@@ -1423,9 +1463,13 @@ def test_find_contradiction_by_predicate(op, invert):
     E.is_(B, E.lit_op_range((20, 30)), assert_=True)
 
     if invert:
-        op(B, A).get_sibling_trait(F.Expressions.is_assertable).assert_()
+        op(
+            B, A
+        ).as_parameter_operatable.force_get().as_expression.force_get().as_assertable.force_get().assert_()
     else:
-        op(A, B).get_sibling_trait(F.Expressions.is_assertable).assert_()
+        op(
+            A, B
+        ).as_parameter_operatable.force_get().as_expression.force_get().as_assertable.force_get().assert_()
 
     solver = DefaultSolver()
 
@@ -1644,7 +1688,7 @@ def test_congruence_lits(
 def test_fold_literals():
     E = BoundExpressions()
     A = E.parameter_op()
-    E.is_(A, E.add(E.lit_op_range((0, 10)), E.lit_op_range((0, 10))))
+    E.is_(A, E.add(E.lit_op_range((0, 10)), E.lit_op_range((0, 10))), assert_=True)
 
     solver = DefaultSolver()
     solver.update_superset_cache(A)
@@ -1738,7 +1782,7 @@ def test_subtract_zero(op):
     E = BoundExpressions()
 
     A = E.parameter_op()
-    E.is_(A, (op(E.lit_op_single(1), E.lit_op_single(0))))
+    E.is_(A, (op(E.lit_op_single(1), E.lit_op_single(0))), assert_=True)
 
     solver = DefaultSolver()
     solver.update_superset_cache(A)
@@ -1749,7 +1793,7 @@ def test_canonical_subtract_zero():
     E = BoundExpressions()
 
     A = E.parameter_op()
-    E.is_(A, (E.multiply(E.lit_op_single(0), E.lit_op_single(-1))))
+    E.is_(A, (E.multiply(E.lit_op_single(0), E.lit_op_single(-1))), assert_=True)
 
     B = E.parameter_op()
     E.is_(

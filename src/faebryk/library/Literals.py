@@ -333,6 +333,9 @@ class Strings(fabll.Node):
     def equals(
         self,
         other: "Strings",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> bool:
         return self.get_values() == other.get_values()
 

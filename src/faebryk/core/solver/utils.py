@@ -750,16 +750,16 @@ class MutatorUtils:
             # Extract literal parts from collected operations
             mul_lits = [
                 next(
-                    o_lit
-                    for o_lit in mul.as_expression.force_get().get_operand_literals()
+                    fabll.Traits(o_lit).get_obj(F.Literals.Numbers)
+                    for o_lit in mul.as_expression.force_get()
+                    .get_operand_literals()
+                    .values()
                 )
                 for mul in muls
             ]
 
             # Sum all literal multipliers plus the leftover count
-            new_factors[var] = count.op_add_intervals(
-                self.mutator.make_lit(sum(mul_lits))
-            )
+            new_factors[var] = count.op_add_intervals(*mul_lits)
 
         return new_factors, old_factors
 
@@ -908,8 +908,8 @@ class MutatorUtils:
         """
 
     @staticmethod
-    def flatten_associative[T: fabll.Node](
-        to_flatten: T,  # type: ignore
+    def flatten_associative(
+        to_flatten: F.Expressions.is_flattenable,
         check_destructable: Callable[
             [F.Expressions.is_expression, F.Expressions.is_expression], bool
         ],
@@ -940,27 +940,32 @@ class MutatorUtils:
             destroyed_operations=set(),
         )
 
-        to_flatten_expr = to_flatten.get_trait(F.Expressions.is_expression)
+        to_flatten_expr = to_flatten.get_sibling_trait(F.Expressions.is_expression)
+        is_associative = bool(
+            to_flatten.try_get_sibling_trait(F.Expressions.is_associative)
+        )
+        to_flatten_obj = fabll.Traits(to_flatten).get_obj_raw()
 
         def can_be_flattened(
             o: F.Parameters.can_be_operand,
         ) -> bool:
-            if not to_flatten.has_trait(F.Expressions.is_flattenable):
-                return False
-            if not to_flatten.has_trait(F.Expressions.is_associative):
-                if to_flatten_expr.get_operands()[0] is not o:
+            if not is_associative:
+                if not to_flatten_expr.get_operands()[0].is_same(o):
                     return False
-            if not o.has_same_type_as(to_flatten):
+            if not fabll.Traits(o).get_obj_raw().has_same_type_as(to_flatten_obj):
                 return False
             if not check_destructable(
-                o.get_trait(F.Expressions.is_expression), to_flatten_expr
+                o.get_sibling_trait(F.Expressions.is_expression), to_flatten_expr
             ):
                 return False
             return True
 
-        non_compressible_operands, nested_compressible_operations = partition(
-            can_be_flattened,
-            to_flatten_expr.get_operands(),
+        non_compressible_operands, nested_compressible_operations = map(
+            list,
+            partition(
+                can_be_flattened,
+                to_flatten_expr.get_operands(),
+            ),
         )
         out.extracted_operands.extend(non_compressible_operands)
 
@@ -972,7 +977,8 @@ class MutatorUtils:
             out.destroyed_operations.add(nested_to_flatten_expr)
 
             res = MutatorUtils.flatten_associative(
-                nested_to_flatten.get_raw_obj(), check_destructable
+                nested_to_flatten.get_sibling_trait(F.Expressions.is_flattenable),
+                check_destructable,
             )
             nested_extracted_operands += res.extracted_operands
             out.destroyed_operations.update(res.destroyed_operations)

@@ -134,17 +134,16 @@ def associative_flatten(mutator: Mutator):
     for +, *, and, or, &, |, ^
     """
     ops = mutator.get_expressions(
-        sort_by_depth=True, required_traits=(F.Expressions.is_associative,)
+        sort_by_depth=True, required_traits=(F.Expressions.is_flattenable,)
     )
-    # get out deepest expr in compressable tree
-    root_ops = [
-        e
-        for e in ops
-        if e.get_obj_type_node()
-        not in {
+
+    def _involved_in_expr_with_same_type(e: F.Expressions.is_expression) -> bool:
+        return e.get_obj_type_node() in {
             n.get_type_node() for n in e.as_parameter_operatable.get().get_operations()
         }
-    ]
+
+    # get out deepest expr in compressable tree
+    root_ops = [e for e in ops if not _involved_in_expr_with_same_type(e)]
 
     def is_replacable(
         to_replace: F.Expressions.is_expression,
@@ -157,16 +156,14 @@ def associative_flatten(mutator: Mutator):
         # overly restrictive: equivalent replacement would be ok
         if mutator.has_been_mutated(to_replace.as_parameter_operatable.get()):
             return False
-        if to_replace.as_parameter_operatable.get().get_operations() != {
-            parent_expr.as_parameter_operatable.get()
-        }:
+        exprs_involved_in = to_replace.as_parameter_operatable.get().get_operations()
+        if len(exprs_involved_in) > 1:
             return False
         return True
 
     for expr in root_ops:
-        res = mutator.utils.flatten_associative(
-            fabll.Traits(expr).get_obj_raw(), is_replacable
-        )
+        expr_flat = expr.get_sibling_trait(F.Expressions.is_flattenable)
+        res = mutator.utils.flatten_associative(expr_flat, is_replacable)
         if not res.destroyed_operations:
             continue
 

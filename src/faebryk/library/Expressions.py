@@ -224,7 +224,10 @@ class is_expression(fabll.Node):
         return result
 
     def compact_repr(
-        self, context: "Parameters.ReprContext | None" = None, use_name: bool = False
+        self,
+        context: "Parameters.ReprContext | None" = None,
+        use_name: bool = False,
+        no_lit_suffix: bool = False,
     ) -> str:
         if context is None:
             context = Parameters.ReprContext()
@@ -243,18 +246,23 @@ class is_expression(fabll.Node):
             if self.try_get_sibling_trait(is_terminated):
                 symbol_suffix += "!"
         symbol += symbol_suffix
-        lit_suffix = self.as_parameter_operatable.get()._get_lit_suffix()
+        lit_suffix = (
+            self.as_parameter_operatable.get()._get_lit_suffix()
+            if not no_lit_suffix
+            else ""
+        )
         symbol += lit_suffix
 
         def format_operand(op: "Parameters.can_be_operand"):
             if lit := op.as_literal.get():
                 return lit.pretty_str()
-            if po := op.as_parameter_operatable.force_get():
-                op_out = po.compact_repr(context, use_name=use_name)
-                if (
-                    op_expr
-                    := op.as_parameter_operatable.force_get().as_expression.get()
-                ) and len(op_expr.get_operands()) > 1:
+            if po := op.as_parameter_operatable.get():
+                op_out = po.compact_repr(
+                    context, use_name=use_name, no_lit_suffix=no_lit_suffix
+                )
+                if (op_expr := po.as_expression.get()) and len(
+                    op_expr.get_operands()
+                ) > 1:
                     op_out = f"({op_out})"
                 return op_out
             return str(op)
@@ -817,8 +825,8 @@ class Add(fabll.Node):
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
     has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
-    is_fully_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
-    is_associative = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
+    is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
     operands = OperandSequence.MakeChild()
 
@@ -859,6 +867,7 @@ class Subtract(fabll.Node):
             )
         )
     )
+    is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
     minuend = OperandPointer.MakeChild()
     subtrahends = OperandSequence.MakeChild()
 
@@ -911,8 +920,8 @@ class Multiply(fabll.Node):
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
     has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
-    is_fully_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
-    is_associative = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
+    is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
     operands = OperandSet.MakeChild()
 
@@ -969,6 +978,7 @@ class Divide(fabll.Node):
     has_implicit_constraints = fabll.Traits.MakeEdge(
         has_implicit_constraints.MakeChild()
     )
+    is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
     numerator = OperandPointer.MakeChild()
     denominator = OperandSequence.MakeChild()
@@ -1064,6 +1074,8 @@ class Power(fabll.Node):
         )
     )
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
+    # TODO
+    # is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
     base = OperandPointer.MakeChild()
     exponent = OperandPointer.MakeChild()
@@ -1655,8 +1667,8 @@ class Or(fabll.Node):
     has_idempotent_operands = fabll.Traits.MakeEdge(has_idempotent_operands.MakeChild())
     is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
     has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
-    is_fully_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
-    is_associative = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
+    is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
     operands = OperandSequence.MakeChild()
 
@@ -1967,8 +1979,8 @@ class Intersection(fabll.Node):
     has_idempotent_operands = fabll.Traits.MakeEdge(has_idempotent_operands.MakeChild())
     is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
     has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
-    is_fully_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
-    is_associative = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
+    is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
     operands = OperandSequence.MakeChild()
 
