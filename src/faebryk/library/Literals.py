@@ -5841,14 +5841,20 @@ class AbstractEnums(fabll.Node):
         return None if len(values) == 0 else EnumType(values[0])
 
     @staticmethod
-    def get_all_members_of_type(
-        node: fabll.NodeT, tg: fbrk.TypeGraph
+    def get_all_members_of_enum_type(
+        node: "AbstractEnums", tg: fbrk.TypeGraph
     ) -> list[EnumValue]:
+        """
+        Get all possible enum values for a given enum type node.
+        """
         return list(node.get_children(direct_only=True, types=EnumValue, tg=tg))
 
-    def get_all_members(self) -> list[EnumValue]:
-        return AbstractEnums.get_all_members_of_type(
-            node=fabll.Node.bind_instance(instance=not_none(self.get_type_node())),
+    def get_all_members_of_enum_literal(self) -> list[EnumValue]:
+        """
+        Get all possible enum values for a given enum literal.
+        """
+        return AbstractEnums.get_all_members_of_enum_type(
+            node=AbstractEnums.bind_instance(instance=not_none(self.get_type_node())),
             tg=self.tg,
         )
 
@@ -5862,15 +5868,18 @@ class AbstractEnums(fabll.Node):
 
     @staticmethod
     def get_enum_as_dict_for_type(
-        node: fabll.NodeT, tg: fbrk.TypeGraph
+        node: "AbstractEnums", tg: fbrk.TypeGraph
     ) -> dict[str, str]:
         return {
             member.name: member.value
-            for member in AbstractEnums.get_all_members_of_type(node=node, tg=tg)
+            for member in AbstractEnums.get_all_members_of_enum_type(node=node, tg=tg)
         }
 
     def get_enum_as_dict(self) -> dict[str, str]:
-        return {member.name: member.value for member in self.get_all_members()}
+        return {
+            member.name: member.value
+            for member in self.get_all_members_of_enum_literal()
+        }
 
     def get_single_value(self) -> str | None:
         values = self.get_values()
@@ -6494,7 +6503,7 @@ def test_enums():
         EnumT.bind_typegraph(tg=tg).create_instance(g=g).setup(MyEnum.A, MyEnum.D)
     )
 
-    elements = enum_lit.get_all_members()
+    elements = enum_lit.get_all_members_of_enum_literal()
     assert len(elements) == 4
     assert elements[0].name == "A"
     assert elements[0].value == MyEnum.A.value

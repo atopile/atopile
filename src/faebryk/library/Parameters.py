@@ -484,7 +484,11 @@ class EnumParameter(fabll.Node):
         )
 
     def setup(self, enum: type[Enum]) -> Self:  # type: ignore[invalid-method-override]
-        # TODO
+        atype = F.Literals.EnumsFactory(enum)
+        enum_type_node = atype.bind_typegraph(tg=self.tg).get_or_create_type()
+        self.enum_domain_pointer.get().point(
+            fabll.Node.bind_instance(instance=enum_type_node)
+        )
         return self
 
     def alias_to_literal(
@@ -536,7 +540,22 @@ class EnumParameter(fabll.Node):
     def domain_set(
         self, *, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "Literals.AbstractEnums":
-        raise NotImplementedError("domain_set not implemented for EnumParameter")
+        g = g or self.g
+        tg = tg or self.tg
+
+        from faebryk.library.Literals import AbstractEnums
+
+        enum_type_node = AbstractEnums(self.enum_domain_pointer.get().deref().instance)
+        all_enum_values = AbstractEnums.get_all_members_of_enum_type(enum_type_node, tg)
+
+        enum_lit = AbstractEnums(
+            tg.instantiate_node(type_node=enum_type_node.instance, attributes={})
+        )
+        enum_lit.constrain_to_values(
+            *[enum_value.value for enum_value in all_enum_values]
+        )
+
+        return enum_lit
 
 
 class NumericParameter(fabll.Node):
@@ -789,12 +808,12 @@ def test_enum_param():
     # Enum Parameter from TG
     enum_param = example_node.enum_p_tg.get()
 
-    abstract_enum_type_node = enum_param.get_enum_type()
+    abstract_enum_type_node = AbstractEnums(enum_param.get_enum_type().instance)
     # assert abstract_enum_type_node.is_same(enum_type_node)
 
     assert [
         (m.name, m.value)
-        for m in AbstractEnums.get_all_members_of_type(
+        for m in AbstractEnums.get_all_members_of_enum_type(
             node=abstract_enum_type_node, tg=tg
         )
     ] == [(m.name, m.value) for m in ExampleNode.MyEnum]
@@ -1320,6 +1339,21 @@ def test_expression_congruence_not():
     )
 
 
+def test_enum_param_domain_set():
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class MyEnum(Enum):
+        A = "a"
+        B = "b"
+        C = "c"
+        D = "d"
+
+    A = EnumParameter.bind_typegraph(tg=tg).create_instance(g=g).setup(MyEnum)
+    assert A.domain_set(g=g, tg=tg).is_literal.get()
+    assert A.domain_set(g=g, tg=tg).get_values().sort() == ["a", "b", "c", "d"].sort()
+
+
 if __name__ == "__main__":
     from faebryk.library.Parameters import test_enum_param
 
@@ -1329,4 +1363,4 @@ if __name__ == "__main__":
 if __name__ == "__main__":
     import typer
 
-    typer.run(test_enum_param)
+    typer.run(test_enum_param_domain_set)
