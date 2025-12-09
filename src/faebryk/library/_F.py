@@ -23,19 +23,16 @@ from faebryk.library.Mechanical import Mechanical
 from faebryk.library.NumberDomain import NumberDomain
 from faebryk.library.Signal import Signal
 from faebryk.library.is_app_root import is_app_root
-from faebryk.library.has_solver import has_solver
 from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.is_lazy import is_lazy
 from faebryk.library.is_pickable import is_pickable
 import faebryk.library.Literals as Literals
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.has_linked_pad import has_linked_pad
-from faebryk.library.implements_design_check import implements_design_check
 import faebryk.library.Parameters as Parameters
 from faebryk.library.can_bridge_by_name import can_bridge_by_name
 import faebryk.library.Expressions as Expressions
 import faebryk.library.Footprints as Footprints
-from faebryk.library.PCB import PCB
 from faebryk.library.SerializableMetadata import SerializableMetadata
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator_prefix import has_designator_prefix
@@ -43,6 +40,7 @@ from faebryk.library.has_net_name import has_net_name
 from faebryk.library.has_net_name_suggestion import has_net_name_suggestion
 from faebryk.library.has_package_requirements import has_package_requirements
 from faebryk.library.has_part_picked import has_part_picked
+from faebryk.library.has_solver import has_solver
 from faebryk.library.has_usage_example import has_usage_example
 from faebryk.library.is_auto_generated import is_auto_generated
 from faebryk.library.is_pickable_by_part_number import is_pickable_by_part_number
@@ -51,9 +49,11 @@ from faebryk.library.is_pickable_by_type import is_pickable_by_type
 import faebryk.library.Units as Units
 import faebryk.library.KiCadFootprints as KiCadFootprints
 from faebryk.library.is_atomic_part import is_atomic_part
+from faebryk.library.implements_design_check import implements_design_check
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 import faebryk.library.PCBTransformer as PCBTransformer
+from faebryk.library.PCB import PCB
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Filter import Filter
 import faebryk.library.Lead as Lead
@@ -125,19 +125,16 @@ __all__ = [
     "NumberDomain",
     "Signal",
     "is_app_root",
-    "has_solver",
     "has_part_removed",
     "is_lazy",
     "is_pickable",
     "Literals",
     "can_bridge",
     "has_linked_pad",
-    "implements_design_check",
     "Parameters",
     "can_bridge_by_name",
     "Expressions",
     "Footprints",
-    "PCB",
     "SerializableMetadata",
     "has_datasheet",
     "has_designator_prefix",
@@ -145,6 +142,7 @@ __all__ = [
     "has_net_name_suggestion",
     "has_package_requirements",
     "has_part_picked",
+    "has_solver",
     "has_usage_example",
     "is_auto_generated",
     "is_pickable_by_part_number",
@@ -153,9 +151,11 @@ __all__ = [
     "Units",
     "KiCadFootprints",
     "is_atomic_part",
+    "implements_design_check",
     "Electrical",
     "has_simple_value_representation",
     "PCBTransformer",
+    "PCB",
     "ElectricPower",
     "Filter",
     "Lead",

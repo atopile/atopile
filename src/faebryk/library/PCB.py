@@ -67,14 +67,14 @@ class PCB(fabll.Node):
     @property
     def transformer(self) -> "PCB_Transformer":
         transformer_id = int(
-            self.transformer_.get().force_extract_literal().get_values()[0]
+            self.transformer_.get().force_extract_literal().get_single()
         )
 
         return ctypes.cast(transformer_id, ctypes.py_object).value
 
     @property
     def pcb_file(self) -> kicad.pcb.PcbFile:
-        pcb_file_id = int(self.pcb_file_.get().force_extract_literal().get_values()[0])
+        pcb_file_id = int(self.pcb_file_.get().force_extract_literal().get_single())
         return ctypes.cast(pcb_file_id, ctypes.py_object).value
 
     @property
@@ -82,7 +82,7 @@ class PCB(fabll.Node):
         literal = self.path_.get().try_extract_constrained_literal()
         if literal is None:
             raise ValueError("PCB path is not set")
-        return Path(literal.get_values()[0])
+        return Path(literal.get_single())
 
     @property
     def app(self) -> fabll.Node:
