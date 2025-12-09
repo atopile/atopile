@@ -905,6 +905,8 @@ pub const TypeGraph = struct {
     /// Walk a Reference chain and return the individual identifiers. Reference
     /// nodes are linked together via EdgeNext; higher layers should not need to
     /// reason about the internals of that representation.
+    /// An empty identifier with no successor is treated as a self-reference and
+    /// returns an empty path (consistent with ChildReferenceNode.resolve).
     pub fn get_reference_path(
         self: *@This(),
         allocator: std.mem.Allocator,
@@ -918,21 +920,23 @@ pub const TypeGraph = struct {
         var current = reference;
         while (true) {
             const identifier = ChildReferenceNode.Attributes.of(current.node).get_child_identifier();
+            const next_node = EdgeNext.get_next_node_from_node(current);
+
             if (identifier.len == 0) {
+                if (next_node == null) {
+                    // Self-reference (empty identifier, no successor) - return empty path
+                    return segments.toOwnedSlice() catch @panic("OOM");
+                }
+                // Empty identifier in middle of chain is invalid
                 return error.InvalidReference;
             }
             segments.append(identifier) catch @panic("OOM");
 
-            const next_node = EdgeNext.get_next_node_from_node(current);
             if (next_node) |_next| {
                 current = reference.g.bind(_next);
             } else {
                 break;
             }
-        }
-
-        if (segments.items.len == 0) {
-            return error.InvalidReference;
         }
 
         return segments.toOwnedSlice() catch @panic("OOM");
