@@ -117,7 +117,7 @@ class Transformations:
         context_new.variable_mapping.next_id = context_old.variable_mapping.next_id
 
         for s, d in self.mutated.items():
-            if (s_p := s.as_parameter.get()) and (d_p := d.as_parameter.get()):
+            if (s_p := s.as_parameter.try_get()) and (d_p := d.as_parameter.try_get()):
                 s_p.compact_repr(context_old)
                 s_mapping = context_old.variable_mapping.mapping[s_p]
                 d_mapping = context_new.variable_mapping.mapping.get(d_p, None)
@@ -176,7 +176,7 @@ class Transformations:
         for e in self.created:
             if not (e_co := e.try_get_sibling_trait(F.Expressions.is_predicate)):
                 continue
-            if (expr := e.as_expression.get()) is not None and (
+            if (expr := e.as_expression.try_get()) is not None and (
                 target in expr.get_operand_operatables()
             ):
                 out.append(e_co)
@@ -535,7 +535,7 @@ class MutationStage:
             key_from_ops = " \n  ".join(___repr_op(o) for o in from_ops)
             key_from_ops = f"  {key_from_ops}"
             value = ___repr_op(op)
-            if (op_e := op.as_expression.get()) and (
+            if (op_e := op.as_expression.try_get()) and (
                 MutatorUtils.is_alias_is_literal(op)
                 or MutatorUtils.is_subset_literal(op)
             ):
@@ -844,7 +844,7 @@ class MutationMap:
         def _default():
             if not domain_default:
                 return None
-            if not (p := po.as_parameter.get()):
+            if not (p := po.as_parameter.try_get()):
                 raise ValueError("domain_default only supported for parameters")
             return p.domain_set()
 
@@ -1395,8 +1395,8 @@ class Mutator:
             self.get_copy_po(unpacked),
         )
         if expr.try_get_sibling_trait(F.Expressions.is_predicate):
-            if (expression := out.as_expression.get()) and (
-                assertable := expression.as_assertable.get()
+            if (expression := out.as_expression.try_get()) and (
+                assertable := expression.as_assertable.try_get()
             ):
                 self.assert_(assertable)
             else:
@@ -1418,12 +1418,12 @@ class Mutator:
         """
         inner_expr = expr.get_operands()[0]
         if not (
-            (inner_expr_po := inner_expr.as_parameter_operatable.get())
-            and (inner_expr_e := inner_expr_po.as_expression.get())
+            (inner_expr_po := inner_expr.as_parameter_operatable.try_get())
+            and (inner_expr_e := inner_expr_po.as_expression.try_get())
         ):
             raise ValueError("Inner operand must be an expression")
         inner_operand = inner_expr_e.get_operands()[0]
-        if not (inner_operand_po := inner_operand.as_parameter_operatable.get()):
+        if not (inner_operand_po := inner_operand.as_parameter_operatable.try_get()):
             raise ValueError("Unpacked operand can't be a literal")
         out = self._mutate(
             expr.as_parameter_operatable.get(),
@@ -1465,9 +1465,9 @@ class Mutator:
             .is_same(other=self.G_out.get_self_node().node())
         ):
             return obj
-        if obj_po := obj.as_parameter_operatable.get():
+        if obj_po := obj.as_parameter_operatable.try_get():
             return self.get_copy_po(obj_po, accept_soft).as_operand.get()
-        if obj_lit := obj.as_literal.get():
+        if obj_lit := obj.as_literal.try_get():
             return (
                 fabll.Traits(obj_lit)
                 .get_obj_raw()
@@ -1496,10 +1496,10 @@ class Mutator:
         # purely for debug
         self.transformations.copied.add(obj_po)
 
-        if expr := obj_po.as_expression.get():
+        if expr := obj_po.as_expression.try_get():
             # TODO consider using copy here instead of recreating expr
             return self.mutate_expression(expr).as_parameter_operatable.get()
-        elif p := obj_po.as_parameter.get():
+        elif p := obj_po.as_parameter.try_get():
             return self.mutate_parameter(p).as_parameter_operatable.get()
 
         assert False

@@ -62,7 +62,7 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
             [
                 op
                 for op in e.is_expression.get().get_operands()
-                if op.as_parameter_operatable.get()
+                if op.as_parameter_operatable.try_get()
             ]
         )
         == 1
@@ -72,7 +72,7 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
         ge_e = ge.is_expression.get()
         op_0 = ge_e.get_operands()[0]
         op_1 = ge_e.get_operands()[1]
-        is_left = op_0.as_parameter_operatable.get()
+        is_left = op_0.as_parameter_operatable.try_get()
 
         if is_left:
             param = op_0
@@ -172,7 +172,7 @@ def remove_congruent_expressions(mutator: Mutator):
             not_none(fabll.Traits(e).get_obj_raw().get_type_node()).node().get_uuid(),
             len(e.get_operands()),
             None
-            if not e.as_assertable.get()
+            if not e.as_assertable.try_get()
             else bool(e.try_get_trait(F.Expressions.is_predicate)),
         ),
     )
@@ -263,8 +263,8 @@ def resolve_alias_classes(mutator: Mutator):
 
     # Make new param repre for alias classes
     for eq_class in p_eq_classes:
-        eq_class_params = [p_po for p in eq_class if (p_po := p.as_parameter.get())]
-        eq_class_exprs = {p_e for p in eq_class if (p_e := p.as_expression.get())}
+        eq_class_params = [p_po for p in eq_class if (p_po := p.as_parameter.try_get())]
+        eq_class_exprs = {p_e for p in eq_class if (p_e := p.as_expression.try_get())}
 
         if not eq_class_params:
             continue
@@ -319,8 +319,8 @@ def resolve_alias_classes(mutator: Mutator):
             )
 
     for eq_class in p_eq_classes:
-        eq_class_params = [p for p in eq_class if (p_po := p.as_parameter.get())]
-        eq_class_exprs = {p_e for p in eq_class if (p_e := p.as_expression.get())}
+        eq_class_params = [p for p in eq_class if (p_po := p.as_parameter.try_get())]
+        eq_class_exprs = {p_e for p in eq_class if (p_e := p.as_expression.try_get())}
 
         if eq_class_params:
             p_0 = eq_class_params[0]
@@ -463,7 +463,7 @@ def transitive_subset(mutator: Mutator):
         ss_op_e = ss_op.is_expression.get()
         ss_op_po = ss_op.is_parameter_operatable.get()
         A, B = ss_op_e.get_operands()
-        if not (B_po := B.as_parameter_operatable.get()):
+        if not (B_po := B.as_parameter_operatable.try_get()):
             continue
 
         # all B ss! C | C not A
@@ -600,7 +600,7 @@ def isolate_lone_params(mutator: Mutator):
         op_without_param: F.Parameters.can_be_operand,
         from_expr: F.Expressions.is_expression,
     ) -> tuple[F.Parameters.can_be_operand, F.Parameters.can_be_operand]:
-        if not (op_with_param_e := op_with_param.as_expression.get()):
+        if not (op_with_param_e := op_with_param.as_expression.try_get()):
             return op_with_param.as_operand.get(), op_without_param
 
         def op_or_create_expr(

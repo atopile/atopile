@@ -1853,12 +1853,15 @@ class Traits:
             self._trait_type_ref = trait_type
             self._node = node
 
-        def get(self) -> T | None:
+        def try_get(self) -> T | None:
             trait_type = Traits._resolve_ref(self._trait_type_ref)
             return cast(T, self._node.try_get_sibling_trait(trait_type))
 
         def force_get(self) -> T:
-            return not_none(self.get())
+            return not_none(self.try_get())
+
+        def get(self) -> T:
+            raise ValueError("Unhandled conditional, use try_get or force_get instead")
 
     class OptionalImpliedTrait[T: NodeT](Field, ChildAccessor[T]):
         def __init__(
@@ -1870,11 +1873,14 @@ class Traits:
             super().__init__(identifier=identifier)
             self._trait_type_ref = trait_type
 
-        def get(self) -> T | None:
+        def try_get(self) -> T | None:
             raise ValueError("SiblingField is not bound to a node")
 
         def force_get(self) -> T:
             raise ValueError("SiblingField is not bound to a node")
+
+        def get(self) -> T:
+            raise ValueError("Unhandled conditional, use try_get or force_get instead")
 
         def bind(self, node: NodeT) -> "Traits._BoundOptionalImpliedTrait[T]":
             return Traits._BoundOptionalImpliedTrait(

@@ -3,7 +3,6 @@
 
 import logging
 
-import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
@@ -28,7 +27,7 @@ def reflexive_predicates(mutator: Mutator):
         if not pred.as_parameter_operatable.get().get_operations():
             continue
         operands = pred.get_operands()
-        if operands[0].as_literal.get():
+        if operands[0].as_literal.try_get():
             continue
         if len(operands) >= 2 and operands[0] is not operands[1]:
             continue

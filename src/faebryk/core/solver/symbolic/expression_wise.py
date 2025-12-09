@@ -185,7 +185,7 @@ def fold_add(expr: F.Expressions.Add, mutator: Mutator):
 
     # unpack if single operand (operatable)
     if len(new_operands) == 1 and (
-        no_po := new_operands[0].as_parameter_operatable.force_get()
+        no_po := new_operands[0].as_parameter_operatable.try_get()
     ):
         mutator.mutate_unpack_expression(e, [no_po])
         return
@@ -271,7 +271,7 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
 
         # unpack if single operand (operatable)
         if len(new_operands) == 1 and (
-            no_po := new_operands[0].as_parameter_operatable.get()
+            no_po := new_operands[0].as_parameter_operatable.try_get()
         ):
             mutator.mutate_unpack_expression(e, [no_po])
             return
@@ -562,9 +562,9 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                     if inner_op_e.try_cast(F.Expressions.Not):
                         for not_op in inner_op_e.get_operands():
                             if (
-                                not_op.as_parameter_operatable.force_get()
-                                .as_expression.force_get()
-                                .as_assertable.force_get()
+                                (not_op_po := not_op.as_parameter_operatable.try_get())
+                                and (not_op_expr := not_op_po.as_expression.try_get())
+                                and (not_op_expr.as_assertable.try_get())
                                 and not not_op.try_get_sibling_trait(
                                     F.Expressions.is_predicate
                                 )
@@ -578,15 +578,11 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
 
                     # ¬(A v ...)
                     elif (
-                        inner_op.as_parameter_operatable.force_get()
-                        .as_expression.force_get()
-                        .as_assertable.get()
+                        (inner_op_po := inner_op.as_parameter_operatable.try_get())
+                        and (inner_op_expr := inner_op_po.as_expression.try_get())
+                        and (inner_op_expr.as_assertable.try_get())
                     ):
-                        parent_nots = (
-                            inner_op.as_parameter_operatable.force_get().get_operations(
-                                F.Expressions.Not
-                            )
-                        )
+                        parent_nots = inner_op_po.get_operations(F.Expressions.Not)
                         if parent_nots:
                             for n in parent_nots:
                                 mutator.assert_(n.is_assertable.get())
@@ -600,7 +596,9 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
 
     if expr.try_get_trait(F.Expressions.is_predicate):
         false = mutator.make_lit(False).is_literal.get()
-        if op_e := op.as_parameter_operatable.force_get().as_expression.get():
+        if (op_op := op.as_parameter_operatable.try_get()) and (
+            op_e := op_op.as_expression.try_get()
+        ):
             mutator.utils.alias_is_literal_and_check_predicate_eval(op_e, false)
         else:
             mutator.utils.alias_to(op, false.as_operand.get(), terminate=True)
@@ -646,7 +644,7 @@ def fold_subset(expr: F.Expressions.IsSubset, mutator: Mutator):
     e = expr.is_expression.get()
     A, B = e.get_operands()
 
-    if not (B_lit := B.as_literal.get()):
+    if not (B_lit := B.as_literal.try_get()):
         return
 
     # A ss ([X]) -> A is ([X])

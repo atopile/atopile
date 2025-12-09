@@ -76,7 +76,7 @@ class is_parameter_operatable(fabll.Node):
         return is_expression
 
     # TODO: is there a cleaner way to avoid adding Expressions dependency here?
-    as_expression: "fabll.Traits.OptionalImpliedTrait[F.Expressions.is_expression]" = (
+    as_expression: fabll.Traits.OptionalImpliedTrait["F.Expressions.is_expression"] = (
         fabll.Traits.OptionalImpliedTrait(_get_is_expression)
     )
 
@@ -134,11 +134,11 @@ class is_parameter_operatable(fabll.Node):
         use_name: bool = False,
         no_lit_suffix: bool = False,
     ) -> str:
-        if p := self.as_parameter.get():
+        if p := self.as_parameter.try_get():
             return p.compact_repr(
                 context=context, use_name=use_name, no_lit_suffix=no_lit_suffix
             )
-        if e := self.as_expression.get():
+        if e := self.as_expression.try_get():
             return e.compact_repr(
                 context=context, use_name=use_name, no_lit_suffix=no_lit_suffix
             )
@@ -146,7 +146,7 @@ class is_parameter_operatable(fabll.Node):
         assert False
 
     def get_depth(self) -> int:
-        if expr := self.as_expression.get():
+        if expr := self.as_expression.try_get():
             return expr.get_depth()
         return 0
 
@@ -239,7 +239,7 @@ class is_parameter_operatable(fabll.Node):
 
         if self.try_get_sibling_trait(has_implicit_constraints):
             return True
-        if expr := self.as_expression.force_get():
+        if expr := self.as_expression.try_get():
             return any(
                 op.has_implicit_predicates_recursive()
                 for op in expr.get_operand_operatables()
