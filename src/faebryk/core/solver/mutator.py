@@ -1264,9 +1264,7 @@ class Mutator:
 
         if expr_pred:
             if self.is_predicate_terminated(expr_pred):
-                self.predicate_terminate(
-                    new_expr.get_trait(F.Expressions.is_predicate), new_graph=True
-                )
+                self.predicate_terminate(new_expr.get_trait(F.Expressions.is_predicate))
 
         new_expr_po = new_expr.get_trait(F.Parameters.is_parameter_operatable)
 
@@ -1606,11 +1604,14 @@ class Mutator:
                     terminate=terminate,
                 )
 
-    def predicate_terminate(
-        self, pred: F.Expressions.is_predicate, new_graph: bool = False
-    ):
+    def predicate_terminate(self, pred: F.Expressions.is_predicate):
         if self.is_predicate_terminated(pred):
             return
+        new_graph = (
+            pred.g.get_self_node()
+            .node()
+            .is_same(other=self.G_out.get_self_node().node())
+        )
         if new_graph:
             fabll.Traits.create_and_add_instance_to(
                 fabll.Traits(pred).get_obj_raw(), is_terminated

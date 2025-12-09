@@ -544,7 +544,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
         # TODO this is kinda ugly, should be in Or fold if it aliases to false
         # ¬!(¬A v ¬B v C) -> ¬!(¬!A v ¬!B v C), ¬!C
         if expr.try_get_trait(F.Expressions.is_predicate):
-            # ¬( v )
+            # ¬!( v )
             if op_or := op.try_cast(F.Expressions.Or):
                 # FIXME remove this shortcut
                 # should be handle in more general way
@@ -558,7 +558,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                     inner_op_po = inner_op.as_parameter_operatable.force_get()
                     inner_op_e = inner_op_po.as_expression.force_get()
 
-                    # ¬(¬A v ...)
+                    # ¬!(¬A v ...)
                     if inner_op_e.try_cast(F.Expressions.Not):
                         for not_op in inner_op_e.get_operands():
                             if (
@@ -576,7 +576,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                                     .as_assertable.force_get()
                                 )
 
-                    # ¬(A v ...)
+                    # ¬!(A v ...)
                     elif (
                         (inner_op_po := inner_op.as_parameter_operatable.try_get())
                         and (inner_op_expr := inner_op_po.as_expression.try_get())
