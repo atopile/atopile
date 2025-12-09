@@ -1565,13 +1565,6 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         tg = self.tg
         typenode = tg.get_type_by_name(type_identifier=self.t._type_identifier())
         if typenode is not None:
-            existing = TypeNodeBoundTG.__TYPE_NODE_MAP__.get(typenode)
-            if existing is not None and existing.t is not self.t:
-                raise FabLLException(
-                    f"Type name collision: '{self.t._type_identifier()}' already "
-                    f"registered by {existing.t.__module__}.{existing.t.__qualname__}, "
-                    f"cannot register {self.t.__module__}.{self.t.__qualname__}"
-                )
             return typenode
         typenode = tg.add_type(identifier=self.t._type_identifier())
         TypeNodeBoundTG.__TYPE_NODE_MAP__[typenode] = self
