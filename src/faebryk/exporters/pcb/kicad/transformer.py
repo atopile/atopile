@@ -382,11 +382,7 @@ class PCB_Transformer:
         known_nets: dict["F.Net", KiCadPCBNet] = {}
         mapped_net_names = set()
 
-<<<<<<< HEAD
         kicad_nets_by_name: dict[str, KiCadPCBNet] = {
-=======
-        kicad_nets_by_name: dict[str, KiCadNet] = {
->>>>>>> ea130535 (rework net get_connected_pads)
             n.name: n for n in self.pcb.nets if n.name is not None
         }
 
