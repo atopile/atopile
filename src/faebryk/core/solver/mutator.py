@@ -585,8 +585,8 @@ class MutationStage:
             if old == new:
                 continue
             if (
-                (s_e := s.as_expression.get())
-                and s_e.as_assertable.get()
+                (s_e := s.as_expression.try_get())
+                and s_e.as_assertable.try_get()
                 and new.replace("✓", "") == old.replace("✓", "")
                 and (d_lit := d.try_get_aliased_literal())
                 and (s_lit := s.try_get_aliased_literal())
