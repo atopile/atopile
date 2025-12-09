@@ -16,7 +16,7 @@ KiCadPCBPad = kicad.pcb.Pad
 KiCadPCBNet = kicad.pcb.Net
 
 
-class has_kicad_pcb_footprint(fabll.Node):
+class has_associated_kicad_pcb_footprint(fabll.Node):
     """
     Link applied to:
     - Modules which are represented in the PCB
@@ -74,7 +74,7 @@ class has_kicad_pcb_footprint(fabll.Node):
         return ctypes.cast(transformer_id, ctypes.py_object).value
 
 
-class has_kicad_pcb_pad(fabll.Node):
+class has_associated_kicad_pcbpad(fabll.Node):
     is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     # Registry to prevent garbage collection of Footprint and PCB_Transformer objects.
@@ -146,7 +146,7 @@ class has_kicad_pcb_pad(fabll.Node):
         return ctypes.cast(transformer_id, ctypes.py_object).value
 
 
-class has_kicad_pcb_net(fabll.Node):
+class has_associated_kicad_pcb_net(fabll.Node):
     is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     # Registry to prevent garbage collection of Footprint and PCB_Transformer objects.
@@ -216,10 +216,10 @@ def test_has_kicad_pcb_footprint_trait():
     _, _, _, transformer, footprint, module, _ = setup_pcb_transformer_test()
 
     fabll.Traits.create_and_add_instance_to(
-        node=module, trait=has_kicad_pcb_footprint
+        node=module, trait=has_associated_kicad_pcb_footprint
     ).setup(footprint, transformer)
 
-    trait = module.try_get_trait(has_kicad_pcb_footprint)
+    trait = module.try_get_trait(has_associated_kicad_pcb_footprint)
     assert trait is not None
     assert trait.get_transformer() is transformer
     kicad_pcb_fp = trait.get_fp()
@@ -234,11 +234,11 @@ def test_has_kicad_pcb_pad_trait():
 
     pads = footprint.pads
 
-    fabll.Traits.create_and_add_instance_to(node=module, trait=has_kicad_pcb_pad).setup(
-        footprint, pads, transformer
-    )
+    fabll.Traits.create_and_add_instance_to(
+        node=module, trait=has_associated_kicad_pcbpad
+    ).setup(footprint, pads, transformer)
 
-    trait = module.try_get_trait(has_kicad_pcb_pad)
+    trait = module.try_get_trait(has_associated_kicad_pcbpad)
     assert trait is not None
     assert trait.get_transformer() is transformer
     retrieved_footprint, retrieved_pads = trait.get_pads()
@@ -255,11 +255,11 @@ def test_has_kicad_pcb_net_trait():
 
     net = kpcb.nets
 
-    fabll.Traits.create_and_add_instance_to(node=module, trait=has_kicad_pcb_net).setup(
-        net[0], transformer
-    )
+    fabll.Traits.create_and_add_instance_to(
+        node=module, trait=has_associated_kicad_pcb_net
+    ).setup(net[0], transformer)
 
-    trait = module.try_get_trait(has_kicad_pcb_net)
+    trait = module.try_get_trait(has_associated_kicad_pcb_net)
     assert trait is not None
     assert trait.get_transformer() is transformer
     retrieved_net = trait.get_net()

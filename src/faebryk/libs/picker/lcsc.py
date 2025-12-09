@@ -642,7 +642,7 @@ def attach(
                 instance=footprint.instance
             ).create_instance(g=component.instance.g())
             fabll.Traits.create_and_add_instance_to(
-                node=kfp, trait=F.KiCadFootprints.is_generated_from_kicad_footprint_file
+                node=kfp, trait=F.KiCadFootprints.has_associated_kicad_library_footprint
             ).setup(
                 library_name=apart.path.name,
                 kicad_footprint_file_path=str(apart.fp_path),
@@ -741,7 +741,7 @@ def test_attach_resistor():
         F.KiCadFootprints.has_linked_kicad_footprint
     ).get_footprint()
     generated_from_kicad_footprint_file_t = kicad_footprint.get_trait(
-        F.KiCadFootprints.is_generated_from_kicad_footprint_file
+        F.KiCadFootprints.has_associated_kicad_library_footprint
     )
 
     assert (
@@ -787,7 +787,7 @@ def test_attach_mosfet():
         F.KiCadFootprints.has_linked_kicad_footprint
     ).get_footprint()
     generated_from_kicad_footprint_file_t = kicad_footprint.get_trait(
-        F.KiCadFootprints.is_generated_from_kicad_footprint_file
+        F.KiCadFootprints.has_associated_kicad_library_footprint
     )
 
     assert (
@@ -835,7 +835,7 @@ def test_attach_failure():
         F.KiCadFootprints.has_linked_kicad_footprint
     ).get_footprint()
     generated_from_kicad_footprint_file_t = kicad_footprint.get_trait(
-        F.KiCadFootprints.is_generated_from_kicad_footprint_file
+        F.KiCadFootprints.has_associated_kicad_library_footprint
     )
     assert generated_from_kicad_footprint_file_t.pad_names == ["1", "2", "3"]
 

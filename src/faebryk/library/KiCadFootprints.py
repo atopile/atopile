@@ -110,7 +110,7 @@ class is_kicad_footprint(fabll.Node):
         return self
 
 
-class is_generated_from_kicad_footprint_file(fabll.Node):
+class has_associated_kicad_library_footprint(fabll.Node):
     """
     Marks a node as being generated from a KiCad footprint file.
     """
@@ -447,13 +447,13 @@ def test_is_generated_by_kicad_footprint():
     # TODO: generate footprint and kicad footprint nodes
 
     fabll.Traits.create_and_add_instance_to(
-        node=user_node, trait=is_generated_from_kicad_footprint_file
+        node=user_node, trait=has_associated_kicad_library_footprint
     ).setup(kicad_footprint_file_path=str(FPFILE), library_name="smol_part_lib")
 
-    assert user_node.has_trait(is_generated_from_kicad_footprint_file)
+    assert user_node.has_trait(has_associated_kicad_library_footprint)
 
-    gen_kfp_trait = user_node.get_trait(is_generated_from_kicad_footprint_file)
-    fp_names = is_generated_from_kicad_footprint_file._extract_pad_names_from_kicad_footprint_file(  # noqa: E501
+    gen_kfp_trait = user_node.get_trait(has_associated_kicad_library_footprint)
+    fp_names = has_associated_kicad_library_footprint._extract_pad_names_from_kicad_footprint_file(  # noqa: E501
         fp_file
     )
 
@@ -461,6 +461,7 @@ def test_is_generated_by_kicad_footprint():
     assert gen_kfp_trait.library_name == "smol_part_lib"
     assert gen_kfp_trait.kicad_footprint_file_path == str(FPFILE)
     assert gen_kfp_trait.pad_names == fp_names
+
 
 def setup_pcb_transformer_test():
     from faebryk.libs.test.fileformats import PCBFILE
@@ -475,6 +476,7 @@ def setup_pcb_transformer_test():
     module = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
 
     return g, tg, app, transformer, footprint, module, kpcb
+
 
 def test_has_linked_kicad_net_trait():
     g, tg, _, transformer, _, module, _ = setup_pcb_transformer_test()
