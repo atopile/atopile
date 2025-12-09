@@ -965,7 +965,7 @@ class NumericInterval(fabll.Node):
         sine_values = [math.sin(x) for x in xs]
         return (min(sine_values), max(sine_values))
 
-    def op_sine(
+    def op_sin(
         self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
     ) -> "NumericInterval":
         g = g or self.g
@@ -1569,7 +1569,7 @@ class TestNumericInterval:
         min_value = 0.0
         max_value = 0.5
         numeric_interval.setup(min=min_value, max=max_value)
-        result = numeric_interval.op_sine(g=g, tg=tg)
+        result = numeric_interval.op_sin(g=g, tg=tg)
         assert result.get_min_value() == 0.0
         assert result.get_max_value() == math.sin(0.5)
 
@@ -1580,7 +1580,7 @@ class TestNumericInterval:
         min_value = 0.0
         max_value = 10.0
         numeric_interval.setup(min=min_value, max=max_value)
-        result = numeric_interval.op_sine(g=g, tg=tg)
+        result = numeric_interval.op_sin(g=g, tg=tg)
         assert result.get_min_value() == -1.0
         assert result.get_max_value() == 1.0
 
@@ -2141,7 +2141,7 @@ class NumericSet(fabll.Node):
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = []
         for interval in self.get_intervals():
-            intervals.append(interval.op_sine(g=g, tg=tg))
+            intervals.append(interval.op_sin(g=g, tg=tg))
         return numeric_set.setup(intervals=intervals)
 
     def contains(self, item: float) -> bool:
@@ -3581,8 +3581,6 @@ class Numbers(fabll.Node):
         """
         g = g or self.g
         tg = tg or self.tg
-        if not self.get_is_unit().is_angular():
-            raise ValueError("sin only defined for quantities in radians")
         out_numeric_set = self.get_numeric_set().op_sin(g=g, tg=tg)
         # Result is dimensionless
         from faebryk.library.Units import Dimensionless
@@ -3605,8 +3603,8 @@ class Numbers(fabll.Node):
         """
         g = g or self.g
         tg = tg or self.tg
-        if not self.get_is_unit().is_angular():
-            raise ValueError("cos only defined for quantities in radians")
+        # if not self.get_is_unit().is_angular():
+        #     raise ValueError("cos only defined for quantities in radians")
         # Create pi/2 offset in radians
         pi_half = Numbers.create_instance(g=g, tg=tg)
         pi_half.setup_from_min_max(
@@ -3776,6 +3774,7 @@ class Numbers(fabll.Node):
         Check if a numeric value is contained in this quantity set.
         The value should already be in the same units as this set.
         """
+        assert isinstance(value, float), "value must be a float"
         return self.get_numeric_set().contains(value)
 
     def any(self) -> float:

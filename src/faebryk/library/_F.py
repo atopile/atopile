@@ -57,6 +57,7 @@ from faebryk.library.has_simple_value_representation import has_simple_value_rep
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Filter import Filter
 import faebryk.library.Lead as Lead
+from faebryk.library.Net import Net
 from faebryk.library.Pad import Pad
 from faebryk.library.Symbol import Symbol
 from faebryk.library.XtalIF import XtalIF
@@ -73,7 +74,6 @@ from faebryk.library.Inductor import Inductor
 from faebryk.library.MOSFET import MOSFET
 from faebryk.library.Resistor import Resistor
 from faebryk.library.TestPoint import TestPoint
-from faebryk.library.Net import Net
 from faebryk.library.BJT import BJT
 from faebryk.library.CapacitorElectrolytic import CapacitorElectrolytic
 from faebryk.library.Diode import Diode
@@ -159,6 +159,7 @@ __all__ = [
     "ElectricPower",
     "Filter",
     "Lead",
+    "Net",
     "Pad",
     "Symbol",
     "XtalIF",
@@ -175,7 +176,6 @@ __all__ = [
     "MOSFET",
     "Resistor",
     "TestPoint",
-    "Net",
     "BJT",
     "CapacitorElectrolytic",
     "Diode",

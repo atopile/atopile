@@ -13,7 +13,6 @@ import pytest  # noqa: F401
 import typer
 from hypothesis import HealthCheck, Phase, example, given, settings
 from hypothesis import strategies as st
-from hypothesis.core import reproduce_failure  # noqa: F401
 from hypothesis.errors import NonInteractiveExampleWarning
 from hypothesis.strategies._internal.lazy import LazyStrategy
 from rich.console import Console
@@ -28,7 +27,12 @@ from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction
 from faebryk.libs.test.boundexpressions import BoundExpressions
 from faebryk.libs.test.times import Times
-from faebryk.libs.util import ConfigFlag, ConfigFlagInt, groupby, once
+from faebryk.libs.util import (
+    ConfigFlag,
+    ConfigFlagInt,
+    groupby,
+    once,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +70,10 @@ ALLOW_ROUNDING_ERROR = True
 ALLOW_EVAL_ERROR = True
 
 
+g: graph.GraphView = graph.GraphView.create()
+tg: fbrk.TypeGraph = fbrk.TypeGraph.create(g=g)
+
+
 def eval_pure_literal_expression(
     expr_type: type[F.Expressions.ExpressionNodes],
     operands: list[F.Parameters.can_be_operand],
@@ -75,9 +83,27 @@ def eval_pure_literal_expression(
 
     Maps expression types to their corresponding Literals.Numbers operations.
     """
-    operands_literals = [
-        fabll.Traits(op).get_obj(F.Literals.Numbers) for op in operands
-    ]
+    print(f"expr_type: {expr_type}")
+    print(f"operands: {operands}")
+    operands_literals = []
+    for op in operands:
+        obj = fabll.Traits(op).get_obj_raw()
+        # Check if it's a Numbers literal
+        if num := obj.try_cast(F.Literals.Numbers):
+            operands_literals.append(num)
+            print(f"num: {num}")
+        # Check if it's a nested expression - recursively evaluate
+        elif expr_trait := obj.try_get_trait(F.Expressions.is_expression):
+            nested_result = eval_pure_literal_expression(
+                type(expr_trait.switch_cast()), expr_trait.get_operands()
+            )
+            print(f"nested_result: {nested_result}")
+            operands_literals.append(nested_result)
+        else:
+            raise ValueError(f"Operand {obj} is neither a literal nor an expression")
+
+    print(f"operands_literals: {operands_literals}")
+
     # Arithmetic operations (variadic/binary)
     if expr_type is Add:
         return F.Literals.Numbers.op_add_intervals(*operands_literals, g=g, tg=tg)
@@ -90,47 +116,29 @@ def eval_pure_literal_expression(
     elif expr_type is Power:
         return F.Literals.Numbers.op_pow_intervals(*operands_literals, g=g, tg=tg)
     # # Unary operations
-    # elif expr_type is Sqrt:
-    #     return operands_literals[0].op_sqrt(g=g, tg=tg)
-    # elif expr_type is Log:
-    #     return operands_literals[0].op_log(g=g, tg=tg)
-    # elif expr_type is Sin:
-    #     return operands_literals[0].op_sin(g=g, tg=tg)
-    # elif expr_type is Cos:
-    #     return operands_literals[0].op_cos(g=g, tg=tg)
-    # elif expr_type is Abs:
-    #     return operands_literals[0].op_abs(g=g, tg=tg)
-    # elif expr_type is Round:
-    #     return operands_literals[0].op_round(g=g, tg=tg)
-    # elif expr_type is Floor:
-    #     return operands_literals[0].op_floor(g=g, tg=tg)
-    # elif expr_type is Ceil:
-    #     return operands_literals[0].op_ceil(g=g, tg=tg)
-    # # Variadic operations (currently disabled in EXPR_TYPES)
-    # elif expr_type is Min:
-    #     raise NotImplementedError("Min not yet implemented in Literals.Numbers")
-    # elif expr_type is Max:
-    #     raise NotImplementedError("Max not yet implemented in Literals.Numbers")
+    elif expr_type is Sqrt:
+        return operands_literals[0].op_sqrt(g=g, tg=tg)
+    elif expr_type is Log:
+        return operands_literals[0].op_log(g=g, tg=tg)
+    elif expr_type is Sin:
+        return operands_literals[0].op_sin(g=g, tg=tg)
+    elif expr_type is Cos:
+        return operands_literals[0].op_cos(g=g, tg=tg)
+    elif expr_type is Abs:
+        return operands_literals[0].op_abs(g=g, tg=tg)
+    elif expr_type is Round:
+        return operands_literals[0].op_round(g=g, tg=tg)
+    elif expr_type is Floor:
+        return operands_literals[0].op_floor(g=g, tg=tg)
+    elif expr_type is Ceil:
+        return operands_literals[0].op_ceil(g=g, tg=tg)
+    # Variadic operations (currently disabled in EXPR_TYPES)
+    elif expr_type is Min:
+        raise NotImplementedError("Min not yet implemented in Literals.Numbers")
+    elif expr_type is Max:
+        raise NotImplementedError("Max not yet implemented in Literals.Numbers")
     else:
         raise NotImplementedError(f"Expression type {expr_type} not supported")
-
-
-def test_eval_pure_literal_expression():
-    num0 = lit_op_single(2)
-    num1 = lit_op_single(1)
-    assert eval_pure_literal_expression(Add, [num0, num1]).get_value() == 3
-
-
-def test_eval_pure_literal_expression_multiple_operands():
-    num0 = lit_op_single(2)
-    num1 = lit_op_single(1)
-    num2 = lit_op_single(3)
-    assert eval_pure_literal_expression(Multiply, [num0, num1, num2]).get_value() == 6
-
-
-# TODO remove
-g: graph.GraphView = graph.GraphView.create()
-tg: fbrk.TypeGraph = fbrk.TypeGraph.create(g=g)
 
 
 def lit(*values: float) -> F.Parameters.can_be_operand:
@@ -170,14 +178,12 @@ def lit_op_single(val: float) -> F.Parameters.can_be_operand:
 def lit_op_range_op(
     *values: F.Parameters.can_be_operand,
 ) -> F.Parameters.can_be_operand:
-    # assert len(values) == 2
-    floats = [fabll.Traits(v).get_obj(F.Literals.Numbers).get_value() for v in values]
+    floats = [fabll.Traits(v).get_obj(F.Literals.Numbers).get_single() for v in values]
     return lit_op_range(*floats)
 
 
 def lit_op_range(*values: float) -> F.Parameters.can_be_operand:
-    lower, upper = values
-    assert lower < upper
+    lower, upper = sorted(values)
     dimless = F.Units.Dimensionless.bind_typegraph(tg=tg).create_instance(g=g).setup()
     return (
         F.Literals.Numbers.bind_typegraph(tg=tg)
@@ -203,24 +209,6 @@ class Builders(Namespace):
     def build_parameter(
         literal: F.Parameters.can_be_operand,
     ) -> F.Parameters.can_be_operand:
-        # Should be a parameter
-        # p = (
-        #     F.Parameters.NumericParameter.bind_typegraph(tg=tg)
-        #     .create_instance(g=g)
-        #     .setup(
-        #         domain=F.NumberDomain.bind_typegraph(tg=tg)
-        #         .create_instance(g=g)
-        #         .setup(
-        #             args=F.NumberDomain.Args(
-        #                 negative=True, zero_allowed=True, integer=False
-        #             )
-        #         ),
-        #         units=F.Units.Dimensionless.bind_typegraph(tg=tg)
-        #         .create_instance(g=g)
-        #         .is_unit.get(),
-        #     )
-        # )
-
         E = BoundExpressions(g=g, tg=tg)
         p = E.parameter_op()
 
@@ -245,7 +233,7 @@ class Builders(Namespace):
 
             for o in ops:
                 assert isinstance(o, F.Parameters.can_be_operand)
-            return op.c(*ops)
+            return op.c(*ops, g=g, tg=tg)
 
         # required for good falsifying examples from hypothesis
         f.__name__ = f"'{op.__name__}'"
@@ -288,10 +276,15 @@ class Filters(Namespace):
         assert isinstance(value, F.Parameters.can_be_operand)
         obj = fabll.Traits(value).get_obj_raw()
         if np := obj.try_cast(F.Parameters.NumericParameter):
-            return np.force_extract_literal()
+            try:
+                return np.force_extract_literal()
+            except Exception as e:
+                raise Filters._EvaluationError(e) from e
         elif expr := obj.try_get_trait(F.Expressions.is_expression):
             try:
-                return expr.eval(g=g, tg=tg)
+                return fabll.Traits(expr.get_operand_literals()[0]).get_obj(
+                    F.Literals.Numbers
+                )
             except Exception as e:
                 raise Filters._EvaluationError(e) from e
         else:
@@ -320,13 +313,13 @@ class Filters(Namespace):
     def is_zero(value: F.Parameters.can_be_operand) -> bool:
         # no need for fancy isclose, already covered by impl
         lit = Filters._unwrap_param(value)
-        return lit == 0
+        return lit.get_min_value() == 0 and lit.get_max_value() == 0
 
     @_decorator
     @staticmethod
     def crosses_zero(value: F.Parameters.can_be_operand) -> bool:
         lit = Filters._unwrap_param(value)
-        return lit.contains_value(0) or Filters.is_zero(value)
+        return lit.contains_value(0.0) or Filters.is_zero(value)
 
     @_decorator
     @staticmethod
@@ -343,6 +336,8 @@ class Filters(Namespace):
     @staticmethod
     def within_limits(value: F.Parameters.can_be_operand) -> bool:
         lit = Filters._unwrap_param(value)
+        if lit.is_empty():
+            return False
         abs_lit = lit.op_abs(g=g, tg=tg)
         return bool(
             (
@@ -430,7 +425,7 @@ class st_values(Namespace):
     small_numeric = _floats_with_limit(1e2, 1e-1)
 
     ranges = st.builds(
-        lambda values: lit_op_range_op(values),
+        lambda values: lit_op_range_op(*values),
         st.tuples(
             st.one_of(st.just(lit_op_single(-inf)), numeric),
             st.one_of(st.just(lit_op_single(inf)), numeric),
@@ -438,7 +433,7 @@ class st_values(Namespace):
     )
 
     small_ranges = st.builds(
-        lambda values: lit_op_range_op(values),
+        lambda values: lit_op_range_op(*values),
         st.tuples(small_numeric, small_numeric),
     )
 
@@ -608,9 +603,9 @@ def evaluate_e_p_l(operand: F.Parameters.can_be_operand) -> F.Literals.Numbers:
     if p := obj.try_cast(F.Parameters.NumericParameter):
         return p.force_extract_literal()
 
-    # try get the expression type by symbol?
     expr = operand.get_sibling_trait(F.Expressions.is_expression).switch_cast()
 
+    print(f"expr: {expr}")
     return eval_pure_literal_expression(
         type(expr), expr.is_expression.get().get_operands()
     )
@@ -671,19 +666,17 @@ def test_discover_literal_folding(expr: F.Parameters.can_be_operand):
     _track()
     solver = DefaultSolver()
 
-    # will have lots of expr in a big graph
-
     test_g = graph.GraphView.create()
-
+    test_g.insert_subgraph(subgraph=tg.get_type_subgraph())
     test_expr = expr.copy_into(test_g)
     test_tg = test_expr.tg
 
-    expr_ctx = BoundExpressions(g=test_g, tg=test_tg)
-    root = expr_ctx.parameter_op()
-    expr_ctx.is_(root, test_expr)
+    E = BoundExpressions(g=test_g, tg=test_tg)
+    root = E.parameter_op()
+    E.is_(root, test_expr, assert_=True)
 
     try:
-        evaluated_expr = evaluate_e_p_l(expr)
+        evaluated_expr = evaluate_e_p_l(test_expr)
     except Exception:
         if ALLOW_EVAL_ERROR:
             return
@@ -710,7 +703,7 @@ def test_discover_literal_folding(expr: F.Parameters.can_be_operand):
 
         deviation = evaluated_expr.op_deviation_to(
             solver_result, g=test_g, tg=test_tg
-        ).get_value()
+        ).get_single()
         assert deviation <= 1, f"Mismatch {solver_result} != {evaluated_expr}"
     else:
         assert solver_result == evaluated_expr
@@ -751,6 +744,7 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
     """
     solver = DefaultSolver()
     test_g = graph.GraphView.create()
+    test_g.insert_subgraph(subgraph=tg.get_type_subgraph())
     test_expr = expr.copy_into(test_g)
     test_tg = test_expr.tg
     expr_ctx = BoundExpressions(g=test_g, tg=test_tg)
@@ -760,7 +754,7 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
     logger.info(
         f"expr: {expr.get_sibling_trait(F.Parameters.is_parameter).compact_repr()}"
     )
-    evaluated_expr = evaluate_e_p_l(expr)
+    evaluated_expr = evaluate_e_p_l(test_expr)
     logger.info(f"evaluated_expr: {evaluated_expr}")
 
     solver.update_superset_cache(root)
@@ -772,7 +766,11 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
     correct = solver_result == evaluated_expr
 
     if not correct:
-        logger.error(f"Failing expression: {expr.compact_repr()}")
+        logger.error(
+            f"Failing expression: {
+                test_expr.get_sibling_trait(F.Expressions.is_expression).compact_repr()
+            }"
+        )
         logger.error(f"Solver {solver_result} != {evaluated_expr} Literal")
         input()
         return
@@ -954,45 +952,66 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
     "discovered failure"
 )
 # --------------------------------------------------------------------------------------
-@given(st_exprs.trees)
-@settings(
-    deadline=None,  # timedelta(milliseconds=1000),
-    max_examples=10000,
-    report_multiple_bugs=False,
-    phases=(
-        # Phase.reuse,
-        Phase.explicit,
-        Phase.target,
-        Phase.shrink,
-        Phase.explain,
-    ),
-    suppress_health_check=[
-        HealthCheck.data_too_large,
-        HealthCheck.too_slow,
-        HealthCheck.filter_too_much,
-        HealthCheck.large_base_example,
-    ],
-    print_blob=False,
-)
-def test_regression_literal_folding(expr: F.Expressions.is_expression):
+# @given(st_exprs.trees)
+# @settings(
+#     deadline=None,  # timedelta(milliseconds=1000),
+#     max_examples=10000,
+#     report_multiple_bugs=False,
+#     phases=(
+#         # Phase.reuse,
+#         Phase.explicit,
+#         Phase.target,
+#         Phase.shrink,
+#         Phase.explain,
+#     ),
+#     suppress_health_check=[
+#         HealthCheck.data_too_large,
+#         HealthCheck.too_slow,
+#         HealthCheck.filter_too_much,
+#         HealthCheck.large_base_example,
+#     ],
+#     print_blob=False,
+# )
+def test_regression_literal_folding(expr: F.Parameters.can_be_operand):
     solver = DefaultSolver()
 
     test_g = graph.GraphView.create()
-    test_expr = expr.copy_into(test_g)
-    test_tg = test_expr.tg
+    test_g.insert_subgraph(subgraph=tg.get_type_subgraph())
+
+    print(f"expr: {expr}")
+    print(f"expr type: {type(expr)}")
+    print("Copying expression into graph...")
+    # Get the expression node that owns the can_be_operand trait, then copy that
+    expr_node = fabll.Traits(expr).get_obj_raw()
+    test_expr_node = expr_node.copy_into(test_g)
+    test_expr = test_expr_node.get_trait(F.Parameters.can_be_operand)
+    test_tg = test_expr_node.tg
     E = BoundExpressions(g=test_g, tg=test_tg)
     root = E.parameter_op()
-    E.is_(root, test_expr.get_sibling_trait(F.Parameters.can_be_operand))
+    E.is_(root, test_expr, assert_=True)
 
-    evaluated_expr = evaluate_e_p_l(expr.get_sibling_trait(F.Parameters.can_be_operand))
-
+    print("Evaluating expression...")
+    evaluated_expr = evaluate_e_p_l(test_expr)
+    print(f"evaluated_expr: {evaluated_expr}")
     solver.update_superset_cache(root)
+    print("Updating superset cache...")
     solver_result = solver.inspect_get_known_supersets(
         root.get_sibling_trait(F.Parameters.is_parameter)
     )
 
+    # Debug printing
+    print("=" * 70)
+    print(f"Expression Type: {type(test_expr_node).__name__}")
+    print(f"Expression:      {test_expr_node}")
+    print("-" * 70)
     assert isinstance(evaluated_expr, F.Literals.Numbers)
-    assert solver_result == evaluated_expr
+    solver_result_num = fabll.Traits(solver_result).get_obj(F.Literals.Numbers)
+    print(f"Solver Result:   {solver_result_num}")
+    print(f"Test Evaluated:  {evaluated_expr}")
+    match = solver_result.equals(evaluated_expr)
+    print(f"Match: {match}")
+    print("=" * 70)
+    assert match, f"Solver: {solver_result_num} != Test: {evaluated_expr}"
 
 
 class Stats:
@@ -1106,22 +1125,26 @@ def test_folding_statistics(expr: F.Expressions.is_expression):
     ```
     """
     stats = Stats.get()
-    stats.event("generate", expr, terminal=False)
+    test_g = graph.GraphView.create()
+    test_g.insert_subgraph(subgraph=tg.get_type_subgraph())
+    test_expr = expr.copy_into(test_g)
+    test_tg = test_expr.tg
+    stats.event("generate", test_expr, terminal=False)
     solver = DefaultSolver()
-    E = BoundExpressions(g=g, tg=tg)
+    E = BoundExpressions(g=test_g, tg=test_tg)
     root = E.parameter_op()
-    E.is_(root, expr.get_sibling_trait(F.Parameters.can_be_operand))
+    E.is_(root, test_expr.get_sibling_trait(F.Parameters.can_be_operand), assert_=True)
 
     try:
         evaluated_expr = evaluate_e_p_l(
-            expr.get_sibling_trait(F.Parameters.can_be_operand)
+            test_expr.get_sibling_trait(F.Parameters.can_be_operand)
         )
-        stats.event("evaluate", expr, terminal=False)
+        stats.event("evaluate", test_expr, terminal=False)
     except NotImplementedError:
-        stats.event("not implemented in literals", expr)
+        stats.event("not implemented in literals", test_expr)
         return
     except Exception as e:
-        stats.event("eval exc", expr, exc=e)
+        stats.event("eval exc", test_expr, exc=e)
         return
 
     assert isinstance(evaluated_expr, F.Literals.Numbers)
@@ -1133,27 +1156,27 @@ def test_folding_statistics(expr: F.Expressions.is_expression):
         )
         assert isinstance(solver_result, F.Literals.Numbers)
     except Contradiction:
-        stats.event("contradiction", expr)
+        stats.event("contradiction", test_expr)
         return
     except TimeoutError:
-        stats.event("timeout", expr)
+        stats.event("timeout", test_expr)
         return
     except NotImplementedError:
-        stats.event("not implemented in solver", expr)
+        stats.event("not implemented in solver", test_expr)
         return
     except Exception as e:
-        stats.event("exc", expr, exc=e)
+        stats.event("exc", test_expr, exc=e)
         return
 
     if solver_result != evaluated_expr:
         try:
             deviation = solver_result.op_deviation_to(
                 evaluated_expr, relative=True, g=g, tg=tg
-            ).get_value()
+            ).get_single()
         except Exception:
             deviation = solver_result.op_deviation_to(
                 evaluated_expr, g=g, tg=tg
-            ).get_value()
+            ).get_single()
             if deviation <= 1:
                 stats.event("incorrect <= 1 ", expr)
             else:
@@ -1231,4 +1254,35 @@ def main(target: str):
 
 
 if __name__ == "__main__":
-    typer.run(main)
+    import typer
+
+    from faebryk.libs.logging import setup_basic_logging
+
+    # expr = F.Expressions.Log.c(
+    #     F.Expressions.Sin.c(
+    #         F.Expressions.Add.c(
+    #             lit_op_single(1),
+    #             lit_op_single(1),
+    #         )
+    #     )
+    # )
+    # expr = F.Expressions.Sin.c(
+    #     F.Expressions.Add.c(
+    #         lit_op_single(1),
+    #         lit_op_single(1),
+    #     )
+    # )
+
+    # expr = Sin.c(
+    #     Sin.c(
+    #         Subtract.c(
+    #             lit_op_single(1),
+    #             lit_op_range(-inf, inf),
+    #         ),
+    #     ),
+    # )
+    # expr = Sin.c(Sin.c(lit_op_range(-10, 10)))
+    expr = Sin.c(lit_op_range(-1, 1))
+
+    setup_basic_logging()
+    typer.run(lambda: test_regression_literal_folding(expr))

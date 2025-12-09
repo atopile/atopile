@@ -1152,6 +1152,7 @@ class Log(fabll.Node):
     ) -> Self:
         self.operand.get().point(operand)
         if base is not None:
+            raise ValueError("Base is not supported yet")
             self.base.get().point(base)
         return self
 
@@ -1387,10 +1388,12 @@ class Ceil(fabll.Node):
     is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    is_expression = is_expression.MakeChild(
-        repr_style=is_expression.ReprStyle(
-            symbol="⌈",
-            placement=is_expression.ReprStyle.Placement.PREFIX,
+    is_expression = fabll.Traits.MakeEdge(
+        is_expression.MakeChild(
+            repr_style=is_expression.ReprStyle(
+                symbol="⌈",
+                placement=is_expression.ReprStyle.Placement.PREFIX,
+            )
         )
     )
 

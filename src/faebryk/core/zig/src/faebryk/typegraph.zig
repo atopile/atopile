@@ -12,6 +12,7 @@ const composition_mod = @import("composition.zig");
 const next_mod = @import("next.zig");
 const pointer_mod = @import("pointer.zig");
 const edgebuilder_mod = @import("edgebuilder.zig");
+const operand_mod = @import("operand.zig");
 const nodebuilder_mod = @import("nodebuilder.zig");
 const linker_mod = @import("linker.zig");
 const ascii = std.ascii;
@@ -30,6 +31,7 @@ const EdgeType = node_type_mod.EdgeType;
 const EdgeComposition = composition_mod.EdgeComposition;
 const EdgePointer = pointer_mod.EdgePointer;
 const EdgeNext = next_mod.EdgeNext;
+const EdgeOperand = operand_mod.EdgeOperand;
 const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 const NodeCreationAttributes = nodebuilder_mod.NodeCreationAttributes;
 const Linker = linker_mod.Linker;
@@ -1445,6 +1447,14 @@ pub const TypeGraph = struct {
                 _ = ctx.try_add(trait_instance);
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
+
+            // Visitor for EdgeOperand references
+            fn visit_operand(ctx_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
+                const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                const target = bound_edge.edge.target;
+                _ = ctx.try_add(target);
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
         };
 
         var collector = Collector{
@@ -1495,6 +1505,15 @@ pub const TypeGraph = struct {
 
             // Follow owned traits
             _ = EdgeTrait.visit_trait_instance_edges(bound_current, void, &collector, Collector.visit_trait);
+
+            // // Follow trait edges backward to owner (if this node is a trait instance)
+            if (EdgeTrait.get_owner_edge(bound_current)) |owner_edge| {
+                const owner = EdgeTrait.get_owner_node(owner_edge.edge);
+                _ = collector.try_add(owner);
+            }
+
+            // Follow operand targets
+            _ = EdgeOperand.visit_operand_edges(bound_current, void, &collector, Collector.visit_operand);
         }
 
         return g.get_subgraph_from_nodes(collected_nodes);
