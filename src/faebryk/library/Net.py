@@ -59,3 +59,7 @@ class Net(fabll.Node):
             for net_mif in mif._is_interface.get().get_connected()
             if (net := mif.get_parent_of_type(Net)) is not None
         }
+
+    def setup(self, net_name: str) -> "Net":
+        fabll.Traits.create_and_add_instance_to(self.part_of.get(), F.has_net_name).setup(name=net_name)
+        return self

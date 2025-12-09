@@ -74,7 +74,7 @@ class has_associated_kicad_pcb_footprint(fabll.Node):
         return ctypes.cast(transformer_id, ctypes.py_object).value
 
 
-class has_associated_kicad_pcbpad(fabll.Node):
+class has_associated_kicad_pcb_pad(fabll.Node):
     is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     # Registry to prevent garbage collection of Footprint and PCB_Transformer objects.
@@ -370,10 +370,10 @@ def test_has_kicad_pcb_pad_trait():
     pads = footprint.pads
 
     fabll.Traits.create_and_add_instance_to(
-        node=module, trait=has_associated_kicad_pcbpad
+        node=module, trait=has_associated_kicad_pcb_pad
     ).setup(footprint, pads, transformer)
 
-    trait = module.try_get_trait(has_associated_kicad_pcbpad)
+    trait = module.try_get_trait(has_associated_kicad_pcb_pad)
     assert trait is not None
     assert trait.get_transformer() is transformer
     retrieved_footprint, retrieved_pads = trait.get_pads()

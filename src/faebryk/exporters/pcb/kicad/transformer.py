@@ -377,27 +377,27 @@ class PCB_Transformer:
             raise ValueError("match_threshold must be at least 0.5")
 
         known_nets: dict["F.Net", KiCadNet] = {}
-        pcb_nets_by_name: dict[str, KiCadNet] = {
-            n.name: n for n in self.pcb.nets if n.name is not None
-        }
         mapped_net_names = set()
 
-        named_nets = {
+
+        kicad_nets_by_name: dict[str, KiCadNet] = {
+            n.name: n for n in self.pcb.nets if n.name is not None
+        }
+
+        named_fbrk_nets = {
             n
             for n in fabll.Node.bind_typegraph(self.tg).nodes_of_type(F.Net)
             if n.has_trait(F.has_net_name)
         }
 
-        for fabll_net in named_nets:
+        for fbrk_net in named_fbrk_nets:
             total_pads = 0
             # map from net name to the number of pads we've
             # linked corroborating its accuracy
             net_candidates: Mapping[str, int] = defaultdict(int)
 
-            for fabll_pad, ato_fp in fabll_net.get_connected_pads().items():
-                pcb_pad_t = fabll_pad.try_get_trait(
-                    F.PCBTransformer.has_associated_kicad_pcb_pad
-                )
+            for fbrk_pad, fbrk_footprint in fbrk_net.get_connected_pads().items():
+                pcb_pad_t = fbrk_pad.try_get_trait(F.KiCadFootprints.has_associated_kicad_pcb_pad)
                 if pcb_pad_t:
                     if pcb_pad_t.get_transformer() is not self:
                         continue
@@ -434,7 +434,7 @@ class PCB_Transformer:
                     best_net_name
                     and net_candidates[best_net_name] > total_pads * match_threshold
                 ):
-                    known_nets[fabll_net] = pcb_nets_by_name[best_net_name]
+                    known_nets[fbrk_net] = kicad_nets_by_name[best_net_name]
                     mapped_net_names.add(best_net_name)
 
         return known_nets
