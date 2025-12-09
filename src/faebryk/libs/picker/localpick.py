@@ -97,7 +97,7 @@ def pick_module_by_params(
             continue
 
         predicate = F.Expressions.And.from_operands(
-            *[p.get_sibling_trait(F.Parameters.can_be_operand) for p in predicate_list]
+            *[p.as_operand.get() for p in predicate_list]
         )
         try:
             solver.try_fulfill(predicate.is_assertable.get(), lock=True)

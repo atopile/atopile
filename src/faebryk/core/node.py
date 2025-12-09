@@ -800,6 +800,9 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             elif isinstance(field, Traits.ImpliedTrait):
                 bound_implied_trait = field.bind(node=self)
                 setattr(self, field.get_locator(), bound_implied_trait)
+            elif isinstance(field, Traits.OptionalImpliedTrait):
+                bound_optional_trait = field.bind(node=self)
+                setattr(self, field.get_locator(), bound_optional_trait)
             elif isinstance(field, ListField):
                 list_attr = list[InstanceChildBoundInstance[Any]]()
                 for nested_field in field.get_fields():
@@ -1843,9 +1846,49 @@ class Traits:
         def get(self) -> T:
             raise ValueError("SiblingField is not bound to a node")
 
-        # TODO call this during Node.__init__
         def bind(self, node: NodeT) -> "Traits._BoundImpliedTrait[T]":
             return Traits._BoundImpliedTrait(sibling_type=self._sibling_type, node=node)
+
+    # Lazy trait reference for OptionalImpliedTrait: direct type or lambda
+    LazyTraitRef = type[NodeT] | Callable[[], type[NodeT]]
+
+    @staticmethod
+    def _resolve_ref(ref: "Traits.LazyTraitRef") -> type[NodeT]:
+        """Resolve a trait reference: if callable, call it; otherwise return as-is."""
+        return ref() if callable(ref) and not isinstance(ref, type) else ref
+
+    class _BoundOptionalImpliedTrait[T: NodeT](ChildAccessor[T]):
+        def __init__(self, trait_type: "Traits.LazyTraitRef", node: NodeT):
+            self._trait_type_ref = trait_type
+            self._node = node
+
+        def get(self) -> T | None:
+            trait_type = Traits._resolve_ref(self._trait_type_ref)
+            return cast(T, self._node.try_get_sibling_trait(trait_type))
+
+        def force_get(self) -> T:
+            return not_none(self.get())
+
+    class OptionalImpliedTrait[T: NodeT](Field, ChildAccessor[T]):
+        def __init__(
+            self,
+            trait_type: "Traits.LazyTraitRef",
+            *,
+            identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
+        ):
+            super().__init__(identifier=identifier)
+            self._trait_type_ref = trait_type
+
+        def get(self) -> T | None:
+            raise ValueError("SiblingField is not bound to a node")
+
+        def force_get(self) -> T:
+            raise ValueError("SiblingField is not bound to a node")
+
+        def bind(self, node: NodeT) -> "Traits._BoundOptionalImpliedTrait[T]":
+            return Traits._BoundOptionalImpliedTrait(
+                trait_type=self._trait_type_ref, node=node
+            )
 
 
 class ImplementsTrait(Node):
@@ -2620,8 +2663,8 @@ def test_kicad_footprint():
     import faebryk.library._F as F
 
     _ = F.Pad.bind_typegraph(tg=tg).get_or_create_type()
-    pad1 = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
-    pad2 = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
+    _ = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
+    _ = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
 
     kicad_footprint = (
         F.KiCadFootprints.is_kicad_footprint.bind_typegraph(tg=tg)

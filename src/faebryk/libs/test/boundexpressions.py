@@ -452,7 +452,7 @@ class BoundExpressions:
                 ),
                 unit=is_unit,
             )
-        ).get_trait(F.Parameters.can_be_operand)
+        ).can_be_operand.get()
 
     def lit_op_range_from_center_rel(
         self, center: _Quantity, rel: float
@@ -504,7 +504,7 @@ class BoundExpressions:
             (unit or self.U.dl)
             .bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
-            .get_trait(F.Units.is_unit)
+            .is_unit.get()
         )
         return (
             F.Literals.Numbers.bind_typegraph(tg=self.tg)

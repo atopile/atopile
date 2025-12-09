@@ -4636,23 +4636,23 @@ class TestNumbers:
         """Test intersection of multiple quantity sets."""
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter, is_unit
+        from faebryk.library.Units import Meter
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=5.0, unit=meter_instance.is_unit.get()
         )
         # Set 2: [3, 8]
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
+            min=3.0, max=8.0, unit=meter_instance.is_unit.get()
         )
         # Set 3: [5, 12]
         quantity_set_3 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_3.setup_from_min_max(
-            min=5.0, max=12.0, unit=meter_instance.get_trait(is_unit)
+            min=5.0, max=12.0, unit=meter_instance.is_unit.get()
         )
         result = Numbers.op_intersect_intervals(
             quantity_set_1, quantity_set_2, quantity_set_3, g=g, tg=tg
@@ -4687,23 +4687,23 @@ class TestNumbers:
         """Test union of multiple quantity sets."""
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter, is_unit
+        from faebryk.library.Units import Meter
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=5.0, unit=meter_instance.is_unit.get()
         )
         # Set 2: [3, 8]
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
+            min=3.0, max=8.0, unit=meter_instance.is_unit.get()
         )
         # Set 3: [5, 12]
         quantity_set_3 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_3.setup_from_min_max(
-            min=5.0, max=12.0, unit=meter_instance.get_trait(is_unit)
+            min=5.0, max=12.0, unit=meter_instance.is_unit.get()
         )
         result = Numbers.op_union_intervals(
             quantity_set_1, quantity_set_2, quantity_set_3, g=g, tg=tg

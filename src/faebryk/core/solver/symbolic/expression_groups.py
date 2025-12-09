@@ -28,7 +28,7 @@ def reflexive_predicates(mutator: Mutator):
         if not pred.as_parameter_operatable.get().get_operations():
             continue
         operands = pred.get_operands()
-        if operands[0].try_get_sibling_trait(F.Literals.is_literal):
+        if operands[0].as_literal.get():
             continue
         if len(operands) >= 2 and operands[0] is not operands[1]:
             continue
@@ -110,7 +110,11 @@ def involutory_fold(mutator: Mutator):
         inner = expr.get_operands()[0]
         if inner.get_obj_type_node() != expr.get_obj_type_node():
             continue
-        innest = inner.get_sibling_trait(F.Expressions.is_expression).get_operands()[0]
+        innest = (
+            inner.as_parameter_operatable.force_get()
+            .as_expression.force_get()
+            .get_operands()[0]
+        )
         if mutator.utils.is_literal(innest):
             mutator.utils.alias_to(expr.as_operand.get(), innest, terminate=True)
         else:

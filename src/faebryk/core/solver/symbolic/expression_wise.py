@@ -185,7 +185,7 @@ def fold_add(expr: F.Expressions.Add, mutator: Mutator):
 
     # unpack if single operand (operatable)
     if len(new_operands) == 1 and (
-        no_po := new_operands[0].get_sibling_trait(F.Parameters.is_parameter_operatable)
+        no_po := new_operands[0].as_parameter_operatable.force_get()
     ):
         mutator.mutate_unpack_expression(e, [no_po])
         return
@@ -196,7 +196,7 @@ def fold_add(expr: F.Expressions.Add, mutator: Mutator):
     # if only one literal operand, equal to it
     if len(new_operands) == 1:
         mutator.utils.alias_to(
-            new_expr.get_sibling_trait(F.Parameters.can_be_operand),
+            new_expr.as_operand.get(),
             new_operands[0],
             terminate=True,
         )
@@ -271,9 +271,7 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
 
         # unpack if single operand (operatable)
         if len(new_operands) == 1 and (
-            no_po := new_operands[0].try_get_sibling_trait(
-                F.Parameters.is_parameter_operatable
-            )
+            no_po := new_operands[0].as_parameter_operatable.get()
         ):
             mutator.mutate_unpack_expression(e, [no_po])
             return
@@ -523,7 +521,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
     expr_po = e.as_parameter_operatable.get()
     assert len(e.get_operands()) == 1
     op = e.get_operands()[0]
-    op_po = op.get_sibling_trait(F.Parameters.is_parameter_operatable)
+    op_po = op.as_parameter_operatable.force_get()
     assert op_po
 
     # ¬P! -> False
@@ -557,25 +555,38 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                         e, mutator.make_lit(True).is_literal.get()
                     )
                 for inner_op in op_or_e.get_operands():
-                    inner_op_e = inner_op.get_sibling_trait(F.Expressions.is_expression)
+                    inner_op_po = inner_op.as_parameter_operatable.force_get()
+                    inner_op_e = inner_op_po.as_expression.force_get()
+
                     # ¬(¬A v ...)
                     if inner_op_e.try_cast(F.Expressions.Not):
                         for not_op in inner_op_e.get_operands():
-                            if not_op.try_get_sibling_trait(
-                                F.Expressions.is_assertable
-                            ) and not not_op.try_get_sibling_trait(
-                                F.Expressions.is_predicate
+                            if (
+                                not_op.as_parameter_operatable.force_get()
+                                .as_expression.force_get()
+                                .as_assertable.force_get()
+                                and not not_op.try_get_sibling_trait(
+                                    F.Expressions.is_predicate
+                                )
                             ):
                                 mutator.assert_(
-                                    mutator.get_copy(not_op).get_sibling_trait(
-                                        F.Expressions.is_assertable
-                                    )
+                                    mutator.get_copy(not_op)
+                                    .as_parameter_operatable.force_get()
+                                    .as_expression.force_get()
+                                    .as_assertable.force_get()
                                 )
+
                     # ¬(A v ...)
-                    elif inner_op.try_get_sibling_trait(F.Expressions.is_assertable):
-                        parent_nots = inner_op.get_trait(
-                            F.Parameters.is_parameter_operatable
-                        ).get_operations(F.Expressions.Not)
+                    elif (
+                        inner_op.as_parameter_operatable.force_get()
+                        .as_expression.force_get()
+                        .as_assertable.get()
+                    ):
+                        parent_nots = (
+                            inner_op.as_parameter_operatable.force_get().get_operations(
+                                F.Expressions.Not
+                            )
+                        )
                         if parent_nots:
                             for n in parent_nots:
                                 mutator.assert_(n.is_assertable.get())
@@ -589,7 +600,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
 
     if expr.try_get_trait(F.Expressions.is_predicate):
         false = mutator.make_lit(False).is_literal.get()
-        if op_e := op.try_get_sibling_trait(F.Expressions.is_expression):
+        if op_e := op.as_parameter_operatable.force_get().as_expression.get():
             mutator.utils.alias_is_literal_and_check_predicate_eval(op_e, false)
         else:
             mutator.utils.alias_to(op, false.as_operand.get(), terminate=True)
@@ -635,7 +646,7 @@ def fold_subset(expr: F.Expressions.IsSubset, mutator: Mutator):
     e = expr.is_expression.get()
     A, B = e.get_operands()
 
-    if not (B_lit := B.try_get_sibling_trait(F.Literals.is_literal)):
+    if not (B_lit := B.as_literal.get()):
         return
 
     # A ss ([X]) -> A is ([X])
@@ -647,7 +658,11 @@ def fold_subset(expr: F.Expressions.IsSubset, mutator: Mutator):
     if e.try_get_trait(F.Expressions.is_predicate):
         # P1 ss! True -> P1!
         if B_lit.equals_singleton(True):
-            mutator.assert_(A.get_sibling_trait(F.Expressions.is_assertable))
+            mutator.assert_(
+                A.as_parameter_operatable.force_get()
+                .as_expression.force_get()
+                .as_assertable.force_get()
+            )
         # P ss! False -> ¬!P
         if B_lit.equals_singleton(False):
             mutator.create_expression(

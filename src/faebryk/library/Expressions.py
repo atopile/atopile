@@ -78,6 +78,13 @@ class is_expression(fabll.Node):
     )
     as_operand = fabll.Traits.ImpliedTrait(Parameters.can_be_operand)
 
+    as_canonical: fabll.Traits.OptionalImpliedTrait["F.Expressions.is_canonical"] = (
+        fabll.Traits.OptionalImpliedTrait(lambda: is_canonical)
+    )
+    as_assertable: fabll.Traits.OptionalImpliedTrait["is_assertable"] = (
+        fabll.Traits.OptionalImpliedTrait(lambda: is_assertable)
+    )
+
     @dataclass(frozen=True)
     class ReprStyle(fabll.NodeAttributes):
         symbol: str | None = None
@@ -189,7 +196,7 @@ class is_expression(fabll.Node):
         return {
             i: t
             for i, op in enumerate(self.get_operands())
-            if (t := op.try_get_sibling_trait(Literals.is_literal))
+            if (t := op.as_literal.get())
         }
 
     def get_operand_leaves_operatable(
@@ -206,12 +213,12 @@ class is_expression(fabll.Node):
         """
         result: set[Parameters.is_parameter_operatable] = set()
         for operand in self.get_operands():
-            if expr := operand.try_get_sibling_trait(is_expression):
+            if (po := operand.as_parameter_operatable.get()) and (
+                expr := po.as_expression.get()
+            ):
                 # Operand is an expression - recurse into it
                 result.update(expr.get_operand_leaves_operatable())
-            elif operand_po := operand.try_get_sibling_trait(
-                Parameters.is_parameter_operatable
-            ):
+            elif operand_po := operand.as_parameter_operatable.get():
                 # Operand is a leaf (parameter or literal with is_parameter_operatable)
                 result.add(operand_po)
         return result
@@ -239,14 +246,15 @@ class is_expression(fabll.Node):
         lit_suffix = self.as_parameter_operatable.get()._get_lit_suffix()
         symbol += lit_suffix
 
-        def format_operand(op: Parameters.can_be_operand):
-            if lit := op.try_get_sibling_trait(Literals.is_literal):
+        def format_operand(op: "Parameters.can_be_operand"):
+            if lit := op.as_literal.get():
                 return lit.pretty_str()
-            if po := op.get_sibling_trait(F.Parameters.is_parameter_operatable):
+            if po := op.as_parameter_operatable.force_get():
                 op_out = po.compact_repr(context, use_name=use_name)
-                if (op_expr := op.try_get_sibling_trait(is_expression)) and len(
-                    op_expr.get_operands()
-                ) > 1:
+                if (
+                    op_expr
+                    := op.as_parameter_operatable.force_get().as_expression.get()
+                ) and len(op_expr.get_operands()) > 1:
                     op_out = f"({op_out})"
                 return op_out
             return str(op)
@@ -2737,7 +2745,7 @@ def test_compact_repr():
         p2.can_be_operand.get(),
         assert_=True,
     )
-    or_repr = or_.get_sibling_trait(is_expression).compact_repr()
+    or_repr = or_.as_parameter_operatable.force_get().as_expression.get().compact_repr()
     assert or_repr == "A ∨! B"
 
 

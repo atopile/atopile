@@ -28,7 +28,7 @@ def parameter_alias_classes(tg: fbrk.TypeGraph) -> list[set[F.Parameters.is_para
 
     for is_expr in is_exprs:
         params_ops = [
-            op.get_trait(F.Parameters.is_parameter)
+            op.as_parameter_operatable.force_get().as_parameter.force_get()
             for op in is_expr.is_expression.get().get_operands()
             if op.has_trait(F.Parameters.is_parameter)
         ]
@@ -78,7 +78,9 @@ def parameter_report(tg: fbrk.TypeGraph, path: Path):
         for p in params
         if not any(
             e.has_trait(F.Expressions.is_expression)
-            for e in p.get_trait(F.Expressions.is_expression).get_operands()
+            for e in p.as_parameter_operatable.get()
+            .as_expression.force_get()
+            .get_operands()
         )
     ]
 

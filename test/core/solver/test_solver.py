@@ -58,11 +58,11 @@ def _extract(
     if not isinstance(res, MutationMap):
         assert not allow_subset and not domain_default
         return res.inspect_get_known_supersets(
-            op.get_sibling_trait(F.Parameters.is_parameter)
+            op.as_parameter_operatable.force_get().as_parameter.force_get()
         )
     return not_none(
         res.try_get_literal(
-            op.get_sibling_trait(F.Parameters.is_parameter_operatable),
+            op.as_parameter_operatable.force_get(),
             allow_subset=allow_subset,
             domain_default=domain_default,
         )
@@ -88,7 +88,7 @@ def _extract_and_check(
         expected = expected.can_be_operand.get()
     if not isinstance(expected, F.Parameters.can_be_operand):
         return extracted.equals_singleton(expected)
-    return extracted.equals(expected.get_sibling_trait(F.Literals.is_literal))
+    return extracted.equals(expected.as_literal.force_get())
 
 
 def test_solve_phase_one():
@@ -290,7 +290,7 @@ def test_alias_classes():
 
     context = F.Parameters.ReprContext()
     for p in (A, B, C, D, H):
-        p.get_sibling_trait(F.Parameters.is_parameter_operatable).compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr(context)
     solver = DefaultSolver()
     solver.simplify_symbolically(E.tg, E.g, print_context=context)
     # TODO actually test something
@@ -334,7 +334,7 @@ def test_inspect_known_superranges():
         within=E.lit_op_range(((1, E.U.V), (10, E.U.V))).get_parent_of_type(
             F.Literals.Numbers
         ),
-    ).get_sibling_trait(F.Parameters.can_be_operand)
+    )
     E.is_(
         p0,
         E.add(
@@ -383,7 +383,7 @@ def test_subset_is():
 
     context = F.Parameters.ReprContext()
     for p in [A, B]:
-        p.get_sibling_trait(F.Parameters.is_parameter_operatable).compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr(context)
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
@@ -396,7 +396,7 @@ def test_subset_is_expr():
 
     context = F.Parameters.ReprContext()
     for p in [A, B, C]:
-        p.get_sibling_trait(F.Parameters.is_parameter_operatable).compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr(context)
 
     D = E.add(A, B)
     E.is_(C, E.lit_op_range((0, 15)), assert_=True)
@@ -436,7 +436,7 @@ def test_very_simple_alias_class():
 
     context = F.Parameters.ReprContext()
     for p in params:
-        p.get_sibling_trait(F.Parameters.is_parameter_operatable).compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr(context)
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
@@ -460,7 +460,7 @@ def test_domain():
         within=E.lit_op_range(((0, E.U.V), (10, E.U.V))).get_parent_of_type(
             F.Literals.Numbers
         ),
-    ).get_sibling_trait(F.Parameters.can_be_operand)
+    )
     E.is_(p0, E.lit_op_range(((15, E.U.V), (20, E.U.V))), assert_=True)
 
     solver = DefaultSolver()
@@ -481,9 +481,7 @@ def test_less_obvious_contradiction_by_literal():
 
     print_context = F.Parameters.ReprContext()
     for p in (A, B, C):
-        p.get_sibling_trait(F.Parameters.is_parameter_operatable).compact_repr(
-            print_context
-        )
+        p.as_parameter_operatable.force_get().compact_repr(print_context)
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
@@ -593,16 +591,10 @@ def test_literal_folding_add_multiplicative():
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
 
     rep_add = not_none(
-        repr_map.map_forward(
-            expr.get_sibling_trait(F.Parameters.is_parameter_operatable)
-        ).maps_to
+        repr_map.map_forward(expr.as_parameter_operatable.force_get()).maps_to
     )
-    rep_A = repr_map.map_forward(
-        A.get_sibling_trait(F.Parameters.is_parameter_operatable)
-    ).maps_to
-    rep_B = repr_map.map_forward(
-        B.get_sibling_trait(F.Parameters.is_parameter_operatable)
-    ).maps_to
+    rep_A = repr_map.map_forward(A.as_parameter_operatable.force_get()).maps_to
+    rep_B = repr_map.map_forward(B.as_parameter_operatable.force_get()).maps_to
     assert isinstance(
         fabll.Traits(rep_add).get_obj_raw(),
         F.Expressions.Add,
@@ -652,15 +644,9 @@ def test_literal_folding_add_multiplicative_2():
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
-    rep_add = repr_map.map_forward(
-        expr.get_sibling_trait(F.Parameters.is_parameter_operatable)
-    ).maps_to
-    a_res = repr_map.map_forward(
-        A.get_sibling_trait(F.Parameters.is_parameter_operatable)
-    ).maps_to
-    b_res = repr_map.map_forward(
-        B.get_sibling_trait(F.Parameters.is_parameter_operatable)
-    ).maps_to
+    rep_add = repr_map.map_forward(expr.as_parameter_operatable.force_get()).maps_to
+    a_res = repr_map.map_forward(A.as_parameter_operatable.force_get()).maps_to
+    b_res = repr_map.map_forward(B.as_parameter_operatable.force_get()).maps_to
     assert isinstance(rep_add, F.Expressions.Add)
     assert a_res is not None
     a_ops = [
@@ -690,7 +676,7 @@ def test_transitive_subset():
 
     context = F.Parameters.ReprContext()
     for p in (A, B, C):
-        p.get_sibling_trait(F.Parameters.is_parameter_operatable).compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr(context)
 
     E.is_(C, E.lit_op_range((0, 10)), assert_=True)
 
@@ -926,7 +912,10 @@ def test_try_fulfill_super_basic(
     solver = DefaultSolver()
     pred = predicate_type.c(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))))
     assert solver.try_fulfill(
-        pred.get_sibling_trait(F.Expressions.is_assertable), lock=False
+        pred.as_parameter_operatable.force_get()
+        .as_expression.force_get()
+        .as_assertable.force_get(),
+        lock=False,
     )
 
 
@@ -938,20 +927,20 @@ def test_congruence_filter():
 
     y1 = E.not_(x, assert_=True)
     y2 = E.not_(x, assert_=True)
-    assert y1.get_sibling_trait(F.Expressions.is_expression).is_congruent_to(
-        y2.get_sibling_trait(F.Expressions.is_expression),
-        g=E.g,
-        tg=E.tg,
+    assert (
+        y1.as_parameter_operatable.force_get()
+        .as_expression.force_get()
+        .is_congruent_to(
+            y2.as_parameter_operatable.force_get().as_expression.force_get(),
+            g=E.g,
+            tg=E.tg,
+        )
     )
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
-    y1_mut = repr_map.map_forward(
-        y1.get_sibling_trait(F.Parameters.is_parameter_operatable)
-    ).maps_to
-    y2_mut = repr_map.map_forward(
-        y2.get_sibling_trait(F.Parameters.is_parameter_operatable)
-    ).maps_to
+    y1_mut = repr_map.map_forward(y1.as_parameter_operatable.force_get()).maps_to
+    y2_mut = repr_map.map_forward(y2.as_parameter_operatable.force_get()).maps_to
     assert y1_mut == y2_mut
 
 
@@ -975,9 +964,10 @@ def test_regression_enum_contradiction():
     solver = DefaultSolver()
     with pytest.raises(Contradiction):
         solver.try_fulfill(
-            E.is_(A, E.lit_op_enum(F.LED.Color.EMERALD)).get_sibling_trait(
-                F.Expressions.is_assertable
-            ),
+            E.is_(A, E.lit_op_enum(F.LED.Color.EMERALD))
+            .as_parameter_operatable.force_get()
+            .as_expression.force_get()
+            .as_assertable.force_get(),
             lock=False,
         )
 
@@ -1018,18 +1008,16 @@ def test_simple_pick():
                     supplier_partno="C72043",
                 ),
                 params={
-                    "color": E.lit_op_enum(F.LED.Color.EMERALD).get_sibling_trait(
-                        F.Literals.is_literal
-                    ),
+                    "color": E.lit_op_enum(F.LED.Color.EMERALD).as_literal.force_get(),
                     "max_brightness": E.lit_op_single(
                         (0.285, E.U.cd)
-                    ).get_sibling_trait(F.Literals.is_literal),
-                    "forward_voltage": E.lit_op_single((3.0, E.U.V)).get_sibling_trait(
-                        F.Literals.is_literal
-                    ),
-                    "max_current": E.lit_op_single((0.1100, E.U.A)).get_sibling_trait(
-                        F.Literals.is_literal
-                    ),
+                    ).as_literal.force_get(),
+                    "forward_voltage": E.lit_op_single(
+                        (3.0, E.U.V)
+                    ).as_literal.force_get(),
+                    "max_current": E.lit_op_single(
+                        (0.1100, E.U.A)
+                    ).as_literal.force_get(),
                 },
                 pinmap={
                     "1": led.diode.get().cathode.get(),
@@ -1068,18 +1056,16 @@ def test_simple_negative_pick():
                     supplier_partno="C72043",
                 ),
                 params={
-                    "color": E.lit_op_enum(F.LED.Color.EMERALD).get_sibling_trait(
-                        F.Literals.is_literal
-                    ),
+                    "color": E.lit_op_enum(F.LED.Color.EMERALD).as_literal.force_get(),
                     "max_brightness": E.lit_op_single(
                         (0.285, E.U.cd)
-                    ).get_sibling_trait(F.Literals.is_literal),
-                    "forward_voltage": E.lit_op_single((3.0, E.U.V)).get_sibling_trait(
-                        F.Literals.is_literal
-                    ),
-                    "max_current": E.lit_op_single((0.1100, E.U.A)).get_sibling_trait(
-                        F.Literals.is_literal
-                    ),
+                    ).as_literal.force_get(),
+                    "forward_voltage": E.lit_op_single(
+                        (3.0, E.U.V)
+                    ).as_literal.force_get(),
+                    "max_current": E.lit_op_single(
+                        (0.1100, E.U.A)
+                    ).as_literal.force_get(),
                 },
                 pinmap={
                     "1": led.diode.get().cathode.get(),
@@ -1093,18 +1079,16 @@ def test_simple_negative_pick():
                     supplier_partno="C72041",
                 ),
                 params={
-                    "color": E.lit_op_enum(F.LED.Color.BLUE).get_sibling_trait(
-                        F.Literals.is_literal
-                    ),
+                    "color": E.lit_op_enum(F.LED.Color.BLUE).as_literal.force_get(),
                     "max_brightness": E.lit_op_single(
                         (0.0280, E.U.cd)
-                    ).get_sibling_trait(F.Literals.is_literal),
-                    "forward_voltage": E.lit_op_single((3.0, E.U.V)).get_sibling_trait(
-                        F.Literals.is_literal
-                    ),
-                    "max_current": E.lit_op_single((0.1100, E.U.A)).get_sibling_trait(
-                        F.Literals.is_literal
-                    ),
+                    ).as_literal.force_get(),
+                    "forward_voltage": E.lit_op_single(
+                        (3.0, E.U.V)
+                    ).as_literal.force_get(),
+                    "max_current": E.lit_op_single(
+                        (0.1100, E.U.A)
+                    ).as_literal.force_get(),
                 },
                 pinmap={
                     "1": led.diode.get().cathode.get(),
@@ -1316,7 +1300,11 @@ def test_extracted_literal_folding(op: Callable[..., F.Parameters.can_be_operand
     lit2 = E.lit_op_range(((10, 20)))
     lito = not_none(
         _exec_pure_literal_expressions(
-            E.g, E.tg, op(lit1, lit2).get_sibling_trait(F.Expressions.is_expression)
+            E.g,
+            E.tg,
+            op(lit1, lit2)
+            .as_parameter_operatable.force_get()
+            .as_expression.force_get(),
         )
     )
 
@@ -1372,7 +1360,7 @@ def test_graph_split():
 
     context = F.Parameters.ReprContext()
     for p in (Aop, Bop, C, D):
-        p.get_sibling_trait(F.Parameters.is_parameter_operatable).compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr(context)
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(
@@ -1382,12 +1370,12 @@ def test_graph_split():
     assert (
         not_none(
             repr_map.map_forward(
-                not_none(Aop.get_sibling_trait(F.Parameters.is_parameter_operatable))
+                not_none(Aop.as_parameter_operatable.force_get())
             ).maps_to
         ).g
         is not not_none(
             repr_map.map_forward(
-                not_none(Bop.get_sibling_trait(F.Parameters.is_parameter_operatable))
+                not_none(Bop.as_parameter_operatable.force_get())
             ).maps_to
         ).g
     )
@@ -1671,7 +1659,10 @@ def test_deduce_negative():
 
     solver = DefaultSolver()
     assert solver.try_fulfill(
-        p.get_sibling_trait(F.Expressions.is_assertable), lock=False
+        p.as_parameter_operatable.force_get()
+        .as_expression.force_get()
+        .as_assertable.force_get(),
+        lock=False,
     )
 
 
@@ -1681,7 +1672,10 @@ def test_empty_and():
 
     p = E.and_()
     assert solver.try_fulfill(
-        p.get_sibling_trait(F.Expressions.is_assertable), lock=False
+        p.as_parameter_operatable.force_get()
+        .as_expression.force_get()
+        .as_assertable.force_get(),
+        lock=False,
     )
 
 
@@ -2066,7 +2060,7 @@ def test_fold_correlated():
 
     context = F.Parameters.ReprContext()
     for p in (A, B, C):
-        p.get_sibling_trait(F.Parameters.is_parameter_operatable).compact_repr(context)
+        p.as_parameter_operatable.force_get().compact_repr(context)
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(
@@ -2074,10 +2068,10 @@ def test_fold_correlated():
     ).data.mutation_map
 
     is_lit = repr_map.try_get_literal(
-        C.get_sibling_trait(F.Parameters.is_parameter_operatable), allow_subset=False
+        C.as_parameter_operatable.force_get(), allow_subset=False
     )
     ss_lit = repr_map.try_get_literal(
-        C.get_sibling_trait(F.Parameters.is_parameter_operatable), allow_subset=True
+        C.as_parameter_operatable.force_get(), allow_subset=True
     )
     assert ss_lit is not None
 
@@ -2087,7 +2081,7 @@ def test_fold_correlated():
     )  # C ss [10, 15] - 5 == [5, 10]
     # Test for not wrongful is estimation
     assert not not_none(is_lit).equals(
-        op_inv(lit2, lit1).get_sibling_trait(F.Literals.is_literal),
+        op_inv(lit2, lit1).as_literal.force_get(),
     )  # C not is [5, 10]
 
     # Test for correct is estimation
@@ -2241,25 +2235,23 @@ def test_exec_pure_literal_expressions(
     expected = expected_factory(E)
 
     lits_converted = [
-        F.Literals.make_simple_lit_singleton(E.g, E.tg, lit).get_trait(
-            F.Parameters.can_be_operand
-        )
+        F.Literals.make_simple_lit_singleton(E.g, E.tg, lit).can_be_operand.get()
         if not isinstance(lit, fabll.Node)
         else lit
         for lit in lits
     ]
     expected_converted = (
-        F.Literals.make_simple_lit_singleton(E.g, E.tg, expected).get_trait(
-            F.Parameters.can_be_operand
-        )
+        F.Literals.make_simple_lit_singleton(E.g, E.tg, expected).can_be_operand.get()
         if not isinstance(expected, fabll.Node)
         else expected
-    ).get_sibling_trait(F.Literals.is_literal)
+    ).as_literal.force_get()
 
     expr = op(*lits_converted)
     assert not_none(
         _exec_pure_literal_expressions(
-            E.g, E.tg, expr.get_sibling_trait(F.Expressions.is_expression)
+            E.g,
+            E.tg,
+            expr.as_parameter_operatable.force_get().as_expression.force_get(),
         )
     ).equals(expected_converted, g=E.g, tg=E.tg)
 
