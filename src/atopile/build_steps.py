@@ -273,7 +273,7 @@ def prepare_nets(
     pcb.transformer.attach()
 
     if config.build.keep_net_names:
-        loaded_nets = load_net_names(app.g)
+        loaded_nets = load_net_names(app.tg)
         nets |= loaded_nets
 
     attach_net_names(nets)
