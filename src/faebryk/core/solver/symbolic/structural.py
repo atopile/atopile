@@ -886,12 +886,20 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
             continue
 
         # TODO make this more efficient (include in extract)
-        lit_alias_origins = {
-            e
+        lit_alias_origins: set[F.Parameters.is_parameter_operatable] = {
+            e.is_expression.get().as_parameter_operatable.get()
             for p in any_lit
             for e in p.get_operations(Is, predicates_only=True)
             if e.is_expression.get().get_operand_literals()
         }
+        if not no_allow_subset_lit:
+            lit_ss_origins = {
+                e.is_expression.get().as_parameter_operatable.get()
+                for p in any_lit
+                for e in p.get_operations(IsSubset, predicates_only=True)
+                if e.is_expression.get().get_operand_literals()
+            }
+            lit_alias_origins.update(lit_ss_origins)
 
         expr_po = expr.get_trait(F.Parameters.is_parameter_operatable)
         # Make new expr with subset literals
@@ -901,10 +909,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
             soft_mutate=IsSubset,
             from_ops=[
                 expr_po,
-                *(
-                    lao.is_expression.get().as_parameter_operatable.get()
-                    for lao in lit_alias_origins
-                ),
+                *lit_alias_origins,
             ],
         )
 
@@ -934,7 +939,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
         e for alias in new_literal_mappings_filtered for e in alias.get_operations()
     }
     # Include mutated since last run
-    exprs.update(mutator.non_copy_mutated)
+    exprs.update(fabll.Traits(e).get_obj_raw() for e in mutator.non_copy_mutated)
     exprs = F.Expressions.is_expression.sort_by_depth(exprs, ascending=True)
 
     for expr in exprs:
@@ -963,7 +968,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
 
         # TODO make this more efficient (include in extract)
         lit_alias_origins = {
-            e
+            e.is_expression.get().as_parameter_operatable.get()
             for p in any_lit
             for e in p.get_operations(Is, predicates_only=True)
             if e.is_expression.get().get_operand_literals()
@@ -978,10 +983,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
                 allow_uncorrelated=True,
                 from_ops=[
                     expr.get_trait(F.Parameters.is_parameter_operatable),
-                    *(
-                        lao.is_expression.get().as_parameter_operatable.get()
-                        for lao in lit_alias_origins
-                    ),
+                    *lit_alias_origins,
                 ],
             )
             continue
@@ -992,9 +994,6 @@ def uncorrelated_alias_fold(mutator: Mutator):
             soft_mutate=Is,
             from_ops=[
                 expr.get_trait(F.Parameters.is_parameter_operatable),
-                *(
-                    lao.is_expression.get().as_parameter_operatable.get()
-                    for lao in lit_alias_origins
-                ),
+                *lit_alias_origins,
             ],
         )

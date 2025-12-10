@@ -1007,10 +1007,10 @@ class MutationMap:
         out = {
             v.as_expression.force_get()
             for v, ks in self.compressed_mapping_backwards.items()
-            if v.has_trait(F.Expressions.is_canonical)
+            if v.try_get_sibling_trait(F.Expressions.is_canonical)
             # if all merged changed, else covered by merged
             and all(
-                k.has_trait(F.Expressions.is_canonical)
+                k.try_get_sibling_trait(F.Expressions.is_canonical)
                 and k is not v
                 and k.compact_repr() != v.compact_repr()
                 for k in ks
