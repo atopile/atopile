@@ -2193,18 +2193,21 @@ def test_fold_correlated():
     B = E.parameter_op()
     C = E.parameter_op()
 
-    op = E.add
-    op_inv = E.subtract
+    op = E.add, F.Literals.Numbers.op_add_intervals
+    op_inv = E.subtract, F.Literals.Numbers.op_subtract_intervals
 
     lit1 = E.lit_op_range((5, 10))
+    lit1_n = fabll.Traits(lit1).get_obj(F.Literals.Numbers)
     lit_operand = E.lit_op_single(5)
-    lit2 = op(lit1, lit_operand)
+    lit_operand_n = fabll.Traits(lit_operand).get_obj(F.Literals.Numbers)
+    lit2_n = op[1](lit1_n, lit_operand_n, g=E.g, tg=E.tg)
+    lit2 = lit2_n.can_be_operand.get()
 
     E.is_(A, lit1, assert_=True)  # A is [5,10]
     E.is_(B, lit2, assert_=True)  # B is [10,15]
     # correlate A and B
-    E.is_(B, op(A, lit_operand), assert_=True)  # B is A + 5
-    E.is_(C, op_inv(B, A), assert_=True)  # C is B - A
+    E.is_(B, op[0](A, lit_operand), assert_=True)  # B is A + 5
+    E.is_(C, op_inv[0](B, A), assert_=True)  # C is B - A
 
     context = F.Parameters.ReprContext()
     for p in (A, B, C):
@@ -2224,12 +2227,11 @@ def test_fold_correlated():
     assert ss_lit is not None
 
     # Test for ss estimation
-    assert E.is_subset(
-        ss_lit.as_operand.get(), (op_inv(lit2, lit1))
-    )  # C ss [10, 15] - 5 == [5, 10]
+    assert ss_lit.is_subset_of(op_inv[1](lit2_n, lit1_n, g=E.g, tg=E.tg))
+    # C ss [10, 15] - 5 == [5, 10]
     # Test for not wrongful is estimation
-    assert not not_none(is_lit).equals(
-        op_inv(lit2, lit1).as_literal.force_get(),
+    assert not is_lit or not is_lit.equals(
+        op_inv[1](lit2_n, lit1_n, g=E.g, tg=E.tg)
     )  # C not is [5, 10]
 
     # Test for correct is estimation
