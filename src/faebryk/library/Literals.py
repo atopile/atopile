@@ -4056,6 +4056,8 @@ class Numbers(fabll.Node):
     def pretty_str(self) -> str:
         """Format number with units and tolerance for display."""
         numeric_set = self.get_numeric_set()
+        if self.is_empty():
+            return "<empty>"
         min_val = numeric_set.get_min_value()
         max_val = numeric_set.get_max_value()
 

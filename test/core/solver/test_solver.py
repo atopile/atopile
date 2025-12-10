@@ -1146,6 +1146,7 @@ def test_simple_negative_pick():
     )
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_jlcpcb_pick_resistor():
     E = BoundExpressions()
     resistor = F.Resistor.bind_typegraph(tg=E.tg).create_instance(g=E.g)
@@ -1452,7 +1453,11 @@ def test_ss_single_into_alias():
     ],
 )
 def test_find_contradiction_by_predicate(
-    op: Callable[..., F.Parameters.can_be_operand], invert: bool
+    op: Callable[
+        [F.Parameters.can_be_operand, F.Parameters.can_be_operand],
+        F.Parameters.can_be_operand,
+    ],
+    invert: bool,
 ):
     """
     A > B, A is [0, 10], B is [20, 30], A further uncorrelated B
