@@ -195,7 +195,10 @@ class is_literal(fabll.Node):
         obj = self.switch_cast()
         if not obj.is_singleton():
             return False
-        return obj.get_single() == singleton
+        single = obj.get_single()
+        if single is True or single is False or singleton is True or singleton is False:
+            return single is singleton
+        return single == singleton
 
     def is_singleton(self) -> bool:
         return self.switch_cast().is_singleton()
@@ -3993,7 +3996,8 @@ class Numbers(fabll.Node):
     def __repr__(self) -> str:
         try:
             numeric_set = self.get_numeric_set()
-            unit_symbol = self.get_is_unit().get_symbols()[0]
+            symbols = self.get_is_unit().get_symbols()
+            unit_symbol = symbols[0] if symbols else "<anonymous>"
             return f"Numbers({numeric_set}, unit={unit_symbol})"
         except Exception as e:
             return f"Numbers(<uninitialized>, error={type(e).__name__}: {e})"
@@ -4004,14 +4008,16 @@ class Numbers(fabll.Node):
     def equals(
         self,
         other: "Numbers",
-        g: graph.GraphView,
-        tg: fbrk.TypeGraph,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> bool:
         """
         Check equality with another Numbers.
         Two quantity sets are equal if they have commensurable units and
         the same numeric intervals (after unit conversion).
         """
+        g = g or self.g
+        tg = tg or self.tg
         # Convert to same units and check commensurability
         try:
             other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
@@ -6110,13 +6116,11 @@ LiteralLike = LiteralValues | LiteralNodes | is_literal
 def make_simple_lit_singleton(
     g: graph.GraphView, tg: graph.TypeGraph, value: LiteralValues
 ) -> LiteralNodes:
+    if value is True or value is False:
+        return (
+            Booleans.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(value)
+        )
     match value:
-        case bool():
-            return (
-                Booleans.bind_typegraph(tg=tg)
-                .create_instance(g=g)
-                .setup_from_values(value)
-            )
         case float() | int():
             from faebryk.library.Units import Dimensionless
 
@@ -6272,7 +6276,7 @@ class TestStringLiterals:
 
         my_instance = MyType.bind_typegraph(tg=tg).create_instance(g=g)
 
-        print(my_instance.string_set.get().get_values())
+        # print(my_instance.string_set.get().get_values())
         assert my_instance.string_set.get().get_values() == values
 
     def test_string_literal_on_type(self):

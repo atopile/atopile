@@ -83,26 +83,20 @@ def eval_pure_literal_expression(
 
     Maps expression types to their corresponding Literals.Numbers operations.
     """
-    print(f"expr_type: {expr_type}")
-    print(f"operands: {operands}")
     operands_literals = []
     for op in operands:
         obj = fabll.Traits(op).get_obj_raw()
         # Check if it's a Numbers literal
         if num := obj.try_cast(F.Literals.Numbers):
             operands_literals.append(num)
-            print(f"num: {num}")
         # Check if it's a nested expression - recursively evaluate
         elif expr_trait := obj.try_get_trait(F.Expressions.is_expression):
             nested_result = eval_pure_literal_expression(
                 type(expr_trait.switch_cast()), expr_trait.get_operands()
             )
-            print(f"nested_result: {nested_result}")
             operands_literals.append(nested_result)
         else:
             raise ValueError(f"Operand {obj} is neither a literal nor an expression")
-
-    print(f"operands_literals: {operands_literals}")
 
     # Arithmetic operations (variadic/binary)
     if expr_type is Add:
@@ -605,7 +599,6 @@ def evaluate_e_p_l(operand: F.Parameters.can_be_operand) -> F.Literals.Numbers:
 
     expr = operand.get_sibling_trait(F.Expressions.is_expression).switch_cast()
 
-    print(f"expr: {expr}")
     return eval_pure_literal_expression(
         type(expr), expr.is_expression.get().get_operands()
     )
@@ -916,7 +909,7 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
         ),
     ),
 )
-@example(Abs.c(Round.c(lit_op_range(-inf, inf))))
+@example(expr=Abs.c(Round.c(lit_op_range(-inf, inf))))
 @example(
     expr=Divide.c(
         Divide.c(
@@ -952,35 +945,32 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
     "discovered failure"
 )
 # --------------------------------------------------------------------------------------
-# @given(st_exprs.trees)
-# @settings(
-#     deadline=None,  # timedelta(milliseconds=1000),
-#     max_examples=10000,
-#     report_multiple_bugs=False,
-#     phases=(
-#         # Phase.reuse,
-#         Phase.explicit,
-#         Phase.target,
-#         Phase.shrink,
-#         Phase.explain,
-#     ),
-#     suppress_health_check=[
-#         HealthCheck.data_too_large,
-#         HealthCheck.too_slow,
-#         HealthCheck.filter_too_much,
-#         HealthCheck.large_base_example,
-#     ],
-#     print_blob=False,
-# )
+@given(st_exprs.trees)
+@settings(
+    deadline=None,  # timedelta(milliseconds=1000),
+    max_examples=10000,
+    report_multiple_bugs=False,
+    phases=(
+        # Phase.reuse,
+        Phase.explicit,
+        Phase.target,
+        Phase.shrink,
+        Phase.explain,
+    ),
+    suppress_health_check=[
+        HealthCheck.data_too_large,
+        HealthCheck.too_slow,
+        HealthCheck.filter_too_much,
+        HealthCheck.large_base_example,
+    ],
+    print_blob=False,
+)
 def test_regression_literal_folding(expr: F.Parameters.can_be_operand):
     solver = DefaultSolver()
 
     test_g = graph.GraphView.create()
     test_g.insert_subgraph(subgraph=tg.get_type_subgraph())
 
-    print(f"expr: {expr}")
-    print(f"expr type: {type(expr)}")
-    print("Copying expression into graph...")
     # Get the expression node that owns the can_be_operand trait, then copy that
     expr_node = fabll.Traits(expr).get_obj_raw()
     test_expr_node = expr_node.copy_into(test_g)
@@ -990,27 +980,36 @@ def test_regression_literal_folding(expr: F.Parameters.can_be_operand):
     root = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
     E.is_(root, test_expr, assert_=True)
 
-    print("Evaluating expression...")
+    print("\n" + "=" * 70)
+    print("Evaluating Expression")
+    print("=" * 70)
+    expr_str = (
+        test_expr.as_parameter_operatable.force_get()
+        .as_expression.force_get()
+        .compact_repr()
+    )
+    print(f"Compact expr:  {expr_str}")
+
+    # Evaluate using our test evaluator
     evaluated_expr = evaluate_e_p_l(test_expr)
-    print(f"evaluated_expr: {evaluated_expr}")
+    assert isinstance(evaluated_expr, F.Literals.Numbers)
+
+    # Run the actual solver
     solver.update_superset_cache(root)
-    print("Updating superset cache...")
     solver_result = solver.inspect_get_known_supersets(
         root.get_sibling_trait(F.Parameters.is_parameter)
     )
-
-    # Debug printing
-    print("=" * 70)
-    print(f"Expression Type: {type(test_expr_node).__name__}")
-    print(f"Expression:      {test_expr_node}")
-    print("-" * 70)
-    assert isinstance(evaluated_expr, F.Literals.Numbers)
     solver_result_num = fabll.Traits(solver_result).get_obj(F.Literals.Numbers)
-    print(f"Solver Result:   {solver_result_num}")
-    print(f"Test Evaluated:  {evaluated_expr}")
-    match = solver_result.equals(evaluated_expr)
-    print(f"Match: {match}")
+
+    # Compare results (need to pass g and tg for Numbers.equals)
+    match = solver_result_num.equals(evaluated_expr, g=test_g, tg=test_tg)
+    print("\n" + "=" * 70)
+    print("COMPARISON")
     print("=" * 70)
+    print(f"Test Evaluated: {evaluated_expr.pretty_str()}")
+    print(f"Solver Result:  {solver_result_num.pretty_str()}")
+    print(f"Match:          {'✓ PASS' if match else '✗ FAIL'}")
+    print("=" * 70 + "\n")
     assert match, f"Solver: {solver_result_num} != Test: {evaluated_expr}"
 
 
@@ -1282,7 +1281,39 @@ if __name__ == "__main__":
     #     ),
     # )
     # expr = Sin.c(Sin.c(lit_op_range(-10, 10)))
-    expr = Sin.c(lit_op_range(-1, 1))
+    # expr = Sin.c(lit_op_range(-1, 1))
 
+    # expr = Multiply.c(
+    #     Sqrt.c(Sqrt.c(lit_op_single(2))),
+    #     Sqrt.c(Sqrt.c(lit_op_single(2))),
+    # )
+
+    # expr = Add.c(
+    #     Abs.c(lit_op_range(-inf, inf)),
+    #     Sqrt.c(lit_op_single(1)),
+    # )
+
+    # expr = Subtract.c(
+    #     Round.c(lit_op_range(2, 10)),
+    #     Round.c(lit_op_range(2, 10)),
+    # )
+    # expr = Subtract.c(
+    #     Round.c(
+    #         Subtract.c(
+    #             lit_op_single(0),
+    #             lit_op_range(-999_999_999_905, -0.3333333333333333),
+    #         ),
+    #     ),
+    #     Subtract.c(
+    #         lit_op_single(-999_999_983_213),
+    #         lit_op_range(-17297878, 999_999_992_070),
+    #     ),
+    # )
+    expr = Round.c(
+        Add.c(
+            Abs.c(lit_op_single(0)),
+            Round.c(lit_op_single(-1)),
+        )
+    )
     setup_basic_logging()
     typer.run(lambda: test_regression_literal_folding(expr))

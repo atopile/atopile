@@ -54,16 +54,27 @@ class _Multi:
 
 _CanonicalExpressions: dict[type[fabll.NodeT], _Multi] = {
     F.Expressions.Add: _Multi(F.Literals.Numbers.op_add_intervals, 0),
+    F.Expressions.Subtract: _Multi(F.Literals.Numbers.op_subtract_intervals, 0),
     F.Expressions.Multiply: _Multi(F.Literals.Numbers.op_mul_intervals, 1),
+    F.Expressions.Divide: _Multi(F.Literals.Numbers.op_div_intervals, 1),
     F.Expressions.Power: _Multi(F.Literals.Numbers.op_pow_intervals),
+    F.Expressions.Sqrt: _Multi(F.Literals.Numbers.op_sqrt),
     F.Expressions.Round: _Multi(F.Literals.Numbers.op_round),
     F.Expressions.Abs: _Multi(F.Literals.Numbers.op_abs),
     F.Expressions.Sin: _Multi(F.Literals.Numbers.op_sin),
-    F.Expressions.Log: _Multi(F.Literals.Numbers.op_log),
+    F.Expressions.Log: _Multi(
+        F.Literals.Numbers.op_log,
+    ),
     F.Expressions.Or: _Multi(F.Literals.Booleans.op_or, False),
     F.Expressions.Not: _Multi(F.Literals.Booleans.op_not),
     F.Expressions.Intersection: _Multi(F.Literals.is_literal.op_intersect_intervals),
-    F.Expressions.Union: _Multi(F.Literals.is_literal.op_union_intervals),
+    F.Expressions.Union: _Multi(F.Literals.is_literal.op_union_intervals, 1),
+    F.Expressions.LessThan: _Multi(F.Literals.Numbers.op_mul_intervals, 1),
+    F.Expressions.GreaterThan: _Multi(F.Literals.Numbers.op_mul_intervals, 1),
+    F.Expressions.Floor: _Multi(F.Literals.Numbers.op_floor),
+    F.Expressions.Ceil: _Multi(F.Literals.Numbers.op_ceil),
+    F.Expressions.Min: _Multi(F.Literals.Numbers.min_elem),
+    F.Expressions.Max: _Multi(F.Literals.Numbers.max_elem),
     F.Expressions.SymmetricDifference: _Multi(
         F.Literals.is_literal.op_symmetric_difference_intervals
     ),
@@ -98,7 +109,7 @@ def _exec_pure_literal_operands(
     lits_nodes = [o.switch_cast() for o in lits]
     try:
         return _map[expr_type_node.get_uuid()].run(g=g, tg=tg, *lits_nodes)
-    except (ValueError, NotImplementedError, ZeroDivisionError):
+    except (ValueError, NotImplementedError, ZeroDivisionError, TypeError):
         return None
 
 
