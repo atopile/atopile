@@ -41,6 +41,7 @@ from faebryk.libs.util import (
     find,
     indented_container,
     md_list,
+    not_none,
     once,
     path_replace,
     re_in,
@@ -537,15 +538,17 @@ class PartLifecycle:
             ).get_footprint()
 
             # At this point, all footprints MUST have a KiCAD identifier
-            fp_id = f_fp.get_trait(
-                F.has_kicad_footprint
-            ).get_kicad_footprint_identifier()
+            fp_id = (
+                f_fp.get_trait(F.KiCadFootprints.has_associated_kicad_pcb_footprint)
+                .get_footprint()
+                .name
+            )
 
             # This is the component which is being stuck on the board
             address = component.get_full_name()
 
             # All modules MUST have a designator by this point
-            ref = component.get_trait(F.has_designator).get_designator()
+            ref = not_none(component.get_trait(F.has_designator).get_designator())
 
             pcb_fp_t = f_fp.try_get_trait(
                 F.KiCadFootprints.has_associated_kicad_pcb_footprint
