@@ -7,55 +7,12 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Generator, Iterable, Mapping
 
-import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserException
-from faebryk.libs.util import FuncDict, KeyErrorAmbiguous, groupby, once
+from faebryk.libs.util import FuncDict, groupby, once
 
 logger = logging.getLogger(__name__)
-
-
-def add_or_get_nets(*interfaces: F.Electrical, tg: fbrk.TypeGraph) -> set[F.Net]:
-    buses = fabll.is_interface.group_into_buses(set(interfaces))
-    nets_out: set[F.Net] = set()
-
-    # Iterate buses in a deterministic order by their string representation
-    for bus_repr in sorted(buses.keys(), key=lambda b: b.get_name()):
-        nets_on_bus = F.Net.find_nets_for_mif(bus_repr.cast(F.Electrical))
-
-        if not nets_on_bus:
-            net = F.Net.bind_typegraph(tg).create_instance(g=tg.get_graph_view())
-            net.part_of.get()._is_interface.get().connect_to(bus_repr)
-            nets_on_bus = {net}
-
-        if len(nets_on_bus) > 1:
-            named_nets_on_bus = {
-                n for n in nets_on_bus if n.has_trait(F.has_overriden_name)
-            }
-            if not named_nets_on_bus:
-                # Deterministically select a representative net by stable key
-                nets_on_bus = {min(nets_on_bus, key=_get_net_stable_key)}
-            elif len(named_nets_on_bus) == 1:
-                nets_on_bus = named_nets_on_bus
-            else:
-                raise KeyErrorAmbiguous(
-                    list(named_nets_on_bus), "Multiple (named) nets interconnected"
-                )
-
-        nets_out |= nets_on_bus
-
-    return nets_out
-
-
-def attach_nets(tg: fbrk.TypeGraph) -> set[F.Net]:
-    """Create nets for all the pads in the graph."""
-    pad_mifs = [pad.net.get() for pad in F.Footprints.GenericPad.bind_typegraph(tg).get_instances()]
-    # Sort pad interfaces by stable node name to ensure deterministic bus grouping
-    pad_mifs = sorted(pad_mifs, key=_get_stable_node_name)
-    nets = add_or_get_nets(*pad_mifs, tg=tg)
-    return nets
-
 
 # FIXME: this belongs at most in the KiCAD netlist generator
 # and should likely just return the properties rather than mutating the graph

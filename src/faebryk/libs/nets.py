@@ -3,7 +3,7 @@ from itertools import pairwise
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import once
+from faebryk.libs.util import KeyErrorAmbiguous, once
 
 
 def bind_fbrk_nets_to_kicad_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView):
@@ -54,20 +54,16 @@ def bind_fbrk_nets_to_kicad_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView):
 
 def bind_electricals_to_fbrk_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView) -> set[F.Net]:
     """
-    Groups electricals into buses, and create a new net if there isn't one already
-
-    TODO
-    - there's probably a sorting step missing here
+    Groups electricals into buses, get or create a net, and return all the nets
     """
     fbrk_nets: set[F.Net] = set()
     electricals_filtered: set[F.Electrical] = set()
 
     # filter for electricals that have is_lead -> has_associated_pads trait structure
     for electrical in F.Electrical.bind_typegraph(tg).get_instances(g=g):
-        # if is_lead := electrical.try_get_trait(F.Lead.is_lead):
-        #     if is_lead.has_trait(F.Lead.has_associated_pads):
-        #         electricals_filtered.add(electrical)
-        electricals_filtered.add(electrical)
+        if is_lead := electrical.try_get_trait(F.Lead.is_lead):
+            if is_lead.has_trait(F.Lead.has_associated_pads):
+                electricals_filtered.add(electrical)
 
     # generate buses
     buses = fabll.is_interface.group_into_buses(electricals_filtered)
@@ -75,19 +71,32 @@ def bind_electricals_to_fbrk_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView) 
     for bus, bus_members in buses.items():
         bus_members = sorted(bus_members, key=_get_stable_node_name)
 
-        # should do some conflict resolution if there's a net already somewhere on this bus
-        for member in bus_members:
-            pass
+        # find existing named nets on this bus
+        named_nets_on_bus: set[F.has_net_name] = set()
+        for electrical in bus_members:
+            # check if the parent of an electrical has the has_net_name trait
+            if electrical_parent := electrical.get_parent()[0]:
+                if has_net_name := electrical_parent.try_get_trait(F.has_net_name):
+                    named_nets_on_bus.add(has_net_name)
 
-        # else create a new net!!!
-        fbrk_net = F.Net.bind_typegraph(tg).create_instance(g=g)
+        # if there's no named nets on bus, make one and connect it up
+        if not named_nets_on_bus:
+            fbrk_net = F.Net.bind_typegraph(tg).create_instance(g=g)
+            # doesn't really matter, can connect to any member of the bus
+            fbrk_net.part_of.get()._is_interface.get().connect_to(bus_members[0])
 
-        # probably want to make all the connections again just incase? or is it overkill...
-        # is there connection de-duplication?
-        for member in bus_members:
-            member.get_trait(fabll.is_interface).connect_to(fbrk_net.part_of.get())
+        # if there's one net, let's return that
+        elif len(named_nets_on_bus) == 1:
+            named_net, = named_nets_on_bus
+            # this should theoretically get the F.Net node from the has_net_name trait
+            fbrk_net = fabll.Traits.bind(named_net).get_obj_raw()
+
+        else:
+            raise KeyErrorAmbiguous(
+                list(named_nets_on_bus), "Multiple named nets interconnected"
+            )
+
         fbrk_nets.add(fbrk_net)
-
 
     return sorted(fbrk_nets, key=_get_stable_node_name)
 
