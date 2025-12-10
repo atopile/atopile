@@ -69,7 +69,7 @@ pub const TypeGraph = struct {
         rhs_path: []const []const u8,
     };
 
-    const TypeNodeAttributes = struct {
+    pub const TypeNodeAttributes = struct {
         node: NodeReference,
 
         pub fn of(node: NodeReference) @This() {

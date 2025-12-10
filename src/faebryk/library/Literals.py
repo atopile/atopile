@@ -5999,6 +5999,24 @@ class AbstractEnums(fabll.Node):
     def any(self) -> str:
         return next(iter(self.get_values()))
 
+    def get_names(self) -> list[str]:
+        return [
+            EnumValue.bind_instance(value.instance).name
+            for value in self.values.get().as_list()
+        ]
+
+    def serialize(self) -> dict:
+        return {
+            "type": "EnumSet",
+            "data": {
+                "elements": [{"name": name} for name in sorted(self.get_names())],
+                "enum": {
+                    "name": self.get_type_name() or "UnknownEnum",
+                    "values": self.get_enum_as_dict(),
+                },
+            },
+        }
+
     def is_subset_of(
         self,
         other: "AbstractEnums",

@@ -5,6 +5,8 @@ from enum import StrEnum
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.core.zig.gen.graph.graph import BoundNode  # type: ignore[import-untyped]
+from faebryk.libs.util import not_none
 
 
 class is_pickable_by_type(fabll.Node):
@@ -57,15 +59,18 @@ class is_pickable_by_type(fabll.Node):
     def endpoint(self) -> str:
         return str(self.endpoint_.get().force_extract_literal().get_values()[0])
 
-    @property  # TODO: make this return Resistor Class
-    def pick_type(self):  # -> type[fabll.Node]:
-        parent = self.get_parent()
-        if parent is None:
+    @property
+    def pick_type(self) -> BoundNode:
+        parent_info = self.get_parent()
+        if parent_info is None:
             raise Exception("is_pickable_by_type has no parent")
-        return parent[0]
+        parent, _ = parent_info
+        return not_none(parent.get_type_node())
 
     @classmethod
-    def MakeChild(cls, endpoint: Endpoint, params: dict[str, fabll._ChildField]):
+    def MakeChild(  # type: ignore[invalid-method-override]
+        cls, endpoint: Endpoint, params: dict[str, fabll._ChildField[fabll.Node]]
+    ):
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(

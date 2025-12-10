@@ -4019,6 +4019,29 @@ fn wrap_typegraph_get_or_create_type() type {
     };
 }
 
+fn wrap_typegraph_get_type_name() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_type_name",
+            .args_def = struct {
+                type_node: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .doc = "Get the type name/identifier for a type node",
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const type_name = faebryk.typegraph.TypeGraph.TypeNodeAttributes.of(kwarg_obj.type_node.node).get_type_name();
+            return bind.wrap_str(type_name);
+        }
+    };
+}
+
 fn wrap_typegraph_get_type_subgraph() type {
     return struct {
         pub const descr = method_descr{
@@ -4219,6 +4242,7 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_debug_add_reference(),
         wrap_typegraph_reference_resolve(),
         wrap_typegraph_get_type_by_name(),
+        wrap_typegraph_get_type_name(),
         wrap_typegraph_get_graph_view(),
         wrap_typegraph_get_self_node(),
         wrap_typegraph_get_type_subgraph(),

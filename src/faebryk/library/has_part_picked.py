@@ -6,7 +6,7 @@ from typing import Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.picker.picker import PickedPart, PickSupplier
+from faebryk.libs.picker.picker_base import PickedPart, PickSupplier
 from faebryk.libs.util import not_none
 
 logger = logging.getLogger(__name__)

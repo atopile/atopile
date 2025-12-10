@@ -303,18 +303,36 @@ def test_pick_resistor_by_params():
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Constrain resistance
+    resistance_op = E.lit_op_range(((100, E.U.Ohm), (110, E.U.Ohm)))
     E.is_(
-        app.r1.get().resistance.get().can_be_operand.get(),
-        E.lit_op_range(((100, E.U.Ohm), (110, E.U.Ohm))),
-        assert_=True,
+        app.r1.get().resistance.get().can_be_operand.get(), resistance_op, assert_=True
     )
 
     # Constrain package
+    fabll.Traits.create_and_add_instance_to(app.r1.get(), F.has_package_requirements)
+    app.r1.get().get_trait(F.has_package_requirements).setup(SMDSize.I0805)
 
     tree = get_pick_tree(app)
     pick_topologically(tree, solver)
-    print(app.r1.get())
     assert app.r1.get().has_trait(F.has_part_picked)
+    assert (
+        app.r1.get()
+        .resistance.get()
+        .force_extract_literal()
+        .is_subset_of(
+            F.Literals.Numbers(resistance_op.get_raw_obj().instance),
+            g=g,
+            tg=tg,
+        )
+    )
+    assert (
+        app.r1.get()
+        .get_trait(F.has_package_requirements)
+        .size_.get()
+        .force_extract_literal()
+        .get_single_value_typed(SMDSize)
+        == SMDSize.I0805
+    )
 
 
 # I guess we need to support something like this?

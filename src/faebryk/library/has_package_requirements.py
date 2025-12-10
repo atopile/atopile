@@ -18,7 +18,7 @@ class has_package_requirements(fabll.Node):
     size_ = F.Parameters.EnumParameter.MakeChild(enum_t=SMDSize)
 
     @classmethod
-    def MakeChild(cls, size: SMDSize):
+    def MakeChild(cls, size: SMDSize):  # type: ignore[invalid-method-override]
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
