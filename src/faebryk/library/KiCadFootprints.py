@@ -55,7 +55,9 @@ class has_associated_kicad_pcb_footprint(fabll.Node):
         )
         return out
 
-    def setup(self, footprint: KiCadPCBFootprint, transformer: "PCB_Transformer") -> Self:
+    def setup(
+        self, footprint: KiCadPCBFootprint, transformer: "PCB_Transformer"
+    ) -> Self:
         # Store objects in registries to prevent garbage collection.
         self._footprint_registry[id(footprint)] = footprint
         self._transformer_registry[id(transformer)] = transformer

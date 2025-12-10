@@ -400,7 +400,7 @@ def check_and_attach_candidates(
 
 
 def get_candidates(
-    modules: Tree[fabll.Module], solver: Solver
+    modules: Tree[F.is_pickable], solver: Solver
 ) -> dict[fabll.Module, list[Component]]:
     candidates = modules.copy()
     parts = {}

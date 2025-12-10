@@ -3,7 +3,6 @@
 
 import logging
 import re
-from collections import defaultdict
 from enum import Enum, StrEnum, auto
 from itertools import chain, pairwise
 from math import floor
@@ -13,7 +12,6 @@ from typing import (
     Callable,
     Iterable,
     List,
-    Mapping,
     Optional,
     Protocol,
     Sequence,
@@ -22,7 +20,6 @@ from typing import (
 
 import numpy as np
 from deprecated import deprecated
-from more_itertools import first
 from shapely import Polygon
 
 # import faebryk.library._F as F
@@ -35,8 +32,6 @@ from faebryk.libs.kicad.fileformats import UUID, Property, kicad
 from faebryk.libs.nets import bind_fbrk_nets_to_kicad_nets
 from faebryk.libs.util import (
     FuncSet,
-    KeyErrorNotFound,
-    find,
     groupby,
     not_none,
     re_in,
@@ -326,7 +321,6 @@ class PCB_Transformer:
         if pcb_pads and logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"No pads in design for PCB pads: {pcb_pads}")
 
-
     def bind_net(self, kicad_net: KiCadPCBNet, f_net: "F.Net"):
         """
         Bind fabll net to kicad net via has_linked_kicad_net trait
@@ -578,83 +572,6 @@ class PCB_Transformer:
         poly = get_geometry(polys, 0)
         assert isinstance(poly, Polygon)
         return list(poly.exterior.coords)  # type:ignore
-
-    # Pads ---------------------------------------------------------------------------
-    @staticmethod
-    def _get_pad(ffp: "F.Footprints.GenericFootprint", intf: "F.Electrical"):
-        import faebryk.library._F as F
-
-        pin_map = ffp.get_trait(
-            F.KiCadFootprints.has_associated_kicad_pcb_footprint
-        ).get_pad_names()
-        pin_name = find(
-            pin_map.items(),
-            lambda pad_and_name: intf._is_interface.get().is_connected_to(
-                pad_and_name[0].net.get()
-            ),
-        )[1]
-
-        fp = PCB_Transformer.get_kicad_pcb_fp(ffp)
-        pad = find(fp.pads, lambda p: p.name == pin_name)
-
-        return fp, pad
-
-    @staticmethod
-    def get_pad(
-        intf: "F.Electrical",
-    ) -> tuple[KiCadPCBFootprint, KiCadPCBPad, fabll.Node]:
-        obj, ffp = F.Footprints.GenericFootprint.get_footprint_of_parent(intf)
-        fp, pad = PCB_Transformer._get_pad(ffp, intf)
-
-        return fp, pad, obj
-
-    @staticmethod
-    def get_pad_pos_any(intf: "F.Electrical"):
-        try:
-            fpads = F.Footprints.GenericPad.find_pad_for_intf_with_parent_that_has_footprint(
-                intf
-            )
-        except KeyErrorNotFound:
-            # intf has no parent with footprint
-            return []
-
-        return [PCB_Transformer.get_fpad_pos(fpad) for fpad in fpads]
-
-    @staticmethod
-    def get_pad_pos(intf: "F.Electrical"):
-        try:
-            fpad = F.Footprints.GenericPad.find_pad_for_intf_with_parent_that_has_footprint_unique(
-                intf
-            )
-        except ValueError:
-            return None
-
-        return PCB_Transformer.get_fpad_pos(fpad)
-
-    @staticmethod
-    def get_fpad_pos(fpad: "F.Footprints.GenericPad"):
-        fp, pad = fpad.get_trait(
-            F.KiCadFootprints.has_associated_kicad_pcb_pad
-        ).get_pads()
-        if len(pad) > 1:
-            raise NotImplementedError(
-                f"Multiple same pads is not implemented: {fpad} {pad}"
-            )
-        pad = pad[0]
-
-        point3d = abs_pos(fp.at, pad.at)
-
-        transformer = fpad.get_trait(
-            F.KiCadFootprints.has_associated_kicad_pcb_pad
-        ).get_transformer()
-
-        layers = transformer.get_copper_layers_pad(pad)
-        copper_layers = {
-            layer: i for i, layer in enumerate(transformer.get_copper_layers())
-        }
-        layers = {copper_layers[layer] for layer in layers}
-
-        return fpad, point3d[:3] + (layers,)
 
     # Layers ---------------------------------------------------------------------------
     @property
@@ -2023,7 +1940,7 @@ class PCB_Transformer:
                 self.bind_net(pcb_net, f_net)
 
             ## Connect pads to nets
-            pads_on_net = list(f_net.get_connected_pads().keys())
+            pads_on_net = list(f_net.get_connected_pads())
             if not pads_on_net:
                 logger.warning(f"No pads on net `{net_name}`.")
 
@@ -2032,7 +1949,7 @@ class PCB_Transformer:
                 # which wasn't prebviously added to the layout
                 try:
                     pcb_pads_connected_to_pad = f_pad.get_trait(
-                        F.PCBTransformer.has_associated_kicad_pcb_pad
+                        F.KiCadFootprints.has_associated_kicad_pcb_pad
                     ).get_pads()[1]
                 except TraitNotFound as ex:
                     # FIXME: replace this with more robust
