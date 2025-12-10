@@ -1160,7 +1160,8 @@ class Log(fabll.Node):
     )
 
     operand = OperandPointer.MakeChild()
-    base = OperandPointer.MakeChild()
+    # z because alphabetic sort
+    zbase = OperandPointer.MakeChild()
 
     def setup(
         self,
@@ -1174,7 +1175,7 @@ class Log(fabll.Node):
                 .is_literal.get()
                 .as_operand.get()
             )
-        self.base.get().point(base)
+        self.zbase.get().point(base)
         return self
 
     @classmethod
@@ -2420,7 +2421,7 @@ class IsBitSet(fabll.Node):
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
 
     value = OperandPointer.MakeChild()
-    bit_index = OperandPointer.MakeChild()
+    zbit_index = OperandPointer.MakeChild()
 
     def setup(
         self,
@@ -2429,7 +2430,7 @@ class IsBitSet(fabll.Node):
         assert_: bool = False,
     ) -> Self:
         self.value.get().point(value)
-        self.bit_index.get().point(bit_index)
+        self.zbit_index.get().point(bit_index)
         if assert_:
             self.is_assertable.get().assert_()
         return self
@@ -2534,7 +2535,7 @@ class IsSuperset(fabll.Node):
     )
 
     superset = OperandPointer.MakeChild()
-    subset = OperandPointer.MakeChild()
+    zsubset = OperandPointer.MakeChild()
 
     def setup(
         self,
@@ -2543,7 +2544,7 @@ class IsSuperset(fabll.Node):
         assert_: bool = False,
     ) -> Self:
         self.superset.get().point(superset)
-        self.subset.get().point(subset)
+        self.zsubset.get().point(subset)
         if assert_:
             self.is_assertable.get().assert_()
         return self

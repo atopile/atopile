@@ -2295,11 +2295,12 @@ def test_exec_pure_literal_expressions(
     ).as_literal.force_get()
 
     expr = op(*lits_converted)
+    expr_e = expr.as_parameter_operatable.force_get().as_expression.force_get()
     assert not_none(
         _exec_pure_literal_expressions(
             E.g,
             E.tg,
-            expr.as_parameter_operatable.force_get().as_expression.force_get(),
+            expr_e,
         )
     ).equals(expected_converted, g=E.g, tg=E.tg)
 

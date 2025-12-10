@@ -2158,10 +2158,12 @@ class NumericSet(fabll.Node):
         tg = tg or self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = []
-        if base is not None and base.get_intervals() != 1:
-            raise NotImplementedError(
-                f"Only support singleton base for log {self} {base=}"
-            )
+        if base is not None and len(base.get_intervals()) != 1:
+            if len(base.get_intervals()) > 1:
+                raise NotImplementedError(
+                    f"Only support singleton base for log {self} {base=}"
+                )
+            raise ValueError(f"Log Base is empty: {base}")
         for interval in self.get_intervals():
             intervals.append(
                 interval.op_log(
