@@ -58,7 +58,7 @@ def bind_fbrk_nets_to_kicad_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView):
 
 def bind_electricals_to_fbrk_nets(
     tg: fbrk.TypeGraph, g: fabll.graph.GraphView
-) -> set[F.Net]:
+) -> set["F.Net"]:
     """
     Groups electricals into buses, get or create a net, and return all the nets
     """
@@ -85,7 +85,7 @@ def bind_electricals_to_fbrk_nets(
 
     return fbrk_nets
 
-def get_named_net(electrical: F.Electrical) -> F.Net | None:
+def get_named_net(electrical: "F.Electrical") -> "F.Net | None":
     """
     Returnes exactly one named net that this electrical is part of.
     Will raise an error if there's somehow more than one net connected.

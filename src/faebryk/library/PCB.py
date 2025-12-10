@@ -44,7 +44,7 @@ class PCB(fabll.Node):
         self.pcb_file_.get().alias_to_single(value=str(id(pcbfile)))
         transformer = PCB_Transformer(pcbfile.kicad_pcb, self.app)
         self.transformer_.get().alias_to_single(value=str(id(transformer)))
-        self._transformer_registry[id[transformer]] = transformer
+        self._transformer_registry[id(transformer)] = transformer
         return self
 
     @property
