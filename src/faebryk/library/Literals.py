@@ -2226,6 +2226,14 @@ class NumericSet(fabll.Node):
             return False
         return self.get_min_value() == self.get_max_value()
 
+    def is_discrete_set(self) -> bool:
+        if self.is_empty():
+            return False
+        return all(
+            interval.get_min_value() == interval.get_max_value()
+            for interval in self.get_intervals()
+        )
+
     def any(self) -> float:
         return self.get_min_value()
 
@@ -4058,8 +4066,7 @@ class Numbers(fabll.Node):
         numeric_set = self.get_numeric_set()
         if self.is_empty():
             return "<empty>"
-        min_val = numeric_set.get_min_value()
-        max_val = numeric_set.get_max_value()
+        intervals = numeric_set.get_intervals()
 
         # Get unit symbol
         try:
@@ -4071,19 +4078,29 @@ class Numbers(fabll.Node):
         except Exception:
             unit_symbol = ""
 
-        # Singleton value
         if numeric_set.is_singleton():
+            min_val = numeric_set.get_min_value()
             return f"{min_val}{unit_symbol}"
 
-        # Range - calculate center and tolerance
-        center = (min_val + max_val) / 2
-        if (
-            center != 0
-            and (tolerance_rel := abs((max_val - min_val) / 2 / center) * 100) < 1
-        ):
-            return f"{center}{unit_symbol} ±{tolerance_rel:.0f}%"
-        else:
-            return f"{min_val}..{max_val}{unit_symbol}"
+        if numeric_set.is_discrete_set():
+            return f"{{{', '.join(map(str, numeric_set.get_values()))}}}{unit_symbol}"
+
+        def format_interval(iv: NumericInterval) -> str:
+            min_val = iv.get_min_value()
+            max_val = iv.get_max_value()
+            center = (min_val + max_val) / 2
+
+            # Use center±tolerance format if center is non-zero and tolerance < 1%
+            if (
+                center != 0
+                and (tolerance_rel := abs((max_val - min_val) / 2 / center) * 100) < 1
+            ):
+                return f"{center}±{tolerance_rel:.1f}%"
+
+            return f"{min_val}..{max_val}"
+
+        interval_strs = [format_interval(iv) for iv in intervals]
+        return f"{{{', '.join(interval_strs)}}}{unit_symbol}"
 
 
 class TestNumbers:

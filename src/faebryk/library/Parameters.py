@@ -50,11 +50,9 @@ class can_be_operand(fabll.Node):
         return fabll.Traits(self).get_obj_raw()
 
     def pretty(self, use_name: bool = True) -> str:
-        from faebryk.library.Literals import is_literal
-
-        if lit := self.try_get_sibling_trait(is_literal):
+        if lit := self.as_literal.try_get():
             return lit.pretty_str()
-        if po := self.try_get_sibling_trait(is_parameter_operatable):
+        if po := self.as_parameter_operatable.try_get():
             return po.compact_repr(use_name=use_name)
         return str(self)
 
@@ -1362,6 +1360,73 @@ def test_enum_param_domain_set():
     assert A.domain_set(g=g, tg=tg).get_values().sort() == ["a", "b", "c", "d"].sort()
 
 
+def test_can_be_operand_pretty_print():
+    from faebryk.library.Units import Ohm
+
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    ohm_is_unit = Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
+
+    singleton = (
+        F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_singleton(value=5.0, unit=ohm_is_unit)
+    )
+    discrete_set = (
+        F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_singletons(values=[1, 2, 3, 4], unit=ohm_is_unit)
+    )
+    continuous_set_rel = (
+        F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_center_rel(center=5.0, rel=0.005, unit=ohm_is_unit)
+    )
+    continuous_set = (
+        F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_min_max(min=5.0, max=10.0, unit=ohm_is_unit)
+    )
+    another_continuous_set = (
+        F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_min_max(min=15.0, max=20.0, unit=ohm_is_unit)
+    )
+    disjoint_union = F.Literals.Numbers.op_union_interval(
+        continuous_set,
+        another_continuous_set,
+        g=g,
+        tg=tg,
+    )
+
+    assert singleton.can_be_operand.get().pretty() == "5.0Ω"
+    assert discrete_set.can_be_operand.get().pretty() == "{1.0, 2.0, 3.0, 4.0}Ω"
+    assert continuous_set.can_be_operand.get().pretty() == "{5.0..10.0}Ω"
+    assert continuous_set_rel.can_be_operand.get().pretty() == "{5.0±0.5%}Ω"
+    assert disjoint_union.can_be_operand.get().pretty() == "{5.0..10.0, 15.0..20.0}Ω"
+
+
+def test_is_discrete_set():
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    from faebryk.library.Units import Dimensionless
+
+    dl_is_unit = Dimensionless.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
+    discrete_set = (
+        F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_singletons(values=[1, 2, 3, 4], unit=dl_is_unit)
+    )
+    assert discrete_set.get_numeric_set().is_discrete_set()
+
+    continuous_set = (
+        F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_min_max(min=0, max=10, unit=dl_is_unit)
+    )
+    assert not continuous_set.get_numeric_set().is_discrete_set()
+
+
 if __name__ == "__main__":
     from faebryk.library.Parameters import test_enum_param
 
@@ -1371,4 +1436,4 @@ if __name__ == "__main__":
 if __name__ == "__main__":
     import typer
 
-    typer.run(test_enum_param_domain_set)
+    typer.run(test_can_be_operand_pretty_print)
