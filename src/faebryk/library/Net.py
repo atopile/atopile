@@ -15,9 +15,9 @@ class Net(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
+    is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
     part_of = F.Electrical.MakeChild()
-
 
     # ----------------------------------------
     #                 functions
@@ -28,13 +28,12 @@ class Net(fabll.Node):
 
         # get all electricals connected to net
         for electrical in self.part_of.get()._is_interface.get().get_connected():
-
             # if those electricals have a is_lead trait, we're in buisness
             if is_lead := electrical.try_get_trait(F.Lead.is_lead):
-
                 # and if that is_lead has associated pads...
-                if has_associated_pads := is_lead.try_get_trait(F.Lead.has_associated_pads):
-
+                if has_associated_pads := is_lead.try_get_trait(
+                    F.Lead.has_associated_pads
+                ):
                     # add those pads to the set!
                     for is_pad in has_associated_pads.get_pads():
                         connected_pads.add(is_pad)
@@ -46,7 +45,6 @@ class Net(fabll.Node):
             return has_net_name.get_name()
         return None
 
-
     # ----------------------------------------
     #                WIP
     # ----------------------------------------
@@ -57,7 +55,6 @@ class Net(fabll.Node):
             for mif in self.part_of.get()._is_interface.get().get_connected()
             if (fp := mif.get_parent_of_type(F.Footprints.GenericFootprint)) is not None
         }
-
 
     def __repr__(self) -> str:
         up = super().__repr__()
@@ -77,5 +74,7 @@ class Net(fabll.Node):
         }
 
     def setup(self, net_name: str) -> "Net":
-        fabll.Traits.create_and_add_instance_to(self.part_of.get(), F.has_net_name).setup(name=net_name)
+        fabll.Traits.create_and_add_instance_to(
+            self.part_of.get(), F.has_net_name
+        ).setup(name=net_name)
         return self

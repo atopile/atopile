@@ -75,8 +75,10 @@ def test_electric_signal_parallel_pull_resistance():
 
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
-    ohm = F.Units.Ohm.bind_typegraph(tg=tg).create_instance(g=g).get_trait(
-        F.Units.is_unit
+    ohm = (
+        F.Units.Ohm.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .get_trait(F.Units.is_unit)
     )
     r1_value = (
         F.Literals.Numbers.bind_typegraph(tg=tg)
@@ -124,13 +126,23 @@ def test_electric_signal_parallel_pull_resistance():
 
     expected_resistance = (
         r1_value.op_invert(g=g, tg=tg)
-        .op_add_intervals(g=g, tg=tg, other=r2_value.op_invert(g=g, tg=tg))
-        .op_add_intervals(g=g, tg=tg, other=r3_value.op_invert(g=g, tg=tg))
+        .op_add_intervals(
+            r2_value.op_invert(g=g, tg=tg),
+            g=g,
+            tg=tg,
+        )
+        .op_add_intervals(
+            r3_value.op_invert(g=g, tg=tg),
+            g=g,
+            tg=tg,
+        )
     ).op_invert(g=g, tg=tg)
 
-    lit_trait = module.signal.get().pull_resistance.get_trait(
-        F.Parameters.is_parameter_operatable
-    ).try_get_subset_or_alias_literal()
+    lit_trait = (
+        module.signal.get()
+        .pull_resistance.get_trait(F.Parameters.is_parameter_operatable)
+        .try_get_subset_or_alias_literal()
+    )
     assert lit_trait is not None
     lit = fabll.Traits(lit_trait).get_obj(F.Literals.Numbers)
     assert lit.is_subset_of(g=g, tg=tg, other=expected_resistance)
@@ -142,7 +154,17 @@ def test_electric_signal_single_pull_resistance():
 
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
-    r1_value = F.Literals.Numbers.bind_typegraph(tg=tg).create_instance(g=g).setup_from_center_rel(center=10 * 1e3, rel=0.02, unit=F.Units.Ohm.bind_typegraph(tg=tg).create_instance(g=g).get_trait(F.Units.is_unit))
+    r1_value = (
+        F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_center_rel(
+            center=10 * 1e3,
+            rel=0.02,
+            unit=F.Units.Ohm.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .get_trait(F.Units.is_unit),
+        )
+    )
 
     class TestModule(fabll.Node):
         signal = F.ElectricSignal.MakeChild()
@@ -159,11 +181,15 @@ def test_electric_signal_single_pull_resistance():
     )
 
     # Connect signal reference to the module power rail
-    module.signal.get().reference.get()._is_interface.get().connect_to(module.power.get())
+    module.signal.get().reference.get()._is_interface.get().connect_to(
+        module.power.get()
+    )
 
     # Connect the resistor between the signal line and reference HV
     module.signal.get().line.get()._is_interface.get().connect_to(terminals[0])
-    terminals[1]._is_interface.get().connect_to(module.signal.get().reference.get().hv.get())
+    terminals[1]._is_interface.get().connect_to(
+        module.signal.get().reference.get().hv.get()
+    )
 
     lit_trait = (
         module.signal.get()

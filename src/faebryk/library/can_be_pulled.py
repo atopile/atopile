@@ -150,7 +150,7 @@ class can_be_pulled(fabll.Node):
                 inverse_sum = (
                     inv
                     if inverse_sum is None
-                    else inverse_sum.op_add_intervals(g=self.g, tg=self.tg, other=inv)
+                    else inverse_sum.op_add_intervals(inv, g=self.g, tg=self.tg)
                 )  # type: ignore[arg-type]
 
             if inverse_sum is None:

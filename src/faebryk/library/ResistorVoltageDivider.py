@@ -19,6 +19,8 @@ class ResistorVoltageDivider(fabll.Node):
     output.reference.lv ~ node[2]
     """
 
+    is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
     # External interfaces
     power = F.ElectricPower.MakeChild()
     output = F.ElectricSignal.MakeChild()
@@ -74,7 +76,11 @@ class ResistorVoltageDivider(fabll.Node):
     #     max_current.alias_is(abs(v_in) / r_total)
     #     ratio.alias_is(r_bottom / r_total)
 
-    def on_obj_set(self):
-        fabll.Traits.create_and_add_instance_to(
-            node=self.output.get().line.get(), trait=F.has_net_name_suggestion
-        ).setup(name="VDIV_OUTPUT", level=F.has_net_name_suggestion.Level.SUGGESTED)
+    output.add_dependant(
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="VDIV_OUTPUT", level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            [output, "line"],
+        )
+    )
