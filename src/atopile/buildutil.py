@@ -38,7 +38,10 @@ def build(app: fabll.Node) -> None:
         solver = DefaultSolver()
 
     # Convert Path object to string before passing to setup
-    pcb = F.PCB.bind_typegraph(app.tg).create_instance(g=app.g).setup(str(config.build.paths.layout))
+    pcb = F.PCB.bind_typegraph(app.tg).create_instance(g=app.g).setup(
+        path=str(config.build.paths.layout),
+        app=app
+    )
 
     targets = {default_target.name} | set(config.build.targets) - set(
         config.build.exclude_targets

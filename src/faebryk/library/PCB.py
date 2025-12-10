@@ -4,9 +4,10 @@
 import ctypes
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, ClassVar, Self
 
 import faebryk.core.node as fabll
+from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 import faebryk.library._F as F
 
 # from faebryk.core.reference import reference
@@ -16,9 +17,6 @@ from faebryk.libs.kicad.fileformats import kicad
 from faebryk.libs.util import find, groupby, md_list, not_none
 
 logger = logging.getLogger(__name__)
-
-if TYPE_CHECKING:
-    from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
 
 class PCB(fabll.Node):
@@ -32,40 +30,21 @@ class PCB(fabll.Node):
     transformer_ = F.Parameters.StringParameter.MakeChild()
     app_ = F.Collections.Pointer.MakeChild()
 
-    @classmethod
-    def MakeChild(
-        cls,
-        path: Path,
-        pcb_file: kicad.pcb.PcbFile,
-        transformer: "PCB_Transformer",
-        app: fabll.Node,
-    ) -> fabll._ChildField[Self]:
-        out = fabll._ChildField(cls)
-        out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.path_], str(path))
-        )
-        out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.pcb_file_], str(id(pcb_file))
-            )
-        )
-        out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.transformer_], str(id(transformer))
-            )
-        )
-        out.add_dependant(F.Collections.Pointer.MakeEdge([out, cls.app_], app))
-        return out
+    _transformer_registry: ClassVar[dict[int, "PCB_Transformer"]] = {}
 
-    def setup(self, path: str) -> Self:
+
+    def setup(self, path: str, app: fabll.Node) -> Self:
+        self.app_.get().point(app)
         self.path_.get().alias_to_single(path)
         return self
 
     def run_transformer(self) -> Self:
+        from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
         pcbfile = kicad.loads(kicad.pcb.PcbFile, self.path)
         self.pcb_file_.get().alias_to_single(value=str(id(pcbfile)))
         transformer = PCB_Transformer(pcbfile.kicad_pcb, self.app)
         self.transformer_.get().alias_to_single(value=str(id(transformer)))
+        self._transformer_registry[id[transformer]] = transformer
         return self
 
     @property

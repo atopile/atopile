@@ -36,8 +36,6 @@ from faebryk.library.SerializableMetadata import SerializableMetadata
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.library.has_net_name import has_net_name
-# Alias for has_net_name used by net naming algorithm
-has_overriden_name = has_net_name
 from faebryk.library.has_net_name_suggestion import has_net_name_suggestion
 from faebryk.library.has_package_requirements import has_package_requirements
 from faebryk.library.has_part_picked import has_part_picked
@@ -137,7 +135,6 @@ __all__ = [
     "has_datasheet",
     "has_designator_prefix",
     "has_net_name",
-    "has_overriden_name",
     "has_net_name_suggestion",
     "has_package_requirements",
     "has_part_picked",

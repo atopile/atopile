@@ -254,7 +254,7 @@ def pick_parts(
             "Failed to pick parts for some modules",
             [UserPickError(str(e)) for e in iter_leaf_exceptions(ex)],
         ) from ex
-    save_part_info_to_pcb(app.g)
+    save_part_info_to_pcb(app.g, app.tg)
 
 
 @muster.register(
