@@ -1983,11 +1983,11 @@ class is_interface(Node):
     """
 
     @staticmethod
-    def group_into_buses(
-        nodes: set["Node[Any]"],
-    ) -> dict["Node[Any]", set["Node[Any]"]]:
+    def group_into_buses[N: NodeT](
+        nodes: set[N],
+    ) -> dict[N, set[N]]:
         remaining = set(nodes)
-        buses: dict["Node[Any]", set["Node[Any]"]] = {}
+        buses: dict[N, set[N]] = {}
 
         while remaining:
             interface = remaining.pop()

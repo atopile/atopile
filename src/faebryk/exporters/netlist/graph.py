@@ -143,9 +143,9 @@ def _name_shittiness(name: str | None) -> float:
 
 
 @once
-def _get_stable_node_name(mif: fabll.Node) -> str:
+def _get_stable_node_name(node: fabll.Node) -> str:
     """Get a stable hierarchical name for a module interface."""
-    return ".".join([p_name for p, p_name in mif.get_hierarchy() if p.get_parent()])
+    return ".".join([p_name for p, p_name in node.get_hierarchy() if p.get_parent()])
 
 
 def _get_net_stable_key(net: F.Net) -> tuple[str, ...]:

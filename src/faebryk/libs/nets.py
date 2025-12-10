@@ -3,6 +3,7 @@ from itertools import pairwise
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.libs.util import once
 
 
 def bind_fbrk_nets_to_kicad_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView):
@@ -53,33 +54,58 @@ def bind_fbrk_nets_to_kicad_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView):
 
 def bind_electricals_to_fbrk_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView) -> set[F.Net]:
     """
-    Runs during:
-    - prepare-nets
-
-    Groups electricals into buses, assigns net name, and returns nets
+    Groups electricals into buses, and create a new net if there isn't one already
 
     TODO
     - there's probably a sorting step missing here
-    - should consider naming and stuff
     """
     fbrk_nets: set[F.Net] = set()
-    buses = fabll.is_interface.group_into_buses(F.Electrical.bind_typegraph(tg).get_instances(g=g))
+    electricals_filtered: set[F.Electrical] = set()
 
-    for bus, members in buses.items():
+    # filter for electricals that have is_lead -> has_associated_pads trait structure
+    for electrical in F.Electrical.bind_typegraph(tg).get_instances(g=g):
+        # if is_lead := electrical.try_get_trait(F.Lead.is_lead):
+        #     if is_lead.has_trait(F.Lead.has_associated_pads):
+        #         electricals_filtered.add(electrical)
+        electricals_filtered.add(electrical)
+
+    # generate buses
+    buses = fabll.is_interface.group_into_buses(electricals_filtered)
+
+    for bus, bus_members in buses.items():
+        bus_members = sorted(bus_members, key=_get_stable_node_name)
+
+        # should do some conflict resolution if there's a net already somewhere on this bus
+        for member in bus_members:
+            pass
+
+        # else create a new net!!!
         fbrk_net = F.Net.bind_typegraph(tg).create_instance(g=g)
-        for member in members:
+
+        # probably want to make all the connections again just incase? or is it overkill...
+        # is there connection de-duplication?
+        for member in bus_members:
             member.get_trait(fabll.is_interface).connect_to(fbrk_net.part_of.get())
         fbrk_nets.add(fbrk_net)
 
-    return fbrk_nets
+
+    return sorted(fbrk_nets, key=_get_stable_node_name)
 
 
-
+@once
+def _get_stable_node_name(node: fabll.Node) -> str:
+    """Get a stable hierarchical name for a module interface."""
+    return ".".join([p_name for p, p_name in node.get_hierarchy() if p.get_parent()])
 
 
 def test_bind_nets_from_electricals(capsys):
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
+
+    #TODO fix this test, it doesn't add the is_lead or has_associated_pads traits yet
+    class TestModule(fabll.Node):
+        elec = F.Electrical.MakeChild()
+        _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
     bus_1 = [F.Electrical.bind_typegraph(tg).create_instance(g=g) for _ in range(2)]
     for left, right in pairwise(bus_1):
@@ -89,8 +115,13 @@ def test_bind_nets_from_electricals(capsys):
     for left, right in pairwise(bus_2):
         left._is_interface.get().connect_to(right)
 
+    bus_3 = [TestModule.bind_typegraph(tg).create_instance(g=g) for _ in range(3)]
+    for left, right in pairwise(bus_3):
+        left.elec.get()._is_interface.get().connect_to(right.elec.get())
+
     nets = bind_electricals_to_fbrk_nets(tg, g)
 
     with capsys.disabled():
-        print("")
-        print(nets)
+        print("hey")
+        for net in nets:
+            print(f"Net: {net.get_hierarchy()} - Len: {len(net.part_of.get()._is_interface.get().get_connected())}")
