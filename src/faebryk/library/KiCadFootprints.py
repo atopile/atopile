@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import ctypes
+from pathlib import Path
 from typing import ClassVar, Self
 
 import faebryk.core.faebrykpy as fbrk
@@ -202,124 +203,124 @@ class has_associated_kicad_library_footprint(fabll.Node):
     """
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
-    # library_name_ = F.Parameters.StringParameter.MakeChild()
-    # kicad_footprint_file_path_ = F.Parameters.StringParameter.MakeChild()
-    # pad_names_ = F.Parameters.StringParameter.MakeChild()
-    # kicad_identifier_ = F.Parameters.StringParameter.MakeChild()
+    library_name_ = F.Parameters.StringParameter.MakeChild()
+    kicad_footprint_file_path_ = F.Parameters.StringParameter.MakeChild()
+    pad_names_ = F.Parameters.StringParameter.MakeChild()
+    kicad_identifier_ = F.Parameters.StringParameter.MakeChild()
 
-    # @property
-    # def library_name(self) -> str:
-    #     return self.library_name_.get().force_extract_literal().get_values()[0]
+    @property
+    def library_name(self) -> str:
+        return self.library_name_.get().force_extract_literal().get_values()[0]
 
-    # @property
-    # def kicad_library_id(self) -> str:
-    #     return self.kicad_identifier_.get().force_extract_literal().get_values()[0]
+    @property
+    def kicad_library_id(self) -> str:
+        return self.kicad_identifier_.get().force_extract_literal().get_values()[0]
 
-    # @property
-    # def kicad_footprint_file_path(self) -> str:
-    #     return (
-    #         self.kicad_footprint_file_path_.get()
-    #         .force_extract_literal()
-    #         .get_values()[0]
-    #     )
+    @property
+    def kicad_footprint_file_path(self) -> str:
+        return (
+            self.kicad_footprint_file_path_.get()
+            .force_extract_literal()
+            .get_values()[0]
+        )
 
-    # @property
-    # def pad_names(self) -> list[str]:
-    #     return self.pad_names_.get().force_extract_literal().get_values()
+    @property
+    def pad_names(self) -> list[str]:
+        return self.pad_names_.get().force_extract_literal().get_values()
 
-    # @staticmethod
-    # def _extract_pad_names_from_kicad_footprint_file(
-    #     kicad_footprint_file: "kicad.footprint.FootprintFile",
-    # ) -> list[str]:
-    #     """
-    #     Extract the pad names from a KiCad footprint file if the pad is on
-    #     a copper layer
-    #     """
+    @staticmethod
+    def _extract_pad_names_from_kicad_footprint_file(
+        kicad_footprint_file: "kicad.footprint.FootprintFile",
+    ) -> list[str]:
+        """
+        Extract the pad names from a KiCad footprint file if the pad is on
+        a copper layer
+        """
 
-    #     return [
-    #         pad.name
-    #         for pad in kicad_footprint_file.footprint.pads
-    #         if any("Cu" in layer for layer in pad.layers)
-    #     ]
+        return [
+            pad.name
+            for pad in kicad_footprint_file.footprint.pads
+            if any("Cu" in layer for layer in pad.layers)
+        ]
 
-    # @staticmethod
-    # def _create_kicad_identifier(
-    #     kicad_footprint_file: "kicad.footprint.FootprintFile", library_name: str | None
-    # ) -> tuple[str, str]:
-    #     if ":" in kicad_footprint_file.footprint.name:
-    #         fp_lib_name = kicad_footprint_file.footprint.name.split(":")[0]
-    #         if library_name is not None and library_name != fp_lib_name:
-    #             raise ValueError(
-    #                 f"lib_name must be empty or same as fp lib name, if fp has libname:"
-    #                 f" fp_lib_name: {fp_lib_name}, library_name: {library_name}"
-    #             )
-    #         library_name = fp_lib_name
-    #     else:
-    #         if library_name is None:
-    #             raise ValueError(
-    #                 "lib_name must be specified if fp has no lib prefix: "
-    #                 f"{kicad_footprint_file.footprint.name}"
-    #             )
-    #     assert library_name is not None
-    #     return (
-    #         f"{library_name}:{kicad.fp_get_base_name(kicad_footprint_file.footprint)}",
-    #         library_name,
-    #     )
+    @staticmethod
+    def _create_kicad_identifier(
+        kicad_footprint_file: "kicad.footprint.FootprintFile", library_name: str | None
+    ) -> tuple[str, str]:
+        if ":" in kicad_footprint_file.footprint.name:
+            fp_lib_name = kicad_footprint_file.footprint.name.split(":")[0]
+            if library_name is not None and library_name != fp_lib_name:
+                raise ValueError(
+                    f"lib_name must be empty or same as fp lib name, if fp has libname:"
+                    f" fp_lib_name: {fp_lib_name}, library_name: {library_name}"
+                )
+            library_name = fp_lib_name
+        else:
+            if library_name is None:
+                raise ValueError(
+                    "lib_name must be specified if fp has no lib prefix: "
+                    f"{kicad_footprint_file.footprint.name}"
+                )
+        assert library_name is not None
+        return (
+            f"{library_name}:{kicad.fp_get_base_name(kicad_footprint_file.footprint)}",
+            library_name,
+        )
 
-    # @classmethod
-    # def MakeChild(
-    #     cls, library_name: str | None, kicad_footprint_file_path: str
-    # ) -> fabll._ChildField[Self]:
-    #     out = fabll._ChildField(cls)
-    #     fp_file = kicad.loads(
-    #         kicad.footprint.FootprintFile, Path(kicad_footprint_file_path)
-    #     )
-    #     kicad_identifier, library_name = cls._create_kicad_identifier(
-    #         fp_file, library_name
-    #     )
-    #     out.add_dependant(
-    #         F.Literals.Strings.MakeChild_ConstrainToLiteral(
-    #             [out, cls.kicad_identifier_], kicad_identifier
-    #         )
-    #     )
-    #     pad_names = cls._extract_pad_names_from_kicad_footprint_file(fp_file)
-    #     out.add_dependant(
-    #         F.Literals.Strings.MakeChild_ConstrainToLiteral(
-    #             [out, cls.pad_names_], *pad_names
-    #         )
-    #     )
-    #     out.add_dependant(
-    #         F.Literals.Strings.MakeChild_ConstrainToLiteral(
-    #             [out, cls.library_name_], library_name
-    #         )
-    #     )
-    #     out.add_dependant(
-    #         F.Literals.Strings.MakeChild_ConstrainToLiteral(
-    #             [out, cls.kicad_footprint_file_path_], kicad_footprint_file_path
-    #         )
-    #     )
-    #     return out
+    @classmethod
+    def MakeChild(
+        cls, library_name: str | None, kicad_footprint_file_path: str
+    ) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        fp_file = kicad.loads(
+            kicad.footprint.FootprintFile, Path(kicad_footprint_file_path)
+        )
+        kicad_identifier, library_name = cls._create_kicad_identifier(
+            fp_file, library_name
+        )
+        out.add_dependant(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                [out, cls.kicad_identifier_], kicad_identifier
+            )
+        )
+        pad_names = cls._extract_pad_names_from_kicad_footprint_file(fp_file)
+        out.add_dependant(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                [out, cls.pad_names_], *pad_names
+            )
+        )
+        out.add_dependant(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                [out, cls.library_name_], library_name
+            )
+        )
+        out.add_dependant(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                [out, cls.kicad_footprint_file_path_], kicad_footprint_file_path
+            )
+        )
+        return out
 
-    # def setup(
-    #     self,
-    #     kicad_footprint_file_path: str,
-    #     library_name: str | None,
-    # ) -> Self:
-    #     self.kicad_footprint_file_path_.get().alias_to_literal(
-    #         kicad_footprint_file_path
-    #     )
+    def setup(
+        self,
+        kicad_footprint_file_path: str,
+        library_name: str | None,
+    ) -> Self:
+        self.kicad_footprint_file_path_.get().alias_to_literal(
+            kicad_footprint_file_path
+        )
 
-    #     fp_file = kicad.loads(
-    #         kicad.footprint.FootprintFile, Path(kicad_footprint_file_path)
-    #     )
-    #     pad_names = self._extract_pad_names_from_kicad_footprint_file(fp_file)
-    #     self.pad_names_.get().alias_to_literal(*pad_names)
-    #     kicad_identifier, library_name = self._create_kicad_identifier(
-    #         fp_file, library_name
-    #     )
-    #     self.kicad_identifier_.get().alias_to_literal(kicad_identifier)
-    #     self.library_name_.get().alias_to_literal(library_name)
-    #     return self
+        fp_file = kicad.loads(
+            kicad.footprint.FootprintFile, Path(kicad_footprint_file_path)
+        )
+        pad_names = self._extract_pad_names_from_kicad_footprint_file(fp_file)
+        self.pad_names_.get().alias_to_literal(*pad_names)
+        kicad_identifier, library_name = self._create_kicad_identifier(
+            fp_file, library_name
+        )
+        self.kicad_identifier_.get().alias_to_literal(kicad_identifier)
+        self.library_name_.get().alias_to_literal(library_name)
+        return self
 
 
 class GenericKiCadFootprint(fabll.Node):

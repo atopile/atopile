@@ -131,7 +131,9 @@ class GenericFootprint(fabll.Node):
     pads_ = F.Collections.PointerSet.MakeChild()
 
     def get_pads(self) -> list[is_pad]:
-        return [pad.cast(is_pad) for pad in self.pads_.get().as_list()]
+        pads = [pad.cast(is_pad) for pad in self.pads_.get().as_list()]
+        print([p.pad_name for p in pads])
+        return pads
 
     @classmethod
     def MakeChild(cls, pads: list[tuple[str, str]]) -> fabll._ChildField[Self]:

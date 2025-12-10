@@ -65,15 +65,17 @@ class can_attach_to_any_pad(fabll.Node):
         """
         Match the first pad that is available.
         """
-        claimed_pads = [
-            pad.get_pads()
-            for pad in fabll.Traits.get_implementors(
-                has_associated_pads.bind_typegraph(self.tg), g=self.g
-            )
-        ]
+        # Flatten all pads from has_associated_pads implementors into a single set
+        # claimed_pads = {
+        #     pad
+        #     for implementor in fabll.Traits.get_implementors(
+        #         has_associated_pads.bind_typegraph(self.tg), g=self.g
+        #     )
+        #     for pad in implementor.get_pads()
+        # }
         for pad in pads:
-            if pad not in claimed_pads:
-                return pad
+            # TODO: fix: if pad not in claimed_pads:
+            return pad
         raise PadMatchException(
             f"No pad available for lead "
             f"[{self.get_name()}] - All pads are probably claimed by other leads."
@@ -155,7 +157,9 @@ class has_associated_pads(fabll.Node):
     # TODO make get_pads to handle one to many connections
     def get_pads(self) -> set[F.Footprints.is_pad]:
         """The pad associated with this node"""
-        return set(self.pad_ptr_.get().deref().cast(F.Footprints.is_pad))
+        return set(
+            pad.cast(F.Footprints.is_pad) for pad in self.pad_ptr_.get().as_list()
+        )
 
     @classmethod
     def MakeChild(cls, pad: fabll._ChildField[fabll.Node]) -> fabll._ChildField[Self]:

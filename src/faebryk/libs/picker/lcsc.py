@@ -607,10 +607,13 @@ def attach(
             raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
 
         if check_only:
+            # don't attach or create any footprint related things if we're only checking
+            # if the pad-lead combo's are valid
             return
 
         if not component.has_trait(F.Footprints.has_associated_footprint):
-            # create and add a footprint node to the component
+            # we need to create and add a footprint node to the component if it
+            # doesn't exist yet
             fp = F.Footprints.GenericFootprint.bind_typegraph_from_instance(
                 instance=component.instance
             ).create_instance(g=component.instance.g())
@@ -637,31 +640,16 @@ def attach(
         ).get_footprint()
 
         if not footprint.has_trait(
-            F.KiCadFootprints.has_associated_kicad_pcb_footprint
+            F.KiCadFootprints.has_associated_kicad_library_footprint
         ):
-            # create a kicad footprint node
-            kfp = F.KiCadFootprints.GenericKiCadFootprint.bind_typegraph_from_instance(
-                instance=footprint.instance
-            ).create_instance(g=component.instance.g())
+            # link the kicad library footprint to the fabll footprint
             fabll.Traits.create_and_add_instance_to(
-                node=kfp, trait=F.KiCadFootprints.has_associated_kicad_library_footprint
+                node=footprint,
+                trait=F.KiCadFootprints.has_associated_kicad_library_footprint,
             ).setup(
                 library_name=apart.path.name,
                 kicad_footprint_file_path=str(apart.fp_path),
             )
-            fabll.Traits.create_and_add_instance_to(
-                node=footprint,
-                trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint,
-            ).setup(kfp)
-
-        kicad_footprint = footprint.get_trait(
-            F.KiCadFootprints.has_associated_kicad_pcb_footprint
-        ).get_footprint()
-
-        # link the kicad footprint node to the footprint node
-        fabll.Traits.create_and_add_instance_to(
-            footprint, F.KiCadFootprints.has_associated_kicad_pcb_footprint
-        ).setup(kicad_footprint)
 
     # 3D model done by kicad (in fp)
 
@@ -739,25 +727,18 @@ def test_attach_resistor():
     # After attach: footprint should now be linked
     footprint = associated_footprint.get_footprint()
 
-    # there should also be a kicad footprint linked
-    kicad_footprint = footprint.get_trait(
-        F.KiCadFootprints.has_associated_kicad_pcb_footprint
-    ).get_footprint()
-    generated_from_kicad_footprint_file_t = kicad_footprint.get_trait(
+    # there should also be a kicad library footprint linked
+    kicad_library_footprint = footprint.try_get_trait(
         F.KiCadFootprints.has_associated_kicad_library_footprint
     )
+    assert kicad_library_footprint is not None
 
-    assert (
-        generated_from_kicad_footprint_file_t.kicad_library_id
-        == "UNI_ROYAL_0603WAF1001T5E:R0603"
-    )
-    assert (
-        generated_from_kicad_footprint_file_t.library_name == "UNI_ROYAL_0603WAF1001T5E"
-    )
-    assert generated_from_kicad_footprint_file_t.pad_names == ["2", "1"]
+    assert kicad_library_footprint.kicad_library_id == "UNI_ROYAL_0603WAF1001T5E:R0603"
+    assert kicad_library_footprint.library_name == "UNI_ROYAL_0603WAF1001T5E"
+    assert kicad_library_footprint.pad_names == ["2", "1"]
     assert (
         "src/parts/UNI_ROYAL_0603WAF1001T5E/R0603.kicad_mod"
-        in generated_from_kicad_footprint_file_t.kicad_footprint_file_path
+        in kicad_library_footprint.kicad_footprint_file_path
     )
 
 
@@ -786,25 +767,19 @@ def test_attach_mosfet():
     # TODO: check footrpint pad names assert footrpint.pad_names == ["G", "S", "D"]
 
     # there should also be a kicad footprint linked
-    kicad_footprint = footprint.get_trait(
-        F.KiCadFootprints.has_associated_kicad_pcb_footprint
-    ).get_footprint()
-    generated_from_kicad_footprint_file_t = kicad_footprint.get_trait(
+    kicad_library_footprint = footprint.get_trait(
         F.KiCadFootprints.has_associated_kicad_library_footprint
     )
 
     assert (
-        generated_from_kicad_footprint_file_t.kicad_library_id
+        kicad_library_footprint.kicad_library_id
         == "Changjiang_Electronics_Tech_2N7002:SOT-23-3_L2.9-W1.3-P1.90-LS2.4-BR"
     )
-    assert (
-        generated_from_kicad_footprint_file_t.library_name
-        == "Changjiang_Electronics_Tech_2N7002"
-    )
-    assert generated_from_kicad_footprint_file_t.pad_names == ["1", "2", "3"]
+    assert kicad_library_footprint.library_name == "Changjiang_Electronics_Tech_2N7002"
+    assert kicad_library_footprint.pad_names == ["1", "2", "3"]
     assert (
         "src/parts/Changjiang_Electronics_Tech_2N7002/SOT-23-3_L2.9-W1.3-P1.90-LS2.4-BR.kicad_mod"
-        in generated_from_kicad_footprint_file_t.kicad_footprint_file_path
+        in kicad_library_footprint.kicad_footprint_file_path
     )
 
 
@@ -834,13 +809,10 @@ def test_attach_failure():
 
     footprint = associated_footprint.get_footprint()
 
-    kicad_footprint = footprint.get_trait(
-        F.KiCadFootprints.has_associated_kicad_pcb_footprint
-    ).get_footprint()
-    generated_from_kicad_footprint_file_t = kicad_footprint.get_trait(
+    kicad_library_footprint = footprint.get_trait(
         F.KiCadFootprints.has_associated_kicad_library_footprint
     )
-    assert generated_from_kicad_footprint_file_t.pad_names == ["1", "2", "3"]
+    assert kicad_library_footprint.pad_names == ["1", "2", "3"]
 
 
 """
