@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
@@ -32,6 +33,8 @@ from faebryk.core.zig.gen.graph.graph import (  # type: ignore[import-untyped]
     GraphView,
 )
 from faebryk.libs.util import cast_assert, not_none
+
+logger = logging.getLogger(__name__)
 
 STDLIB_ALLOWLIST = {
     "Resistor": F.Resistor,
@@ -104,7 +107,7 @@ class _ScopeStack:
 
         current_state.symbols[symbol.name] = symbol
 
-        print(f"Added symbol {symbol} to scope")
+        logger.info(f"Added symbol {symbol} to scope")
 
     def add_field(self, path: FieldPath) -> None:
         current_state = self.current
@@ -113,7 +116,7 @@ class _ScopeStack:
 
         current_state.fields.add(key)
 
-        print(f"Added field {key} to scope")
+        logger.info(f"Added field {key} to scope")
 
     def has_field(self, path: FieldPath) -> bool:
         return any(str(path) in state.fields for state in reversed(self.stack))
@@ -419,7 +422,7 @@ class ASTVisitor:
         # TODO: less magic dispatch
 
         node_type = cast_assert(str, node.get_type_name())
-        print(f"Visiting node of type {node_type}")
+        logger.info(f"Visiting node of type {node_type}")
 
         try:
             handler = getattr(self, f"visit_{node_type}")
@@ -644,7 +647,7 @@ class ASTVisitor:
         target_path = self.visit_FieldRef(node.get_target())
         assignable_t = node.assignable.get().get_value()
         assignable = self.visit(fabll.Traits(assignable_t).get_obj_raw())
-        print(f"Assignable: {assignable}")
+        logger.info(f"Assignable: {assignable}")
 
         parent_path: FieldPath | None = None
         parent_reference: BoundNode | None = None
