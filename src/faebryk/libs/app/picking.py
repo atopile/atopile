@@ -45,7 +45,7 @@ def load_part_info_from_pcb(G: graph.GraphView):
         assert F.SerializableMetadata.get_properties(node), "Should load when linking"
 
         part_props = [Properties.lcsc, Properties.manufacturer, Properties.partno]
-        fp = trait.get_fp()
+        fp = trait.get_footprint()
         fp_props = {
             k.value: v
             for k in part_props

@@ -61,7 +61,7 @@ class has_associated_kicad_pcb_footprint(fabll.Node):
         self.transformer_.get().alias_to_single(value=str(id(transformer)))
         return self
 
-    def get_fp(self) -> KiCadPCBFootprint:
+    def get_footprint(self) -> KiCadPCBFootprint:
         footprint_id = int(
             self.footprint_.get().force_extract_literal().get_values()[0]
         )
@@ -357,7 +357,7 @@ def test_has_kicad_pcb_footprint_trait():
     trait = module.try_get_trait(has_associated_kicad_pcb_footprint)
     assert trait is not None
     assert trait.get_transformer() is transformer
-    kicad_pcb_fp = trait.get_fp()
+    kicad_pcb_fp = trait.get_footprint()
     assert kicad_pcb_fp is footprint
 
     assert kicad_pcb_fp.name == footprint.name

@@ -469,7 +469,7 @@ class PCB_Transformer:
     def get_kicad_pcb_fp(cmp: fabll.Node) -> KiCadPCBFootprint:
         return cmp.get_trait(
             F.KiCadFootprints.has_associated_kicad_pcb_footprint
-        ).get_fp()
+        ).get_footprint()
 
     def get_all_kicad_pcb_footprints(
         self,
@@ -479,7 +479,7 @@ class PCB_Transformer:
                 cmp,
                 cmp.get_trait(
                     F.KiCadFootprints.has_associated_kicad_pcb_footprint
-                ).get_fp(),
+                ).get_footprint(),
             )
             for cmp in fabll.Traits.get_implementor_objects(
                 F.KiCadFootprints.has_associated_kicad_pcb_footprint.bind_typegraph(

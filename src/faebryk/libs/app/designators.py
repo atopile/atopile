@@ -112,7 +112,7 @@ def load_designators(tg: fbrk.TypeGraph, attach: bool = False) -> dict[fabll.Nod
     def _get_pcb_designator(
         fp_trait: F.KiCadFootprints.has_associated_kicad_pcb_footprint,
     ):
-        fp = fp_trait.get_fp()
+        fp = fp_trait.get_footprint()
         if not fp.name:
             return None
         return _get_reference(fp)

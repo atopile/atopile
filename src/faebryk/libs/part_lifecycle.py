@@ -555,7 +555,7 @@ class PartLifecycle:
             ## Update existing footprint
             if not new_fp:
                 assert pcb_fp_t is not None
-                pcb_fp = pcb_fp_t.get_fp()
+                pcb_fp = pcb_fp_t.get_footprint()
 
                 # Copy the data structure so if we later mutate it we don't
                 # end up w/ those changes everywhere
