@@ -330,15 +330,6 @@ class has_associated_kicad_library_footprint(fabll.Node):
         return self
 
 
-class GenericKiCadFootprint(fabll.Node):
-    """
-    REPLACE WITH KiCad PCB Footprint node with has_associated_kicad_pcb_footprint trait
-    """
-
-    # is_kicad_footprint_ = fabll.Traits.MakeEdge(is_kicad_footprint.MakeChild(""))
-    # kicad_pads_ = F.Collections.PointerSet.MakeChild()
-
-
 def setup_pcb_transformer_test():
     from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
     from faebryk.libs.test.fileformats import PCBFILE

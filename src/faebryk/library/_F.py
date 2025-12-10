@@ -28,7 +28,6 @@ from faebryk.library.is_lazy import is_lazy
 from faebryk.library.is_pickable import is_pickable
 import faebryk.library.Literals as Literals
 from faebryk.library.can_bridge import can_bridge
-from faebryk.library.has_linked_pad import has_linked_pad
 import faebryk.library.Parameters as Parameters
 from faebryk.library.can_bridge_by_name import can_bridge_by_name
 import faebryk.library.Expressions as Expressions
@@ -56,7 +55,6 @@ from faebryk.library.PCB import PCB
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Filter import Filter
 import faebryk.library.Lead as Lead
-from faebryk.library.Pad import Pad
 from faebryk.library.Symbol import Symbol
 from faebryk.library.XtalIF import XtalIF
 from faebryk.library.has_explicit_part import has_explicit_part
@@ -129,7 +127,6 @@ __all__ = [
     "is_pickable",
     "Literals",
     "can_bridge",
-    "has_linked_pad",
     "Parameters",
     "can_bridge_by_name",
     "Expressions",
@@ -157,7 +154,6 @@ __all__ = [
     "ElectricPower",
     "Filter",
     "Lead",
-    "Pad",
     "Symbol",
     "XtalIF",
     "has_explicit_part",
