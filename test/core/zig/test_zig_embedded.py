@@ -1,7 +1,7 @@
 import itertools
 import re
-import shutil
 import subprocess
+import sys
 from collections.abc import Generator
 from pathlib import Path
 
@@ -9,28 +9,9 @@ import pytest
 
 from faebryk.libs.util import repo_root
 
-
-def get_zig_executable() -> str:
-    """Find the zig executable, either from PATH or from the ziglang package."""
-    # First check if zig is in PATH
-    if zig_path := shutil.which("zig"):
-        return zig_path
-
-    # Try to get zig from the ziglang Python package
-    try:
-        import ziglang
-
-        return str(Path(ziglang.__file__).parent / "zig")
-    except ImportError:
-        pass
-
-    raise RuntimeError(
-        "zig compiler not found. "
-        "Ensure 'zig' is in PATH or install the 'ziglang' Python package."
-    )
-
-
-ZIG_EXECUTABLE = get_zig_executable()
+# Use the ziglang Python package to ensure we use the pinned version (0.14.1)
+# This is more reliable than searching PATH where a different version might exist
+ZIG_COMMAND = [sys.executable, "-m", "ziglang"]
 
 ZIG_SRC_DIR = repo_root() / "src" / "faebryk" / "core" / "zig"
 
@@ -74,10 +55,10 @@ def build_zig_test_command(zig_file: Path, test_filter: str | None = None) -> li
             imports.append(module_name)
 
     if not imports:
-        cmd = [ZIG_EXECUTABLE, "test", str(rel_path)]
+        cmd = [*ZIG_COMMAND, "test", str(rel_path)]
     else:
         cmd = [
-            ZIG_EXECUTABLE,
+            *ZIG_COMMAND,
             "test",
             *itertools.chain.from_iterable(["--dep", dep] for dep in imports),
             f"-Mroot={rel_path}",
