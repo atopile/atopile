@@ -76,7 +76,7 @@ def make_params_for_type(module: fabll.Node) -> type:
         ),
         *[
             (param.get_name(), ApiParamT, SerializableField())
-            for param in pickable_trait.params
+            for param in pickable_trait.get_params()
         ],
     ]
 
@@ -193,11 +193,11 @@ class Component:
 
         return {k: deserialize(k, v) for k, v in self.attributes.items()}
 
-    def attach(self, module: fabll.Node, qty: int = 1):
+    def attach(self, module: F.is_pickable, qty: int = 1):
         lcsc_attach(module, self.lcsc_display)
 
         fabll.Traits.create_and_add_instance_to(
-            node=module, trait=F.has_part_picked
+            node=module.get_pickable_node(), trait=F.has_part_picked
         ).setup(
             PickedPartLCSC(
                 manufacturer=self.manufacturer_name,

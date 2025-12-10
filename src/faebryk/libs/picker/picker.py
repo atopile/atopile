@@ -2,60 +2,35 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from abc import ABC, abstractmethod
-from collections import defaultdict
-from dataclasses import dataclass
 from textwrap import indent
 from typing import TYPE_CHECKING, Iterable
 
-import faebryk.core.faebrykpy as fbrk
-import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-
-# TODO(zig-migration): `Graph` is currently an alias via Python.
-# Consider migrating call sites to Zig GraphView/TypeGraph directly.
-from faebryk.core.node import Graph
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
-from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral
+from faebryk.core.solver.utils import Contradiction
+from faebryk.libs.picker.picker_base import PickedPart, PickSupplier
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     Advancable,
     ConfigFlag,
     EquivalenceClasses,
-    KeyErrorAmbiguous,
-    KeyErrorNotFound,
     Tree,
     debug_perf,
     indented_container,
+    not_none,
     partition,
-    try_or,
-    unique,
 )
 
 if TYPE_CHECKING:
     from faebryk.libs.picker.api.models import Component
-    from faebryk.libs.picker.localpick import PickerOption
 
+# Re-export for backwards compatibility
+__all__ = ["PickSupplier", "PickedPart", "PickError"]
 
 NO_PROGRESS_BAR = ConfigFlag("NO_PROGRESS_BAR", default=False)
 
 logger = logging.getLogger(__name__)
-
-
-class PickSupplier(ABC):
-    supplier_id: str
-
-    @abstractmethod
-    def attach(self, module: fabll.Node, part: "PickerOption"): ...
-
-
-@dataclass(frozen=True)
-class PickedPart:
-    manufacturer: str
-    partno: str
-    supplier_partno: str
-    supplier: PickSupplier
 
 
 class PickError(Exception):
@@ -149,7 +124,6 @@ def get_pick_tree(module: fabll.Node) -> Tree[F.is_pickable]:
         pickable_trait = module.get_trait(F.is_pickable_by_type).get_trait(
             F.is_pickable
         )
-        print("pickable_node", pickable_trait.pretty_params())
         tree[pickable_trait] = merge_tree
 
     for child in module.get_direct_children():
@@ -253,84 +227,43 @@ def check_missing_picks(module: fabll.Node):
 
 
 def find_independent_groups(
-    modules: Iterable[fabll.Module], solver: Solver
-) -> list[set[fabll.Module]]:
+    modules: Iterable[F.is_pickable], solver: Solver
+) -> list[set[F.is_pickable]]:
     """
     Find groups of modules that are independent of each other.
     """
-    from faebryk.core.solver.defaultsolver import DefaultSolver
+    unique_modules: set[F.is_pickable] = set(modules)
 
-    modules = set(modules)
+    # TODO: reconsider
+    solver.update_superset_cache()
 
-    # Maybe dont need this if we run the solver first and can get constrained literals out
-    if (
-        not isinstance(solver, DefaultSolver)
-        or (state := solver.reusable_state) is None
-    ):
-        # Find params aliased to lits
-        aliased = EquivalenceClasses[F.Parameters.is_parameter_operatable]()
-        lits = dict[F.Parameters.is_parameter_operatable, F.Literals.is_literal]()
-        # filter for alias is expressions and add them to the aliased equivalence classes
-        for e in fabll.Node.bind_typegraph(*get_graphs(modules)).nodes_of_type(Is):
-            if not e.constrained:
-                continue
-            aliased.add_eq(*e.operatable_operands)
-            if e.get_operand_literals():
-                lits[e.get_operand_operatables().pop()] = next(
-                    iter(e.get_operand_literals().values())
-                )
-        for alias_group in aliased.get():
-            lits_eq = unique((lits[p] for p in alias_group if p in lits), lambda x: x)
-            if not lits_eq:
-                continue
-            if len(lits_eq) > 1:
-                # TODO
-                raise ContradictionByLiteral("", [], [], None)
-            for p in alias_group:
-                lits[p] = lits_eq[0]
+    # partition params into cliques by expression involvement
+    param_eqs = EquivalenceClasses[F.Parameters.is_parameter_operatable]()
+    tg = list(modules)[0].tg  # FIXME
 
-        # partition modules into cliques
-        # find params related to each other
-        param_eqs = EquivalenceClasses[Parameter]()
-        for e in fabll.Node.bind_typegraph(*get_graphs(modules)).nodes_of_type(
-            F.Expressions.is_assertable
-        ):
-            if not e.constrained:
-                continue
-            ps = e.get_operand_parameters(recursive=True)
-            ps.difference_update(lits.keys())
-            param_eqs.add_eq(*ps)
+    for expr in F.Expressions.is_assertable.bind_typegraph(tg).get_instances():
+        if not expr.try_get_sibling_trait(F.Expressions.is_predicate):
+            continue
 
-        # find modules that are dependent on each other - parameter in one module
-        module_eqs = EquivalenceClasses[fabll.Module](modules)
-        for p_eq in param_eqs.get():
-            p_modules = {
-                m
-                for p in p_eq
-                if (parent := p.get_parent()) is not None
-                and (m := parent[0]).has_trait(fabll.is_module)
-                and m in modules
-            }
-            module_eqs.add_eq(*p_modules)
-        out = module_eqs.get()
-        logger.debug(indented_container(out, recursive=True))
-        return out
+        involved_params = expr.as_expression.get().get_operand_leaves_operatable()
+        param_eqs.add_eq(
+            *[p for p in involved_params if p.try_get_aliased_literal() is None]
+        )
 
-    graphs = EquivalenceClasses()
-    graph_to_m = defaultdict[Graph, set[fabll.Module]](set)
-    # partitioned cliques
-    for m in modules:
-        params = m.get_trait(F.is_pickable_by_type).params
-        # look at g_out, get constrained literals
-        # new_params = {state.data.mutation_map.map_forward(p).maps_to for p in params}
-        # m_graphs = get_graphs(new_params)
-        graphs.add_eq(*m_graphs)
-        for g in m_graphs:
-            graph_to_m[g].add(m)
-
-    graph_groups: list[set[Graph]] = graphs.get()
-    module_groups = [{m for g in gg for m in graph_to_m[g]} for gg in graph_groups]
-    return module_groups
+    # partition modules into cliques by parameter clique membership
+    module_eqs = EquivalenceClasses[F.is_pickable](unique_modules)
+    for p_eq in param_eqs.get():
+        p_modules = {
+            m
+            for p in p_eq
+            if (parent := p.get_parent()) is not None
+            and (m := parent[0]).has_trait(fabll.is_module)
+            and m in unique_modules
+        }
+        module_eqs.add_eq(*[not_none(n.get_trait(F.is_pickable)) for n in p_modules])
+    out = module_eqs.get()
+    logger.debug(indented_container(out, recursive=True))
+    return out
 
 
 def _list_to_hack_tree(modules: Iterable[F.is_pickable]) -> Tree[F.is_pickable]:
@@ -350,11 +283,13 @@ def pick_topologically(
         )
         for m, parts in explicit_parts.items():
             part = parts[0]
-            picker_lib.attach_single_no_check(m.get_pickable_node(), part, solver)
+            picker_lib.attach_single_no_check(m, part, solver)
             if progress:
                 progress.advance()
 
-    def _get_candidates(_tree: Tree[F.is_pickable]):
+    def _get_candidates(
+        _tree: Tree[F.is_pickable],
+    ) -> dict[F.is_pickable, list["Component"]]:
         # with timings.as_global("pre-solve"):
         #    solver.simplify(*get_graphs(tree.keys()))
         try:

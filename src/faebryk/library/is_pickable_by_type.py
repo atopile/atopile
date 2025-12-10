@@ -5,6 +5,8 @@ from enum import StrEnum
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.core.zig.gen.graph.graph import BoundNode  # type: ignore[import-untyped]
+from faebryk.libs.util import not_none
 
 
 class is_pickable_by_type(fabll.Node):
@@ -26,12 +28,10 @@ class is_pickable_by_type(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     endpoint_ = F.Parameters.EnumParameter.MakeChild(enum_t=Endpoint)
     params_ = F.Collections.PointerSet.MakeChild()
-
     # TODO: Forward this trait to parent
     _is_pickable = fabll.Traits.MakeEdge(F.is_pickable.MakeChild())
 
-    @property
-    def params(self) -> list[fabll.Node]:
+    def get_params(self) -> list[fabll.Node]:
         param_tuples = self.params_.get().as_list()
         parameters = [
             F.Collections.PointerTuple.bind_instance(
@@ -59,15 +59,18 @@ class is_pickable_by_type(fabll.Node):
     def endpoint(self) -> str:
         return str(self.endpoint_.get().force_extract_literal().get_values()[0])
 
-    @property  # TODO: make this return Resistor Class
-    def pick_type(self):  # -> type[fabll.Node]:
-        parent = self.get_parent()
-        if parent is None:
+    @property
+    def pick_type(self) -> BoundNode:
+        parent_info = self.get_parent()
+        if parent_info is None:
             raise Exception("is_pickable_by_type has no parent")
-        return parent[0]
+        parent, _ = parent_info
+        return not_none(parent.get_type_node())
 
     @classmethod
-    def MakeChild(cls, endpoint: Endpoint, params: dict[str, fabll._ChildField]):
+    def MakeChild(  # type: ignore[invalid-method-override]
+        cls, endpoint: Endpoint, params: dict[str, fabll._ChildField[fabll.Node]]
+    ):
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(

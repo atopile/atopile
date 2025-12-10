@@ -260,19 +260,30 @@ def test_pick_explicit_modules():
 
     class App(fabll.Node):
         r1 = F.Resistor.MakeChild()
-        is_pickable_by_supplier_id = F.is_pickable_by_supplier_id.MakeChild(
-            supplier_part_id="C173561",
-            supplier=F.is_pickable_by_supplier_id.Supplier.LCSC,
-        )
-        r1.add_dependant(fabll.Traits.MakeEdge(is_pickable_by_supplier_id, [r1]))
-        # r1.add_dependant(is_pickable_by_supplier_id)
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+        @classmethod
+        def MakeChild(cls):  # type: ignore[invalid-method-override]
+            out = fabll._ChildField(cls)
+            out.add_dependant(
+                fabll.Traits.MakeEdge(
+                    F.is_pickable_by_supplier_id.MakeChild(
+                        supplier_part_id="C173561",
+                        supplier=F.is_pickable_by_supplier_id.Supplier.LCSC,
+                    ),
+                    [out, cls.r1],
+                )
+            )
+            return out
 
-    tree = get_pick_tree(app)
+    # TODO: simplify
+    class MetaApp(fabll.Node):
+        app = App.MakeChild()
+
+    meta_app = MetaApp.bind_typegraph(tg=tg).create_instance(g=g)
+
+    tree = get_pick_tree(meta_app)
     pick_topologically(tree, solver)
-    print(app.r1.get())
-    assert app.r1.get().has_trait(F.has_part_picked)
+    assert meta_app.app.get().r1.get().has_trait(F.has_part_picked)
 
 
 @pytest.mark.usefixtures("setup_project_config")
@@ -292,18 +303,36 @@ def test_pick_resistor_by_params():
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Constrain resistance
+    resistance_op = E.lit_op_range(((100, E.U.Ohm), (110, E.U.Ohm)))
     E.is_(
-        app.r1.get().resistance.get().can_be_operand.get(),
-        E.lit_op_range(((100, E.U.Ohm), (110, E.U.Ohm))),
-        assert_=True,
+        app.r1.get().resistance.get().can_be_operand.get(), resistance_op, assert_=True
     )
 
     # Constrain package
+    fabll.Traits.create_and_add_instance_to(app.r1.get(), F.has_package_requirements)
+    app.r1.get().get_trait(F.has_package_requirements).setup(SMDSize.I0805)
 
     tree = get_pick_tree(app)
     pick_topologically(tree, solver)
-    print(app.r1.get())
     assert app.r1.get().has_trait(F.has_part_picked)
+    assert (
+        app.r1.get()
+        .resistance.get()
+        .force_extract_literal()
+        .is_subset_of(
+            F.Literals.Numbers(resistance_op.get_raw_obj().instance),
+            g=g,
+            tg=tg,
+        )
+    )
+    assert (
+        app.r1.get()
+        .get_trait(F.has_package_requirements)
+        .size_.get()
+        .force_extract_literal()
+        .get_single_value_typed(SMDSize)
+        == SMDSize.I0805
+    )
 
 
 # I guess we need to support something like this?

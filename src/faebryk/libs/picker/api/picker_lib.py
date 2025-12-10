@@ -6,13 +6,14 @@ import re
 from dataclasses import fields
 from enum import StrEnum
 from socket import gaierror
-from typing import Any
 
 import more_itertools
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserInfraError
+from faebryk.core import graph
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.libs.exceptions import UserException, downgrade
 from faebryk.libs.http import RequestError, TimeoutException
@@ -88,15 +89,17 @@ BackendPackage = StrEnum(
 )
 
 
-def _from_smd_size(cls, size: SMDSize, type: type[fabll.Module]) -> "BackendPackage":
-    if issubclass(type, F.Resistor):
+def _from_smd_size(cls, size: SMDSize, type_node: graph.BoundNode) -> "BackendPackage":  # type: ignore[invalid-type-form]
+    type_name = fbrk.TypeGraph.get_type_name(type_node=type_node)
+
+    if type_name == F.Resistor._type_identifier():
         prefix = "R"
-    elif issubclass(type, F.Capacitor):
+    elif type_name == F.Capacitor._type_identifier():
         prefix = "C"
-    elif issubclass(type, F.Inductor):
+    elif type_name == F.Inductor._type_identifier():
         prefix = "L"
     else:
-        raise NotImplementedError(f"Unsupported pickable trait: {type}")
+        raise NotImplementedError(f"Unsupported pickable trait: {type_node}")
 
     try:
         return cls[f"{prefix}{size.imperial.without_prefix}"]
@@ -115,7 +118,8 @@ def _prepare_query(
     # because we expect all pickable modules to be attachable
     module_node = module.get_pickable_node()
     check_attachable(module_node)
-    print("module", module_node.get_full_name())
+
+    query_tg = fbrk.TypeGraph.create(g=module.g)
 
     if trait := module_node.try_get_trait(F.is_pickable_by_part_number):
         return ManufacturerPartParams(
@@ -135,19 +139,28 @@ def _prepare_query(
         params_t = make_params_for_type(module_node)
 
         if pkg_t := module_node.try_get_trait(F.has_package_requirements):
-            package = pkg_t.get_sizes(solver)
-            package = EnumSet[BackendPackage](
-                *[
-                    BackendPackage.from_smd_size(SMDSize[s.name], trait.pick_type)
-                    for s in package
-                ]
+            package_constraint = solver.inspect_get_known_supersets(
+                pkg_t.size_.get().is_parameter.get()
+            )
+            package = (
+                F.Literals.EnumsFactory(BackendPackage)
+                .bind_typegraph(tg=query_tg)
+                .create_instance(g=module.g)
+                .setup(
+                    *[
+                        BackendPackage.from_smd_size(SMDSize[s], trait.pick_type)  # type: ignore[attr-defined]
+                        for s in F.Literals.AbstractEnums(
+                            package_constraint.switch_cast().instance
+                        ).get_values()
+                    ]
+                )
             )
         else:
             package = None
 
         generic_field_names = {f.name for f in fields(params_t)}
         _, known_params = more_itertools.partition(
-            lambda p: p.get_name() in generic_field_names, (trait.params)
+            lambda p: p.get_name() in generic_field_names, (trait.get_params())
         )
         cmp_params = {
             p.get_name(): solver.inspect_get_known_supersets(
@@ -208,7 +221,7 @@ def _find_modules(
     grouped = groupby(params.items(), lambda p: p[1])
     queries = list(grouped.keys())
 
-    def _map_response[T](results: list[T]) -> dict[fabll.Module, T]:
+    def _map_response[T](results: list[T]) -> dict[F.is_pickable, T]:
         assert len(results) == len(queries)
         return {m: r for ms, r in zip(grouped.values(), results) for m, _ in ms}
 
@@ -259,7 +272,7 @@ def _find_modules(
     return out
 
 
-def _attach(module: fabll.Node, c: Component):
+def _attach(module: F.is_pickable, c: Component):
     """
     Calls LCSC attach and wraps errors into PickError
     """
@@ -298,7 +311,7 @@ def _get_compatible_parameters(
         raise NotCompatibleException(module, c) from e
 
     design_params = {
-        p.get_name() for p in module.get_trait(F.is_pickable_by_type).params
+        p.get_name() for p in module.get_trait(F.is_pickable_by_type).get_params()
     }
     component_params = c.attribute_literals
 
@@ -401,7 +414,7 @@ def check_and_attach_candidates(
 
 def get_candidates(
     modules: Tree[F.is_pickable], solver: Solver
-) -> dict[fabll.Module, list[Component]]:
+) -> dict[F.is_pickable, list[Component]]:
     candidates = modules.copy()
     parts = {}
     empty = set()
@@ -429,7 +442,7 @@ def get_candidates(
     return {}
 
 
-def attach_single_no_check(cmp: fabll.Node, part: Component, solver: Solver):
+def attach_single_no_check(cmp: F.is_pickable, part: Component, solver: Solver):
     """
     Attach a single component to a module
     Attention: Does not check compatibility before or after!
