@@ -13,7 +13,6 @@ def bind_fbrk_nets_to_kicad_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView):
 
     # get all nets
     for fbrk_net in F.Net.bind_typegraph(tg).get_instances(g):
-
         pad_count = 0
         kicad_net_name_counts: dict[str, int] = {}
 
@@ -30,12 +29,15 @@ def bind_fbrk_nets_to_kicad_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView):
             pad_count += 1
 
             # if the fbrk pad has a kicad pad with a name...
-            if has_associated_kicad_pcb_pad := pad.try_get_trait(F.KiCadFootprints.has_associated_kicad_pcb_pad):
+            if has_associated_kicad_pcb_pad := pad.try_get_trait(
+                F.KiCadFootprints.has_associated_kicad_pcb_pad
+            ):
                 if kicad_net := has_associated_kicad_pcb_pad.get_pad().net:
                     if kicad_net_name := kicad_net.name:
-
                         # save that name and track it's count
-                        kicad_net_name_counts[kicad_net_name] = kicad_net_name_counts.get(kicad_net_name, 0) + 1
+                        kicad_net_name_counts[kicad_net_name] = (
+                            kicad_net_name_counts.get(kicad_net_name, 0) + 1
+                        )
 
         # skip if there's no named kicad nets
         if not kicad_net_name_counts:
@@ -49,10 +51,14 @@ def bind_fbrk_nets_to_kicad_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView):
             continue
 
         # bind the kicad net to the fabll net
-        fabll.Traits.create_and_add_instance_to(fbrk_net, F.KiCadFootprints.has_associated_kicad_pcb_net)
+        fabll.Traits.create_and_add_instance_to(
+            fbrk_net, F.KiCadFootprints.has_associated_kicad_pcb_net
+        )
 
 
-def bind_electricals_to_fbrk_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView) -> set[F.Net]:
+def bind_electricals_to_fbrk_nets(
+    tg: fbrk.TypeGraph, g: fabll.graph.GraphView
+) -> set[F.Net]:
     """
     Groups electricals into buses, get or create a net, and return all the nets
     """
@@ -75,8 +81,8 @@ def bind_electricals_to_fbrk_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView) 
         named_nets_on_bus: set[F.has_net_name] = set()
         for electrical in bus_members:
             # check if the parent of an electrical has the has_net_name trait
-            if electrical_parent := electrical.get_parent()[0]:
-                if has_net_name := electrical_parent.try_get_trait(F.has_net_name):
+            if electrical_parent := electrical.get_parent():
+                if has_net_name := electrical_parent[0].try_get_trait(F.has_net_name):
                     named_nets_on_bus.add(has_net_name)
 
         # if there's no named nets on bus, make one and connect it up
@@ -87,9 +93,9 @@ def bind_electricals_to_fbrk_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView) 
 
         # if there's one net, let's return that
         elif len(named_nets_on_bus) == 1:
-            named_net, = named_nets_on_bus
+            (named_net,) = named_nets_on_bus
             # this should theoretically get the F.Net node from the has_net_name trait
-            fbrk_net = fabll.Traits.bind(named_net).get_obj_raw()
+            fbrk_net = fabll.Traits.bind(named_net).get_obj_raw().cast(F.Net)
 
         else:
             raise KeyErrorAmbiguous(
@@ -111,7 +117,7 @@ def test_bind_nets_from_electricals(capsys):
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    #TODO fix this test, it doesn't add the is_lead or has_associated_pads traits yet
+    # TODO fix this test, it doesn't add the is_lead or has_associated_pads traits yet
     class TestModule(fabll.Node):
         elec = F.Electrical.MakeChild()
         _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
@@ -133,4 +139,7 @@ def test_bind_nets_from_electricals(capsys):
     with capsys.disabled():
         print("hey")
         for net in nets:
-            print(f"Net: {net.get_hierarchy()} - Len: {len(net.part_of.get()._is_interface.get().get_connected())}")
+            print(
+                f"Net: {net.get_hierarchy()} - "
+                f"Len: {len(net.part_of.get()._is_interface.get().get_connected())}"
+            )
