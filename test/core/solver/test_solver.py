@@ -167,6 +167,10 @@ def test_simplify():
 
 
 def test_simplify_logic_and():
+    """
+    X = And(And(And(And(p0, True), p1), p2), p3)
+    Y = And!(X, X)
+    """
     E = BoundExpressions()
 
     class App(fabll.Node):
@@ -175,26 +179,14 @@ def test_simplify_logic_and():
     app_type = App.bind_typegraph(tg=E.tg)
     app = app_type.create_instance(g=E.g)
 
-    anded = E.and_(
-        app.p[0].get().can_be_operand.get(),
-        E.lit_bool(True),
-        assert_=True,
-    )
+    p_ops = [p.get().can_be_operand.get() for p in app.p]
 
-    for p in app.p[1:]:
-        E.is_(
-            anded,
-            E.and_(anded, p.get().can_be_operand.get()),
-            assert_=True,
-        )
-    E.is_(
-        anded,
-        E.and_(
-            anded,
-            anded,
-        ),
-        assert_=True,
-    )
+    anded = E.and_(p_ops[0], E.lit_bool(True))
+
+    for p_op in p_ops[1:]:
+        anded = E.and_(anded, p_op)
+
+    anded = E.and_(anded, anded, assert_=True)
 
     solver = DefaultSolver()
     solver.simplify_symbolically(E.tg, E.g)

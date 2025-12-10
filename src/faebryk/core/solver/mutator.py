@@ -1399,8 +1399,10 @@ class Mutator:
             expr.as_parameter_operatable.get(),
             self.get_copy_po(inner_operand_po),
         )
-        if expr.try_get_sibling_trait(F.Expressions.is_predicate):
-            self.assert_(out.as_expression.force_get().as_assertable.force_get())
+        if expr.try_get_sibling_trait(F.Expressions.is_predicate) and (
+            out_assertable := out.try_get_sibling_trait(F.Expressions.is_assertable)
+        ):
+            self.assert_(out_assertable)
         return out
 
     def mutate_expression_with_op_map(
