@@ -121,10 +121,27 @@ def test_solve_phase_one():
     E.is_(voltage1_op, E.lit_op_range(((1, E.U.V), (3, E.U.V))), assert_=True)
     E.is_(voltage3_op, E.lit_op_range(((2, E.U.V), (6, E.U.V))), assert_=True)
 
-    solver.simplify_symbolically(E.tg, E.g)
+    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+
+    # voltage1 and voltage2 are aliased, so they should have the same value
+    assert _extract_and_check(
+        voltage1_op, repr_map, E.lit_op_range(((1, E.U.V), (3, E.U.V)))
+    )
+    assert _extract_and_check(
+        voltage2_op, repr_map, E.lit_op_range(((1, E.U.V), (3, E.U.V)))
+    )
+    # voltage3 = voltage1 + voltage2 = 2 * [1V, 3V] = [2V, 6V]
+    assert _extract_and_check(
+        voltage3_op, repr_map, E.lit_op_range(((2, E.U.V), (6, E.U.V)))
+    )
 
 
 def test_simplify():
+    """
+    (((((((((((A + B + 1) + C + 2) * D * 3) * E * 4) * F * 5) * G * (A - A)) + H + 7)
+    + I + 8) + J + {0..1}) - 3) - 4) <=! 11
+    => (H + I + J + {8..9}) ss! {0..11}
+    """
     E = BoundExpressions()
 
     class App(fabll.Node):
@@ -133,43 +150,58 @@ def test_simplify():
     app_type = App.bind_typegraph(tg=E.tg)
     app = app_type.create_instance(g=E.g)
 
-    # (((((((((((A + B + 1) + C + 2) * D * 3) * E * 4) * F * 5) * G * (A - A)) + H + 7)
-    #  + I + 8) + J + 9) - 3) - 4) < 11
-    # => (H + I + J + 17) < 11
     app_ops = [p.get().can_be_operand.get() for p in app.ops]
     constants: list[F.Parameters.can_be_operand] = [
         E.lit_op_single((c, E.U.dl)) for c in range(0, 10)
     ]
-    E.is_(constants[5], E.subtract(app_ops[0], app_ops[0]), assert_=True)
-    E.is_(
-        constants[9],
-        E.lit_op_range(((0, E.U.dl), (1, E.U.dl))),
-    )
+    constants[6] = E.subtract(app_ops[0], app_ops[0])
+    constants[9] = E.lit_op_range(((0, E.U.dl), (1, E.U.dl)))
+
     acc = app.ops[0].get().can_be_operand.get()
     for i, p in enumerate(app_ops[1:3]):
-        E.is_(acc, E.add(acc, p, constants[i]), assert_=True)
+        acc = E.add(acc, E.add(p, constants[i]))
     for i, p in enumerate(app_ops[3:7]):
-        E.is_(acc, E.multiply(acc, p, constants[i + 3]), assert_=True)
+        acc = E.multiply(acc, E.multiply(p, constants[i + 3]))
     for i, p in enumerate(app_ops[7:]):
-        E.is_(acc, E.add(acc, p, constants[i + 7]), assert_=True)
+        acc = E.add(acc, E.add(p, constants[i + 7]))
 
-    E.is_(
-        acc,
-        E.subtract(acc, E.lit_op_single((3, E.U.dl)), E.lit_op_single((4, E.U.dl))),
-        assert_=True,
-    )
-    # assert isinstance(acc, Subtract)
-    assert E.less_or_equal(acc, E.lit_op_single((11, E.U.dl)))
+    acc = E.subtract(acc, E.lit_op_single((3, E.U.dl)), E.lit_op_single((4, E.U.dl)))
+    le = E.less_or_equal(acc, E.lit_op_single((11, E.U.dl)), assert_=True)
 
     solver = DefaultSolver()
-    solver.simplify_symbolically(E.tg, E.g)
-    # TODO actually test something
+    res = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+    out = res.map_forward(le.as_parameter_operatable.force_get()).maps_to
+
+    assert out
+    out_ss = fabll.Traits(out).get_obj(F.Expressions.IsSubset)
+    assert out_ss.has_trait(F.Expressions.is_predicate)
+    out_add_e = next(
+        iter(out_ss.is_expression.get().get_operand_operatables())
+    ).as_expression.force_get()
+    assert fabll.Traits(out_add_e).get_obj_raw().isinstance(F.Expressions.Add)
+    lits = out_add_e.get_operand_literals().values()
+    assert len(lits) == 1
+    lit = next(iter(lits))
+    assert lit.equals(
+        E.lit_op_range(((8, E.U.dl), (9, E.U.dl))).as_literal.force_get()
+    ), f"lit: {lit.pretty_str()} != {{8..9}}"
+    H_mapped = res.map_forward(app.ops[7].get().is_parameter_operatable.get()).maps_to
+    I_mapped = res.map_forward(app.ops[8].get().is_parameter_operatable.get()).maps_to
+    J_mapped = res.map_forward(app.ops[9].get().is_parameter_operatable.get()).maps_to
+    assert H_mapped
+    assert I_mapped
+    assert J_mapped
+    out_ops = out_add_e.get_operand_operatables()
+    assert len(out_ops) == 3
+    assert set(out_ops) == {H_mapped, I_mapped, J_mapped}
 
 
 def test_simplify_logic_and():
     """
     X = And(And(And(And(p0, True), p1), p2), p3)
     Y = And!(X, X)
+    => Y = Not!(Or(Not(p0), Not(p1), Not(p2), Not(p3)))
+    => p0!, p1!, p2!, p3!
     """
     E = BoundExpressions()
 
@@ -189,8 +221,26 @@ def test_simplify_logic_and():
     anded = E.and_(anded, anded, assert_=True)
 
     solver = DefaultSolver()
-    solver.simplify_symbolically(E.tg, E.g)
-    # TODO actually test something
+    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+
+    # Y = And!(X, X) canonicalizes to Not!(Or(Not(p0), Not(p1), Not(p2), Not(p3)))
+    # which simplifies to Not(false) = true (the assertion is satisfied)
+    Y_mapped = repr_map.map_forward(anded.as_parameter_operatable.force_get()).maps_to
+    assert Y_mapped
+
+    # Y_mapped should be Not(false) = true
+    not_expr = fabll.Traits(Y_mapped).get_obj(F.Expressions.Not)
+
+    # TODO more checking on not_expr
+    _ = not_expr
+
+    # The parameters should still be tracked as BooleanParameters
+    for p_op in p_ops:
+        mapped = repr_map.map_forward(p_op.as_parameter_operatable.force_get()).maps_to
+        assert mapped is not None
+        assert (
+            fabll.Traits(mapped).get_obj_raw().isinstance(F.Parameters.BooleanParameter)
+        )
 
 
 def test_shortcircuit_logic_and():
@@ -242,6 +292,14 @@ def test_inequality_to_set():
 
 
 def test_remove_obvious_tautologies():
+    """
+    p0 is! p1 + p2
+    p1 >= 0
+    p2 >= 0
+    p0 is! p1 + p2
+    p2 is! p2
+    => remove p2 is! p2
+    """
     E = BoundExpressions()
     p0, p1, p2 = [E.parameter_op(units=E.U.dl) for _ in range(3)]
 
@@ -250,11 +308,19 @@ def test_remove_obvious_tautologies():
     E.greater_than(p1, E.lit_op_single((0.0, E.U.dl)), assert_=True)
     E.greater_than(p2, E.lit_op_single((0.0, E.U.dl)), assert_=True)
     E.is_(p2, E.add(p1, p2), assert_=True)
-    E.is_(p2, p2, assert_=True)
+    X = E.is_(p2, p2, assert_=True)
 
     solver = DefaultSolver()
-    solver.simplify_symbolically(E.tg, E.g)
-    # TODO actually test something
+    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+
+    # The tautology X = (p2 is! p2) gets simplified to Is(p2) with single operand
+    out = repr_map.map_forward(X.as_parameter_operatable.force_get())
+    assert out is not None and out.maps_to is not None
+
+    # The Is expression should have been simplified to have only 1 operand (identity)
+    is_expr = fabll.Traits(out.maps_to).get_obj(F.Expressions.Is)
+    operands = is_expr.is_expression.get().get_operands()
+    assert len(operands) == 1  # Simplified from Is(p2, p2) to Is(p2)
 
 
 def test_subset_of_literal():
@@ -282,6 +348,13 @@ def test_subset_of_literal():
 
 
 def test_alias_classes():
+    """
+    A is! B
+    addition = C + D
+    B is! addition
+    addition2 = D + C
+    H is! addition2
+    """
     E = BoundExpressions()
     A, B, C, D, H = (E.parameter_op() for _ in range(5))
     E.is_(A, B, assert_=True)
@@ -294,8 +367,30 @@ def test_alias_classes():
     for p in (A, B, C, D, H):
         p.as_parameter_operatable.force_get().compact_repr(context)
     solver = DefaultSolver()
-    solver.simplify_symbolically(E.tg, E.g, print_context=context)
-    # TODO actually test something
+    repr_map = solver.simplify_symbolically(
+        E.tg, E.g, print_context=context
+    ).data.mutation_map
+
+    # A, B, and H are aliased via the Is constraints and commutativity of addition
+    # A is! B, B is! (C+D), H is! (D+C) where C+D == D+C
+    A_mapped = repr_map.map_forward(A.as_parameter_operatable.force_get()).maps_to
+    B_mapped = repr_map.map_forward(B.as_parameter_operatable.force_get()).maps_to
+    H_mapped = repr_map.map_forward(H.as_parameter_operatable.force_get()).maps_to
+    addition_mapped = repr_map.map_forward(
+        addition.as_parameter_operatable.force_get()
+    ).maps_to
+    addition2_mapped = repr_map.map_forward(
+        addition2.as_parameter_operatable.force_get()
+    ).maps_to
+
+    # A and B should be unified (same parameter)
+    assert A_mapped == B_mapped
+
+    # C + D and D + C should be unified (commutativity)
+    assert addition_mapped == addition2_mapped
+
+    # A, B, H should all be unified since they're all aliased to the same Add expression
+    assert A_mapped == B_mapped == H_mapped
 
 
 @pytest.mark.usefixtures("setup_project_config")
@@ -1508,6 +1603,7 @@ def test_can_add_parameters():
     assert _extract_and_check(C, solver, E.lit_op_range((20, 200)))
 
 
+@pytest.mark.xfail(reason="TODO, already broken before new core")
 def test_ss_estimation_ge():
     E = BoundExpressions()
     A = E.parameter_op()
@@ -1517,7 +1613,10 @@ def test_ss_estimation_ge():
     E.greater_or_equal(B, A, assert_=True)
 
     solver = DefaultSolver()
-    solver.simplify_symbolically(E.tg, E.g)
+    res = solver.simplify_symbolically(E.tg, E.g)
+    assert _extract_and_check(
+        B, res.data.mutation_map, E.lit_op_range((10, math.inf)), allow_subset=True
+    )
 
 
 def test_fold_mul_zero():

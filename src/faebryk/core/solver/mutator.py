@@ -1876,7 +1876,7 @@ class Mutator:
         self.G_transient: graph.GraphView = graph.GraphView.create()
         self.tg_in: fbrk.TypeGraph = mutation_map.tg_out
 
-        self.input_print_context = mutation_map.input_print_context
+        self.input_print_context = mutation_map.last_stage.input_print_context
         self.output_print_context = mutation_map.output_print_context
         self._mutations_since_last_iteration = mutation_map.get_iteration_mutation(algo)
 

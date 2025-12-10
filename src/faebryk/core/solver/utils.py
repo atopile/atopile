@@ -878,7 +878,9 @@ class MutatorUtils:
     def is_subset_literal(
         po: F.Parameters.is_parameter_operatable,
     ) -> F.Expressions.IsSubset | None:
-        if not (po_ss := po.try_get_sibling_trait(F.Expressions.IsSubset)):
+        if not (
+            po_ss := fabll.Traits(po).get_obj_raw().try_cast(F.Expressions.IsSubset)
+        ):
             return None
         po_expr = po.as_expression.force_get()
         if not po_expr.try_get_sibling_trait(F.Expressions.is_predicate):
