@@ -2619,13 +2619,14 @@ def test_resistor_instantiation():
     assert res_inst.resistance.get().get_units().get_symbols()[0] == "Ω"
     assert res_inst.resistance.get().get_units().get_symbols()[1] == "Ohm"
     assert res_inst.get_trait(fabll.is_module)
-    electricals = (
-        res_inst.get_trait(F.Footprints.can_attach_to_footprint)
-        .electricals_.get()
-        .as_list()
-    )
-    assert electricals[0].get_name() == "unnamed[0]"
-    assert electricals[1].get_name() == "unnamed[1]"
+    leads = [
+        n.get_trait(F.Lead.is_lead)
+        for n in res_inst.get_children(
+            direct_only=False, types=Node, required_trait=F.Lead.is_lead
+        )
+    ]
+    assert leads[0].get_lead_name() == "unnamed[0]"
+    assert leads[1].get_lead_name() == "unnamed[1]"
     assert (
         res_inst._is_pickable.get().get_param("resistance").get_name() == "resistance"
     )
@@ -2674,29 +2675,6 @@ def test_boolean_param():
 
     ebp = ExampleBooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
     assert ebp.boolean_p_tg.get().force_extract_literal().get_values()
-
-
-def test_kicad_footprint():
-    g, tg = _make_graph_and_typegraph()
-    import faebryk.library._F as F
-
-    _ = F.Footprints.GenericPad.bind_typegraph(tg=tg).get_or_create_type()
-    _ = F.Footprints.GenericPad.bind_typegraph(tg=tg).create_instance(g=g)
-    _ = F.Footprints.GenericPad.bind_typegraph(tg=tg).create_instance(g=g)
-
-    kicad_footprint = (
-        F.KiCadFootprints.has_associated_kicad_pcb_footprint.bind_typegraph(tg=tg)
-        .create_instance(g=g)
-        .setup(
-            kicad_identifier="libR_0402_1005Metric2",
-            # pinmap={pad1: "P1", pad2: "P2"},
-        )
-    )
-    print(
-        f"kicad_footprint.get_kicad_footprint():"
-        f" {kicad_footprint.get_kicad_footprint_identifier()}"
-    )
-    print(f"kicad_footprint.get_pin_names(): {kicad_footprint.get_pad_names()}")
 
 
 def test_node_equality():
