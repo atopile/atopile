@@ -1,12 +1,15 @@
 import itertools
 import re
 import subprocess
+import sys
 from collections.abc import Generator
 from pathlib import Path
 
 import pytest
 
 from faebryk.libs.util import repo_root
+
+ZIG_COMMAND = [sys.executable, "-m", "ziglang"]
 
 ZIG_SRC_DIR = repo_root() / "src" / "faebryk" / "core" / "zig"
 
@@ -50,10 +53,10 @@ def build_zig_test_command(zig_file: Path, test_filter: str | None = None) -> li
             imports.append(module_name)
 
     if not imports:
-        cmd = ["zig", "test", str(rel_path)]
+        cmd = [*ZIG_COMMAND, "test", str(rel_path)]
     else:
         cmd = [
-            "zig",
+            *ZIG_COMMAND,
             "test",
             *itertools.chain.from_iterable(["--dep", dep] for dep in imports),
             f"-Mroot={rel_path}",
@@ -78,7 +81,7 @@ def discover_zig_tests() -> list[tuple[Path, str]]:
         for zig_file in discover_zig_test_files()
         for test_name in TEST_NAME_PATTERN.findall(zig_file.read_text())
     ]
-    assert len(tests) > 0
+    assert len(tests) > 0, "No zig tests found"
     return tests
 
 
