@@ -3,14 +3,16 @@
 
 import ctypes
 from pathlib import Path
-from typing import ClassVar, Self
+from typing import TYPE_CHECKING, ClassVar, Self
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.kicad.fileformats import kicad
+
+if TYPE_CHECKING:
+    from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
 KiCadPCBFootprint = kicad.pcb.Footprint
 KiCadPCBPad = kicad.pcb.Pad
@@ -36,7 +38,7 @@ class has_associated_kicad_pcb_footprint(fabll.Node):
 
     @classmethod
     def MakeChild(
-        cls, footprint: KiCadPCBFootprint, transformer: PCB_Transformer
+        cls, footprint: KiCadPCBFootprint, transformer: "PCB_Transformer"
     ) -> fabll._ChildField[Self]:
         # Store objects in registries to prevent garbage collection.
         cls._footprint_registry[id(footprint)] = footprint
@@ -53,7 +55,7 @@ class has_associated_kicad_pcb_footprint(fabll.Node):
         )
         return out
 
-    def setup(self, footprint: KiCadPCBFootprint, transformer: PCB_Transformer) -> Self:
+    def setup(self, footprint: KiCadPCBFootprint, transformer: "PCB_Transformer") -> Self:
         # Store objects in registries to prevent garbage collection.
         self._footprint_registry[id(footprint)] = footprint
         self._transformer_registry[id(transformer)] = transformer
@@ -336,6 +338,7 @@ class GenericKiCadFootprint(fabll.Node):
 
 
 def setup_pcb_transformer_test():
+    from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
     from faebryk.libs.test.fileformats import PCBFILE
 
     g = graph.GraphView.create()
