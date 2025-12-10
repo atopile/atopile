@@ -1767,17 +1767,25 @@ def test_mapping(A_value):
     A = E.parameter_op()
     B = E.parameter_op()
 
-    X = E.lit_op_range_from_center_rel((100, E.U.dl), 0.1)
-    Y = E.lit_op_range_from_center_rel((200, E.U.dl), 0.1)
-    Z = E.lit_op_range_from_center_rel((300, E.U.dl), 0.1)
+    X = E.lit_op_range_from_center_rel((100, E.U.dl), 0.1).as_literal.force_get()
+    Y = E.lit_op_range_from_center_rel((200, E.U.dl), 0.1).as_literal.force_get()
+    Z = E.lit_op_range_from_center_rel((300, E.U.dl), 0.1).as_literal.force_get()
 
     mapping = {5: X, 10: Y, 15: Z}
-    fabll.Traits(A).get_obj(F.Parameters.NumericParameter).constrain_mapping(B, mapping)
+    mapping_literals = {
+        E.lit_op_single(5).as_literal.force_get(): X,
+        E.lit_op_single(10).as_literal.force_get(): Y,
+        E.lit_op_single(15).as_literal.force_get(): Z,
+    }
+    A.as_parameter_operatable.force_get().constrain_mapping(
+        B.as_parameter_operatable.force_get(), mapping_literals
+    )
 
     E.is_subset(A, E.lit_op_single(A_value), assert_=True)
 
     solver = DefaultSolver()
     solver.update_superset_cache(A, B)
+    assert _extract_and_check(A, solver, E.lit_op_single(A_value))
     assert _extract_and_check(B, solver, mapping[A_value])
 
 

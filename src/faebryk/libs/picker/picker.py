@@ -6,8 +6,10 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
 from textwrap import indent
-from typing import TYPE_CHECKING, Any, Iterable
+from typing import TYPE_CHECKING, Iterable
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 
@@ -107,7 +109,7 @@ class NotCompatibleException(Exception):
         self,
         module: fabll.Node,
         component: "Component",
-        param: F.Parameters.is_parameter | None = None,
+        param: F.Parameters.is_parameter_operatable | None = None,
         c_range: F.Literals.is_literal | None = None,
     ):
         self.module = module
@@ -119,8 +121,8 @@ class NotCompatibleException(Exception):
             msg = f"{component.lcsc_display} is not compatible with `{module}`"
         else:
             msg = (
-                f"`{param}` ({param.try_get_literal_subset()}) is not "
-                f"compatible with {component.lcsc_display} ({c_range})"
+                f"`{param}` ({param.force_extract_literal().pretty_repr()}) is not "
+                f"compatible with {component.lcsc_display} ({c_range.pretty_repr()})"
             )
 
         super().__init__(msg)
@@ -130,7 +132,8 @@ class does_not_require_picker_check(fabll.Node):
     pass
 
 
-def get_pick_tree(module: fabll.Node) -> Tree[fabll.Module]:
+# module should be root node
+def get_pick_tree(module: fabll.Node) -> Tree[F.is_pickable]:
     # TODO no specialization
     # if module.has_trait(fabll.is_module):
     #     module = module.get_most_special()
@@ -141,30 +144,30 @@ def get_pick_tree(module: fabll.Node) -> Tree[fabll.Module]:
     if module.has_trait(F.has_part_picked):
         return tree
 
-    if module.has_trait(F.is_pickable):
+    if module.has_trait(F.is_pickable_by_type):
         merge_tree = Tree()
-        tree[module] = merge_tree
+        pickable_trait = module.get_trait(F.is_pickable_by_type).get_trait(
+            F.is_pickable
+        )
+        print("pickable_node", pickable_trait.pretty_params())
+        tree[pickable_trait] = merge_tree
 
-    for child in module.get_children(
-        direct_only=True,
-        types=fabll.Node,
-        include_root=False,
-        required_trait=(fabll.is_module, fabll.is_interface),
-    ):
-        child_tree = get_pick_tree(child)
+    for child in module.get_direct_children():
+        child_tree = get_pick_tree(child[1])
         merge_tree.update(child_tree)
 
     return tree
 
 
-def update_pick_tree(tree: Tree[fabll.Module]) -> tuple[Tree[fabll.Module], bool]:
+def update_pick_tree(tree: Tree[F.is_pickable]) -> tuple[Tree[F.is_pickable], bool]:
     if not tree:
         return tree, False
 
     filtered_tree = Tree(
         (k, sub[0])
         for k, v in tree.items()
-        if not k.has_trait(F.has_part_picked) and not (sub := update_pick_tree(v))[1]
+        if not k.get_pickable_node().has_trait(F.has_part_picked)
+        and not (sub := update_pick_tree(v))[1]
     )
     if not filtered_tree:
         return filtered_tree, True
@@ -179,36 +182,58 @@ def check_missing_picks(module: fabll.Node):
     # - no module children
     # - no parent with picker
 
-    missing = module.get_children(
-        types=fabll.Node,
-        required_trait=fabll.is_module,
-        direct_only=False,
-        include_root=True,
-        # leaf == no children
-        f_filter=lambda m: not m.get_children(
+    # Probably just need to check for these two traits
+    # - has_associated_footprint trait
+    # - has_part_picked trait
+    # - is_pickable trait or is_pickable_by_type trait
+    # missing = module.get_children(
+    #     types=fabll.Node,
+    #     required_trait=fabll.is_module,
+    #     direct_only=False,
+    #     include_root=True,
+    #     # leaf == no children
+    #     f_filter=lambda m: not m.get_children(
+    #         types=fabll.Node,
+    #         required_trait=fabll.is_module,
+    #         direct_only=False,
+    #         f_filter=lambda x: not isinstance(x, F.Footprints.GenericFootprint),
+    #     )
+    #     and not isinstance(m, F.Footprints.GenericFootprint)
+    #     # no parent with part picked
+    #     and not try_or(
+    #         lambda: m.get_parent_with_trait(F.has_part_picked),
+    #         default=False,
+    #         catch=KeyErrorNotFound,
+    #     )
+    #     # no parent with picker
+    #     and not try_or(
+    #         lambda: try_or(
+    #             lambda: m.get_parent_with_trait(F.is_pickable),
+    #             default=False,
+    #             catch=KeyErrorNotFound,
+    #         ),
+    #         default=True,
+    #         catch=KeyErrorAmbiguous,
+    #     ),
+    # )
+
+    missing = [
+        m
+        for m in module.get_children(
             types=fabll.Node,
             required_trait=fabll.is_module,
             direct_only=False,
-            f_filter=lambda x: not x.has_trait(F.Footprints.is_footprint),
         )
-        and not m.has_trait(F.Footprints.is_footprint)
-        # no parent with part picked
-        and not try_or(
-            lambda: m.get_parent_with_trait(F.has_part_picked),
-            default=False,
-            catch=KeyErrorNotFound,
+        if not m.has_trait(F.has_part_picked)
+        and not m.has_trait(F.Footprints.has_associated_footprint)
+        # TODO: really just want to look for is_pickable, which the other traits have
+        and (
+            m.has_trait(F.is_pickable)
+            or m.has_trait(F.is_pickable_by_type)
+            or m.has_trait(F.is_pickable_by_part_number)
+            or m.has_trait(F.is_pickable_by_supplier_id)
         )
-        # no parent with picker
-        and not try_or(
-            lambda: try_or(
-                lambda: m.get_parent_with_trait(F.is_pickable),
-                default=False,
-                catch=KeyErrorNotFound,
-            ),
-            default=True,
-            catch=KeyErrorAmbiguous,
-        ),
-    )
+    ]
 
     if missing:
         no_fp, with_fp = map(
@@ -237,6 +262,7 @@ def find_independent_groups(
 
     modules = set(modules)
 
+    # Maybe dont need this if we run the solver first and can get constrained literals out
     if (
         not isinstance(solver, DefaultSolver)
         or (state := solver.reusable_state) is None
@@ -244,6 +270,7 @@ def find_independent_groups(
         # Find params aliased to lits
         aliased = EquivalenceClasses[F.Parameters.is_parameter_operatable]()
         lits = dict[F.Parameters.is_parameter_operatable, F.Literals.is_literal]()
+        # filter for alias is expressions and add them to the aliased equivalence classes
         for e in fabll.Node.bind_typegraph(*get_graphs(modules)).nodes_of_type(Is):
             if not e.constrained:
                 continue
@@ -262,6 +289,7 @@ def find_independent_groups(
             for p in alias_group:
                 lits[p] = lits_eq[0]
 
+        # partition modules into cliques
         # find params related to each other
         param_eqs = EquivalenceClasses[Parameter]()
         for e in fabll.Node.bind_typegraph(*get_graphs(modules)).nodes_of_type(
@@ -273,7 +301,7 @@ def find_independent_groups(
             ps.difference_update(lits.keys())
             param_eqs.add_eq(*ps)
 
-        # find modules that are dependent on each other
+        # find modules that are dependent on each other - parameter in one module
         module_eqs = EquivalenceClasses[fabll.Module](modules)
         for p_eq in param_eqs.get():
             p_modules = {
@@ -290,10 +318,12 @@ def find_independent_groups(
 
     graphs = EquivalenceClasses()
     graph_to_m = defaultdict[Graph, set[fabll.Module]](set)
+    # partitioned cliques
     for m in modules:
         params = m.get_trait(F.is_pickable_by_type).params
-        new_params = {state.data.mutation_map.map_forward(p).maps_to for p in params}
-        m_graphs = get_graphs(new_params)
+        # look at g_out, get constrained literals
+        # new_params = {state.data.mutation_map.map_forward(p).maps_to for p in params}
+        # m_graphs = get_graphs(new_params)
         graphs.add_eq(*m_graphs)
         for g in m_graphs:
             graph_to_m[g].add(m)
@@ -303,29 +333,28 @@ def find_independent_groups(
     return module_groups
 
 
-def _list_to_hack_tree(modules: Iterable[fabll.Module]) -> Tree[fabll.Module]:
+def _list_to_hack_tree(modules: Iterable[F.is_pickable]) -> Tree[F.is_pickable]:
     return Tree({m: Tree() for m in modules})
 
 
 def pick_topologically(
-    tree: Tree[fabll.Module], solver: Solver, progress: Advancable | None = None
+    tree: Tree[F.is_pickable], solver: Solver, progress: Advancable | None = None
 ):
     # TODO implement backtracking
 
     import faebryk.libs.picker.api.picker_lib as picker_lib
 
-    def _pick_explicit_modules(explicit_modules: list[fabll.Module]):
-        logger.info(f"Picking {len(explicit_modules)} explicit parts")
+    def _pick_explicit_modules(explicit_modules: list[F.is_pickable]):
         explicit_parts = picker_lib._find_modules(
             _list_to_hack_tree(explicit_modules), solver
         )
         for m, parts in explicit_parts.items():
             part = parts[0]
-            picker_lib.attach_single_no_check(m, part, solver)
+            picker_lib.attach_single_no_check(m.get_pickable_node(), part, solver)
             if progress:
                 progress.advance()
 
-    def _get_candidates(_tree: Tree[fabll.Module]):
+    def _get_candidates(_tree: Tree[F.is_pickable]):
         # with timings.as_global("pre-solve"):
         #    solver.simplify(*get_graphs(tree.keys()))
         try:
@@ -353,14 +382,13 @@ def pick_topologically(
     if explicit_modules := [
         m
         for m in tree.keys()
-        if m.has_trait(F.is_pickable_by_part_number)
-        or m.has_trait(F.is_pickable_by_supplier_id)
+        if m.get_pickable_node().has_trait(F.is_pickable_by_part_number)
+        or m.get_pickable_node().has_trait(F.is_pickable_by_supplier_id)
     ]:
         _pick_explicit_modules(explicit_modules)
         tree, _ = update_pick_tree(tree)
 
     timings.add("setup")
-
     # Works by looking for each module again for compatible parts
     # If no compatible parts are found,
     #   it means we need to backtrack or there is no solution

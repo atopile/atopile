@@ -19,10 +19,10 @@ class is_pickable_by_supplier_id(fabll.Node):
         LCSC = auto()
 
     def get_supplier_part_id(self) -> str:
-        return str(self.supplier_part_id_.get().force_extract_literal())
+        return str(self.supplier_part_id_.get().force_extract_literal().get_values()[0])
 
     def get_supplier(self) -> str:
-        return str(self.supplier_.get().try_extract_constrained_literal())
+        return str(self.supplier_.get().force_extract_literal().get_values()[0])
 
     @classmethod
     def MakeChild(

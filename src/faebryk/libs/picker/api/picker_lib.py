@@ -108,31 +108,33 @@ BackendPackage.from_smd_size = classmethod(_from_smd_size)  # type: ignore
 
 
 def _prepare_query(
-    module: fabll.Node, solver: Solver
+    module: F.is_pickable, solver: Solver
 ) -> BaseParams | LCSCParams | ManufacturerPartParams:
-    assert module.has_trait(F.is_pickable)
+    # assert module.has_trait(F.is_pickable)
     # Error can propagate through,
     # because we expect all pickable modules to be attachable
-    check_attachable(module)
+    module_node = module.get_pickable_node()
+    check_attachable(module_node)
+    print("module", module_node.get_full_name())
 
-    if trait := module.try_get_trait(F.is_pickable_by_part_number):
+    if trait := module_node.try_get_trait(F.is_pickable_by_part_number):
         return ManufacturerPartParams(
             manufacturer_name=trait.get_manufacturer(),
             part_number=trait.get_partno(),
             quantity=qty,
         )
 
-    elif trait := module.try_get_trait(F.is_pickable_by_supplier_id):
-        if trait.get_supplier() == F.is_pickable_by_supplier_id.Supplier.LCSC:
+    elif trait := module_node.try_get_trait(F.is_pickable_by_supplier_id):
+        if trait.get_supplier() == F.is_pickable_by_supplier_id.Supplier.LCSC.name:
             return LCSCParams(
                 lcsc=_extract_numeric_id(trait.get_supplier_part_id()), quantity=qty
             )
 
-    elif trait := module.try_get_trait(F.is_pickable_by_type):
+    elif trait := module_node.try_get_trait(F.is_pickable_by_type):
         # TODO: Fix this
-        params_t = make_params_for_type(trait.pick_type)
+        params_t = make_params_for_type(module_node)
 
-        if pkg_t := module.try_get_trait(F.has_package_requirements):
+        if pkg_t := module_node.try_get_trait(F.has_package_requirements):
             package = pkg_t.get_sizes(solver)
             package = EnumSet[BackendPackage](
                 *[
@@ -145,20 +147,22 @@ def _prepare_query(
 
         generic_field_names = {f.name for f in fields(params_t)}
         _, known_params = more_itertools.partition(
-            lambda p: p.get_name() in generic_field_names, module.get_parameters()
+            lambda p: p.get_name() in generic_field_names, (trait.params)
         )
         cmp_params = {
-            p.get_name(): p.get_last_known_deduced_superset(solver)
+            p.get_name(): solver.inspect_get_known_supersets(
+                p.get_trait(F.Parameters.is_parameter)
+            )
             for p in known_params
         }
-
         if all(superset is None for superset in cmp_params.values()):
-            logger.warning(f"Module `{module}` has no constrained parameters")
+            logger.warning(f"Module `{module_node}` has no constrained parameters")
 
         return params_t(package=package, qty=qty, **cmp_params)  # type: ignore
 
     raise NotImplementedError(
-        f"Unsupported pickable trait: {module.get_trait(F.is_pickable)}"
+        # f"Unsupported pickable trait: {module_node.get_trait(F.is_pickable)}"
+        f"Unsupported pickable trait on node: {module_node}"
     )
 
 
@@ -194,8 +198,8 @@ def _process_candidates(
 
 
 def _find_modules(
-    modules: Tree[fabll.Module], solver: Solver
-) -> dict[fabll.Module, list[Component]]:
+    modules: Tree[F.is_pickable], solver: Solver
+) -> dict[F.is_pickable, list[Component]]:
     timings = Times(name="find_modules")
 
     params = {m: _prepare_query(m, solver) for m in modules}
@@ -363,7 +367,9 @@ def _check_candidates_compatible(
         for m_param, c_range in not_none(param_mapping).items()
     )
 
-    solver.try_fulfill(F.Expressions.And(*predicates), lock=False, allow_unknown=allow_not_deducible)
+    solver.try_fulfill(
+        F.Expressions.And(*predicates), lock=False, allow_unknown=allow_not_deducible
+    )
 
 
 # public -------------------------------------------------------------------------------

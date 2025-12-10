@@ -238,6 +238,13 @@ class is_literal(fabll.Node):
     def is_not_correlatable(self) -> bool:
         return not self.is_singleton() and not self.is_empty()
 
+    def serialize(self) -> dict:
+        lit = self.switch_cast()
+        if isinstance(lit, Numbers):
+            return lit.serialize()
+        else:
+            raise NotImplementedError(f"Cannot serialize literal {lit}")
+
 
 # --------------------------------------------------------------------------------------
 LiteralValues = float | bool | Enum | str

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def check_design(
-    tg: fbrk.TypeGraph,
+    app: fabll.Node,
     stage: F.implements_design_check.CheckStage,
     exclude: tuple[str, ...] = tuple(),
 ):
@@ -26,7 +26,7 @@ def check_design(
     logger.info(f"Running design checks for stage {stage.name}")
 
     with accumulate(UserDesignCheckException) as accumulator:
-        for check in F.implements_design_check.bind_typegraph(tg).get_instances():
+        for check in F.implements_design_check.bind_typegraph(app.tg).get_instances():
             with accumulator.collect():
                 try:
                     check.run(stage)
@@ -39,9 +39,7 @@ def check_design(
                     raise UserDesignCheckException.from_nodes(str(e), e.nodes) from e
 
 
-
 class Test:
-
     class App(fabll.Node):
         _log_store: dict[int, list[str]] = {}
         is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
@@ -80,7 +78,6 @@ class Test:
             self._ensure_log()
             self.check_log.append("post_pcb")
 
-
     def test_design_checks(self):
         g = fabll.graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
@@ -89,15 +86,15 @@ class Test:
         a1 = app.create_instance(g=g)
         a2 = app.create_instance(g=g)
 
-        check_design(tg, F.implements_design_check.CheckStage.POST_DESIGN)
+        check_design(a1, F.implements_design_check.CheckStage.POST_DESIGN)
         assert a1.check_log == ["post_design"]
         assert a2.check_log == ["post_design"]
 
         with pytest.raises(UserDesignCheckException):
-            check_design(tg, F.implements_design_check.CheckStage.POST_SOLVE)
+            check_design(a1, F.implements_design_check.CheckStage.POST_SOLVE)
         assert a1.check_log == ["post_design", "post_solve"]
         assert a2.check_log == ["post_design", "post_solve"]
 
-        check_design(tg, F.implements_design_check.CheckStage.POST_PCB)
+        check_design(a1, F.implements_design_check.CheckStage.POST_PCB)
         assert a1.check_log == ["post_design", "post_solve", "post_pcb"]
         assert a2.check_log == ["post_design", "post_solve", "post_pcb"]
