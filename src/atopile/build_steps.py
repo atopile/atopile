@@ -245,7 +245,7 @@ def pick_parts(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     if config.build.keep_picked_parts:
-        load_part_info_from_pcb(app.g)
+        load_part_info_from_pcb(app.tg)
         solver.simplify(app.g, app.tg)
     try:
         pick_part_recursively(app, solver, progress=log_context)

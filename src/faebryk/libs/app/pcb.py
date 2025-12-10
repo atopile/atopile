@@ -72,7 +72,7 @@ def load_net_names(tg: fbrk.TypeGraph, raise_duplicates: bool = True) -> set[F.N
 
     net_names: dict[F.Net, str] = {
         cast_assert(F.Net, net_t.get_net().name): not_none(net_t.get_net().name)
-        for net_t in F.PCBTransformer.has_linked_kicad_net.bind_typegraph(
+        for net_t in F.KiCadFootprints.has_associated_kicad_pcb_net.bind_typegraph(
             tg
         ).get_instances()
     }

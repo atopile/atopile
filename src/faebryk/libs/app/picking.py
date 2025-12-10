@@ -28,24 +28,35 @@ class Properties(StrEnum):
     param_wildcard = "PARAM_*"
 
 
-def load_part_info_from_pcb(G: graph.GraphView):
+def load_part_info_from_pcb(tg: fbrk.TypeGraph):
     """
     Load descriptive properties from footprints and saved parameters.
     """
-    nodes = fabll.Node.bind_typegraph(G).nodes_with_trait(
-        F.KiCadFootprints.has_associated_kicad_pcb_footprint
-    )
+    nodes_with_fp = [
+        (n, n.get_trait(F.Footprints.has_associated_footprint).get_footprint())
+        for n in fabll.Traits.get_implementor_objects(
+            F.Footprints.has_associated_footprint.bind_typegraph(tg)
+        )
+    ]
 
-    for node, trait in nodes:
+    for node, fp_t in nodes_with_fp:
         assert node.has_trait(fabll.is_module)
-        if isinstance(node, F.Footprints.GenericFootprint):
-            continue
         if node.has_trait(F.has_part_picked):
+            logger.warning(f"Skipping {node.get_name()} because it has part picked")
             continue
         assert F.SerializableMetadata.get_properties(node), "Should load when linking"
 
         part_props = [Properties.lcsc, Properties.manufacturer, Properties.partno]
-        fp = trait.get_footprint()
+        if not (
+            k_pcb_fp_t := fp_t.try_get_trait(
+                F.KiCadFootprints.has_associated_kicad_pcb_footprint
+            )
+        ):
+            logger.warning(
+                f"Skipping {node.get_name()} because it has no PCB footprint"
+            )
+            continue
+        fp = k_pcb_fp_t.get_footprint()
         fp_props = {
             k.value: v
             for k in part_props
@@ -57,6 +68,7 @@ def load_part_info_from_pcb(G: graph.GraphView):
 
         # check if node has changed
         if any(props.get(k.value) != fp_props.get(k.value) for k in part_props):
+            logger.warning(f"Skipping {node.get_name()} because it has changed")
             continue
 
         lcsc_id = props.get(Properties.lcsc)
@@ -102,6 +114,9 @@ def load_part_info_from_pcb(G: graph.GraphView):
         # Load saved parameters from descriptive properties
         for key, value in props.items():
             if not key.startswith(Properties.param_prefix):
+                logger.warning(
+                    f"Skipping {key} because it doesn't start with {Properties.param_prefix}"
+                )
                 continue
 
             param_name = key.removeprefix(Properties.param_prefix)
@@ -179,3 +194,48 @@ def test_save_part_info_to_pcb():
     # Assert expected key:value pairs
     assert trait_dict.get(Properties.manufacturer.value) == "blaze-it-inc"
     assert trait_dict.get(Properties.partno.value) == "69420"
+
+
+def test_load_part_info_from_pcb():
+    from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+    from faebryk.libs.kicad.fileformats import kicad
+    from faebryk.libs.test.fileformats import PCBFILE
+
+    pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE).kicad_pcb
+    k_pcb_fp = pcb.footprints[1]
+
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class TestApp(fabll.Node):
+        is_module_ = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        res = F.Resistor.MakeChild()
+
+    app = TestApp.bind_typegraph(tg).create_instance(g=g)
+    # fabll.Traits.create_and_add_instance_to(app.res.get(), F.has_part_picked).setup(
+    #     PickedPartLCSC(
+    #         supplier_partno="C123456", manufacturer="blaze-it-inc", partno="69420"
+    #     )
+    # )
+    fp_node = fabll.Node.bind_typegraph(tg).create_instance(g=g)
+    fp = fabll.Traits.create_and_add_instance_to(fp_node, F.Footprints.is_footprint)
+
+    transformer = PCB_Transformer(pcb, app)
+
+    fabll.Traits.create_and_add_instance_to(
+        fp, F.KiCadFootprints.has_associated_kicad_pcb_footprint
+    ).setup(k_pcb_fp, transformer)
+    fabll.Traits.create_and_add_instance_to(
+        app.res.get(), F.Footprints.has_associated_footprint
+    ).setup(footprint=fp)
+
+    load_part_info_from_pcb(tg)
+
+    picked_trait = app.res.get().get_trait(F.has_part_picked)
+    assert picked_trait is not None
+    part = picked_trait.try_get_part()
+    assert part is not None
+    assert part.supplier_partno == "C123456"
+    assert part.manufacturer == "blaze-it-inc"
+    assert part.partno == "69420"
+    assert False
