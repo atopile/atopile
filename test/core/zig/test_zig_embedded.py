@@ -1,5 +1,6 @@
 import itertools
 import re
+import shutil
 import subprocess
 from collections.abc import Generator
 from pathlib import Path
@@ -7,6 +8,29 @@ from pathlib import Path
 import pytest
 
 from faebryk.libs.util import repo_root
+
+
+def get_zig_executable() -> str:
+    """Find the zig executable, either from PATH or from the ziglang package."""
+    # First check if zig is in PATH
+    if zig_path := shutil.which("zig"):
+        return zig_path
+
+    # Try to get zig from the ziglang Python package
+    try:
+        import ziglang
+
+        return str(Path(ziglang.__file__).parent / "zig")
+    except ImportError:
+        pass
+
+    raise RuntimeError(
+        "zig compiler not found. "
+        "Ensure 'zig' is in PATH or install the 'ziglang' Python package."
+    )
+
+
+ZIG_EXECUTABLE = get_zig_executable()
 
 ZIG_SRC_DIR = repo_root() / "src" / "faebryk" / "core" / "zig"
 
@@ -50,10 +74,10 @@ def build_zig_test_command(zig_file: Path, test_filter: str | None = None) -> li
             imports.append(module_name)
 
     if not imports:
-        cmd = ["zig", "test", str(rel_path)]
+        cmd = [ZIG_EXECUTABLE, "test", str(rel_path)]
     else:
         cmd = [
-            "zig",
+            ZIG_EXECUTABLE,
             "test",
             *itertools.chain.from_iterable(["--dep", dep] for dep in imports),
             f"-Mroot={rel_path}",
@@ -78,7 +102,7 @@ def discover_zig_tests() -> list[tuple[Path, str]]:
         for zig_file in discover_zig_test_files()
         for test_name in TEST_NAME_PATTERN.findall(zig_file.read_text())
     ]
-    assert len(tests) > 0
+    assert len(tests) > 0, "No zig tests found"
     return tests
 
 
