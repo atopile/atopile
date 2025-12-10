@@ -10,6 +10,7 @@ from natsort import natsorted
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.core import graph
 from faebryk.libs.exceptions import UserResourceException
 from faebryk.libs.kicad.fileformats import Property, kicad
 from faebryk.libs.util import duplicates, md_list
@@ -101,9 +102,11 @@ def attach_random_designators(tg: fbrk.TypeGraph):
     assert not dupes, f"Duplicate designators: {md_list(dupes, recursive=True)}"
 
 
-def load_designators(tg: fbrk.TypeGraph, attach: bool = False) -> dict[fabll.Node, str]:
+def load_kicad_pcb_designators(
+    tg: fbrk.TypeGraph, attach: bool = False
+) -> dict[fabll.Node, str]:
     """
-    Load designators from attached footprints and attach them to the nodes.
+    Load designators from kicad pcb footprints and attach them to the nodes.
     """
 
     def _get_reference(fp: kicad.pcb.Footprint):
@@ -126,7 +129,6 @@ def load_designators(tg: fbrk.TypeGraph, attach: bool = False) -> dict[fabll.Nod
         node: ref
         for node, trait in nodes_traits.items()
         if (ref := _get_pcb_designator(trait)) is not None
-        and not isinstance(node, F.Footprints.GenericFootprint)
     }
 
     if attach:
@@ -142,3 +144,54 @@ def load_designators(tg: fbrk.TypeGraph, attach: bool = False) -> dict[fabll.Nod
             )
 
     return known_designators
+
+
+def test_attach_random_designators():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class TestComponent(fabll.Node):
+        is_module_ = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        has_designator_prefix_ = fabll.Traits.MakeEdge(
+            F.has_designator_prefix.MakeChild(prefix="TEST")
+        )
+
+    test_component_1 = TestComponent.bind_typegraph(tg).create_instance(g=g)
+    test_component_2 = TestComponent.bind_typegraph(tg).create_instance(g=g)
+    fabll.Traits.create_and_add_instance_to(test_component_2, F.has_designator).setup(
+        designator="COMPONENT2"
+    )
+
+    attach_random_designators(tg)
+
+    assert test_component_1.get_trait(F.has_designator).get_designator() == "TEST1"
+    assert test_component_2.get_trait(F.has_designator).get_designator() == "COMPONENT2"
+
+
+def test_load_kicad_pcb_designators():
+    from src.faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+    from src.faebryk.libs.test.fileformats import PCBFILE
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE).kicad_pcb
+    fp = pcb.footprints[1]
+
+    class TestComponent(fabll.Node):
+        is_module_ = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+    class TestApp(fabll.Node):
+        component = TestComponent.MakeChild()
+
+    test_app = TestApp.bind_typegraph(tg).create_instance(g=g)
+
+    transformer = PCB_Transformer(pcb=pcb, app=test_app)
+
+    fabll.Traits.create_and_add_instance_to(
+        test_app.component.get(), F.KiCadFootprints.has_associated_kicad_pcb_footprint
+    ).setup(fp, transformer)
+
+    load_kicad_pcb_designators(tg, attach=True)
+
+    assert test_app.component.get().get_trait(F.has_designator).get_designator() == "D1"

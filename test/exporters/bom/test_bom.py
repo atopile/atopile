@@ -10,7 +10,10 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.exporters.bom.jlcpcb import _get_bomline
-from faebryk.libs.app.designators import attach_random_designators, load_designators
+from faebryk.libs.app.designators import (
+    attach_random_designators,
+    load_kicad_pcb_designators,
+)
 from faebryk.libs.picker.picker import pick_part_recursively
 
 g = graph.GraphView.create()
@@ -18,7 +21,7 @@ tg = fbrk.TypeGraph.create(g=g)
 
 
 def _build(app: fabll.Node):
-    load_designators(app.tg, attach=True)
+    load_kicad_pcb_designators(app.tg, attach=True)
     solver = DefaultSolver()
     pick_part_recursively(app, solver)
     attach_random_designators(app.tg)

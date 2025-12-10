@@ -43,7 +43,10 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
 )
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.libs.app.checks import check_design
-from faebryk.libs.app.designators import attach_random_designators, load_designators
+from faebryk.libs.app.designators import (
+    attach_random_designators,
+    load_kicad_pcb_designators,
+)
 from faebryk.libs.app.erc import needs_erc_check
 from faebryk.libs.app.pcb import (
     check_net_names,
@@ -234,7 +237,7 @@ def load_pcb(
 ) -> None:
     pcb.setup()
     if config.build.keep_designators:
-        load_designators(pcb.tg, attach=True)
+        load_kicad_pcb_designators(pcb.tg, attach=True)
 
 
 @muster.register("picker", description="Picking parts", dependencies=[load_pcb])
