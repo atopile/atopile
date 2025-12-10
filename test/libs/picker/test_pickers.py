@@ -472,38 +472,50 @@ def test_pick_dependency_div_negative():
 
 @pytest.mark.usefixtures("setup_project_config")
 def test_null_solver():
-    capacitance = fabll.Range.from_center_rel(10 * P.nF, 0.2)
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions(g=g, tg=tg)
+    capacitance = E.lit_op_range_from_center_rel(center=(10**-9, E.U.Fa), rel=0.2)
 
     class App(fabll.Node):
-        cap: F.Capacitor
+        cap = F.Capacitor.MakeChild()
 
-        def __preinit__(self):
-            self.cap.add(F.has_package_requirements(size=SMDSize.I0805))
-            self.cap.capacitance.constrain_subset(capacitance)
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
 
-    app = App()
+    fabll.Traits.create_and_add_instance_to(
+        app.cap.get(), F.has_package_requirements
+    ).setup(SMDSize.I0805)
+    E.is_(
+        app.cap.get().capacitance.get().can_be_operand.get(),
+        capacitance,
+        assert_=True,
+    )
 
     solver = NullSolver()
     pick_part_recursively(app, solver)
 
-    assert app.cap.has_trait(F.has_part_picked)
+    assert app.cap.get().has_trait(F.has_part_picked)
     assert (
-        app.cap.get_trait(F.has_package_requirements).get_sizes(solver) == SMDSize.I0805
+        app.cap.get().get_trait(F.has_package_requirements).get_sizes(solver)
+        == SMDSize.I0805
     )
     assert (
         (solver)
-        .inspect_get_known_supersets(app.cap.capacitance)
-        .is_subset_of(capacitance)
+        .inspect_get_known_supersets(app.cap.get().capacitance.get().is_parameter.get())
+        .is_subset_of(capacitance.as_literal.get())
     )
 
 
 @pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.slow
 def test_pick_voltage_divider_complex():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
     class App(fabll.Node):
-        supply: F.ElectricPower
-        rdiv: F.ResistorVoltageDivider
-        adc_input: F.ElectricSignal
+        supply = F.ElectricPower.MakeChild()
+        rdiv = F.ResistorVoltageDivider.MakeChild()
+        adc_input = F.ElectricSignal.MakeChild()
 
         def __preinit__(self):
             self.supply.connect(self.rdiv.power)
@@ -516,7 +528,7 @@ def test_pick_voltage_divider_complex():
             )
             self.rdiv.max_current.constrain_subset(fabll.Range(1 * P.mA, 2 * P.mA))
 
-    app = App()
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
     F.is_bus_parameter.resolve_bus_parameters(app.tg)
     solver = DefaultSolver()
 
@@ -533,8 +545,13 @@ def test_pick_voltage_divider_complex():
 @pytest.mark.usefixtures("setup_project_config")
 def test_pick_capacitor_temperature_coefficient():
     # the picker backend must have access to the same enum definition for this to work
-    cap = F.Capacitor()
-    cap.temperature_coefficient.constrain_subset(F.Capacitor.TemperatureCoefficient.X7R)
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    cap = F.Capacitor.bind_typegraph(tg=tg).create_instance(g=g)
+    cap.temperature_coefficient.get().alias_to_literal(
+        F.Capacitor.TemperatureCoefficient.X7R
+    )
 
     solver = DefaultSolver()
     pick_part_recursively(cap, solver)
