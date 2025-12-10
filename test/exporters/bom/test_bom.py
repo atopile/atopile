@@ -66,7 +66,7 @@ def test_bom_explicit_pick():
 
     bomline = _get_bomline(test_component)
     assert bomline is not None
-    assert bomline.LCSC_Partnumber == "C25804"
+    assert bomline.Supplier_Partnumber == "C25804"
 
 
 def _setup_test_component(tg: fbrk.TypeGraph, g: graph.GraphView):
@@ -90,7 +90,7 @@ def _setup_test_component(tg: fbrk.TypeGraph, g: graph.GraphView):
 
     fabll.Traits.create_and_add_instance_to(
         node=test_module, trait=F.Footprints.has_associated_footprint
-    ).set_footprint(test_footprint.is_footprint_.get())
+    ).setup(test_footprint.is_footprint_.get())
 
     return test_module
 
@@ -123,7 +123,7 @@ def test_bom_kicad_footprint_lcsc_verbose():
 
     bomline = _get_bomline(test_module)
     assert bomline is not None
-    assert bomline.LCSC_Partnumber == "C18166021"
+    assert bomline.Supplier_Partnumber == "C18166021"
 
 
 def test_bom_kicad_footprint_lcsc_compact():
@@ -150,7 +150,7 @@ def test_bom_kicad_footprint_lcsc_compact():
     ).create_instance(g=g)
     fabll.Traits.create_and_add_instance_to(
         node=m, trait=F.Footprints.has_associated_footprint
-    ).set_footprint(fp.is_footprint.get())
+    ).setup(fp.is_footprint.get())
 
     fabll.Traits.create_and_add_instance_to(
         node=m, trait=F.has_explicit_part
@@ -167,11 +167,12 @@ def test_bom_kicad_footprint_lcsc_compact():
 
     bomline = _get_bomline(m)
     assert bomline is not None
-    assert bomline.LCSC_Partnumber == "C18166021"
+    assert bomline.Supplier_Partnumber == "C18166021"
     assert (
         m.get_trait(F.Footprints.has_associated_footprint)
         .get_footprint()
         .get_trait(F.KiCadFootprints.has_associated_kicad_pcb_footprint)
-        .get_kicad_footprint_name()
+        .get_footprint()
+        .name
         == "PinHeader_1x02_P2.54mm_Vertical"
     )

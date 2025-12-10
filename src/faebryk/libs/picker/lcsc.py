@@ -617,7 +617,7 @@ def attach(
 
             fabll.Traits.create_and_add_instance_to(
                 node=component, trait=F.Footprints.has_associated_footprint
-            ).set_footprint(fp.is_footprint.get())
+            ).setup(fp.is_footprint.get())
 
             pads_t = fp.get_pads()
             try:

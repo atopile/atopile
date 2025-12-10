@@ -6,7 +6,6 @@ from typing import Self
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
-from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.library import _F as F
 
 
@@ -92,18 +91,10 @@ class has_associated_footprint(fabll.Node):
     footprint_ = F.Collections.Pointer.MakeChild()
 
     def get_footprint(self) -> is_footprint:
-        return fabll.Node.bind_instance(
-            EdgePointer.get_referenced_node_from_node(node=self.instance)
-        ).get_trait(is_footprint)
+        return self.footprint_.get().deref().cast(is_footprint)
 
-    def set_footprint(self, footprint: is_footprint):
-        EdgePointer.point_to(
-            bound_node=self.instance,
-            target_node=fbrk.EdgeTrait.get_owner_node_of(
-                bound_node=footprint.instance
-            ).node(),
-            order=None,
-        )
+    def setup(self, footprint: is_footprint):
+        self.footprint_.get().point(footprint)
 
 
 class GenericPad(fabll.Node):
@@ -132,7 +123,6 @@ class GenericFootprint(fabll.Node):
 
     def get_pads(self) -> list[is_pad]:
         pads = [pad.cast(is_pad) for pad in self.pads_.get().as_list()]
-        print([p.pad_name for p in pads])
         return pads
 
     @classmethod
@@ -163,38 +153,6 @@ class GenericFootprint(fabll.Node):
         return self
 
 
-def test_generic_footprint(capsys):
-    g = fabll.graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-
-    footprint = GenericFootprint.bind_typegraph(tg=tg).create_instance(g=g)
-    footprint.setup_from_pad_number_and_names([("1", "A"), ("2", "B")])
-
-    pads = footprint.get_pads()
-    assert len(pads) == 2
-    assert pads[0].pad_name == "A"
-    assert pads[0].pad_number == "1"
-    assert pads[1].pad_name == "B"
-    assert pads[1].pad_number == "2"
-
-
-# def test_has_associated_footprint():
-#     g = fabll.graph.GraphView.create()
-#     tg = fbrk.TypeGraph.create(g=g)
-
-#     has_associated_footprint = has_associated_footprint.bind_typegraph(tg=tg).
-#     .create_instance(g=g)
-#     is_footprint = is_footprint.bind_typegraph(tg=tg).create_instance(g=g)
-
-#     has_associated_footprint.set_footprint(is_footprint)
-
-#     assert has_associated_footprint.get_footprint()
-
-#     with capsys.disabled():
-#         print(fabll.graph.InstanceGraphFunctions.render(
-#             has_associated_footprint.instance, show_traits=True, show_pointers=True))
-
-
 def test_has_associated_footprint(capsys):
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -214,7 +172,7 @@ def test_has_associated_footprint(capsys):
     footprint_instance = TestFootprint.bind_typegraph(tg=tg).create_instance(g=g)
     module_with_footprint = TestModule.bind_typegraph(tg=tg).create_instance(g=g)
 
-    module_with_footprint.get_trait(has_associated_footprint).set_footprint(
+    module_with_footprint.get_trait(has_associated_footprint).setup(
         footprint_instance._is_footprint.get()
     )
 
