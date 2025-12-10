@@ -10,6 +10,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 import faebryk.libs.exceptions
 from atopile.address import AddrStr
+from atopile.compiler.ast_visitor import is_ato_module
 from atopile.config import ProjectConfig, config
 from faebryk.core.zig.gen.faebryk.pointer import (  # type: ignore[import-untyped]
     EdgePointer,
@@ -111,7 +112,7 @@ def _index_module_layouts(tg: fbrk.TypeGraph) -> "dict[BoundNode, set[SubPCB]]":
     modules_by_address: "dict[AddrStr, BoundNode]" = {}
 
     modules = fabll.Traits.get_implementor_objects(
-        fabll.is_module.bind_typegraph(tg), g=tg.get_graph_view()
+        is_ato_module.bind_typegraph(tg), g=tg.get_graph_view()
     )
 
     for module in modules:
