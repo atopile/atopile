@@ -56,7 +56,6 @@ from faebryk.library.PCB import PCB
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Filter import Filter
 import faebryk.library.Lead as Lead
-from faebryk.library.Net import Net
 from faebryk.library.Pad import Pad
 from faebryk.library.Symbol import Symbol
 from faebryk.library.XtalIF import XtalIF
@@ -71,6 +70,7 @@ from faebryk.library.Crystal import Crystal
 from faebryk.library.Fuse import Fuse
 from faebryk.library.Inductor import Inductor
 from faebryk.library.MOSFET import MOSFET
+from faebryk.library.Net import Net
 from faebryk.library.Resistor import Resistor
 from faebryk.library.TestPoint import TestPoint
 from faebryk.library.BJT import BJT
@@ -157,7 +157,6 @@ __all__ = [
     "ElectricPower",
     "Filter",
     "Lead",
-    "Net",
     "Pad",
     "Symbol",
     "XtalIF",
@@ -172,6 +171,7 @@ __all__ = [
     "Fuse",
     "Inductor",
     "MOSFET",
+    "Net",
     "Resistor",
     "TestPoint",
     "BJT",

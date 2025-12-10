@@ -2,23 +2,12 @@
 # SPDX-License-Identifier: MIT
 
 
-from typing import TYPE_CHECKING, Self
+from typing import Self
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.library import _F as F
-
-if TYPE_CHECKING:
-    from faebryk.library.Net import Net
-
-
-class is_footprint(fabll.Node):
-    """
-    Marker trait for nodes that a footprint.
-    """
-
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
 
 
 class is_pad(fabll.Node):
@@ -65,6 +54,25 @@ class is_pad(fabll.Node):
         self.pad_name_.get().alias_to_single(value=pad_name)
         self.pad_number_.get().alias_to_single(value=pad_number)
         return self
+
+
+class is_footprint(fabll.Node):
+    """
+    Mark node as a footprint.
+    """
+
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
+
+    def get_pads(self) -> list[is_pad]:
+        fp = self.get_parent_with_trait(is_footprint)[0]
+        pads = [
+            pad.get_trait(is_pad)
+            for pad in fp.get_children(
+                direct_only=True, types=fabll.Node, required_trait=is_pad
+            )
+        ]
+        print([p.pad_name for p in pads])
+        return pads
 
 
 class can_attach_to_footprint(fabll.Node):
@@ -223,3 +231,27 @@ def test_has_associated_footprint(capsys):
                 module_with_footprint.instance, show_traits=True, show_pointers=True
             )
         )
+
+
+def test_is_footprint(capsys):
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class TestPad(fabll.Node):
+        pass
+
+    class TestFootprint(fabll.Node):
+        is_footprint_ = fabll.Traits.MakeEdge(is_footprint.MakeChild())
+        pads_ = [TestPad.MakeChild() for _ in range(3)]
+
+    footprint_instance = TestFootprint.bind_typegraph(tg=tg).create_instance(g=g)
+    for i, pad in enumerate(footprint_instance.pads_):
+        fabll.Traits.create_and_add_instance_to(pad.get(), is_pad).setup(
+            f"pad_{i}", f"{i}"
+        )
+
+    pads = footprint_instance.is_footprint_.get().get_pads()
+    assert len(pads) == 3
+    for i, pad in enumerate(pads):
+        assert pad.pad_name == f"pad_{i}"
+        assert pad.pad_number == f"{i}"
