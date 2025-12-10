@@ -271,7 +271,7 @@ def test_shortcircuit_logic_or():
     app = App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
     p_ops = [p.get().can_be_operand.get() for p in app.p]
 
-    X = E.or_(p_ops[0], E.lit_op_single(True))
+    X = E.or_(p_ops[0], E.lit_bool(True))
     for p in p_ops[1:]:
         X = E.or_(X, p)
     Y = E.or_(X, X)
