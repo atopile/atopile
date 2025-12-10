@@ -22,7 +22,7 @@ from atopile.errors import (
     UserPickError,
 )
 from faebryk.core.solver.solver import Solver
-from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
+from faebryk.exporters.bom.jlcpcb import write_bom
 from faebryk.exporters.documentation.i2c import export_i2c_tree
 from faebryk.exporters.netlist.graph import attach_net_names
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
@@ -462,7 +462,7 @@ def generate_bom(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     """Generate a BOM for the project."""
-    write_bom_jlcpcb(
+    write_bom(
         app.get_children(
             direct_only=False, types=fabll.Node, required_trait=fabll.is_module
         ),

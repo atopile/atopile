@@ -26,11 +26,11 @@ class BOMLine:
     Value: str
     Manufacturer: str
     Partnumber: str
-    LCSC_Partnumber: str
+    Supplier_Partnumber: str
 
     def to_dict(self) -> dict[str, str]:
         out = vars(self)
-        out["LCSC Part #"] = out.pop("LCSC_Partnumber")
+        out["LCSC Part #"] = out.pop("Supplier_Partnumber")
         return out
 
 
@@ -48,8 +48,8 @@ def split_designator(designator: str) -> tuple[str, int]:
     return (prefix, number)
 
 
-def make_bom(components: Iterable[fabll.Module]):
-    bomlines = [line for c in components if (line := _get_bomline(c))]
+def make_bom(components: Iterable[fabll.Module], jlcpcb_format: bool = True):
+    bomlines = [line for c in components if (line := _get_bomline(c, jlcpcb_format))]
     bomlines = sorted(
         _compact_bomlines(bomlines),
         key=lambda x: split_designator(x.Designator.split(", ")[0]),
@@ -59,11 +59,13 @@ def make_bom(components: Iterable[fabll.Module]):
     return rows
 
 
-def write_bom_jlcpcb(components: Iterable[fabll.Node], path: Path) -> None:
+def write_bom(
+    components: Iterable[fabll.Node], path: Path, jlcpcb_format: bool = True
+) -> None:
     if not path.parent.exists():
         os.makedirs(path.parent)
     with open(path, "w", newline="", encoding="utf-8") as bom_csv:
-        rows = make_bom(components)
+        rows = make_bom(components, jlcpcb_format)
         if rows:
             writer = csv.DictWriter(
                 bom_csv,
@@ -81,17 +83,19 @@ def _compact_bomlines(bomlines: list[BOMLine]) -> list[BOMLine]:
     compact_bomlines = []
     for row, bomline in enumerate(bomlines):
         # skip PNs that we already added
-        if bomline.LCSC_Partnumber in [row.LCSC_Partnumber for row in compact_bomlines]:
+        if bomline.Supplier_Partnumber in [
+            row.Supplier_Partnumber for row in compact_bomlines
+        ]:
             continue
 
         compact_bomline = bomline
         for other_bomline in bomlines[row + 1 :]:
-            if bomline.LCSC_Partnumber == other_bomline.LCSC_Partnumber:
+            if bomline.Supplier_Partnumber == other_bomline.Supplier_Partnumber:
                 for key in "Footprint", "Value":
                     if getattr(bomline, key) != getattr(other_bomline, key):
                         logger.warning(
                             f"{key} is not the same for two equal partnumbers "
-                            f"{bomline.LCSC_Partnumber}: "
+                            f"{bomline.Supplier_Partnumber}: "
                             f"{bomline.Designator} "
                             f"with {key}: {getattr(bomline, key)} "
                             f"{other_bomline.Designator} "
@@ -112,7 +116,7 @@ def _compact_bomlines(bomlines: list[BOMLine]) -> list[BOMLine]:
     return compact_bomlines
 
 
-def _get_bomline(cmp: fabll.Node) -> BOMLine | None:
+def _get_bomline(cmp: fabll.Node, jlcpcb_format: bool = True) -> BOMLine | None:
     if not cmp.has_trait(F.Footprints.has_associated_footprint):
         logger.warning(f"Missing associated footprint on component '{cmp}'")
         return
@@ -147,16 +151,18 @@ def _get_bomline(cmp: fabll.Node) -> BOMLine | None:
     )
     designator = cmp.get_trait(F.has_designator).get_designator() or ""
 
-    if not isinstance(part, PickedPartLCSC):
+    if jlcpcb_format and not part.supplier_partno.lower().startswith("c"):
         logger.warning(f"Non-LCSC parts not supported in JLCPCB BOM: {part}")
-        return
+        return None
 
     manufacturer = part.manufacturer
     partnumber = part.partno
 
-    footprint_name = footprint.get_trait(
-        F.KiCadFootprints.has_associated_kicad_pcb_footprint
-    ).get_kicad_footprint_name()
+    footprint_name = (
+        footprint.get_trait(F.KiCadFootprints.has_associated_kicad_pcb_footprint)
+        .get_footprint()
+        .name
+    )
 
     return BOMLine(
         Designator=designator,
@@ -165,22 +171,24 @@ def _get_bomline(cmp: fabll.Node) -> BOMLine | None:
         Value=value,
         Manufacturer=manufacturer,
         Partnumber=partnumber,
-        LCSC_Partnumber=part.lcsc_id,
+        Supplier_Partnumber=part.supplier_partno,
     )
 
 
 def test_get_bomline():
+    from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+    from faebryk.libs.kicad.fileformats import kicad
+    from faebryk.libs.test.fileformats import PCBFILE
+
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
+    pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE).kicad_pcb
+    fp = pcb.footprints[1]
+
     class TestNode(fabll.Node):
         class TestFootprint(fabll.Node):
-            is_kicad_footprint = fabll.Traits.MakeEdge(
-                F.KiCadFootprints.has_associated_kicad_pcb_footprint.MakeChild(
-                    kicad_identifier="test_lib:R_0402_1005Metric",
-                    # pinmap={}, #TODO
-                )
-            )
+            pass
 
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         _has_designator = fabll.Traits.MakeEdge(F.has_designator.MakeChild("R1"))
@@ -189,22 +197,28 @@ def test_get_bomline():
                 PickedPartLCSC(
                     manufacturer="Amazing manufacturer",
                     partno="ABC-Part",
-                    supplier_partno="12345",
+                    supplier_partno="C12345",
                 )
             )
         )
         _has_associated_footprint = fabll.Traits.MakeEdge(
-            F.Footprints.has_associated_footprint.MakeChild(fabll.Node.MakeChild())
+            F.Footprints.has_associated_footprint.MakeChild()
         )
         fp = TestFootprint.MakeChild()
 
     node = TestNode.bind_typegraph(tg).create_instance(g=g)
 
+    transformer = PCB_Transformer(pcb, node)
+
+    fabll.Traits.create_and_add_instance_to(
+        node=node.fp.get(), trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint
+    ).setup(fp, transformer)
+
     bomline = _get_bomline(node)
 
     assert bomline is not None
     assert bomline.Designator == "R1"
-    assert bomline.Footprint == "R_0402_1005Metric"
+    assert bomline.Footprint == "lcsc:LED0603-RD-YELLOW"
     assert bomline.Value == ""
     assert bomline.Manufacturer == "Amazing manufacturer"
     assert bomline.Partnumber == "ABC-Part"
