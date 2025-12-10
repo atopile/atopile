@@ -1189,6 +1189,10 @@ pub const TypeGraph = struct {
     }
 
     pub fn instantiate_node(tg: *@This(), type_node: BoundNodeReference) !graph.BoundNodeReference {
+        // type_node may be linked from another TypeGraph
+        var type_owner_tg_val = TypeGraph.of_type(type_node) orelse tg.*;
+        const type_owner_tg: *TypeGraph = &type_owner_tg_val;
+
         // 1) Create instance and connect it to its type
         const new_instance = type_node.g.insert_node(Node.init(type_node.g.allocator));
         _ = EdgeType.add_instance(type_node, new_instance);
@@ -1236,7 +1240,7 @@ pub const TypeGraph = struct {
             .type_graph = tg,
             .parent_instance = new_instance,
         };
-        const make_child_result = tg.visit_make_children(type_node, void, &make_child_visitor, VisitMakeChildren.visit);
+        const make_child_result = type_owner_tg.visit_make_children(type_node, void, &make_child_visitor, VisitMakeChildren.visit);
         switch (make_child_result) {
             .ERROR => |err| return err,
             else => {},
@@ -1287,12 +1291,12 @@ pub const TypeGraph = struct {
 
         // Only visit make_link children if TypeGraph is fully initialized
         // This avoids circular dependency during TypeGraph initialization
-        if (tg.get_initialized()) {
+        if (type_owner_tg.get_initialized()) {
             var make_link_visitor = VisitMakeLinks{
                 .type_graph = tg,
                 .parent_instance = new_instance,
             };
-            const make_link_result = EdgeComposition.visit_children_of_type(type_node, tg.get_MakeLink().node, void, &make_link_visitor, VisitMakeLinks.visit);
+            const make_link_result = EdgeComposition.visit_children_of_type(type_node, type_owner_tg.get_MakeLink().node, void, &make_link_visitor, VisitMakeLinks.visit);
             switch (make_link_result) {
                 .ERROR => |err| return err,
                 else => {},
