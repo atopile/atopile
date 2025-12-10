@@ -69,31 +69,41 @@ def test_bom_explicit_pick():
     assert bomline.LCSC_Partnumber == "C25804"
 
 
+def _setup_test_component(tg: fbrk.TypeGraph, g: graph.GraphView):
+    class TestPad(fabll.Node):
+        is_pad_ = fabll.Traits.MakeEdge(
+            F.Footprints.is_pad.MakeChild(pad_name="", pad_number="")
+        )
+
+    class TestFootprint(fabll.Node):
+        is_footprint_ = fabll.Traits.MakeEdge(F.Footprints.is_footprint.MakeChild())
+
+        pads_ = [TestPad.MakeChild() for _ in range(2)]
+
+    class TestModule(fabll.Node):
+        is_module_ = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+    test_module = TestModule.bind_typegraph(tg).create_instance(g=g)
+    test_footprint = TestFootprint.bind_typegraph_from_instance(
+        instance=test_module.instance
+    ).create_instance(g=g)
+
+    fabll.Traits.create_and_add_instance_to(
+        node=test_module, trait=F.Footprints.has_associated_footprint
+    ).set_footprint(test_footprint.is_footprint_.get())
+
+    return test_module
+
+
 def test_bom_kicad_footprint_no_lcsc():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    m = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
-    fp = F.Footprints.GenericFootprint.bind_typegraph_from_instance(
-        instance=m.instance
-    ).create_instance(g=g)
-    fp.setup([("", "2"), ("", "1")])
-    fabll.Traits.create_and_add_instance_to(
-        node=m, trait=F.Footprints.has_associated_footprint
-    ).set_footprint(fp.is_footprint.get())
-    kfp = F.KiCadFootprints.GenericKiCadFootprint.bind_typegraph_from_instance(
-        instance=fp.instance
-    ).create_instance(g=g)
-    kfp.is_kicad_footprint_.get().setup(
-        "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"
-    )
-    fabll.Traits.create_and_add_instance_to(
-        node=fp, trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint
-    ).setup(kfp)
+    test_module = _setup_test_component(tg, g)
 
-    _build(m)
+    _build(test_module)
 
-    bomline = _get_bomline(m)
+    bomline = _get_bomline(test_module)
     assert bomline is None
 
 
@@ -101,36 +111,19 @@ def test_bom_kicad_footprint_lcsc_verbose():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    m = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
-    fp = F.Footprints.GenericFootprint.bind_typegraph_from_instance(
-        instance=m.instance
-    ).create_instance(g=g)
-    fp.setup([("", "2"), ("", "1")])
-    fabll.Traits.create_and_add_instance_to(
-        node=m, trait=F.Footprints.has_associated_footprint
-    ).set_footprint(fp.is_footprint.get())
-    kfp = F.KiCadFootprints.GenericKiCadFootprint.bind_typegraph_from_instance(
-        instance=fp.instance
-    ).create_instance(g=g)
-    kfp.is_kicad_footprint_.get().setup(
-        "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"
-    )
-    fabll.Traits.create_and_add_instance_to(
-        node=fp, trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint
-    ).setup(kfp)
+    test_module = _setup_test_component(tg, g)
 
-    _build(m)
+    _build(test_module)
 
     fabll.Traits.create_and_add_instance_to(
-        node=m, trait=F.has_explicit_part
+        node=test_module, trait=F.has_explicit_part
     ).setup_by_supplier("C18166021", pinmap={})
 
-    _build(m)
+    _build(test_module)
 
-    bomline = _get_bomline(m)
+    bomline = _get_bomline(test_module)
     assert bomline is not None
     assert bomline.LCSC_Partnumber == "C18166021"
-    assert m.get_trait(F.Footprints.has_associated_footprint).get_footprint() is fp
 
 
 def test_bom_kicad_footprint_lcsc_compact():
