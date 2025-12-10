@@ -37,14 +37,14 @@ dimensionless = F.Units.Dimensionless
 
 def _create_letters(
     E: BoundExpressions, n: int, units=fabll.Node
-) -> tuple[F.Parameters.ReprContext, list[F.Parameters.is_parameter]]:
+) -> tuple[F.Parameters.ReprContext, list[F.Parameters.is_parameter_operatable]]:
     context = F.Parameters.ReprContext()
 
     class App(fabll.Node):
         params = [F.Parameters.NumericParameter.MakeChild(unit=units) for _ in range(n)]
 
     app = App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
-    params = [p.get().is_parameter.get() for p in app.params]
+    params = [p.get().is_parameter_operatable.get() for p in app.params]
 
     return context, params
 

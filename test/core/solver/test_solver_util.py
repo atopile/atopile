@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from typing import Callable
 
 import pytest
 
@@ -26,28 +25,40 @@ from test.core.solver.test_solver import BoundExpressions, _create_letters
 
 logger = logging.getLogger(__name__)
 
+Flattenable = (
+    F.Expressions.Add
+    | F.Expressions.Multiply
+    | F.Expressions.Subtract
+    | F.Expressions.Divide
+    | F.Expressions.And
+    | F.Expressions.Or
+    | F.Expressions.Xor
+    | F.Expressions.Union
+    | F.Expressions.Intersection
+    | F.Expressions.Difference
+)
+
 
 @pytest.mark.parametrize(
     "op",
     [
-        F.Expressions.Add.c,
-        F.Expressions.Multiply.c,
-        F.Expressions.Subtract.c,
-        F.Expressions.Divide.c,
-        F.Expressions.And.c,
-        F.Expressions.Or.c,
-        F.Expressions.Xor.c,
-        F.Expressions.Union.c,
-        F.Expressions.Intersection.c,
-        F.Expressions.Difference.c,
+        F.Expressions.Add,
+        F.Expressions.Multiply,
+        F.Expressions.Subtract,
+        F.Expressions.Divide,
+        F.Expressions.And,
+        F.Expressions.Or,
+        F.Expressions.Xor,
+        F.Expressions.Union,
+        F.Expressions.Intersection,
+        F.Expressions.Difference,
     ],
 )
-def test_flatten_associative(op: Callable[..., F.Parameters.can_be_operand]):
+def test_flatten_associative(op: type[Flattenable]):
     E = BoundExpressions()
-    op_class: type[fabll.Node] = op.__self__
 
-    def flatten(op_node: fabll.Node):
-        return MutatorUtils.flatten_associative(op_node, lambda _, __: True)
+    def flatten(is_flattenable: "F.Expressions.is_flattenable"):
+        return MutatorUtils.flatten_associative(is_flattenable, lambda _, __: True)
 
     # TODO: add logic trait to classify logic expressions
     if op in [F.Expressions.And.c, F.Expressions.Or.c, F.Expressions.Xor.c]:
@@ -55,28 +66,24 @@ def test_flatten_associative(op: Callable[..., F.Parameters.can_be_operand]):
     else:
         A, B, C, D, H = [E.parameter_op() for _ in range(5)]
 
-    to_flatten_op = op(op(A, B), C, op(D, H))
-    to_flatten_expression = fabll.Traits(to_flatten_op).get_obj(op_class)
-    res = flatten(to_flatten_expression)
+    to_flatten_op = op.c(op.c(A, B), C, op.c(D, H))
+    to_flatten_expression = fabll.Traits(to_flatten_op).get_obj(op)
+    res = flatten(to_flatten_expression.is_flattenable.get())
 
     # Get the parent class from the classmethod
     # (e.g., F.Expressions.Add.c -> F.Expressions.Add)
 
-    if not op_class.bind_typegraph(E.tg).try_get_type_trait(
-        F.Expressions.is_flattenable
-    ):
+    if not to_flatten_expression.try_get_trait(F.Expressions.is_flattenable):
         assert len(res.destroyed_operations) == 0
         return
 
-    if not op_class.bind_typegraph(E.tg).try_get_type_trait(
-        F.Expressions.is_associative
-    ):
+    if not to_flatten_expression.try_get_trait(F.Expressions.is_associative):
         assert set(res.extracted_operands) & {A, B, C}
         assert not set(res.extracted_operands) & {D, E}
         assert len(res.destroyed_operations) == 1
         return
 
-    assert set(res.extracted_operands) == {A, B, C, D, E}
+    assert set(res.extracted_operands) == {A, B, C, D, H}
     assert len(res.destroyed_operations) == 2
 
 
@@ -96,21 +103,13 @@ def test_mutator_no_graph_merge():
         pass
 
     mutator = Mutator(
-        MutationMap.bootstrap(E.tg, E.g, print_context=context),
+        MutationMap.bootstrap(p0.tg, p0.g, print_context=context),
         algo=algo,
         iteration=0,
         terminal=True,
     )
-    p0_new = (
-        mutator.get_copy(p0)
-        .as_parameter_operatable.force_get()
-        .as_parameter.force_get()
-    )
-    p3_new = (
-        mutator.get_copy(p3)
-        .as_parameter_operatable.force_get()
-        .as_parameter.force_get()
-    )
+    p0_new = mutator.get_copy(p0)
+    p3_new = mutator.get_copy(p3)
     alias_new = fabll.Traits(mutator.get_copy(alias)).get_obj(F.Expressions.Is)
 
     G = p0.tg
@@ -188,7 +187,7 @@ def test_get_correlations_basic():
     o = E.is_(A, B, assert_=True)
 
     # Create an expression with correlated operands
-    expr = E.is_(A, B, C, assert_=True)
+    expr = E.add(A, B, C)
 
     # Test correlations
     correlations = list(
@@ -278,10 +277,10 @@ def test_get_correlations_nested_correlated():
 def test_get_correlations_self_correlated():
     E = BoundExpressions()
     A = E.parameter_op()
-    E = E.add(A, A)
+    expr = E.add(A, A)
     correlations = list(
         MutatorUtils.get_correlations(
-            E.as_parameter_operatable.force_get().as_expression.force_get()
+            expr.as_parameter_operatable.force_get().as_expression.force_get()
         )
     )
     assert len(correlations) == 1
@@ -366,9 +365,7 @@ def test_mutation_map_compressed_mapping_forwards_identity():
     mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
 
     f = mapping.compressed_mapping_forwards
-    assert {k: v.maps_to for k, v in f.items()} == {
-        v: v.as_parameter_operatable.get() for v in variables
-    }
+    assert {k: v.maps_to for k, v in f.items()} == {v: v for v in variables}
 
 
 def test_mutation_map_compressed_mapping_backwards_identity():
@@ -384,13 +381,13 @@ def test_mutation_map_compressed_mapping_backwards_identity():
 def test_mutation_map_compressed_mapping_backwards_copy():
     E = BoundExpressions()
     context, variables = _create_letters(E, 3)
-    variables = [v.as_parameter_operatable.get() for v in variables]
+    variables = [v for v in variables]
 
     mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
 
     E2 = BoundExpressions()
     _, variables_new = _create_letters(E2, 3)
-    variables_new = [v.as_parameter_operatable.get() for v in variables_new]
+    variables_new = [v for v in variables_new]
 
     mapping_new = mapping.extend(
         MutationStage(
@@ -417,13 +414,13 @@ def test_mutation_map_compressed_mapping_backwards_copy():
 def test_mutation_map_compressed_mapping_backwards_mutate():
     E = BoundExpressions()
     context, variables = _create_letters(E, 3)
-    variables = [v.as_parameter_operatable.get() for v in variables]
+    variables = [v for v in variables]
 
     mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
 
     E2 = BoundExpressions()
     _, variables_new = _create_letters(E2, 3)
-    variables_new = [v.as_parameter_operatable.get() for v in variables_new]
+    variables_new = [v for v in variables_new]
 
     mapping_new = mapping.extend(
         MutationStage(
@@ -459,13 +456,13 @@ def test_mutation_map_non_copy_mutated_identity():
 def test_mutation_map_non_copy_mutated_mutate():
     E = BoundExpressions()
     context, variables = _create_letters(E, 3)
-    variables = [v.as_parameter_operatable.get() for v in variables]
+    variables = [v for v in variables]
 
     mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
 
     E2 = BoundExpressions()
     _, variables_new = _create_letters(E2, 3)
-    variables_new = [v.as_parameter_operatable.get() for v in variables_new]
+    variables_new = [v for v in variables_new]
 
     mapping_new = mapping.extend(
         MutationStage(
@@ -597,7 +594,7 @@ def test_traceback_filtering_tree():
     solver = DefaultSolver()
     out = solver.simplify_symbolically(E.tg, E.g, print_context=context, terminal=True)
 
-    A_new = out.data.mutation_map.map_forward(A.as_parameter_operatable.get()).maps_to
+    A_new = out.data.mutation_map.map_forward(A).maps_to
     assert A_new
     tb = out.data.mutation_map.get_traceback(A_new)
     logger.info(rich_to_string(tb.filtered().as_rich_tree()))

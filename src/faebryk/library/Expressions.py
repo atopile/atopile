@@ -1638,6 +1638,8 @@ class And(fabll.Node):
             )
         )
     )
+    is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
     operands = OperandSequence.MakeChild()
 
@@ -1791,6 +1793,8 @@ class Xor(fabll.Node):
             )
         )
     )
+    is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
+    is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
 
     operands = OperandSequence.MakeChild()
 
@@ -1957,8 +1961,8 @@ class Union(fabll.Node):
     has_idempotent_operands = fabll.Traits.MakeEdge(has_idempotent_operands.MakeChild())
     is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
     has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
-    is_fully_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
-    is_associative = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
+    is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
     operands = OperandSequence.MakeChild()
 
