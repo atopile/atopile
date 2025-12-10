@@ -147,7 +147,7 @@ def _prepare_query(
 
         generic_field_names = {f.name for f in fields(params_t)}
         _, known_params = more_itertools.partition(
-            lambda p: p.get_name() in generic_field_names, (trait.params)
+            lambda p: p.get_name() in generic_field_names, (trait.get_params())
         )
         cmp_params = {
             p.get_name(): solver.inspect_get_known_supersets(
@@ -298,7 +298,7 @@ def _get_compatible_parameters(
         raise NotCompatibleException(module, c) from e
 
     design_params = {
-        p.get_name() for p in module.get_trait(F.is_pickable_by_type).params
+        p.get_name() for p in module.get_trait(F.is_pickable_by_type).get_params()
     }
     component_params = c.attribute_literals
 

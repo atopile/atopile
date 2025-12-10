@@ -260,19 +260,30 @@ def test_pick_explicit_modules():
 
     class App(fabll.Node):
         r1 = F.Resistor.MakeChild()
-        is_pickable_by_supplier_id = F.is_pickable_by_supplier_id.MakeChild(
-            supplier_part_id="C173561",
-            supplier=F.is_pickable_by_supplier_id.Supplier.LCSC,
-        )
-        r1.add_dependant(fabll.Traits.MakeEdge(is_pickable_by_supplier_id, [r1]))
-        # r1.add_dependant(is_pickable_by_supplier_id)
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+        @classmethod
+        def MakeChild(cls):  # type: ignore[invalid-method-override]
+            out = fabll._ChildField(cls)
+            out.add_dependant(
+                fabll.Traits.MakeEdge(
+                    F.is_pickable_by_supplier_id.MakeChild(
+                        supplier_part_id="C173561",
+                        supplier=F.is_pickable_by_supplier_id.Supplier.LCSC,
+                    ),
+                    [out, cls.r1],
+                )
+            )
+            return out
 
-    tree = get_pick_tree(app)
+    # TODO: simplify
+    class MetaApp(fabll.Node):
+        app = App.MakeChild()
+
+    meta_app = MetaApp.bind_typegraph(tg=tg).create_instance(g=g)
+
+    tree = get_pick_tree(meta_app)
     pick_topologically(tree, solver)
-    print(app.r1.get())
-    assert app.r1.get().has_trait(F.has_part_picked)
+    assert meta_app.app.get().r1.get().has_trait(F.has_part_picked)
 
 
 @pytest.mark.usefixtures("setup_project_config")

@@ -76,7 +76,7 @@ def make_params_for_type(module: fabll.Node) -> type:
         ),
         *[
             (param.get_name(), ApiParamT, SerializableField())
-            for param in pickable_trait.params
+            for param in pickable_trait.get_params()
         ],
     ]
 

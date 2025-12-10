@@ -28,6 +28,7 @@ from faebryk.libs.util import (
     Tree,
     debug_perf,
     indented_container,
+    not_none,
     partition,
     try_or,
     unique,
@@ -149,7 +150,6 @@ def get_pick_tree(module: fabll.Node) -> Tree[F.is_pickable]:
         pickable_trait = module.get_trait(F.is_pickable_by_type).get_trait(
             F.is_pickable
         )
-        print("pickable_node", pickable_trait.pretty_params())
         tree[pickable_trait] = merge_tree
 
     for child in module.get_direct_children():
@@ -253,8 +253,8 @@ def check_missing_picks(module: fabll.Node):
 
 
 def find_independent_groups(
-    modules: Iterable[fabll.Module], solver: Solver
-) -> list[set[fabll.Module]]:
+    modules: Iterable[F.is_pickable], solver: Solver
+) -> list[set[F.is_pickable]]:
     """
     Find groups of modules that are independent of each other.
     """

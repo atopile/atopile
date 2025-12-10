@@ -26,12 +26,10 @@ class is_pickable_by_type(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     endpoint_ = F.Parameters.EnumParameter.MakeChild(enum_t=Endpoint)
     params_ = F.Collections.PointerSet.MakeChild()
-
     # TODO: Forward this trait to parent
     _is_pickable = fabll.Traits.MakeEdge(F.is_pickable.MakeChild())
 
-    @property
-    def params(self) -> list[fabll.Node]:
+    def get_params(self) -> list[fabll.Node]:
         param_tuples = self.params_.get().as_list()
         parameters = [
             F.Collections.PointerTuple.bind_instance(
