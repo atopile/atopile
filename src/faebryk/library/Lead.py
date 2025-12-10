@@ -184,14 +184,20 @@ def test_is_lead():
     assert lead.has_trait(can_attach_to_any_pad)
 
     # emulate attaching to a pad, normaly done in build process
-    pad = F.Footprints.GenericPad.bind_typegraph(tg).create_instance(g=g)
-
-    fabll.Traits.create_and_add_instance_to(node=lead, trait=has_associated_pads).setup(
-        pad=pad.is_pad_.get(), parent=lead
+    pad = fabll.Node.bind_typegraph(tg).create_instance(g=g)
+    fabll.Traits.create_and_add_instance_to(node=pad, trait=F.Footprints.is_pad).setup(
+        pad_name="Pad_A", pad_number="0"
     )
 
-    connected_pad = lead.get_trait(has_associated_pads).get_pads()
-    assert connected_pad.is_same(pad.is_pad_.get())
+    fabll.Traits.create_and_add_instance_to(node=lead, trait=has_associated_pads).setup(
+        pad=pad.get_trait(F.Footprints.is_pad), parent=lead
+    )
+
+    connected_pad = lead.get_trait(has_associated_pads).get_pads().pop()
+    assert connected_pad.is_same(pad.get_trait(F.Footprints.is_pad))
+
+    assert connected_pad.pad_name == "Pad_A"
+    assert connected_pad.pad_number == "0"
 
 
 def test_can_attach_to_pad_by_name(capsys):
