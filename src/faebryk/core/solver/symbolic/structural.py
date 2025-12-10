@@ -541,13 +541,20 @@ def predicate_terminated_is_true(mutator: Mutator):
 @algorithm("Convert aliased singletons into literals", terminal=False)
 def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
     """
-    A is ([5]), A + B -> ([5]) + B
-    A is [True], A ^ B -> [True] ^ B
+    A is! ([5]), A + B -> ([5]) + B
+    A is! [True], A ^ B -> [True] ^ B
     """
+
+    # TODO explore alt strat:
+    # - find all lit aliases
+    # - get all operations of each po
+    # - iterate through those exprs
+    # Attention: dont immediately replace, because we might have multiple literals
 
     exprs = mutator.get_expressions(sort_by_depth=True)
     for e in exprs:
-        if mutator.utils.is_pure_literal_expression(e.as_operand.get()):
+        e_op = e.as_operand.get()
+        if mutator.utils.is_pure_literal_expression(e_op):
             continue
         e_po = e.as_parameter_operatable.get()
         # handled in _todo
@@ -568,12 +575,11 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
         for op in e.get_operands():
             lit = mutator.utils.is_replacable_by_literal(op)
             # preserve non-replaceable operands
-            # A + B + C | A is ([5]) -> B, C
+            # A + B + C + [10] | A is! ([5]) -> B, C, [10]
             if lit is None:
                 ops.append(op)
                 continue
-            if isinstance(lit, F.Literals.is_literal):
-                ops.append(lit.as_operand.get())
+            ops.append(lit.as_operand.get())
             found_literal = True
 
         if not found_literal:

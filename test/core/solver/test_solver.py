@@ -202,12 +202,12 @@ def test_simplify_logic_and():
 
 
 def test_shortcircuit_logic_and():
+    """
+    And!(p0, False)
+    => Contradiction
+    """
     E = BoundExpressions()
-    p0 = (
-        F.Parameters.BooleanParameter.bind_typegraph(E.tg)
-        .create_instance(E.g)
-        .can_be_operand.get()
-    )
+    p0 = E.bool_parameter_op()
     E.and_(p0, E.lit_bool(False), assert_=True)
     solver = DefaultSolver()
 

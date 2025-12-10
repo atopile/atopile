@@ -585,15 +585,20 @@ class MutatorUtils:
                 continue
             self.mutator.predicate_terminate(op.get_trait(F.Expressions.is_predicate))
 
-    def is_replacable_by_literal(self, op: F.Parameters.can_be_operand):
+    def is_replacable_by_literal(
+        self, op: F.Parameters.can_be_operand
+    ) -> F.Literals.is_literal | None:
         if not (op_po := op.as_parameter_operatable.try_get()):
             return None
 
         # special case for Is(True, True) due to alias_is_literal check
-        if fabll.Traits(op_po).get_obj_raw().try_cast(F.Expressions.Is) and {
-            self.mutator.make_lit(True)
-        } == set(op_po.as_expression.force_get().get_operands()):
-            return self.mutator.make_lit(True)
+        if (
+            (op_is := fabll.Traits(op_po).get_obj_raw().try_cast(F.Expressions.Is))
+            and (op_lits := (op_e := op_is.is_expression.get()).get_operand_literals())
+            and not op_e.get_operand_operatables()
+            and all(op_lit.equals_singleton(True) for op_lit in op_lits.values())
+        ):
+            return self.mutator.make_lit(True).is_literal.get()
 
         lit = self.try_extract_literal(op_po, allow_subset=False)
         if lit is None:

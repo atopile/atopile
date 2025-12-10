@@ -554,10 +554,9 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                     mutator.utils.alias_is_literal_and_check_predicate_eval(
                         e, mutator.make_lit(True).is_literal.get()
                     )
-                for inner_op in op_or_e.get_operands():
-                    inner_op_po = inner_op.as_parameter_operatable.force_get()
-                    inner_op_e = inner_op_po.as_expression.force_get()
-
+                for inner_op_e in op_or_e.get_operands_with_trait(
+                    F.Expressions.is_expression
+                ):
                     # ¬!(¬A v ...)
                     if inner_op_e.try_cast(F.Expressions.Not):
                         for not_op in inner_op_e.get_operands():
@@ -577,11 +576,8 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                                 )
 
                     # ¬!(A v ...)
-                    elif (
-                        (inner_op_po := inner_op.as_parameter_operatable.try_get())
-                        and (inner_op_expr := inner_op_po.as_expression.try_get())
-                        and (inner_op_expr.as_assertable.try_get())
-                    ):
+                    elif inner_op_e.as_assertable.try_get():
+                        inner_op_po = inner_op_e.as_parameter_operatable.get()
                         parent_nots = inner_op_po.get_operations(F.Expressions.Not)
                         if parent_nots:
                             for n in parent_nots:
@@ -589,7 +585,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                         else:
                             mutator.create_expression(
                                 F.Expressions.Not,
-                                inner_op,
+                                inner_op_e.as_operand.get(),
                                 from_ops=[expr_po],
                                 assert_=True,
                             )
