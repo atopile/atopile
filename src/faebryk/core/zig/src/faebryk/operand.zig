@@ -20,11 +20,11 @@ pub const EdgeOperand = struct {
 
     pub fn init(
         allocator: std.mem.Allocator,
-        expression: NodeReference,
+        operands_set: NodeReference,
         operand: NodeReference,
         operand_identifier: ?str,
     ) EdgeReference {
-        const edge = Edge.init(allocator, expression, operand, tid);
+        const edge = Edge.init(allocator, operands_set, operand, tid);
 
         build(operand_identifier).apply_to(edge);
         return edge;
@@ -47,6 +47,10 @@ pub const EdgeOperand = struct {
         return EdgeComposition.get_parent_node_of(E.g.bind(E.edge.source)).?.node;
     }
 
+    pub fn get_operands_set_node(expression_bound_node: graph.BoundNodeReference) ?graph.BoundNodeReference {
+        return EdgeComposition.get_child_by_identifier(expression_bound_node, "operands");
+    }
+
     pub fn get_operand_node(E: EdgeReference) NodeReference {
         return E.target;
     }
@@ -66,7 +70,7 @@ pub const EdgeOperand = struct {
     }
 
     pub fn visit_operand_edges(
-        bound_node: graph.BoundNodeReference,
+        operand_set_node: graph.BoundNodeReference,
         comptime T: type,
         ctx: *anyopaque,
         f: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(T),
@@ -90,9 +94,9 @@ pub const EdgeOperand = struct {
             }
         };
 
-        var visit = Visit{ .target = bound_node, .cb_ctx = ctx, .cb = f };
+        var visit = Visit{ .target = operand_set_node, .cb_ctx = ctx, .cb = f };
         // directed = true: only edges where bound_node is the source (outgoing edges)
-        return bound_node.visit_edges_of_type(tid, T, &visit, Visit.visit, true);
+        return operand_set_node.visit_edges_of_type(tid, T, &visit, Visit.visit, true);
     }
 
     pub fn visit_expression_edges(
@@ -136,9 +140,10 @@ pub const EdgeOperand = struct {
         operand: NodeReference,
         operand_identifier: ?str,
     ) graph.BoundEdgeReference {
+        const op_set = get_operands_set_node(bound_node).?;
         const link = EdgeOperand.init(
             bound_node.g.allocator,
-            bound_node.node,
+            op_set.node,
             operand,
             operand_identifier,
         );
@@ -201,7 +206,7 @@ pub const EdgeOperand = struct {
         f: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(T),
     ) visitor.VisitResult(T) {
         const Visit = struct {
-            expression: graph.BoundNodeReference,
+            operands_set: graph.BoundNodeReference,
             operand_type: graph.NodeReference,
             cb_ctx: *anyopaque,
             cb: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(T),
@@ -216,14 +221,15 @@ pub const EdgeOperand = struct {
             }
         };
 
+        const op_set = get_operands_set_node(expression).?;
         var visit = Visit{
-            .expression = expression,
+            .operands_set = op_set,
             .operand_type = operand_type,
             .cb_ctx = ctx,
             .cb = f,
         };
-        // directed = true: expression is source, operand is target
-        return expression.visit_edges_of_type(tid, T, &visit, Visit.visit, true);
+        // directed = true: operands_set is source, operand is target
+        return op_set.visit_edges_of_type(tid, T, &visit, Visit.visit, true);
     }
 
     pub fn visit_expression_edges_of_type(
@@ -266,15 +272,18 @@ test "edge operand basic" {
     defer g.deinit();
 
     const expression = Node.init(a);
+    const operands = Node.init(a);
     const operand_a = Node.init(a);
     const operand_b = Node.init(a);
     const operand_c = Node.init(a);
 
     const b_expr = g.insert_node(expression);
+    const b_operands = g.insert_node(operands);
     const b_operand_a = g.insert_node(operand_a);
     const b_operand_b = g.insert_node(operand_b);
     const b_operand_c = g.insert_node(operand_c);
 
+    _ = EdgeComposition.add_child(b_expr, b_operands.node, "operands");
     _ = EdgeOperand.add_operand(b_expr, operand_a, "lhs");
     _ = EdgeOperand.add_operand(b_expr, operand_b, "rhs");
     _ = EdgeOperand.add_operand(b_expr, operand_c, null);
