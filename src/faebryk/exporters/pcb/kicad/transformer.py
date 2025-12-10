@@ -35,7 +35,6 @@ from faebryk.libs.kicad.fileformats import UUID, Property, kicad
 from faebryk.libs.util import (
     FuncSet,
     KeyErrorNotFound,
-    cast_assert,
     find,
     groupby,
     not_none,
@@ -300,27 +299,25 @@ class PCB_Transformer:
         ).setup(pcb_fp, self)
 
         # By now, the node being bound MUST have a footprint
+        # get the fabll footprint (is_footprint trait)
         g_fp = module.get_trait(F.Footprints.has_associated_footprint).get_footprint()
+        # bind the kicad pcb footprint to the is_footprint trait
         fabll.Traits.create_and_add_instance_to(
             node=g_fp, trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint
         ).setup(pcb_fp, self)
-        pin_names = g_fp.get_trait(F.is_kicad_footprint).get_pin_names()
+        # get the kicad pcb footprint pads
         pcb_pads = FuncSet[kicad.pcb.Pad](pcb_fp.pads)
-        for fpad in g_fp.get_children(
-            direct_only=True,
-            types=fabll.Node,
-            required_trait=fabll.is_interface,
-        ):
-            pads = [
-                pad
-                for pad in pcb_pads
-                if pad.name == pin_names[cast_assert(F.Footprints.GenericPad, fpad)]
-            ]
+        # get the fabll footprint pads (is_pad trait) and compare the names with
+        # the kicad pcb footprint pads
+
+        for fpad in g_fp.get_pads():
+            pads = [pad for pad in pcb_pads if pad.name == fpad.pad_name]
             pcb_pads -= FuncSet(pads)
             if not pads:
                 logger.warning(f"No PCB pads for pad in design: {fpad}")
+            # bind the kicad pcb pads to the fabll pad (is_pad trait)
             fabll.Traits.create_and_add_instance_to(
-                node=fpad, trait=F.PCBTransformer.has_associated_kicad_pcb_pad
+                node=fpad, trait=F.KiCadFootprints.has_associated_kicad_pcb_pad
             ).setup(pcb_fp, pads, self)
 
         # This may leave some pads on the PCB unlinked to the design
@@ -700,7 +697,9 @@ class PCB_Transformer:
     def _get_pad(ffp: "F.Footprints.GenericFootprint", intf: "F.Electrical"):
         import faebryk.library._F as F
 
-        pin_map = ffp.get_trait(F.is_kicad_footprint).get_pad_names()
+        pin_map = ffp.get_trait(
+            F.KiCadFootprints.has_associated_kicad_pcb_footprint
+        ).get_pad_names()
         pin_name = find(
             pin_map.items(),
             lambda pad_and_name: intf._is_interface.get().is_connected_to(
