@@ -6,10 +6,8 @@ import logging
 from enum import Enum, auto
 from typing import Any, Callable, Sequence
 
-from more_itertools import first
-
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
-import faebryk.library._F as F
 
 logger = logging.getLogger(__name__)
 
@@ -31,43 +29,69 @@ class implements_design_check(fabll.Node):
 
     class MaybeUnfulfilledCheckException(UnfulfilledCheckException): ...
 
-    # TODO: make this decorators also create the implements_design_check trait
-    # consider using an rt_field for that
-
-    # Simple decorators, that are for now only used for type checking
     @staticmethod
-    def register_post_design_check(func: Callable[[Any], None]):
-        if not func.__name__ == "__check_post_design__":
-            raise TypeError(f"Method {func.__name__} is not a post-design check name.")
-        return func
+    def _validate_type(owner_class: type, method_name: str) -> None:
+        design_check_field = getattr(owner_class, "design_check", None)
+
+        if design_check_field is None:
+            raise TypeError(
+                f"Class {owner_class.__name__} has {method_name} but no 'design_check' "
+                "field."
+            )
+
+        if not isinstance(design_check_field, fabll._ChildField):
+            raise TypeError(
+                f"Class {owner_class.__name__}.design_check must be a _ChildField, "
+                f"got {type(design_check_field).__name__}"
+            )
+
+        if not any(
+            isinstance(dep, fabll._EdgeField)
+            and dep.edge.get_tid() == fbrk.EdgeTrait.build().get_tid()
+            for dep in design_check_field._dependants
+        ):
+            raise TypeError(
+                f"Class {owner_class.__name__}.design_check is missing trait edge."
+            )
+
+    class _CheckMethod:
+        def __init__(self, func: Callable[[Any], None], expected_name: str):
+            self.func = func
+            self.expected_name = expected_name
+
+        def __set_name__(self, owner: type, name: str) -> None:
+            if name != self.expected_name:
+                raise TypeError(
+                    f"Method {name} is not a "
+                    f"{self.expected_name.replace('_', ' ').strip()} name."
+                )
+            implements_design_check._validate_type(owner, name)
+            setattr(owner, name, self.func)
+
+        def __get__(
+            self, obj: Any, objtype: type | None = None
+        ) -> Callable[[Any], None]:
+            return self.func
 
     @staticmethod
-    def register_post_solve_check(func: Callable[[Any], None]):
-        """
-        Guarantees solver availability via F.has_solver.find_unique
-        """
-        if not func.__name__ == "__check_post_solve__":
-            raise TypeError(f"Method {func.__name__} is not a post-solve check name.")
-        return func
+    def register_post_design_check(
+        func: Callable[[Any], None],
+    ) -> "implements_design_check._CheckMethod":
+        return implements_design_check._CheckMethod(func, "__check_post_design__")
 
     @staticmethod
-    def register_post_pcb_check(func: Callable[[Any], None]):
-        """
-        Guarantees PCB availability via fabll.Node in Graph
-        """
-        if not func.__name__ == "__check_post_pcb__":
-            raise TypeError(f"Method {func.__name__} is not a post-pcb check name.")
-        return func
+    def register_post_solve_check(
+        func: Callable[[Any], None],
+    ) -> "implements_design_check._CheckMethod":
+        """Guarantees solver availability via F.has_solver.find_unique"""
+        return implements_design_check._CheckMethod(func, "__check_post_solve__")
 
-    def get_solver(self):
-        return F.has_solver.find_unique(self.tg).solver
-
-    def get_pcb(self):
-        from faebryk.library.PCB import PCB
-
-        matches = fabll.Node.bind_typegraph(self.tg).nodes_of_type(PCB)
-        assert len(matches) == 1
-        return first(matches)
+    @staticmethod
+    def register_post_pcb_check(
+        func: Callable[[Any], None],
+    ) -> "implements_design_check._CheckMethod":
+        """Guarantees PCB availability via fabll.Node in Graph"""
+        return implements_design_check._CheckMethod(func, "__check_post_pcb__")
 
     # TODO HACK I got Janni's blessing to do this for now
     # It breaks serialization, zig's ability to construct these functions, and possibly
@@ -95,21 +119,21 @@ class implements_design_check(fabll.Node):
         owner_instance, owner_class = self._get_owner_with_type()
         if not hasattr(owner_class, "__check_post_design__"):
             return False
-        owner_class.__check_post_design__(owner_instance)
+        owner_class.__check_post_design__(owner_instance)  # type: ignore[attr-defined]
         return True
 
     def check_post_solve(self):
         owner_instance, owner_class = self._get_owner_with_type()
         if not hasattr(owner_class, "__check_post_solve__"):
             return False
-        owner_class.__check_post_solve__(owner_instance)
+        owner_class.__check_post_solve__(owner_instance)  # type: ignore[attr-defined]
         return True
 
     def check_post_pcb(self):
         owner_instance, owner_class = self._get_owner_with_type()
         if not hasattr(owner_class, "__check_post_pcb__"):
             return False
-        owner_class.__check_post_pcb__(owner_instance)
+        owner_class.__check_post_pcb__(owner_instance)  # type: ignore[attr-defined]
         return True
 
     def run(self, stage: CheckStage) -> bool:

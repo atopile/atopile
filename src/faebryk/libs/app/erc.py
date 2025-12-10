@@ -169,7 +169,7 @@ def simple_erc(tg: fbrk.TypeGraph):
 class needs_erc_check(fabll.Node):
     is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
-    design_check = F.implements_design_check.MakeChild()
+    design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
 
     # TODO: Implement this
     @F.implements_design_check.register_post_design_check

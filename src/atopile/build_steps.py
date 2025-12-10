@@ -200,6 +200,7 @@ muster = Muster()
 def prepare_build(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
+    # TODO: create solver and pcb instances here; simplify function signature
     fabll.Traits.create_and_add_instance_to(app, F.has_solver).setup(solver)
     fabll.Traits.create_and_add_instance_to(app, F.PCB.has_pcb).setup(pcb)
 
@@ -218,7 +219,7 @@ def post_design_checks(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     check_design(
-        app.tg,
+        app,
         stage=F.implements_design_check.CheckStage.POST_DESIGN,
         exclude=tuple(set(config.build.exclude_checks)),
     )
@@ -285,7 +286,7 @@ def post_solve_checks(
 ) -> None:
     logger.info("Running checks")
     check_design(
-        app.tg,
+        app,
         stage=F.implements_design_check.CheckStage.POST_SOLVE,
         exclude=tuple(set(config.build.exclude_checks)),
     )
@@ -433,7 +434,7 @@ def post_pcb_checks(
     _ = fabll.Traits.create_and_add_instance_to(pcb, F.PCB.requires_drc_check)
     try:
         check_design(
-            pcb.tg,
+            pcb,
             stage=F.implements_design_check.CheckStage.POST_PCB,
             exclude=tuple(set(config.build.exclude_checks)),
         )
@@ -463,6 +464,7 @@ def generate_bom(
         ),
         config.build.paths.output_base.with_suffix(".bom.csv"),
     )
+
 
 @muster.register(
     name="glb",

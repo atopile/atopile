@@ -147,7 +147,8 @@ class PCB(fabll.Node):
 
         design_check: F.implements_design_check
 
-        @F.implements_design_check.register_post_pcb_check
+        # FIXME: satisfy implements_design_check contract
+        # @F.implements_design_check.register_post_pcb_check
         def __check_post_pcb__(self):
             from faebryk.libs.kicad.drc import run_drc as run_drc_kicad
 
