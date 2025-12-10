@@ -1,7 +1,7 @@
 import math
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Self, cast
+from typing import TYPE_CHECKING, Iterable, Self, cast
 
 import pytest
 
@@ -261,6 +261,67 @@ class is_parameter_operatable(fabll.Node):
         elif lit and lit.equals_singleton(False):
             out = "✗"
         return out
+
+    @staticmethod
+    def operation_switch_case_implications(
+        cases: Iterable[
+            tuple["F.Expressions.is_expression", "F.Expressions.is_expression"]
+        ],
+    ) -> "F.Expressions.is_expression":
+        from faebryk.library.Expressions import And, Implies
+
+        return And.from_operands(
+            *(
+                Implies.from_operands(
+                    case.as_operand.get(),
+                    impl.as_operand.get(),
+                    assert_=True,
+                ).as_operand.get()
+                for case, impl in cases
+            ),
+        ).is_expression.get()
+
+    def operation_switch_case_subset(
+        self,
+        cases: Iterable[tuple["F.Literals.is_literal", "F.Expressions.is_expression"]],
+    ) -> "F.Expressions.is_expression":
+        from faebryk.library.Expressions import IsSubset
+
+        exprs = [
+            (
+                IsSubset.from_operands(
+                    self.as_operand.get(), lit.as_operand.get()
+                ).is_expression.get(),
+                case,
+            )
+            for lit, case in cases
+        ]
+        return is_parameter_operatable.operation_switch_case_implications(exprs)
+
+    def operation_mapping(
+        self,
+        other: "is_parameter_operatable",
+        mapping: dict["F.Literals.is_literal", "F.Literals.is_literal"],
+    ) -> "F.Expressions.is_expression":
+        from faebryk.library.Expressions import IsSubset
+
+        exprs = [
+            (
+                lit_self,
+                IsSubset.from_operands(
+                    other.as_operand.get(), lit_other.as_operand.get()
+                ).is_expression.get(),
+            )
+            for lit_self, lit_other in mapping.items()
+        ]
+        return self.operation_switch_case_subset(exprs)
+
+    def constrain_mapping(
+        self,
+        other: "is_parameter_operatable",
+        mapping: dict["F.Literals.is_literal", "F.Literals.is_literal"],
+    ):
+        return self.operation_mapping(other, mapping)
 
 
 class is_parameter(fabll.Node):
