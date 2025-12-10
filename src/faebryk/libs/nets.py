@@ -71,40 +71,46 @@ def bind_electricals_to_fbrk_nets(
             if is_lead.has_trait(F.Lead.has_associated_pads):
                 electricals_filtered.add(electrical)
 
-    # generate buses
-    buses = fabll.is_interface.group_into_buses(electricals_filtered)
+    # collect buses in a sorted manner
+    buses = sorted(fabll.is_interface.group_into_buses(electricals_filtered), key=_get_stable_node_name)
 
-    for bus, bus_members in buses.items():
-        bus_members = sorted(bus_members, key=_get_stable_node_name)
-
-        # find existing named nets on this bus
-        named_nets_on_bus: set[F.has_net_name] = set()
-        for electrical in bus_members:
-            # check if the parent of an electrical has the has_net_name trait
-            if electrical_parent := electrical.get_parent():
-                if has_net_name := electrical_parent[0].try_get_trait(F.has_net_name):
-                    named_nets_on_bus.add(has_net_name)
-
-        # if there's no named nets on bus, make one and connect it up
-        if not named_nets_on_bus:
-            fbrk_net = F.Net.bind_typegraph(tg).create_instance(g=g)
-            # doesn't really matter, can connect to any member of the bus
-            fbrk_net.part_of.get()._is_interface.get().connect_to(bus_members[0])
-
-        # if there's one net, let's return that
-        elif len(named_nets_on_bus) == 1:
-            (named_net,) = named_nets_on_bus
-            # this should theoretically get the F.Net node from the has_net_name trait
-            fbrk_net = fabll.Traits.bind(named_net).get_obj_raw().cast(F.Net)
-
+    # find or generate nets
+    for bus in buses:
+        if fbrk_net := get_named_net(bus):
+            fbrk_nets.add(fbrk_net)
         else:
-            raise KeyErrorAmbiguous(
-                list(named_nets_on_bus), "Multiple named nets interconnected"
-            )
+            fbrk_net = F.Net.bind_typegraph(tg).create_instance(g=g)
+            fbrk_net.part_of.get()._is_interface.get().connect_to(bus)
+            fbrk_nets.add(fbrk_net)
 
-        fbrk_nets.add(fbrk_net)
+    return fbrk_nets
 
-    return sorted(fbrk_nets, key=_get_stable_node_name)
+def get_named_net(electrical: F.Electrical) -> F.Net | None:
+    """
+    Returnes exactly one named net that this electrical is part of.
+    Will raise an error if there's somehow more than one net connected.
+    """
+    bus_members = electrical._is_interface.get().get_connected(include_self=True)
+    named_nets_on_bus: set[F.has_net_name] = set()
+
+    for bus_member in bus_members:
+        # check if the parent of an electrical has the has_net_name trait
+        if member_parent := bus_member.get_parent()[0]:
+            if has_net_name := member_parent.try_get_trait(F.has_net_name):
+                named_nets_on_bus.add(has_net_name)
+
+    # if there's one net, let's return that
+    if len(named_nets_on_bus) == 1:
+        named_net, = named_nets_on_bus
+        return fabll.Traits.bind(named_net).get_obj_raw()
+
+    elif not named_nets_on_bus:
+        return None
+
+    else:
+        raise KeyErrorAmbiguous(
+            list(named_nets_on_bus), "Multiple named nets interconnected"
+        )
 
 
 @once

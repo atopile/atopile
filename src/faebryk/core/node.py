@@ -1975,17 +1975,24 @@ class is_interface(Node):
                 bn1=self_node.instance, bn2=other.instance
             )
 
-    """
-    group_into_buses() clusters the supplied electrical
-    interfaces by their shared bus (electrical connectivity) so the exporter can treat
-    every bus once; the result is a dict whose keys are the representative bus
-    interfaces and whose values are the other Interfaces that belong to the same bus.
-    """
+    def is_connected_to(self, other: "NodeT") -> bool:
+        bfs_path = fbrk.EdgeInterfaceConnection.is_connected_to(
+            source=self.get_obj().instance,
+            target=other.instance
+        )
+        return bfs_path.get_end_node().node().is_same(other=other.instance.node())
+
+    def get_connected(self, include_self: bool = False) -> dict["Node[Any]", Path]:
+        connected_nodes_map = fbrk.EdgeInterfaceConnection.get_connected(
+            source=self.get_obj().instance, include_self=include_self
+        )
+        return {
+            Node[Any].bind_instance(instance=node): Path(bfs_path)
+            for node, bfs_path in connected_nodes_map.items()
+        }
 
     @staticmethod
-    def group_into_buses[N: NodeT](
-        nodes: set[N],
-    ) -> dict[N, set[N]]:
+    def group_into_buses[N: NodeT](nodes: set[N],) -> dict[N, set[N]]:
         remaining = set(nodes)
         buses: dict[N, set[N]] = {}
 
@@ -2000,24 +2007,6 @@ class is_interface(Node):
             remaining.difference_update(connected)
 
         return buses
-
-    def is_connected_to(self, other: "NodeT") -> bool:
-        self_node = self.get_obj()
-        bfs_path = fbrk.EdgeInterfaceConnection.is_connected_to(
-            source=self_node.instance, target=other.instance
-        )
-
-        return bfs_path.get_end_node().node().is_same(other=other.instance.node())
-
-    def get_connected(self, include_self: bool = False) -> dict["Node[Any]", Path]:
-        self_node = self.get_obj()
-        connected_nodes_map = fbrk.EdgeInterfaceConnection.get_connected(
-            source=self_node.instance, include_self=include_self
-        )
-        return {
-            Node[Any].bind_instance(instance=node): Path(bfs_path)
-            for node, bfs_path in connected_nodes_map.items()
-        }
 
 
 # --------------------------------------------------------------------------------------

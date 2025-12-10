@@ -11,6 +11,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserException
 from faebryk.libs.util import FuncDict, groupby, once
+from faebryk.libs.nets import get_named_net
 
 logger = logging.getLogger(__name__)
 
@@ -173,16 +174,15 @@ def _extract_net_name_info(
 
     depth = len(electrical.get_hierarchy())
 
-    # Handle explicit net naming traits on this interface
-    if trait := electrical.try_get_trait(
-        F.has_net_name
-    ):  # TODO: this doesnt find the trait
-        if trait.level == F.has_net_name.Level.EXPECTED:
-            required_names.add(trait.name)
-        elif trait.level == F.has_net_name.Level.SUGGESTED.value:
+    if has_net_name_suggestion := electrical.try_get_trait(F.has_net_name_suggestion):
+        if has_net_name_suggestion.level == F.has_net_name_suggestion.Level.EXPECTED:
+            required_names.add(has_net_name_suggestion.name)
+        elif has_net_name_suggestion.level == F.has_net_name_suggestion.Level.SUGGESTED:
             rank = _calculate_suggested_name_rank(electrical, depth)
-            suggested_names.append((trait.name, rank))
+            suggested_names.append((has_net_name_suggestion.name, rank))
 
+    # TODO not sure it makes sense to have net names on nodes that arent electricals
+    # TODO this will just fail all the time
     # Also consider traits on ancestor interfaces in the hierarchy
     try:
         for node, _name_in_parent in electrical.get_hierarchy():
@@ -192,13 +192,13 @@ def _extract_net_name_info(
                 continue
             if not node.has_trait(F.has_net_name):
                 continue
-            trait = node.get_trait(F.has_net_name)
+            has_net_name = node.get_trait(F.has_net_name)
             node_depth = len(node.get_hierarchy())
-            if trait.level == F.has_net_name.Level.EXPECTED.value:
-                required_names.add(trait.name)
-            elif trait.level == F.has_net_name.Level.SUGGESTED.value:
+            if has_net_name.level == F.has_net_name.Level.EXPECTED.value:
+                required_names.add(has_net_name.name)
+            elif has_net_name.level == F.has_net_name.Level.SUGGESTED.value:
                 rank = _calculate_suggested_name_rank(electrical, node_depth)
-                suggested_names.append((trait.name, rank))
+                suggested_names.append((has_net_name.name, rank))
     except fabll.NodeNoParent:
         pass
 
