@@ -57,7 +57,11 @@ class PCB(fabll.Node):
         out.add_dependant(F.Collections.Pointer.MakeEdge([out, cls.app_], app))
         return out
 
-    def setup(self) -> Self:
+    def setup(self, path: str) -> Self:
+        self.path_.get().alias_to_single(path)
+        return self
+
+    def run_transformer(self) -> Self:
         pcbfile = kicad.loads(kicad.pcb.PcbFile, self.path)
         self.pcb_file_.get().alias_to_single(value=str(id(pcbfile)))
         transformer = PCB_Transformer(pcbfile.kicad_pcb, self.app)

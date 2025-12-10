@@ -235,7 +235,7 @@ def post_design_checks(
 def load_pcb(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
-    pcb.setup()
+    pcb.run_transformer()
     if config.build.keep_designators:
         load_kicad_pcb_designators(pcb.tg, attach=True)
 
