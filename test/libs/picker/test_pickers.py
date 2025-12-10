@@ -22,6 +22,7 @@ from faebryk.libs.picker.api.picker_lib import (
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
 from faebryk.libs.smd import SMDSize
+from faebryk.libs.test.boundexpressions import BoundExpressions
 from faebryk.libs.util import cast_assert, groupby
 
 sys.path.append(str(Path(__file__).parent))
@@ -93,6 +94,7 @@ def test_pick_module(case: "ComponentTestCase"):
 def test_type_pick():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions(g=g, tg=tg)
     module = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
 
     fabll.Traits.create_and_add_instance_to(module, F.is_pickable)
@@ -125,8 +127,10 @@ def test_type_pick():
 
 @pytest.mark.usefixtures("setup_project_config")
 def test_no_pick():
-    module = fabll.Module()
-    module.add(F.has_part_removed())
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    module = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
+    fabll.Traits.create_and_add_instance_to(module, F.has_part_removed)
 
     pick_part_recursively(module, DefaultSolver())
 
@@ -134,18 +138,187 @@ def test_no_pick():
     assert module.get_trait(F.has_part_picked).removed
 
 
+def test_construct_pick_tree_simple():
+    from faebryk.libs.picker.picker import get_pick_tree
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    module = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
+    fabll.Traits.create_and_add_instance_to(module, F.is_pickable)
+
+    class App(fabll.Node):
+        r1 = F.Resistor.MakeChild()
+        r2 = F.Resistor.MakeChild()
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    tree = get_pick_tree(app)
+    print("Pick tree", tree)
+    assert len(tree) == 2
+    assert (
+        app.r1.get().get_trait(F.is_pickable_by_type).get_trait(F.is_pickable) in tree
+    )
+    assert (
+        app.r2.get().get_trait(F.is_pickable_by_type).get_trait(F.is_pickable) in tree
+    )
+
+
+def test_construct_pick_tree_multiple_children():
+    from faebryk.libs.picker.picker import get_pick_tree
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    module = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
+    fabll.Traits.create_and_add_instance_to(module, F.is_pickable)
+
+    class App(fabll.Node):
+        r1 = F.Resistor.MakeChild()
+        r2 = F.Resistor.MakeChild()
+
+        class App2(fabll.Node):
+            r3 = F.Resistor.MakeChild()
+
+        app2 = App2.MakeChild()
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    tree = get_pick_tree(app)
+    # print("Pick tree", tree)
+    assert len(tree) == 3
+    assert (
+        app.r1.get().get_trait(F.is_pickable_by_type).get_trait(F.is_pickable) in tree
+    )
+    assert (
+        app.r2.get().get_trait(F.is_pickable_by_type).get_trait(F.is_pickable) in tree
+    )
+    assert (
+        app.app2.get()
+        .r3.get()
+        .get_trait(F.is_pickable_by_type)
+        .get_trait(F.is_pickable)
+        in tree
+    )
+
+
+def test_check_missing_picks_no_footprint_no_picker(caplog):
+    import logging
+
+    from faebryk.libs.picker.picker import check_missing_picks
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class App(fabll.Node):
+        r1 = F.Resistor.MakeChild()
+        r2 = F.Resistor.MakeChild()
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # fabll.Traits.create_and_add_instance_to(app, F.has_part_picked)
+    # fabll.Traits.
+    print("is pickable", app.r1.get().has_trait(F.is_pickable_by_type))
+
+    # Optionally set log level to capture DEBUG messages
+    with caplog.at_level(logging.DEBUG):
+        check_missing_picks(app)
+
+    # Assert on logs
+    assert "No pickers and no footprint for" in caplog.text
+
+
+def test_check_missing_picks_with_footprint_with_picker(caplog):
+    import logging
+
+    from faebryk.libs.picker.picker import check_missing_picks
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class App(fabll.Node):
+        r1 = F.Resistor.MakeChild()
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+
+    fabll.Traits.create_and_add_instance_to(
+        app.r1.get(), F.Footprints.has_associated_footprint
+    )
+    fabll.Traits.create_and_add_instance_to(app.r1.get(), F.has_part_picked)
+
+    with caplog.at_level(logging.DEBUG):
+        check_missing_picks(app)
+
+    assert caplog.text == ""
+
+
+# Waiting on footprint attach to work
 @pytest.mark.usefixtures("setup_project_config")
-def test_no_pick_inherit_override_none():
-    class _CapInherit(F.Capacitor):
-        pickable = None  # type: ignore
+def test_pick_explicit_modules():
+    from faebryk.libs.picker.picker import get_pick_tree, pick_topologically
 
-    module = _CapInherit()
+    solver = DefaultSolver()
 
-    assert not module.has_trait(F.is_pickable)
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
 
-    pick_part_recursively(module, DefaultSolver())
+    class App(fabll.Node):
+        r1 = F.Resistor.MakeChild()
+        is_pickable_by_supplier_id = F.is_pickable_by_supplier_id.MakeChild(
+            supplier_part_id="C173561",
+            supplier=F.is_pickable_by_supplier_id.Supplier.LCSC,
+        )
+        r1.add_dependant(fabll.Traits.MakeEdge(is_pickable_by_supplier_id, [r1]))
+        # r1.add_dependant(is_pickable_by_supplier_id)
 
-    assert not module.has_trait(F.has_part_picked)
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+
+    tree = get_pick_tree(app)
+    pick_topologically(tree, solver)
+    print(app.r1.get())
+    assert app.r1.get().has_trait(F.has_part_picked)
+
+
+@pytest.mark.usefixtures("setup_project_config")
+def test_pick_resistor_by_params():
+    from faebryk.libs.picker.picker import get_pick_tree, pick_topologically
+
+    solver = DefaultSolver()
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    E = BoundExpressions(g=g, tg=tg)
+
+    class App(fabll.Node):
+        r1 = F.Resistor.MakeChild()
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # Constrain resistance
+    E.is_(
+        app.r1.get().resistance.get().can_be_operand.get(),
+        E.lit_op_range(((100, E.U.Ohm), (110, E.U.Ohm))),
+        assert_=True,
+    )
+
+    # Constrain package
+
+    tree = get_pick_tree(app)
+    pick_topologically(tree, solver)
+    print(app.r1.get())
+    assert app.r1.get().has_trait(F.has_part_picked)
+
+
+# I guess we need to support something like this?
+# @pytest.mark.usefixtures("setup_project_config")
+# def test_no_pick_inherit_override_none():
+#     class _CapInherit(F.Capacitor):
+#         pickable = None  # type: ignore
+
+#     module = _CapInherit()
+
+#     assert not module.has_trait(F.is_pickable)
+
+#     pick_part_recursively(module, DefaultSolver())
+
+#     assert not module.has_trait(F.has_part_picked)
 
 
 @pytest.mark.usefixtures("setup_project_config")
@@ -234,21 +407,28 @@ def test_pick_error_group():
 
 @pytest.mark.usefixtures("setup_project_config")
 def test_pick_dependency_simple():
-    class App(fabll.Node):
-        r1: F.Resistor
-        r2: F.Resistor
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions(g=g, tg=tg)
 
-    app = App()
+    class App(fabll.Node):
+        r1 = F.Resistor.MakeChild()
+        r2 = F.Resistor.MakeChild()
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
 
     solver = DefaultSolver()
-    r1r = app.r1.resistance
-    r2r = app.r2.resistance
-    sum_lit = fabll.Range.from_center_rel(100 * P.kohm, 0.2)
-    (r1r + r2r).constrain_subset(sum_lit)
-    r1r.constrain_subset(sum_lit - r2r)
-    r2r.constrain_subset(sum_lit - r1r)
+    r1r = app.r1.get().resistance.get().can_be_operand.get()
+    r2r = app.r2.get().resistance.get().can_be_operand.get()
+    sum_lit = E.lit_op_range_from_center_rel((100000, E.U.Ohm), 0.2)
+    E.is_(E.add(r1r, r2r), sum_lit, assert_=True)
+    E.is_subset(r1r, E.subtract(sum_lit, r2r), assert_=True)
+    E.is_subset(r2r, E.subtract(sum_lit, r1r), assert_=True)
 
     pick_part_recursively(app, solver)
+
+    # assert app.r1.has_trait(F.has_part_picked)
+    # assert app.r2.has_trait(F.has_part_picked)
 
 
 @pytest.mark.usefixtures("setup_project_config")

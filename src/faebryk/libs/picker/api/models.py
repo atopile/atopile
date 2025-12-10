@@ -64,16 +64,15 @@ class BaseParams(Serializable):
 
 
 @once
-def make_params_for_type(module_type: type[fabll.Module]) -> type:
-    m = module_type()
-    assert m.has_trait(F.is_pickable_by_type)
-    pickable_trait = m.get_trait(F.is_pickable_by_type)
+def make_params_for_type(module: fabll.Node) -> type:
+    assert module.has_trait(F.is_pickable_by_type)
+    pickable_trait = module.get_trait(F.is_pickable_by_type)
 
     fields = [
         (
             "endpoint",
             F.is_pickable_by_type.Endpoint,
-            field(default=pickable_trait.endpoint.value, init=False),
+            field(default=pickable_trait.endpoint, init=False),
         ),
         *[
             (param.get_name(), ApiParamT, SerializableField())
@@ -82,7 +81,7 @@ def make_params_for_type(module_type: type[fabll.Module]) -> type:
     ]
 
     cls = make_dataclass(
-        f"{module_type.__name__}Params",
+        f"{module.__class__.__name__}Params",
         fields,
         bases=(BaseParams,),
         frozen=True,
