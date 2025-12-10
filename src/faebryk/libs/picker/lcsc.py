@@ -597,11 +597,10 @@ def attach(
             types=fabll.Node,
             required_trait=F.Lead.is_lead,
         )
-
+        leads_t = [lead.get_trait(F.Lead.is_lead) for lead in leads]
         # try matching the ato part pad names to the component's leads
         try:
-            for lead in leads:
-                lead_t = lead.get_trait(F.Lead.is_lead)
+            for lead_t in leads_t:
                 matched_pad = lead_t.find_matching_pad(tmp_pads)
         except F.Lead.PadMatchException as e:
             raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
@@ -625,12 +624,14 @@ def attach(
 
             pads_t = fp.get_pads()
             try:
-                for lead in leads:
-                    lead_t = lead.get_trait(F.Lead.is_lead)
+                # only attach to leads that don't have associated pads yet
+                for lead_t in [
+                    lt for lt in leads_t if not lt.has_trait(F.Lead.has_associated_pads)
+                ]:
                     matched_pad = lead_t.find_matching_pad(pads_t)
                     fabll.Traits.create_and_add_instance_to(
-                        node=lead, trait=F.Lead.has_associated_pads
-                    ).setup(pad=matched_pad, parent=lead)
+                        node=lead_t, trait=F.Lead.has_associated_pads
+                    ).setup(pad=matched_pad, parent=lead_t)
             except F.Lead.PadMatchException as e:
                 raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
 
@@ -698,7 +699,7 @@ def setup_project_config(tmp_path):
 
 
 @pytest.mark.usefixtures("setup_project_config")
-def test_attach_resistor():
+def test_attach_resistor(capsys):
     import faebryk.core.faebrykpy as fbrk
     import faebryk.core.node as fabll
 
@@ -715,6 +716,13 @@ def test_attach_resistor():
     )
 
     assert associated_footprint is None
+
+    with capsys.disabled():
+        print(
+            fabll.graph.InstanceGraphFunctions.render(
+                component.instance, show_traits=True, show_pointers=True
+            )
+        )
 
     attach(component=component, partno=LCSC_ID)
 

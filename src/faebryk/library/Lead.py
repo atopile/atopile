@@ -66,16 +66,16 @@ class can_attach_to_any_pad(fabll.Node):
         Match the first pad that is available.
         """
         # Flatten all pads from has_associated_pads implementors into a single set
-        # claimed_pads = {
-        #     pad
-        #     for implementor in fabll.Traits.get_implementors(
-        #         has_associated_pads.bind_typegraph(self.tg), g=self.g
-        #     )
-        #     for pad in implementor.get_pads()
-        # }
+        claimed_pads = {
+            pad
+            for implementor in fabll.Traits.get_implementors(
+                has_associated_pads.bind_typegraph(self.tg), g=self.g
+            )
+            for pad in implementor.get_pads()
+        }
         for pad in pads:
-            # TODO: fix: if pad not in claimed_pads:
-            return pad
+            if pad not in claimed_pads:
+                return pad
         raise PadMatchException(
             f"No pad available for lead "
             f"[{self.get_name()}] - All pads are probably claimed by other leads."
