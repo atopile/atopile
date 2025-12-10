@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from textwrap import indent
 from typing import TYPE_CHECKING, Iterable
 
@@ -9,7 +11,6 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import Contradiction
-from faebryk.libs.picker.picker_base import PickedPart, PickSupplier
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     Advancable,
@@ -24,13 +25,26 @@ from faebryk.libs.util import (
 
 if TYPE_CHECKING:
     from faebryk.libs.picker.api.models import Component
-
-# Re-export for backwards compatibility
-__all__ = ["PickSupplier", "PickedPart", "PickError"]
+    from faebryk.libs.picker.localpick import PickerOption
 
 NO_PROGRESS_BAR = ConfigFlag("NO_PROGRESS_BAR", default=False)
 
 logger = logging.getLogger(__name__)
+
+
+class PickSupplier(ABC):
+    supplier_id: str
+
+    @abstractmethod
+    def attach(self, module: "fabll.Node", part: "PickerOption"): ...
+
+
+@dataclass(frozen=True)
+class PickedPart:
+    manufacturer: str
+    partno: str
+    supplier_partno: str
+    supplier: PickSupplier
 
 
 class PickError(Exception):

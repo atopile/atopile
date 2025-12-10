@@ -32,7 +32,7 @@ import faebryk.library._F as F
 from atopile.config import config as Gcfg
 from faebryk.libs.kicad.fileformats import kicad
 from faebryk.libs.picker.localpick import PickerOption
-from faebryk.libs.picker.picker_base import PickedPart, PickSupplier
+from faebryk.libs.picker.picker import PickedPart, PickSupplier
 from faebryk.libs.util import ConfigFlag, call_with_file_capture, not_none, once
 
 logger = logging.getLogger(__name__)

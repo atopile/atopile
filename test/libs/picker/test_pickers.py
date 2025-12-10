@@ -152,7 +152,6 @@ def test_construct_pick_tree_simple():
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
     tree = get_pick_tree(app)
-    print("Pick tree", tree)
     assert len(tree) == 2
     assert (
         app.r1.get().get_trait(F.is_pickable_by_type).get_trait(F.is_pickable) in tree
@@ -181,7 +180,6 @@ def test_construct_pick_tree_multiple_children():
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
     tree = get_pick_tree(app)
-    # print("Pick tree", tree)
     assert len(tree) == 3
     assert (
         app.r1.get().get_trait(F.is_pickable_by_type).get_trait(F.is_pickable) in tree
