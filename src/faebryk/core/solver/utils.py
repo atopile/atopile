@@ -609,6 +609,9 @@ class MutatorUtils:
         allow_uncorrelated: bool = False,
         dont_match: list[F.Expressions.is_expression] | None = None,
     ) -> T | None:
+        """
+        Careful: Disregards whether asserted in root expression!
+        """
         non_lits = [
             op_po for op in operands if (op_po := op.as_parameter_operatable.try_get())
         ]
@@ -1188,6 +1191,7 @@ class MutatorUtils:
                     units=F.Units.Dimensionless.bind_typegraph(self.mutator.tg_out)
                     .create_instance(self.mutator.G_out)
                     .is_unit.get(),
+                    domain=F.Parameters.NumericParameter.DOMAIN_SKIP,
                 )
             )
             return new.is_parameter.get()

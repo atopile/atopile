@@ -79,6 +79,7 @@ solver todo
 
 - [ ] mark exprs as literal during expr_mutation, then flag to solver that it needs to run flatten_literals afterwards
 - [ ] re-enable has_usage_example MakeChild and has_simple_value_representation
+- [ ] consider making negative=True default (default domain creates no constraints, then we can remove DOMAIN_SKIP)
 
 NOTE TO SELF MONDAY
 
@@ -90,6 +91,3 @@ NOTE TO SELF MONDAY
   - now only slow / contradiction / assert result errors (actual solver errors) left
     - slowly start going one-by-one through solver errors
       (might want to first focus on the lit folding to make sure)
-  - currently busy with test_try_fulfill_super_basic
-
-- dont forget to remove slow marker (3 tests left)

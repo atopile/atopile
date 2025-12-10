@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 from enum import Enum, auto
 from itertools import permutations
@@ -43,11 +44,18 @@ def _retrieve_operands(node: fabll.NodeT, identifier: str | None) -> list[fabll.
     return Ctx.operands
 
 
+def _retrieve_single(node: fabll.NodeT) -> fabll.NodeT:
+    operands = _retrieve_operands(node, None)
+    if len(operands) != 1:
+        raise ValueError(f"Expected 1 operand, got {len(operands)} on {node}")
+    return operands[0]
+
+
 OperandPointer = Collections.AbstractPointer(
     edge_factory=lambda identifier: fbrk.EdgeOperand.build(
         operand_identifier=identifier
     ),
-    retrieval_function=lambda node: _retrieve_operands(node, None)[0],
+    retrieval_function=_retrieve_single,
     typename="OperandPointer",
 )
 
@@ -661,6 +669,8 @@ class is_assertable(fabll.Node):
 
     def assert_(self):
         parent = self.get_parent_force()[0]
+        if parent.has_trait(is_predicate):
+            return
         return fabll.Traits.create_and_add_instance_to(node=parent, trait=is_predicate)
 
 
@@ -1150,7 +1160,7 @@ class Log(fabll.Node):
     )
 
     operand = OperandPointer.MakeChild()
-    base = OperandPointer.MakeChild()  # Optional, defaults to natural log if not set
+    base = OperandPointer.MakeChild()
 
     def setup(
         self,
@@ -1158,9 +1168,13 @@ class Log(fabll.Node):
         base: "F.Parameters.can_be_operand | None" = None,
     ) -> Self:
         self.operand.get().point(operand)
-        if base is not None:
-            raise ValueError("Base is not supported yet")
-            self.base.get().point(base)
+        if base is None:
+            base = (
+                F.Literals.make_simple_lit_singleton(g=self.g, tg=self.tg, value=math.e)
+                .is_literal.get()
+                .as_operand.get()
+            )
+        self.base.get().point(base)
         return self
 
     @classmethod
@@ -1171,8 +1185,7 @@ class Log(fabll.Node):
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> Self:
-        operands = (operand, base) if base is not None else (operand,)
-        instance = _make_instance_from_operand_instance(cls, operands, g=g, tg=tg)
+        instance = _make_instance_from_operand_instance(cls, (operand,), g=g, tg=tg)
         return instance.setup(operand, base)
 
     @classmethod
@@ -2742,6 +2755,81 @@ ExpressionNodes = (
     | IsBitSet
     | Is
 )
+
+# Macro Expressions --------------------------------------------------------------------
+
+
+class Mapping:
+    @staticmethod
+    def operation_switch_case_implications(
+        cases: Iterable[
+            tuple["F.Expressions.is_expression", "F.Expressions.is_expression"]
+        ],
+    ) -> "F.Expressions.is_expression":
+        from faebryk.library.Expressions import And, Implies
+
+        return And.from_operands(
+            *(
+                Implies.from_operands(
+                    case.as_operand.get(),
+                    impl.as_operand.get(),
+                ).as_operand.get()
+                for case, impl in cases
+            ),
+        ).is_expression.get()
+
+    @staticmethod
+    def operation_switch_case_subset(
+        op: "F.Parameters.can_be_operand",
+        cases: Iterable[tuple["F.Literals.is_literal", "F.Expressions.is_expression"]],
+    ) -> "F.Expressions.is_expression":
+        from faebryk.library.Expressions import IsSubset
+
+        exprs = [
+            (
+                IsSubset.from_operands(op, lit.as_operand.get()).is_expression.get(),
+                case,
+            )
+            for lit, case in cases
+        ]
+        return Mapping.operation_switch_case_implications(exprs)
+
+    @staticmethod
+    def operation_mapping(
+        left: "F.Parameters.can_be_operand",
+        right: "F.Parameters.can_be_operand",
+        mapping: dict["F.Literals.is_literal", "F.Literals.is_literal"],
+    ) -> "F.Expressions.is_expression":
+        from faebryk.library.Expressions import IsSubset
+
+        exprs = [
+            (
+                lit_self,
+                IsSubset.from_operands(
+                    right, lit_other.as_operand.get()
+                ).is_expression.get(),
+            )
+            for lit_self, lit_other in mapping.items()
+        ]
+        and_expr = Mapping.operation_switch_case_subset(left, exprs)
+        and_expr.as_assertable.force_get().assert_()
+        return and_expr
+
+    # TODO pass-through g, tg
+    @staticmethod
+    def from_operands(
+        left: "F.Parameters.can_be_operand",
+        right: "F.Parameters.can_be_operand",
+        mapping: dict["F.Literals.is_literal", "F.Literals.is_literal"],
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+        assert_: bool = False,
+    ) -> "F.Expressions.is_expression":
+        out = Mapping.operation_mapping(left, right, mapping=mapping)
+        if assert_:
+            out.as_assertable.force_get().assert_()
+        return out
+
 
 # Tests --------------------------------------------------------------------------------
 

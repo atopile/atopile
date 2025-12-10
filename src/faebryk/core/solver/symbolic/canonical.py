@@ -295,6 +295,7 @@ def convert_to_canonical_operations(mutator: Mutator):
                 .create_instance(mutator.G_out)
                 .setup(
                     units=mutator.utils.dimensionless(),
+                    domain=F.Parameters.NumericParameter.DOMAIN_SKIP,
                 )
             )
             p_p = p.is_parameter.get()

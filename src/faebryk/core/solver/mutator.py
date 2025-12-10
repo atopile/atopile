@@ -1218,11 +1218,11 @@ class Mutator:
                 dont_match=[expr],
             ):
                 exists_po = exists.get_trait(F.Parameters.is_parameter_operatable)
+                exists_po_copy = self.get_copy_po(exists_po)
+                if expr.try_get_sibling_trait(F.Expressions.is_predicate):
+                    exists_po_copy.as_expression.force_get().as_assertable.force_get().assert_()
                 return (
-                    self._mutate(
-                        expr_po,
-                        self.get_copy_po(exists_po),
-                    )
+                    self._mutate(expr_po, exists_po_copy)
                     .as_expression.force_get()
                     .as_canonical.force_get()
                 )

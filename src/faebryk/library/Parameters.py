@@ -1,7 +1,7 @@
 import math
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Iterable, Self, cast
+from typing import TYPE_CHECKING, Self, cast
 
 import pytest
 
@@ -87,7 +87,7 @@ class is_parameter_operatable(fabll.Node):
     ) -> T | None:
         # 1. find all Is! expressions parameter is involved in
         # 2. for each of those check if they have a literal operand of the correct type
-        from faebryk.library.Expressions import Is, IsSubset
+        from faebryk.library.Expressions import Is, IsSubset, is_commutative
         from faebryk.library.Literals import is_literal
 
         if pred_type is None:
@@ -98,12 +98,24 @@ class is_parameter_operatable(fabll.Node):
             raise ValueError(f"Invalid predicate type: {pred_type}")
 
         exprs = self.get_operations(types=pred_type, predicates_only=True)
+        lits = []
         for expr in exprs:
-            if lit_vs := expr.is_expression.get().get_operand_literals().values():
-                lit = next(iter(lit_vs))
-                if lit_type is None or lit_type is is_literal:
-                    return cast(T, lit)
-                return fabll.Traits(lit).get_obj(lit_type)
+            if expr.has_trait(is_commutative):
+                if lit_vs := expr.is_expression.get().get_operand_literals().values():
+                    lits.extend(lit_vs)
+            else:
+                ops = expr.is_expression.get().get_operands()
+                for op in ops[1:]:
+                    if lit := op.as_literal.try_get():
+                        lits.append(lit)
+
+        if not lits:
+            return None
+        lit_merged = F.Literals.is_literal.op_intersect_intervals(*lits)
+
+        if lit_type is None or lit_type is is_literal:
+            return cast(T, lit_merged)
+        return fabll.Traits(lit_merged).get_obj(lit_type)
 
         return None
 
@@ -262,67 +274,6 @@ class is_parameter_operatable(fabll.Node):
             out = "✗"
         return out
 
-    @staticmethod
-    def operation_switch_case_implications(
-        cases: Iterable[
-            tuple["F.Expressions.is_expression", "F.Expressions.is_expression"]
-        ],
-    ) -> "F.Expressions.is_expression":
-        from faebryk.library.Expressions import And, Implies
-
-        return And.from_operands(
-            *(
-                Implies.from_operands(
-                    case.as_operand.get(),
-                    impl.as_operand.get(),
-                    assert_=True,
-                ).as_operand.get()
-                for case, impl in cases
-            ),
-        ).is_expression.get()
-
-    def operation_switch_case_subset(
-        self,
-        cases: Iterable[tuple["F.Literals.is_literal", "F.Expressions.is_expression"]],
-    ) -> "F.Expressions.is_expression":
-        from faebryk.library.Expressions import IsSubset
-
-        exprs = [
-            (
-                IsSubset.from_operands(
-                    self.as_operand.get(), lit.as_operand.get()
-                ).is_expression.get(),
-                case,
-            )
-            for lit, case in cases
-        ]
-        return is_parameter_operatable.operation_switch_case_implications(exprs)
-
-    def operation_mapping(
-        self,
-        other: "is_parameter_operatable",
-        mapping: dict["F.Literals.is_literal", "F.Literals.is_literal"],
-    ) -> "F.Expressions.is_expression":
-        from faebryk.library.Expressions import IsSubset
-
-        exprs = [
-            (
-                lit_self,
-                IsSubset.from_operands(
-                    other.as_operand.get(), lit_other.as_operand.get()
-                ).is_expression.get(),
-            )
-            for lit_self, lit_other in mapping.items()
-        ]
-        return self.operation_switch_case_subset(exprs)
-
-    def constrain_mapping(
-        self,
-        other: "is_parameter_operatable",
-        mapping: dict["F.Literals.is_literal", "F.Literals.is_literal"],
-    ):
-        return self.operation_mapping(other, mapping)
-
 
 class is_parameter(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
@@ -398,10 +349,6 @@ class is_parameter(fabll.Node):
         g = g or self.g
         tg = tg or self.tg
         return self.switch_cast().domain_set(g=g, tg=tg).is_literal.get()
-
-    def get_likely_constrained(self) -> bool:
-        # TODO
-        pass
 
     def switch_cast(
         self,

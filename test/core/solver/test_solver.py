@@ -336,7 +336,6 @@ def test_solve_realworld_biggest():
     # pick_part_recursively(app, solver)
 
 
-@pytest.mark.slow
 def test_inspect_known_superranges():
     E = BoundExpressions()
     p0 = E.parameter_op(
@@ -1739,7 +1738,7 @@ def test_implication():
     A = E.parameter_op()
     B = E.parameter_op()
 
-    E.is_subset(A, E.lit_op_discrete_set(5, 10))
+    E.is_subset(A, E.lit_op_discrete_set(5, 10), assert_=True)
 
     E.implies(
         E.is_subset(A, E.lit_op_single(5)),
@@ -1762,7 +1761,7 @@ def test_implication():
 
 
 @pytest.mark.parametrize("A_value", [5, 10, 15])
-def test_mapping(A_value):
+def test_mapping(A_value: int):
     E = BoundExpressions()
     A = E.parameter_op()
     B = E.parameter_op()
@@ -1777,15 +1776,13 @@ def test_mapping(A_value):
         E.lit_op_single(10).as_literal.force_get(): Y,
         E.lit_op_single(15).as_literal.force_get(): Z,
     }
-    A.as_parameter_operatable.force_get().constrain_mapping(
-        B.as_parameter_operatable.force_get(), mapping_literals
-    )
+    F.Expressions.Mapping.from_operands(A, B, mapping=mapping_literals, assert_=True)
 
     E.is_subset(A, E.lit_op_single(A_value), assert_=True)
 
     solver = DefaultSolver()
     solver.update_superset_cache(A, B)
-    assert _extract_and_check(A, solver, E.lit_op_single(A_value))
+    assert _extract_and_check(A, solver, A_value)
     assert _extract_and_check(B, solver, mapping[A_value])
 
 
@@ -2085,7 +2082,6 @@ def test_symmetric_inequality_uncorrelated():
         solver.simplify_symbolically(E.tg, E.g)
 
 
-@pytest.mark.slow
 def test_fold_correlated():
     """
     ```
@@ -2265,7 +2261,6 @@ _A: list[
 ]
 
 
-@pytest.mark.slow
 @pytest.mark.parametrize(
     "op_factory, lits_factory, expected_factory",
     _A,
@@ -2318,7 +2313,7 @@ def test_exec_pure_literal_expressions(
         if fabll.Traits(lit).get_obj_raw().isinstance(F.Literals.Booleans):
             return E.bool_parameter_op()
         else:
-            return E.parameter_op()
+            return E.parameter_op(domain=F.NumberDomain.Args(negative=True))
 
     result = _get_param_from_lit(expected_converted)
     E.is_(result, expr, assert_=True)

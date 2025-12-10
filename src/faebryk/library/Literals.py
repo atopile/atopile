@@ -932,16 +932,25 @@ class NumericInterval(fabll.Node):
         return self
 
     def op_log(
-        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+        self,
+        base: "NumericInterval | None" = None,
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericInterval":
         g = g or self.g
         tg = tg or self.tg
         if self.get_min_value() <= 0:
             raise ValueError(f"invalid log of {self}")
+        if base is not None and not base.is_singleton():
+            raise NotImplementedError(
+                f"Only support singleton base for log {self} {base=}"
+            )
+        base_value = math.e if base is None else base.get_single()
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         numeric_interval.setup(
-            min=math.log(self.get_min_value()),
-            max=math.log(self.get_max_value()),
+            min=math.log(self.get_min_value(), base_value),
+            max=math.log(self.get_max_value(), base_value),
         )
         return numeric_interval
 
@@ -2139,14 +2148,28 @@ class NumericSet(fabll.Node):
         return numeric_set.setup(intervals=intervals)
 
     def op_log(
-        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+        self,
+        base: "NumericSet | None" = None,
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericSet":
         g = g or self.g
         tg = tg or self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = []
+        if base is not None and base.get_intervals() != 1:
+            raise NotImplementedError(
+                f"Only support singleton base for log {self} {base=}"
+            )
         for interval in self.get_intervals():
-            intervals.append(interval.op_log(g=g, tg=tg))
+            intervals.append(
+                interval.op_log(
+                    base=base.get_intervals()[0] if base is not None else None,
+                    g=g,
+                    tg=tg,
+                )
+            )
         return numeric_set.setup(intervals=intervals)
 
     def op_sin(
@@ -3555,7 +3578,11 @@ class Numbers(fabll.Node):
         )
 
     def op_log(
-        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+        self,
+        base: "Numbers | None" = None,
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
         """
         Take the natural logarithm of this quantity set.
@@ -3563,7 +3590,9 @@ class Numbers(fabll.Node):
         """
         g = g or self.g
         tg = tg or self.tg
-        out_numeric_set = self.get_numeric_set().op_log(g=g, tg=tg)
+        out_numeric_set = self.get_numeric_set().op_log(
+            base=base.get_numeric_set() if base is not None else None, g=g, tg=tg
+        )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
             numeric_set=out_numeric_set,
