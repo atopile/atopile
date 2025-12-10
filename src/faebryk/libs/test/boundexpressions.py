@@ -411,15 +411,12 @@ class BoundExpressions:
             .create_instance(g=self.g)
             .get_trait(F.Units.is_unit)
         )
-        return (
-            (
-                F.Literals.Numbers.bind_typegraph(tg=self.tg)
-                .create_instance(g=self.g)
-                .setup_from_min_max(min=lower_value, max=upper_value, unit=is_unit)
-            )
-            .is_literal.get()
-            .as_operand.get()
-        )
+        out_lit = (
+            F.Literals.Numbers.bind_typegraph(tg=self.tg)
+            .create_instance(g=self.g)
+            .setup_from_min_max(min=lower_value, max=upper_value, unit=is_unit)
+        ).is_literal.get()
+        return out_lit.as_operand.get()
 
     def lit_op_ranges(self, *ranges: _Range) -> F.Parameters.can_be_operand:
         ranges_values = [self._range_to(range) for range in ranges]

@@ -2837,7 +2837,7 @@ class Numbers(fabll.Node):
         min: float,
         max: float,
         unit: type[fabll.NodeT],
-    ) -> fabll._ChildField:
+    ) -> fabll._ChildField[Self]:
         """
         Create a Numbers literal as a child field at type definition time.
 
@@ -3438,8 +3438,8 @@ class Numbers(fabll.Node):
     def op_subtract_intervals(
         self: "Numbers",
         *subtrahends: "Numbers",
-        g: graph.GraphView,
-        tg: fbrk.TypeGraph,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
         """
         Subtracts multiple quantity sets.
@@ -4079,10 +4079,10 @@ class Numbers(fabll.Node):
         # Get unit symbol
         try:
             unit = self.get_is_unit()
-            if unit.is_dimensionless():
+            unit_symbol = unit.compact_repr()
+            # TODO unit.compact_repr() should return "" for dimensionless
+            if unit_symbol == "dimensionless":
                 unit_symbol = ""
-            else:
-                unit_symbol = unit.get_symbols()[0]
         except Exception:
             unit_symbol = ""
 

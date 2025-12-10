@@ -854,18 +854,31 @@ class MutationMap:
         lit = maps_to.try_extract_literal(allow_subset=allow_subset)
         if lit is None:
             return _default()
+
+        # solver lit has no unit (dimensionless), need to convert back to parameter unit
         if (
             (param_unit_t := po.try_get_sibling_trait(F.Units.has_unit))
             and (lit_n := fabll.Traits(lit).get_obj_raw().try_cast(F.Literals.Numbers))
             and not lit_n.are_units_compatible(param_unit := param_unit_t.get_is_unit())
         ):
-            return lit_n.op_mul_intervals(
-                F.Literals.Numbers.bind_typegraph_from_instance(instance=lit_n.instance)
-                .create_instance(g=lit_n.g)
-                .setup_from_singleton(value=1, unit=param_unit),
-                g=lit_n.g,
-                tg=lit_n.tg,
-            ).is_literal.get()
+            N = F.Literals.Numbers.bind_typegraph_from_instance(instance=lit_n.instance)
+            NumberLit = lambda value, unit: N.create_instance(  # noqa: E731
+                g=lit_n.g
+            ).setup_from_singleton(value=value, unit=unit)
+            return (
+                # return ((lit - offset) / multiplier) * param_unit
+                lit_n.op_subtract_intervals(
+                    NumberLit(param_unit._extract_offset(), lit_n.get_is_unit()),
+                )
+                .op_div_intervals(
+                    NumberLit(param_unit._extract_multiplier(), lit_n.get_is_unit()),
+                )
+                .op_mul_intervals(
+                    NumberLit(1, param_unit),
+                )
+                .is_literal.get()
+            )
+
         return lit
 
     def __repr__(self) -> str:

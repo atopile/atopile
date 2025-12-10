@@ -1013,9 +1013,10 @@ def test_voltage_divider_reject_invalid_r_top():
 
 
 def test_base_unit_switch():
+    # TODO this should use mAh not Ah
     E = BoundExpressions()
     A = E.parameter_op(units=E.U.Ah)
-    E.is_(A, E.lit_op_range(((0.100, E.U.Ah), (0.600, E.U.Ah))))
+    E.is_(A, E.lit_op_range(((0.100, E.U.Ah), (0.600, E.U.Ah))), assert_=True)
     E.greater_or_equal(A, E.lit_op_single((0.100, E.U.Ah)), assert_=True)
 
     solver = DefaultSolver()
