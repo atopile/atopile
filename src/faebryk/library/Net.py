@@ -41,6 +41,11 @@ class Net(fabll.Node):
 
         return connected_pads
 
+    def get_name(self) -> str | None:
+        if has_net_name := self.try_get_trait(F.has_net_name):
+            return has_net_name.get_name()
+        return None
+
 
     # ----------------------------------------
     #                WIP
@@ -53,8 +58,6 @@ class Net(fabll.Node):
             if (fp := mif.get_parent_of_type(F.Footprints.GenericFootprint)) is not None
         }
 
-    def get_name(self) -> str:
-        return self.get_trait(F.has_net_name).get_name()
 
     def __repr__(self) -> str:
         up = super().__repr__()

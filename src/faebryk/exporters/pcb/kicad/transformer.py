@@ -32,6 +32,7 @@ from faebryk.core.node import TraitNotFound
 from faebryk.libs.exceptions import UserException
 from faebryk.libs.geometry.basic import Geometry
 from faebryk.libs.kicad.fileformats import UUID, Property, kicad
+from faebryk.libs.nets import bind_fbrk_nets_to_kicad_nets
 from faebryk.libs.util import (
     FuncSet,
     KeyErrorNotFound,
@@ -230,8 +231,7 @@ class PCB_Transformer:
                 )
 
         # net attach
-        for f_net, pcb_net in self.map_nets().items():
-            self.bind_net(pcb_net, f_net)
+        bind_fbrk_nets_to_kicad_nets(self.tg, self.g)
 
     def check_unattached_fps(self):
         """
@@ -326,119 +326,6 @@ class PCB_Transformer:
         if pcb_pads and logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"No pads in design for PCB pads: {pcb_pads}")
 
-    # def map_nets(self) -> dict["F.Net", KiCadPCBNet]:
-    #     """
-    #     Minimal net mapping: follow pad links and require a single KiCad net.
-    #     """
-    #     import faebryk.library._F as F
-
-    #     known_nets: dict["F.Net", KiCadPCBNet] = {}
-
-    #     for fabll_net in F.Net.bind_typegraph(self.tg).get_instances(g=self.g):
-    #         if not fabll_net.has_trait(F.has_net_name):
-    #             continue
-
-    #         kicad_nets: set[KiCadPCBNet] = set()
-
-    #         for fabll_pad, _ in fabll_net.get_connected_pads().items():
-    #             pcb_pad_t = fabll_pad.try_get_trait(
-    #                 F.PCBTransformer.has_associated_kicad_pcb_pad
-    #             )
-    #             if not pcb_pad_t or pcb_pad_t.get_transformer() is not self:
-    #                 continue
-
-    #             _, kicad_pads = pcb_pad_t.get_pads()
-    #             for pcb_pad in kicad_pads:
-    #                 if pcb_pad.net is not None:
-    #                     kicad_nets.add(pcb_pad.net)
-
-    #         if len(kicad_nets) != 1:
-    #             continue
-
-    #         kicad_net = next(iter(kicad_nets))
-    #         if kicad_net in known_nets.values():
-    #             continue
-
-    #         known_nets[fabll_net] = kicad_net
-
-    #     return known_nets
-
-    def map_nets(self, match_threshold: float = 0.8) -> dict["F.Net", KiCadPCBNet]:
-        """
-        Create a mapping between the internal nets and the nets defined in the PCB file.
-
-        This relies on linking between the footprints and pads, so must be called after.
-        """
-        import faebryk.library._F as F
-
-        if match_threshold < 0.5:
-            # This is because we rely on being >50% sure to ensure we're the most
-            # likely match.
-            raise ValueError("match_threshold must be at least 0.5")
-
-        known_nets: dict["F.Net", KiCadPCBNet] = {}
-        mapped_net_names = set()
-
-        kicad_nets_by_name: dict[str, KiCadPCBNet] = {
-            n.name: n for n in self.pcb.nets if n.name is not None
-        }
-
-        named_fbrk_nets = {
-            n
-            for n in fabll.Node.bind_typegraph(self.tg).nodes_of_type(F.Net)
-            if n.has_trait(F.has_net_name)
-        }
-
-        for fbrk_net in named_fbrk_nets:
-            total_pads = 0
-            # map from net name to the number of pads we've
-            # linked corroborating its accuracy
-            net_candidates: Mapping[str, int] = defaultdict(int)
-
-            for fbrk_pad, fbrk_footprint in fbrk_net.get_connected_pads().items():
-                pcb_pad_t = fbrk_pad.try_get_trait(
-                    F.KiCadFootprints.has_associated_kicad_pcb_pad
-                )
-                if pcb_pad_t:
-                    if pcb_pad_t.get_transformer() is not self:
-                        continue
-
-                    pcb_fp, kicad_pads = pcb_pad_t.get_pads()
-
-                    # This practically means that if the pads to which a net is
-                    # connected varies within a single component, we're going to ignore
-                    # it. This could probably be improved to be a little more subtle
-                    # within-component net matching, for later
-                    net_names = set(
-                        pcb_pad.net.name if pcb_pad.net is not None else None
-                        for pcb_pad in kicad_pads
-                    )
-                    conflicting = net_names & mapped_net_names
-                    net_names -= mapped_net_names
-
-                    if (
-                        len(net_names) == 1
-                        and (net_name := first(net_names)) is not None
-                    ):
-                        net_candidates[net_name] += 1
-                    elif len(net_names) == 0 and conflicting:
-                        logger.warning(
-                            "Net name has already been used: %s",
-                            ", ".join(f"`{n}`" for n in conflicting),
-                        )
-
-                total_pads += 1
-
-            if net_candidates:
-                best_net_name = max(net_candidates, key=lambda x: net_candidates[x])
-                if (
-                    best_net_name
-                    and net_candidates[best_net_name] > total_pads * match_threshold
-                ):
-                    known_nets[fbrk_net] = kicad_nets_by_name[best_net_name]
-                    mapped_net_names.add(best_net_name)
-
-        return known_nets
 
     def bind_net(self, kicad_net: KiCadPCBNet, f_net: "F.Net"):
         """

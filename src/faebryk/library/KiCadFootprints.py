@@ -140,6 +140,9 @@ class has_associated_kicad_pcb_pad(fabll.Node):
             ctypes.cast(pad_id, ctypes.py_object).value,
         )
 
+    def get_pad(self) -> KiCadPCBPad:
+        pass
+
     def get_transformer(self) -> "PCB_Transformer":
         transformer_id = int(
             self.transformer_.get().force_extract_literal().get_values()[0]

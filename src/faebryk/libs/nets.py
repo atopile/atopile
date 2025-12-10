@@ -5,51 +5,51 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
-def bind_nets_from_kicad_pads(tg: fbrk.TypeGraph, g: fabll.graph.GraphView) -> set[F.Net]:
+def bind_fbrk_nets_to_kicad_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView):
     """
-    Runs during:
-    - load-pcb
-    - prepare-nets
-
-    Pulls nets from kicad pads and maps them to fbrk nets.
+    Gets named fbrk nets and attempts to map them to existing kicad nets
     """
 
-    fbrk_nets: set[F.Net] = set()
+    # get all nets
+    for fbrk_net in F.Net.bind_typegraph(tg).get_instances(g):
 
-    # you're gonna want to look at the miro for this
-    for is_pad in F.Footprints.is_pad.bind_typegraph(tg).get_instances():
-        pad_node = is_pad.get_parent_force()[0]
-        has_linked_kicad_pad = pad_node.get_trait(F.KiCadFootprints.has_linked_kicad_pad)
-        is_kicad_pad = has_linked_kicad_pad.pad_ptr_.get().deref().cast(F.KiCadFootprints.is_kicad_pad)
-        kicad_pad_node = is_kicad_pad.get_parent_force()[0]
+        pad_count = 0
+        kicad_net_name_counts: dict[str, int] = {}
 
-        # TODO some logic to get the kicad_net_node from the kicad_pad_node
-        kicad_net_node = F.KiCadFootprints.GenericKiCadNet()
+        # filter out unnamed nets, we only want to match named nets
+        if fbrk_net.get_name() is None:
+            continue
 
-        is_kicad_net = kicad_net_node.is_kicad_net_.get()
-        kicad_net_name = kicad_net_node.get_name()
+        # filter out nets that already have a kicad net association
+        if fbrk_net.has_trait(F.KiCadFootprints.has_associated_kicad_pcb_net):
+            continue
 
-        fbrk_net = F.Net.bind_typegraph(tg).create_instance(g=g).setup(net_name=kicad_net_name)
-        has_linked_kicad_net = fabll.Traits.create_and_add_instance_to(fbrk_net, F.KiCadFootprints.has_linked_kicad_net)
-        has_linked_kicad_net.net_ptr_.get().point(is_kicad_net)
+        # for all the fbrk pads in the net, count and collect their kicad net names
+        for pad in fbrk_net.get_connected_pads():
+            pad_count += 1
 
-        fbrk_nets.add(fbrk_net)
+            # if the fbrk pad has a kicad pad with a name...
+            if has_associated_kicad_pcb_pad := pad.try_get_trait(F.KiCadFootprints.has_associated_kicad_pcb_pad):
+                if kicad_net := has_associated_kicad_pcb_pad.get_pad().net:
+                    if kicad_net_name := kicad_net.name:
 
-    return fbrk_nets
+                        # save that name and track it's count
+                        kicad_net_name_counts[kicad_net_name] = kicad_net_name_counts.get(kicad_net_name, 0) + 1
 
-def bind_kicad_nets_to_fbrk_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView) -> set[F.Net]:
-    """
-    Runs during:
-    - load-pcb
-    - prepare-nets
+        # skip if there's no named kicad nets
+        if not kicad_net_name_counts:
+            continue
 
-    Gets fbrk nets and maps them to kicad nets.
-    """
+        # pick the highest occuring kicad net name
+        # + check at least 80% of fbrk pads have it
+        best_kicad_net_name = max(kicad_net_name_counts, key=kicad_net_name_counts.get)
+        best_count = kicad_net_name_counts[best_kicad_net_name]
+        if best_count <= pad_count * 0.8:
+            continue
 
-    # get named fbrk nets
-    for fbrk_net in 
+        # bind the kicad net to the fabll net
+        fabll.Traits.create_and_add_instance_to(fbrk_net, F.KiCadFootprints.has_associated_kicad_pcb_net)
 
-    # for electrical with lead connected to net, 
 
 def bind_electricals_to_fbrk_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView) -> set[F.Net]:
     """
