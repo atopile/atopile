@@ -1110,7 +1110,6 @@ class MutatorUtils:
             }
 
         exprs = {o: _get(o) for o in op_set}
-        print(exprs)
         # check disjoint sets
         for e1, e2 in combinations(operables, 2):
             if e1.is_same(e2):
