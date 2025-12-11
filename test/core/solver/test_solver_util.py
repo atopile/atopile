@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -21,6 +23,8 @@ from faebryk.core.solver.utils import (
 )
 from faebryk.libs.logging import rich_to_string
 from faebryk.libs.util import cast_assert
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 from test.core.solver.test_solver import BoundExpressions, _create_letters
 
 logger = logging.getLogger(__name__)
@@ -277,12 +281,13 @@ def test_get_correlations_nested_correlated():
 def test_get_correlations_self_correlated():
     E = BoundExpressions()
     A = E.parameter_op()
-    expr = E.add(A, A)
+    expr = F.Expressions.Add.c(A, A)
     correlations = list(
         MutatorUtils.get_correlations(
             expr.as_parameter_operatable.force_get().as_expression.force_get()
         )
     )
+    print(correlations)
     assert len(correlations) == 1
     op1, op2, overlap_exprs = correlations[0]
     assert {op1, op2} == {A.as_parameter_operatable.force_get()}
@@ -303,7 +308,7 @@ def test_get_correlations_shared_predicates():
     )
     assert not correlations
 
-    E2 = E.is_(E.multiply(A, B), E.lit_op_range((0, 10)), assert_=True)
+    E2 = E.is_(E.multiply(A, B), E.lit_op_range((0, 10)))
 
     correlations = list(
         MutatorUtils.get_correlations(
@@ -493,7 +498,7 @@ def test_mutation_map_non_copy_mutated_mutate_expression():
 
     E2 = BoundExpressions()
     _, variables_new = _create_letters(E2, 2)
-    op_new = E.multiply(*[v.as_operand.get() for v in variables_new])
+    op_new = E2.multiply(*[v.as_operand.get() for v in variables_new])
 
     mapping_new = mapping.extend(
         MutationStage(
@@ -524,7 +529,7 @@ def test_mutation_map_submap():
 
     E2 = BoundExpressions()
     _, variables_new = _create_letters(E2, 2)
-    op_new = E.multiply(*[v.as_operand.get() for v in variables_new])
+    op_new = E2.multiply(*[v.as_operand.get() for v in variables_new])
 
     mapping_new = mapping.extend(  # noqa: F841
         MutationStage(
@@ -633,3 +638,7 @@ def test_contradiction_message_superset():
         ContradictionByLiteral, match="Contradiction: Incompatible literal subsets"
     ):
         solver.simplify_symbolically(E.tg, E.g, print_context=context, terminal=True)
+
+
+if __name__ == "__main__":
+    test_mutation_map_non_copy_mutated_mutate_expression()

@@ -1110,9 +1110,10 @@ class MutatorUtils:
             }
 
         exprs = {o: _get(o) for o in op_set}
+        print(exprs)
         # check disjoint sets
         for e1, e2 in combinations(operables, 2):
-            if e1 is e2:
+            if e1.is_same(e2):
                 yield e1, e2, exprs[e1].difference(excluded)
             overlap = (exprs[e1] & exprs[e2]).difference(excluded)
             if overlap:
