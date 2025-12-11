@@ -850,7 +850,7 @@ _UNIT_SYMBOLS: dict[_UnitRegistry, list[str]] = {
     _UnitRegistry.Coulomb: ["C"],
     _UnitRegistry.Volt: ["V"],
     _UnitRegistry.Farad: ["F"],
-    _UnitRegistry.Ohm: ["Ω", "Ohm"],
+    _UnitRegistry.Ohm: ["Ω", "ohm"],
     _UnitRegistry.Siemens: ["S"],
     _UnitRegistry.Weber: ["Wb"],
     _UnitRegistry.Tesla: ["T"],
