@@ -126,7 +126,7 @@ def _get_net_stable_key(net: F.Net) -> tuple[str, ...]:
 
 def _collect_unnamed_nets(nets: Iterable[F.Net]) -> dict[F.Net, list[F.Electrical]]:
     """Collect nets without overridden names and their connected interfaces."""
-    unnamed_nets = [n for n in nets if not n.has_trait(F.has_overriden_name)]
+    unnamed_nets = [n for n in nets if not n.has_trait(F.has_net_name)]
 
     nets_with_interfaces = {n: n.get_connected_interfaces() for n in unnamed_nets}
 
@@ -144,9 +144,9 @@ def _register_named_nets(
 ) -> None:
     """Register nets that already have overridden names."""
     for net in nets:
-        if net.has_trait(F.has_overriden_name):
+        if net.has_trait(F.has_net_name):
             names[net] = _NetName(
-                base_name=net.get_trait(F.has_overriden_name).get_name()
+                base_name=net.get_trait(F.has_net_name).get_name()
             )
 
 
@@ -269,7 +269,7 @@ def _process_unnamed_nets(
                 raise UserException(
                     f"Multiple conflicting required net names: {required}"
                 )
-            fabll.Traits.create_and_add_instance_to(net, F.has_overriden_name).setup(
+            fabll.Traits.create_and_add_instance_to(net, F.has_net_name).setup(
                 name=required.pop()
             )
             continue
@@ -642,7 +642,7 @@ def _apply_names_to_nets(names: FuncDict[F.Net, _NetName]) -> None:
     """Apply the computed names to nets, with length limiting."""
     for net, net_name in names.items():
         final_name = _truncate_long_name(net_name.name)
-        fabll.Traits.create_and_add_instance_to(net, F.has_overriden_name).setup(
+        fabll.Traits.create_and_add_instance_to(net, F.has_net_name).setup(
             name=final_name
         )
 
@@ -698,4 +698,4 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
     # Apply the computed names to nets
     _apply_names_to_nets(names)
 
-    assert all(n.has_trait(F.has_overriden_name) for n in nets)
+    assert all(n.has_trait(F.has_net_name) for n in nets)

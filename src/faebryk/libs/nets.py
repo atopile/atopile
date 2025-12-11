@@ -1,3 +1,4 @@
+import logging
 from itertools import pairwise
 
 import faebryk.core.faebrykpy as fbrk
@@ -5,6 +6,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.util import KeyErrorAmbiguous, once
 
+logger = logging.getLogger(__name__)
 
 def bind_fbrk_nets_to_kicad_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView):
     """
@@ -70,6 +72,8 @@ def bind_electricals_to_fbrk_nets(
         if is_lead := electrical.try_get_trait(F.Lead.is_lead):
             if is_lead.has_trait(F.Lead.has_associated_pads):
                 electricals_filtered.add(electrical)
+            else:
+                logger.warning(f"Lead of {electrical.get_name()} has no associated pads")
 
     # collect buses in a sorted manner
     buses = sorted(fabll.is_interface.group_into_buses(electricals_filtered), key=_get_stable_node_name)

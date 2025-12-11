@@ -587,12 +587,8 @@ def attach(
         for number, name in pads_number_name_pairs
     ]
 
-    leads = component.get_children(
-        direct_only=False,
-        types=fabll.Node,
-        required_trait=F.Lead.is_lead,
-    )
-    leads_t = [lead.get_trait(F.Lead.is_lead) for lead in leads]
+    leads_t = F.Lead.is_lead.bind_typegraph(component.tg).get_instances()
+
     # try matching the ato part pad names to the component's leads
     try:
         for lead_t in leads_t:

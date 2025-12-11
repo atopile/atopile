@@ -22,9 +22,9 @@ import numpy as np
 from deprecated import deprecated
 from shapely import Polygon
 
-# import faebryk.library._F as F
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.core.node import TraitNotFound
 from faebryk.libs.exceptions import UserException
 from faebryk.libs.geometry.basic import Geometry
@@ -68,8 +68,8 @@ Geom = (
 Point = Geometry.Point
 Point2D = Geometry.Point2D
 
-if TYPE_CHECKING:
-    import faebryk.library._F as F
+
+
 
 
 def gen_uuid(mark: str = "") -> UUID:
