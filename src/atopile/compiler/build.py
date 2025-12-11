@@ -27,6 +27,63 @@ class BuildFileResult:
     state: BuildState
 
 
+class StdlibRegistry:
+    """Lazy loader for stdlib types."""
+
+    def __init__(self, tg: TypeGraph) -> None:
+        self._tg = tg
+        self._cache: dict[str, BoundNode] = {}
+
+    def get(self, name: str) -> BoundNode:
+        if name not in self._cache:
+            if name not in STDLIB_ALLOWLIST:
+                raise KeyError(f"Unknown stdlib type: {name}")
+            obj = STDLIB_ALLOWLIST[name]
+            type_node = obj.bind_typegraph(self._tg).get_or_create_type()
+            self._cache[name] = type_node
+        return self._cache[name]
+
+    def __contains__(self, name: str) -> bool:
+        return name in STDLIB_ALLOWLIST
+
+
+class TestStdlibRegistry:
+    """Tests for lazy stdlib loading."""
+
+    def test_lazy_loading(self):
+        """Types are only created when first accessed."""
+        g = GraphView.create()
+        tg = TypeGraph.create(g=g)
+        registry = StdlibRegistry(tg)
+
+        assert tg.get_type_by_name(type_identifier="Resistor") is None
+
+        node = registry.get("Resistor")
+        assert node is not None
+        assert tg.get_type_by_name(type_identifier="Resistor") is not None
+
+    def test_caching(self):
+        """Same type node returned on repeated access."""
+        g = GraphView.create()
+        tg = TypeGraph.create(g=g)
+        registry = StdlibRegistry(tg)
+
+        node1 = registry.get("Resistor")
+        node2 = registry.get("Resistor")
+        assert node1.node().is_same(other=node2.node())
+
+    def test_unknown_type_raises(self):
+        """KeyError raised for unknown stdlib types."""
+        import pytest
+
+        g = GraphView.create()
+        tg = TypeGraph.create(g=g)
+        registry = StdlibRegistry(tg)
+
+        with pytest.raises(KeyError):
+            registry.get("NotARealType")
+
+
 class LinkerException(Exception):
     pass
 
@@ -157,20 +214,17 @@ class Linker:
     def __init__(
         self,
         config_obj,
-        stdlib_registry: dict[str, BoundNode],
-        stdlib_tg: TypeGraph,
+        stdlib: StdlibRegistry,
+        tg: TypeGraph,
         extra_search_paths: Iterable[Path] | None = None,
     ) -> None:
         self._resolver = SearchPathResolver(
             config_obj, extra_search_paths=extra_search_paths or []
         )
-        self._stdlib_registry = stdlib_registry
-        self._stdlib_tg = stdlib_tg
+        self._stdlib = stdlib
+        self._tg = tg
         self._active_paths: set[Path] = set()
         self._linked_modules: dict[Path, dict[str, BoundNode]] = {}
-
-    def _stdlib_lookup(self, import_ref: ImportRef) -> BoundNode:
-        return self._stdlib_registry[import_ref.name]
 
     def _build_imported_file(
         self, graph: GraphView, import_ref: ImportRef, build_state: BuildState
@@ -186,12 +240,45 @@ class Linker:
 
         assert source_path.exists()
 
-        child_result = build_file(graph, source_path)
-        self.link_imports(graph, child_result.state)
+        child_result = build_file(
+            g=graph,
+            tg=self._tg,
+            import_path=import_ref.path,
+            path=source_path,
+        )
+        self._link_recursive(graph, child_result.state)
         self._linked_modules[source_path] = child_result.state.type_roots
         return child_result.state.type_roots[import_ref.name]
 
     def link_imports(self, graph: GraphView, build_state: BuildState) -> None:
+        resolved_path = (
+            self._resolver._normalize_path(build_state.file_path)
+            if build_state.file_path is not None
+            else None
+        )
+
+        match resolved_path:
+            case None:
+                self._link(graph, build_state)
+            case _ if resolved_path in self._linked_modules:
+                self._link_from_cache(
+                    graph, build_state, self._linked_modules[resolved_path]
+                )
+            case _:
+                with self._guard_path(resolved_path):
+                    self._link(graph, build_state)
+                    self._linked_modules[resolved_path] = build_state.type_roots
+
+        # Only check for unresolved refs at the top level
+        if unresolved := _Linker.collect_unresolved_type_references(
+            type_graph=self._tg
+        ):
+            raise UnresolvedTypeReferencesError(
+                "Unresolved type references remaining after linking", unresolved
+            )
+
+    def _link_recursive(self, graph: GraphView, build_state: BuildState) -> None:
+        """Link imports without checking unresolved refs (for recursive calls)."""
         resolved_path = (
             self._resolver._normalize_path(build_state.file_path)
             if build_state.file_path is not None
@@ -216,17 +303,10 @@ class Linker:
                 g=graph,
                 type_reference=type_reference,
                 target_type_node=(
-                    self._stdlib_lookup(import_ref)
+                    self._stdlib.get(import_ref.name)
                     if import_ref.path is None
                     else self._build_imported_file(graph, import_ref, build_state)
                 ),
-            )
-
-        if unresolved := _Linker.collect_unresolved_type_references(
-            type_graph=build_state.type_graph
-        ):
-            raise UnresolvedTypeReferencesError(
-                "Unresolved type references remaining after linking", unresolved
             )
 
     def _link_from_cache(
@@ -240,7 +320,7 @@ class Linker:
                 g=graph,
                 type_reference=type_reference,
                 target_type_node=(
-                    self._stdlib_registry[import_ref.name]
+                    self._stdlib.get(import_ref.name)
                     if import_ref.path is None
                     else cached_type_roots[import_ref.name]
                 ),
@@ -259,31 +339,44 @@ class Linker:
             self._active_paths.remove(path)
 
 
-def build_stdlib(graph: GraphView) -> tuple[TypeGraph, dict[str, BoundNode]]:
-    tg = TypeGraph.create(g=graph)
-    registry: dict[str, BoundNode] = {}
-
-    for name, obj in STDLIB_ALLOWLIST.items():
-        type_node = obj.bind_typegraph(tg).get_or_create_type()
-        registry[name] = type_node
-
-    return tg, registry
-
-
 def _build_from_ctx(
-    graph: GraphView, root_ctx: AtoParser.File_inputContext, file_path: Path | None
+    *,
+    g: GraphView,
+    tg: TypeGraph,
+    import_path: str | None,
+    root_ctx: AtoParser.File_inputContext,
+    file_path: Path | None,
 ) -> BuildFileResult:
-    ast_type_graph = TypeGraph.create(g=graph)
-    ast_root = ANTLRVisitor(graph, ast_type_graph, file_path).visit(root_ctx)
+    ast_root = ANTLRVisitor(g, tg, file_path).visit(root_ctx)
     assert isinstance(ast_root, AST.File)
-    build_state = ASTVisitor(ast_root, graph, file_path).build()
+    build_state = ASTVisitor(ast_root, g, tg, import_path, file_path).build()
     return BuildFileResult(ast_root=ast_root, state=build_state)
 
 
-def build_file(graph: GraphView, path: Path) -> BuildFileResult:
-    # TODO: per-file caching
-    return _build_from_ctx(graph, parse_file(path), path)
+def build_file(
+    *, g: GraphView, tg: TypeGraph, import_path: str, path: Path
+) -> BuildFileResult:
+    return _build_from_ctx(
+        g=g,
+        tg=tg,
+        import_path=import_path,
+        root_ctx=parse_file(path),
+        file_path=path,
+    )
 
 
-def build_source(graph: GraphView, source: str) -> BuildFileResult:
-    return _build_from_ctx(graph, parse_text_as_file(source), file_path=None)
+def build_source(
+    *, g: GraphView, tg: TypeGraph, source: str, import_path: str | None = None
+) -> BuildFileResult:
+    import uuid
+
+    if import_path is None:
+        import_path = f"__source_{uuid.uuid4().hex[:8]}__.ato"
+
+    return _build_from_ctx(
+        g=g,
+        tg=tg,
+        import_path=import_path,
+        root_ctx=parse_text_as_file(source),
+        file_path=None,
+    )

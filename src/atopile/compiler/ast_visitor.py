@@ -38,16 +38,17 @@ logger = logging.getLogger(__name__)
 
 STDLIB_ALLOWLIST = {
     "Resistor": F.Resistor,
+    "Capacitor": F.Capacitor,
     "Electrical": F.Electrical,
 }
 
 
 @dataclass
 class BuildState:
-    type_graph: TypeGraph
     type_roots: dict[str, BoundNode]
     external_type_refs: list[tuple[BoundNode, ImportRef]]
     file_path: Path | None
+    import_path: str | None
 
 
 class DslException(Exception):
@@ -173,12 +174,10 @@ class _TypeContextStack:
     preserves the enriched error metadata.
     """
 
-    def __init__(
-        self, graph: GraphView, type_graph: TypeGraph, state: BuildState
-    ) -> None:
+    def __init__(self, *, g: GraphView, tg: TypeGraph, state: BuildState) -> None:
         self._stack: list[BoundNode] = []
-        self._graph = graph
-        self._type_graph = type_graph
+        self._g = g
+        self._tg = tg
         self._state = state
 
     @contextmanager
@@ -243,7 +242,7 @@ class _TypeContextStack:
     ) -> BoundNode:
         identifiers = list(field_path.identifiers())
         try:
-            return self._type_graph.ensure_child_reference(
+            return self._tg.ensure_child_reference(
                 type_node=type_node, path=identifiers, validate=validate
             )
         except TypeGraphPathError as exc:
@@ -267,7 +266,7 @@ class _TypeContextStack:
 
         assert child_type_identifier is not None
 
-        make_child = self._type_graph.add_make_child_deferred(
+        make_child = self._tg.add_make_child_deferred(
             type_node=type_node,
             child_type_identifier=child_type_identifier,
             identifier=action.target_path.leaf.identifier,
@@ -276,7 +275,7 @@ class _TypeContextStack:
         )
 
         type_reference = not_none(
-            self._type_graph.get_make_child_type_reference(make_child=make_child)
+            self._tg.get_make_child_type_reference(make_child=make_child)
         )
 
         if symbol is not None and symbol.import_ref:
@@ -294,11 +293,11 @@ class _TypeContextStack:
                 )
 
             Linker.link_type_reference(
-                g=self._graph, type_reference=type_reference, target_type_node=target
+                g=self._g, type_reference=type_reference, target_type_node=target
             )
 
     def _add_link(self, type_node: BoundNode, action: AddMakeLinkAction) -> None:
-        self._type_graph.add_make_link(
+        self._tg.add_make_link(
             type_node=type_node,
             lhs_reference=action.lhs_ref,
             rhs_reference=action.rhs_ref,
@@ -344,27 +343,31 @@ class ASTVisitor:
         INSTANCE_TRAITS = "INSTANCE_TRAITS"
 
     def __init__(
-        self, ast_root: AST.File, graph: GraphView, file_path: Path | None
+        self,
+        ast_root: AST.File,
+        graph: GraphView,
+        type_graph: TypeGraph,
+        import_path: str | None,
+        file_path: Path | None,
     ) -> None:
         self._ast_root = ast_root
         self._graph = graph
-        self._type_graph = TypeGraph.create(g=graph)
+        self._type_graph = type_graph
         self._state = BuildState(
-            type_graph=self._type_graph,
             type_roots={},
             external_type_refs=[],
             file_path=file_path,
+            import_path=import_path,
         )
 
-        # TODO: from "system" type graph
         self._pointer_sequence_type = F.Collections.PointerSequence.bind_typegraph(
             self._type_graph
         ).get_or_create_type()
         self._experiments: set[ASTVisitor._Experiment] = set()
         self._scope_stack = _ScopeStack()
         self._type_stack = _TypeContextStack(
-            graph=self._graph,
-            type_graph=self._type_graph,
+            g=self._graph,
+            tg=self._type_graph,
             state=self._state,
         )
 
@@ -412,6 +415,12 @@ class ASTVisitor:
     def ensure_experiment(self, experiment: _Experiment) -> None:
         if experiment not in self._experiments:
             raise DslException(f"Experiment {experiment} is not enabled")
+
+    def _make_type_identifier(self, name: str) -> str:
+        """Create namespaced identifier for ato types."""
+        if self._state.import_path is not None:
+            return f"{self._state.import_path}::{name}"
+        return name
 
     def build(self) -> BuildState:
         # must start with a File (for now)
@@ -514,8 +523,9 @@ class ASTVisitor:
 
                 _Block = _Interface
 
-        _Block.__name__ = module_name
-        _Block.__qualname__ = module_name
+        type_identifier = self._make_type_identifier(module_name)
+        _Block.__name__ = type_identifier
+        _Block.__qualname__ = type_identifier
 
         type_node = _Block.bind_typegraph(self._type_graph).get_or_create_type()
         self._state.type_roots[module_name] = type_node

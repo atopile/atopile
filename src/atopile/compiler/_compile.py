@@ -4,8 +4,9 @@ from pathlib import Path
 import typer
 
 import atopile.compiler.ast_types as AST
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
-from atopile.compiler.build import Linker, build_file, build_stdlib
+from atopile.compiler.build import Linker, StdlibRegistry, build_file
 from atopile.config import config
 from faebryk.core.node import TreeRenderer
 from faebryk.core.zig.gen.graph.graph import BoundNode, GraphView
@@ -59,10 +60,10 @@ def main(
 ) -> None:
     """Compile an ato file and visualize its compilation stages."""
     section("Build logs", sep="")
-    graph = GraphView.create()
-
-    stdlib_tg, stdlib_registry = build_stdlib(graph)
-    result = build_file(graph, file.resolve())
+    g = GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    stdlib = StdlibRegistry(tg)
+    result = build_file(g=g, tg=tg, import_path=file.name, path=file.resolve())
 
     section("AST Graph")
     TreeRenderer.print_tree(result.ast_root.instance, renderer=ast_renderer)
@@ -72,8 +73,8 @@ def main(
         TreeRenderer.print_tree(type_root, renderer=typegraph_renderer)
 
     section("Linking", sep="\n\n")
-    linker = Linker(config, stdlib_registry, stdlib_tg)
-    linker.link_imports(graph, result.state)
+    linker = Linker(config, stdlib, tg)
+    linker.link_imports(g, result.state)
 
     if entrypoint not in result.state.type_roots:
         available = ", ".join(result.state.type_roots.keys())
@@ -89,9 +90,7 @@ def main(
 
     section("Instance Graph")
     app_type = result.state.type_roots[entrypoint]
-    app_instance = result.state.type_graph.instantiate_node(
-        type_node=app_type, attributes={}
-    )
+    app_instance = tg.instantiate_node(type_node=app_type, attributes={})
     TreeRenderer.print_tree(
         app_instance,
         renderer=lambda ctx: instancegraph_renderer(

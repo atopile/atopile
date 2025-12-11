@@ -5,9 +5,10 @@ from types import SimpleNamespace
 import pytest
 
 from atopile.compiler.ast_visitor import DslException
-from atopile.compiler.build import Linker, build_file, build_source, build_stdlib
+from atopile.compiler.build import Linker, StdlibRegistry, build_file, build_source
 from faebryk.core.zig.gen.faebryk.linker import Linker as _Linker
-from faebryk.core.zig.gen.faebryk.typegraph import TypeGraphPathError
+from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph, TypeGraphPathError
+from faebryk.core.zig.gen.graph import graph
 from faebryk.core.zig.gen.graph.graph import GraphView
 
 NULL_CONFIG = SimpleNamespace(project=None)
@@ -20,19 +21,16 @@ def _get_make_child(type_graph, type_node, name: str):
     raise AssertionError(f"expected make child `{name}`")
 
 
-def _collect_make_links(type_graph, type_node):
+def _collect_make_links(tg: TypeGraph, type_node: graph.BoundNode):
     return [
         (make_link, list(lhs_path), list(rhs_path))
-        for make_link, lhs_path, rhs_path in type_graph.collect_make_links(
-            type_node=type_node
-        )
+        for make_link, lhs_path, rhs_path in tg.collect_make_links(type_node=type_node)
     ]
 
 
 def _check_make_links(
-    type_graph,
-    type_node,
-    *,
+    tg: TypeGraph,
+    type_node: graph.BoundNode,
     expected: list[tuple[list[str] | tuple[str, ...], list[str] | tuple[str, ...]]]
     | None = None,
     not_expected: list[tuple[list[str] | tuple[str, ...], list[str] | tuple[str, ...]]]
@@ -40,7 +38,7 @@ def _check_make_links(
 ) -> bool:
     paths = {
         (tuple(lhs_path), tuple(rhs_path))
-        for _, lhs_path, rhs_path in _collect_make_links(type_graph, type_node)
+        for _, lhs_path, rhs_path in _collect_make_links(tg, type_node)
     }
 
     if expected:
@@ -56,11 +54,14 @@ def _check_make_links(
     return True
 
 
-def _build_snippet(source: str):
-    graph = GraphView.create()
-    stdlib_tg, stdlib_registry = build_stdlib(graph)
-    result = build_source(graph, textwrap.dedent(source))
-    return graph, stdlib_tg, stdlib_registry, result
+def _build_snippet(source: str, import_path: str | None = None):
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
+    stdlib = StdlibRegistry(tg)
+    result = build_source(
+        g=g, tg=tg, source=textwrap.dedent(source), import_path=import_path
+    )
+    return g, tg, stdlib, result
 
 
 def _collect_children_by_name(type_graph, type_node, name: str):
@@ -93,7 +94,7 @@ def test_block_definitions_recorded():
 
 
 def test_make_child_and_linking():
-    graph, stdlib_tg, stdlib_registry, result = _build_snippet(
+    graph, tg, stdlib, result = _build_snippet(
         """
         module Electrical:
             pass
@@ -110,7 +111,7 @@ def test_make_child_and_linking():
         """
     )
     app_type = result.state.type_roots["App"]
-    type_graph = result.state.type_graph
+    type_graph = tg
 
     child_node = _get_make_child(type_graph, app_type, "child")
     assert type_graph.debug_get_mount_chain(make_child=child_node) == []
@@ -118,12 +119,10 @@ def test_make_child_and_linking():
     res_node = _get_make_child(type_graph, app_type, "res")
     assert type_graph.debug_get_mount_chain(make_child=res_node) == []
 
-    unresolved = _Linker.collect_unresolved_type_references(
-        type_graph=result.state.type_graph
-    )
+    unresolved = _Linker.collect_unresolved_type_references(type_graph=tg)
     assert not unresolved
 
-    linker = Linker(NULL_CONFIG, stdlib_registry, stdlib_tg)
+    linker = Linker(NULL_CONFIG, stdlib, tg)
     linker.link_imports(graph, result.state)
 
     type_ref = type_graph.get_make_child_type_reference(make_child=res_node)
@@ -133,7 +132,7 @@ def test_make_child_and_linking():
 
 
 def test_new_with_count_creates_pointer_sequence():
-    _, _, _, result = _build_snippet(
+    g, tg, _, result = _build_snippet(
         """
         module Inner:
             pass
@@ -144,19 +143,17 @@ def test_new_with_count_creates_pointer_sequence():
     )
 
     app_type = result.state.type_roots["App"]
-    type_graph = result.state.type_graph
-    members_node = _get_make_child(type_graph, app_type, "members")
+    members_node = _get_make_child(tg, app_type, "members")
 
-    type_ref = type_graph.get_make_child_type_reference(make_child=members_node)
+    type_ref = tg.get_make_child_type_reference(make_child=members_node)
     assert type_ref is not None
     resolved = _Linker.get_resolved_type(type_reference=type_ref)
     assert resolved is not None
 
-    type_graph = result.state.type_graph
     element_nodes = []
     for idx in ["0", "1", "2"]:
-        element_nodes.append(_get_make_child(type_graph, app_type, idx))
-        ref = type_graph.ensure_child_reference(
+        element_nodes.append(_get_make_child(tg, app_type, idx))
+        ref = tg.ensure_child_reference(
             type_node=app_type,
             path=["members", idx],
             validate=True,
@@ -166,7 +163,7 @@ def test_new_with_count_creates_pointer_sequence():
 
 
 def test_new_with_count_children_have_mounts():
-    _, _, _, result = _build_snippet(
+    g, tg, _, result = _build_snippet(
         """
         module Inner:
             pass
@@ -177,14 +174,13 @@ def test_new_with_count_children_have_mounts():
     )
 
     app_type = result.state.type_roots["App"]
-    type_graph = result.state.type_graph
-    members_node = _get_make_child(type_graph, app_type, "members")
+    members_node = _get_make_child(tg, app_type, "members")
 
-    assert type_graph.debug_get_mount_chain(make_child=members_node) == []
+    assert tg.debug_get_mount_chain(make_child=members_node) == []
 
     for idx in ["0", "1"]:
-        elem_node = _get_make_child(type_graph, app_type, idx)
-        assert type_graph.debug_get_mount_chain(make_child=elem_node) == ["members"]
+        elem_node = _get_make_child(tg, app_type, idx)
+        assert tg.debug_get_mount_chain(make_child=elem_node) == ["members"]
 
 
 def test_new_with_count_rejects_out_of_range_index():
@@ -205,7 +201,7 @@ def test_new_with_count_rejects_out_of_range_index():
 
 
 def test_typegraph_path_error_metadata():
-    _, _, _, result = _build_snippet(
+    g, tg, _, result = _build_snippet(
         """
         module Inner:
             pass
@@ -215,11 +211,10 @@ def test_typegraph_path_error_metadata():
         """
     )
 
-    type_graph = result.state.type_graph
     app_type = result.state.type_roots["App"]
 
     with pytest.raises(TypeGraphPathError) as excinfo:
-        type_graph.ensure_child_reference(
+        tg.ensure_child_reference(
             type_node=app_type,
             path=["members", "5"],
             validate=True,
@@ -233,7 +228,7 @@ def test_typegraph_path_error_metadata():
     assert err.index_value is None
 
     with pytest.raises(TypeGraphPathError) as excinfo_missing:
-        type_graph.ensure_child_reference(
+        tg.ensure_child_reference(
             type_node=app_type,
             path=["missing", "child"],
             validate=True,
@@ -247,7 +242,7 @@ def test_typegraph_path_error_metadata():
 
 
 def test_for_loop_connects_twice():
-    _, _, _, result = _build_snippet(
+    _, tg, _, result = _build_snippet(
         """
         #pragma experiment("FOR_LOOP")
 
@@ -267,12 +262,11 @@ def test_for_loop_connects_twice():
         """
     )
     app_type = result.state.type_roots["App"]
-    type_graph = result.state.type_graph
 
     assert (
         _check_make_links(
-            type_graph,
-            app_type,
+            tg=tg,
+            type_node=app_type,
             expected=[(["left"], ["sink"]), (["right"], ["sink"])],
         )
         is True
@@ -301,7 +295,7 @@ def test_for_loop_requires_experiment():
 
 
 def test_for_loop_over_sequence():
-    _, _, _, result = _build_snippet(
+    _, tg, _, result = _build_snippet(
         """
         #pragma experiment("FOR_LOOP")
 
@@ -322,12 +316,10 @@ def test_for_loop_over_sequence():
                 it.connection ~ sink
         """
     )
-    type_graph = result.state.type_graph
-    app_type = result.state.type_roots["App"]
     assert (
         _check_make_links(
-            type_graph,
-            app_type,
+            tg=tg,
+            type_node=result.state.type_roots["App"],
             expected=[
                 (["items", "0", "connection"], ["sink"]),
                 (["items", "1", "connection"], ["sink"]),
@@ -338,7 +330,7 @@ def test_for_loop_over_sequence():
 
 
 def test_for_loop_over_sequence_slice():
-    _, _, _, result = _build_snippet(
+    _, tg, _, result = _build_snippet(
         """
         #pragma experiment("FOR_LOOP")
 
@@ -360,11 +352,9 @@ def test_for_loop_over_sequence_slice():
         """
     )
 
-    type_graph = result.state.type_graph
-    app_type = result.state.type_roots["App"]
     assert _check_make_links(
-        type_graph,
-        app_type,
+        tg=tg,
+        type_node=result.state.type_roots["App"],
         expected=[
             (["items", "1", "connection"], ["sink"]),
             (["items", "2", "connection"], ["sink"]),
@@ -391,7 +381,7 @@ def test_for_loop_over_sequence_slice_zero_step_errors():
 
 
 def test_for_loop_over_sequence_stride():
-    graph, _, _, result = _build_snippet(
+    _, tg, _, result = _build_snippet(
         """
         #pragma experiment("FOR_LOOP")
 
@@ -413,11 +403,9 @@ def test_for_loop_over_sequence_stride():
         """
     )
 
-    type_graph = result.state.type_graph
-    app_type = result.state.type_roots["App"]
     assert _check_make_links(
-        type_graph,
-        app_type,
+        tg=tg,
+        type_node=result.state.type_roots["App"],
         expected=[
             (["items", "0", "connection"], ["sink"]),
             (["items", "2", "connection"], ["sink"]),
@@ -451,7 +439,7 @@ def test_for_loop_alias_does_not_leak():
 
 
 def test_for_loop_nested_field_paths():
-    _, _, _, result = _build_snippet(
+    _, tg, _, result = _build_snippet(
         """
         #pragma experiment("FOR_LOOP")
 
@@ -471,12 +459,10 @@ def test_for_loop_nested_field_paths():
                 i.connection ~ sink
         """
     )
-    type_graph = result.state.type_graph
-    app_type = result.state.type_roots["App"]
     assert (
         _check_make_links(
-            type_graph,
-            app_type,
+            tg=tg,
+            type_node=result.state.type_roots["App"],
             expected=[(["left", "connection"], ["sink"])],
             not_expected=[(["right", "connection"], ["sink"])],
         )
@@ -485,7 +471,7 @@ def test_for_loop_nested_field_paths():
 
 
 def test_for_loop_assignment_creates_children():
-    _, _, _, result = _build_snippet(
+    _, tg, _, result = _build_snippet(
         """
         #pragma experiment("FOR_LOOP")
 
@@ -505,19 +491,18 @@ def test_for_loop_assignment_creates_children():
                 i.extra = new Resistor
         """
     )
-    type_graph = result.state.type_graph
     app_type = result.state.type_roots["App"]
-    extras = _collect_children_by_name(type_graph, app_type, "extra")
+    extras = _collect_children_by_name(tg, app_type, "extra")
     assert len(extras) == 2
     for extra in extras:
-        chain = type_graph.debug_get_mount_chain(make_child=extra)
+        chain = tg.debug_get_mount_chain(make_child=extra)
         assert chain, "expected extra to have mount chain"
         assert chain[-1] == "extra"
         assert chain[0] in {"left", "right"}
 
 
 def test_two_for_loops_same_var_accumulates_links():
-    _, _, _, result = _build_snippet(
+    _, tg, _, result = _build_snippet(
         """
         #pragma experiment("FOR_LOOP")
 
@@ -539,12 +524,10 @@ def test_two_for_loops_same_var_accumulates_links():
                 r ~ sink
         """
     )
-    type_graph = result.state.type_graph
-    app_type = result.state.type_roots["App"]
     assert (
         _check_make_links(
-            type_graph,
-            app_type,
+            tg=tg,
+            type_node=result.state.type_roots["App"],
             expected=[(["a"], ["sink"]), (["b"], ["sink"]), (["c"], ["sink"])],
         )
         is True
@@ -573,7 +556,7 @@ def test_for_loop_alias_shadow_symbol_raises():
 
 
 def test_nested_make_child_uses_mount_reference():
-    _, _, _, result = _build_snippet(
+    _, tg, _, result = _build_snippet(
         """
         module Electrical:
             pass
@@ -589,21 +572,20 @@ def test_nested_make_child_uses_mount_reference():
             base.extra = new Resistor
         """
     )
-    type_graph = result.state.type_graph
     app_type = result.state.type_roots["App"]
 
-    base_node = _get_make_child(type_graph, app_type, "base")
-    assert type_graph.debug_get_mount_chain(make_child=base_node) == []
+    base_node = _get_make_child(tg, app_type, "base")
+    assert tg.debug_get_mount_chain(make_child=base_node) == []
 
-    extra_node = _get_make_child(type_graph, app_type, "extra")
-    assert type_graph.debug_get_mount_chain(make_child=extra_node) == ["base", "extra"]
-    for _, lhs_path, rhs_path in _collect_make_links(type_graph, app_type):
+    extra_node = _get_make_child(tg, app_type, "extra")
+    assert tg.debug_get_mount_chain(make_child=extra_node) == ["base", "extra"]
+    for _, lhs_path, rhs_path in _collect_make_links(tg, app_type):
         assert not lhs_path or lhs_path[0] not in ("base", "extra")
         assert not rhs_path or rhs_path[0] not in ("base", "extra")
 
 
 def test_connects_between_top_level_fields():
-    _, _, _, result = _build_snippet(
+    _, tg, _, result = _build_snippet(
         """
         module Electrical:
             pass
@@ -617,13 +599,11 @@ def test_connects_between_top_level_fields():
             left ~ right
         """
     )
-    type_graph = result.state.type_graph
-    app_type = result.state.type_roots["App"]
 
     assert (
         _check_make_links(
-            type_graph,
-            app_type,
+            tg=tg,
+            type_node=result.state.type_roots["App"],
             expected=[(["left"], ["right"])],
             not_expected=[(["left"], ["left"]), (["right"], ["right"])],
         )
@@ -648,7 +628,7 @@ def test_assignment_requires_existing_field():
 
 
 def test_simple_connect():
-    _, _, _, result = _build_snippet(
+    _, tg, _, result = _build_snippet(
         """
         module A:
             pass
@@ -659,12 +639,10 @@ def test_simple_connect():
             left ~ right
         """
     )
-    type_graph = result.state.type_graph
-    app_type = result.state.type_roots["App"]
     assert (
         _check_make_links(
-            type_graph,
-            app_type,
+            tg=tg,
+            type_node=result.state.type_roots["App"],
             expected=[(["left"], ["right"])],
         )
         is True
@@ -672,7 +650,7 @@ def test_simple_connect():
 
 
 def test_connect_unlinked_types():
-    _, _, _, result = _build_snippet(
+    _, tg, _, result = _build_snippet(
         """
         from "A.ato" import A
 
@@ -682,12 +660,10 @@ def test_connect_unlinked_types():
             left ~ right
         """
     )
-    type_graph = result.state.type_graph
-    app_type = result.state.type_roots["App"]
     assert (
         _check_make_links(
-            type_graph,
-            app_type,
+            tg=tg,
+            type_node=result.state.type_roots["App"],
             expected=[(["left"], ["right"])],
         )
         is True
@@ -712,7 +688,7 @@ def test_connect_requires_existing_fields():
 
 
 def test_nested_connects_across_child_fields():
-    _, _, _, result = _build_snippet(
+    _, tg, _, result = _build_snippet(
         """
         module Electrical:
             pass
@@ -729,13 +705,11 @@ def test_nested_connects_across_child_fields():
             left.connection ~ right.connection
         """
     )
-    type_graph = result.state.type_graph
-    app_type = result.state.type_roots["App"]
 
     assert (
         _check_make_links(
-            type_graph,
-            app_type,
+            tg=tg,
+            type_node=result.state.type_roots["App"],
             expected=[(["left", "connection"], ["right", "connection"])],
         )
         is True
@@ -743,7 +717,7 @@ def test_nested_connects_across_child_fields():
 
 
 def test_deep_nested_connects_across_child_fields():
-    _, _, _, result = _build_snippet(
+    _, tg, _, result = _build_snippet(
         """
         module Electrical:
             pass
@@ -763,13 +737,11 @@ def test_deep_nested_connects_across_child_fields():
             left.intermediate.branch ~ right.intermediate.branch
         """
     )
-    type_graph = result.state.type_graph
-    app_type = result.state.type_roots["App"]
 
     assert (
         _check_make_links(
-            type_graph,
-            app_type,
+            tg=tg,
+            type_node=result.state.type_roots["App"],
             expected=[
                 (
                     ["left", "intermediate", "branch"],
@@ -845,23 +817,21 @@ def test_external_import_linking(tmp_path: Path):
         encoding="utf-8",
     )
 
-    graph = GraphView.create()
-    stdlib_tg, stdlib_registry = build_stdlib(graph)
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
+    stdlib = StdlibRegistry(tg)
 
-    result = build_file(graph, main_path)
-    type_graph = result.state.type_graph
+    result = build_file(g=g, tg=tg, import_path="main.ato", path=main_path)
     app_type = result.state.type_roots["App"]
-    child_node = _get_make_child(type_graph, app_type, "child")
+    child_node = _get_make_child(tg, app_type, "child")
 
-    unresolved = _Linker.collect_unresolved_type_references(
-        type_graph=result.state.type_graph
-    )
+    unresolved = _Linker.collect_unresolved_type_references(type_graph=tg)
     assert unresolved
 
-    linker = Linker(NULL_CONFIG, stdlib_registry, stdlib_tg)
-    linker.link_imports(graph, result.state)
+    linker = Linker(NULL_CONFIG, stdlib, tg)
+    linker.link_imports(g, result.state)
 
-    type_ref = type_graph.get_make_child_type_reference(make_child=child_node)
+    type_ref = tg.get_make_child_type_reference(make_child=child_node)
     assert type_ref is not None
     resolved = _Linker.get_resolved_type(type_reference=type_ref)
     assert resolved is not None
@@ -882,7 +852,7 @@ def test_local_type_cannot_shadow_import():
 
 def test_multiple_local_references():
     """Multiple uses of the same local type should resolve to the same node."""
-    _, _, _, result = _build_snippet(
+    _, tg, _, result = _build_snippet(
         """
         module Module:
             pass
@@ -894,18 +864,71 @@ def test_multiple_local_references():
         """
     )
 
-    unresolved = _Linker.collect_unresolved_type_references(
-        type_graph=result.state.type_graph
-    )
+    unresolved = _Linker.collect_unresolved_type_references(type_graph=tg)
     assert not unresolved
 
-    type_graph = result.state.type_graph
-    app_type = result.state.type_roots["App"]
-    module_type = result.state.type_roots["Module"]
-
-    for identifier, make_child in type_graph.collect_make_children(type_node=app_type):
+    for identifier, make_child in tg.collect_make_children(
+        type_node=result.state.type_roots["App"]
+    ):
         if identifier in ("first", "second", "third"):
-            type_ref = type_graph.get_make_child_type_reference(make_child=make_child)
+            type_ref = tg.get_make_child_type_reference(make_child=make_child)
             resolved = _Linker.get_resolved_type(type_reference=type_ref)
             assert resolved is not None
-            assert resolved.node().is_same(other=module_type.node())
+            assert resolved.node().is_same(
+                other=result.state.type_roots["Module"].node()
+            )
+
+
+class TestTypeNamespacing:
+    """Tests for .ato type namespacing."""
+
+    def test_ato_types_namespaced(self):
+        """Types from .ato files get namespaced identifiers."""
+        _, tg, _, result = _build_snippet(
+            """
+            module MyModule:
+                pass
+            """
+        )
+
+        assert "MyModule" in result.state.type_roots
+
+        type_node = result.state.type_roots["MyModule"]
+        type_name = TypeGraph.get_type_name(type_node=type_node)
+        assert type_name == "test/file.ato::MyModule"
+
+    def test_python_types_not_namespaced(self):
+        """Python stdlib types use unprefixed names."""
+        g = GraphView.create()
+        tg = TypeGraph.create(g=g)
+        registry = StdlibRegistry(tg)
+
+        node = registry.get("Resistor")
+        type_name = TypeGraph.get_type_name(type_node=node)
+        assert "::" not in type_name
+
+    def test_single_typegraph_for_build(self):
+        """All types from a build share the same TypeGraph."""
+
+        _, _, stdlib, result = _build_snippet(
+            """
+            import Resistor
+
+            module App:
+                r = new Resistor
+            """
+        )
+
+        stdlib_type = stdlib.get("Resistor")
+        user_type = result.state.type_roots["App"]
+
+        stdlib_tg = TypeGraph.of_type(type_node=stdlib_type)
+        user_tg = TypeGraph.of_type(type_node=user_type)
+
+        assert stdlib_tg is not None
+        assert user_tg is not None
+        assert (
+            stdlib_tg.get_self_node()
+            .node()
+            .is_same(other=user_tg.get_self_node().node())
+        )

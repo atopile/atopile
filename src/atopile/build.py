@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -13,24 +13,26 @@ if TYPE_CHECKING:
 def init_app() -> "fabll.Node":
     with LoggingStage(name=f"init-{config.build.name}", description="Initializing app"):
         import faebryk.library._F as F
-        from atopile.compiler.build import Linker, build_stdlib
+        from atopile.compiler.build import Linker, StdlibRegistry
 
-        g_app = graph.GraphView.create()
-        stdlib_tg, stdlib_registry = build_stdlib(g_app)
-        linker = Linker(config, stdlib_registry, stdlib_tg)
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        stdlib = StdlibRegistry(tg)
+        linker = Linker(config, stdlib, tg)
 
         match config.build.build_type:
             case BuildType.ATO:
-                return _init_ato_app(g_app, linker)
+                app = _init_ato_app(g=g, tg=tg, linker=linker)
             case BuildType.PYTHON:
-                app = _init_python_app(g_app, stdlib_tg)
+                app = _init_python_app(g=g, tg=tg)
                 fabll.Traits.create_and_add_instance_to(app, F.is_app_root)
-                return app
             case _:
                 raise ValueError(f"Unknown build type: {config.build.build_type}")
 
+        return app
 
-def _init_python_app(g: "graph.GraphView", tg: "fbrk.TypeGraph") -> "fabll.Node":
+
+def _init_python_app(*, g: "graph.GraphView", tg: "fbrk.TypeGraph") -> "fabll.Node":
     """Initialize a specific .py build."""
 
     from atopile import errors
@@ -58,7 +60,6 @@ def _init_python_app(g: "graph.GraphView", tg: "fbrk.TypeGraph") -> "fabll.Node"
         raise errors.UserPythonConstructionError(
             f"Build entry {config.build.address} is not a subclass of fabll.Node"
         )
-    app_class = cast(type[fabll.Node], app_class)
 
     try:
         app = app_class.bind_typegraph(tg=tg).create_instance(g=g)
@@ -70,15 +71,20 @@ def _init_python_app(g: "graph.GraphView", tg: "fbrk.TypeGraph") -> "fabll.Node"
     return app
 
 
-def _init_ato_app(g: "graph.GraphView", linker: "Linker") -> "fabll.Node":
+def _init_ato_app(
+    *, g: "graph.GraphView", tg: "fbrk.TypeGraph", linker: "Linker"
+) -> "fabll.Node":
     """Initialize a specific .ato build."""
     import faebryk.core.node as fabll
     from atopile.compiler.build import build_file
 
-    result = build_file(g, config.build.entry_file_path)
+    result = build_file(
+        g=g,
+        tg=tg,
+        import_path=config.build.entry_file_path.name,
+        path=config.build.entry_file_path,
+    )
     linker.link_imports(g, result.state)
     app_type = result.state.type_roots[config.build.entry_section]
-    app_root = result.state.type_graph.instantiate_node(
-        type_node=app_type, attributes={}
-    )
+    app_root = tg.instantiate_node(type_node=app_type, attributes={})
     return fabll.Node.bind_instance(app_root)
