@@ -919,10 +919,10 @@ class UnitExpression(fabll.Node):
         return self.expr.get().deref()
 
     def get_multiplier(self) -> float:
-        return self.multiplier.get().get_value()
+        return self.multiplier.get().get_single()
 
     def get_offset(self) -> float:
-        return self.offset.get().get_value()
+        return self.offset.get().get_single()
 
 
 def make_unit_expression_type(
