@@ -5674,12 +5674,15 @@ class Booleans(fabll.Node):
         """Logical AND of all combinations of values from both sets."""
         g = g or self.g
         tg = tg or self.tg
+        all_operands = [self, *others]
         result: list[bool] = []
-        if all(True in other.get_values() for other in others):
+        # Result contains True only if ALL operands contain True
+        if all(True in operand.get_values() for operand in all_operands):
             result.append(True)
-        if any(False in other.get_values() for other in others):
+        # Result contains False if ANY operand contains False
+        if any(False in operand.get_values() for operand in all_operands):
             result.append(False)
-        if any(other.is_empty() for other in others):
+        if any(operand.is_empty() for operand in all_operands):
             result = []
         return (
             Booleans.bind_typegraph(tg=tg)
@@ -5696,12 +5699,15 @@ class Booleans(fabll.Node):
         """Logical OR of all combinations of values from both sets."""
         g = g or self.g
         tg = tg or self.tg
+        all_operands = [self, *others]
         result: list[bool] = []
-        if all(False in other.get_values() for other in others):
+        # Result contains False only if ALL operands contain False
+        if all(False in operand.get_values() for operand in all_operands):
             result.append(False)
-        if any(True in other.get_values() for other in others):
+        # Result contains True if ANY operand contains True
+        if any(True in operand.get_values() for operand in all_operands):
             result.append(True)
-        if any(other.is_empty() for other in others):
+        if any(operand.is_empty() for operand in all_operands):
             result = []
         return (
             Booleans.bind_typegraph(tg=tg)
