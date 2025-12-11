@@ -878,6 +878,10 @@ class MutatorUtils:
     def is_subset_literal(
         po: F.Parameters.is_parameter_operatable,
     ) -> F.Expressions.IsSubset | None:
+        """
+        A ss! X
+        -> return True
+        """
         if not (
             po_ss := fabll.Traits(po).get_obj_raw().try_cast(F.Expressions.IsSubset)
         ):
@@ -885,9 +889,12 @@ class MutatorUtils:
         po_expr = po.as_expression.force_get()
         if not po_expr.try_get_sibling_trait(F.Expressions.is_predicate):
             return None
-        if not po_expr.get_operand_literals():
+        if not (lits := po_expr.get_operand_literals()):
             return None
         if not po_expr.get_operand_operatables():
+            return None
+        # don't return X ss! A
+        if not set(lits.keys()) == {1}:
             return None
         return po_ss
 
@@ -1010,14 +1017,23 @@ class MutatorUtils:
     def get_lit_mapping_from_lit_expr(
         expr: F.Expressions.Is | F.Expressions.IsSubset,
     ) -> tuple[F.Parameters.is_parameter_operatable, F.Literals.is_literal]:
+        """
+        A is! X, X is! A, A ss! X
+        -> return (A, X)
+        """
         e = expr.is_expression.get()
         e_po = e.as_parameter_operatable.get()
         assert MutatorUtils.is_alias_is_literal(e_po) or MutatorUtils.is_subset_literal(
             e_po
         )
-        return next(iter(e.get_operand_operatables())), next(
-            iter(e.get_operand_literals().values())
-        )
+        non_lits = e.get_operand_operatables()
+        lits = e.get_operand_literals()
+        assert len(non_lits) == 1
+        assert len(lits) == 1
+        if isinstance(expr, F.Expressions.IsSubset):
+            # don't do X ss! A
+            assert set(lits.keys()) == {1}
+        return next(iter(non_lits)), next(iter(lits.values()))
 
     @staticmethod
     def get_params_for_expr(

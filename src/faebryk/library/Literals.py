@@ -230,6 +230,10 @@ class is_literal(fabll.Node):
 
         raise ValueError(f"Cannot cast literal {self} of type {obj} to any of {types}")
 
+    def __rich_repr__(self):
+        yield self.pretty_str()
+        yield "on " + fabll.Traits(self).get_obj_raw().get_full_name(types=True)
+
     def pretty_repr(self) -> str:
         # TODO
         lit = self.switch_cast()

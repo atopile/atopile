@@ -1771,6 +1771,10 @@ class Mutator:
         )
 
     def _get_literal_subsets(self, new_only: bool = True):
+        """
+        E := A ss! X
+        -> return E
+        """
         subsets: set[F.Expressions.IsSubset]
         subsets = set(
             self.get_typed_expressions(
@@ -1812,7 +1816,7 @@ class Mutator:
     def get_literal_mappings(self, new_only: bool = True, allow_subset: bool = False):
         # TODO better exceptions
 
-        ops = self.get_literal_aliases(new_only=new_only)
+        ops = list(self.get_literal_aliases(new_only=new_only))
         mapping = {self.utils.get_lit_mapping_from_lit_expr(op) for op in ops}
         dupes = duplicates(
             mapping,
@@ -1830,7 +1834,7 @@ class Mutator:
         mapping_dict = dict(mapping)
 
         if allow_subset:
-            ops_ss = self._get_literal_subsets(new_only=new_only)
+            ops_ss = list(self._get_literal_subsets(new_only=new_only))
             mapping_ss = [self.utils.get_lit_mapping_from_lit_expr(op) for op in ops_ss]
             grouped_ss = groupby(mapping_ss, key=lambda t: t[0])
             for k, v in grouped_ss.items():

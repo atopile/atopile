@@ -238,6 +238,10 @@ class is_parameter_operatable(fabll.Node):
 
         assert False
 
+    def __rich_repr__(self):
+        yield self.compact_repr()
+        yield "on " + fabll.Traits(self).get_obj_raw().get_full_name(types=True)
+
     def get_depth(self) -> int:
         if expr := self.as_expression.try_get():
             return expr.get_depth()
