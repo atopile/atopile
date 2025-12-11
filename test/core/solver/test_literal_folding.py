@@ -3,6 +3,7 @@ import logging
 import sys
 import warnings
 from collections import defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from math import inf
@@ -56,7 +57,7 @@ LazyStrategy.__repr__ = lambda self: str(id(self))
 
 NUM_EXAMPLES = ConfigFlagInt(
     "ST_NUMEXAMPLES",
-    default=1,
+    default=10,
     descr="Number of examples to run for fuzzer",
 )
 ENABLE_PROGRESS_TRACKING = ConfigFlag("ST_PROGRESS", default=False)
@@ -624,6 +625,15 @@ def evaluate_e_p_l(
     )
 
 
+@contextmanager
+def graph_reset():
+    global global_g, global_tg
+    print("global_g", global_g, hex(global_g.get_self_node().node().get_uuid()))
+    yield
+    global_g = graph.GraphView.create()
+    global_tg = fbrk.TypeGraph.create(g=global_g)
+
+
 # TODO: increase max_examples when graph is faster
 @given(st_exprs.trees)
 @settings(
@@ -631,11 +641,12 @@ def evaluate_e_p_l(
     max_examples=100,
 )
 def test_can_evaluate_literals(expr: F.Parameters.can_be_operand):
-    try:
-        result = evaluate_e_p_l(expr)
-    except (ValueError, NotImplementedError):
-        assume(False)
-    assert isinstance(result, F.Literals.Numbers)
+    with graph_reset():
+        try:
+            result = evaluate_e_p_l(expr)
+        except (ValueError, NotImplementedError):
+            assume(False)
+        assert isinstance(result, F.Literals.Numbers)
 
 
 def _track():
@@ -683,63 +694,64 @@ def test_discover_literal_folding(expr: F.Parameters.can_be_operand):
     ./test/runpytest.sh -k "test_discover_literal_folding"
     ```
     """
-    # TODO: Copying the graph seems to loose literals aliased to parameters
-    # Tests are way too slow if we have all the nodes, so this is a hack
-    # make sure all root operands are copied over to test graph
-    app = fabll.Node.bind_typegraph(tg=global_tg).create_instance(g=global_g)
-    for root_operand in expr.get_root_operands():
-        global_g.insert_edge(
-            edge=fbrk.EdgePointer.create(
-                from_node=app.instance.node(),
-                to_node=root_operand.instance.node(),
+    with graph_reset():
+        # TODO: Copying the graph seems to loose literals aliased to parameters
+        # Tests are way too slow if we have all the nodes, so this is a hack
+        # make sure all root operands are copied over to test graph
+        app = fabll.Node.bind_typegraph(tg=global_tg).create_instance(g=global_g)
+        for root_operand in expr.get_root_operands():
+            global_g.insert_edge(
+                edge=fbrk.EdgePointer.create(
+                    from_node=app.instance.node(),
+                    to_node=root_operand.instance.node(),
+                )
             )
+
+        solver = DefaultSolver()
+
+        test_g = graph.GraphView.create()
+        test_g.insert_subgraph(subgraph=global_tg.get_type_subgraph())
+
+        app_copy = app.copy_into(test_g)
+
+        # Get the expression node that owns the can_be_operand trait, then copy that
+        expr_node = fabll.Traits(expr).get_obj_raw()
+        test_expr_node = fabll.Node.bind_instance(
+            instance=test_g.bind(node=expr_node.instance.node())
         )
+        test_expr = test_expr_node.get_trait(F.Parameters.can_be_operand)
+        test_tg = app_copy.tg
 
-    solver = DefaultSolver()
+        E = BoundExpressions(g=test_g, tg=test_tg)
+        root = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
+        E.is_(root, test_expr, assert_=True)
 
-    test_g = graph.GraphView.create()
-    test_g.insert_subgraph(subgraph=global_tg.get_type_subgraph())
+        # Evaluate using our test evaluator
+        # Skip expressions that can't be evaluated (e.g., sqrt of negative)
+        try:
+            evaluated_expr = evaluate_e_p_l(test_expr)
+        except (ValueError, NotImplementedError, OverflowError):
+            assume(False)
+        assert isinstance(evaluated_expr, F.Literals.Numbers)
 
-    app_copy = app.copy_into(test_g)
+        # Run the solver
+        solver.update_superset_cache(root)
+        solver_result = solver.inspect_get_known_supersets(
+            root.get_sibling_trait(F.Parameters.is_parameter)
+        )
+        solver_result_num = fabll.Traits(solver_result).get_obj(F.Literals.Numbers)
 
-    # Get the expression node that owns the can_be_operand trait, then copy that
-    expr_node = fabll.Traits(expr).get_obj_raw()
-    test_expr_node = fabll.Node.bind_instance(
-        instance=test_g.bind(node=expr_node.instance.node())
-    )
-    test_expr = test_expr_node.get_trait(F.Parameters.can_be_operand)
-    test_tg = app_copy.tg
-
-    E = BoundExpressions(g=test_g, tg=test_tg)
-    root = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
-    E.is_(root, test_expr, assert_=True)
-
-    # Evaluate using our test evaluator
-    # Skip expressions that can't be evaluated (e.g., sqrt of negative)
-    try:
-        evaluated_expr = evaluate_e_p_l(test_expr)
-    except (ValueError, NotImplementedError, OverflowError):
-        assume(False)
-    assert isinstance(evaluated_expr, F.Literals.Numbers)
-
-    # Run the solver
-    solver.update_superset_cache(root)
-    solver_result = solver.inspect_get_known_supersets(
-        root.get_sibling_trait(F.Parameters.is_parameter)
-    )
-    solver_result_num = fabll.Traits(solver_result).get_obj(F.Literals.Numbers)
-
-    # Compare results (need to pass g and tg for Numbers.equals)
-    match = solver_result_num.equals(evaluated_expr, g=test_g, tg=test_tg)
-    print("\n" + "=" * 70)
-    print("COMPARISON")
-    print("=" * 70)
-    print(f"Test Evaluated: {evaluated_expr.pretty_str()}")
-    print(f"Solver Result:  {solver_result_num.pretty_str()}")
-    print(f"Match:          {'✓ PASS' if match else '✗ FAIL'}")
-    print("=" * 70 + "\n")
-    # assert match, f"Solver: {solver_result_num} != Test: {evaluated_expr}"
-    assert solver_result_num.equals(evaluated_expr, g=test_g, tg=test_tg)
+        # Compare results (need to pass g and tg for Numbers.equals)
+        match = solver_result_num.equals(evaluated_expr, g=test_g, tg=test_tg)
+        print("\n" + "=" * 70)
+        print("COMPARISON")
+        print("=" * 70)
+        print(f"Test Evaluated: {evaluated_expr.pretty_str()}")
+        print(f"Solver Result:  {solver_result_num.pretty_str()}")
+        print(f"Match:          {'✓ PASS' if match else '✗ FAIL'}")
+        print("=" * 70 + "\n")
+        # assert match, f"Solver: {solver_result_num} != Test: {evaluated_expr}"
+        assert solver_result_num.equals(evaluated_expr, g=test_g, tg=test_tg)
 
 
 # Examples -----------------------------------------------------------------------------
@@ -1093,6 +1105,7 @@ def test_regression_literal_folding(expr: F.Parameters.can_be_operand):
     print("\n" + "=" * 70)
     print("COMPARISON")
     print("=" * 70)
+    print(f"Expression: {expr.pretty()}")
     print(f"Test Evaluated: {evaluated_expr.pretty_str()}")
     print(f"Solver Result:  {solver_result_num.pretty_str()}")
     print(f"Match:          {'✓ PASS' if match else '✗ FAIL'}")
@@ -1211,73 +1224,76 @@ def test_folding_statistics(expr: F.Expressions.is_expression):
     -k "test_folding_statistics"
     ```
     """
-    stats = Stats.get()
-    test_g = graph.GraphView.create()
-    test_g.insert_subgraph(subgraph=global_tg.get_type_subgraph())
-    test_expr = expr.copy_into(test_g)
-    test_tg = test_expr.tg
-    stats.event("generate", test_expr, terminal=False)
-    solver = DefaultSolver()
-    E = BoundExpressions(g=test_g, tg=test_tg)
-    root = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
-    E.is_(root, test_expr.get_sibling_trait(F.Parameters.can_be_operand), assert_=True)
-
-    try:
-        evaluated_expr = evaluate_e_p_l(
-            test_expr.get_sibling_trait(F.Parameters.can_be_operand)
+    with graph_reset():
+        stats = Stats.get()
+        test_g = graph.GraphView.create()
+        test_g.insert_subgraph(subgraph=global_tg.get_type_subgraph())
+        test_expr = expr.copy_into(test_g)
+        test_tg = test_expr.tg
+        stats.event("generate", test_expr, terminal=False)
+        solver = DefaultSolver()
+        E = BoundExpressions(g=test_g, tg=test_tg)
+        root = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
+        E.is_(
+            root, test_expr.get_sibling_trait(F.Parameters.can_be_operand), assert_=True
         )
-        stats.event("evaluate", test_expr, terminal=False)
-    except NotImplementedError:
-        stats.event("not implemented in literals", test_expr)
-        return
-    except Exception as e:
-        stats.event("eval exc", test_expr, exc=e)
-        return
 
-    assert isinstance(evaluated_expr, F.Literals.Numbers)
-
-    try:
-        solver.update_superset_cache(root)
-        solver_result = solver.inspect_get_known_supersets(
-            root.get_sibling_trait(F.Parameters.is_parameter)
-        )
-        assert isinstance(solver_result, F.Literals.Numbers)
-    except Contradiction:
-        stats.event("contradiction", test_expr)
-        return
-    except TimeoutError:
-        stats.event("timeout", test_expr)
-        return
-    except NotImplementedError:
-        stats.event("not implemented in solver", test_expr)
-        return
-    except Exception as e:
-        stats.event("exc", test_expr, exc=e)
-        return
-
-    if solver_result != evaluated_expr:
         try:
-            deviation = solver_result.op_deviation_to(
-                evaluated_expr, relative=True, g=global_g, tg=global_tg
-            ).get_single()
-        except Exception:
-            deviation = solver_result.op_deviation_to(
-                evaluated_expr, g=global_g, tg=global_tg
-            ).get_single()
-            if deviation <= 1:
-                stats.event("incorrect <= 1 ", expr)
-            else:
-                stats.event("incorrect > 1 ", expr)
+            evaluated_expr = evaluate_e_p_l(
+                test_expr.get_sibling_trait(F.Parameters.can_be_operand)
+            )
+            stats.event("evaluate", test_expr, terminal=False)
+        except NotImplementedError:
+            stats.event("not implemented in literals", test_expr)
             return
-        if deviation < 0.01:
-            stats.event("incorrect <1% dev", expr)
-        elif deviation < 0.1:
-            stats.event("incorrect <10% dev", expr)
-        else:
-            stats.event("incorrect >10% dev", expr)
-        return
+        except Exception as e:
+            stats.event("eval exc", test_expr, exc=e)
+            return
 
-    stats.event("correct", expr)
+        assert isinstance(evaluated_expr, F.Literals.Numbers)
+
+        try:
+            solver.update_superset_cache(root)
+            solver_result = solver.inspect_get_known_supersets(
+                root.get_sibling_trait(F.Parameters.is_parameter)
+            )
+            assert isinstance(solver_result, F.Literals.Numbers)
+        except Contradiction:
+            stats.event("contradiction", test_expr)
+            return
+        except TimeoutError:
+            stats.event("timeout", test_expr)
+            return
+        except NotImplementedError:
+            stats.event("not implemented in solver", test_expr)
+            return
+        except Exception as e:
+            stats.event("exc", test_expr, exc=e)
+            return
+
+        if solver_result != evaluated_expr:
+            try:
+                deviation = solver_result.op_deviation_to(
+                    evaluated_expr, relative=True, g=global_g, tg=global_tg
+                ).get_single()
+            except Exception:
+                deviation = solver_result.op_deviation_to(
+                    evaluated_expr, g=global_g, tg=global_tg
+                ).get_single()
+                if deviation <= 1:
+                    stats.event("incorrect <= 1 ", expr)
+                else:
+                    stats.event("incorrect > 1 ", expr)
+                return
+            if deviation < 0.01:
+                stats.event("incorrect <1% dev", expr)
+            elif deviation < 0.1:
+                stats.event("incorrect <10% dev", expr)
+            else:
+                stats.event("incorrect >10% dev", expr)
+            return
+
+        stats.event("correct", expr)
 
 
 # DEBUG --------------------------------------------------------------------------------
