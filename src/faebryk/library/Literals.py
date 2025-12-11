@@ -2,7 +2,7 @@ import math
 from bisect import bisect
 from collections.abc import Generator
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, StrEnum
 from operator import ge
 from typing import TYPE_CHECKING, ClassVar, Iterable, Self, cast
 from warnings import deprecated
@@ -220,7 +220,7 @@ class is_literal(fabll.Node):
 
     def switch_cast(self) -> "LiteralNodes":
         # FIXME Enums check won't work like this
-        types = [Strings, Numbers, Booleans]
+        types = [Strings, Numbers, Booleans, Counts]
         obj = fabll.Traits(self).get_obj_raw()
         for t in types:
             if obj.isinstance(t):
@@ -246,11 +246,7 @@ class is_literal(fabll.Node):
         return not self.is_singleton() and not self.is_empty()
 
     def serialize(self) -> dict:
-        lit = self.switch_cast()
-        if isinstance(lit, Numbers):
-            return lit.serialize()
-        else:
-            raise NotImplementedError(f"Cannot serialize literal {lit}")
+        return self.switch_cast().serialize()
 
     @classmethod
     def deserialize(
@@ -264,14 +260,31 @@ class is_literal(fabll.Node):
         Deserialize a literal from the API format.
 
         Dispatches to the appropriate literal type based on the "type" field.
-        Currently supports:
+        Supports:
         - "Quantity_Interval_Disjoint" -> Numbers
+        - "Quantity_Set_Discrete" -> Numbers
+        - "StringSet" -> Strings
+        - "CountSet" -> Counts
+        - "BooleanSet" -> Booleans
+        - "EnumSet" -> AbstractEnums
         """
         literal_type = data.get("type")
 
-        if literal_type == "Quantity_Interval_Disjoint":
+        if literal_type in ["Quantity_Interval_Disjoint", "Quantity_Set_Discrete"]:
             numbers = Numbers.deserialize(data, g=g, tg=tg)
             return numbers.is_literal.get()
+        elif literal_type == "StringSet":
+            strings = Strings.deserialize(data, g=g, tg=tg)
+            return strings.is_literal.get()
+        elif literal_type == "CountSet":
+            counts = Counts.deserialize(data, g=g, tg=tg)
+            return counts.is_literal.get()
+        elif literal_type == "BooleanSet":
+            booleans = Booleans.deserialize(data, g=g, tg=tg)
+            return booleans.is_literal.get()
+        elif literal_type == "EnumSet":
+            enums = AbstractEnums.deserialize(data, g=g, tg=tg)
+            return enums.is_literal.get()
         else:
             raise NotImplementedError(
                 f"Cannot deserialize literal with type '{literal_type}'"
@@ -445,6 +458,55 @@ class Strings(fabll.Node):
                 f"{'...' if len(values[0]) > MAX_LENGTH else ''}'"
             )
         return str(values)
+
+    def serialize(self) -> dict:
+        """
+        Serialize this string set to the API format.
+
+        Returns a dict:
+        {
+            "type": "StringSet",
+            "data": {
+                "values": ["value1", "value2", ...]
+            }
+        }
+        """
+        return {
+            "type": "StringSet",
+            "data": {
+                "values": self.get_values(),
+            },
+        }
+
+    @classmethod
+    def deserialize(
+        cls,
+        data: dict,
+        *,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+    ) -> "Strings":
+        """
+        Deserialize a Strings literal from the API format.
+
+        Expects a dict:
+        {
+            "type": "StringSet",
+            "data": {
+                "values": ["value1", "value2", ...]
+            }
+        }
+        """
+        if data.get("type") != "StringSet":
+            raise ValueError(f"Expected type 'StringSet', got {data.get('type')}")
+
+        inner_data = data.get("data", {})
+        values = inner_data.get("values", [])
+
+        if not isinstance(values, list):
+            raise ValueError(f"Expected 'values' to be a list, got {type(values)}")
+
+        return cls.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(*values)
 
 
 @dataclass(frozen=True)
@@ -2957,7 +3019,7 @@ class Numbers(fabll.Node):
         center: float,
         rel: float,
         unit: type[fabll.NodeT],
-    ) -> fabll._ChildField["F.Literals.Numbers"]:
+    ) -> fabll._ChildField["Numbers"]:
         return cls.MakeChild(
             min=center - rel * center, max=center + rel * center, unit=unit
         )
@@ -4079,7 +4141,7 @@ class Numbers(fabll.Node):
 
         Returns a dict matching the component API format:
         {
-            "type": "Quantity_Interval_Disjoint",
+            "type": "Quantity_Set_Discrete" | "Quantity_Interval_Disjoint",
             "data": {
                 "intervals": {
                     "type": "Numeric_Interval_Disjoint",
@@ -4093,6 +4155,9 @@ class Numbers(fabll.Node):
             }
         }
 
+        Uses "Quantity_Set_Discrete" when all values are discrete (singletons),
+        otherwise uses "Quantity_Interval_Disjoint" for ranges.
+
         Values are in base SI units (e.g., ohms for resistance).
         Unit string indicates the display/original unit (e.g., "kiloohm").
         """
@@ -4101,12 +4166,19 @@ class Numbers(fabll.Node):
             tg=self.tg,
             unit=self.get_is_unit().to_base_units(g=self.g, tg=self.tg),
         )
+        # Use Quantity_Set_Discrete for discrete sets (all intervals are singletons),
+        # otherwise use Quantity_Interval_Disjoint for ranges
+        numeric_set = as_base_units.get_numeric_set()
+        type_name = (
+            "Quantity_Set_Discrete"
+            if numeric_set.is_discrete_set()
+            else "Quantity_Interval_Disjoint"
+        )
         return {
-            # legacy name for backwards compatibility
-            "type": "Quantity_Interval_Disjoint",
+            "type": type_name,
             "data": {
                 # note base unit for values only
-                "intervals": as_base_units.get_numeric_set().serialize(),
+                "intervals": numeric_set.serialize(),
                 "unit": self.get_is_unit().serialize(),
             },
         }
@@ -4142,9 +4214,15 @@ class Numbers(fabll.Node):
         """
         from faebryk.library.Units import BasisVector, decode_symbol, is_unit
 
-        if data.get("type") != "Quantity_Interval_Disjoint":
+        # Accept both Quantity_Interval_Disjoint and Quantity_Set_Discrete
+        # They have the same internal structure, just different semantics:
+        # - Quantity_Set_Discrete: discrete values (singletons)
+        # - Quantity_Interval_Disjoint: continuous ranges
+        valid_types = ["Quantity_Interval_Disjoint", "Quantity_Set_Discrete"]
+        if data.get("type") not in valid_types:
             raise ValueError(
-                f"Expected type 'Quantity_Interval_Disjoint', got {data.get('type')}"
+                "Expected type 'Quantity_Interval_Disjoint' or "
+                f"'Quantity_Set_Discrete', got {data.get('type')}"
             )
 
         inner_data = data.get("data", {})
@@ -5215,6 +5293,90 @@ class TestNumbers:
             },
         }
 
+    def test_serialize_singleton_as_discrete(self):
+        """Test that singleton values serialize as Quantity_Set_Discrete."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        from faebryk.library.Units import Watt
+
+        watt_instance = Watt.bind_typegraph(tg=tg).create_instance(g=g)
+
+        # Create singleton value (min == max)
+        qs = Numbers.create_instance(g=g, tg=tg)
+        qs.setup_from_singleton(value=0.1, unit=watt_instance.is_unit.get())
+        serialized = qs.serialize()
+
+        assert serialized == {
+            "type": "Quantity_Set_Discrete",
+            "data": {
+                "intervals": {
+                    "type": "Numeric_Interval_Disjoint",
+                    "data": {
+                        "intervals": [
+                            {
+                                "type": "Numeric_Interval",
+                                "data": {"min": 0.1, "max": 0.1},
+                            }
+                        ]
+                    },
+                },
+                "unit": "W",
+            },
+        }
+
+    def test_deserialize_quantity_set_discrete(self):
+        """Test that Quantity_Set_Discrete can be deserialized."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        from faebryk.library.Units import Watt
+
+        # Instantiate Watt so it can be decoded
+        _ = Watt.bind_typegraph(tg=tg).create_instance(g=g)
+
+        # This is the format from the component API (using symbol "W" for watt)
+        discrete_data = {
+            "type": "Quantity_Set_Discrete",
+            "data": {
+                "intervals": {
+                    "type": "Numeric_Interval_Disjoint",
+                    "data": {
+                        "intervals": [
+                            {
+                                "type": "Numeric_Interval",
+                                "data": {"min": 0.1, "max": 0.1},
+                            }
+                        ]
+                    },
+                },
+                "unit": "W",
+            },
+        }
+        deserialized = Numbers.deserialize(discrete_data, g=g, tg=tg)
+
+        assert deserialized.is_singleton()
+        assert deserialized.get_single() == pytest.approx(0.1, rel=1e-9)
+
+    def test_deserialize_quantity_set_discrete_round_trip(self):
+        """Test round trip serialization for Quantity_Set_Discrete."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        from faebryk.library.Units import Watt
+
+        watt_instance = Watt.bind_typegraph(tg=tg).create_instance(g=g)
+
+        # Create original singleton
+        original = Numbers.create_instance(g=g, tg=tg)
+        original.setup_from_singleton(value=75.0, unit=watt_instance.is_unit.get())
+
+        # Serialize (should be Quantity_Set_Discrete) and deserialize
+        serialized = original.serialize()
+        assert serialized["type"] == "Quantity_Set_Discrete"
+
+        deserialized = Numbers.deserialize(serialized, g=g, tg=tg)
+
+        assert deserialized.is_singleton()
+        assert deserialized.get_single() == pytest.approx(75.0, rel=1e-9)
+
     def test_op_ge_definitely_true(self):
         """Test >= comparison when definitely true."""
         g = graph.GraphView.create()
@@ -5711,6 +5873,60 @@ class Counts(fabll.Node):
             return str(values[0])
         return str(values)
 
+    def serialize(self) -> dict:
+        """
+        Serialize this count set to the API format.
+
+        Returns a dict:
+        {
+            "type": "CountSet",
+            "data": {
+                "values": [1, 2, 3, ...]
+            }
+        }
+        """
+        return {
+            "type": "CountSet",
+            "data": {
+                "values": sorted(self.get_values()),
+            },
+        }
+
+    @classmethod
+    def deserialize(
+        cls,
+        data: dict,
+        *,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+    ) -> "Counts":
+        """
+        Deserialize a Counts literal from the API format.
+
+        Expects a dict:
+        {
+            "type": "CountSet",
+            "data": {
+                "values": [1, 2, 3, ...]
+            }
+        }
+        """
+        if data.get("type") != "CountSet":
+            raise ValueError(f"Expected type 'CountSet', got {data.get('type')}")
+
+        inner_data = data.get("data", {})
+        values = inner_data.get("values", [])
+
+        if not isinstance(values, list):
+            raise ValueError(f"Expected 'values' to be a list, got {type(values)}")
+
+        # Validate all values are integers
+        for v in values:
+            if not isinstance(v, int):
+                raise ValueError(f"Expected integer value, got {type(v)}: {v}")
+
+        return cls.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(values)
+
 
 class TestCounts:
     def test_make_child(self):
@@ -5869,6 +6085,142 @@ class TestCounts:
         counts = Counts.create_instance(g=g, tg=tg)
         counts.setup_from_values(values=[1, 2, 3])
         assert counts.pretty_str() == "[1, 2, 3]"
+
+    def test_serialize_count_set_format(self):
+        """Test serialization produces the expected CountSet format."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        counts = Counts.create_instance(g=g, tg=tg)
+        counts.setup_from_values(values=[3, 1, 2])
+
+        serialized = counts.serialize()
+
+        assert serialized == {
+            "type": "CountSet",
+            "data": {
+                "values": [1, 2, 3],  # sorted order
+            },
+        }
+
+    def test_serialize_single_value(self):
+        """Test serialization of a single count value."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        counts = Counts.create_instance(g=g, tg=tg)
+        counts.setup_from_values(values=[42])
+
+        serialized = counts.serialize()
+
+        assert serialized == {
+            "type": "CountSet",
+            "data": {
+                "values": [42],
+            },
+        }
+
+    def test_deserialize_count_set(self):
+        """Test deserialization from the CountSet format."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        data = {
+            "type": "CountSet",
+            "data": {
+                "values": [1, 2, 3],
+            },
+        }
+
+        result = Counts.deserialize(data, g=g, tg=tg)
+
+        assert isinstance(result, Counts)
+        assert result.get_values() == [1, 2, 3]
+
+    def test_deserialize_single_value(self):
+        """Test deserialization of a single count value."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        data = {
+            "type": "CountSet",
+            "data": {
+                "values": [42],
+            },
+        }
+
+        result = Counts.deserialize(data, g=g, tg=tg)
+
+        assert isinstance(result, Counts)
+        assert result.get_values() == [42]
+
+    @pytest.mark.parametrize(
+        "values",
+        [
+            ([1],),
+            ([1, 2, 3],),
+            ([0, -5, 100],),
+            ([],),
+        ],
+    )
+    def test_serialize_deserialize_round_trip(self, values):
+        """Test that serialize followed by deserialize returns equivalent counts."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        original = Counts.create_instance(g=g, tg=tg)
+        original.setup_from_values(values=values[0])
+
+        # Serialize and deserialize
+        serialized = original.serialize()
+        deserialized = Counts.deserialize(serialized, g=g, tg=tg)
+
+        # Verify the values match
+        assert set(original.get_values()) == set(deserialized.get_values())
+
+    def test_is_literal_serialize_deserialize_round_trip(self):
+        """Test round trip through is_literal for counts."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        original = Counts.create_instance(g=g, tg=tg)
+        original.setup_from_values(values=[10, 20, 30])
+
+        # Serialize via is_literal
+        serialized = original.is_literal.get().serialize()
+
+        # Deserialize via is_literal
+        deserialized_literal = is_literal.deserialize(serialized, g=g, tg=tg)
+
+        # Should be able to switch_cast back to Counts
+        deserialized_counts = deserialized_literal.switch_cast()
+        assert isinstance(deserialized_counts, Counts)
+        assert set(deserialized_counts.get_values()) == {10, 20, 30}
+
+    def test_deserialize_invalid_type_raises(self):
+        """Test that deserializing with wrong type raises ValueError."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        data = {"type": "WrongType", "data": {}}
+
+        with pytest.raises(ValueError, match="Expected type 'CountSet'"):
+            Counts.deserialize(data, g=g, tg=tg)
+
+    def test_deserialize_invalid_value_raises(self):
+        """Test that deserializing with non-integer value raises ValueError."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        data = {
+            "type": "CountSet",
+            "data": {
+                "values": [1, "not_an_int"],
+            },
+        }
+
+        with pytest.raises(ValueError, match="Expected integer value"):
+            Counts.deserialize(data, g=g, tg=tg)
 
 
 @dataclass(frozen=True)
@@ -6150,6 +6502,60 @@ class Booleans(fabll.Node):
             return str(values[0]).lower()
         return str(values)
 
+    def serialize(self) -> dict:
+        """
+        Serialize this boolean set to the API format.
+
+        Returns a dict:
+        {
+            "type": "BooleanSet",
+            "data": {
+                "values": [true, false, ...]
+            }
+        }
+        """
+        return {
+            "type": "BooleanSet",
+            "data": {
+                "values": sorted(self.get_values()),
+            },
+        }
+
+    @classmethod
+    def deserialize(
+        cls,
+        data: dict,
+        *,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+    ) -> "Booleans":
+        """
+        Deserialize a Booleans literal from the API format.
+
+        Expects a dict:
+        {
+            "type": "BooleanSet",
+            "data": {
+                "values": [true, false, ...]
+            }
+        }
+        """
+        if data.get("type") != "BooleanSet":
+            raise ValueError(f"Expected type 'BooleanSet', got {data.get('type')}")
+
+        inner_data = data.get("data", {})
+        values = inner_data.get("values", [])
+
+        if not isinstance(values, list):
+            raise ValueError(f"Expected 'values' to be a list, got {type(values)}")
+
+        # Validate all values are booleans
+        for v in values:
+            if not isinstance(v, bool):
+                raise ValueError(f"Expected boolean value, got {type(v)}: {v}")
+
+        return cls.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(*values)
+
 
 class EnumValue(fabll.Node):
     name_ = F.Collections.Pointer.MakeChild()
@@ -6351,6 +6757,75 @@ class AbstractEnums(fabll.Node):
                 },
             },
         }
+
+    @classmethod
+    def deserialize(
+        cls,
+        data: dict,
+        *,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+    ) -> "AbstractEnums":
+        """
+        Deserialize an AbstractEnums literal from the API format.
+
+        Expects a dict:
+        {
+            "type": "EnumSet",
+            "data": {
+                "elements": [{"name": "VALUE1"}, {"name": "VALUE2"}, ...],
+                "enum": {
+                    "name": "EnumTypeName",
+                    "values": {"VALUE1": "value1", "VALUE2": "value2", ...}
+                }
+            }
+        }
+
+        Creates a dynamic enum type from the serialized values and returns
+        an instance constrained to the specified elements.
+        """
+        if data.get("type") != "EnumSet":
+            raise ValueError(f"Expected type 'EnumSet', got {data.get('type')}")
+
+        inner_data = data.get("data", {})
+        elements = inner_data.get("elements", [])
+        enum_def = inner_data.get("enum", {})
+
+        if not isinstance(elements, list):
+            raise ValueError(f"Expected 'elements' to be a list, got {type(elements)}")
+
+        enum_name = enum_def.get("name", "UnknownEnum")
+        enum_values = enum_def.get("values", {})
+
+        if not isinstance(enum_values, dict):
+            raise ValueError(
+                f"Expected 'enum.values' to be a dict, got {type(enum_values)}"
+            )
+
+        # Create a dynamic enum type from the serialized values
+        # The enum name->value mapping is stored in enum_values
+        DynamicEnum: type[Enum] = StrEnum(
+            enum_name, {k: v for k, v in enum_values.items()}
+        )  # type: ignore[assignment]
+
+        # Get the concrete enum type using EnumsFactory
+        ConcreteEnumType = EnumsFactory(DynamicEnum)
+
+        # Create an instance
+        enum_instance = ConcreteEnumType.bind_typegraph(tg=tg).create_instance(g=g)
+
+        # Constrain to the selected element values
+        # elements contains [{"name": "NAME"}, ...] where NAME is the enum member name
+        selected_values = []
+        for element in elements:
+            name = element.get("name")
+            if name and name in enum_values:
+                selected_values.append(enum_values[name])
+
+        if selected_values:
+            enum_instance.constrain_to_values(*selected_values)
+
+        return enum_instance
 
     def is_subset_of(
         self,
@@ -6702,6 +7177,61 @@ class TestStringLiterals:
         singleton_string_set.setup_from_values("a")
         assert singleton_string_set.get_single() == "a"
 
+    @pytest.mark.parametrize(
+        "values",
+        [
+            # Single value
+            (["hello"],),
+            # Multiple values
+            (["a", "b", "c"],),
+            # Empty strings
+            (["", "non-empty"],),
+            # Special characters
+            (["with\nnewline", "with\ttab", "with spaces"],),
+            # Unicode
+            (["héllo", "wörld", "日本語"],),
+            # Long strings
+            (["a" * 100, "b" * 200],),
+        ],
+    )
+    def test_serialize_deserialize_round_trip(self, values):
+        """Test that serialize followed by deserialize returns equivalent Strings."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        # Create original Strings
+        original = Strings.bind_typegraph(tg=tg).create_instance(g=g)
+        original.setup_from_values(*values[0])
+
+        # Serialize and deserialize
+        serialized = original.serialize()
+        deserialized = Strings.deserialize(serialized, g=g, tg=tg)
+
+        # Verify the values match
+        assert deserialized.get_values() == values[0]
+
+    def test_is_literal_serialize_deserialize_round_trip(self):
+        """Test round trip through is_literal for Strings."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        values = ["foo", "bar", "baz"]
+
+        # Create original Strings
+        original = Strings.bind_typegraph(tg=tg).create_instance(g=g)
+        original.setup_from_values(*values)
+
+        # Serialize via is_literal
+        serialized = original.is_literal.get().serialize()
+
+        # Deserialize via is_literal
+        deserialized_literal = is_literal.deserialize(serialized, g=g, tg=tg)
+
+        # Should be able to switch_cast back to Strings
+        deserialized_strings = deserialized_literal.switch_cast()
+        assert isinstance(deserialized_strings, Strings)
+        assert deserialized_strings.get_values() == values
+
 
 class TestBooleans:
     def test_create_instance(self):
@@ -6855,6 +7385,169 @@ class TestBooleans:
         # True -> False = False
         assert result.get_values() == [expected]
 
+    def test_serialize_boolean_set_format(self):
+        """Test serialization produces the expected BooleanSet format."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        bools = (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(True, False)
+        )
+
+        serialized = bools.serialize()
+
+        assert serialized == {
+            "type": "BooleanSet",
+            "data": {
+                "values": [False, True],  # sorted order
+            },
+        }
+
+    def test_serialize_single_true(self):
+        """Test serialization of a single True value."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        bools = (
+            Booleans.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(True)
+        )
+
+        serialized = bools.serialize()
+
+        assert serialized == {
+            "type": "BooleanSet",
+            "data": {
+                "values": [True],
+            },
+        }
+
+    def test_serialize_single_false(self):
+        """Test serialization of a single False value."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        bools = (
+            Booleans.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(False)
+        )
+
+        serialized = bools.serialize()
+
+        assert serialized == {
+            "type": "BooleanSet",
+            "data": {
+                "values": [False],
+            },
+        }
+
+    def test_deserialize_boolean_set(self):
+        """Test deserialization from the BooleanSet format."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        data = {
+            "type": "BooleanSet",
+            "data": {
+                "values": [True, False],
+            },
+        }
+
+        result = Booleans.deserialize(data, g=g, tg=tg)
+
+        assert isinstance(result, Booleans)
+        assert set(result.get_values()) == {True, False}
+
+    def test_deserialize_single_value(self):
+        """Test deserialization of a single boolean value."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        data = {
+            "type": "BooleanSet",
+            "data": {
+                "values": [True],
+            },
+        }
+
+        result = Booleans.deserialize(data, g=g, tg=tg)
+
+        assert isinstance(result, Booleans)
+        assert result.get_values() == [True]
+
+    @pytest.mark.parametrize(
+        "values",
+        [
+            ([True],),
+            ([False],),
+            ([True, False],),
+        ],
+    )
+    def test_serialize_deserialize_round_trip(self, values):
+        """Test that serialize followed by deserialize returns equivalent booleans."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        original = (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(*values[0])
+        )
+
+        # Serialize and deserialize
+        serialized = original.serialize()
+        deserialized = Booleans.deserialize(serialized, g=g, tg=tg)
+
+        # Verify the values match
+        assert set(original.get_values()) == set(deserialized.get_values())
+
+    def test_is_literal_serialize_deserialize_round_trip(self):
+        """Test round trip through is_literal for booleans."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        original = (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(True, False)
+        )
+
+        # Serialize via is_literal
+        serialized = original.is_literal.get().serialize()
+
+        # Deserialize via is_literal
+        deserialized_literal = is_literal.deserialize(serialized, g=g, tg=tg)
+
+        # Should be able to switch_cast back to Booleans
+        deserialized_bools = deserialized_literal.switch_cast()
+        assert isinstance(deserialized_bools, Booleans)
+        assert set(deserialized_bools.get_values()) == {True, False}
+
+    def test_deserialize_invalid_type_raises(self):
+        """Test that deserializing with wrong type raises ValueError."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        data = {"type": "WrongType", "data": {}}
+
+        with pytest.raises(ValueError, match="Expected type 'BooleanSet'"):
+            Booleans.deserialize(data, g=g, tg=tg)
+
+    def test_deserialize_invalid_value_raises(self):
+        """Test that deserializing with non-boolean value raises ValueError."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        data = {
+            "type": "BooleanSet",
+            "data": {
+                "values": [True, "not_a_boolean"],
+            },
+        }
+
+        with pytest.raises(ValueError, match="Expected boolean value"):
+            Booleans.deserialize(data, g=g, tg=tg)
+
 
 def test_string_literal_on_type():
     values = ["a", "b", "c"]
@@ -6900,79 +7593,283 @@ def test_string_literal_alias_to_literal():
     assert lit.get_values() == values
 
 
-def test_enums():
+class TestEnums:
     """
-    Tests carried over from enum_sets.py
+    Tests for AbstractEnums functionality including serialization and deserialization.
     """
-    from enum import Enum
 
-    from faebryk.core.node import _make_graph_and_typegraph
+    def test_enums_basic(self):
+        """
+        Tests carried over from enum_sets.py
+        """
+        from enum import Enum
 
-    g, tg = _make_graph_and_typegraph()
+        from faebryk.core.node import _make_graph_and_typegraph
 
-    class MyEnum(Enum):
-        A = "a"
-        B = "b"
-        C = "c"
-        D = "d"
+        g, tg = _make_graph_and_typegraph()
 
-    EnumT = EnumsFactory(MyEnum)
-    enum_lit = (
-        EnumT.bind_typegraph(tg=tg).create_instance(g=g).setup(MyEnum.A, MyEnum.D)
+        class MyEnum(Enum):
+            A = "a"
+            B = "b"
+            C = "c"
+            D = "d"
+
+        EnumT = EnumsFactory(MyEnum)
+        enum_lit = (
+            EnumT.bind_typegraph(tg=tg).create_instance(g=g).setup(MyEnum.A, MyEnum.D)
+        )
+
+        elements = enum_lit.get_all_members_of_enum_literal()
+        assert len(elements) == 4
+        assert elements[0].name == "A"
+        assert elements[0].value == MyEnum.A.value
+        assert elements[1].name == "B"
+        assert elements[1].value == MyEnum.B.value
+        assert elements[2].name == "C"
+        assert elements[2].value == MyEnum.C.value
+        assert elements[3].name == "D"
+        assert elements[3].value == MyEnum.D.value
+
+        assert enum_lit.get_values() == ["a", "d"]
+
+        assert AbstractEnums.try_cast_to_enum(enum_lit.is_literal.get())
+
+    def test_enum_literal_op_intersect_intervals(self):
+        g = graph.GraphView.create()
+        tg = graph.TypeGraph.create(g=g)
+
+        class TestEnum(Enum):
+            A = "a"
+            B = "b"
+            C = "c"
+            D = "d"
+
+        atype = EnumsFactory(TestEnum)
+        self_litA = (
+            atype.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup(TestEnum.A, TestEnum.B, TestEnum.D)
+        )
+
+        other1A = AbstractEnums(self_litA.create_instance_of_same_type()).setup(
+            TestEnum.A, TestEnum.B
+        )
+        other2A = AbstractEnums(self_litA.create_instance_of_same_type()).setup(
+            TestEnum.A, TestEnum.B, TestEnum.C, TestEnum.D
+        )
+
+        result = self_litA.op_intersect_intervals(other1A, other2A, g=g, tg=tg)
+        assert result.get_values().sort() == ["a", "b"].sort()
+
+        self_litB = (
+            atype.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup(TestEnum.A, TestEnum.B, TestEnum.C, TestEnum.D)
+        )
+
+        other1B = AbstractEnums.bind_typegraph(tg=tg).create_instance(g=g)
+        with pytest.raises(ValueError):
+            self_litB.op_intersect_intervals(other1B, g=g, tg=tg)
+
+    def test_serialize_enum_set_format(self):
+        """Test serialization produces the expected EnumSet format."""
+        g = graph.GraphView.create()
+        tg = graph.TypeGraph.create(g=g)
+
+        class TestPackage(StrEnum):
+            R0402 = "R0402"
+            R0603 = "R0603"
+            C0402 = "C0402"
+            C0603 = "C0603"
+
+        EnumT = EnumsFactory(TestPackage)
+        enum_lit = (
+            EnumT.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup(TestPackage.R0402, TestPackage.C0402)
+        )
+
+        serialized = enum_lit.serialize()
+
+        assert serialized["type"] == "EnumSet"
+        assert "data" in serialized
+        assert "elements" in serialized["data"]
+        assert "enum" in serialized["data"]
+
+        # Check elements (sorted by name)
+        elements = serialized["data"]["elements"]
+        assert len(elements) == 2
+        element_names = [e["name"] for e in elements]
+        assert "C0402" in element_names
+        assert "R0402" in element_names
+
+        # Check enum definition
+        enum_def = serialized["data"]["enum"]
+        assert enum_def["name"] == "TestPackage"
+        assert enum_def["values"] == {
+            "R0402": "R0402",
+            "R0603": "R0603",
+            "C0402": "C0402",
+            "C0603": "C0603",
+        }
+
+    def test_deserialize_enum_set(self):
+        """Test deserialization from the EnumSet format."""
+        g = graph.GraphView.create()
+        tg = graph.TypeGraph.create(g=g)
+
+        data = {
+            "type": "EnumSet",
+            "data": {
+                "elements": [{"name": "R0402"}],
+                "enum": {
+                    "name": "BackendPackage",
+                    "values": {
+                        "R0402": "R0402",
+                        "R0603": "R0603",
+                        "C0402": "C0402",
+                    },
+                },
+            },
+        }
+
+        result = AbstractEnums.deserialize(data, g=g, tg=tg)
+
+        assert isinstance(result, AbstractEnums)
+        assert result.get_values() == ["R0402"]
+
+    def test_deserialize_multiple_elements(self):
+        """Test deserialization with multiple selected elements."""
+        g = graph.GraphView.create()
+        tg = graph.TypeGraph.create(g=g)
+
+        data = {
+            "type": "EnumSet",
+            "data": {
+                "elements": [{"name": "VALUE_A"}, {"name": "VALUE_C"}],
+                "enum": {
+                    "name": "TestEnum",
+                    "values": {
+                        "VALUE_A": "a",
+                        "VALUE_B": "b",
+                        "VALUE_C": "c",
+                    },
+                },
+            },
+        }
+
+        result = AbstractEnums.deserialize(data, g=g, tg=tg)
+
+        assert isinstance(result, AbstractEnums)
+        values = result.get_values()
+        assert len(values) == 2
+        assert "a" in values
+        assert "c" in values
+
+    @pytest.mark.parametrize(
+        "values",
+        [
+            (["A"],),
+            (["A", "B"],),
+            (["A", "B", "C", "D"],),
+        ],
     )
+    def test_serialize_deserialize_round_trip(self, values):
+        """Test that serialize followed by deserialize returns equivalent enums."""
+        g = graph.GraphView.create()
+        tg = graph.TypeGraph.create(g=g)
 
-    elements = enum_lit.get_all_members_of_enum_literal()
-    assert len(elements) == 4
-    assert elements[0].name == "A"
-    assert elements[0].value == MyEnum.A.value
-    assert elements[1].name == "B"
-    assert elements[1].value == MyEnum.B.value
-    assert elements[2].name == "C"
-    assert elements[2].value == MyEnum.C.value
-    assert elements[3].name == "D"
-    assert elements[3].value == MyEnum.D.value
+        class RoundTripEnum(StrEnum):
+            A = "a"
+            B = "b"
+            C = "c"
+            D = "d"
 
-    assert enum_lit.get_values() == ["a", "d"]
+        EnumT = EnumsFactory(RoundTripEnum)
+        enum_members = [RoundTripEnum[name] for name in values[0]]
+        original = EnumT.bind_typegraph(tg=tg).create_instance(g=g).setup(*enum_members)
 
-    assert AbstractEnums.try_cast_to_enum(enum_lit.is_literal.get())
+        # Serialize and deserialize
+        serialized = original.serialize()
+        deserialized = AbstractEnums.deserialize(serialized, g=g, tg=tg)
 
+        # Verify the values match
+        original_values = sorted(original.get_values())
+        deserialized_values = sorted(deserialized.get_values())
+        assert original_values == deserialized_values
 
-def test_enum_literal_op_intersect_intervals():
-    g = graph.GraphView.create()
-    tg = graph.TypeGraph.create(g=g)
+    def test_is_literal_serialize_deserialize_round_trip(self):
+        """Test round trip through is_literal for enums."""
+        g = graph.GraphView.create()
+        tg = graph.TypeGraph.create(g=g)
 
-    class TestEnum(Enum):
-        A = "a"
-        B = "b"
-        C = "c"
-        D = "d"
+        class TestEnum(StrEnum):
+            FOO = "foo"
+            BAR = "bar"
+            BAZ = "baz"
 
-    atype = EnumsFactory(TestEnum)
-    self_litA = (
-        atype.bind_typegraph(tg=tg)
-        .create_instance(g=g)
-        .setup(TestEnum.A, TestEnum.B, TestEnum.D)
-    )
+        EnumT = EnumsFactory(TestEnum)
+        original = (
+            EnumT.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup(TestEnum.FOO, TestEnum.BAZ)
+        )
 
-    other1A = AbstractEnums(self_litA.create_instance_of_same_type()).setup(
-        TestEnum.A, TestEnum.B
-    )
-    other2A = AbstractEnums(self_litA.create_instance_of_same_type()).setup(
-        TestEnum.A, TestEnum.B, TestEnum.C, TestEnum.D
-    )
+        # Serialize via is_literal
+        serialized = original.is_literal.get().serialize()
 
-    result = self_litA.op_intersect_intervals(other1A, other2A, g=g, tg=tg)
-    assert result.get_values().sort() == ["a", "b"].sort()
+        # Deserialize via is_literal
+        deserialized_literal = is_literal.deserialize(serialized, g=g, tg=tg)
 
-    self_litB = (
-        atype.bind_typegraph(tg=tg)
-        .create_instance(g=g)
-        .setup(TestEnum.A, TestEnum.B, TestEnum.C, TestEnum.D)
-    )
+        # Should be able to cast back to AbstractEnums
+        deserialized_enums = AbstractEnums.try_cast_to_enum(deserialized_literal)
+        assert deserialized_enums is not None
+        assert sorted(deserialized_enums.get_values()) == sorted(["foo", "baz"])
 
-    other1B = AbstractEnums.bind_typegraph(tg=tg).create_instance(g=g)
-    with pytest.raises(ValueError):
-        self_litB.op_intersect_intervals(other1B, g=g, tg=tg)
+    def test_deserialize_invalid_type_raises(self):
+        """Test that deserializing with wrong type raises ValueError."""
+        g = graph.GraphView.create()
+        tg = graph.TypeGraph.create(g=g)
+
+        data = {"type": "WrongType", "data": {}}
+
+        with pytest.raises(ValueError, match="Expected type 'EnumSet'"):
+            AbstractEnums.deserialize(data, g=g, tg=tg)
+
+    def test_deserialize_backend_package_format(self):
+        """Test deserialization matches the exact format from the user example."""
+        g = graph.GraphView.create()
+        tg = graph.TypeGraph.create(g=g)
+
+        # This is the exact format from the user's example (abbreviated)
+        data = {
+            "type": "EnumSet",
+            "data": {
+                "elements": [{"name": "R0402"}],
+                "enum": {
+                    "name": "BackendPackage",
+                    "values": {
+                        "R01005": "R01005",
+                        "R0201": "R0201",
+                        "R0402": "R0402",
+                        "R0603": "R0603",
+                        "R0805": "R0805",
+                        "C0402": "C0402",
+                        "C0603": "C0603",
+                    },
+                },
+            },
+        }
+
+        result = AbstractEnums.deserialize(data, g=g, tg=tg)
+
+        assert isinstance(result, AbstractEnums)
+        assert result.get_values() == ["R0402"]
+
+        # Verify we can serialize it back
+        reserialized = result.serialize()
+        assert reserialized["type"] == "EnumSet"
+        assert reserialized["data"]["enum"]["name"] == "BackendPackage"
 
 
 # def test_make_lit():
@@ -6986,4 +7883,4 @@ def test_enum_literal_op_intersect_intervals():
 if __name__ == "__main__":
     import typer
 
-    typer.run(test_enum_literal_op_intersect_intervals)
+    typer.run(TestEnums().test_enum_literal_op_intersect_intervals)
