@@ -22,7 +22,6 @@ from faebryk.core.solver.utils import (
     MutatorUtils,
 )
 from faebryk.libs.logging import rich_to_string
-from faebryk.libs.util import cast_assert
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 from test.core.solver.test_solver import BoundExpressions, _create_letters
@@ -119,15 +118,19 @@ def test_mutator_no_graph_merge():
     G = p0.tg
     G_new = p0_new.tg
 
-    assert G is not G_new
-    assert alias_new.tg is G_new
-    assert p3_new.tg is not G_new
+    assert p0_new.tg.get_self_node().node().is_same(other=G_new.get_self_node().node())
+    assert not G.get_self_node().node().is_same(other=G_new.get_self_node().node())
     assert (
-        cast_assert(
-            F.Parameters.is_parameter,
-            mutator.get_mutated(p1.as_parameter_operatable.force_get()),
-        ).tg
-        is G_new
+        alias_new.tg.get_self_node().node().is_same(other=G_new.get_self_node().node())
+    )
+    assert (
+        not p3_new.tg.get_self_node().node().is_same(other=G_new.get_self_node().node())
+    )
+    assert (
+        mutator.get_mutated(p1.as_parameter_operatable.force_get())
+        .tg.get_self_node()
+        .node()
+        .is_same(other=G_new.get_self_node().node())
     )
 
 
@@ -287,7 +290,6 @@ def test_get_correlations_self_correlated():
             expr.as_parameter_operatable.force_get().as_expression.force_get()
         )
     )
-    print(correlations)
     assert len(correlations) == 1
     op1, op2, overlap_exprs = correlations[0]
     assert {op1, op2} == {A.as_parameter_operatable.force_get()}
