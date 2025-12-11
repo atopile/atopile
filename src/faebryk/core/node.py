@@ -1472,7 +1472,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         suffix = ""
         if traits := Traits.is_trait(self):
             suffix = traits.trait_repr()
-        return f"<{cls_id} '{self.get_full_name()})'{suffix}>"
+        return f"<{cls_id} '{self.get_full_name()}'{suffix}>"
 
     # def __rich_repr__(self):
     #    yield self.get_full_name()
