@@ -8,11 +8,12 @@ from rich.markdown import Markdown
 from rich.syntax import Syntax
 from rich.text import Text
 
-import faebryk.core.node as fabll
 from faebryk.libs.exceptions import UserException as _BaseBaseUserException
 
 if TYPE_CHECKING:
     from rich.console import Console, ConsoleOptions, ConsoleRenderable
+
+    import faebryk.core.node as fabll
 
 
 def _render_tokens(

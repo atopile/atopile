@@ -2517,6 +2517,25 @@ class IsSubset(fabll.Node):
     subset = OperandPointer.MakeChild()
     superset = OperandPointer.MakeChild()
 
+    @classmethod
+    def MakeChild_Constrain(
+        cls, subset: fabll.RefPath, superset: fabll.RefPath
+    ) -> fabll._ChildField[Any]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
+            identifier="constrain",
+        )
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.subset], [*subset, "can_be_operand"]),
+            identifier="connect_subset",
+        )
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.superset], [*superset, "can_be_operand"]),
+            identifier="connect_superset",
+        )
+        return out
+
     def setup(
         self,
         subset: "F.Parameters.can_be_operand",

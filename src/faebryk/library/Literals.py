@@ -540,10 +540,16 @@ class Numeric(fabll.Node[NumericAttributes]):
 
     @staticmethod
     def float_round(value: float, digits: int = 0) -> float:
+        """
+        Round a float to a specified number of decimal places using traditional
+        "round half up" behavior (0.5 -> 1), rather than Python's default
+        banker's rounding (round half to even).
+        """
         if value in [math.inf, -math.inf]:
             return value
-        out = round(value, digits)
-        return float(out)
+        multiplier = 10**digits
+        # Use floor(x + 0.5) for traditional rounding
+        return math.floor(value * multiplier + 0.5) / multiplier
 
 
 class TestNumeric:
@@ -2988,6 +2994,21 @@ class Numbers(fabll.Node):
         return cls.MakeChild(min=value, max=value, unit=unit)
 
     @classmethod
+    def MakeChild_ConstrainToSubsetLiteral(
+        cls,
+        param_ref: fabll.RefPath,
+        min: float,
+        max: float,
+        unit: type[fabll.NodeT],
+    ) -> fabll._ChildField["F.Expressions.IsSubset"]:
+        from faebryk.library.Expressions import IsSubset
+
+        lit = cls.MakeChild(min=min, max=max, unit=unit)
+        out = IsSubset.MakeChild_Constrain(param_ref, [lit])
+        out.add_dependant(lit, identifier="lit", before=True)
+        return out
+
+    @classmethod
     def MakeChild_ConstrainToLiteral(
         cls,
         param_ref: fabll.RefPath,
@@ -4689,6 +4710,66 @@ class TestNumbers:
         result = quantity_set.op_round(g=g, tg=tg, ndigits=1)
         assert result.get_numeric_set().get_min_value() == 2.3
         assert result.get_numeric_set().get_max_value() == 5.7
+        # Unit should remain the same
+        assert result.get_is_unit().get_symbols() == ["m"]
+
+    @pytest.mark.parametrize(
+        "min_val, max_val, expected_min, expected_max",
+        [
+            # Large integers (original test case)
+            (16933103.0, 16933103.0, 16933103.0, 16933103.0),
+            # Positive decimals
+            (2.7, 5.3, 2.0, 5.0),
+            (2.345, 5.678, 2.0, 5.0),
+            # Values at 0.5 boundary
+            (0.5, 0.5, 0.0, 0.0),
+            (1.5, 2.5, 1.0, 2.0),
+            # Values just above/below integers
+            (2.001, 2.999, 2.0, 2.0),
+            (3.0, 3.0, 3.0, 3.0),
+            # Zero
+            (0.0, 0.0, 0.0, 0.0),
+            # Negative numbers
+            (-2.3, -1.7, -3.0, -2.0),
+            (-0.5, -0.5, -1.0, -1.0),
+            (-1.0, -1.0, -1.0, -1.0),
+            # Mixed positive and negative
+            (-1.5, 1.5, -2.0, 1.0),
+            # Small decimals
+            (0.1, 0.9, 0.0, 0.0),
+        ],
+    )
+    def test_op_floor(self, min_val, max_val, expected_min, expected_max):
+        """Test floor of a quantity set."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        from faebryk.library.Units import Meter
+
+        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        quantity_set = Numbers.create_instance(g=g, tg=tg)
+        quantity_set.setup_from_min_max(
+            min=min_val, max=max_val, unit=meter_instance.is_unit.get()
+        )
+        result = quantity_set.op_floor(g=g, tg=tg)
+        assert result.get_numeric_set().get_min_value() == expected_min
+        assert result.get_numeric_set().get_max_value() == expected_max
+        # Unit should remain the same
+        assert result.get_is_unit().get_symbols() == ["m"]
+
+    def test_op_ceil(self):
+        """Test ceil of a quantity set."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        from faebryk.library.Units import Meter
+
+        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        quantity_set = Numbers.create_instance(g=g, tg=tg)
+        quantity_set.setup_from_min_max(
+            min=2.345, max=5.678, unit=meter_instance.is_unit.get()
+        )
+        result = quantity_set.op_ceil(g=g, tg=tg)
+        assert result.get_numeric_set().get_min_value() == 3.0
+        assert result.get_numeric_set().get_max_value() == 6.0
         # Unit should remain the same
         assert result.get_is_unit().get_symbols() == ["m"]
 
