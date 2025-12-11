@@ -1,7 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import functools
 import logging
 from dataclasses import asdict, dataclass, field, make_dataclass
 from typing import Any
@@ -9,6 +8,8 @@ from typing import Any
 from dataclasses_json import config as dataclass_json_config
 from dataclasses_json import dataclass_json
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.exceptions import UserException, downgrade
@@ -184,12 +185,17 @@ class Component:
 
         return unit_price * qty + handling_fee
 
-    @functools.cached_property
-    def attribute_literals(self) -> dict[str, F.Literals.is_literal | None]:
+    #TODO FIXME this used to be a cached property
+    def attribute_literals(
+        self,
+        *,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+    ) -> dict[str, F.Literals.is_literal | None]:
         def deserialize(k, v):
             if v is None:
                 return None
-            return F.Literals.Numbers.deserialize(v)
+            return F.Literals.Numbers.deserialize(v, g=g, tg=tg)
 
         return {k: deserialize(k, v) for k, v in self.attributes.items()}
 
@@ -228,7 +234,8 @@ class Component:
         missing_attrs = []
         # only for type picks
         if module.has_trait(F.is_pickable_by_type):
-            for name, literal in self.attribute_literals.items():
+            attribute_literals = self.attribute_literals(g=module.g, tg=module.tg)
+            for name, literal in attribute_literals.items():
                 if not hasattr(module, name):
                     missing_attrs.append(name)
                     continue

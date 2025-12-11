@@ -323,7 +323,7 @@ def _get_compatible_parameters(
     design_params = {
         p.get_name(): p for p in module.get_trait(F.is_pickable_by_type).get_params()
     }
-    component_params = c.attribute_literals
+    component_params = c.attribute_literals(g=module.g, tg=module.tg)
 
     if no_attr := component_params.keys() - design_params:
         with downgrade(UserException):

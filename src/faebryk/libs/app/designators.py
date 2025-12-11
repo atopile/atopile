@@ -95,6 +95,8 @@ def attach_random_designators(tg: fbrk.TypeGraph):
         for component in components_with_designator
     ]
 
+    logger.info(f"{len(all_designators)} designators assigned")
+
     missing = [d for d in all_designators if d is None]
     assert not missing, f"Components without designators: {missing}"
 
