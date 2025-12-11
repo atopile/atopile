@@ -6459,7 +6459,7 @@ class TestBooleans:
             .create_instance(g=g)
             .setup_from_values(*bools_2)
         )
-        result = bools1.op_and(g=g, tg=tg, other=bools2)
+        result = bools1.op_and(bools2, g=g, tg=tg)
         # True AND True = True, False AND True = False
         assert result.get_values() == expected
 
@@ -6488,7 +6488,7 @@ class TestBooleans:
             .create_instance(g=g)
             .setup_from_values(*bools_2)
         )
-        result = bools1.op_or(g=g, tg=tg, other=bools2)
+        result = bools1.op_or(bools2, g=g, tg=tg)
         # False OR True = True
         assert result.get_values() == expected
 
