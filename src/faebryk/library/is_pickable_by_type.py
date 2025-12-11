@@ -39,25 +39,25 @@ class is_pickable_by_type(fabll.Node):
             ).deref_pointer()
             for param_tuple in param_tuples
         ]
-        return parameters  # type: ignore
 
-    def get_param(self, param_name: str) -> fabll.Node:
+        return parameters
+
+    def get_param(self, param_name: str) -> "F.Parameters.is_parameter":
         param_tuples = self.params_.get().as_list()
         for param_tuple in param_tuples:
-            if (
-                F.Collections.PointerTuple.bind_instance(
-                    param_tuple.instance
-                ).get_literals_as_list()[0]
-                == param_name
-            ):
-                return F.Collections.PointerTuple.bind_instance(
-                    param_tuple.instance
-                ).deref_pointer()  # type: ignore
+            bound_param_tuple = F.Collections.PointerTuple.bind_instance(
+                param_tuple.instance
+            )
+            (p_name, _) = bound_param_tuple.get_literals_as_list()
+            if p_name == param_name:
+                return bound_param_tuple.deref_pointer().get_trait(
+                    F.Parameters.is_parameter
+                )
         raise ValueError(f"Param {param_name} not found")
 
     @property
     def endpoint(self) -> str:
-        return str(self.endpoint_.get().force_extract_literal().get_values()[0])
+        return str(self.endpoint_.get().force_extract_literal().get_single())
 
     @property
     def pick_type(self) -> BoundNode:
@@ -68,9 +68,7 @@ class is_pickable_by_type(fabll.Node):
         return not_none(parent.get_type_node())
 
     @classmethod
-    def MakeChild(  # type: ignore[invalid-method-override]
-        cls, endpoint: Endpoint, params: dict[str, fabll._ChildField[fabll.Node]]
-    ):
+    def MakeChild(cls, endpoint: Endpoint, params: dict[str, fabll._ChildField]):
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(

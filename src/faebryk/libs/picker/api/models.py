@@ -39,7 +39,7 @@ def _pretty_params_helper(params) -> str:
     def _map(v: Any) -> str:
         if v is None:
             return "**unconstrained**"
-        elif isinstance(v, (F.Literals.is_literal[Any], int, float)):
+        elif isinstance(v, (fabll.Node, int, float)):
             return f"`{v}`"
         elif isinstance(v, str):
             return f'"{v}"'
@@ -225,8 +225,8 @@ class Component:
                     missing_attrs.append(name)
                     continue
 
-                p = getattr(module, name)
-                assert isinstance(p, Parameter)
+                p = getattr(module, name).get()
+                assert p.has_trait(F.Parameters.is_parameter)
                 if literal is None:
                     literal = p.domain.unbounded(p)
 

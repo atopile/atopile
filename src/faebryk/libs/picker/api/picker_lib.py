@@ -143,7 +143,7 @@ def _prepare_query(
                 pkg_t.size_.get().is_parameter.get()
             )
             package = (
-                F.Literals.EnumsFactory(BackendPackage)
+                F.Literals.EnumsFactory(BackendPackage)  # type: ignore[arg-type]
                 .bind_typegraph(tg=query_tg)
                 .create_instance(g=module.g)
                 .setup(
@@ -311,7 +311,7 @@ def _get_compatible_parameters(
         raise NotCompatibleException(module, c) from e
 
     design_params = {
-        p.get_name() for p in module.get_trait(F.is_pickable_by_type).get_params()
+        p.get_name(): p for p in module.get_trait(F.is_pickable_by_type).get_params()
     }
     component_params = c.attribute_literals
 
@@ -330,7 +330,7 @@ def _get_compatible_parameters(
     ) -> tuple[F.Parameters.is_parameter, F.Literals.is_literal]:
         c_range = component_params.get(name)
         if c_range is None:
-            c_range = param.domain.unbounded(param)
+            c_range = param.domain_set()
         return param, c_range
 
     param_mapping = [
@@ -345,19 +345,21 @@ def _get_compatible_parameters(
         # TODO other loglevel
         # logger.warning(f"Checking obvious incompatibility for param {m_param}")
         known_superset = solver.inspect_get_known_supersets(m_param)
-        if not known_superset.is_superset_of(c_range):
+        if not c_range.is_subset_of(known_superset):
             if LOG_PICK_SOLVE:
                 logger.warning(
-                    f"Known superset {known_superset} is not a superset of {c_range}"
+                    f"Known superset {c_range} is not a subset of {known_superset}"
                     f" for part C{c.lcsc}"
                 )
-            raise NotCompatibleException(module, c, m_param, c_range)
+            raise NotCompatibleException(
+                module, c, m_param.as_parameter_operatable.get(), c_range
+            )
 
     return {p: c_range for p, c_range in param_mapping}
 
 
 def _check_candidates_compatible(
-    module_candidates: list[tuple[fabll.Module, Component]],
+    module_candidates: list[tuple[F.is_pickable, Component]],
     solver: Solver,
     allow_not_deducible: bool = False,
 ):
@@ -375,13 +377,17 @@ def _check_candidates_compatible(
         logger.info(f"Solving for modules: {[m for m, _ in module_candidates]}")
 
     predicates = (
-        Is(m_param, c_range)
+        F.Expressions.Is.from_operands(
+            m_param.as_operand.get(), c_range.as_operand.get()
+        ).can_be_operand.get()
         for param_mapping in mappings
         for m_param, c_range in not_none(param_mapping).items()
     )
 
     solver.try_fulfill(
-        F.Expressions.And(*predicates), lock=False, allow_unknown=allow_not_deducible
+        F.Expressions.And.from_operands(*predicates).is_assertable.get(),
+        lock=False,
+        allow_unknown=allow_not_deducible,
     )
 
 
@@ -389,7 +395,7 @@ def _check_candidates_compatible(
 
 
 def check_and_attach_candidates(
-    candidates: list[tuple[fabll.Module, Component]],
+    candidates: list[tuple[F.is_pickable, Component]],
     solver: Solver,
     allow_not_deducible: bool = False,
 ):
