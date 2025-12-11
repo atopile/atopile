@@ -603,10 +603,8 @@ def attach(
     if check_only:
         # don't attach or create any footprint related things if we're only checking
         # if the pad-lead combo's are valid
-        logger.debug(
-            f"Checking pinmap for {partno} -> "
-            f"{fabll.Traits(component).get_obj_raw().get_name()}"
-        )
+        component_node = fabll.Traits(component).get_obj_raw()
+        logger.debug(f"Checking pinmap for {partno} -> {component_node.get_name()}")
         return
 
     if not component.has_trait(F.Footprints.has_associated_footprint):
@@ -617,8 +615,9 @@ def attach(
         ).create_instance(g=component.instance.g())
         fp.setup(tmp_pads)
 
+        component_node = fabll.Traits(component).get_obj_raw()
         fabll.Traits.create_and_add_instance_to(
-            node=component, trait=F.Footprints.has_associated_footprint
+            node=component_node, trait=F.Footprints.has_associated_footprint
         ).setup(fp.is_footprint.get())
 
         pads_t = fp.get_pads()
@@ -635,7 +634,7 @@ def attach(
             raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
 
     # link footprint to the component
-    footprint = component.get_trait(
+    footprint = component_node.get_trait(
         F.Footprints.has_associated_footprint
     ).get_footprint()
 
@@ -650,9 +649,7 @@ def attach(
             library_name=apart.path.name,
             kicad_footprint_file_path=str(apart.fp_path),
         )
-    logger.debug(
-        f"Attached {partno} to -> {fabll.Traits(component).get_obj_raw().get_name()}"
-    )
+    logger.debug(f"Attached {partno} to -> {component_node.get_name()}")
 
     # 3D model done by kicad (in fp)
 

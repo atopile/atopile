@@ -1837,19 +1837,23 @@ class PCB_Transformer:
         ) -> kicad.pcb.Xyr:
             return kicad.pcb.Xyr(x=point.x + dx, y=point.y + dy, r=point.r)
 
-        def _get_cluster(component: fabll.Node) -> fabll.Node | None:
+        def _get_cluster(
+            component: F.Footprints.has_associated_footprint,
+        ) -> fabll.Node | None:
             if (parent := component.get_parent()) is not None:
-                return parent[0]
+                if (parent_of_parent := parent[0].get_parent()) is not None:
+                    return parent_of_parent[0]
             return None
 
         # components with footprints
-        components = fabll.Traits.get_implementor_objects(
+        components_with_footprint = fabll.Traits.get_implementors(
             trait=F.Footprints.has_associated_footprint.bind_typegraph(self.app.tg)
         )
 
         # cluster components by their parent so we can insert them grouped by
         # their parent into the kicad canvas
-        clusters = groupby(components, _get_cluster)
+        # parent_node: [has_associated_footprint traits]
+        clusters = groupby(components_with_footprint, _get_cluster)
 
         if clusters:
             # scaled to fit all clusters inside the canvas boundary
@@ -1873,9 +1877,9 @@ class PCB_Transformer:
             )
             cluster_has_footprints = False
 
-            for component in clusters[cluster]:
+            for associated_fp_trait in clusters[cluster]:
                 pcb_fp, new_fp = lifecycle.pcb.ingest_footprint(
-                    self, component, logger, insert_point
+                    self, associated_fp_trait, logger, insert_point
                 )
                 if new_fp:
                     insert_point = _incremented_point(

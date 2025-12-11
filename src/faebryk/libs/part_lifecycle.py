@@ -534,7 +534,7 @@ class PartLifecycle:
         def ingest_footprint(
             self,
             transformer: PCB_Transformer,
-            component: fabll.Node,
+            associated_fp_trait: F.Footprints.has_associated_footprint,
             logger: logging.Logger,
             insert_point: kicad.pcb.Xyr | None = None,
         ) -> tuple[kicad.pcb.Footprint, bool]:
@@ -548,9 +548,8 @@ class PartLifecycle:
 
             lifecycle = PartLifecycle.singleton()
 
-            f_fp = component.get_trait(
-                F.Footprints.has_associated_footprint
-            ).get_footprint()
+            f_fp = associated_fp_trait.get_footprint()
+            component = fabll.Traits(associated_fp_trait).get_obj_raw()
 
             # At this point, all footprints MUST have a KiCAD identifier
             k_pcb_fp_t = f_fp.try_get_trait(
