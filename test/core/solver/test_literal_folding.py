@@ -228,8 +228,6 @@ class Builders(Namespace):
         p = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
         E.is_(p, literal, assert_=True)
 
-        print("p: ", p.as_parameter_operatable.force_get().compact_repr())
-
         return p
 
     @staticmethod
@@ -654,7 +652,7 @@ def _track():
 @given(st_exprs.trees)
 @settings(
     deadline=None,  # timedelta(milliseconds=1000),
-    max_examples=int(10),
+    max_examples=int(NUM_EXAMPLES),
     report_multiple_bugs=True,  # TODO: set back to false for CI
     phases=(
         Phase.generate,
@@ -717,7 +715,11 @@ def test_discover_literal_folding(expr: F.Parameters.can_be_operand):
     E.is_(root, test_expr, assert_=True)
 
     # Evaluate using our test evaluator
-    evaluated_expr = evaluate_e_p_l(test_expr)
+    # Skip expressions that can't be evaluated (e.g., sqrt of negative)
+    try:
+        evaluated_expr = evaluate_e_p_l(test_expr)
+    except (ValueError, NotImplementedError, OverflowError):
+        assume(False)
     assert isinstance(evaluated_expr, F.Literals.Numbers)
 
     # Run the solver
@@ -1018,27 +1020,29 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
         Sin.c(Sqrt.c(lit_op_single(1.0))),
     )
 )
+@example(expr=Sin.c(Floor.c(Round.c(lit_op_single(16933103.0)))))
+@example(expr=Floor.c(Cos.c(lit(1e-12))))
 # --------------------------------------------------------------------------------------
-# @given(st_exprs.trees)
-# @settings(
-#     deadline=None,  # timedelta(milliseconds=1000),
-#     max_examples=10000,
-#     report_multiple_bugs=False,
-#     phases=(
-#         # Phase.reuse,
-#         Phase.explicit,
-#         Phase.target,
-#         Phase.shrink,
-#         Phase.explain,
-#     ),
-#     suppress_health_check=[
-#         HealthCheck.data_too_large,
-#         HealthCheck.too_slow,
-#         HealthCheck.filter_too_much,
-#         HealthCheck.large_base_example,
-#     ],
-#     print_blob=False,
-# )
+@given(st_exprs.trees)
+@settings(
+    deadline=None,  # timedelta(milliseconds=1000),
+    max_examples=10000,
+    report_multiple_bugs=False,
+    phases=(
+        # Phase.reuse,
+        Phase.explicit,
+        Phase.target,
+        Phase.shrink,
+        Phase.explain,
+    ),
+    suppress_health_check=[
+        HealthCheck.data_too_large,
+        HealthCheck.too_slow,
+        HealthCheck.filter_too_much,
+        HealthCheck.large_base_example,
+    ],
+    print_blob=False,
+)
 def test_regression_literal_folding(expr: F.Parameters.can_be_operand):
     # make sure all root operands are copied over to test graph
     app = fabll.Node.bind_typegraph(tg=global_tg).create_instance(g=global_g)
@@ -1070,7 +1074,11 @@ def test_regression_literal_folding(expr: F.Parameters.can_be_operand):
     E.is_(root, test_expr, assert_=True)
 
     # Evaluate using our test evaluator
-    evaluated_expr = evaluate_e_p_l(test_expr)
+    # Skip expressions that can't be evaluated (e.g., sqrt of negative)
+    try:
+        evaluated_expr = evaluate_e_p_l(test_expr)
+    except (ValueError, NotImplementedError, OverflowError):
+        assume(False)
     assert isinstance(evaluated_expr, F.Literals.Numbers)
 
     # Run the solver
@@ -1433,9 +1441,6 @@ if __name__ == "__main__":
     # E = BoundExpressions(g=global_g, tg=global_tg)
     # expr = Add.c(lit(1.0), E.is_(E.parameter_op(E.U.dl), lit(1.0)))
     # expr = Add.c(lit(1.0), p(1.0))
-    expr = Add.c(
-        Sqrt.c(Sqrt.c(lit_op_single(1.0))),
-        Sin.c(Sqrt.c(lit_op_single(1.0))),
-    )
+    expr = Floor.c(Cos.c(lit(1e-12)))
     setup_basic_logging()
     typer.run(lambda: test_regression_literal_folding(expr))
