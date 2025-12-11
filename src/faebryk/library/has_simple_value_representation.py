@@ -228,16 +228,16 @@ class has_simple_value_representation(fabll.Node):
     @classmethod
     def MakeChild(cls, *specs: Spec):
         out = fabll._ChildField(cls)
-        for spec in specs:
-            spec_node = cls.SpecNode.MakeChild(spec)
-            # spec_node = F.Parameters.StringParameter.MakeChild()
-            out.add_dependant(spec_node)
-            out.add_dependant(
-                F.Collections.PointerSet.MakeEdge(
-                    [out, cls.specs_set_],
-                    [spec_node],
-                )
-            )
+        # TODO: trips solver
+        # for spec in specs:
+        #     spec_node = cls.SpecNode.MakeChild(spec)
+        #     out.add_dependant(spec_node)
+        #     out.add_dependant(
+        #         F.Collections.PointerSet.MakeEdge(
+        #             [out, cls.specs_set_],
+        #             [spec_node],
+        #         )
+        #     )
         return out
 
     def get_value(self) -> str:
