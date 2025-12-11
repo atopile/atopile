@@ -1420,14 +1420,19 @@ def test_param_isolation():
         F.Expressions.Divide.c,
     ],
 )
-def test_extracted_literal_folding(op: Callable[..., F.Parameters.can_be_operand]):
+def test_extracted_literal_folding(
+    op: Callable[..., F.Parameters.can_be_operand],
+):
+    """
+    op({0..10}, {10..20})
+    """
     E = BoundExpressions()
-    A = E.parameter_op()
-    B = E.parameter_op()
-    C = E.parameter_op()
+    A = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
+    B = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
+    C = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
 
-    lit1 = E.lit_op_range(((0, 10)))
-    lit2 = E.lit_op_range(((10, 20)))
+    lit1 = E.lit_op_range((0, 10))
+    lit2 = E.lit_op_range((10, 20))
     lito = not_none(
         _exec_pure_literal_expressions(
             E.g,

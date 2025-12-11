@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 
-import functools
 import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -23,27 +22,17 @@ logger = logging.getLogger(__name__)
 @dataclass
 class _Multi:
     f: Callable[..., Any]
-    init: F.Literals.LiteralValues | None = None
+    default_arg: F.Literals.LiteralValues | None = None
 
     def run(
         self, *args: F.Literals.LiteralNodes, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> F.Literals.is_literal:
-        if self.init is not None:
-            init_lit = F.Literals.make_simple_lit_singleton(g, tg, self.init)
-            args = (init_lit, init_lit, *args)
+        if not args and self.default_arg is not None:
+            init_lit = F.Literals.make_simple_lit_singleton(g, tg, self.default_arg)
+            args = (init_lit,)
 
-        def _f(
-            *args: F.Literals.LiteralNodes,
-        ) -> F.Literals.LiteralNodes | F.Literals.is_literal | bool:
-            return self.f(*args, g=g, tg=tg)
+        out = self.f(*args, g=g, tg=tg)
 
-        if len(args) >= 2:
-            out = functools.reduce(
-                _f,  # type: ignore # some function return is_literal/bool but its ok
-                args,
-            )
-        else:
-            out = _f(*args)
         # TODO: remove hack for equals returning bool
         if isinstance(out, F.Literals.LiteralValues):
             out = F.Literals.make_simple_lit_singleton(g, tg, out)
@@ -54,9 +43,9 @@ class _Multi:
 
 _CanonicalExpressions: dict[type[fabll.NodeT], _Multi] = {
     F.Expressions.Add: _Multi(F.Literals.Numbers.op_add_intervals, 0),
-    F.Expressions.Subtract: _Multi(F.Literals.Numbers.op_subtract_intervals, 0),
+    F.Expressions.Subtract: _Multi(F.Literals.Numbers.op_subtract_intervals),
     F.Expressions.Multiply: _Multi(F.Literals.Numbers.op_mul_intervals, 1),
-    F.Expressions.Divide: _Multi(F.Literals.Numbers.op_div_intervals, 1),
+    F.Expressions.Divide: _Multi(F.Literals.Numbers.op_div_intervals),
     F.Expressions.Power: _Multi(F.Literals.Numbers.op_pow_intervals),
     F.Expressions.Sqrt: _Multi(F.Literals.Numbers.op_sqrt),
     F.Expressions.Round: _Multi(F.Literals.Numbers.op_round),
@@ -65,12 +54,14 @@ _CanonicalExpressions: dict[type[fabll.NodeT], _Multi] = {
     F.Expressions.Log: _Multi(
         F.Literals.Numbers.op_log,
     ),
+    F.Expressions.And: _Multi(F.Literals.Booleans.op_and, True),
     F.Expressions.Or: _Multi(F.Literals.Booleans.op_or, False),
+    F.Expressions.Xor: _Multi(F.Literals.Booleans.op_xor),
     F.Expressions.Not: _Multi(F.Literals.Booleans.op_not),
     F.Expressions.Intersection: _Multi(F.Literals.is_literal.op_intersect_intervals),
-    F.Expressions.Union: _Multi(F.Literals.is_literal.op_union_intervals, 1),
-    F.Expressions.LessThan: _Multi(F.Literals.Numbers.op_mul_intervals, 1),
-    F.Expressions.GreaterThan: _Multi(F.Literals.Numbers.op_mul_intervals, 1),
+    F.Expressions.Union: _Multi(F.Literals.is_literal.op_union_intervals),
+    F.Expressions.LessThan: _Multi(F.Literals.Numbers.op_mul_intervals),
+    F.Expressions.GreaterThan: _Multi(F.Literals.Numbers.op_mul_intervals),
     F.Expressions.Floor: _Multi(F.Literals.Numbers.op_floor),
     F.Expressions.Ceil: _Multi(F.Literals.Numbers.op_ceil),
     F.Expressions.Min: _Multi(F.Literals.Numbers.min_elem),

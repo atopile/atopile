@@ -2533,6 +2533,19 @@ class TestNumericSet:
         assert intervals[0].get_min_value() == -3.6
         assert intervals[0].get_max_value() == 2.5
 
+    def test_op_subtract_intervals2(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+        numeric_set_1.setup_from_values(values=[(0, 10)])
+        numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+        numeric_set_2.setup_from_values(values=[(10, 20)])
+        result = numeric_set_1.op_subtract(g=g, tg=tg, other=numeric_set_2)
+        intervals = result.get_intervals()
+        assert len(intervals) == 1
+        assert intervals[0].get_min_value() == -20
+        assert intervals[0].get_max_value() == 0
+
     def test_op_multiply(self):
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
@@ -5654,18 +5667,20 @@ class Booleans(fabll.Node):
 
     def op_and(
         self,
-        other: "Booleans",
-        *,
+        *others: "Booleans",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> "Booleans":
         """Logical AND of all combinations of values from both sets."""
         g = g or self.g
         tg = tg or self.tg
-        result = set()
-        for v1 in self.get_values():
-            for v2 in other.get_values():
-                result.add(v1 and v2)
+        result: list[bool] = []
+        if all(True in other.get_values() for other in others):
+            result.append(True)
+        if any(False in other.get_values() for other in others):
+            result.append(False)
+        if any(other.is_empty() for other in others):
+            result = []
         return (
             Booleans.bind_typegraph(tg=tg)
             .create_instance(g=g)
@@ -5674,18 +5689,20 @@ class Booleans(fabll.Node):
 
     def op_or(
         self,
-        other: "Booleans",
-        *,
+        *others: "Booleans",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> "Booleans":
         """Logical OR of all combinations of values from both sets."""
         g = g or self.g
         tg = tg or self.tg
-        result = set()
-        for v1 in self.get_values():
-            for v2 in other.get_values():
-                result.add(v1 or v2)
+        result: list[bool] = []
+        if all(False in other.get_values() for other in others):
+            result.append(False)
+        if any(True in other.get_values() for other in others):
+            result.append(True)
+        if any(other.is_empty() for other in others):
+            result = []
         return (
             Booleans.bind_typegraph(tg=tg)
             .create_instance(g=g)
