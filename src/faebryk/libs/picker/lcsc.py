@@ -603,7 +603,10 @@ def attach(
     if check_only:
         # don't attach or create any footprint related things if we're only checking
         # if the pad-lead combo's are valid
-        logger.debug(f"Checking pinmap for {partno} -> {component.get_name()}")
+        logger.debug(
+            f"Checking pinmap for {partno} -> "
+            f"{fabll.Traits(component).get_obj_raw().get_name()}"
+        )
         return
 
     if not component.has_trait(F.Footprints.has_associated_footprint):
@@ -647,7 +650,9 @@ def attach(
             library_name=apart.path.name,
             kicad_footprint_file_path=str(apart.fp_path),
         )
-    logger.debug(f"Attached {partno} to -> {component.get_name()}")
+    logger.debug(
+        f"Attached {partno} to -> {fabll.Traits(component).get_obj_raw().get_name()}"
+    )
 
     # 3D model done by kicad (in fp)
 
@@ -739,7 +744,7 @@ def test_attach_resistor(capsys):
     )
     assert kicad_library_footprint is not None
 
-    assert kicad_library_footprint.kicad_library_id == "UNI_ROYAL_0603WAF1001T5E:R0603"
+    assert kicad_library_footprint.kicad_identifier == "UNI_ROYAL_0603WAF1001T5E:R0603"
     assert kicad_library_footprint.library_name == "UNI_ROYAL_0603WAF1001T5E"
     assert kicad_library_footprint.pad_names == ["2", "1"]
     assert (
@@ -779,7 +784,7 @@ def test_attach_mosfet():
     )
 
     assert (
-        kicad_library_footprint.kicad_library_id
+        kicad_library_footprint.kicad_identifier
         == "Changjiang_Electronics_Tech_2N7002:SOT-23-3_L2.9-W1.3-P1.90-LS2.4-BR"
     )
     assert kicad_library_footprint.library_name == "Changjiang_Electronics_Tech_2N7002"

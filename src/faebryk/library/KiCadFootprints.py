@@ -35,6 +35,8 @@ class has_associated_kicad_pcb_footprint(fabll.Node):
 
     footprint_ = F.Parameters.StringParameter.MakeChild()
     transformer_ = F.Parameters.StringParameter.MakeChild()
+    kicad_identifier_ = F.Parameters.StringParameter.MakeChild()
+    library_name_ = F.Parameters.StringParameter.MakeChild()
 
     @classmethod
     def MakeChild(
@@ -44,7 +46,20 @@ class has_associated_kicad_pcb_footprint(fabll.Node):
         cls._footprint_registry[id(footprint)] = footprint
         cls._transformer_registry[id(transformer)] = transformer
 
+        kicad_identifier = footprint.name
+        library_name = footprint.name.split(":")[0]
+
         out = fabll._ChildField(cls)
+        out.add_dependant(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                [out, cls.kicad_identifier_], kicad_identifier
+            )
+        )
+        out.add_dependant(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                [out, cls.library_name_], library_name
+            )
+        )
         out.add_dependant(
             F.Collections.Pointer.MakeEdge([out, cls.footprint_], [str(id(footprint))])
         )
@@ -64,6 +79,11 @@ class has_associated_kicad_pcb_footprint(fabll.Node):
 
         self.footprint_.get().alias_to_single(value=str(id(footprint)))
         self.transformer_.get().alias_to_single(value=str(id(transformer)))
+
+        kicad_identifier = footprint.name
+        library_name = footprint.name.split(":")[0]
+        self.kicad_identifier_.get().alias_to_single(value=kicad_identifier)
+        self.library_name_.get().alias_to_single(value=library_name)
         return self
 
     def get_footprint(self) -> KiCadPCBFootprint:
@@ -77,6 +97,14 @@ class has_associated_kicad_pcb_footprint(fabll.Node):
             self.transformer_.get().force_extract_literal().get_values()[0]
         )
         return ctypes.cast(transformer_id, ctypes.py_object).value
+
+    @property
+    def kicad_identifier(self) -> str:
+        return self.kicad_identifier_.get().force_extract_literal().get_values()[0]
+
+    @property
+    def library_name(self) -> str:
+        return self.library_name_.get().force_extract_literal().get_values()[0]
 
 
 class has_associated_kicad_pcb_pad(fabll.Node):
@@ -210,17 +238,17 @@ class has_associated_kicad_library_footprint(fabll.Node):
     """
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
-    library_name_ = F.Parameters.StringParameter.MakeChild()
     kicad_footprint_file_path_ = F.Parameters.StringParameter.MakeChild()
     pad_names_ = F.Parameters.StringParameter.MakeChild()
     kicad_identifier_ = F.Parameters.StringParameter.MakeChild()
+    library_name_ = F.Parameters.StringParameter.MakeChild()
 
     @property
     def library_name(self) -> str:
         return self.library_name_.get().force_extract_literal().get_values()[0]
 
     @property
-    def kicad_library_id(self) -> str:
+    def kicad_identifier(self) -> str:
         return self.kicad_identifier_.get().force_extract_literal().get_values()[0]
 
     @property
@@ -362,6 +390,8 @@ def test_has_kicad_pcb_footprint_trait():
 
     assert kicad_pcb_fp.name == footprint.name
     assert kicad_pcb_fp.name == "lcsc:LED0603-RD-YELLOW"
+    assert trait.kicad_identifier == footprint.name == "lcsc:LED0603-RD-YELLOW"
+    assert trait.library_name == footprint.name.split(":")[0] == "lcsc"
 
 
 def test_has_kicad_pcb_pad_trait():
@@ -439,7 +469,7 @@ def test_has_associated_kicad_library_footprint():
         fp_file
     )
 
-    assert gen_kfp_trait.kicad_library_id == "smol_part_lib:LED_0201_0603Metric"
+    assert gen_kfp_trait.kicad_identifier == "smol_part_lib:LED_0201_0603Metric"
     assert gen_kfp_trait.library_name == "smol_part_lib"
     assert gen_kfp_trait.kicad_footprint_file_path == str(FPFILE)
     assert gen_kfp_trait.pad_names == fp_names

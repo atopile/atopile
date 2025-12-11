@@ -538,11 +538,23 @@ class PartLifecycle:
             ).get_footprint()
 
             # At this point, all footprints MUST have a KiCAD identifier
-            fp_id = (
-                f_fp.get_trait(F.KiCadFootprints.has_associated_kicad_pcb_footprint)
-                .get_footprint()
-                .name
+            k_pcb_fp_t = f_fp.try_get_trait(
+                F.KiCadFootprints.has_associated_kicad_pcb_footprint
             )
+            k_lib_file_fp_t = f_fp.try_get_trait(
+                F.KiCadFootprints.has_associated_kicad_library_footprint
+            )
+            if k_pcb_fp_t:
+                fp_id = k_pcb_fp_t.kicad_identifier
+                logger.debug(f"Using KiCAD-PCB footprint identifier: {fp_id}")
+            elif k_lib_file_fp_t:
+                fp_id = k_lib_file_fp_t.kicad_identifier
+                logger.debug(f"Using KiCAD-Library-File footprint identifier: {fp_id}")
+            else:
+                raise ValueError(
+                    f"Footprint {f_fp.get_name()} has no "
+                    "KiCAD-PCB or KiCAD-Library-File footprint associated"
+                )
 
             # This is the component which is being stuck on the board
             address = component.get_full_name()
