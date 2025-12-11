@@ -1,21 +1,21 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
+import faebryk.core.node as fabll
 from atopile.cli.logging_ import LoggingStage
 from atopile.config import BuildType, config
 
 if TYPE_CHECKING:
-    import faebryk.core.node as fabll
     from atopile.compiler.build import Linker
-    from faebryk.core.zig.gen.graph.graph import GraphView
 
 
 def init_app() -> "fabll.Node":
     with LoggingStage(name=f"init-{config.build.name}", description="Initializing app"):
         import faebryk.library._F as F
         from atopile.compiler.build import Linker, build_stdlib
-        from faebryk.core.zig.gen.graph.graph import GraphView
 
-        g_app = GraphView.create()
+        g_app = graph.GraphView.create()
         stdlib_tg, stdlib_registry = build_stdlib(g_app)
         linker = Linker(config, stdlib_registry, stdlib_tg)
 
@@ -23,17 +23,14 @@ def init_app() -> "fabll.Node":
             case BuildType.ATO:
                 return _init_ato_app(g_app, linker)
             case BuildType.PYTHON:
-                raise NotImplementedError(
-                    "Python builds are not supported yet"
-                )  # FIXME
-                app = _init_python_app()
-                app.add(F.is_app_root())
+                app = _init_python_app(g_app, stdlib_tg)
+                fabll.Traits.create_and_add_instance_to(app, F.is_app_root)
                 return app
             case _:
                 raise ValueError(f"Unknown build type: {config.build.build_type}")
 
 
-def _init_python_app() -> "fabll.Node":
+def _init_python_app(g: "graph.GraphView", tg: "fbrk.TypeGraph") -> "fabll.Node":
     """Initialize a specific .py build."""
 
     from atopile import errors
@@ -56,9 +53,15 @@ def _init_python_app() -> "fabll.Node":
         raise errors.UserPythonLoadError(
             f"Build entry {config.build.address} is not a module we can instantiate"
         )
+    # check app_class is direct subclass of fabll.Node
+    if not issubclass(app_class, fabll.Node):
+        raise errors.UserPythonConstructionError(
+            f"Build entry {config.build.address} is not a subclass of fabll.Node"
+        )
+    app_class = cast(type[fabll.Node], app_class)
 
     try:
-        app = app_class()
+        app = app_class.bind_typegraph(tg=tg).create_instance(g=g)
     except Exception as e:
         raise errors.UserPythonConstructionError(
             f"Cannot construct build entry {config.build.address}"
@@ -67,7 +70,7 @@ def _init_python_app() -> "fabll.Node":
     return app
 
 
-def _init_ato_app(g: "GraphView", linker: "Linker") -> "fabll.Node":
+def _init_ato_app(g: "graph.GraphView", linker: "Linker") -> "fabll.Node":
     """Initialize a specific .ato build."""
     import faebryk.core.node as fabll
     from atopile.compiler.build import build_file
