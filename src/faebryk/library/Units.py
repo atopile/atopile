@@ -887,108 +887,162 @@ class Dimensionless(fabll.Node):
     )
 
 
-UnitVectorT = list[tuple[type[fabll.Node], int]]
+UnitVectorT = tuple[tuple[type[fabll.Node], int], ...]
 
 
 class is_unit_expression(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
+    def get_obj(self) -> "UnitExpression":
+        return fabll.Traits(self).get_obj_raw().cast(UnitExpression, check=False)
+
 
 class UnitExpression(fabll.Node):
     """
-    Accessor utility class for dynamic UnitExpressions.
+    Base class for dynamically-constructed unit expression types.
 
-    UnitExpressions are dynamically-constructed unit-like types representing
-    higher-order derivations of static unit types. They are resolved to a standard unit
-    instance at runtime.
+    UnitExpressions represent higher-order derivations of static unit types
+    (e.g., Volt/Second). Concrete types are created via UnitExpressionFactory.
     """
 
-    # TODO: tie to NewUnitExpression fields
     is_unit_expression = fabll.Traits.MakeEdge(is_unit_expression.MakeChild())
-    expr = F.Collections.Pointer.MakeChild()
+    _multiplier_identifier: ClassVar[str] = "multiplier"
+    _offset_identifier: ClassVar[str] = "offset"
 
-    # values are placeholders
-    multiplier = F.Literals.Numbers.MakeChild(
-        min=float("-inf"), max=float("inf"), unit=Dimensionless
-    )
-    offset = F.Literals.Numbers.MakeChild(
-        min=float("-inf"), max=float("inf"), unit=Dimensionless
-    )
+    _unit_vector_arg: ClassVar[tuple[tuple[type[fabll.Node], int], ...]] = ()
+    _multiplier_arg: ClassVar[float] = 1.0
+    _offset_arg: ClassVar[float] = 0.0
+
+    expr = F.Collections.Pointer.MakeChild()
 
     def get_expr(self) -> fabll.Node:
         return self.expr.get().deref()
 
     def get_multiplier(self) -> float:
-        return self.multiplier.get().get_single()
+        multiplier_child = EdgeComposition.get_child_by_identifier(
+            bound_node=self.instance, child_identifier=self._multiplier_identifier
+        )
+        return F.Literals.Numbers.bind_instance(not_none(multiplier_child)).get_single()
 
     def get_offset(self) -> float:
-        return self.offset.get().get_single()
-
-
-def make_unit_expression_type(
-    unit_vector: UnitVectorT, multiplier: float = 1.0, offset: float = 0.0
-) -> type[fabll.Node]:
-    from faebryk.library.Expressions import Multiply, Power
-
-    multiplier_ = multiplier
-    offset_ = offset
-
-    class NewUnitExpression(fabll.Node):
-        is_unit_expression = fabll.Traits.MakeEdge(is_unit_expression.MakeChild())
-
-        expr = F.Collections.Pointer.MakeChild()
-        multiplier = F.Literals.Numbers.MakeChild(
-            min=multiplier_, max=multiplier_, unit=Dimensionless
+        offset_child = EdgeComposition.get_child_by_identifier(
+            bound_node=self.instance, child_identifier=self._offset_identifier
         )
-        offset = F.Literals.Numbers.MakeChild(
-            min=offset_, max=offset_, unit=Dimensionless
-        )
+        return F.Literals.Numbers.bind_instance(not_none(offset_child)).get_single()
 
-        @classmethod
-        def MakeChild(cls) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
-            out = fabll._ChildField(cls)
-            term_fields = []
+    def setup(self, expr_type: type["UnitExpression"]) -> Self:  # type: ignore[invalid-method-override]
+        from faebryk.library.Expressions import Multiply, Power
 
-            for unit, exponent in unit_vector:
-                unit_field = unit.MakeChild()
-                out.add_dependant(unit_field)
+        g = self.g
+        tg = self.tg
 
-                exponent_field = F.Parameters.NumericParameter.MakeChild(
-                    unit=Dimensionless,
-                    domain=F.NumberDomain.Args(negative=True, integer=True),
+        term_nodes: list[fabll.Node] = []
+        for unit_type, exponent in expr_type._unit_vector_arg:
+            unit_instance = unit_type.bind_typegraph(tg=tg).create_instance(g=g)
+
+            exponent_param = (
+                F.Parameters.NumericParameter.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .setup(
+                    units=Dimensionless.bind_typegraph(tg=tg)
+                    .create_instance(g=g)
+                    .is_unit.get()
                 )
-                out.add_dependant(exponent_field)
-
-                # Exponent is a dimensionless integer value for unit exponentiation
-                exponent_lit = F.Literals.Numbers.MakeChild(
-                    min=exponent, max=exponent, unit=Dimensionless
-                )
-                exponent_is_expr = F.Expressions.Is.MakeChild_Constrain(
-                    [[exponent_field], [exponent_lit]]
-                )
-                exponent_is_expr.add_dependant(
-                    exponent_lit, identifier="lit", before=True
-                )
-                out.add_dependant(exponent_is_expr)
-
-                term_field = Power.MakeChild_FromOperands(unit_field, exponent_field)
-                out.add_dependant(term_field)
-                term_fields.append(term_field)
-
-            expr_field = Multiply.MakeChild_FromOperands(*term_fields)
-            out.add_dependant(expr_field)
-            out.add_dependant(
-                F.Collections.Pointer.MakeEdge([out, cls.expr], [expr_field])
             )
 
-            return out
+            exponent_lit = (
+                F.Literals.Numbers.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .setup_from_singleton(
+                    value=float(exponent),
+                    unit=Dimensionless.bind_typegraph(tg=tg)
+                    .create_instance(g=g)
+                    .is_unit.get(),
+                )
+            )
+
+            F.Expressions.Is.bind_typegraph(tg=tg).create_instance(g=g).setup(
+                exponent_param.can_be_operand.get(),
+                exponent_lit.is_literal.get().as_operand.get(),
+                assert_=True,
+            )
+
+            power_node = (
+                Power.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .setup(base=unit_instance, exponent=exponent_param)  # type: ignore[arg-type]
+            )
+            term_nodes.append(power_node)
+
+        multiply_node = Multiply.bind_typegraph(tg=tg).create_instance(g=g)
+        multiply_node.operands.get().append(*term_nodes)
+
+        self.expr.get().point(multiply_node)
+
+        return self
+
+    @classmethod
+    def MakeChild(cls) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
+        from faebryk.library.Expressions import Multiply, Power
+
+        out = fabll._ChildField(cls)
+        term_fields = []
+
+        for unit, exponent in cls._unit_vector_arg:
+            unit_field = unit.MakeChild()
+            out.add_dependant(unit_field)
+
+            exponent_field = F.Parameters.NumericParameter.MakeChild(
+                unit=Dimensionless,
+                domain=F.NumberDomain.Args(negative=True, integer=True),
+            )
+            out.add_dependant(exponent_field)
+
+            exponent_lit = F.Literals.Numbers.MakeChild(
+                min=exponent, max=exponent, unit=Dimensionless
+            )
+            exponent_is_expr = F.Expressions.Is.MakeChild_Constrain(
+                [[exponent_field], [exponent_lit]]
+            )
+            exponent_is_expr.add_dependant(exponent_lit, identifier="lit", before=True)
+            out.add_dependant(exponent_is_expr)
+
+            term_field = Power.MakeChild_FromOperands(unit_field, exponent_field)
+            out.add_dependant(term_field)
+            term_fields.append(term_field)
+
+        expr_field = Multiply.MakeChild_FromOperands(*term_fields)
+        out.add_dependant(expr_field)
+        out.add_dependant(F.Collections.Pointer.MakeEdge([out, cls.expr], [expr_field]))
+
+        return out
+
+
+@once
+def UnitExpressionFactory(
+    unit_vector: UnitVectorT, multiplier: float = 1.0, offset: float = 0.0
+) -> type[UnitExpression]:
+    ConcreteUnitExpr = fabll.Node._copy_type(UnitExpression)
 
     unit_vector_str = "".join(
         f"{unit.__name__}^{exponent}" for unit, exponent in unit_vector
     )
-    NewUnitExpression.__name__ = f"UnitExpression<{unit_vector_str}>"
+    ConcreteUnitExpr.__name__ = f"{UnitExpression.__name__}<{unit_vector_str}>"
 
-    return NewUnitExpression
+    ConcreteUnitExpr._unit_vector_arg = unit_vector
+    ConcreteUnitExpr._multiplier_arg = multiplier
+    ConcreteUnitExpr._offset_arg = offset
+
+    ConcreteUnitExpr._add_field(
+        ConcreteUnitExpr._multiplier_identifier,
+        F.Literals.Numbers.MakeChild_SingleValue(value=multiplier, unit=Dimensionless),
+    )
+    ConcreteUnitExpr._add_field(
+        ConcreteUnitExpr._offset_identifier,
+        F.Literals.Numbers.MakeChild_SingleValue(value=offset, unit=Dimensionless),
+    )
+
+    return ConcreteUnitExpr
 
 
 class _AnonymousUnit(fabll.Node):
@@ -1029,13 +1083,7 @@ class _UnitExpressionResolver:
         elif node.isinstance(F.Expressions.Power):
             return self.visit_power(node.cast(F.Expressions.Power))
         elif node.has_trait(is_unit_expression):
-            return self.visit_unit_expression(
-                node.cast(
-                    UnitExpression,
-                    # originally a NewUnitExpression, but the fields should match
-                    check=False,
-                )
-            )
+            return self.visit_unit_expression(node.cast(UnitExpression, check=False))
 
         raise UnitExpressionError(
             f"Unsupported expression type: {node.get_type_name()}"
@@ -1660,7 +1708,7 @@ class AmpereHour(fabll.Node):
     is_si_prefixed = fabll.Traits.MakeEdge(is_si_prefixed_unit.MakeChild())
 
 
-VoltsPerSecond = make_unit_expression_type([(Volt, 1), (Second, -1)])
+VoltsPerSecond = UnitExpressionFactory(((Volt, 1), (Second, -1)))
 
 
 # Logarithmic units --------------------------------------------------------------------
@@ -1820,11 +1868,9 @@ class TestIsUnit(_TestWithContext):
     def test_assert_commensurable_units_with_derived(self, ctx: BoundUnitsContext):
         """Test that derived units are handled correctly"""
 
-        MetersPerSecondExpr = make_unit_expression_type([(Meter, 1), (Second, -1)])
-        KilometerExpr = make_unit_expression_type([(Meter, 1)], multiplier=1000)
-        KilometersPerHourExpr = make_unit_expression_type(
-            [(KilometerExpr, 1), (Hour, -1)]
-        )
+        MetersPerSecondExpr = UnitExpressionFactory(((Meter, 1), (Second, -1)))
+        KilometerExpr = UnitExpressionFactory(((Meter, 1),), multiplier=1000)
+        KilometersPerHourExpr = UnitExpressionFactory(((KilometerExpr, 1), (Hour, -1)))
 
         class App(fabll.Node):
             meters_per_second_expr = MetersPerSecondExpr.MakeChild()
@@ -1850,9 +1896,8 @@ class TestIsUnit(_TestWithContext):
         ctx: BoundUnitsContext,
     ):
         """Test that incommensurable derived units raise UnitsNotCommensurable"""
-        MetersPerSecondExpr = make_unit_expression_type([(Meter, 1), (Second, -1)])
-
-        MeterSecondsExpr = make_unit_expression_type([(Meter, 1), (Second, 1)])
+        MetersPerSecondExpr = UnitExpressionFactory(((Meter, 1), (Second, -1)))
+        MeterSecondsExpr = UnitExpressionFactory(((Meter, 1), (Second, 1)))
 
         class App(fabll.Node):
             meters_per_second_expr = MetersPerSecondExpr.MakeChild()
@@ -2295,7 +2340,7 @@ class TestUnitExpressions(_TestWithContext):
         celsius = ctx.DegreeCelsius.is_unit.get()
         assert celsius.is_affine
 
-        CelsiusExpr = make_unit_expression_type([(DegreeCelsius, 1)])
+        CelsiusExpr = UnitExpressionFactory(((DegreeCelsius, 1),))
 
         class App(fabll.Node):
             celsius_expr = CelsiusExpr.MakeChild()
@@ -2309,7 +2354,7 @@ class TestUnitExpressions(_TestWithContext):
 
     def test_resolve_basic_unit(self, ctx: BoundUnitsContext):
         """Test that a simple unit expression (Meter^1) resolves correctly."""
-        MeterExpr = make_unit_expression_type([(Meter, 1)])
+        MeterExpr = UnitExpressionFactory(((Meter, 1),))
 
         class App(fabll.Node):
             meter_expr = MeterExpr.MakeChild()
@@ -2325,7 +2370,7 @@ class TestUnitExpressions(_TestWithContext):
 
     def test_resolve_derived_unit(self, ctx: BoundUnitsContext):
         """Test that derived units (Meter * Second^-1) resolve correctly."""
-        VelocityExpr = make_unit_expression_type([(Meter, 1), (Second, -1)])
+        VelocityExpr = UnitExpressionFactory(((Meter, 1), (Second, -1)))
 
         class App(fabll.Node):
             velocity_expr = VelocityExpr.MakeChild()
@@ -2341,7 +2386,7 @@ class TestUnitExpressions(_TestWithContext):
 
     def test_resolve_scaled_unit(self, ctx: BoundUnitsContext):
         """Test that expressions with scaled units resolve with correct multiplier."""
-        KilometerExpr = make_unit_expression_type([(Meter, 1)], multiplier=1000.0)
+        KilometerExpr = UnitExpressionFactory(((Meter, 1),), multiplier=1000.0)
 
         class App(fabll.Node):
             km_expr = KilometerExpr.MakeChild()
@@ -2357,10 +2402,8 @@ class TestUnitExpressions(_TestWithContext):
 
     def test_resolve_compound_prefixed_unit(self, ctx: BoundUnitsContext):
         """Test expressions mixing prefixed and base units (km/h)."""
-        KilometerExpr = make_unit_expression_type([(Meter, 1)], multiplier=1000.0)
-        KilometersPerHourExpr = make_unit_expression_type(
-            [(KilometerExpr, 1), (Hour, -1)]
-        )
+        KilometerExpr = UnitExpressionFactory(((Meter, 1),), multiplier=1000.0)
+        KilometersPerHourExpr = UnitExpressionFactory(((KilometerExpr, 1), (Hour, -1)))
 
         class App(fabll.Node):
             kmh_expr = KilometersPerHourExpr.MakeChild()
@@ -2412,7 +2455,7 @@ class TestUnitExpressions(_TestWithContext):
 
     def test_unit_expression_multiplier(self, ctx: BoundUnitsContext):
         """Test that multiplier on UnitExpression is correctly applied."""
-        ScaledMeterExpr = make_unit_expression_type([(Meter, 1)], multiplier=1000.0)
+        ScaledMeterExpr = UnitExpressionFactory(((Meter, 1),), multiplier=1000.0)
 
         class App(fabll.Node):
             scaled_expr = ScaledMeterExpr.MakeChild()
@@ -2426,7 +2469,7 @@ class TestUnitExpressions(_TestWithContext):
 
     def test_resolve_unit_expression_with_offset_raises(self, ctx: BoundUnitsContext):
         """Test that UnitExpression with non-zero offset raises error."""
-        OffsetExpr = make_unit_expression_type([(Meter, 1)], offset=10.0)
+        OffsetExpr = UnitExpressionFactory(((Meter, 1),), offset=10.0)
 
         class App(fabll.Node):
             offset_expr = OffsetExpr.MakeChild()
@@ -2462,7 +2505,7 @@ class TestUnitExpressions(_TestWithContext):
 
     def test_resolve_dimensionless_expression(self, ctx: BoundUnitsContext):
         """Test that dimensionless results (e.g., Meter / Meter) are handled."""
-        MeterOverMeterExpr = make_unit_expression_type([(Meter, 1), (Meter, -1)])
+        MeterOverMeterExpr = UnitExpressionFactory(((Meter, 1), (Meter, -1)))
 
         class App(fabll.Node):
             dimensionless_expr = MeterOverMeterExpr.MakeChild()
