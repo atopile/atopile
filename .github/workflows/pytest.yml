@@ -49,42 +49,9 @@ jobs:
         continue-on-error: true
         # FIXME timeout
         run: |
-          # Create minimal output plugin for CI - only prints start/result timestamps
-          cat > minimal_ci_output.py << 'PLUGIN'
-          import sys
-          import datetime
-
-          # Capture original stderr to write our output there (avoid pytest capture)
-          _original_stderr = sys.stderr
-
-          def pytest_configure(config):
-              # Disable default terminal reporter to suppress all other output
-              terminal = config.pluginmanager.get_plugin("terminalreporter")
-              if terminal:
-                  config.pluginmanager.unregister(terminal)
-
-          def pytest_runtest_logstart(nodeid, location):
-              ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-              _original_stderr.write(f"{ts}: {nodeid}: Start\n")
-              _original_stderr.flush()
-
-          def pytest_runtest_logreport(report):
-              if report.when == "call":
-                  ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                  _original_stderr.write(f"{ts}: {report.nodeid}: {report.outcome.upper()}\n")
-                  _original_stderr.flush()
-              elif report.when == "setup" and report.failed:
-                  ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                  _original_stderr.write(f"{ts}: {report.nodeid}: ERROR\n")
-                  _original_stderr.flush()
-          PLUGIN
-
-          # Add current directory to PYTHONPATH so uv can find the plugin
-          export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
-
           uv run \
             pytest \
-            -p minimal_ci_output \
+            -p test.ci_minimal_output \
             --capture=fd \
             -m "not not_in_ci and not slow and not regression" \
             --timeout=900 \
@@ -100,6 +67,7 @@ jobs:
           sys.exit(1 if failures or errors else 0)
           "
         env:
+          PYTHONPATH: .
           GH_TOKEN: ${{ github.token }}
           COLUMNS: 150 # rich console width will be pulled from this
 
