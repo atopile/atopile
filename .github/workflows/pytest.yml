@@ -36,13 +36,13 @@ jobs:
         with:
           python-version-file: "pyproject.toml"
 
-      - name: "Setup dependencies"
+      - name: "Install dependencies"
         run: |
-          uv sync --dev --editable --frozen
+          uv sync --dev --no-install-project --frozen
 
-      - name: "Compile"
+      - name: "Compile & build package"
         run: |
-          uv run --dev --editable --frozen ato dev compile
+          uv pip install --no-deps .
 
       - name: Run pytest
         id: pytest
@@ -82,7 +82,7 @@ jobs:
           # Add current directory to PYTHONPATH so uv can find the plugin
           export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 
-          uv run --dev --editable --frozen \
+          uv run \
             pytest \
             -p minimal_ci_output \
             --capture=fd \
