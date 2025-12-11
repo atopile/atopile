@@ -64,6 +64,9 @@ jobs:
                   print(f"{ts}: {report.nodeid}: ERROR", flush=True)
           PLUGIN
 
+          # Add current directory to PYTHONPATH so uv can find the plugin
+          export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
+
           uv run --dev --no-editable --frozen \
             --with pytest-github-actions-annotate-failures \
             pytest \
