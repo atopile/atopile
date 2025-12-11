@@ -1057,9 +1057,6 @@ def test_compact_repr():
     3. After exhausting A-Z, a-z, α-ω, it wraps to A₁, B₁, etc.
     """
 
-    # TODO fails because lit_suffixes are not expected
-    # either run with no_lit_suffix=True or change the expected output
-
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     from faebryk.library.Expressions import Add, And, GreaterOrEqual, Multiply, Not
@@ -1111,14 +1108,18 @@ def test_compact_repr():
 
     # Get expression repr
     expr_po = expr.as_parameter_operatable.force_get()
-    exprstr = expr_po.compact_repr(context)
+    exprstr = expr_po.compact_repr(context, no_lit_suffix=True)
     assert exprstr == "((A + B) + 5.0V) * 10.0"
+    exprstr_w_lit_suffix = expr_po.compact_repr(context)
+    assert exprstr_w_lit_suffix == "((A{S|{0.0..∞}V} + B{S|{0.0..∞}V}) + 5.0V) * 10.0"
 
     # Test p2 + p1 (order matters in repr context - p2 was already assigned 'B')
     expr2 = Add.c(p2_op, p1_op)
     expr2_po = expr2.as_parameter_operatable.force_get()
-    expr2str = expr2_po.compact_repr(context)
+    expr2str = expr2_po.compact_repr(context, no_lit_suffix=True)
     assert expr2str == "B + A"
+    expr2str_w_lit_suffix = expr2_po.compact_repr(context)
+    assert expr2str_w_lit_suffix == "B{S|{0.0..∞}V} + A{S|{0.0..∞}V}"
 
     # Create a boolean parameter (p3 will be 'C')
     p3 = BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
@@ -1127,8 +1128,10 @@ def test_compact_repr():
     # Create Not(p3)
     expr3 = Not.c(p3_op)
     expr3_po = expr3.as_parameter_operatable.force_get()
-    expr3str = expr3_po.compact_repr(context)
+    expr3str = expr3_po.compact_repr(context, no_lit_suffix=True)
     assert expr3str == "¬C"
+    expr3str_w_lit_suffix = expr3_po.compact_repr(context)
+    assert expr3str_w_lit_suffix == "¬C"
 
     # Create 10 V literal for comparison
     ten_volt = literals.create_numbers_from_singleton(value=10.0, unit=volt_unit)
@@ -1140,8 +1143,13 @@ def test_compact_repr():
     # Create And(Not(p3), expr >= 10V)
     expr4 = And.c(expr3, ge_expr)
     expr4_po = expr4.as_parameter_operatable.force_get()
-    expr4str = expr4_po.compact_repr(context)
+    expr4str = expr4_po.compact_repr(context, no_lit_suffix=True)
     assert expr4str == "¬C ∧ ((((A + B) + 5.0V) * 10.0) ≥ 10.0V)"
+    expr4str_w_lit_suffix = expr4_po.compact_repr(context)
+    assert (
+        expr4str_w_lit_suffix
+        == "¬C ∧ ((((A{S|{0.0..∞}V} + B{S|{0.0..∞}V}) + 5.0V) * 10.0) ≥ 10.0V)"
+    )
 
     # Helper to create dimensionless numeric parameters
     def make_param():
@@ -1163,13 +1171,17 @@ def test_compact_repr():
 
     # Next parameter should be 'Z'
     pZ = make_param()
-    pZ_repr = pZ.is_parameter.get().compact_repr(context)
+    pZ_repr = pZ.is_parameter.get().compact_repr(context, no_lit_suffix=True)
     assert pZ_repr == "Z"
+    pZ_repr_w_lit_suffix = pZ.is_parameter.get().compact_repr(context)
+    assert pZ_repr_w_lit_suffix == "Z{S|{0.0..∞}}"
 
     # Next should wrap to lowercase 'a'
     pa = make_param()
-    pa_repr = pa.is_parameter.get().compact_repr(context)
+    pa_repr = pa.is_parameter.get().compact_repr(context, no_lit_suffix=True)
     assert pa_repr == "a"
+    pa_repr_w_lit_suffix = pa.is_parameter.get().compact_repr(context)
+    assert pa_repr_w_lit_suffix == "a{S|{0.0..∞}}"
 
     # Create parameters b through z (ord("z") - ord("a") = 25)
     manyps2 = times(ord("z") - ord("a"), make_param)
@@ -1181,12 +1193,16 @@ def test_compact_repr():
 
     # Next should be Greek alpha
     palpha = make_param()
-    palpha_repr = palpha.is_parameter.get().compact_repr(context)
+    palpha_repr = palpha.is_parameter.get().compact_repr(context, no_lit_suffix=True)
     assert palpha_repr == "α"
+    palpha_repr_w_lit_suffix = palpha.is_parameter.get().compact_repr(context)
+    assert palpha_repr_w_lit_suffix == "α{S|{0.0..∞}}"
 
     pbeta = make_param()
-    pbeta_repr = pbeta.is_parameter.get().compact_repr(context)
+    pbeta_repr = pbeta.is_parameter.get().compact_repr(context, no_lit_suffix=True)
     assert pbeta_repr == "β"
+    pbeta_repr_w_lit_suffix = pbeta.is_parameter.get().compact_repr(context)
+    assert pbeta_repr_w_lit_suffix == "β{S|{0.0..∞}}"
 
     # Create parameters γ through ω (ord("ω") - ord("β") = 23)
     manyps3 = times(ord("ω") - ord("β"), make_param)
@@ -1194,12 +1210,14 @@ def test_compact_repr():
         ops = [p.can_be_operand.get() for p in manyps3]
         sum_expr3 = Add.c(*ops)
         sum_expr3_po = sum_expr3.as_parameter_operatable.force_get()
-        sum_expr3_po.compact_repr(context)
+        sum_expr3_po.compact_repr(context, no_lit_suffix=True)
 
     # After exhausting all alphabets, should wrap with subscript A₁
     pAA = make_param()
-    pAA_repr = pAA.is_parameter.get().compact_repr(context)
+    pAA_repr = pAA.is_parameter.get().compact_repr(context, no_lit_suffix=True)
     assert pAA_repr == "A₁"
+    pAA_repr_w_lit_suffix = pAA.is_parameter.get().compact_repr(context)
+    assert pAA_repr_w_lit_suffix == "A₁{S|{0.0..∞}}"
 
 
 @pytest.mark.xfail(reason="TODO is_congruent_to not implemeneted yet")

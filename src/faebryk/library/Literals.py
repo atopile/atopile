@@ -397,6 +397,8 @@ class Strings(fabll.Node):
     def is_subset_of(
         self,
         other: "Strings",
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> bool:
         return set(self.get_values()) <= set(other.get_values())
 

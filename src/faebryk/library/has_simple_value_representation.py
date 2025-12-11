@@ -143,12 +143,12 @@ class has_simple_value_representation(fabll.Node):
                 )
             )
             if spec.unit is not None:
-                # TODO: Fix units
-                print(spec.unit.get_full_name())
+                spec_unit = spec.unit.MakeChild()
+                out.add_dependant(spec_unit)
                 out.add_dependant(
                     F.Collections.Pointer.MakeEdge(
                         [out, cls.unit_],
-                        [spec.unit.get_full_name()],
+                        [spec_unit, "is_unit"],
                     )
                 )
 
@@ -228,16 +228,16 @@ class has_simple_value_representation(fabll.Node):
     @classmethod
     def MakeChild(cls, *specs: Spec):
         out = fabll._ChildField(cls)
-        # FIXME trips solver
-        # for spec in specs:
-        #    spec_node = cls.SpecNode.MakeChild(spec)
-        #    out.add_dependant(spec_node)
-        #    out.add_dependant(
-        #        F.Collections.PointerSet.MakeEdge(
-        #            [out, cls.specs_set_],
-        #            [spec_node],
-        #        )
-        #    )
+        for spec in specs:
+            spec_node = cls.SpecNode.MakeChild(spec)
+            # spec_node = F.Parameters.StringParameter.MakeChild()
+            out.add_dependant(spec_node)
+            out.add_dependant(
+                F.Collections.PointerSet.MakeEdge(
+                    [out, cls.specs_set_],
+                    [spec_node],
+                )
+            )
         return out
 
     def get_value(self) -> str:
@@ -302,7 +302,7 @@ def test_repr_chain_basic():
     )
 
     val = m._simple_repr.get().get_value()
-    assert val == "TM 15.0V ±33% 5.0A P2 10.0V P3"
+    assert val == "TM {10.0..20.0}V 5.0A P2 10.0V P3"
 
 
 def test_repr_chain_non_number():
