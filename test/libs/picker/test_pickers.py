@@ -268,15 +268,10 @@ def test_pick_explicit_modules():
             )
             return out
 
-    # TODO: simplify
-    class MetaApp(fabll.Node):
-        app = App.MakeChild()
-
-    meta_app = MetaApp.bind_typegraph(tg=tg).create_instance(g=g)
-
-    tree = get_pick_tree(meta_app)
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    tree = get_pick_tree(app)
     pick_topologically(tree, solver)
-    assert meta_app.app.get().r1.get().has_trait(F.has_part_picked)
+    assert app.r1.get().has_trait(F.has_part_picked)
 
 
 @pytest.mark.usefixtures("setup_project_config")
