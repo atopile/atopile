@@ -94,7 +94,6 @@ def test_pick_module(case: "ComponentTestCase"):
 def test_type_pick():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
-    E = BoundExpressions(g=g, tg=tg)
     module = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
 
     fabll.Traits.create_and_add_instance_to(module, F.is_pickable)
@@ -209,10 +208,6 @@ def test_check_missing_picks_no_footprint_no_picker(caplog):
         r2 = F.Resistor.MakeChild()
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
-
-    # fabll.Traits.create_and_add_instance_to(app, F.has_part_picked)
-    # fabll.Traits.
-    print("is pickable", app.r1.get().has_trait(F.is_pickable_by_type))
 
     # Optionally set log level to capture DEBUG messages
     with caplog.at_level(logging.DEBUG):
@@ -350,10 +345,14 @@ def test_pick_resistor_by_params():
 
 @pytest.mark.usefixtures("setup_project_config")
 def test_no_pick_inherit_remove():
-    class _(F.Capacitor):
-        no_pick: F.has_part_removed
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
 
-    module = _()
+    class _(fabll.Node):
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        _has_part_removed = fabll.Traits.MakeEdge(F.has_part_removed.MakeChild())
+
+    module = _.bind_typegraph(tg=tg).create_instance(g=g)
 
     pick_part_recursively(module, DefaultSolver())
 
@@ -363,25 +362,41 @@ def test_no_pick_inherit_remove():
 
 @pytest.mark.usefixtures("setup_project_config")
 def test_skip_self_pick():
-    # TODO: this test is not working
-    class _CapInherit(F.Capacitor):
-        pickable = None  # type: ignore
-        inner: F.Capacitor
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
 
-    module = _CapInherit()
+    class _CapInherit(fabll.Node):
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        inner = F.Capacitor.MakeChild()
+
+    module = _CapInherit.bind_typegraph(tg=tg).create_instance(g=g)
 
     pick_part_recursively(module, DefaultSolver())
 
     assert not module.has_trait(F.has_part_picked)
-    assert module.inner.has_trait(F.has_part_picked)
+    assert module.inner.get().has_trait(F.has_part_picked)
 
 
+@pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.xfail(reason="TODO: add support for diodes")
 def test_pick_led_by_colour():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions(g=g, tg=tg)
+
     color = F.LED.Color.YELLOW
-    led = F.LED()
-    led.color.constrain_subset(color)
-    led.current.alias_is(fabll.Range.from_center_rel(10 * P.milliamp, 0.1))
+    led = F.LED.bind_typegraph(tg=tg).create_instance(g=g)
+
+    E.is_subset(
+        led.color.get().can_be_operand.get(),
+        E.lit_op_enum(color),
+        assert_=True,
+    )
+    E.is_(
+        led.diode.get().current.get().can_be_operand.get(),
+        E.lit_op_range_from_center_rel((10, E.U.mA), 0.1),
+        assert_=True,
+    )
 
     solver = DefaultSolver()
     pick_part_recursively(led, solver)
@@ -396,37 +411,70 @@ def test_pick_led_by_colour():
 @pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.xfail(reason="TODO: add support for diodes")
 def test_reject_diode_for_led():
-    led = F.LED()
-    led.color.constrain_subset(F.LED.Color.YELLOW)
-    led.current.alias_is(fabll.Range.from_center_rel(10 * P.milliamp, 0.1))
+    from faebryk.libs.picker.picker import get_pick_tree
 
-    diode = F.Diode()
-    diode.current.alias_is(fabll.Range.from_center_rel(10 * P.milliamp, 0.1))
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions(g=g, tg=tg)
+
+    led = F.LED.bind_typegraph(tg=tg).create_instance(g=g)
+    E.is_subset(
+        led.color.get().can_be_operand.get(),
+        E.lit_op_enum(F.LED.Color.YELLOW),
+        assert_=True,
+    )
+    E.is_(
+        led.diode.get().current.get().can_be_operand.get(),
+        E.lit_op_range_from_center_rel((10, E.U.mA), 0.1),
+        assert_=True,
+    )
+
+    diode = F.Diode.bind_typegraph(tg=tg).create_instance(g=g)
+    E.is_(
+        diode.current.get().can_be_operand.get(),
+        E.lit_op_range_from_center_rel((10, E.U.mA), 0.1),
+        assert_=True,
+    )
 
     solver = DefaultSolver()
-    candidates = get_candidates(diode.get_tree(types=F.Diode), solver)
+    diode_tree = get_pick_tree(diode)
+    diode_pickable = next(iter(diode_tree.keys()))
+    candidates = get_candidates(diode_tree, solver)
     with pytest.raises(NotCompatibleException):
-        check_and_attach_candidates([(led, c) for c in candidates[diode]], solver)
+        check_and_attach_candidates(
+            [(led, c) for c in candidates[diode_pickable]], solver
+        )
 
 
 @pytest.mark.usefixtures("setup_project_config")
 def test_pick_error_group():
-    root = fabll.Module()
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions(g=g, tg=tg)
+
+    class App(fabll.Node):
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        c1 = F.Capacitor.MakeChild()
+        c2 = F.Capacitor.MakeChild()
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Good luck finding a 10 gigafarad capacitor!
-    c1 = F.Capacitor()
-    c1.capacitance.alias_is(fabll.Range.from_center_rel(10 * P.GF, 0.1))
-
-    c2 = F.Capacitor()
-    c2.capacitance.alias_is(fabll.Range.from_center_rel(20 * P.GF, 0.1))
-
-    root.add(c1)
-    root.add(c2)
+    E.is_(
+        app.c1.get().capacitance.get().can_be_operand.get(),
+        E.lit_op_range_from_center_rel((10, E.U.GF), 0.1),
+        assert_=True,
+    )
+    E.is_(
+        app.c2.get().capacitance.get().can_be_operand.get(),
+        E.lit_op_range_from_center_rel((20, E.U.GF), 0.1),
+        assert_=True,
+    )
 
     solver = DefaultSolver()
 
     with pytest.raises(ExceptionGroup) as ex:
-        pick_part_recursively(root, solver)
+        pick_part_recursively(app, solver)
 
     assert len(ex.value.exceptions) == 1
     assert isinstance(ex.value.exceptions[0], PickError)
@@ -461,11 +509,22 @@ def test_pick_dependency_simple():
 @pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.slow
 def test_pick_dependency_advanced_1():
-    rdiv = F.ResistorVoltageDivider()
-    rdiv.total_resistance.constrain_subset(
-        fabll.Range.from_center_rel(100 * P.kohm, 0.1)
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions(g=g, tg=tg)
+
+    rdiv = F.ResistorVoltageDivider.bind_typegraph(tg=tg).create_instance(g=g)
+
+    E.is_subset(
+        rdiv.total_resistance.get().can_be_operand.get(),
+        E.lit_op_range_from_center_rel((100, E.U.kOhm), 0.1),
+        assert_=True,
     )
-    rdiv.ratio.constrain_subset(fabll.Range.from_center_rel(0.1, 0.2))
+    E.is_subset(
+        rdiv.ratio.get().can_be_operand.get(),
+        E.lit_op_range_from_center_rel((0.1, E.U.dl), 0.2),
+        assert_=True,
+    )
 
     solver = DefaultSolver()
     pick_part_recursively(rdiv, solver)
@@ -474,11 +533,27 @@ def test_pick_dependency_advanced_1():
 @pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.slow
 def test_pick_dependency_advanced_2():
-    rdiv = F.ResistorVoltageDivider()
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions(g=g, tg=tg)
 
-    rdiv.v_in.alias_is(fabll.Range.from_center_rel(10 * P.V, 0.1))
-    rdiv.v_out.constrain_subset(fabll.Range(3 * P.V, 3.2 * P.V))
-    rdiv.max_current.constrain_subset(fabll.Range(1 * P.mA, 3 * P.mA))
+    rdiv = F.ResistorVoltageDivider.bind_typegraph(tg=tg).create_instance(g=g)
+
+    E.is_(
+        rdiv.v_in.get().can_be_operand.get(),
+        E.lit_op_range_from_center_rel((10, E.U.V), 0.1),
+        assert_=True,
+    )
+    E.is_subset(
+        rdiv.v_out.get().can_be_operand.get(),
+        E.lit_op_range(((3, E.U.V), (3.2, E.U.V))),
+        assert_=True,
+    )
+    E.is_subset(
+        rdiv.max_current.get().can_be_operand.get(),
+        E.lit_op_range(((1, E.U.mA), (3, E.U.mA))),
+        assert_=True,
+    )
 
     solver = DefaultSolver()
     pick_part_recursively(rdiv, solver)
@@ -487,11 +562,27 @@ def test_pick_dependency_advanced_2():
 @pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.slow
 def test_pick_dependency_div_negative():
-    rdiv = F.ResistorVoltageDivider()
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions(g=g, tg=tg)
 
-    rdiv.v_in.alias_is(fabll.Range(-10 * P.V, -9 * P.V))
-    rdiv.v_out.constrain_subset(fabll.Range(-3.2 * P.V, -3 * P.V))
-    rdiv.max_current.constrain_subset(fabll.Range(1 * P.mA, 3 * P.mA))
+    rdiv = F.ResistorVoltageDivider.bind_typegraph(tg=tg).create_instance(g=g)
+
+    E.is_(
+        rdiv.v_in.get().can_be_operand.get(),
+        E.lit_op_range(((-10, E.U.V), (-9, E.U.V))),
+        assert_=True,
+    )
+    E.is_subset(
+        rdiv.v_out.get().can_be_operand.get(),
+        E.lit_op_range(((-3.2, E.U.V), (-3, E.U.V))),
+        assert_=True,
+    )
+    E.is_subset(
+        rdiv.max_current.get().can_be_operand.get(),
+        E.lit_op_range(((1, E.U.mA), (3, E.U.mA))),
+        assert_=True,
+    )
 
     solver = DefaultSolver()
     pick_part_recursively(rdiv, solver)
@@ -538,25 +629,37 @@ def test_null_solver():
 def test_pick_voltage_divider_complex():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions(g=g, tg=tg)
 
     class App(fabll.Node):
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         supply = F.ElectricPower.MakeChild()
         rdiv = F.ResistorVoltageDivider.MakeChild()
         adc_input = F.ElectricSignal.MakeChild()
 
-        def __preinit__(self):
-            self.supply.connect(self.rdiv.power)
-            self.rdiv.output.connect(self.adc_input)
-
-            # param
-            self.supply.voltage.alias_is(fabll.Range(9.9 * P.V, 10.1 * P.V))
-            self.adc_input.reference.voltage.constrain_subset(
-                fabll.Range(3.0 * P.V, 3.2 * P.V)
-            )
-            self.rdiv.max_current.constrain_subset(fabll.Range(1 * P.mA, 2 * P.mA))
-
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
-    F.is_bus_parameter.resolve_bus_parameters(app.tg)
+
+    # Connect interfaces
+    app.supply.get()._is_interface.get().connect_to(app.rdiv.get().power.get())
+    app.rdiv.get().output.get()._is_interface.get().connect_to(app.adc_input.get())
+
+    # Set constraints
+    E.is_(
+        app.supply.get().voltage.get().can_be_operand.get(),
+        E.lit_op_range(((9.9, E.U.V), (10.1, E.U.V))),
+        assert_=True,
+    )
+    E.is_subset(
+        app.adc_input.get().reference.get().voltage.get().can_be_operand.get(),
+        E.lit_op_range(((3.0, E.U.V), (3.2, E.U.V))),
+        assert_=True,
+    )
+    E.is_subset(
+        app.rdiv.get().max_current.get().can_be_operand.get(),
+        E.lit_op_range(((1, E.U.mA), (2, E.U.mA))),
+        assert_=True,
+    )
+
     solver = DefaultSolver()
 
     solver.simplify_symbolically(app)

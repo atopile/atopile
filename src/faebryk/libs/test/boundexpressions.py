@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 from enum import Enum
+from typing import cast
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.library.Units import UnitExpressionFactory
 
 _Unit = type[fabll.NodeT]
 _Quantity = tuple[float, _Unit]
@@ -94,6 +96,88 @@ class BoundExpressions:
         Ah = F.Units.AmpereHour
         Vps = F.Units.VoltsPerSecond
 
+        # Prefixed units for test convenience
+        mA = UnitExpressionFactory(
+            ((F.Units.Ampere, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["m"],
+        )
+        uA = UnitExpressionFactory(
+            ((F.Units.Ampere, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["u"],
+        )
+        mV = UnitExpressionFactory(
+            ((F.Units.Volt, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["m"],
+        )
+        kOhm = UnitExpressionFactory(
+            ((F.Units.Ohm, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["k"],
+        )
+        MOhm = UnitExpressionFactory(
+            ((F.Units.Ohm, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["M"],
+        )
+        pF = UnitExpressionFactory(
+            ((F.Units.Farad, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["p"],
+        )
+        nF = UnitExpressionFactory(
+            ((F.Units.Farad, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["n"],
+        )
+        uF = UnitExpressionFactory(
+            ((F.Units.Farad, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["u"],
+        )
+        mF = UnitExpressionFactory(
+            ((F.Units.Farad, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["m"],
+        )
+        GF = UnitExpressionFactory(
+            ((F.Units.Farad, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["G"],
+        )
+        uH = UnitExpressionFactory(
+            ((F.Units.Henry, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["u"],
+        )
+        mH = UnitExpressionFactory(
+            ((F.Units.Henry, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["m"],
+        )
+        kHz = UnitExpressionFactory(
+            ((F.Units.Hertz, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["k"],
+        )
+        MHz = UnitExpressionFactory(
+            ((F.Units.Hertz, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["M"],
+        )
+        GHz = UnitExpressionFactory(
+            ((F.Units.Hertz, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["G"],
+        )
+        mW = UnitExpressionFactory(
+            ((F.Units.Watt, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["m"],
+        )
+        kW = UnitExpressionFactory(
+            ((F.Units.Watt, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["k"],
+        )
+        mm = UnitExpressionFactory(
+            ((F.Units.Meter, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["m"],
+        )
+        cm = UnitExpressionFactory(
+            ((F.Units.Meter, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["c"],
+        )
+        km = UnitExpressionFactory(
+            ((F.Units.Meter, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["k"],
+        )
+
         def __init__(self, E: "BoundExpressions") -> None:
             self.E = E
 
@@ -126,6 +210,18 @@ class BoundExpressions:
 
         self.u = self.U(self)
 
+    def _resolve_unit(self, unit: type[fabll.Node]) -> F.Units.is_unit:
+        instance = unit.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+
+        if is_unit_expr := instance.try_get_trait(F.Units.is_unit_expression):
+            is_unit_expr.get_obj().setup(cast(type[F.Units.UnitExpression], unit))
+            resolved = F.Units.resolve_unit_expression(
+                g=self.g, tg=self.tg, expr=instance.instance
+            )
+            return resolved.get_trait(F.Units.is_unit)
+
+        return instance.get_trait(F.Units.is_unit)
+
     def parameter_op(
         self,
         units: "type[fabll.Node] | None" = None,
@@ -133,19 +229,9 @@ class BoundExpressions:
         domain: "F.NumberDomain.Args | None" = None,
         attach_to: "tuple[fabll.Node, str] | None" = None,
     ) -> F.Parameters.can_be_operand:
-        is_unit_node = None
-        if units:
-            is_unit_node = (
-                units.bind_typegraph(tg=self.tg)
-                .create_instance(g=self.g)
-                .get_trait(F.Units.is_unit)
-            )
-        else:
-            is_unit_node = (
-                F.Units.Dimensionless.bind_typegraph(tg=self.tg)
-                .create_instance(g=self.g)
-                .is_unit.get()
-            )
+        is_unit_node = (
+            self._resolve_unit(units) if units else self._resolve_unit(self.U.dl)
+        )
         out = (
             F.Parameters.NumericParameter.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
@@ -382,11 +468,7 @@ class BoundExpressions:
             value = value[0]
         else:
             unit = self.U.dl
-        is_unit = (
-            unit.bind_typegraph(tg=self.tg)
-            .create_instance(g=self.g)
-            .get_trait(F.Units.is_unit)
-        )
+        is_unit = self._resolve_unit(unit)
 
         return (
             (
@@ -418,11 +500,7 @@ class BoundExpressions:
 
     def lit_op_range(self, range: _Range) -> F.Parameters.can_be_operand:
         lower_value, upper_value, lower_unit = self._range_to(range)
-        is_unit = (
-            lower_unit.bind_typegraph(tg=self.tg)
-            .create_instance(g=self.g)
-            .get_trait(F.Units.is_unit)
-        )
+        is_unit = self._resolve_unit(lower_unit)
         out_lit = (
             F.Literals.Numbers.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
@@ -433,12 +511,7 @@ class BoundExpressions:
     def lit_op_ranges(self, *ranges: _Range) -> F.Parameters.can_be_operand:
         ranges_values = [self._range_to(range) for range in ranges]
         assert len(set(range_value[2] for range_value in ranges_values)) == 1
-        is_unit = (
-            ranges_values[0][2]
-            .bind_typegraph(tg=self.tg)
-            .create_instance(g=self.g)
-            .get_trait(F.Units.is_unit)
-        )
+        is_unit = self._resolve_unit(ranges_values[0][2])
         return (
             F.Literals.Numbers.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
@@ -458,12 +531,7 @@ class BoundExpressions:
     def lit_op_range_from_center_rel(
         self, center: _Quantity, rel: float
     ) -> F.Parameters.can_be_operand:
-        is_unit = (
-            center[1]
-            .bind_typegraph(tg=self.tg)
-            .create_instance(g=self.g)
-            .get_trait(F.Units.is_unit)
-        )
+        is_unit = self._resolve_unit(center[1])
         return (
             (
                 F.Literals.Numbers.bind_typegraph(tg=self.tg)
@@ -501,12 +569,7 @@ class BoundExpressions:
     def lit_op_discrete_set(
         self, *values: float, unit: type[fabll.Node] | None = None
     ) -> F.Parameters.can_be_operand:
-        is_unit = (
-            (unit or self.U.dl)
-            .bind_typegraph(tg=self.tg)
-            .create_instance(g=self.g)
-            .is_unit.get()
-        )
+        is_unit = self._resolve_unit(unit or self.U.dl)
         return (
             F.Literals.Numbers.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)

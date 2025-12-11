@@ -32,10 +32,19 @@ class ComponentTestCase[T: fabll.Node]:
             fabll.Traits.create_and_add_instance_to(
                 module, F.has_explicit_part
             ).setup_by_supplier(supplier_partno=self.lcsc_id)
+            fabll.Traits.create_and_add_instance_to(
+                module, F.is_pickable_by_supplier_id
+            ).setup(
+                supplier_part_id=self.lcsc_id,
+                supplier=F.is_pickable_by_supplier_id.Supplier.LCSC,
+            )
         elif self.mfr_mpn:
             fabll.Traits.create_and_add_instance_to(
                 module, F.has_explicit_part
             ).setup_by_mfr(mfr=self.mfr_mpn[0], partno=self.mfr_mpn[1])
+            fabll.Traits.create_and_add_instance_to(
+                module, F.is_pickable_by_part_number
+            ).setup(manufacturer=self.mfr_mpn[0], partno=self.mfr_mpn[1])
 
         return module
 
