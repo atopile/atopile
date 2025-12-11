@@ -1012,27 +1012,33 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
         Sin.c(lit_op_range(0.0, 1.0)),
     )
 )
-# --------------------------------------------------------------------------------------
-@given(st_exprs.trees)
-@settings(
-    deadline=None,  # timedelta(milliseconds=1000),
-    max_examples=10000,
-    report_multiple_bugs=False,
-    phases=(
-        # Phase.reuse,
-        Phase.explicit,
-        Phase.target,
-        Phase.shrink,
-        Phase.explain,
-    ),
-    suppress_health_check=[
-        HealthCheck.data_too_large,
-        HealthCheck.too_slow,
-        HealthCheck.filter_too_much,
-        HealthCheck.large_base_example,
-    ],
-    print_blob=False,
+@example(
+    expr=Add.c(
+        Sqrt.c(Sqrt.c(lit_op_single(1.0))),
+        Sin.c(Sqrt.c(lit_op_single(1.0))),
+    )
 )
+# --------------------------------------------------------------------------------------
+# @given(st_exprs.trees)
+# @settings(
+#     deadline=None,  # timedelta(milliseconds=1000),
+#     max_examples=10000,
+#     report_multiple_bugs=False,
+#     phases=(
+#         # Phase.reuse,
+#         Phase.explicit,
+#         Phase.target,
+#         Phase.shrink,
+#         Phase.explain,
+#     ),
+#     suppress_health_check=[
+#         HealthCheck.data_too_large,
+#         HealthCheck.too_slow,
+#         HealthCheck.filter_too_much,
+#         HealthCheck.large_base_example,
+#     ],
+#     print_blob=False,
+# )
 def test_regression_literal_folding(expr: F.Parameters.can_be_operand):
     # make sure all root operands are copied over to test graph
     app = fabll.Node.bind_typegraph(tg=global_tg).create_instance(g=global_g)
@@ -1426,6 +1432,10 @@ if __name__ == "__main__":
     # expr = Ceil.c(Ceil.c(lit_op_range(171863143702.99387, 881769170316.1082)))
     # E = BoundExpressions(g=global_g, tg=global_tg)
     # expr = Add.c(lit(1.0), E.is_(E.parameter_op(E.U.dl), lit(1.0)))
-    expr = Add.c(lit(1.0), p(1.0))
+    # expr = Add.c(lit(1.0), p(1.0))
+    expr = Add.c(
+        Sqrt.c(Sqrt.c(lit_op_single(1.0))),
+        Sin.c(Sqrt.c(lit_op_single(1.0))),
+    )
     setup_basic_logging()
     typer.run(lambda: test_regression_literal_folding(expr))
