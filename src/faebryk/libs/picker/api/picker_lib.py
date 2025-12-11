@@ -119,8 +119,6 @@ def _prepare_query(
     module_node = module.get_pickable_node()
     check_attachable(module_node)
 
-    query_tg = fbrk.TypeGraph.create(g=module.g)
-
     if trait := module_node.try_get_trait(F.is_pickable_by_part_number):
         return ManufacturerPartParams(
             manufacturer_name=trait.get_manufacturer(),
@@ -144,7 +142,7 @@ def _prepare_query(
             )
             package = (
                 F.Literals.EnumsFactory(BackendPackage)  # type: ignore[arg-type]
-                .bind_typegraph(tg=query_tg)
+                .bind_typegraph(tg=module.tg)
                 .create_instance(g=module.g)
                 .setup(
                     *[

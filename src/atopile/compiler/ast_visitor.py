@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 STDLIB_ALLOWLIST = {
     "Resistor": F.Resistor,
+    "Electrical": F.Electrical,
 }
 
 

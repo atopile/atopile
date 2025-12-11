@@ -10,6 +10,7 @@ from enum import StrEnum
 from pathlib import Path
 from textwrap import dedent
 
+from faebryk.core.graph import InstanceGraphFunctions
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import layout
@@ -254,7 +255,8 @@ def pick_parts(
             "Failed to pick parts for some modules",
             [UserPickError(str(e)) for e in iter_leaf_exceptions(ex)],
         ) from ex
-    save_part_info_to_pcb(app.g, app.tg)
+    logger.debug(InstanceGraphFunctions.render(app.instance, show_traits=True))
+    save_part_info_to_pcb(app)
 
 
 @muster.register(
@@ -263,8 +265,13 @@ def pick_parts(
 def prepare_nets(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
+    logger.info("Preparing nets")
     attach_random_designators(app.tg)
     nets = bind_electricals_to_fbrk_nets(app.tg, app.g)
+    if len(nets) == 0:
+        logger.warning("No nets found")
+    for net in nets:
+        logger.info(f"Net found: {net.get_name()}")
     # We have to re-attach the footprints, and subsequently nets, because the first
     # attachment is typically done before the footprints have been created
     # and therefore many nets won't be re-attached properly. Also, we just created

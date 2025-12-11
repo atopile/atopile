@@ -10,7 +10,7 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.kicad.fileformats import Property
-from faebryk.libs.picker.lcsc import PickedPartLCSC
+from faebryk.libs.picker.lcsc import PickedPart, PickedPartLCSC
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
 from faebryk.libs.util import KeyErrorNotFound
 
@@ -138,24 +138,41 @@ def load_part_info_from_pcb(tg: fbrk.TypeGraph):
                 continue
             param_value = json.loads(value)
             param_value = F.Literals.Numbers.deserialize(param_value)
-            assert isinstance(param, Parameter)
+            assert isinstance(param, F.Parameters.is_parameter)
             param.alias_is(param_value)
 
 
-def save_part_info_to_pcb(g: graph.GraphView, tg: fbrk.TypeGraph):
+def save_part_info_to_pcb(app: fabll.Node):
     """
     Save parameters to footprints (by copying them to descriptive properties).
     """
 
-    nodes = fabll.Traits.get_implementor_objects(F.has_part_picked.bind_typegraph(tg))
+    # TODO FIXME time.sleep() BAD clanker hack to bypass issues with finding instances from the typegraph
+    nodes = [
+        n
+        for n in app.get_children(
+            direct_only=False,
+            types=fabll.Node,
+            include_root=True,
+        )
+        if n.has_trait(F.has_part_picked)
+    ]
+
+    # nodes = fabll.Traits.get_implementor_objects(F.has_part_picked.bind_typegraph(app.tg))
+
+    if len(nodes) == 0:
+        logger.warning("No nodes with part picked found")
+        return
 
     for node in nodes:
-        part = node.get_trait(F.has_part_picked).try_get_part()
+        has_part_picked = node.get_trait(F.has_part_picked)
+        part = has_part_picked.try_get_part()
 
         if part is None:
+            logger.warning(f"No part found for {node.get_name()}")
             continue
 
-        if isinstance(part, PickedPartLCSC):
+        if isinstance(part, PickedPart):
             fabll.Traits.create_and_add_instance_to(
                 node=node, trait=F.SerializableMetadata
             ).setup(key=Properties.lcsc, value=part.lcsc_id)
@@ -163,6 +180,7 @@ def save_part_info_to_pcb(g: graph.GraphView, tg: fbrk.TypeGraph):
         fabll.Traits.create_and_add_instance_to(
             node=node, trait=F.SerializableMetadata
         ).setup(key=Properties.manufacturer, value=part.manufacturer)
+
         fabll.Traits.create_and_add_instance_to(
             node=node, trait=F.SerializableMetadata
         ).setup(key=Properties.partno, value=part.partno)
@@ -192,7 +210,7 @@ def test_save_part_info_to_pcb():
         )
     )
 
-    save_part_info_to_pcb(g, tg)
+    save_part_info_to_pcb(res)
 
     traits = fabll.Traits.get_implementors(F.SerializableMetadata.bind_typegraph(tg))
 
