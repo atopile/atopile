@@ -38,11 +38,11 @@ jobs:
 
       - name: "Setup dependencies"
         run: |
-          uv sync --dev --no-editable --frozen
+          uv sync --dev --editable --frozen
 
       - name: "Compile"
         run: |
-          uv run --dev --no-editable --frozen ato dev compile
+          uv run --dev --editable --frozen ato dev compile
 
       - name: Run pytest
         id: pytest
@@ -82,7 +82,7 @@ jobs:
           # Add current directory to PYTHONPATH so uv can find the plugin
           export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 
-          uv run --dev --no-editable --frozen \
+          uv run --dev --editable --frozen \
             pytest \
             -p minimal_ci_output \
             --capture=fd \
