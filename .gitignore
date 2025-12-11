@@ -204,6 +204,7 @@ examples/**/.cursor/
 examples/**/.github/
 examples/**/.windsurf/
 examples/**/.west/
+examples/**/parts/
 
 # vsce writes this all the time
 # might want to make a CLAUDE.md for the repo at some point
