@@ -180,14 +180,22 @@ def _prepare_query(
 
 
 def _process_candidates(
-    module: fabll.Node, candidates: list[Component]
+    module: F.is_pickable, candidates: list[Component]
 ) -> list[Component]:
     # Filter parts with weird pinmaps
     it = iter(candidates)
     filtered_candidates = []
+    component_node = module.get_pickable_node()
+    module_with_fp = component_node.try_get_trait(F.Footprints.can_attach_to_footprint)
+    if module_with_fp is None:
+        raise PickError(
+            f"Module {component_node.get_full_name(types=True)} does not have "
+            "can_attach_to_footprint trait",
+            component_node,
+        )
     for c in it:
         try:
-            attach(module, c.lcsc_display, check_only=True, get_3d_model=False)
+            attach(module_with_fp, c.lcsc_display, check_only=True, get_3d_model=False)
             filtered_candidates.append(c)
             # If we found one that's ok, just continue since likely enough
             filtered_candidates.extend(it)
@@ -197,10 +205,10 @@ def _process_candidates(
                 raise PickError(
                     (
                         "LCSC has no footprint/symbol for any candidate for "
-                        f"`{module}`. Loosen your selection criteria or try another "
-                        "part which has an LCSC footprint and symbol."
+                        f"`{component_node}`. Loosen your selection criteria or try "
+                        "another part which has an LCSC footprint and symbol."
                     ),
-                    module,
+                    component_node,
                 ) from ex
         except LCSC_PinmapException:
             # if all filtered by pinmap something is fishy
@@ -267,7 +275,11 @@ def _find_modules(
                 raise
         raise e
 
-    out = {m: _process_candidates(m, r) for m, r in _map_response(results).items()}
+    out = {
+        m: _process_candidates(module=m, candidates=r)
+        for m, r in _map_response(results).items()
+    }
+
     timings.add("process candidates")
     return out
 

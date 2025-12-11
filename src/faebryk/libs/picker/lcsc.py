@@ -533,7 +533,7 @@ def check_attachable(component: fabll.Node):
 
 
 def attach(
-    component: fabll.Node,
+    component: F.Footprints.can_attach_to_footprint,
     partno: str,
     get_3d_model: bool = True,
     check_only: bool = False,
@@ -566,88 +566,88 @@ def attach(
                 f"Part `{ex.part.path}` is not purely auto-generated. Not overwriting."
             )
 
-    if component.has_trait(F.Footprints.can_attach_to_footprint):
-        # only add footprint if the component is marked
-        assert apart is not None
+    assert apart is not None
 
-        pads_number_name_pairs = [
-            (pin.number.number, pin.name.name)
-            for sym in apart.symbol.kicad_sym.symbols
-            for unit in sym.symbols
-            for pin in unit.pins
-            if pin.number is not None
-        ]
-        # create temp pads from the atopart pad names and numbers to check if their
-        # names match the lead names
-        tmp_pads = [
-            fabll.Traits.create_and_add_instance_to(
-                node=fabll.Node.bind_typegraph(tg=component.tg).create_instance(
-                    g=component.instance.g()
-                ),
-                trait=F.Footprints.is_pad,
-            ).setup(pad_number=number, pad_name=name)
-            for number, name in pads_number_name_pairs
-        ]
+    pads_number_name_pairs = [
+        (pin.number.number, pin.name.name)
+        for sym in apart.symbol.kicad_sym.symbols
+        for unit in sym.symbols
+        for pin in unit.pins
+        if pin.number is not None
+    ]
+    # create temp pads from the atopart pad names and numbers to check if their
+    # names match the lead names
+    tmp_pads = [
+        fabll.Traits.create_and_add_instance_to(
+            node=fabll.Node.bind_typegraph(tg=component.tg).create_instance(
+                g=component.instance.g()
+            ),
+            trait=F.Footprints.is_pad,
+        ).setup(pad_number=number, pad_name=name)
+        for number, name in pads_number_name_pairs
+    ]
 
-        leads = component.get_children(
-            direct_only=False,
-            types=fabll.Node,
-            required_trait=F.Lead.is_lead,
-        )
-        leads_t = [lead.get_trait(F.Lead.is_lead) for lead in leads]
-        # try matching the ato part pad names to the component's leads
+    leads = component.get_children(
+        direct_only=False,
+        types=fabll.Node,
+        required_trait=F.Lead.is_lead,
+    )
+    leads_t = [lead.get_trait(F.Lead.is_lead) for lead in leads]
+    # try matching the ato part pad names to the component's leads
+    try:
+        for lead_t in leads_t:
+            matched_pad = lead_t.find_matching_pad(tmp_pads)
+    except F.Lead.PadMatchException as e:
+        raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
+
+    if check_only:
+        # don't attach or create any footprint related things if we're only checking
+        # if the pad-lead combo's are valid
+        logger.debug(f"Checking pinmap for {partno} -> {component.get_name()}")
+        return
+
+    if not component.has_trait(F.Footprints.has_associated_footprint):
+        # we need to create and add a footprint node to the component if it
+        # doesn't exist yet
+        fp = F.Footprints.GenericFootprint.bind_typegraph_from_instance(
+            instance=component.instance
+        ).create_instance(g=component.instance.g())
+        fp.setup(tmp_pads)
+
+        fabll.Traits.create_and_add_instance_to(
+            node=component, trait=F.Footprints.has_associated_footprint
+        ).setup(fp.is_footprint.get())
+
+        pads_t = fp.get_pads()
         try:
-            for lead_t in leads_t:
-                matched_pad = lead_t.find_matching_pad(tmp_pads)
+            # only attach to leads that don't have associated pads yet
+            for lead_t in [
+                lt for lt in leads_t if not lt.has_trait(F.Lead.has_associated_pads)
+            ]:
+                matched_pad = lead_t.find_matching_pad(pads_t)
+                fabll.Traits.create_and_add_instance_to(
+                    node=lead_t, trait=F.Lead.has_associated_pads
+                ).setup(pad=matched_pad, parent=lead_t)
         except F.Lead.PadMatchException as e:
             raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
 
-        if check_only:
-            # don't attach or create any footprint related things if we're only checking
-            # if the pad-lead combo's are valid
-            return
+    # link footprint to the component
+    footprint = component.get_trait(
+        F.Footprints.has_associated_footprint
+    ).get_footprint()
 
-        if not component.has_trait(F.Footprints.has_associated_footprint):
-            # we need to create and add a footprint node to the component if it
-            # doesn't exist yet
-            fp = F.Footprints.GenericFootprint.bind_typegraph_from_instance(
-                instance=component.instance
-            ).create_instance(g=component.instance.g())
-            fp.setup(tmp_pads)
-
-            fabll.Traits.create_and_add_instance_to(
-                node=component, trait=F.Footprints.has_associated_footprint
-            ).setup(fp.is_footprint.get())
-
-            pads_t = fp.get_pads()
-            try:
-                # only attach to leads that don't have associated pads yet
-                for lead_t in [
-                    lt for lt in leads_t if not lt.has_trait(F.Lead.has_associated_pads)
-                ]:
-                    matched_pad = lead_t.find_matching_pad(pads_t)
-                    fabll.Traits.create_and_add_instance_to(
-                        node=lead_t, trait=F.Lead.has_associated_pads
-                    ).setup(pad=matched_pad, parent=lead_t)
-            except F.Lead.PadMatchException as e:
-                raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
-
-        # link footprint to the component
-        footprint = component.get_trait(
-            F.Footprints.has_associated_footprint
-        ).get_footprint()
-
-        if not footprint.has_trait(
-            F.KiCadFootprints.has_associated_kicad_library_footprint
-        ):
-            # link the kicad library footprint to the fabll footprint
-            fabll.Traits.create_and_add_instance_to(
-                node=footprint,
-                trait=F.KiCadFootprints.has_associated_kicad_library_footprint,
-            ).setup(
-                library_name=apart.path.name,
-                kicad_footprint_file_path=str(apart.fp_path),
-            )
+    if not footprint.has_trait(
+        F.KiCadFootprints.has_associated_kicad_library_footprint
+    ):
+        # link the kicad library footprint to the fabll footprint
+        fabll.Traits.create_and_add_instance_to(
+            node=footprint,
+            trait=F.KiCadFootprints.has_associated_kicad_library_footprint,
+        ).setup(
+            library_name=apart.path.name,
+            kicad_footprint_file_path=str(apart.fp_path),
+        )
+    logger.debug(f"Attached {partno} to -> {component.get_name()}")
 
     # 3D model done by kicad (in fp)
 
@@ -657,7 +657,8 @@ class PickSupplierLCSC(PickSupplier):
 
     def attach(self, module: fabll.Node, part: PickerOption):
         assert isinstance(part.part, PickedPartLCSC)
-        attach(component=module, partno=part.part.lcsc_id)
+        module_with_fp = module.get_trait(F.Footprints.can_attach_to_footprint)
+        attach(component=module_with_fp, partno=part.part.lcsc_id)
 
     def __str__(self) -> str:
         return f"{type(self).__name__}()"
@@ -720,8 +721,8 @@ def test_attach_resistor(capsys):
                 component.instance, show_traits=True, show_pointers=True
             )
         )
-
-    attach(component=component, partno=LCSC_ID)
+    component_with_fp = component.get_trait(F.Footprints.can_attach_to_footprint)
+    attach(component=component_with_fp, partno=LCSC_ID)
 
     associated_footprint = component.try_get_trait(
         F.Footprints.has_associated_footprint
@@ -759,7 +760,8 @@ def test_attach_mosfet():
 
     component = F.MOSFET.bind_typegraph(tg=tg).create_instance(g=g)
 
-    attach(component=component, partno=LCSC_ID)
+    component_with_fp = component.get_trait(F.Footprints.can_attach_to_footprint)
+    attach(component=component_with_fp, partno=LCSC_ID)
 
     associated_footprint = component.try_get_trait(
         F.Footprints.has_associated_footprint
@@ -801,10 +803,11 @@ def test_attach_failure():
 
     component = F.MOSFET.bind_typegraph(tg=tg).create_instance(g=g)
 
+    component_with_fp = component.get_trait(F.Footprints.can_attach_to_footprint)
     with pytest.raises(LCSC_PinmapException):
-        attach(component=component, partno=RESISTOR_LCSC_ID, check_only=True)
+        attach(component=component_with_fp, partno=RESISTOR_LCSC_ID, check_only=True)
 
-    attach(component=component, partno=MOSFET_LCSC_ID, check_only=False)
+    attach(component=component_with_fp, partno=MOSFET_LCSC_ID, check_only=False)
 
     associated_footprint = component.try_get_trait(
         F.Footprints.has_associated_footprint

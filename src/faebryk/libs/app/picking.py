@@ -104,7 +104,14 @@ def load_part_info_from_pcb(tg: fbrk.TypeGraph):
             raise ValueError(f"No part info found for {node.get_name()}")
 
         if lcsc_id:
-            lcsc_attach(node, lcsc_id)
+            module_with_fp = node.try_get_trait(F.Footprints.can_attach_to_footprint)
+            if module_with_fp is None:
+                raise Exception(
+                    f"Module {node.get_full_name(types=True)} does not have "
+                    "can_attach_to_footprint trait",
+                    node,
+                )
+            lcsc_attach(module_with_fp, lcsc_id)
 
         if "Datasheet" in fp_props:
             fabll.Traits.create_and_add_instance_to(
@@ -115,7 +122,8 @@ def load_part_info_from_pcb(tg: fbrk.TypeGraph):
         for key, value in props.items():
             if not key.startswith(Properties.param_prefix):
                 logger.warning(
-                    f"Skipping {key} because it doesn't start with {Properties.param_prefix}"
+                    f"Skipping {key} because it doesn't start with "
+                    "{Properties.param_prefix}"
                 )
                 continue
 

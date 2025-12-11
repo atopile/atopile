@@ -194,7 +194,15 @@ class Component:
         return {k: deserialize(k, v) for k, v in self.attributes.items()}
 
     def attach(self, module: F.is_pickable, qty: int = 1):
-        lcsc_attach(module, self.lcsc_display)
+        pickable_module = module.get_pickable_node()
+        if pickable_module is None:
+            raise Exception(
+                f"Module {module.get_full_name(types=True)} does not have "
+                "is_pickable trait",
+                module,
+            )
+        module_with_fp = pickable_module.get_trait(F.Footprints.can_attach_to_footprint)
+        lcsc_attach(module_with_fp, self.lcsc_display)
 
         fabll.Traits.create_and_add_instance_to(
             node=module.get_pickable_node(), trait=F.has_part_picked
