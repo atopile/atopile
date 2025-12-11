@@ -131,6 +131,7 @@ class BoundExpressions:
         units: "type[fabll.Node] | None" = None,
         within: "F.Literals.Numbers | None" = None,
         domain: "F.NumberDomain.Args | None" = None,
+        attach_to: "tuple[fabll.Node, str] | None" = None,
     ) -> F.Parameters.can_be_operand:
         is_unit_node = None
         if units:
@@ -145,7 +146,7 @@ class BoundExpressions:
                 .create_instance(g=self.g)
                 .is_unit.get()
             )
-        return (
+        out = (
             F.Parameters.NumericParameter.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
             .setup(
@@ -155,6 +156,17 @@ class BoundExpressions:
             )
             .can_be_operand.get()
         )
+
+        if attach_to:
+            parent, p_name = attach_to
+            self.g.insert_edge(
+                edge=fbrk.EdgeComposition.create(
+                    parent=parent.instance.node(),
+                    child=fabll.Traits(out).get_obj_raw().instance.node(),
+                    child_identifier=p_name,
+                )
+            )
+        return out
 
     def enum_parameter_op(self, enum_type) -> F.Parameters.can_be_operand:
         return (

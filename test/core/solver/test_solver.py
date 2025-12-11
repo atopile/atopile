@@ -1365,10 +1365,22 @@ def test_simple_parameter_isolation():
 
 
 def test_abstract_lowpass():
+    """
+    fc = 1 / (2 * math.pi * sqrt(C * Li))
+    Li is! {1e-6+/-1%}
+    fc is! {1000+/-1%}
+    => C is! {6 * 158765796 .. 6 * 410118344}
+    """
     E = BoundExpressions()
-    Li = E.parameter_op(units=E.U.H)
-    C = E.parameter_op(units=E.U.Fa)
-    fc = E.parameter_op(units=E.U.Hz)
+
+    class Lowpass(fabll.Node):
+        pass
+
+    lowpass = Lowpass.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+
+    Li = E.parameter_op(units=E.U.H, attach_to=(lowpass, "Li"))
+    C = E.parameter_op(units=E.U.Fa, attach_to=(lowpass, "C"))
+    fc = E.parameter_op(units=E.U.Hz, attach_to=(lowpass, "fc"))
 
     # formula
     E.is_(

@@ -1056,6 +1056,10 @@ def test_compact_repr():
     2. Expressions are formatted with proper symbols (+, *, ≥, ¬, ∧)
     3. After exhausting A-Z, a-z, α-ω, it wraps to A₁, B₁, etc.
     """
+
+    # TODO fails because lit_suffixes are not expected
+    # either run with no_lit_suffix=True or change the expected output
+
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     from faebryk.library.Expressions import Add, And, GreaterOrEqual, Multiply, Not
