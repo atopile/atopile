@@ -56,7 +56,7 @@ jobs:
             -m "not not_in_ci and not slow and not regression" \
             --timeout=900 \
             --junitxml=artifacts/junit.xml \
-            2>&1 | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}:' || true
+            2>&1 | grep -E '(^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}:)|(^ \* )' || true
 
           # Preserve pytest exit code from junitxml (grep swallows it)
           python3 -c "
