@@ -2079,40 +2079,42 @@ class Difference(fabll.Node):
             )
         )
     )
+    is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
     minuend = OperandPointer.MakeChild()
-    subtrahend = OperandPointer.MakeChild()
+    subtrahends = OperandSequence.MakeChild()
 
     def setup(
         self,
         minuend: "F.Parameters.can_be_operand",
-        subtrahend: "F.Parameters.can_be_operand",
+        *subtrahends: "F.Parameters.can_be_operand",
     ) -> Self:
         self.minuend.get().point(minuend)
-        self.subtrahend.get().point(subtrahend)
+        for subtrahend in subtrahends:
+            self.subtrahends.get().append(subtrahend)
         return self
 
     @classmethod
     def from_operands(
         cls,
         minuend: "F.Parameters.can_be_operand",
-        subtrahend: "F.Parameters.can_be_operand",
+        *subtrahends: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> Self:
         instance = _make_instance_from_operand_instance(
-            cls, (minuend, subtrahend), g=g, tg=tg
+            cls, (minuend, *subtrahends), g=g, tg=tg
         )
-        return instance.setup(minuend, subtrahend)
+        return instance.setup(minuend, *subtrahends)
 
     @classmethod
     def c(
         cls,
         minuend: "F.Parameters.can_be_operand",
-        subtrahend: "F.Parameters.can_be_operand",
+        *subtrahends: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(minuend, subtrahend, g=g, tg=tg))
+        return _op(cls.from_operands(minuend, *subtrahends, g=g, tg=tg))
 
 
 class SymmetricDifference(fabll.Node):

@@ -97,8 +97,6 @@ def test_mutator_no_graph_merge():
     p2 = E.parameter_op(units=E.U.W)
     alias = E.is_(p2, E.multiply(p0, p1), assert_=True)
 
-    p3 = E.parameter_op(units=E.U.V)
-
     context = F.Parameters.ReprContext()
 
     @algorithm("")
@@ -112,26 +110,23 @@ def test_mutator_no_graph_merge():
         terminal=True,
     )
     p0_new = mutator.get_copy(p0)
-    p3_new = mutator.get_copy(p3)
     alias_new = fabll.Traits(mutator.get_copy(alias)).get_obj(F.Expressions.Is)
 
     G = p0.tg
     G_new = p0_new.tg
 
-    assert p0_new.tg.get_self_node().node().is_same(other=G_new.get_self_node().node())
-    assert not G.get_self_node().node().is_same(other=G_new.get_self_node().node())
-    assert (
-        alias_new.tg.get_self_node().node().is_same(other=G_new.get_self_node().node())
+    assert fabll.Node(p0_new.tg.get_self_node()).is_same(
+        other=fabll.Node(G_new.get_self_node())
     )
-    assert (
-        not p3_new.tg.get_self_node().node().is_same(other=G_new.get_self_node().node())
+    assert not fabll.Node(G.get_self_node()).is_same(
+        other=fabll.Node(G_new.get_self_node())
     )
-    assert (
-        mutator.get_mutated(p1.as_parameter_operatable.force_get())
-        .tg.get_self_node()
-        .node()
-        .is_same(other=G_new.get_self_node().node())
+    assert fabll.Node(alias_new.tg.get_self_node()).is_same(
+        other=fabll.Node(G_new.get_self_node())
     )
+    assert fabll.Node(
+        mutator.get_mutated(p1.as_parameter_operatable.force_get()).tg.get_self_node()
+    ).is_same(other=fabll.Node(G_new.get_self_node()))
 
 
 def test_get_expressions_involved_in():
