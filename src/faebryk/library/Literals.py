@@ -2994,6 +2994,21 @@ class Numbers(fabll.Node):
         return cls.MakeChild(min=value, max=value, unit=unit)
 
     @classmethod
+    def MakeChild_ConstrainToSubsetLiteral(
+        cls,
+        param_ref: fabll.RefPath,
+        min: float,
+        max: float,
+        unit: type[fabll.NodeT],
+    ) -> fabll._ChildField["F.Expressions.IsSubset"]:
+        from faebryk.library.Expressions import IsSubset
+
+        lit = cls.MakeChild(min=min, max=max, unit=unit)
+        out = IsSubset.MakeChild_Constrain(param_ref, [lit])
+        out.add_dependant(lit, identifier="lit", before=True)
+        return out
+
+    @classmethod
     def MakeChild_ConstrainToLiteral(
         cls,
         param_ref: fabll.RefPath,
