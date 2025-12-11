@@ -17,78 +17,41 @@ class has_explicit_part(fabll.Node):
     pinmap_ = F.Collections.PointerSet.MakeChild()
     override_footprint_ = F.Collections.PointerTuple.MakeChild()
 
-    @classmethod
+    as_pickable_by_supplier_id: fabll.Traits.OptionalImpliedTrait[
+        "F.is_pickable_by_supplier_id"
+    ] = fabll.Traits.OptionalImpliedTrait(lambda: F.is_pickable_by_supplier_id)
+
+    as_pickable_by_part_number: fabll.Traits.OptionalImpliedTrait[
+        "F.is_pickable_by_part_number"
+    ] = fabll.Traits.OptionalImpliedTrait(lambda: F.is_pickable_by_part_number)
+
     def setup_by_mfr(
-        cls,
+        self,
         mfr: str,
         partno: str,
         pinmap: dict[str, fabll._ChildField[F.Electrical] | None] | None = None,
         override_footprint: tuple[fabll._ChildField[F.Footprints.is_footprint], str]
         | None = None,
-    ) -> fabll._ChildField[Self]:
-        return cls.MakeChild(mfr, partno, None, None, pinmap, override_footprint)
+    ) -> Self:
+        self.mfr_.get().alias_to_literal(mfr)
+        self.partno_.get().alias_to_literal(partno)
+        # TODO: handle pinmap and override_footprint for instance setup
+        return self
 
-    @classmethod
     def setup_by_supplier(
-        cls,
+        self,
         supplier_partno: str,
         supplier_id: str = "lcsc",
         pinmap: dict[str, fabll._ChildField[F.Electrical] | None] | None = None,
         override_footprint: tuple[fabll._ChildField[F.Footprints.is_footprint], str]
         | None = None,
-    ) -> fabll._ChildField[Self]:
+    ) -> Self:
         if supplier_id != "lcsc":
             raise NotImplementedError(f"Supplier {supplier_id} not supported")
-        return cls.MakeChild(
-            None, None, "lcsc", supplier_partno, pinmap, override_footprint
-        )
-
-    # TODO: Reimpliment this
-    # @override
-    # def on_obj_set(self):
-    #     if hasattr(self, "mfr"):
-    #         assert self.partno
-    #         obj.add(F.is_pickable_by_part_number(self.mfr, self.partno))
-    #     if hasattr(self, "supplier_partno"):
-    #         assert self.supplier_id == "lcsc"
-    #         obj.add(
-    #             F.is_pickable_by_supplier_id(
-    #                 self.supplier_partno,
-    #                 supplier=F.is_pickable_by_supplier_id.Supplier.LCSC,
-    #             )
-    #         )
-
-    #     if self.pinmap:
-    #         obj.add(F.can_attach_to_footprint_via_pinmap(self.pinmap))
-
-    #     if self.override_footprint:
-    #         fp, fp_kicad_id = self.override_footprint
-    #         fp.add(F.KicadFootprint.has_kicad_identifier(fp_kicad_id))
-    #         obj.get_trait(F.Footprints.can_attach_to_footprint).attach(fp)
-
-    # def _merge(self, overlay: "has_explicit_part"):
-    #     attrs = [
-    #         "mfr",
-    #         "partno",
-    #         "supplier_id",
-    #         "supplier_partno",
-    #         "pinmap",
-    #         "override_footprint",
-    #     ]
-    #     changed = False
-    #     for attr in attrs:
-    #         if not hasattr(overlay, attr):
-    #             continue
-    #         v = getattr(overlay, attr)
-    #         if getattr(self, attr, None) == v:
-    #             continue
-    #         setattr(self, attr, v)
-    #         changed = True
-
-    #     if not changed:
-    #         return
-
-    #     self.on_obj_set()
+        self.supplier_id_.get().alias_to_literal(supplier_id)
+        self.supplier_partno_.get().alias_to_literal(supplier_partno)
+        # TODO: handle pinmap and override_footprint for instance setup
+        return self
 
     @property
     def mfr(self) -> str | None:

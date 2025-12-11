@@ -55,7 +55,20 @@ def test_bom_explicit_pick():
     class TestComponent(fabll.Node):
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         _has_electric_reference = fabll.Traits.MakeEdge(
-            F.has_explicit_part.setup_by_supplier("C25804")
+            F.has_explicit_part.MakeChild(
+                mfr=None,
+                partno=None,
+                supplier_id="lcsc",
+                supplier_partno="C25804",
+                pinmap=None,
+                override_footprint=None,
+            )
+        )
+        _is_pickable_by_supplier_id = fabll.Traits.MakeEdge(
+            F.is_pickable_by_supplier_id.MakeChild(
+                supplier_part_id="C25804",
+                supplier=F.is_pickable_by_supplier_id.Supplier.LCSC,
+            )
         )
         _can_attach_to_footprint = fabll.Traits.MakeEdge(
             F.Footprints.can_attach_to_footprint.MakeChild()
@@ -118,6 +131,12 @@ def test_bom_kicad_footprint_lcsc_verbose():
     fabll.Traits.create_and_add_instance_to(
         node=test_module, trait=F.has_explicit_part
     ).setup_by_supplier("C18166021", pinmap={})
+    fabll.Traits.create_and_add_instance_to(
+        node=test_module, trait=F.is_pickable_by_supplier_id
+    ).setup(
+        supplier_part_id="C18166021",
+        supplier=F.is_pickable_by_supplier_id.Supplier.LCSC,
+    )
 
     _build(test_module)
 
@@ -161,6 +180,12 @@ def test_bom_kicad_footprint_lcsc_compact():
             fp.is_footprint,
             "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
         ),
+    )
+    fabll.Traits.create_and_add_instance_to(
+        node=m, trait=F.is_pickable_by_supplier_id
+    ).setup(
+        supplier_part_id="C18166021",
+        supplier=F.is_pickable_by_supplier_id.Supplier.LCSC,
     )
 
     _build(m)

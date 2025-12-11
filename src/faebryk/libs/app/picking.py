@@ -93,6 +93,12 @@ def load_part_info_from_pcb(tg: fbrk.TypeGraph):
                 supplier_partno=lcsc_id,
                 supplier_id="lcsc",
             )
+            fabll.Traits.create_and_add_instance_to(
+                node=node, trait=F.is_pickable_by_supplier_id
+            ).setup(
+                supplier_part_id=lcsc_id,
+                supplier=F.is_pickable_by_supplier_id.Supplier.LCSC,
+            )
         elif manufacturer and partno:
             fabll.Traits.create_and_add_instance_to(
                 node=node, trait=F.has_explicit_part
@@ -100,6 +106,9 @@ def load_part_info_from_pcb(tg: fbrk.TypeGraph):
                 mfr=manufacturer,
                 partno=partno,
             )
+            fabll.Traits.create_and_add_instance_to(
+                node=node, trait=F.is_pickable_by_part_number
+            ).setup(manufacturer=manufacturer, partno=partno)
         else:
             raise ValueError(f"No part info found for {node.get_name()}")
 

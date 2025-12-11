@@ -133,9 +133,29 @@ def get_pick_tree(module: fabll.Node) -> Tree[F.is_pickable]:
     if module.has_trait(F.has_part_picked):
         return tree
 
+    # Handle has_part_removed: create a has_part_picked trait with the removed marker
+    if module.has_trait(F.has_part_removed):
+        picked_trait = fabll.Traits.create_and_add_instance_to(
+            module, F.has_part_picked
+        )
+        fabll.Traits.create_and_add_instance_to(picked_trait, F.has_part_removed)
+        return tree
+
     if module.has_trait(F.is_pickable_by_type):
         merge_tree = Tree()
         pickable_trait = module.get_trait(F.is_pickable_by_type).get_trait(
+            F.is_pickable
+        )
+        tree[pickable_trait] = merge_tree
+    elif module.has_trait(F.is_pickable_by_supplier_id):
+        merge_tree = Tree()
+        pickable_trait = module.get_trait(F.is_pickable_by_supplier_id).get_trait(
+            F.is_pickable
+        )
+        tree[pickable_trait] = merge_tree
+    elif module.has_trait(F.is_pickable_by_part_number):
+        merge_tree = Tree()
+        pickable_trait = module.get_trait(F.is_pickable_by_part_number).get_trait(
             F.is_pickable
         )
         tree[pickable_trait] = merge_tree

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 from enum import Enum, auto
+from typing import Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -23,6 +24,13 @@ class is_pickable_by_supplier_id(fabll.Node):
 
     def get_supplier(self) -> str:
         return str(self.supplier_.get().force_extract_literal().get_values()[0])
+
+    def setup(
+        self, supplier_part_id: str, supplier: "is_pickable_by_supplier_id.Supplier"
+    ) -> Self:
+        self.supplier_part_id_.get().alias_to_literal(supplier_part_id)
+        self.supplier_.get().alias_to_literal(supplier.name)
+        return self
 
     @classmethod
     def MakeChild(
