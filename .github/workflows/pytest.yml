@@ -36,6 +36,14 @@ jobs:
         with:
           python-version-file: "pyproject.toml"
 
+      - name: "Setup dependencies"
+        run: |
+          uv sync --dev --no-editable --frozen
+
+      - name: "Compile"
+        run: |
+          uv run --dev --no-editable --frozen ato dev compile
+
       - name: Run pytest
         id: pytest
         continue-on-error: true
