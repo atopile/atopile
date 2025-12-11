@@ -4076,6 +4076,15 @@ class Numbers(fabll.Node):
             return "<empty>"
         intervals = numeric_set.get_intervals()
 
+        def f(number: float) -> str:
+            """
+            Format and clean floats for printing.
+            Handles infinity values with ∞ symbol.
+            """
+            if math.isinf(number):
+                return "∞" if number > 0 else "-∞"
+            return str(number)
+
         # Get unit symbol
         try:
             unit = self.get_is_unit()
@@ -4088,10 +4097,11 @@ class Numbers(fabll.Node):
 
         if numeric_set.is_singleton():
             min_val = numeric_set.get_min_value()
-            return f"{min_val}{unit_symbol}"
+            return f"{f(min_val)}{unit_symbol}"
 
         if numeric_set.is_discrete_set():
-            return f"{{{', '.join(map(str, numeric_set.get_values()))}}}{unit_symbol}"
+            values_str = ", ".join(f(v) for v in numeric_set.get_values())
+            return f"{{{values_str}}}{unit_symbol}"
 
         def format_interval(iv: NumericInterval) -> str:
             min_val = iv.get_min_value()
@@ -4103,9 +4113,9 @@ class Numbers(fabll.Node):
                 center != 0
                 and (tolerance_rel := abs((max_val - min_val) / 2 / center) * 100) < 1
             ):
-                return f"{center}±{tolerance_rel:.1f}%"
+                return f"{f(center)}±{tolerance_rel:.1f}%"
 
-            return f"{min_val}..{max_val}"
+            return f"{f(min_val)}..{f(max_val)}"
 
         interval_strs = [format_interval(iv) for iv in intervals]
         return f"{{{', '.join(interval_strs)}}}{unit_symbol}"

@@ -1387,6 +1387,11 @@ def test_can_be_operand_pretty_print():
         .create_instance(g=g)
         .setup_from_min_max(min=5.0, max=10.0, unit=ohm_is_unit)
     )
+    inf_set = (
+        F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_min_max(min=-math.inf, max=math.inf, unit=ohm_is_unit)
+    )
     another_continuous_set = (
         F.Literals.Numbers.bind_typegraph(tg=tg)
         .create_instance(g=g)
@@ -1402,6 +1407,7 @@ def test_can_be_operand_pretty_print():
     assert singleton.can_be_operand.get().pretty() == "5.0Ω"
     assert discrete_set.can_be_operand.get().pretty() == "{1.0, 2.0, 3.0, 4.0}Ω"
     assert continuous_set.can_be_operand.get().pretty() == "{5.0..10.0}Ω"
+    assert inf_set.can_be_operand.get().pretty() == "{-∞..∞}Ω"
     assert continuous_set_rel.can_be_operand.get().pretty() == "{5.0±0.5%}Ω"
     assert disjoint_union.can_be_operand.get().pretty() == "{5.0..10.0, 15.0..20.0}Ω"
 
