@@ -20,9 +20,9 @@ logger = logging.getLogger(__name__)
 
 
 class Properties(StrEnum):
-    manufacturer = "Manufacturer"
-    partno = "Partnumber"
-    lcsc = "LCSC"
+    manufacturer = "Manufacturer" # component manufacturer
+    manufacturer_partno = "Partnumber" # manufacturer part number
+    supplier_partno = "LCSC" # LCSC part number
     param_prefix = "PARAM_"
     # used in transformer
     param_wildcard = "PARAM_*"
@@ -46,7 +46,7 @@ def load_part_info_from_pcb(tg: fbrk.TypeGraph):
             continue
         assert F.SerializableMetadata.get_properties(node), "Should load when linking"
 
-        part_props = [Properties.lcsc, Properties.manufacturer, Properties.partno]
+        part_props = [Properties.supplier_partno, Properties.manufacturer, Properties.manufacturer_partno]
         if not (
             k_pcb_fp_t := fp_t.try_get_trait(
                 F.KiCadFootprints.has_associated_kicad_pcb_footprint
@@ -62,8 +62,8 @@ def load_part_info_from_pcb(tg: fbrk.TypeGraph):
             for k in part_props
             if (v := Property.try_get_property(fp.propertys, k.value))
         }
-        if fp_props.get(Properties.lcsc) == NO_LCSC_DISPLAY:
-            del fp_props[Properties.lcsc]
+        if fp_props.get(Properties.supplier_partno) == NO_LCSC_DISPLAY:
+            del fp_props[Properties.supplier_partno]
         props = F.SerializableMetadata.get_properties(node)
 
         # check if node has changed
@@ -71,9 +71,9 @@ def load_part_info_from_pcb(tg: fbrk.TypeGraph):
             logger.warning(f"Skipping {node.get_name()} because it has changed")
             continue
 
-        lcsc_id = props.get(Properties.lcsc)
+        lcsc_id = props.get(Properties.supplier_partno)
         manufacturer = props.get(Properties.manufacturer)
-        partno = props.get(Properties.partno)
+        partno = props.get(Properties.manufacturer_partno)
 
         # Load Part from PCB
         if lcsc_id and manufacturer and partno:
@@ -175,7 +175,7 @@ def save_part_info_to_pcb(app: fabll.Node):
         if isinstance(part, PickedPart):
             fabll.Traits.create_and_add_instance_to(
                 node=node, trait=F.SerializableMetadata
-            ).setup(key=Properties.lcsc, value=part.lcsc_id)
+            ).setup(key=Properties.supplier_partno, value=part.supplier_partno)
 
         fabll.Traits.create_and_add_instance_to(
             node=node, trait=F.SerializableMetadata
@@ -183,7 +183,7 @@ def save_part_info_to_pcb(app: fabll.Node):
 
         fabll.Traits.create_and_add_instance_to(
             node=node, trait=F.SerializableMetadata
-        ).setup(key=Properties.partno, value=part.partno)
+        ).setup(key=Properties.manufacturer_partno, value=part.partno)
 
         for p in node.get_children(direct_only=True, types=F.Parameters.is_parameter):
             lit = p.try_get_literal()
@@ -219,7 +219,7 @@ def test_save_part_info_to_pcb():
 
     # Assert expected key:value pairs
     assert trait_dict.get(Properties.manufacturer.value) == "blaze-it-inc"
-    assert trait_dict.get(Properties.partno.value) == "69420"
+    assert trait_dict.get(Properties.manufacturer_partno.value) == "69420"
 
 
 def test_load_part_info_from_pcb():

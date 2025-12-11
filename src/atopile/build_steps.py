@@ -255,7 +255,6 @@ def pick_parts(
             "Failed to pick parts for some modules",
             [UserPickError(str(e)) for e in iter_leaf_exceptions(ex)],
         ) from ex
-    logger.debug(InstanceGraphFunctions.render(app.instance, show_traits=True))
     save_part_info_to_pcb(app)
 
 
