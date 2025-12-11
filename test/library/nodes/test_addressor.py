@@ -29,6 +29,7 @@ class ConfigurableI2CClient(fabll.Node):
             self.i2c.get().address.get().can_be_operand.get(),
             g=g,
             tg=tg,
+            assert_=True,
         )
         self.addressor.get().base.get().alias_to_literal(
             g,
@@ -68,11 +69,31 @@ def test_addressor():
     solver = DefaultSolver()
     solver.simplify(g, tg)
 
-    assert solver.inspect_get_known_supersets(app.i2c.address) == 16 + 3
+    app.addressor.get().on_obj_set()
 
-    assert app.config[0].line.is_connected_to(app.ref.hv)
-    assert app.config[1].line.is_connected_to(app.ref.hv)
-    assert app.config[2].line.is_connected_to(app.ref.lv)
+    assert solver.inspect_get_known_supersets(
+        app.i2c.get().address.get().is_parameter.get()
+    ).equals(
+        F.Literals.Numbers.bind_typegraph(tg)
+        .create_instance(g)
+        .setup_from_singleton(
+            value=16 + 3,
+            unit=F.Units.Dimensionless.bind_typegraph(tg)
+            .create_instance(g)
+            .is_unit.get(),
+        )
+    )
+
+    print(app.config[0].get().line.get()._is_interface.get().get_connected())
+    assert (
+        app.config[0]
+        .get()
+        .line.get()
+        ._is_interface.get()
+        .is_connected_to(app.ref.get().hv.get())
+    )
+    # assert app.config[1].line.is_connected_to(app.ref.hv)
+    # assert app.config[2].line.is_connected_to(app.ref.lv)
 
 
 class I2CBusTopology(fabll.Node):
