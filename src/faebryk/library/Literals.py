@@ -252,6 +252,31 @@ class is_literal(fabll.Node):
         else:
             raise NotImplementedError(f"Cannot serialize literal {lit}")
 
+    @classmethod
+    def deserialize(
+        cls,
+        data: dict,
+        *,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+    ) -> "is_literal":
+        """
+        Deserialize a literal from the API format.
+
+        Dispatches to the appropriate literal type based on the "type" field.
+        Currently supports:
+        - "Quantity_Interval_Disjoint" -> Numbers
+        """
+        literal_type = data.get("type")
+
+        if literal_type == "Quantity_Interval_Disjoint":
+            numbers = Numbers.deserialize(data, g=g, tg=tg)
+            return numbers.is_literal.get()
+        else:
+            raise NotImplementedError(
+                f"Cannot deserialize literal with type '{literal_type}'"
+            )
+
 
 # --------------------------------------------------------------------------------------
 LiteralValues = float | bool | Enum | str
@@ -4086,6 +4111,115 @@ class Numbers(fabll.Node):
             },
         }
 
+    @classmethod
+    def deserialize(
+        cls,
+        data: dict,
+        *,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+    ) -> "Numbers":
+        """
+        Deserialize a Numbers literal from the API format.
+
+        Expects a dict matching the component API format:
+        {
+            "type": "Quantity_Interval_Disjoint",
+            "data": {
+                "intervals": {
+                    "type": "Numeric_Interval_Disjoint",
+                    "data": {
+                        "intervals": [
+                            {"type": "Numeric_Interval", "data": {...}}
+                        ]
+                    }
+                },
+                "unit": "kiloohm"  # string symbol or dict with basis_vector
+            }
+        }
+
+        Values are expected to be in base SI units.
+        """
+        from faebryk.library.Units import BasisVector, decode_symbol, is_unit
+
+        if data.get("type") != "Quantity_Interval_Disjoint":
+            raise ValueError(
+                f"Expected type 'Quantity_Interval_Disjoint', got {data.get('type')}"
+            )
+
+        inner_data = data.get("data", {})
+        intervals_data = inner_data.get("intervals", {})
+        unit_data = inner_data.get("unit")
+
+        # Parse intervals
+        if intervals_data.get("type") != "Numeric_Interval_Disjoint":
+            raise ValueError(
+                f"Expected intervals type 'Numeric_Interval_Disjoint', "
+                f"got {intervals_data.get('type')}"
+            )
+
+        interval_list = intervals_data.get("data", {}).get("intervals", [])
+        parsed_intervals: list[tuple[float, float]] = []
+
+        for interval in interval_list:
+            if interval.get("type") != "Numeric_Interval":
+                raise ValueError(
+                    f"Expected interval type 'Numeric_Interval', "
+                    f"got {interval.get('type')}"
+                )
+            interval_inner = interval.get("data", {})
+            # None represents infinity in serialized format
+            min_val = interval_inner.get("min")
+            max_val = interval_inner.get("max")
+            min_val = -math.inf if min_val is None else float(min_val)
+            max_val = math.inf if max_val is None else float(max_val)
+            parsed_intervals.append((min_val, max_val))
+
+        # Parse unit - can be a string symbol or a dict with full unit definition
+        if isinstance(unit_data, str):
+            # Unit is a symbol string, decode it
+            unit = decode_symbol(g=g, tg=tg, symbol=unit_data)
+        elif isinstance(unit_data, dict):
+            # Unit is a full definition with basis_vector, multiplier, offset
+            symbols = unit_data.get("symbols", [])
+            basis_vector_dict = unit_data.get("basis_vector", {})
+            multiplier = unit_data.get("multiplier", 1.0)
+            offset = unit_data.get("offset", 0.0)
+
+            # Try to match by symbol first if available
+            if symbols:
+                try:
+                    unit = decode_symbol(g=g, tg=tg, symbol=symbols[0])
+                except Exception:
+                    # Fall back to creating anonymous unit from basis vector
+                    basis_vector = BasisVector(**basis_vector_dict)
+                    unit = is_unit.new(
+                        g=g,
+                        tg=tg,
+                        vector=basis_vector,
+                        multiplier=multiplier,
+                        offset=offset,
+                    )
+            else:
+                # No symbol, create anonymous unit from basis vector
+                basis_vector = BasisVector(**basis_vector_dict)
+                unit = is_unit.new(
+                    g=g,
+                    tg=tg,
+                    vector=basis_vector,
+                    multiplier=multiplier,
+                    offset=offset,
+                )
+        else:
+            raise ValueError(f"Invalid unit data: {unit_data}")
+
+        # Create the Numbers instance
+        numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
+            values=parsed_intervals
+        )
+        result = cls.create_instance(g=g, tg=tg)
+        return result.setup(numeric_set=numeric_set, unit=unit)
+
     def pretty_str(self) -> str:
         """Format number with units and tolerance for display."""
         numeric_set = self.get_numeric_set()
@@ -5170,6 +5304,170 @@ class TestNumbers:
         qs2.setup_from_min_max(min=5.0, max=10.0, unit=meter_instance.is_unit.get())
         result = qs1.op_lt(g=g, tg=tg, other=qs2)
         assert result.get_boolean_values() == [True]
+
+    @pytest.mark.parametrize(
+        "min_val,max_val,unit_name,expected_min,expected_max,expected_basis",
+        [
+            # Basic meter
+            (1.5, 3.5, "Meter", 1.5, 3.5, {"meter": 1}),
+            # Singleton value
+            (42.0, 42.0, "Meter", 42.0, 42.0, {"meter": 1}),
+            # Negative values
+            (-10.0, -5.0, "Meter", -10.0, -5.0, {"meter": 1}),
+            # Zero crossing
+            (-1.0, 1.0, "Meter", -1.0, 1.0, {"meter": 1}),
+            # Very small values
+            (1e-9, 1e-6, "Meter", 1e-9, 1e-6, {"meter": 1}),
+            # Very large values
+            (1e6, 1e9, "Meter", 1e6, 1e9, {"meter": 1}),
+            # Volt unit
+            (
+                3.0,
+                5.0,
+                "Volt",
+                3.0,
+                5.0,
+                {"kilogram": 1, "meter": 2, "second": -3, "ampere": -1},
+            ),
+            # Ohm unit
+            (
+                100.0,
+                1000.0,
+                "Ohm",
+                100.0,
+                1000.0,
+                {"kilogram": 1, "meter": 2, "second": -3, "ampere": -2},
+            ),
+            # Farad unit
+            (
+                1e-6,
+                1e-3,
+                "Farad",
+                1e-6,
+                1e-3,
+                {"kilogram": -1, "meter": -2, "second": 4, "ampere": 2},
+            ),
+            # Second (time)
+            (0.001, 1.0, "Second", 0.001, 1.0, {"second": 1}),
+            # Ampere (current)
+            (0.1, 2.0, "Ampere", 0.1, 2.0, {"ampere": 1}),
+        ],
+    )
+    def test_serialize_deserialize_round_trip(
+        self, min_val, max_val, unit_name, expected_min, expected_max, expected_basis
+    ):
+        """Test that serialize followed by deserialize returns equivalent Numbers."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        from faebryk.library import Units
+        from faebryk.library.Units import BasisVector
+
+        # Get the unit class dynamically
+        unit_cls = getattr(Units, unit_name)
+        unit_instance = unit_cls.bind_typegraph(tg=tg).create_instance(g=g)
+
+        # Create original Numbers with an interval
+        original = Numbers.create_instance(g=g, tg=tg)
+        original.setup_from_min_max(
+            min=min_val, max=max_val, unit=unit_instance.is_unit.get()
+        )
+
+        # Serialize and deserialize
+        serialized = original.serialize()
+        deserialized = Numbers.deserialize(serialized, g=g, tg=tg)
+
+        # Verify the values match
+        assert deserialized.get_numeric_set().get_min_value() == pytest.approx(
+            expected_min, rel=1e-9
+        )
+        assert deserialized.get_numeric_set().get_max_value() == pytest.approx(
+            expected_max, rel=1e-9
+        )
+        # Unit should have same basis vector
+        assert deserialized.get_is_unit()._extract_basis_vector() == BasisVector(
+            **expected_basis
+        )
+
+    @pytest.mark.parametrize(
+        "symbol,min_val,max_val,expected_min,expected_max",
+        [
+            # Kilometer -> meters
+            ("km", 2.0, 5.0, 2000.0, 5000.0),
+            # Millimeter -> meters
+            ("mm", 100.0, 500.0, 0.1, 0.5),
+            # Milliampere -> amperes
+            ("mA", 10.0, 100.0, 0.01, 0.1),
+            # Kiloohm -> ohms (note: Ohm symbol is "Ω" or "Ohm")
+            ("kΩ", 1.0, 10.0, 1000.0, 10000.0),
+            # Microfarad -> farads
+            ("uF", 1.0, 100.0, 1e-6, 1e-4),
+            # Millivolt -> volts
+            ("mV", 100.0, 500.0, 0.1, 0.5),
+        ],
+    )
+    def test_serialize_deserialize_round_trip_with_prefix(
+        self, symbol, min_val, max_val, expected_min, expected_max
+    ):
+        """Test round trip with prefixed units converts to base units."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        from faebryk.library.Units import (
+            Ampere,
+            Farad,
+            Meter,
+            Ohm,
+            Volt,
+            decode_symbol,
+        )
+
+        # Instantiate base units so prefixed versions can be decoded
+        _ = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        _ = Ampere.bind_typegraph(tg=tg).create_instance(g=g)
+        _ = Ohm.bind_typegraph(tg=tg).create_instance(g=g)
+        _ = Farad.bind_typegraph(tg=tg).create_instance(g=g)
+        _ = Volt.bind_typegraph(tg=tg).create_instance(g=g)
+
+        prefixed_unit = decode_symbol(g=g, tg=tg, symbol=symbol)
+
+        # Create original Numbers with prefixed unit
+        original = Numbers.create_instance(g=g, tg=tg)
+        original.setup_from_min_max(min=min_val, max=max_val, unit=prefixed_unit)
+
+        # Serialize and deserialize
+        serialized = original.serialize()
+        deserialized = Numbers.deserialize(serialized, g=g, tg=tg)
+
+        # Values should be in base units after round trip
+        assert deserialized.get_numeric_set().get_min_value() == pytest.approx(
+            expected_min, rel=1e-9
+        )
+        assert deserialized.get_numeric_set().get_max_value() == pytest.approx(
+            expected_max, rel=1e-9
+        )
+
+    def test_is_literal_deserialize_round_trip(self):
+        """Test is_literal.deserialize dispatches correctly to Numbers."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        from faebryk.library.Units import Meter
+
+        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+
+        # Create original Numbers
+        original = Numbers.create_instance(g=g, tg=tg)
+        original.setup_from_min_max(min=2.0, max=8.0, unit=meter_instance.is_unit.get())
+
+        # Serialize via is_literal
+        serialized = original.is_literal.get().serialize()
+
+        # Deserialize via is_literal
+        deserialized_literal = is_literal.deserialize(serialized, g=g, tg=tg)
+
+        # Should be able to switch_cast back to Numbers
+        deserialized_numbers = deserialized_literal.switch_cast()
+        assert isinstance(deserialized_numbers, Numbers)
+        assert deserialized_numbers.get_numeric_set().get_min_value() == 2.0
+        assert deserialized_numbers.get_numeric_set().get_max_value() == 8.0
 
 
 @dataclass(frozen=True)
