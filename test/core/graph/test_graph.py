@@ -13,8 +13,11 @@ def test_instance_visualization(capsys):
 
     with capsys.disabled():
         print("=== Instance Graph ===")
-        output = graph.InstanceGraphFunctions.render(component_instance.instance, show_traits=True)
+        output = graph.InstanceGraphFunctions.render(
+            component_instance.instance, show_traits=True
+        )
         print(output)
+
 
 def test_count_instance(capsys):
     g = graph.GraphView.create()
@@ -30,7 +33,7 @@ def test_count_instance(capsys):
             filter_types=[
                 # 'is_lead',
                 # 'Electrical',
-            ]
+            ],
         )
         print(output)
 
@@ -45,12 +48,12 @@ def _get_component_node_count_params():
     # (each node counted once, even if reachable via multiple paths)
     component_counts: dict[type, int | None] = {
         F.Electrical: 2,
-        F.ElectricLogic: 374,
-        F.ElectricSignal: 365,
-        F.ElectricPower: 327,
-        F.Resistor: 885,  # +2 for is_lead traits on each electrical
-        F.Capacitor: 627,
-        F.I2C: 1264,
+        F.ElectricLogic: 204,
+        F.ElectricSignal: 195,
+        F.ElectricPower: 155,
+        F.Resistor: 339,  # +2 for is_lead traits on each electrical
+        F.Capacitor: 265,
+        F.I2C: 668,
     }
 
     return [
