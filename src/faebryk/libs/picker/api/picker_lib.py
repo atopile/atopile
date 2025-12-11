@@ -184,13 +184,16 @@ def _process_candidates(
     it = iter(candidates)
     filtered_candidates = []
     component_node = module.get_pickable_node()
-    module_with_fp = component_node.try_get_trait(F.Footprints.can_attach_to_footprint)
-    if module_with_fp is None:
+    module_with_fp = F.Footprints.can_attach_to_footprint.bind_typegraph(
+        component_node.tg
+    ).get_instances()
+    if len(module_with_fp) == 0:
         raise PickError(
             f"Module {component_node.get_full_name(types=True)} does not have "
             "can_attach_to_footprint trait",
             component_node,
         )
+    module_with_fp = module_with_fp[0]
     for c in it:
         try:
             attach(module_with_fp, c.lcsc_display, check_only=True, get_3d_model=False)

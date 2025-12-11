@@ -533,7 +533,7 @@ def check_attachable(component: fabll.Node):
 
 
 def attach(
-    component: F.Footprints.can_attach_to_footprint,
+    component_with_fp: F.Footprints.can_attach_to_footprint,
     partno: str,
     get_3d_model: bool = True,
     check_only: bool = False,
@@ -552,7 +552,7 @@ def attach(
     try:
         epart = download_easyeda_info(partno, get_model=get_3d_model)
     except LCSC_NoDataException:
-        if component.has_trait(F.Footprints.has_associated_footprint):
+        if component_with_fp.has_trait(F.Footprints.has_associated_footprint):
             apart = None
             epart = None
         else:
@@ -579,15 +579,15 @@ def attach(
     # names match the lead names
     tmp_pads = [
         fabll.Traits.create_and_add_instance_to(
-            node=fabll.Node.bind_typegraph(tg=component.tg).create_instance(
-                g=component.instance.g()
+            node=fabll.Node.bind_typegraph(tg=component_with_fp.tg).create_instance(
+                g=component_with_fp.instance.g()
             ),
             trait=F.Footprints.is_pad,
         ).setup(pad_number=number, pad_name=name)
         for number, name in pads_number_name_pairs
     ]
 
-    leads_t = F.Lead.is_lead.bind_typegraph(component.tg).get_instances()
+    leads_t = F.Lead.is_lead.bind_typegraph(component_with_fp.tg).get_instances()
 
     # try matching the ato part pad names to the component's leads
     try:
@@ -599,19 +599,19 @@ def attach(
     if check_only:
         # don't attach or create any footprint related things if we're only checking
         # if the pad-lead combo's are valid
-        component_node = fabll.Traits(component).get_obj_raw()
+        component_node = fabll.Traits(component_with_fp).get_obj_raw()
         logger.debug(f"Checking pinmap for {partno} -> {component_node.get_name()}")
         return
 
-    if not component.has_trait(F.Footprints.has_associated_footprint):
+    if not component_with_fp.has_trait(F.Footprints.has_associated_footprint):
         # we need to create and add a footprint node to the component if it
         # doesn't exist yet
         fp = F.Footprints.GenericFootprint.bind_typegraph_from_instance(
-            instance=component.instance
-        ).create_instance(g=component.instance.g())
+            instance=component_with_fp.instance
+        ).create_instance(g=component_with_fp.instance.g())
         fp.setup(tmp_pads)
 
-        component_node = fabll.Traits(component).get_obj_raw()
+        component_node = fabll.Traits(component_with_fp).get_obj_raw()
         fabll.Traits.create_and_add_instance_to(
             node=component_node, trait=F.Footprints.has_associated_footprint
         ).setup(fp.is_footprint.get())
@@ -656,7 +656,7 @@ class PickSupplierLCSC(PickSupplier):
     def attach(self, module: fabll.Node, part: PickerOption):
         assert isinstance(part.part, PickedPartLCSC)
         module_with_fp = module.get_trait(F.Footprints.can_attach_to_footprint)
-        attach(component=module_with_fp, partno=part.part.lcsc_id)
+        attach(component_with_fp=module_with_fp, partno=part.part.lcsc_id)
 
     def __str__(self) -> str:
         return f"{type(self).__name__}()"
@@ -720,7 +720,7 @@ def test_attach_resistor(capsys):
             )
         )
     component_with_fp = component.get_trait(F.Footprints.can_attach_to_footprint)
-    attach(component=component_with_fp, partno=LCSC_ID)
+    attach(component_with_fp=component_with_fp, partno=LCSC_ID)
 
     associated_footprint = component.try_get_trait(
         F.Footprints.has_associated_footprint
@@ -759,7 +759,7 @@ def test_attach_mosfet():
     component = F.MOSFET.bind_typegraph(tg=tg).create_instance(g=g)
 
     component_with_fp = component.get_trait(F.Footprints.can_attach_to_footprint)
-    attach(component=component_with_fp, partno=LCSC_ID)
+    attach(component_with_fp=component_with_fp, partno=LCSC_ID)
 
     associated_footprint = component.try_get_trait(
         F.Footprints.has_associated_footprint
@@ -803,9 +803,13 @@ def test_attach_failure():
 
     component_with_fp = component.get_trait(F.Footprints.can_attach_to_footprint)
     with pytest.raises(LCSC_PinmapException):
-        attach(component=component_with_fp, partno=RESISTOR_LCSC_ID, check_only=True)
+        attach(
+            component_with_fp=component_with_fp,
+            partno=RESISTOR_LCSC_ID,
+            check_only=True,
+        )
 
-    attach(component=component_with_fp, partno=MOSFET_LCSC_ID, check_only=False)
+    attach(component_with_fp=component_with_fp, partno=MOSFET_LCSC_ID, check_only=False)
 
     associated_footprint = component.try_get_trait(
         F.Footprints.has_associated_footprint
