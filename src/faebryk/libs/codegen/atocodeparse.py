@@ -98,7 +98,7 @@ class AtoCodeParse:
 
             return trait_args
 
-        def get_trait[T: fabll.Traits](self, trait: type[T]) -> T:
+        def get_trait[T: fabll.Node](self, trait: type[T]) -> T:
             constructor, args = self.parse_trait(trait.__name__)
             trait_instance = trait.bind_typegraph(self.tg).create_instance(g=self.g)
 
@@ -110,7 +110,7 @@ class AtoCodeParse:
 
             return trait_instance
 
-        def try_get_trait[T: fabll.Traits](self, trait: type[T]) -> T | None:
+        def try_get_trait[T: fabll.Node](self, trait: type[T]) -> T | None:
             try:
                 return self.get_trait(trait)
             except AtoCodeParse.TraitNotFound:

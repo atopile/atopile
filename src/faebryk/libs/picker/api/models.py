@@ -193,19 +193,19 @@ class Component:
 
         return {k: deserialize(k, v) for k, v in self.attributes.items()}
 
-    def attach(self, module: F.is_pickable, qty: int = 1):
-        pickable_module = module.get_pickable_node()
-        if pickable_module is None:
+    def attach(self, pickable_module: F.is_pickable, qty: int = 1):
+        module = pickable_module.get_pickable_node()
+        if module is None:
             raise Exception(
                 f"Module {module.get_full_name(types=True)} does not have "
                 "is_pickable trait",
                 module,
             )
-        module_with_fp = pickable_module.get_trait(F.Footprints.can_attach_to_footprint)
+        module_with_fp = module.get_trait(F.Footprints.can_attach_to_footprint)
         lcsc_attach(module_with_fp, self.lcsc_display)
 
         fabll.Traits.create_and_add_instance_to(
-            node=module.get_pickable_node(), trait=F.has_part_picked
+            node=module, trait=F.has_part_picked
         ).setup(
             PickedPartLCSC(
                 manufacturer=self.manufacturer_name,
@@ -253,7 +253,7 @@ class Component:
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                f"Attached component {self.lcsc_display} to module {module}: \n"
+                f"Attached component {self.lcsc_display} to module {module.get_name()}"
                 # f"{indent(str(self.attributes), ' ' * 4)}\n--->\n"
                 # f"{indent(module.pretty_params(), ' ' * 4)}"
             )

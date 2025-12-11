@@ -84,7 +84,7 @@ class has_part_picked(fabll.Node):
         return out
 
     @classmethod
-    def by_supplier(
+    def MakeChild_by_supplier(
         cls, supplier_id: str, supplier_partno: str, manufacturer: str, partno: str
     ) -> fabll._ChildField[Self]:
         from faebryk.libs.picker.lcsc import PickedPartLCSC
@@ -96,7 +96,6 @@ class has_part_picked(fabll.Node):
                         manufacturer=manufacturer,
                         partno=partno,
                         supplier_partno=supplier_partno,
-                        supplier=None,
                     )
                 )
             case _:
@@ -107,4 +106,17 @@ class has_part_picked(fabll.Node):
         self.partno_.get().alias_to_single(value=picked_part.partno)
         self.supplier_partno_.get().alias_to_single(value=picked_part.supplier_partno)
         self.supplier_id_.get().alias_to_single(value=picked_part.supplier.supplier_id)
+        return self
+
+    def by_supplier(
+        self, supplier_id: str, supplier_partno: str, manufacturer: str, partno: str
+    ) -> Self:
+        """
+        Instance method alternative to the classmethod factory.
+        Used by AtoCodeParse when parsing traits from ato files.
+        """
+        self.manufacturer_.get().alias_to_single(value=manufacturer)
+        self.partno_.get().alias_to_single(value=partno)
+        self.supplier_partno_.get().alias_to_single(value=supplier_partno)
+        self.supplier_id_.get().alias_to_single(value=supplier_id)
         return self
