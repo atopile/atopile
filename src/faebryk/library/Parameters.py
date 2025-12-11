@@ -56,6 +56,89 @@ class can_be_operand(fabll.Node):
             return po.compact_repr(use_name=use_name)
         return str(self)
 
+    def get_operations[T: "fabll.NodeT"](
+        self,
+        types: type[T] = fabll.Node,
+        predicates_only: bool = False,
+        recursive: bool = False,
+    ) -> set[T]:
+        # Import inside function to avoid gen_F.py cycle detection
+        # (gen_F.py only looks for F.* patterns)
+        from faebryk.library.Expressions import is_predicate
+
+        class E_Ctx:
+            _self = self
+            operations: set[T] = set()
+            t = types
+            predicates_only_: bool = predicates_only
+
+        def visit(e_ctx: E_Ctx, edge: graph.BoundEdge) -> None:
+            expr = fbrk.EdgeOperand.get_expression_node(bound_edge=edge)
+            is_expr = fabll.Node.bind_instance(instance=edge.g().bind(node=expr))
+            if e_ctx.predicates_only_ and not is_expr.has_trait(is_predicate):
+                return
+
+            e_ctx.operations.add(is_expr.cast(e_ctx.t))
+
+        e_ctx = E_Ctx()
+        # Use the can_be_operand trait's instance, since that's where operand edges
+        # are attached
+        operand_instance = e_ctx._self.instance
+        if types is fabll.Node:
+            fbrk.EdgeOperand.visit_expression_edges(
+                bound_node=operand_instance,
+                ctx=e_ctx,
+                f=visit,
+            )
+        else:
+            fbrk.EdgeOperand.visit_expression_edges_of_type(
+                bound_node=operand_instance,
+                expression_type=types.bind_typegraph(self.tg)
+                .get_or_create_type()
+                .node(),
+                ctx=e_ctx,
+                f=visit,
+            )
+
+        out = e_ctx.operations
+        if recursive:
+            # Create a copy to iterate, since we'll be modifying out
+            for op in list(out):
+                op_po = op.get_trait(is_parameter_operatable)
+                out.update(
+                    op_po.get_operations(
+                        types=types,
+                        predicates_only=predicates_only,
+                        recursive=recursive,
+                    )
+                )
+
+        return out
+
+    def get_root_operands(self) -> set["can_be_operand"]:
+        # Import inside function to avoid gen_F.py cycle detection
+        from faebryk.library.Expressions import is_expression
+
+        if expr := self.try_get_sibling_trait(is_expression):
+            expr_leaves = expr.get_operand_leaves() | {self}
+        else:
+            expr_leaves = {self}
+
+        all_expressions = {
+            expr.get_trait(can_be_operand)
+            for leaf in expr_leaves
+            for expr in leaf.get_operations(recursive=True)
+        }
+
+        root_expressions = {
+            root_expr for root_expr in all_expressions if not root_expr.get_operations()
+        }
+
+        if not root_expressions:
+            return {self}
+
+        return root_expressions
+
 
 class is_parameter_operatable(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
@@ -190,56 +273,12 @@ class is_parameter_operatable(fabll.Node):
         predicates_only: bool = False,
         recursive: bool = False,
     ) -> set[T]:
-        from faebryk.library.Expressions import is_predicate
-
-        class E_Ctx:
-            _self = self
-            operations: set[T] = set()
-            t = types
-            predicates_only_: bool = predicates_only
-
-        def visit(e_ctx: E_Ctx, edge: graph.BoundEdge) -> None:
-            expr = fbrk.EdgeOperand.get_expression_node(bound_edge=edge)
-            is_expr = fabll.Node.bind_instance(instance=edge.g().bind(node=expr))
-            if e_ctx.predicates_only_ and not is_expr.has_trait(is_predicate):
-                return
-
-            e_ctx.operations.add(is_expr.cast(e_ctx.t))
-
-        e_ctx = E_Ctx()
-        # Use the can_be_operand trait's instance, since that's where operand edges
-        # are attached
-        operand_instance = e_ctx._self.as_operand.get().instance
-        if types is fabll.Node:
-            fbrk.EdgeOperand.visit_expression_edges(
-                bound_node=operand_instance,
-                ctx=e_ctx,
-                f=visit,
-            )
-        else:
-            fbrk.EdgeOperand.visit_expression_edges_of_type(
-                bound_node=operand_instance,
-                expression_type=types.bind_typegraph(self.tg)
-                .get_or_create_type()
-                .node(),
-                ctx=e_ctx,
-                f=visit,
-            )
-
-        out = e_ctx.operations
-        if recursive:
-            # Create a copy to iterate, since we'll be modifying out
-            for op in list(out):
-                op_po = op.get_trait(is_parameter_operatable)
-                out.update(
-                    op_po.get_operations(
-                        types=types,
-                        predicates_only=predicates_only,
-                        recursive=recursive,
-                    )
-                )
-
-        return out
+        # TODO remove in favor of the one in can_be_operand
+        return self.as_operand.get().get_operations(
+            types=types,
+            predicates_only=predicates_only,
+            recursive=recursive,
+        )
 
     def get_obj(self) -> "fabll.Node":
         return fabll.Traits(self).get_obj_raw()

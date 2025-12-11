@@ -1977,8 +1977,7 @@ class is_interface(Node):
 
     def is_connected_to(self, other: "NodeT") -> bool:
         bfs_path = fbrk.EdgeInterfaceConnection.is_connected_to(
-            source=self.get_obj().instance,
-            target=other.instance
+            source=self.get_obj().instance, target=other.instance
         )
         return bfs_path.get_end_node().node().is_same(other=other.instance.node())
 
@@ -1992,7 +1991,9 @@ class is_interface(Node):
         }
 
     @staticmethod
-    def group_into_buses[N: NodeT](nodes: set[N],) -> dict[N, set[N]]:
+    def group_into_buses[N: NodeT](
+        nodes: set[N],
+    ) -> dict[N, set[N]]:
         remaining = set(nodes)
         buses: dict[N, set[N]] = {}
 
