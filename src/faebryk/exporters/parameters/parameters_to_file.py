@@ -171,12 +171,11 @@ def parameter_report(tg: fbrk.TypeGraph, path: Path):
 
 
 def _generate_json_parameters(
-    parameters: dict[str, dict[str, F.Literals.is_literal]],
+    parameters: dict[str, list[tuple[str, str]]],
 ) -> str:
     json_parameters = {
         module_name: {
-            param_name: str(param_value)
-            for param_name, param_value in module_params.items()
+            param_name: str(param_value) for param_name, param_value in module_params
         }
         for module_name, module_params in parameters.items()
         if module_params
@@ -186,25 +185,23 @@ def _generate_json_parameters(
 
 
 def _generate_md_parameters(
-    parameters: dict[str, dict[str, F.Literals.is_literal]],
+    parameters: dict[str, list[tuple[str, str]]],
 ) -> str:
-    out = "# Module F.Parameters.is_parameters\n"
-    out += "| Module | F.Parameters.is_parameter | Value |\n"
+    out = "# Module Parameters\n"
+    out += "| Module | Parameter | Value |\n"
     out += "| --- | --- | --- |\n"
-    for module_name, paras in sorted(parameters.items()):
+    for module_name, paras in sorted(parameters.items(), key=lambda x: x[0]):
         if paras:
-            # Sort parameters for consistent output
-            sorted_params = sorted(paras.items())
+            par_name, par_value = next(iter(paras))
             # First parameter of the module shows the module name
-            if sorted_params:
-                par_name, par_value = sorted_params[0]
+            if par_name:
                 out += (
                     f"| `{module_name.replace('|', '\\|')}` | "
                     f"`{par_name.replace('|', '\\|')}` | "
                     f"`{str(par_value).replace('|', '\\|')}` |\n"
                 )
                 # Subsequent parameters of the same module have empty module cell
-                for par_name, par_value in sorted_params[1:]:
+                for par_name, par_value in paras[1:]:
                     out += (
                         f"|  | "
                         f"`{par_name.replace('|', '\\|')}` | "
@@ -216,17 +213,14 @@ def _generate_md_parameters(
 
 
 def _generate_txt_parameters(
-    parameters: dict[str, dict[str, F.Literals.is_literal]],
+    parameters: dict[str, list[tuple[str, str]]],
 ) -> str:
     out = ""
     for module_name, paras in sorted(parameters.items()):
         if paras:
             out += f"{module_name}\n"
             out += "\n".join(
-                [
-                    f"    {par_name}: {par_value}\n"
-                    for par_name, par_value in paras.items()
-                ]
+                [f"    {par_name}: {par_value}" for par_name, par_value in paras]
             )
             out += "\n"
 
@@ -237,7 +231,7 @@ def export_parameters_to_file(module: fabll.Node, solver: Solver, path: Path):
     """Write all parameters of the given module to a file."""
     # {module_name: [{param_name: param_value}, {param_name: param_value},...]}
 
-    parameters = dict[str, dict[str, F.Literals.is_literal]]()
+    parameters: dict[str, list[tuple[str, str]]] = {}
 
     for m in module.get_children(
         direct_only=False,
@@ -245,7 +239,7 @@ def export_parameters_to_file(module: fabll.Node, solver: Solver, path: Path):
         required_trait=fabll.is_module,
         include_root=True,
     ):
-        module_name = m.get_full_name(types=True)
+        module_name = m.get_name(accept_no_parent=True)
         module_params = m.get_children(
             direct_only=True,
             types=fabll.Node,
@@ -253,15 +247,15 @@ def export_parameters_to_file(module: fabll.Node, solver: Solver, path: Path):
             required_trait=F.Parameters.is_parameter,
         )
         param_names = [param.get_full_name().split(".")[-1] for param in module_params]
-        param_values = [
-            solver.inspect_get_known_supersets(
-                param.get_trait(F.Parameters.is_parameter)
-            )
-            for param in module_params
-        ]
-        parameters[module_name] = {
-            name: value for name, value in zip(param_names, param_values)
-        }
+        param_values = sorted(
+            [
+                solver.inspect_get_known_supersets(
+                    param.get_trait(F.Parameters.is_parameter)
+                ).pretty_str()
+                for param in module_params
+            ]
+        )
+        parameters[module_name] = list(zip(param_names, param_values))
 
     logger.info(f"Writing parameters to {path}")
 
