@@ -3796,6 +3796,17 @@ fn wrap_typegraph_debug_get_mount_chain() type {
     };
 }
 
+fn instantiation_error_message(err: anyerror) [*:0]const u8 {
+    return switch (err) {
+        error.InvalidArgument => "Node instantiation failed: type not found",
+        error.UnresolvedTypeReference => "Node instantiation failed: unresolved type reference (linking required)",
+        error.UnresolvedMountReference => "Node instantiation failed: unresolved mount reference",
+        error.UnresolvedReference => "Node instantiation failed: unresolved reference in MakeLink",
+        error.MissingOperandReference => "Node instantiation failed: missing operand reference in MakeLink",
+        else => "Node instantiation failed",
+    };
+}
+
 fn wrap_typegraph_instantiate() type {
     return struct {
         pub const descr = method_descr{
@@ -3813,8 +3824,8 @@ fn wrap_typegraph_instantiate() type {
 
             const identifier = bind.unwrap_str(kwarg_obj.type_identifier) orelse return null;
 
-            const bnode = faebryk.typegraph.TypeGraph.instantiate(wrapper.data, identifier) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "instantiate failed");
+            const bnode = faebryk.typegraph.TypeGraph.instantiate(wrapper.data, identifier) catch |err| {
+                py.PyErr_SetString(py.PyExc_ValueError, instantiation_error_message(err));
                 return null;
             };
 
@@ -3846,8 +3857,8 @@ fn wrap_typegraph_instantiate_node() type {
             var attributes = _unwrap_literal_str_dict(kwarg_obj.attributes, std.heap.c_allocator) catch return null;
             defer if (attributes != null) attributes.?.deinit();
 
-            const bnode = faebryk.typegraph.TypeGraph.instantiate_node(wrapper.data, kwarg_obj.type_node.*) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "instantiate_node failed");
+            const bnode = faebryk.typegraph.TypeGraph.instantiate_node(wrapper.data, kwarg_obj.type_node.*) catch |err| {
+                py.PyErr_SetString(py.PyExc_ValueError, instantiation_error_message(err));
                 return null;
             };
 
