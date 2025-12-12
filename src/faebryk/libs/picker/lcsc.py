@@ -596,14 +596,16 @@ def attach(
     except F.Lead.PadMatchException as e:
         raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
 
+    component_node = fabll.Traits(component_with_fp).get_obj_raw()
+
     if check_only:
         # don't attach or create any footprint related things if we're only checking
         # if the pad-lead combo's are valid
-        component_node = fabll.Traits(component_with_fp).get_obj_raw()
+
         logger.debug(f"Checking pinmap for {partno} -> {component_node.get_name()}")
         return
 
-    if not component_with_fp.has_trait(F.Footprints.has_associated_footprint):
+    if not component_node.has_trait(F.Footprints.has_associated_footprint):
         # we need to create and add a footprint node to the component if it
         # doesn't exist yet
         fp = F.Footprints.GenericFootprint.bind_typegraph_from_instance(
@@ -611,7 +613,6 @@ def attach(
         ).create_instance(g=component_with_fp.instance.g())
         fp.setup(tmp_pads)
 
-        component_node = fabll.Traits(component_with_fp).get_obj_raw()
         fabll.Traits.create_and_add_instance_to(
             node=component_node, trait=F.Footprints.has_associated_footprint
         ).setup(fp.is_footprint.get())

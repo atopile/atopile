@@ -7,7 +7,6 @@ from enum import Enum, StrEnum, auto
 from itertools import chain, pairwise
 from math import floor
 from typing import (
-    TYPE_CHECKING,
     Any,
     Callable,
     Iterable,
@@ -67,9 +66,6 @@ Geom = (
 
 Point = Geometry.Point
 Point2D = Geometry.Point2D
-
-
-
 
 
 def gen_uuid(mark: str = "") -> UUID:
@@ -288,10 +284,6 @@ class PCB_Transformer:
         - F.Footprints.GenericPad and PCB Pads
         """
         import faebryk.library._F as F
-
-        fabll.Traits.create_and_add_instance_to(
-            node=module, trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint
-        ).setup(pcb_fp, self)
 
         # By now, the node being bound MUST have a footprint
         # get the fabll footprint (is_footprint trait)
