@@ -38,9 +38,8 @@ def _print(msg: str, ts: datetime.datetime | None = None, flush: bool = True):
     if ts is None:
         ts = datetime.datetime.now()
     tsstr = ts.strftime("%Y-%m-%d %H:%M:%S")
-    _original_stderr.write(f"{tsstr}: {msg}\n")
-    if flush:
-        _original_stderr.flush()
+    str = f"{tsstr}: {msg}"
+    print(str, file=_original_stderr)
 
 
 class ClockTimer:

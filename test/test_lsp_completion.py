@@ -20,12 +20,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 import lsprotocol.types as lsp
 
 import faebryk.library._F as F
-from atopile.lsp.lsp_server import (
-    _extract_field_reference_before_dot,
-    _find_field_reference_node,
-    _get_node_completions,
-    on_document_completion,
-)
+# from atopile.lsp.lsp_server import (
+#    _extract_field_reference_before_dot,
+#    _find_field_reference_node,
+#    _get_node_completions,
+#    on_document_completion,
+# )
 
 
 @contextmanager
