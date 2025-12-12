@@ -49,21 +49,17 @@ jobs:
         continue-on-error: true
         # FIXME timeout
         run: |
+          uv pip install pytest-github-actions-annotate-failures
           uv run \
-            --with pytest-github-actions-annotate-failures \
-            pytest \
-            -qq \
-            -p test.ci_minimal_output \
-            --capture=fd \
+            test/runcitest.py \
             -m "not not_in_ci and not slow and not regression" \
             --timeout=900 \
-            --junitxml=artifacts/junit.xml \
-            >/dev/null
+            --junitxml=artifacts/junit.xml
         env:
           PYTHONPATH: .
           GH_TOKEN: ${{ github.token }}
           COLUMNS: 150 # rich console width will be pulled from this
-          FBRK_TEST_LOG_OUTPUT_INTERVAL_SECONDS: 15
+          FBRK_TEST_LOG_OUTPUT_INTERVAL_SECONDS: 10
           FBRK_TEST_LOG_WARNING_THRESHOLD_SECONDS: 30
           PYTHON_UNBUFFERED: 1
 
