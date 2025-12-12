@@ -4241,7 +4241,8 @@ class Numbers(fabll.Node):
         # They have the same internal structure, just different semantics:
         # - Quantity_Set_Discrete: discrete values (singletons)
         # - Quantity_Interval_Disjoint: continuous ranges
-        valid_types = ["Quantity_Interval_Disjoint", "Quantity_Set_Discrete"]
+        # TODO need to handle EnumSets
+        valid_types = ["Quantity_Interval_Disjoint", "Quantity_Set_Discrete", "EnumSet"]
         if data.get("type") not in valid_types:
             raise ValueError(
                 "Expected type 'Quantity_Interval_Disjoint' or "
