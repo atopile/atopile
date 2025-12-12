@@ -14,7 +14,8 @@ jobs:
   pytest:
     #runs-on: blacksmith-4vcpu-ubuntu-2404
     #runs-on: blacksmith-32vcpu-ubuntu-2404-arm
-    runs-on: blacksmith-32vcpu-ubuntu-2404
+    #runs-on: blacksmith-32vcpu-ubuntu-2404
+    runs-on: [self-hosted]
     #runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -42,6 +43,8 @@ jobs:
       - name: "Install dependencies"
         run: |
           uv sync --dev --no-install-project --frozen
+        env:
+          UV_CACHE_DIR: /var/cache/uv
 
       - name: "Compile & build package"
         run: |
