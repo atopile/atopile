@@ -60,7 +60,7 @@ class Capacitor(fabll.Node):
             params={
                 "capacitance": capacitance,
                 "max_voltage": max_voltage,
-                # "temperature_coefficient": temperature_coefficient,
+                "temperature_coefficient": temperature_coefficient,
             },
         )
     )
