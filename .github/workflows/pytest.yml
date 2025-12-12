@@ -70,6 +70,8 @@ jobs:
           PYTHONPATH: .
           GH_TOKEN: ${{ github.token }}
           COLUMNS: 150 # rich console width will be pulled from this
+          FBRK_TEST_LOG_OUTPUT_INTERVAL_SECONDS: 15
+          FBRK_TEST_LOG_WARNING_THRESHOLD_SECONDS: 30
 
       - name: Export pytest summary JSON
         if: always()
