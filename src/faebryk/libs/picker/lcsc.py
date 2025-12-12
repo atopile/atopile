@@ -595,7 +595,11 @@ def attach(
         for node, (number, name) in zip(pad_nodes, pads_number_name_pairs)
     ]
 
-    leads_t = F.Lead.is_lead.bind_typegraph(component_with_fp.tg).get_instances()
+    lead_nodes = component_with_fp.get_children(
+        direct_only=False, types=fabll.Node, required_trait=F.Lead.is_lead
+    )
+    leads_t = [lead_node.get_trait(F.Lead.is_lead) for lead_node in lead_nodes]
+
     # try matching the ato part pad names to the component's leads
     try:
         matched_pads: list[F.Footprints.is_pad] = []
@@ -638,6 +642,7 @@ def attach(
         ).setup(fp_trait)
 
         pads_t = fp_trait.get_pads()
+
         try:
             # only attach to leads that don't have associated pads yet
             for lead_t in [

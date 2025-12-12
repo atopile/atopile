@@ -49,7 +49,7 @@ class is_lead(fabll.Node):
             if associate:
                 fabll.Traits.create_and_add_instance_to(
                     node=self, trait=has_associated_pads
-                ).setup(pad=pad, parent=self)
+                ).setup(pad=pad)
             return pad
 
         raise PadMatchException(
@@ -170,8 +170,8 @@ class has_associated_pads(fabll.Node):
         out.add_dependant(pad)
         return out
 
-    def setup(self, pad: F.Footprints.is_pad, parent: fabll.Node) -> Self:
-        self.pad_ptr_.get().point(pad)  # setup single pointer to single pad
+    def setup(self, pad: F.Footprints.is_pad) -> Self:
+        self.pad_ptr_.get().point(pad)
         return self
 
 
@@ -193,7 +193,7 @@ def test_is_lead():
     )
 
     fabll.Traits.create_and_add_instance_to(node=lead, trait=has_associated_pads).setup(
-        pad=pad.get_trait(F.Footprints.is_pad), parent=lead
+        pad=pad.get_trait(F.Footprints.is_pad)
     )
 
     connected_pad = lead.get_trait(has_associated_pads).get_pads().pop()
@@ -304,7 +304,7 @@ def test_can_attach_to_any_pad():
 
     fabll.Traits.create_and_add_instance_to(
         node=module.unnamed[1].get(), trait=has_associated_pads
-    ).setup(pad=pad2, parent=module.unnamed[1].get())
+    ).setup(pad=pad2)
 
     with pytest.raises(PadMatchException):
         module.unnamed[2].get().get_trait(is_lead).find_matching_pad(pads)
