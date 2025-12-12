@@ -6885,11 +6885,10 @@ class AbstractEnums(fabll.Node):
                 f"Expected 'enum.values' to be a dict, got {type(enum_values)}"
             )
 
-        # Create a dynamic enum type from the serialized values
-        # The enum name->value mapping is stored in enum_values
-        DynamicEnum: type[Enum] = StrEnum(
-            enum_name, {k: v for k, v in enum_values.items()}
-        )  # type: ignore[assignment]
+        # Create a dynamic enum type preserving the original values.
+        # Convert values to strings since StrEnum requires string values.
+        string_enum_values = {k: str(v) for k, v in enum_values.items()}
+        DynamicEnum: type[Enum] = StrEnum(enum_name, string_enum_values)  # type: ignore[assignment]
 
         # Get the concrete enum type using EnumsFactory
         ConcreteEnumType = EnumsFactory(DynamicEnum)
@@ -6897,13 +6896,13 @@ class AbstractEnums(fabll.Node):
         # Create an instance
         enum_instance = ConcreteEnumType.bind_typegraph(tg=tg).create_instance(g=g)
 
-        # Constrain to the selected element values
+        # Constrain to the selected element values (use string-converted values)
         # elements contains [{"name": "NAME"}, ...] where NAME is the enum member name
-        selected_values = []
-        for element in elements:
-            name = element.get("name")
-            if name and name in enum_values:
-                selected_values.append(enum_values[name])
+        selected_values = [
+            string_enum_values[element.get("name")]
+            for element in elements
+            if element.get("name") in string_enum_values
+        ]
 
         if selected_values:
             enum_instance.constrain_to_values(*selected_values)

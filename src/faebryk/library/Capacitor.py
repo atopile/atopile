@@ -14,15 +14,16 @@ class Capacitor(fabll.Node):
     # ----------------------------------------
     #                 enums
     # ----------------------------------------
+    # Updated to match the backend enum format
     class TemperatureCoefficient(StrEnum):
-        Y5V = "Y5V"
-        Z5U = "Z5U"
-        X7S = "X7S"
-        X5R = "X5R"
-        X6R = "X6R"
-        X7R = "X7R"
-        X8R = "X8R"
-        C0G = "C0G"
+        Y5V = "1"
+        Z5U = "2"
+        X7S = "3"
+        X5R = "4"
+        X6R = "5"
+        X7R = "6"
+        X8R = "7"
+        C0G = "8"
 
     # ----------------------------------------
     #     modules, interfaces, parameters
