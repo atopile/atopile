@@ -69,7 +69,20 @@ class FieldPath:
         return ".".join(parts)
 
     def identifiers(self) -> tuple[str, ...]:
-        return tuple(segment.identifier for segment in self.segments)
+        """
+        Return the path as a tuple of identifiers suitable for TypeGraph lookups.
+
+        Index segments (e.g., the '0' in 'unnamed[0]') are combined with their
+        preceding name segment to form a single identifier like 'unnamed[0]',
+        matching how fabll names list children.
+        """
+        parts: list[str] = []
+        for segment in self.segments:
+            if segment.is_index:
+                parts[-1] = f"{parts[-1]}[{segment.identifier}]"
+            else:
+                parts.append(segment.identifier)
+        return tuple(parts)
 
 
 @dataclass(frozen=True)

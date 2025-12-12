@@ -294,6 +294,28 @@ def test_for_loop_requires_experiment():
         )
 
 
+def test_connect_resistor_simple():
+    _, tg, _, result = _build_snippet(
+        """
+        import Resistor
+
+        module App:
+            left = new Resistor
+            right = new Resistor
+            left.unnamed[0] ~ right.unnamed[0]
+        """
+    )
+    app_type = result.state.type_roots["App"]
+    # Path segments with indices are combined: unnamed + [0] -> unnamed[0]
+    # This matches how fabll names list children
+    assert _check_make_links(
+        tg=tg,
+        type_node=app_type,
+        expected=[(["left", "unnamed[0]"], ["right", "unnamed[0]"])],
+        not_expected=[(["left"], ["right"])],
+    )
+
+
 def test_for_loop_over_sequence():
     _, tg, _, result = _build_snippet(
         """
@@ -316,13 +338,14 @@ def test_for_loop_over_sequence():
                 it.connection ~ sink
         """
     )
+    # Path segments with indices are combined: items + [0] -> items[0]
     assert (
         _check_make_links(
             tg=tg,
             type_node=result.state.type_roots["App"],
             expected=[
-                (["items", "0", "connection"], ["sink"]),
-                (["items", "1", "connection"], ["sink"]),
+                (["items[0]", "connection"], ["sink"]),
+                (["items[1]", "connection"], ["sink"]),
             ],
         )
         is True
@@ -352,12 +375,13 @@ def test_for_loop_over_sequence_slice():
         """
     )
 
+    # Path segments with indices are combined
     assert _check_make_links(
         tg=tg,
         type_node=result.state.type_roots["App"],
         expected=[
-            (["items", "1", "connection"], ["sink"]),
-            (["items", "2", "connection"], ["sink"]),
+            (["items[1]", "connection"], ["sink"]),
+            (["items[2]", "connection"], ["sink"]),
         ],
     )
 
@@ -403,16 +427,17 @@ def test_for_loop_over_sequence_stride():
         """
     )
 
+    # Path segments with indices are combined
     assert _check_make_links(
         tg=tg,
         type_node=result.state.type_roots["App"],
         expected=[
-            (["items", "0", "connection"], ["sink"]),
-            (["items", "2", "connection"], ["sink"]),
+            (["items[0]", "connection"], ["sink"]),
+            (["items[2]", "connection"], ["sink"]),
         ],
         not_expected=[
-            (["items", "1", "connection"], ["sink"]),
-            (["items", "3", "connection"], ["sink"]),
+            (["items[1]", "connection"], ["sink"]),
+            (["items[3]", "connection"], ["sink"]),
         ],
     )
 
@@ -605,11 +630,12 @@ def test_connects_between_top_level_fields():
         for _, lhs_path, rhs_path in _collect_make_links(tg, type_node)
     }
     print(paths)
+    # Path segments with indices are combined: unnamed + [1] -> unnamed[1]
     assert (
         _check_make_links(
             tg=tg,
             type_node=result.state.type_roots["App"],
-            expected=[(["left", "unnamed", "1"], ["right", "unnamed", "0"])],
+            expected=[(["left", "unnamed[1]"], ["right", "unnamed[0]"])],
         )
         is True
     )
