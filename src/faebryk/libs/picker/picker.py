@@ -224,14 +224,9 @@ def check_missing_picks(module: fabll.Node):
     #         catch=KeyErrorAmbiguous,
     #     ),
     # )
-
     missing = [
         m
-        for m in module.get_children(
-            types=fabll.Node,
-            required_trait=fabll.is_module,
-            direct_only=False,
-        )
+        for m in fabll.is_module.bind_typegraph(module.tg).get_instances()
         if not m.has_trait(F.has_part_picked)
         and not m.has_trait(F.Footprints.has_associated_footprint)
         # TODO: really just want to look for is_pickable, which the other traits have
