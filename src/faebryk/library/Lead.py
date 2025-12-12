@@ -35,7 +35,7 @@ class is_lead(fabll.Node):
         Find a matching pad for this lead based on the available attach_to_pad traits.
         Defaults to matching the lead instance name to the pad name.
         """
-        # TODO: filter out pads that are already claimed by other leads
+        pads = sorted(pads, key=lambda x: x.pad_name)
         if self.has_trait(can_attach_to_pad_by_name):
             pad = self.get_trait(can_attach_to_pad_by_name).find_matching_pad(pads)
         elif self.has_trait(can_attach_to_any_pad):
