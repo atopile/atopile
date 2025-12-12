@@ -146,7 +146,7 @@ def load_part_info_from_pcb(tg: fbrk.TypeGraph):
                 )
                 continue
             param_value = json.loads(value)
-            param_value = F.Literals.Numbers.deserialize(param_value)
+            param_value = F.Literals.is_literal.deserialize(param_value)
             assert isinstance(param, F.Parameters.is_parameter)
             param.alias_is(param_value)
 

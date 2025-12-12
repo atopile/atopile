@@ -195,7 +195,7 @@ class Component:
         def deserialize(k, v):
             if v is None:
                 return None
-            return F.Literals.Numbers.deserialize(v, g=g, tg=tg)
+            return F.Literals.is_literal.deserialize(v, g=g, tg=tg)
 
         return {k: deserialize(k, v) for k, v in self.attributes.items()}
 
