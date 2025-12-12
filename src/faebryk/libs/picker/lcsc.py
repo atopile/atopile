@@ -595,7 +595,9 @@ def attach(
         for node, (number, name) in zip(pad_nodes, pads_number_name_pairs)
     ]
 
-    lead_nodes = component_with_fp.get_children(
+    component_node = fabll.Traits(component_with_fp).get_obj_raw()
+
+    lead_nodes = component_node.get_children(
         direct_only=False, types=fabll.Node, required_trait=F.Lead.is_lead
     )
     leads_t = [lead_node.get_trait(F.Lead.is_lead) for lead_node in lead_nodes]
@@ -609,8 +611,6 @@ def attach(
             )
     except F.Lead.PadMatchException as e:
         raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
-
-    component_node = fabll.Traits(component_with_fp).get_obj_raw()
 
     if check_only:
         # don't attach or create any footprint related things if we're only checking
@@ -642,7 +642,6 @@ def attach(
         ).setup(fp_trait)
 
         pads_t = fp_trait.get_pads()
-
         try:
             # only attach to leads that don't have associated pads yet
             for lead_t in [
