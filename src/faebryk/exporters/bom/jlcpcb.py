@@ -157,11 +157,7 @@ def _get_bomline(cmp: fabll.Node, jlcpcb_format: bool = True) -> BOMLine | None:
     manufacturer = part.manufacturer
     partnumber = part.partno
 
-    footprint_name = (
-        footprint.get_trait(F.KiCadFootprints.has_associated_kicad_pcb_footprint)
-        .get_footprint()
-        .name
-    )
+    footprint_name = footprint.get_footprint().name
 
     return BOMLine(
         Designator=designator,

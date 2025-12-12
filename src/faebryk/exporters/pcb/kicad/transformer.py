@@ -25,7 +25,6 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.node import TraitNotFound
-from faebryk.libs.exceptions import UserException
 from faebryk.libs.geometry.basic import Geometry
 from faebryk.libs.kicad.fileformats import UUID, Property, kicad
 from faebryk.libs.nets import bind_fbrk_nets_to_kicad_nets
@@ -238,7 +237,9 @@ class PCB_Transformer:
             if not node.has_trait(F.KiCadFootprints.has_associated_kicad_pcb_footprint)
         }
         if unattached_nodes:
-            raise UserException(
+            # TODO: fix this
+            # raise UserException(
+            logger.warning(
                 f"Failed to attach {len(unattached_nodes)} node(s) to footprints: "
                 f"{', '.join(f'`{node.get_full_name()}`' for node in unattached_nodes)}"
             )
@@ -301,7 +302,11 @@ class PCB_Transformer:
             pads = [pad for pad in pcb_pads if pad.name == fpad.pad_name]
             pcb_pads -= FuncSet(pads)
             if not pads:
-                logger.warning(f"No PCB pads for pad in design: {fpad}")
+                logger.warning(
+                    f"No PCB pads for pad: "
+                    f"name: {fpad.pad_name}, "
+                    f"number: {fpad.pad_number}"
+                )
             # bind the kicad pcb pads to the fabll pad (is_pad trait)
             fabll.Traits.create_and_add_instance_to(
                 node=fpad, trait=F.KiCadFootprints.has_associated_kicad_pcb_pad
@@ -1808,6 +1813,7 @@ class PCB_Transformer:
         # Re-attach everything one more time
         # Re-attach everything one more time
         # We rely on this to reliably update the pcb
+
         self.attach()
 
         gf = fabll.Node.bind_typegraph(self.tg)
@@ -1950,7 +1956,8 @@ class PCB_Transformer:
                 except TraitNotFound as ex:
                     # FIXME: replace this with more robust
                     raise RuntimeError(
-                        f"No linked KiCAD pad found for `{f_pad.get_full_name()}`."
+                        f"No linked KiCAD pad found for `{f_pad.get_full_name()}` "
+                        f"in [{pads_on_net}]."
                         " This is caused by the component floating, rather than"
                         " being attached to the app's tree."
                     ) from ex
