@@ -28,7 +28,9 @@ class is_lead(fabll.Node):
         owner = fabll.Traits.bind(self).get_obj_raw()
         return owner.get_name()
 
-    def find_matching_pad(self, pads: list[F.Footprints.is_pad]) -> F.Footprints.is_pad:
+    def find_matching_pad(
+        self, pads: list[F.Footprints.is_pad], associate: bool = True
+    ) -> F.Footprints.is_pad:
         """
         Find a matching pad for this lead based on the available attach_to_pad traits.
         Defaults to matching the lead instance name to the pad name.
@@ -44,9 +46,10 @@ class is_lead(fabll.Node):
                     break
 
         if pad is not None:
-            fabll.Traits.create_and_add_instance_to(
-                node=self, trait=has_associated_pads
-            ).setup(pad=pad, parent=self)
+            if associate:
+                fabll.Traits.create_and_add_instance_to(
+                    node=self, trait=has_associated_pads
+                ).setup(pad=pad, parent=self)
             return pad
 
         raise PadMatchException(

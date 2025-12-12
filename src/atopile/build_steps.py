@@ -10,7 +10,6 @@ from enum import StrEnum
 from pathlib import Path
 from textwrap import dedent
 
-from faebryk.core.graph import InstanceGraphFunctions
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import layout
@@ -268,8 +267,6 @@ def prepare_nets(
     attach_random_designators(app.tg)
     nets = bind_electricals_to_fbrk_nets(app.tg, app.g)
 
-    # from faebryk.core.graph import InstanceGraphFunctions
-    # print(InstanceGraphFunctions.render(app.instance, show_connections=True, show_traits=True))
     if len(nets) == 0:
         logger.warning("No nets found")
     for net in nets:

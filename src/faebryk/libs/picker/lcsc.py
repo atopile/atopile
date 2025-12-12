@@ -588,11 +588,11 @@ def attach(
     ]
 
     leads_t = F.Lead.is_lead.bind_typegraph(component_with_fp.tg).get_instances()
-
     # try matching the ato part pad names to the component's leads
     try:
-        for lead_t in leads_t:
-            matched_pad = lead_t.find_matching_pad(tmp_pads)
+        matched_pads: list[F.Footprints.is_pad] = []
+        for lead_t in [t for t in leads_t if t not in matched_pads]:
+            matched_pads.append(lead_t.find_matching_pad(tmp_pads, associate=False))
     except F.Lead.PadMatchException as e:
         raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
 
@@ -624,9 +624,10 @@ def attach(
                 lt for lt in leads_t if not lt.has_trait(F.Lead.has_associated_pads)
             ]:
                 matched_pad = lead_t.find_matching_pad(pads_t)
-                fabll.Traits.create_and_add_instance_to(
-                    node=lead_t, trait=F.Lead.has_associated_pads
-                ).setup(pad=matched_pad, parent=lead_t)
+                logger.debug(
+                    f"matched pad and lead: "
+                    f"{matched_pad.pad_name}:{lead_t.get_lead_name()}"
+                )
         except F.Lead.PadMatchException as e:
             raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
 
