@@ -63,14 +63,8 @@ class is_footprint(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
 
     def get_pads(self) -> list[is_pad]:
-        fp = self.get_parent_with_trait(is_footprint)[0]
-        pads = [
-            pad.get_trait(is_pad)
-            for pad in fp.get_children(
-                direct_only=True, types=fabll.Node, required_trait=is_pad
-            )
-        ]
-        print([p.pad_name for p in pads])
+        # TODO: this returns twice as many is_pad instances as there are
+        pads = is_pad.bind_typegraph(self.tg).get_instances()
         return pads
 
 
@@ -97,22 +91,6 @@ class has_associated_footprint(fabll.Node):
         self.footprint_.get().point(footprint)
 
 
-class GenericPad(fabll.Node):
-    """Generic pad"""
-
-    is_pad_ = fabll.Traits.MakeEdge(is_pad.MakeChild(pad_name="", pad_number=""))
-
-    @classmethod
-    def MakeChild(cls, pad_name: str, pad_number: str) -> fabll._ChildField[Self]:
-        out = fabll._ChildField(cls)
-        out.add_dependant(is_pad.MakeChild(pad_name, pad_number))
-        return out
-
-    def setup(self, pad_name: str, pad_number: str):
-        self.is_pad_.get().setup(pad_name, pad_number)
-        return self
-
-
 # TODO this is a placeholder for now, will be removed
 class GenericFootprint(fabll.Node):
     """Generic footprint"""
@@ -121,34 +99,9 @@ class GenericFootprint(fabll.Node):
 
     pads_ = F.Collections.PointerSet.MakeChild()
 
-    def get_pads(self) -> list[is_pad]:
-        pads = [pad.cast(is_pad) for pad in self.pads_.get().as_list()]
-        return pads
-
-    @classmethod
-    def MakeChild(cls, pads: list[tuple[str, str]]) -> fabll._ChildField[Self]:
-        out = fabll._ChildField(cls)
-        for number, name in pads:
-            pad = GenericPad.MakeChild(name, number)
-            out.add_dependant(pad)
-            out.add_dependant(
-                F.Collections.PointerSet.MakeEdge([out, cls.pads_], [pad])
-            )
-        return out
-
     def setup(self, pads: list[is_pad]):
         """Setup the footprint with pads"""
         for pad in pads:
-            self.pads_.get().append(pad)
-        return self
-
-    def setup_from_pad_number_and_names(self, pads: list[tuple[str, str]]):
-        """Setup the footprint with pads(number, name)"""
-        for number, name in pads:
-            pad = GenericPad.bind_typegraph(tg=self.tg).create_instance(
-                g=self.instance.g()
-            )
-            pad.setup(name, number)
             self.pads_.get().append(pad)
         return self
 

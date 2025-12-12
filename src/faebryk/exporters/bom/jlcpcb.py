@@ -138,11 +138,10 @@ def _get_bomline(cmp: fabll.Node, jlcpcb_format: bool = True) -> BOMLine | None:
         return
 
     part = cmp.get_trait(F.has_part_picked).get_part()
-    footprint = cmp.get_children(
-        direct_only=False,
-        types=fabll.Node,
-        required_trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint,
-    )[0]
+
+    footprint = F.KiCadFootprints.has_associated_kicad_pcb_footprint.bind_typegraph(
+        cmp.tg
+    ).get_instances()[0]
 
     value = (
         cmp.get_trait(F.has_simple_value_representation).get_value()

@@ -609,15 +609,18 @@ def attach(
         # we need to create and add a footprint node to the component if it
         # doesn't exist yet
         fp = F.Footprints.GenericFootprint.bind_typegraph_from_instance(
-            instance=component_with_fp.instance
-        ).create_instance(g=component_with_fp.instance.g())
-        fp.setup(tmp_pads)
+            component_node.instance
+        ).create_instance(g=component_node.instance.g())
+
+        fp.setup(pads=tmp_pads)
+
+        fp_trait = fp.is_footprint.get()
 
         fabll.Traits.create_and_add_instance_to(
             node=component_node, trait=F.Footprints.has_associated_footprint
-        ).setup(fp.is_footprint.get())
+        ).setup(fp_trait)
 
-        pads_t = fp.get_pads()
+        pads_t = fp_trait.get_pads()
         try:
             # only attach to leads that don't have associated pads yet
             for lead_t in [

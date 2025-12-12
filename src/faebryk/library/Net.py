@@ -49,17 +49,9 @@ class Net(fabll.Node):
         """Get all electrical interfaces connected to this net."""
         return list(self.part_of.get()._is_interface.get().get_connected())
 
-
     # ----------------------------------------
     #                WIP
     # ----------------------------------------
-
-    def get_footprints(self) -> set[F.Footprints.GenericFootprint]:
-        return {
-            fp
-            for mif in self.part_of.get()._is_interface.get().get_connected()
-            if (fp := mif.get_parent_of_type(F.Footprints.GenericFootprint)) is not None
-        }
 
     def __repr__(self) -> str:
         up = super().__repr__()

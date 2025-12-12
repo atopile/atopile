@@ -232,8 +232,8 @@ class PCB_Transformer:
 
         unattached_nodes = {
             node
-            for node, trait in fabll.Node.bind_typegraph(self.tg).nodes_with_trait(
-                F.Footprints.has_associated_footprint
+            for node in fabll.Traits.get_implementor_objects(
+                trait=F.Footprints.has_associated_footprint.bind_typegraph(self.tg)
             )
             if not node.has_trait(F.KiCadFootprints.has_associated_kicad_pcb_footprint)
         }
