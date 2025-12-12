@@ -28,17 +28,19 @@ jobs:
       - name: Prepare artifacts dir
         run: mkdir -p artifacts
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          version: 0.8
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
+      #- name: Install uv
+      #  uses: astral-sh/setup-uv@v6
+      #  with:
+      #    version: 0.8
+      #    enable-cache: true
+      #    cache-dependency-glob: "uv.lock"
 
-      - name: "Set up Python"
-        uses: actions/setup-python@v5
-        with:
-          python-version-file: "pyproject.toml"
+      #- name: "Set up Python"
+      #  uses: actions/setup-python@v5
+      #  with:
+      #    # self-hosted runner struggles with this one
+      #    #python-version-file: "pyproject.toml"
+      #    python-version: "3.13"
 
       - name: "Install dependencies"
         run: |
