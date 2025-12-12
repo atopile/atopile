@@ -63,9 +63,9 @@ class is_footprint(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
 
     def get_pads(self) -> list[is_pad]:
-        # TODO: this returns twice as many is_pad instances as there are
-        pads = is_pad.bind_typegraph(self.tg).get_instances()
-        return pads
+        parent = fabll.Traits(self).get_obj_raw()
+        pads_nodes = parent.get_children(direct_only=False, types=(fabll.Node, is_pad))
+        return [p.get_trait(is_pad) for p in pads_nodes]
 
 
 class can_attach_to_footprint(fabll.Node):

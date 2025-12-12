@@ -27,6 +27,7 @@ from easyeda2kicad.kicad.export_kicad_footprint import ExporterFootprintKicad
 from easyeda2kicad.kicad.export_kicad_symbol import ExporterSymbolKicad, KicadVersion
 from more_itertools import first
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.config import config as Gcfg
@@ -577,14 +578,21 @@ def attach(
     ]
     # create temp pads from the atopart pad names and numbers to check if their
     # names match the lead names
-    tmp_pads = [
-        fabll.Traits.create_and_add_instance_to(
-            node=fabll.Node.bind_typegraph(tg=component_with_fp.tg).create_instance(
-                g=component_with_fp.instance.g()
-            ),
-            trait=F.Footprints.is_pad,
-        ).setup(pad_number=number, pad_name=name)
-        for number, name in pads_number_name_pairs
+    pad_nodes: list[fabll.Node] = [
+        fabll.Node.bind_typegraph(tg=component_with_fp.tg).create_instance(
+            g=component_with_fp.instance.g()
+        )
+        for _ in range(len(pads_number_name_pairs))
+    ]
+    tmp_pads: list[tuple[F.Footprints.is_pad, fabll.Node]] = [
+        (
+            fabll.Traits.create_and_add_instance_to(
+                node=node,
+                trait=F.Footprints.is_pad,
+            ).setup(pad_number=number, pad_name=name),
+            node,
+        )
+        for node, (number, name) in zip(pad_nodes, pads_number_name_pairs)
     ]
 
     leads_t = F.Lead.is_lead.bind_typegraph(component_with_fp.tg).get_instances()
@@ -592,7 +600,9 @@ def attach(
     try:
         matched_pads: list[F.Footprints.is_pad] = []
         for lead_t in [t for t in leads_t if t not in matched_pads]:
-            matched_pads.append(lead_t.find_matching_pad(tmp_pads, associate=False))
+            matched_pads.append(
+                lead_t.find_matching_pad([p[0] for p in tmp_pads], associate=False)
+            )
     except F.Lead.PadMatchException as e:
         raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
 
@@ -608,13 +618,20 @@ def attach(
     if not component_node.has_trait(F.Footprints.has_associated_footprint):
         # we need to create and add a footprint node to the component if it
         # doesn't exist yet
-        fp = F.Footprints.GenericFootprint.bind_typegraph_from_instance(
+        fp = fabll.Node.bind_typegraph_from_instance(
             component_node.instance
         ).create_instance(g=component_node.instance.g())
+        fabll.Traits.create_and_add_instance_to(
+            node=fp, trait=F.Footprints.is_footprint
+        )
+        # add pad_nodes to the footprint with composition edge
+        for pad in tmp_pads:
+            fp.connect(
+                to=pad[1],
+                edge_attrs=fbrk.EdgeComposition.build(child_identifier=f"{id(pad)}"),
+            )
 
-        fp.setup(pads=tmp_pads)
-
-        fp_trait = fp.is_footprint.get()
+        fp_trait = fp.get_trait(F.Footprints.is_footprint)
 
         fabll.Traits.create_and_add_instance_to(
             node=component_node, trait=F.Footprints.has_associated_footprint
@@ -630,6 +647,7 @@ def attach(
                 logger.debug(
                     f"matched pad and lead: "
                     f"{matched_pad.pad_name}:{lead_t.get_lead_name()}"
+                    f"for {partno} -> {component_node.get_name()}"
                 )
         except F.Lead.PadMatchException as e:
             raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
