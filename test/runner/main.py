@@ -164,7 +164,7 @@ WORKER_COUNT = int(os.getenv("FBRK_TEST_WORKERS", 0))
 if WORKER_COUNT == 0:
     WORKER_COUNT = os.cpu_count() or 1
 elif WORKER_COUNT < 0:
-    WORKER_COUNT = (os.cpu_count() or 1) * -WORKER_COUNT
+    WORKER_COUNT = max(((os.cpu_count() or 1) * -WORKER_COUNT) // 2, 1)
 # Generate HTML report
 GENERATE_HTML = os.getenv("FBRK_TEST_GENERATE_HTML", "1") == "1"
 GENERATE_PERIODIC_HTML = os.getenv("FBRK_TEST_PERIODIC_HTML", "1") == "1"

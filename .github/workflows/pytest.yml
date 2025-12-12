@@ -14,8 +14,8 @@ jobs:
   pytest:
     #runs-on: blacksmith-4vcpu-ubuntu-2404
     #runs-on: blacksmith-32vcpu-ubuntu-2404-arm
-    #runs-on: blacksmith-32vcpu-ubuntu-2404
-    runs-on: [self-hosted]
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    #runs-on: [self-hosted]
     #runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -28,19 +28,19 @@ jobs:
       - name: Prepare artifacts dir
         run: mkdir -p artifacts
 
-      #- name: Install uv
-      #  uses: astral-sh/setup-uv@v6
-      #  with:
-      #    version: 0.8
-      #    enable-cache: true
-      #    cache-dependency-glob: "uv.lock"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: 0.8
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
-      #- name: "Set up Python"
-      #  uses: actions/setup-python@v5
-      #  with:
-      #    # self-hosted runner struggles with this one
-      #    #python-version-file: "pyproject.toml"
-      #    python-version: "3.13"
+      - name: "Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          # self-hosted runner struggles with this one
+          python-version-file: "pyproject.toml"
+          #python-version: "3.13"
 
       - name: "Install dependencies"
         run: |
@@ -68,7 +68,7 @@ jobs:
           FBRK_TEST_REPORT_INTERVAL: 10
           FBRK_TEST_LONG_THRESHOLD: 30
           FBRK_TEST_SHOW_PYTEST_OUTPUT: 0
-          FBRK_TEST_WORKERS: -2
+          FBRK_TEST_WORKERS: -2 # 32 threads/16 cpus -> 32 workers
           FBRK_TEST_PERIODIC_HTML: 0
           FBRK_TEST_GENERATE_HTML: 1
           PYTHON_UNBUFFERED: 1
