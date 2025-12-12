@@ -267,7 +267,7 @@ class PCB_Transformer:
         for module in fabll.Traits.get_implementor_objects(
             trait=fabll.is_module.bind_typegraph(tg)
         ):
-            atopile_addr = module.get_full_name()
+            atopile_addr = module.get_full_name(include_uuid=False)
 
             # make a dict of nodes:footprints if the node's atopile address
             # is present in the KiCad PCB file

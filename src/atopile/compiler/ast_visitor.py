@@ -296,6 +296,8 @@ class _TypeContextStack:
                 g=self._g, type_reference=type_reference, target_type_node=target
             )
 
+    # TODO FIXME this has no type checking to make sure we are only conneceting nodes with is_interface trait
+    # we should use the fabll connect_to method for this
     def _add_link(self, type_node: BoundNode, action: AddMakeLinkAction) -> None:
         self._tg.add_make_link(
             type_node=type_node,

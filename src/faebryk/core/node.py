@@ -1360,16 +1360,23 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         g.insert_subgraph(subgraph=g_sub)
         return self.bind_instance(instance=g.bind(node=self.instance.node()))
 
-    def get_full_name(self, types: bool = False) -> str:
+    def get_full_name(self, types: bool = False, include_uuid: bool = True) -> str:
+        """
+        Returns node name + heirarchy
+        """
         parts: list[str] = []
         if (parent := self.get_parent()) is not None:
             parent_node, name = parent
             if not parent_node.no_include_parents_in_full_name:
-                if (parent_full := parent_node.get_full_name(types=False)) is not None:
+                if (parent_full := parent_node.get_full_name(types=False, include_uuid=include_uuid)):
                     parts.append(parent_full)
-            parts.append(name or self.get_root_id())
+            if name:
+                parts.append(name)
+            elif include_uuid:
+                parts.append(self.get_root_id())
         elif not self.no_include_parents_in_full_name:
-            parts.append(self.get_root_id())
+            if include_uuid:
+                parts.append(self.get_root_id())
 
         base = ".".join(parts)
         if types:

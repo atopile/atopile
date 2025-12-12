@@ -661,7 +661,7 @@ class PartLifecycle:
                 Property.set_property(pcb_fp, _prop_factory("Value", ""))
 
             Property.set_property(
-                pcb_fp, _prop_factory("atopile_address", component.get_full_name())
+                pcb_fp, _prop_factory("atopile_address", component.get_full_name(include_uuid=False))
             )
             if sub_pcb_t := component.try_get_trait(in_sub_pcb):
                 subaddresses = (

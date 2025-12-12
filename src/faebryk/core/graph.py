@@ -322,9 +322,9 @@ class InstanceGraphFunctions:
     @staticmethod
     def render(
         root: BoundNode,
-        show_traits: bool = False,
+        show_traits: bool = True,
         show_pointers: bool = False,
-        show_connections: bool = False,
+        show_connections: bool = True,
         filter_types: list[str] | None = None,
     ) -> str:
         """
