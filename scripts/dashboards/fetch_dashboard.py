@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 """
-Fetch and display the latest pytest summary artifact for a branch.
+Fetch and display pytest summaries from recent GitHub Actions runs.
 
-Designed for a Raspberry Pi or other always-on device. Polls GitHub for new
-runs on a branch, downloads the "test-report" artifact (pytest-html), parses the
-summary counts, renders them to HTML locally, and opens the output in a browser
-whenever a new run appears.
+Polls a workflow on a branch, downloads the "test-report" (pytest-html) artifact,
+parses summary counts, caches results, and renders a CRT-style local HTML
+dashboard with a multi-run trend chart.
 
 Requirements:
 - Python 3.8+
-- Environment variable GH_TOKEN set to a GitHub token with "repo" (or public_repo)
+- GH_TOKEN env var with "repo" or "public_repo" scope.
 
 Usage:
-  GH_TOKEN=... python scripts/dashboards/fetch_dashboard.py --repo atopile/atopile --branch main
+  GH_TOKEN=... python scripts/dashboards/fetch_dashboard.py --branch feature/fabll_part2
 """
 
 from __future__ import annotations
@@ -21,7 +20,6 @@ import argparse
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import time
@@ -30,19 +28,23 @@ import urllib.parse
 import urllib.request
 import webbrowser
 import zipfile
-from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from zoneinfo import ZoneInfo
 
 
-WORKFLOW_FILENAME = "pytest.yml"  # GitHub workflow file name
+WORKFLOW_FILENAME = "pytest.yml"  # GitHub workflow file name (override with --workflow)
 REPORT_ARTIFACT_NAME = "test-report"
 REPORT_COPY_BASENAME = "test-report.html"
 POLL_SECONDS = 30
 BROWSER_CMD = "chromium-browser"
 DEFAULT_REPO = "atopile/atopile"
 DEFAULT_BRANCH = "feature/fabll_part2"
+DEFAULT_RECENT_RUNS = 50
+DEFAULT_DAYS_BACK = 7
+CACHE_FILENAME = ".dashboard_cache.json"
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 
@@ -60,27 +62,50 @@ def gh_request(url: str, token: str, accept: str | None = None) -> bytes:
         raise RuntimeError(f"GitHub API error {e.code}: {e.read().decode()}") from e
 
 
-def get_latest_run(repo: str, branch: str, token: str, status: str | None = None) -> dict | None:
-    url = (
-        f"https://api.github.com/repos/{repo}/actions/workflows/"
-        f"{WORKFLOW_FILENAME}/runs?branch={urllib.parse.quote(branch)}&per_page=1"
+def get_recent_runs_page(
+    repo: str,
+    branch: str,
+    token: str,
+    workflow_filename: str | None = WORKFLOW_FILENAME,
+    per_page: int = 100,
+    page: int = 1,
+    status: str | None = None,
+) -> list[dict]:
+    per_page = max(1, min(100, per_page))
+    page = max(1, page)
+    branch_q = urllib.parse.quote(branch)
+    endpoint = (
+        f"https://api.github.com/repos/{repo}/actions/workflows/{workflow_filename}/runs"
+        if workflow_filename
+        else f"https://api.github.com/repos/{repo}/actions/runs"
     )
+    url = f"{endpoint}?branch={branch_q}&per_page={per_page}&page={page}"
     if status:
         url += f"&status={urllib.parse.quote(status)}"
     data = json.loads(gh_request(url, token))
-    runs = data.get("workflow_runs", [])
-    return runs[0] if runs else None
+    runs = data.get("workflow_runs", []) or []
+    return runs
 
 
 def get_artifact_download_url(repo: str, run_id: int, token: str) -> str | None:
-    url = f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/artifacts"
-    data = json.loads(gh_request(url, token))
-    artifacts = data.get("artifacts", [])
-    for artifact in artifacts:
-        if artifact.get("name") == REPORT_ARTIFACT_NAME:
-            download_url = artifact.get("archive_download_url")
-            if download_url:
-                return download_url
+    """
+    Find the archive_download_url for the named report artifact.
+    The artifacts list is paginated; page until found or exhausted.
+    """
+    page = 1
+    per_page = 100
+    while page <= 10:
+        url = f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/artifacts?per_page={per_page}&page={page}"
+        data = json.loads(gh_request(url, token))
+        artifacts = data.get("artifacts", []) or []
+        for artifact in artifacts:
+            if artifact.get("name") == REPORT_ARTIFACT_NAME:
+                download_url = artifact.get("archive_download_url")
+                if download_url:
+                    return download_url
+        if len(artifacts) < per_page:
+            break
+        page += 1
     return None
 
 
@@ -260,15 +285,18 @@ def inject_run_metadata(summary: dict, run: dict) -> None:
     if "run_url" not in summary:
         summary["run_url"] = ""
 
-    commit_time = (
+    commit_time_raw = (
         head_commit.get("timestamp")
         or run.get("updated_at")
         or run.get("created_at")
     )
-    if commit_time:
-        summary["commit_time"] = format_commit_time(commit_time)
+    if commit_time_raw:
+        summary["commit_time"] = format_commit_time(commit_time_raw)
+        summary["commit_time_iso"] = commit_time_raw
     if "commit_time" not in summary:
         summary["commit_time"] = "unknown"
+    if "commit_time_iso" not in summary:
+        summary["commit_time_iso"] = ""
 
     message = (head_commit.get("message") or "").strip()
     if message:
@@ -289,6 +317,127 @@ def inject_run_metadata(summary: dict, run: dict) -> None:
         summary["commit_author"] = author
     if "commit_author" not in summary:
         summary["commit_author"] = "unknown"
+
+
+def _load_cache(out_dir: Path) -> dict[str, dict]:
+    cache_path = out_dir / CACHE_FILENAME
+    if not cache_path.exists():
+        return {}
+    try:
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_cache(out_dir: Path, cache: dict[str, dict]) -> None:
+    cache_path = out_dir / CACHE_FILENAME
+    try:
+        cache_path.write_text(json.dumps(cache, indent=2, sort_keys=True), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _fetch_summary_for_run(repo: str, run: dict, token: str) -> tuple[dict | None, str | None]:
+    """
+    Download the test-report artifact for a run and parse summary.
+    Returns (summary, html_text). html_text is provided for optional extra parsing.
+    """
+    run_id = run.get("id")
+    if not run_id:
+        return None, None
+    artifact_url = get_artifact_download_url(repo, run_id, token)
+    if not artifact_url:
+        return None, None
+    with TemporaryDirectory() as tmpdir:
+        zip_path = Path(tmpdir) / "artifact.zip"
+        download_artifact_zip(artifact_url, token, zip_path)
+        artifact_member = extract_artifact_member(zip_path, Path(tmpdir), (".html", ".htm"))
+        if not artifact_member:
+            return None, None
+        html_text = artifact_member.read_text(encoding="utf-8")
+        summary: dict[str, object] = parse_pytest_html_summary(html_text)
+        inject_run_metadata(summary, run)
+        return summary, html_text
+
+
+def _run_timestamp(run: dict) -> datetime | None:
+    ts = run.get("run_started_at") or run.get("created_at") or run.get("updated_at")
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _parse_iso_timestamp(ts: object) -> datetime | None:
+    if not ts or not isinstance(ts, str):
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def get_runs_within_window(
+    repo: str,
+    branch: str,
+    token: str,
+    max_runs: int,
+    days_back: int,
+    status: str | None = None,
+    workflow_filename: str | None = WORKFLOW_FILENAME,
+    debug: bool = False,
+) -> list[dict]:
+    """
+    Collect up to max_runs completed runs from the last days_back days.
+    Fetches additional pages if needed so the window can fill max_runs.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
+    collected: list[dict] = []
+    page = 1
+    per_page = 100
+
+    while len(collected) < max_runs and page <= 10:  # hard cap to avoid infinite loops
+        runs_page = get_recent_runs_page(
+            repo,
+            branch,
+            token,
+            workflow_filename=workflow_filename,
+            per_page=per_page,
+            page=page,
+            status=status,
+        )
+        if not runs_page:
+            break
+        for run in runs_page:
+            dt = _run_timestamp(run)
+            if dt is None:
+                continue
+            if dt >= cutoff:
+                collected.append(run)
+                if len(collected) >= max_runs:
+                    break
+        # If the oldest run in this page is already older than cutoff, no need to keep paging.
+        oldest_dt = _run_timestamp(runs_page[-1])
+        if oldest_dt is not None and oldest_dt < cutoff:
+            break
+        page += 1
+
+    # Ensure descending order (newest first)
+    collected.sort(key=lambda r: _run_timestamp(r) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    if debug:
+        newest = _run_timestamp(collected[0]) if collected else None
+        oldest = _run_timestamp(collected[-1]) if collected else None
+        wf = workflow_filename or "<all workflows>"
+        print(
+            f"Debug: workflow={wf} fetched_pages={page-1} "
+            f"collected={len(collected)} cutoff={cutoff.isoformat()} "
+            f"newest={newest.isoformat() if newest else 'n/a'} "
+            f"oldest={oldest.isoformat() if oldest else 'n/a'}"
+        )
+    return collected[:max_runs]
 
 
 # =============================================================================
@@ -315,7 +464,7 @@ def _get_dashboard_css() -> str:
     /* === Page Layout === */
     body {
       margin: 0;
-      padding: 48px;
+      padding: 24px;
       min-height: 100vh;
       font-family: "IBM Plex Mono", "Fira Code", "SFMono-Regular", monospace;
       background:
@@ -333,7 +482,7 @@ def _get_dashboard_css() -> str:
       display: flex;
       gap: 32px;
       align-items: stretch;
-      height: calc(100vh - 96px);
+      height: calc(100vh - 48px);
     }
 
     /* === Panel Components === */
@@ -411,7 +560,6 @@ def _get_dashboard_css() -> str:
     .ghost { text-shadow: 0 0 10px rgba(158, 252, 141, 0.45), 2px 0 14px rgba(158, 252, 141, 0.18); }
 
     /* === Typography === */
-    h1 { margin: 0 0 14px; font-size: 3.4rem; letter-spacing: 1px; }
     h2 { margin: 0 0 12px; font-size: 2rem; letter-spacing: 0.5px; }
     .meta { font-size: 1.6rem; margin: 0 0 12px; color: var(--accent); }
 
@@ -422,7 +570,11 @@ def _get_dashboard_css() -> str:
       display: flex;
       align-items: center;
       gap: 12px;
+      justify-content: space-between;
+      width: 100%;
     }
+    .status__left { display: inline-flex; align-items: center; gap: 12px; }
+    .status__right { color: var(--accent); font-size: 1.6rem; }
     .pill {
       display: inline-block;
       padding: 6px 16px;
@@ -432,27 +584,6 @@ def _get_dashboard_css() -> str:
       color: var(--phosphor);
       box-shadow: 0 0 14px rgba(158, 252, 141, 0.35);
       font-weight: 700;
-    }
-    .bar-row { display: flex; align-items: center; gap: 28px; margin: 24px 0; }
-    .bar {
-      flex: 1;
-      display: flex;
-      height: 42px;
-      border-radius: 14px;
-      overflow: hidden;
-      background: rgba(2, 10, 5, 0.8);
-      border: 1px solid #183822;
-      box-shadow: 0 0 12px rgba(158, 252, 141, 0.35) inset;
-    }
-    .seg { height: 100%; filter: drop-shadow(0 0 6px rgba(158, 252, 141, 0.25)); }
-    .mascot {
-      width: 200px;
-      height: 200px;
-      max-width: 20%;
-      object-fit: contain;
-      filter: grayscale(1) brightness(1.5) contrast(1.2);
-      opacity: 0.78;
-      mix-blend-mode: screen;
     }
     ul {
       list-style: none;
@@ -468,10 +599,10 @@ def _get_dashboard_css() -> str:
       border-radius: 14px;
       padding: 16px 18px;
       box-shadow: 0 0 18px rgba(12, 60, 26, 0.35) inset;
-      font-size: 1.6rem;
+      font-size: 1.4rem;
     }
     .label { color: var(--muted); }
-    .count { float: right; color: var(--accent); font-weight: 800; font-size: 2rem; }
+    .count { float: right; color: var(--accent); font-weight: 800; font-size: 1.8rem; }
     .meta-container {
       background: rgba(4, 14, 7, 0.65);
       border: 1px solid #173923;
@@ -530,6 +661,44 @@ def _get_dashboard_css() -> str:
       70% { opacity: 0.93; } 80% { opacity: 0.96; } 90% { opacity: 0.89; }
       100% { opacity: 0.98; }
     }
+
+    /* === Charts === */
+    .chart-container {
+      margin: 24px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .chart {
+      width: 100%;
+      background: rgba(2, 10, 5, 0.8);
+      border: 1px solid #183822;
+      border-radius: 14px;
+      padding: 8px;
+      box-shadow: 0 0 12px rgba(158, 252, 141, 0.25) inset;
+    }
+    .chart svg { width: 100%; height: 264px; display: block; }
+    .chart text {
+      fill: var(--phosphor);
+      font-size: 12px;
+      text-shadow: none;
+    }
+    .legend {
+      display: flex;
+      gap: 14px;
+      font-size: 1.2rem;
+      color: var(--muted);
+      flex-wrap: wrap;
+      margin-top: 6px;
+    }
+    .legend-swatch {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      margin-right: 6px;
+      border-radius: 2px;
+      vertical-align: middle;
+    }
 """
 
 
@@ -544,7 +713,277 @@ def _build_panel(content: str, modifier: str = "") -> str:
     </div>"""
 
 
-def _build_main_panel(summary: dict) -> str:
+def _build_trend_charts(history: list[dict]) -> str:
+    if not history or len(history) < 2:
+        return ""
+
+    # History comes oldest -> newest.
+    passed = [_as_int(h.get("passed")) for h in history]
+    failed = [_as_int(h.get("failed")) for h in history]
+    errors = [_as_int(h.get("errors")) for h in history]
+    totals: list[int] = []
+    for h in history:
+        t = _as_int(h.get("tests"))
+        if t <= 0:
+            t = (
+                _as_int(h.get("passed"))
+                + _as_int(h.get("failed"))
+                + _as_int(h.get("errors"))
+                + _as_int(h.get("skipped"))
+                + _as_int(h.get("xfailed"))
+                + _as_int(h.get("xpassed"))
+            )
+        totals.append(max(t, 0))
+
+    # Build x-axis labels at day intervals to reduce clutter.
+    labels: list[str] = []
+    last_day: str | None = None
+    for h in history:
+        ct = h.get("commit_time") or ""
+        day_str = ""
+        if isinstance(ct, str) and ct != "unknown":
+            day_str = ct.split(" at ")[0]
+        if day_str and day_str != last_day:
+            labels.append(day_str)
+            last_day = day_str
+        else:
+            labels.append("")
+    if labels and not labels[-1]:
+        # Ensure most recent point is labeled.
+        ct_last = history[-1].get("commit_time") or ""
+        if isinstance(ct_last, str) and ct_last != "unknown":
+            labels[-1] = ct_last.split(" at ")[0]
+
+    max_y = max(passed + failed + errors + totals + [1])
+
+    width = 900
+    height = int(220 * 1.2)
+    pad_left, pad_right, pad_top, pad_bottom = 48, 12, 12, 40
+    mascot_gutter = 84  # reserved space on right for mascots
+    plot_right = width - pad_right - mascot_gutter
+    inner_w = plot_right - pad_left
+    inner_h = height - pad_top - pad_bottom
+
+    def y(v: int) -> float:
+        return pad_top + inner_h * (1 - (v / max_y))
+
+    n = len(history)
+    dts = [
+        _parse_iso_timestamp(h.get("commit_time_iso") or h.get("run_time_iso"))
+        for h in history
+    ]
+    known_dts = [dt for dt in dts if dt is not None]
+    if len(known_dts) >= 2:
+        local_tz = ZoneInfo("America/Los_Angeles")
+        work_start_h, work_end_h = 8, 20  # local hours inclusive of weekends
+
+        def _work_seconds_up_to(dt_local: datetime, base_date: datetime.date) -> float:
+            total_s = 0.0
+            day = base_date
+            last_day = dt_local.date()
+            one_day = timedelta(days=1)
+            full_day_s = (work_end_h - work_start_h) * 3600
+            while day < last_day:
+                total_s += full_day_s
+                day += one_day
+            ws = datetime(last_day.year, last_day.month, last_day.day, work_start_h, tzinfo=local_tz)
+            we = datetime(last_day.year, last_day.month, last_day.day, work_end_h, tzinfo=local_tz)
+            clamped = min(max(dt_local, ws), we)
+            total_s += max(0.0, (clamped - ws).total_seconds())
+            return total_s
+
+        known_locals = [dt.astimezone(local_tz) for dt in known_dts]
+        min_dt_local = min(known_locals)
+        base_date = min_dt_local.date()
+        base_offset = _work_seconds_up_to(min_dt_local, base_date)
+
+        work_vals: list[float | None] = []
+        for dt in dts:
+            if dt is None:
+                work_vals.append(None)
+                continue
+            dt_local = dt.astimezone(local_tz)
+            work_vals.append(_work_seconds_up_to(dt_local, base_date) - base_offset)
+
+        known_work = [v for v in work_vals if v is not None]
+        span_work = max(known_work) - min(known_work) if known_work else 0.0
+
+        if span_work > 0:
+            xs = []
+            for i, v in enumerate(work_vals):
+                if v is None:
+                    frac = i / (n - 1)
+                else:
+                    frac = v / span_work
+                xs.append(pad_left + inner_w * frac)
+        else:
+            xs = [pad_left + (inner_w * i / (n - 1)) for i in range(n)]
+    else:
+        xs = [pad_left + (inner_w * i / (n - 1)) for i in range(n)]
+
+    def polyline(values: list[int], color: str, width: float = 2.5, dash: str | None = None) -> str:
+        points = " ".join(f"{xs[i]:.1f},{y(values[i]):.1f}" for i in range(n))
+        dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
+        core_w = max(1.0, width * 0.55)
+        # Colored beam + white-hot core for over-exposed look.
+        return (
+            f'<polyline fill="none" stroke="{color}" stroke-width="{width:.1f}" '
+            f'stroke-linecap="round" stroke-linejoin="round" '
+            f'stroke-opacity="0.7" filter="url(#line-glow)" '
+            f'style="mix-blend-mode:plus-lighter"'
+            f'{dash_attr} points="{points}" />'
+            f'<polyline fill="none" stroke="rgba(248,255,248,0.7)" stroke-width="{core_w:.1f}" '
+            f'stroke-linecap="round" stroke-linejoin="round" '
+            f'style="mix-blend-mode:plus-lighter"'
+            f'{dash_attr} points="{points}" />'
+        )
+
+    def markers(values: list[int], color: str, radius: float = 3.0) -> str:
+        dots = []
+        inner_r = max(1.0, radius * 0.55)
+        for i, v in enumerate(values):
+            cx = xs[i]
+            cy = y(v)
+            dots.append(
+                f'<g>'
+                f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{radius:.1f}" '
+                f'fill="{color}" fill-opacity="0.75" filter="url(#dot-glow)" '
+                f'style="mix-blend-mode:plus-lighter" />'
+                f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{inner_r:.1f}" '
+                f'fill="rgba(248,255,248,0.65)" style="mix-blend-mode:plus-lighter" />'
+                f'</g>'
+            )
+        return "\n          ".join(dots)
+
+    # Axes + grid
+    grid_lines = ""
+    for frac in (0.25, 0.5, 0.75, 1.0):
+        yy = pad_top + inner_h * (1 - frac)
+        val = int(max_y * frac)
+        grid_lines += (
+            f'<line x1="{pad_left}" y1="{yy:.1f}" x2="{plot_right}" y2="{yy:.1f}" '
+            f'stroke="rgba(180,255,176,0.12)" stroke-width="1" />'
+            f'<text x="8" y="{yy + 4:.1f}">{val}</text>'
+        )
+
+    x_labels = ""
+    for i, lab in enumerate(labels):
+        if not lab:
+            continue
+        x_labels += f'<text x="{xs[i]:.1f}" y="{height - 12}" text-anchor="middle">{lab}</text>'
+
+    run_count_label = (
+        f'<g>'
+        f'<rect x="{pad_left + 4}" y="{pad_top + 2}" width="88" height="20" '
+        f'fill="rgba(2,7,3,0.7)" stroke="rgba(180,255,176,0.25)" rx="4" />'
+        f'<text x="{pad_left + 10}" y="{pad_top + 16}" '
+        f'text-anchor="start" fill="rgba(180,255,176,0.8)" font-size="14">'
+        f'Runs: {n}</text>'
+        f'</g>'
+    )
+
+    # Tiny mascots "chasing" along their respective lines, placed in right gutter.
+    # Keep x aligned to save horizontal space, adjust y to avoid overlap/clipping.
+    img_w = 34
+    img_h = 34
+    mascot_x = min(plot_right + 8, width - pad_right - img_w)
+
+    def _clamp_img_y(v: float) -> float:
+        return min(max(v, pad_top), height - pad_bottom - img_h)
+
+    funks_y = _clamp_img_y(y(totals[-1]) - img_h / 2)
+    sausage_y = _clamp_img_y(y(passed[-1]) - img_h / 2)
+    # If they would overlap vertically, nudge sausage down/up within bounds.
+    if abs(sausage_y - funks_y) < img_h * 0.9:
+        down = _clamp_img_y(funks_y + img_h * 0.95)
+        up = _clamp_img_y(funks_y - img_h * 0.95)
+        sausage_y = down if abs(down - funks_y) >= img_h * 0.9 else up
+    funktion_img = (
+        f'<image href="funktion-1.jpeg" x="{mascot_x:.1f}" y="{funks_y:.1f}" '
+        f'width="{img_w}" height="{img_h}" preserveAspectRatio="xMidYMid meet" '
+        f'opacity="0.9" filter="url(#dot-glow)" style="mix-blend-mode:screen" />'
+    )
+    sausage_img = (
+        f'<image href="happy.jpg" x="{mascot_x:.1f}" y="{sausage_y:.1f}" '
+        f'width="{img_w}" height="{img_h}" preserveAspectRatio="xMidYMid meet" '
+        f'opacity="0.9" filter="url(#dot-glow)" style="mix-blend-mode:screen" />'
+    )
+
+    line_svg = f"""
+      <div class="chart">
+        <svg viewBox="0 0 {width} {height}" preserveAspectRatio="none">
+          <defs>
+            <!-- Hot CRT/laser-style bloom -->
+            <filter id="line-glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="1.8" result="blur1"/>
+              <feGaussianBlur in="SourceGraphic" stdDeviation="0.7" result="blur2"/>
+              <feColorMatrix in="blur1" type="matrix" values="
+                1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+                0 0 0 4.0 0" result="glow1"/>
+              <feColorMatrix in="blur2" type="matrix" values="
+                1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+                0 0 0 3.0 0" result="glow2"/>
+              <feMerge>
+                <feMergeNode in="glow1"/>
+                <feMergeNode in="glow2"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+            <!-- Tighter glow for dots so they don't smear -->
+            <filter id="dot-glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="1.0" result="blur1"/>
+              <feGaussianBlur in="SourceGraphic" stdDeviation="0.4" result="blur2"/>
+              <feColorMatrix in="blur1" type="matrix" values="
+                1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+                0 0 0 3.6 0" result="glow1"/>
+              <feColorMatrix in="blur2" type="matrix" values="
+                1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+                0 0 0 2.6 0" result="glow2"/>
+              <feMerge>
+                <feMergeNode in="glow1"/>
+                <feMergeNode in="glow2"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+          </defs>
+          {grid_lines}
+          <line x1="{pad_left}" y1="{pad_top + inner_h:.1f}" x2="{plot_right}" y2="{pad_top + inner_h:.1f}"
+                stroke="rgba(180,255,176,0.35)" stroke-width="1.5" />
+          <line x1="{pad_left}" y1="{pad_top}" x2="{pad_left}" y2="{pad_top + inner_h:.1f}"
+                stroke="rgba(180,255,176,0.35)" stroke-width="1.5" />
+          {polyline(totals, "#6b7280", width=2.0, dash="6 4")}
+          {markers(totals, "#6b7280", radius=2.4)}
+          {polyline(errors, "rgba(250,204,21,0.6)", width=2.0)}
+          {markers(errors, "rgba(250,204,21,0.6)", radius=2.6)}
+          {polyline(passed, "#16a34a", width=3.0)}
+          {markers(passed, "#16a34a", radius=3.2)}
+          {polyline(failed, "#dc2626", width=3.0)}
+          {markers(failed, "#dc2626", radius=3.2)}
+          {sausage_img}
+          {funktion_img}
+          {run_count_label}
+          {x_labels}
+        </svg>
+        <div class="legend">
+          <span><span class="legend-swatch" style="background:#6b7280"></span>Total tests</span>
+          <span><span class="legend-swatch" style="background:#16a34a"></span>Passed</span>
+          <span><span class="legend-swatch" style="background:#dc2626"></span>Failed</span>
+          <span><span class="legend-swatch" style="background:rgba(250,204,21,0.6)"></span>Errors</span>
+        </div>
+      </div>
+    """
+    return f'<div class="chart-container">{line_svg}</div>'
+
+
+def _build_main_panel(summary: dict, history: list[dict] | None = None) -> str:
     """Build the main pytest results panel HTML."""
     status = summary.get("status", "unknown")
     pass_count = _as_int(summary.get("passed"))
@@ -565,21 +1004,11 @@ def _build_main_panel(summary: dict) -> str:
     segments = [
         ("Passed", pass_count, "#16a34a"),
         ("Failed", fail_count, "#dc2626"),
-        ("Errors", error_count, "#b91c1c"),
+        ("Errors", error_count, "#facc15"),
         ("Unexpected passes", xpassed_count, "#f97316"),
         ("Expected failures", xfailed_count, "#8b5cf6"),
         ("Skipped", skip_count, "#6b7280")
     ]
-
-    # Build progress bar segments
-    def segment_html(label: str, count: int, color: str) -> str:
-        if count <= 0:
-            return ""
-        pct = (count / total) * 100
-        return f'<div class="seg" style="width:{pct:.1f}%;background:{color}" title="{label}: {count} ({pct:.1f}%)"></div>'
-
-    bar_html = "".join(segment_html(*s) for s in segments if s[1] > 0)
-    bar_html = bar_html or '<div class="seg" style="width:100%;background:#0f2c18"></div>'
 
     # Build summary list items
     summary_items = "".join(
@@ -593,14 +1022,13 @@ def _build_main_panel(summary: dict) -> str:
     commit_message = (summary.get("commit_message") or "unknown").strip()
     commit_author = summary.get("commit_author", "unknown")
 
-    content = f"""        <h1 class="ghost">Pytest Progress</h1>
-        <div class="status ghost">Run status: <span class="pill">{status}</span></div>
-        <div class="meta ghost">Total tests: {total}</div>
-        <div class="bar-row">
-          <img class="mascot" src="happy.jpg" alt="happy sausage" />
-          <div class="bar">{bar_html}</div>
-          <img class="mascot" src="funktion-1.jpeg" alt="funktion-1" />
+    charts_html = _build_trend_charts(history or [])
+
+    content = f"""        <div class="status ghost">
+          <div class="status__left">Run status: <span class="pill">{status}</span></div>
+          <div class="status__right">Total tests: {total}</div>
         </div>
+        {charts_html}
         <ul class="ghost">{summary_items}</ul>
         <div class="meta-container ghost">
           <div class="meta">Run: <a href="{run_url}">{run_url}</a></div>
@@ -617,13 +1045,14 @@ def _build_failing_files_panel(failing_files: list[tuple[str, int]]) -> str:
     if not failing_files:
         return ""
 
-    # Build list items for each file
-    items = ""
-    for file_path, count in failing_files:
-        # Shorten path for display (show last 2-3 parts)
-        parts = file_path.split("/")
-        short_path = "/".join(parts[-3:]) if len(parts) > 3 else file_path
-        items += f'<li><span class="file-count">{count}</span><span class="file-path">{short_path}</span></li>'
+    def _short_path(path: str) -> str:
+        parts = path.split("/")
+        return "/".join(parts[-3:]) if len(parts) > 3 else path
+
+    items = "".join(
+        f'<li><span class="file-count">{count}</span><span class="file-path">{_short_path(file_path)}</span></li>'
+        for file_path, count in failing_files
+    )
 
     content = f"""        <h2 class="ghost">Failing Files</h2>
         <div class="meta ghost">{len(failing_files)} files with failures</div>
@@ -659,10 +1088,14 @@ def _build_page_template(css: str, main_panel: str, sidebar: str) -> str:
 # =============================================================================
 
 
-def build_html(summary: dict, failing_files: list[tuple[str, int]] | None = None) -> str:
-    """Build the complete dashboard HTML from summary data and failing files."""
+def build_html(
+    summary: dict,
+    history: list[dict] | None = None,
+    failing_files: list[tuple[str, int]] | None = None,
+) -> str:
+    """Build the complete dashboard HTML from latest summary, history, and failing files."""
     css = _get_dashboard_css()
-    main_panel = _build_main_panel(summary)
+    main_panel = _build_main_panel(summary, history=history)
     sidebar = _build_failing_files_panel(failing_files or [])
     return _build_page_template(css, main_panel, sidebar)
 
@@ -688,10 +1121,28 @@ def main() -> int:
     parser.add_argument("--branch", default=DEFAULT_BRANCH, help=f"Branch to monitor (default: {DEFAULT_BRANCH})")
     parser.add_argument("--interval", type=int, default=POLL_SECONDS, help=f"Polling interval seconds (default: {POLL_SECONDS})")
     parser.add_argument(
+        "--workflow",
+        default=WORKFLOW_FILENAME,
+        help=f"Workflow filename to read runs from (default: {WORKFLOW_FILENAME}); use 'all' for any workflow",
+    )
+    parser.add_argument(
+        "--runs",
+        type=int,
+        default=DEFAULT_RECENT_RUNS,
+        help=f"Maximum number of recent completed runs to consider (default: {DEFAULT_RECENT_RUNS})",
+    )
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=DEFAULT_DAYS_BACK,
+        help=f"Only include runs from the last N days (default: {DEFAULT_DAYS_BACK})",
+    )
+    parser.add_argument(
         "--output-dir",
         default=str(SCRIPT_DIR),
         help=f"Directory to store the latest dashboard file (default: {SCRIPT_DIR})",
     )
+    parser.add_argument("--debug", action="store_true", help="Print run filtering debug info each poll")
     args = parser.parse_args()
 
     repo = DEFAULT_REPO
@@ -701,53 +1152,116 @@ def main() -> int:
         print("GH_TOKEN environment variable is required", file=sys.stderr)
         return 1
 
-    print(f"Watching {repo} workflow={WORKFLOW_FILENAME} branch={args.branch} (polling latest completed run)")
+    workflow_filename = None if str(args.workflow).lower() in {"all", "*", "any"} else args.workflow
+    print(
+        f"Watching {repo} workflow={workflow_filename or '<all workflows>'} branch={args.branch} "
+        f"(polling last {args.days} days, capped at {args.runs} runs)"
+    )
     opened_once = False
+    first_poll = True
     while True:
         try:
-            run = get_latest_run(repo, args.branch, token, status="completed")
-            if not run:
+            runs = get_runs_within_window(
+                repo,
+                args.branch,
+                token,
+                max_runs=args.runs,
+                days_back=args.days,
+                status="completed",
+                workflow_filename=workflow_filename,
+                debug=args.debug,
+            )
+            if not runs:
                 print("No completed runs yet; waiting...")
             else:
-                run_id = run["id"]
-                html_url = run.get("html_url")
+                latest_run = runs[0]
+                html_url = latest_run.get("html_url")
                 print(f"Refreshing latest completed run: {html_url}")
-                artifact_url = get_artifact_download_url(repo, run_id, token)
-                if not artifact_url:
-                    print("No test-report artifact found for this run.")
+
+                out_dir = Path(args.output_dir).resolve()
+                out_dir.mkdir(parents=True, exist_ok=True)
+                cache = _load_cache(out_dir)
+
+                # Always fetch latest for failing-files panel + fresh summary
+                latest_summary, latest_html = _fetch_summary_for_run(repo, latest_run, token)
+                if not latest_summary or not latest_html:
+                    print("No test-report artifact found for latest run.")
+                    continue
+
+                failing_files = parse_failing_tests_by_file(latest_html)
+
+                cache[str(latest_run["id"])] = latest_summary
+
+                # Build history for charts, oldest->newest.
+                # Cache entries may be either a parsed summary dict or {"_missing": True}.
+                history: list[dict] = []
+                missing_runs: list[dict] = []
+                for run in reversed(runs):
+                    run_id = run.get("id")
+                    if not run_id:
+                        continue
+                    cached = cache.get(str(run_id))
+                    if cached:
+                        if not cached.get("_missing"):
+                            history.append(cached)
+                        continue
+                    missing_runs.append(run)
+
+                # Backfill missing runs in parallel.
+                # On first poll this fills the full window; later polls usually only fetch new runs.
+                if missing_runs:
+                    to_fetch = missing_runs
+                    if args.debug:
+                        phase = "initial backfill" if first_poll else "backfilling"
+                        print(f"Debug: {phase} {len(to_fetch)} missing artifacts")
+                    with ThreadPoolExecutor(max_workers=4) as pool:
+                        future_map = {
+                            pool.submit(_fetch_summary_for_run, repo, run, token): run
+                            for run in to_fetch
+                        }
+                        for fut in as_completed(future_map):
+                            run = future_map[fut]
+                            run_id = run.get("id")
+                            try:
+                                summary, _ = fut.result()
+                            except Exception:
+                                summary = None
+                            if run_id:
+                                if summary:
+                                    cache[str(run_id)] = summary
+                                    history.append(summary)
+                                else:
+                                    cache[str(run_id)] = {
+                                        "_missing": True,
+                                        "checked_at": datetime.now(timezone.utc).isoformat(),
+                                    }
+
+                # Rebuild history from cache to ensure ordering and inclusion of newly fetched items.
+                history = []
+                for run in reversed(runs):
+                    run_id = run.get("id")
+                    if not run_id:
+                        continue
+                    cached = cache.get(str(run_id))
+                    if cached and not cached.get("_missing"):
+                        history.append(cached)
+
+                _save_cache(out_dir, cache)
+
+                # Keep a copy of the latest full report for drill-down
+                summary_copy = out_dir / REPORT_COPY_BASENAME
+                summary_copy.write_text(latest_html, encoding="utf-8")
+
+                html = build_html(latest_summary, history=history, failing_files=failing_files)
+                dest = out_dir / "dashboard.html"
+                dest.write_text(html, encoding="utf-8")
+                inject_refresh(dest, args.interval)
+                if not opened_once:
+                    open_in_browser(dest, None)
+                    opened_once = True
                 else:
-                    with TemporaryDirectory() as tmpdir:
-                        zip_path = Path(tmpdir) / "artifact.zip"
-                        download_artifact_zip(artifact_url, token, zip_path)
-                        artifact_member = extract_artifact_member(zip_path, Path(tmpdir), (".html", ".htm"))
-                        if not artifact_member:
-                            print("Artifact did not contain an HTML report.")
-                            continue
-                        try:
-                            html_text = artifact_member.read_text(encoding="utf-8")
-                            summary: dict[str, object] = parse_pytest_html_summary(html_text)
-                            failing_files = parse_failing_tests_by_file(html_text)
-                        except Exception as exc:
-                            print(f"Could not parse pytest HTML report: {exc}")
-                            continue
-
-                        inject_run_metadata(summary, run)
-
-                        out_dir = Path(args.output_dir).resolve()
-                        out_dir.mkdir(parents=True, exist_ok=True)
-
-                        summary_copy = out_dir / REPORT_COPY_BASENAME
-                        shutil.copy2(artifact_member, summary_copy)
-
-                        html = build_html(summary, failing_files)
-                        dest = out_dir / "dashboard.html"
-                        dest.write_text(html, encoding="utf-8")
-                        inject_refresh(dest, args.interval)
-                        if not opened_once:
-                            open_in_browser(dest, None)
-                            opened_once = True
-                        else:
-                            print(f"Dashboard updated at {dest} (refresh existing tab).")
+                    print(f"Dashboard updated at {dest} (refresh existing tab).")
+                first_poll = False
         except Exception as exc:  # pragma: no cover - convenience loop
             print(f"Error: {exc}", file=sys.stderr)
 
