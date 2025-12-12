@@ -596,16 +596,20 @@ def test_connects_between_top_level_fields():
         module App:
             left = new Resistor
             right = new Resistor
-            left ~ right
+            left.unnamed[1] ~ right.unnamed[0]
         """
     )
-
+    type_node = result.state.type_roots["App"]
+    paths = {
+        (tuple(lhs_path), tuple(rhs_path))
+        for _, lhs_path, rhs_path in _collect_make_links(tg, type_node)
+    }
+    print(paths)
     assert (
         _check_make_links(
             tg=tg,
             type_node=result.state.type_roots["App"],
-            expected=[(["left"], ["right"])],
-            not_expected=[(["left"], ["left"]), (["right"], ["right"])],
+            expected=[(["left", "unnamed", "1"], ["right", "unnamed", "0"])],
         )
         is True
     )

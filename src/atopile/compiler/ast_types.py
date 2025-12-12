@@ -890,19 +890,18 @@ class ConnectStmt(fabll.Node):
         self, source_info: SourceInfo, lhs: is_connectable, rhs: is_connectable
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        lhs_node = fabll.Traits(lhs).get_obj_raw()
-        self.lhs.get().point(lhs_node)
-        _add_anon_child(self, lhs_node)
-        rhs_node = fabll.Traits(rhs).get_obj_raw()
-        self.rhs.get().point(rhs_node)
-        _add_anon_child(self, rhs_node)
+        # Store the is_connectable trait directly (not the raw host object)
+        self.lhs.get().point(lhs)
+        _add_anon_child(self, lhs)
+        self.rhs.get().point(rhs)
+        _add_anon_child(self, rhs)
         return self
 
     def get_lhs(self) -> is_connectable:
         return self.lhs.get().deref().cast(is_connectable)
 
     def get_rhs(self) -> is_connectable:
-        return self.rhs.get().deref().cast(t=is_connectable)
+        return self.rhs.get().deref().cast(is_connectable)
 
 
 class DirectedConnectStmt(fabll.Node):
@@ -928,14 +927,12 @@ class DirectedConnectStmt(fabll.Node):
     ) -> Self:
         self.source.get().setup(source_info=source_info)
         self.direction.get().setup(direction)
-        lhs_node = fabll.Traits(lhs).get_obj_raw()
-        self.lhs.get().point(lhs_node)
-        _add_anon_child(self, lhs_node)
-        rhs_node = (
-            fabll.Traits(rhs).get_obj_raw() if isinstance(rhs, is_connectable) else rhs
-        )
-        self.rhs.get().point(rhs_node)
-        _add_anon_child(self, rhs_node)
+        # Store the is_connectable trait directly (not the raw host object)
+        self.lhs.get().point(lhs)
+        _add_anon_child(self, lhs)
+        # rhs can be either is_connectable trait or DirectedConnectStmt
+        self.rhs.get().point(rhs)
+        _add_anon_child(self, rhs)
         return self
 
     def get_lhs(self) -> is_connectable:
