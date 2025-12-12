@@ -49,173 +49,36 @@ jobs:
         continue-on-error: true
         # FIXME timeout
         run: |
-          uv pip install pytest-github-actions-annotate-failures
           uv run \
-            test/runcitest.py \
+            test/runner/main.py \
             -m "not not_in_ci and not slow and not regression" \
             --timeout=900 \
-            --junitxml=artifacts/junit.xml
         env:
           PYTHONPATH: .
           GH_TOKEN: ${{ github.token }}
           COLUMNS: 150 # rich console width will be pulled from this
-          FBRK_TEST_LOG_OUTPUT_INTERVAL_SECONDS: 10
-          FBRK_TEST_LOG_WARNING_THRESHOLD_SECONDS: 30
+          FBRK_TEST_REPORT_INTERVAL: 10
+          FBRK_TEST_LONG_THRESHOLD: 30
+          FBRK_TEST_SHOW_PYTEST_OUTPUT: 0
+          FBRK_TEST_WORKERS: -2
+          FBRK_TEST_PERIODIC_HTML: 0
+          FBRK_TEST_GENERATE_HTML: 1
           PYTHON_UNBUFFERED: 1
 
-      - name: Export pytest summary JSON
-        if: always()
-        env:
-          STATUS: ${{ steps.pytest.outcome }}
-          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          import os
-          import subprocess
-          import xml.etree.ElementTree as ET
-          from datetime import datetime
-          import json
-
-          artifacts = Path("artifacts")
-          junit = artifacts / "junit.xml"
-          summary_path = artifacts / "summary.json"
-          artifacts.mkdir(exist_ok=True)
-
-          status = os.getenv("STATUS", "unknown")
-          run_url = os.getenv("RUN_URL", "")
-
-          # Prefer the actual head sha for the PR (or push) instead of the merge commit.
-          event_path = os.environ.get("GITHUB_EVENT_PATH")
-          event = {}
-          if event_path and os.path.exists(event_path):
-              import json
-
-              with open(event_path, "r", encoding="utf-8") as f:
-                  event = json.load(f)
-
-          pr = event.get("pull_request") or {}
-          head_sha = (pr.get("head") or {}).get("sha") or event.get("after") or os.getenv("GITHUB_SHA")
-
-          commit_time = commit_author = commit_message = "unknown"
-          if head_sha:
-              # Make sure the commit exists locally (PR workflows often check out a merge commit).
-              subprocess.run(["git", "-C", ".", "fetch", "--no-tags", "origin", head_sha], check=False)
-              try:
-                  output = subprocess.check_output(
-                      [
-                          "git",
-                          "-C",
-                          ".",
-                          "show",
-                          "-s",
-                          "--format=%cI%n%an%n%s",
-                          head_sha,
-                      ],
-                      text=True,
-                      stderr=subprocess.DEVNULL,
-                  ).splitlines()
-                  if len(output) >= 3:
-                      commit_time, commit_author, commit_message = output[:3]
-              except Exception:
-                  pass
-
-          commit_message = commit_message.strip() if commit_message else "unknown"
-
-          # Parse individual testcases so we can separate xfail/xpass from real skips.
-          passed = failed = errors = skipped = xfailed = xpassed = rerun = 0
-          total_tests = 0
-          if junit.exists():
-            tree = ET.parse(junit)
-            root = tree.getroot()
-            cases = root.findall(".//testcase")
-            if not cases and root.tag == "testcase":
-              cases = [root]
-
-            if cases:
-              for case in cases:
-                total_tests += 1
-                outcome = "passed"
-                for child in case:
-                  tag = child.tag.lower()
-                  msg = (child.attrib.get("message") or "").lower()
-                  typ = (child.attrib.get("type") or "").lower()
-                  meta = msg + " " + typ
-                  if tag == "failure":
-                    if "xpass" in meta or "unexpected" in meta:
-                      outcome = "xpassed"
-                    else:
-                      outcome = "failed"
-                    break
-                  if tag == "error":
-                    outcome = "error"
-                    break
-                  if tag == "skipped":
-                    if "xfail" in meta:
-                      outcome = "xfailed"
-                    else:
-                      outcome = "skipped"
-                    break
-                  if tag == "rerun":
-                    outcome = "rerun"
-                    break
-
-                if outcome == "passed":
-                  passed += 1
-                elif outcome == "failed":
-                  failed += 1
-                elif outcome == "error":
-                  errors += 1
-                elif outcome == "skipped":
-                  skipped += 1
-                elif outcome == "xfailed":
-                  xfailed += 1
-                elif outcome == "xpassed":
-                  xpassed += 1
-                elif outcome == "rerun":
-                  rerun += 1
-
-          summary = {
-              "status": status,
-              "run_url": run_url,
-              "commit_time": commit_time,
-              "commit_message": commit_message,
-              "commit_author": commit_author,
-              "passed": passed,
-              "failed": failed,
-              "errors": errors,
-              "skipped": skipped,
-              "xfailed": xfailed,
-              "xpassed": xpassed,
-              "rerun": rerun,
-              "tests": total_tests,
-          }
-
-          summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-          PY
-
-      - name: Upload summary artifact
+      - name: Upload test report json artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pytest-summary
-          path: artifacts/summary.json
+          name: test-report.json
+          path: artifacts/test-report.json
           if-no-files-found: error
 
-      - name: Upload all test logs
-        if: steps.pytest.outcome == 'failure'
+      - name: Upload test report html artifact
         uses: actions/upload-artifact@v4
         with:
-          name: test-logs
-          path: artifacts/**/*.log
-          if-no-files-found: warn
-
-      - name: Upload all test report
-        if: steps.pytest.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-report
+          name: test-report.html
           path: artifacts/test-report.html
+          if-no-files-found: warn
 
       - name: Check pytest status
         if: steps.pytest.outcome == 'failure'

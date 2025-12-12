@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Test Execution Report</title>
+    <style>
+        html {{ font-size: 12px; }}
+        body {{ font-family: sans-serif; margin: 10px; }}
+        h1 {{ font-size: 1.5rem; margin-bottom: 10px; }}
+        .summary {{ margin-bottom: 10px; padding: 5px; background: #f0f0f0; border-radius: 5px; }}
+        .progress-bar {{ width: 100%; background-color: #e0e0e0; border-radius: 5px; overflow: hidden; height: 15px; margin-bottom: 10px;}}
+        .progress-fill {{ height: 100%; background-color: #4caf50; transition: width 0.5s; text-align: center; color: white; line-height: 15px; font-size: 10px; }}
+        table {{ border-collapse: collapse; width: 100%; font-size: 12px; }}
+        th, td {{ border: 1px solid #ddd; padding: 4px; text-align: left; }}
+        th {{ background-color: #f2f2f2; cursor: pointer; user-select: none; position: relative; }}
+        th:hover {{ background-color: #ddd; }}
+        .passed {{ color: green; }}
+        .failed {{ color: red; font-weight: bold; }}
+        .error {{ color: darkred; font-weight: bold; }}
+        .crashed {{ color: purple; font-weight: bold; text-transform: uppercase; }}
+        .skipped {{ color: orange; }}
+        .running {{ color: blue; }}
+        .queued {{ color: gray; font-style: italic; }}
+        /* tr:nth-child(even) {{ background-color: #f9f9f9; }} */
+        tr.row-passed {{ background-color: #e8f5e9; }}
+        tr.row-failed {{ background-color: #ffebee; }}
+        tr.row-error {{ background-color: #fce4ec; }}
+        tr.row-crashed {{ background-color: #f3e5f5; }}
+        tr.row-skipped {{ background-color: #fff3e0; }}
+        tr.row-running {{ background-color: #e3f2fd; }}
+        tr.row-queued {{ background-color: #fafafa; }}
+        tr:hover {{ background-color: #f5f5f5; }}
+        .controls {{ margin-bottom: 5px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }}
+        .filter-input {{ padding: 3px; width: 200px; }}
+        .outcome-filters {{ display: flex; gap: 5px; }}
+        .outcome-filters label {{ cursor: pointer; }}
+        
+        .sort-indicator {{ margin-left: 5px; }}
+        
+        .log-match {{ 
+            background-color: yellow; 
+            font-weight: bold;
+        }}
+        
+        /* Modal styles */
+        .modal {{ display: none; position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }}
+        .modal-content {{ background-color: #fefefe; margin: 5% auto; padding: 15px; border: 1px solid #888; width: 90%; max-height: 85vh; overflow-y: auto; }}
+        .close {{ color: #aaa; float: right; font-size: 24px; font-weight: bold; cursor: pointer; }}
+        .close:hover, .close:focus {{ color: black; text-decoration: none; cursor: pointer; }}
+        pre {{ background: #eee; padding: 5px; overflow-x: auto; white-space: pre-wrap; font-size: 11px; }}
+        button {{ font-size: 11px; padding: 2px 5px; }}
+    </style>
+    <script>
+        var currentSortColumn = -1;
+        var currentSortDir = "asc";
+
+        document.addEventListener('DOMContentLoaded', function() {{
+            document.querySelectorAll('.outcome-filter').forEach(cb => {{
+                cb.addEventListener('change', filterTable);
+            }});
+            
+            // Start polling if running
+            setInterval(checkAndReload, 2000);
+        }});
+
+        async function checkAndReload() {{
+            // Don't reload if any modal is open
+            if (document.querySelector('.modal[style*="block"]')) return;
+
+            var statusElement = document.getElementById("status-text");
+            if (!statusElement) return;
+            var statusText = statusElement.innerText;
+            if (!statusText.includes("Running")) return;
+            
+            try {{
+                var url = window.location.href.split('?')[0] + '?t=' + new Date().getTime();
+                var response = await fetch(url);
+                var text = await response.text();
+                var parser = new DOMParser();
+                var doc = parser.parseFromString(text, 'text/html');
+                
+                // Update Summary
+                var newSummary = doc.querySelector('.summary');
+                if (newSummary) document.querySelector('.summary').innerHTML = newSummary.innerHTML;
+                
+                // Update Progress
+                var newProgress = doc.querySelector('.progress-bar');
+                if (newProgress) document.querySelector('.progress-bar').innerHTML = newProgress.innerHTML;
+                
+                // Update Timestamp
+                var newTimestamp = doc.getElementById("timestamp");
+                if (newTimestamp) document.getElementById("timestamp").innerText = newTimestamp.innerText;
+
+                // Update Table Body
+                var newTbody = doc.querySelector('#testTable tbody');
+                if (newTbody) {{
+                    document.querySelector('#testTable tbody').innerHTML = newTbody.innerHTML;
+                    
+                    // Re-apply filter
+                    filterTable();
+                    
+                    // Re-apply sort if active
+                    if (currentSortColumn !== -1) {{
+                        sortGrid(currentSortColumn, currentSortDir);
+                    }}
+                }}
+            }} catch (e) {{
+                console.error("Failed to reload", e);
+            }}
+        }}
+
+        function filterTable() {{
+            var input, filter, table, tr, td, i, txtValue;
+            input = document.getElementById("searchInput");
+            filter = input.value.toUpperCase();
+            
+            var logInput = document.getElementById("logSearchInput");
+            var logFilter = logInput.value.toUpperCase();
+
+            table = document.getElementById("testTable");
+            // Get all rows from tbody
+            var tbody = table.getElementsByTagName("tbody")[0];
+            tr = tbody.getElementsByTagName("tr");
+            
+            var checkedOutcomes = Array.from(document.querySelectorAll('.outcome-filter:checked')).map(cb => cb.value);
+
+            for (i = 0; i < tr.length; i++) {{
+                var visible = false;
+                
+                var textMatch = false;
+                if (filter === "") {{
+                    textMatch = true;
+                }} else {{
+                    // Search in File(0), Test(1), Subtest(2), Params(3)
+                    for (var j = 0; j < 4; j++) {{
+                        td = tr[i].getElementsByTagName("td")[j];
+                        if (td) {{
+                            txtValue = td.textContent || td.innerText;
+                            if (txtValue.toUpperCase().indexOf(filter) > -1) {{
+                                textMatch = true;
+                                break;
+                            }}
+                        }}
+                    }}
+                }}
+
+                var logMatch = false;
+                var logButton = tr[i].querySelector("button");
+                
+                if (logFilter === "") {{
+                    logMatch = true;
+                    if (logButton) logButton.classList.remove("log-match");
+                }} else {{
+                    // Logs are in the modal div inside the row
+                    var modalDiv = tr[i].querySelector(".modal-content");
+                    if (modalDiv) {{
+                        var logText = modalDiv.textContent || modalDiv.innerText;
+                        if (logText.toUpperCase().indexOf(logFilter) > -1) {{
+                            logMatch = true;
+                            if (logButton) logButton.classList.add("log-match");
+                        }} else {{
+                            if (logButton) logButton.classList.remove("log-match");
+                        }}
+                    }} else {{
+                        logMatch = false;
+                    }}
+                }}
+
+                var outcomeMatch = false;
+                // Outcome is now column 4
+                td = tr[i].getElementsByTagName("td")[4];
+                if (td) {{
+                    var outcomeClass = td.className; 
+                    if (checkedOutcomes.includes(outcomeClass)) {{
+                        outcomeMatch = true;
+                    }}
+                }}
+                
+                if (textMatch && outcomeMatch && logMatch) {{
+                    tr[i].style.display = "";
+                }} else {{
+                    tr[i].style.display = "none";
+                }}
+            }}
+        }}
+        
+        function sortTable(n) {{
+            var dir = "asc"; 
+            if (currentSortColumn === n && currentSortDir === "asc") {{
+                dir = "desc";
+            }}
+            currentSortColumn = n;
+            currentSortDir = dir;
+            sortGrid(n, dir);
+        }}
+
+        function sortGrid(n, dir) {{
+            var table = document.getElementById("testTable");
+            var tbody = table.getElementsByTagName("tbody")[0];
+            var rows = Array.from(tbody.getElementsByTagName("tr"));
+            
+            rows.sort(function(rowA, rowB) {{
+                var x = rowA.getElementsByTagName("TD")[n];
+                var y = rowB.getElementsByTagName("TD")[n];
+                
+                var xVal = x.textContent.toLowerCase().trim();
+                var yVal = y.textContent.toLowerCase().trim();
+                
+                // Numeric sort for Duration (column 5 now)
+                if (n === 5) {{
+                    // Use data-value attribute if present, otherwise parse text
+                    var xAttr = x.getAttribute("data-value");
+                    var yAttr = y.getAttribute("data-value");
+                    
+                    var xNum = xAttr ? parseFloat(xAttr) : (parseFloat(xVal) || 0);
+                    var yNum = yAttr ? parseFloat(yAttr) : (parseFloat(yVal) || 0);
+                    return (dir === "asc") ? (xNum - yNum) : (yNum - xNum);
+                }}
+                
+                if (xVal < yVal) return (dir === "asc" ? -1 : 1);
+                if (xVal > yVal) return (dir === "asc" ? 1 : -1);
+                return 0;
+            }});
+            
+            var fragment = document.createDocumentFragment();
+            rows.forEach(function(row) {{
+                fragment.appendChild(row);
+            }});
+            tbody.appendChild(fragment);
+            
+            var headers = table.getElementsByTagName("th");
+            for (var j = 0; j < headers.length; j++) {{
+                var text = headers[j].innerText.replace(" ▲", "").replace(" ▼", "");
+                headers[j].innerText = text;
+            }}
+            if (n < headers.length) {{
+                headers[n].innerText += (dir === "asc" ? " ▲" : " ▼");
+            }}
+        }}
+
+        function openModal(id) {{
+            document.getElementById(id).style.display = "block";
+        }}
+        
+        function closeModal(id) {{
+            document.getElementById(id).style.display = "none";
+        }}
+        
+        window.onclick = function(event) {{
+            if (event.target.className == "modal") {{
+                event.target.style.display = "none";
+            }}
+        }}
+    </script>
+</head>
+<body>
+    <h1>Test Execution Report</h1>
+    
+    <div class="summary">
+        <span id="status-text"><strong>Status:</strong> {status}</span> <br>
+        <strong>Workers:</strong> {workers_active} active / {workers_total} total <br>
+        <strong>Duration:</strong> {total_duration} <br>
+        <strong>Passed:</strong> <span class="passed">{passed}</span> | 
+        <strong>Failed:</strong> <span class="failed">{failed}</span> | 
+        <strong>Errors:</strong> <span class="error">{errors}</span> | 
+        <strong>Crashed:</strong> <span class="crashed">{crashed}</span> | 
+        <strong>Skipped:</strong> <span class="skipped">{skipped}</span> |
+        <strong>Running:</strong> <span class="running">{running}</span> |
+        <strong>Queued:</strong> <span class="queued">{remaining}</span>
+        {commit_info_html}
+        {ci_info_html}
+    </div>
+
+    <div class="progress-bar">
+        <div class="progress-fill" style="width: {progress_percent}%;">{progress_percent}%</div>
+    </div>
+
+    <div class="controls">
+        <input type="text" id="searchInput" onkeyup="filterTable()" placeholder="Search..." class="filter-input">
+        <input type="text" id="logSearchInput" onkeyup="filterTable()" placeholder="Search logs..." class="filter-input">
+        <div class="outcome-filters">
+            <label><input type="checkbox" class="outcome-filter" value="passed" checked> Passed</label>
+            <label><input type="checkbox" class="outcome-filter" value="failed" checked> Failed</label>
+            <label><input type="checkbox" class="outcome-filter" value="error" checked> Error</label>
+            <label><input type="checkbox" class="outcome-filter" value="crashed" checked> Crashed</label>
+            <label><input type="checkbox" class="outcome-filter" value="skipped" checked> Skipped</label>
+            <label><input type="checkbox" class="outcome-filter" value="running" checked> Running</label>
+            <label><input type="checkbox" class="outcome-filter" value="queued" checked> Queued</label>
+        </div>
+    </div>
+
+    <table id="testTable">
+        <thead>
+            <tr>
+                <th onclick="sortTable(0)">File</th>
+                <th onclick="sortTable(1)">Class</th>
+                <th onclick="sortTable(2)">Function</th>
+                <th onclick="sortTable(3)">Params</th>
+                <th onclick="sortTable(4)">Outcome</th>
+                <th onclick="sortTable(5)">Duration</th>
+                <th>Logs</th>
+            </tr>
+        </thead>
+        <tbody>
+            {rows}
+        </tbody>
+    </table>
+    
+    <p><em id="timestamp">Generated at {timestamp}</em></p>
+</body>
+</html>

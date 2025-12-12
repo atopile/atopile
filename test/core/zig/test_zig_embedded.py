@@ -88,7 +88,7 @@ def discover_zig_tests() -> list[tuple[Path, str]]:
 def zig_test_id(param: tuple[Path, str]) -> str:
     zig_file, test_name = param
     rel_path = zig_file.relative_to(ZIG_SRC_DIR)
-    return f"{rel_path}::{test_name}"
+    return f"{rel_path}:{test_name}"
 
 
 @pytest.mark.parametrize("zig_test", discover_zig_tests(), ids=zig_test_id)
