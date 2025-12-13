@@ -489,27 +489,39 @@ def refresh_dashboard_once(
         )
         return None
 
-    # runs are newest->oldest (index 0 is newest). Latest is smallest index we fetched.
-    latest_i, latest_run, latest_report = min(available, key=lambda t: t[0])
-    latest_summary = build_dashboard_summary(run=latest_run, report=latest_report)
+    # runs are newest->oldest (index 0 is newest).
+    summaries: list[tuple[int, dict, dict, dict]] = []
+    for i, run, report in available:
+        summary = build_dashboard_summary(run=run, report=report)
+        summaries.append((i, run, report, summary))
 
-    html_url = latest_run.get("html_url")
+    # Display the newest run that has a report JSON (fallback handled above).
+    summaries_by_newest = sorted(summaries, key=lambda t: t[0])
+    display_i, display_run, display_report, display_summary = summaries_by_newest[0]
+    prev = summaries_by_newest[1] if len(summaries_by_newest) > 1 else None
+    if prev:
+        _prev_summary = prev[3]
+        display_summary = dict(display_summary)
+        display_summary["passed_delta"] = _as_int(display_summary.get("passed")) - _as_int(_prev_summary.get("passed"))
+        display_summary["failed_delta"] = _as_int(display_summary.get("failed")) - _as_int(_prev_summary.get("failed"))
+    display_label = "latest run with report"
+
+    html_url = display_run.get("html_url")
     print(
-        f"Refreshing latest run with report: {html_url} "
+        f"Refreshing {display_label} with report: {html_url} "
         f"(cached {len(cached)}, downloaded {len(fetched)}/{len(to_fetch)}, total {len(available)}/{len(runs)})"
     )
 
     # History is oldest->newest for the chart.
     history: list[dict] = []
-    for i, run, report in sorted(available, key=lambda t: t[0], reverse=True):
-        if i == latest_i:
-            history.append(latest_summary)
-        else:
-            history.append(build_dashboard_summary(run=run, report=report))
+    for i, run, report, summary in sorted(summaries, key=lambda t: t[0], reverse=True):
+        history.append(display_summary if i == display_i else summary)
 
-    failing_files = parse_failing_files_from_test_report(latest_report)
-    (out_dir / REPORT_COPY_BASENAME).write_text(json.dumps(latest_report, indent=2, sort_keys=True), encoding="utf-8")
-    html = build_html(latest_summary, history=history, failing_files=failing_files)
+    failing_files = parse_failing_files_from_test_report(display_report)
+    (out_dir / REPORT_COPY_BASENAME).write_text(
+        json.dumps(display_report, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    html = build_html(display_summary, history=history, failing_files=failing_files)
     dest = out_dir / "dashboard.html"
     dest.write_text(html, encoding="utf-8")
     inject_refresh(dest, interval_seconds)
@@ -641,7 +653,7 @@ def _get_dashboard_css() -> str:
 
     /* === Main Panel Components === */
     .status {
-      font-size: 1.8rem;
+      font-size: 1.6rem;
       margin-bottom: 16px;
       display: flex;
       align-items: center;
@@ -650,7 +662,11 @@ def _get_dashboard_css() -> str:
       width: 100%;
     }
     .status__left { display: inline-flex; align-items: center; gap: 12px; }
-    .status__right { color: var(--accent); font-size: 1.6rem; }
+    .status__label { color: var(--muted); font-weight: 700; }
+    .status__meta { display: inline-flex; align-items: center; gap: 16px; }
+    .status__kv { display: inline-flex; align-items: center; gap: 8px; }
+    .status__k { color: var(--muted); font-weight: 700; }
+    .status__v { color: var(--accent); font-weight: 800; }
     .pill {
       display: inline-block;
       padding: 6px 16px;
@@ -675,10 +691,19 @@ def _get_dashboard_css() -> str:
       border-radius: 14px;
       padding: 16px 18px;
       box-shadow: 0 0 18px rgba(12, 60, 26, 0.35) inset;
-      font-size: 1.4rem;
+      font-size: 1.5rem;
+      display: flex;
+      align-items: center; /* vertical centering */
+      justify-content: space-between;
+      gap: 12px;
     }
-    .label { color: var(--muted); }
-    .count { float: right; color: var(--accent); font-weight: 800; font-size: 1.8rem; }
+    .metric__label { color: var(--muted); font-weight: 700; }
+    .metric__value { display: inline-flex; align-items: center; gap: 8px; }
+    .metric__count { color: var(--accent); font-weight: 800; }
+    .metric__delta { font-weight: 800; opacity: 0.9; }
+    .metric__delta--good { color: var(--accent); }
+    .metric__delta--bad { color: var(--danger); }
+    .metric__delta--neutral { color: var(--muted); }
     .meta-container {
       background: rgba(4, 14, 7, 0.65);
       border: 1px solid #173923;
@@ -890,16 +915,6 @@ def _build_trend_charts(history: list[dict]) -> str:
             continue
         x_labels += f'<text x="{xs[i]:.1f}" y="{height - 12}" text-anchor="middle">{lab}</text>'
 
-    run_count_label = (
-        f'<g>'
-        f'<rect x="{pad_left + 4}" y="{pad_top + 2}" width="88" height="20" '
-        f'fill="rgba(2,7,3,0.7)" stroke="rgba(180,255,176,0.25)" rx="4" />'
-        f'<text x="{pad_left + 10}" y="{pad_top + 16}" '
-        f'text-anchor="start" fill="rgba(180,255,176,0.8)" font-size="14">'
-        f'Runs: {n}</text>'
-        f'</g>'
-    )
-
     # Tiny mascots "chasing" along their respective lines, placed in right gutter.
     # Keep x aligned to save horizontal space, adjust y to avoid overlap/clipping.
     img_w = 34
@@ -987,7 +1002,6 @@ def _build_trend_charts(history: list[dict]) -> str:
           {markers(failed, "#dc2626", radius=3.2)}
           {sausage_img}
           {funktion_img}
-          {run_count_label}
           {x_labels}
         </svg>
         <div class="legend">
@@ -1015,6 +1029,7 @@ def _build_main_panel(summary: dict, history: list[dict] | None = None) -> str:
         pass_count + fail_count + error_count + crashed_count + skip_count
     )
     total = tests or inferred_total or 1
+    run_count = len(history) if history else 1
 
     # Test result segments with colors
     segments = [
@@ -1025,10 +1040,47 @@ def _build_main_panel(summary: dict, history: list[dict] | None = None) -> str:
         ("Skipped", skip_count, "#6b7280")
     ]
 
+    def _delta_for(label: str) -> int | None:
+        if label == "Passed":
+            delta = summary.get("passed_delta")
+        elif label == "Failed":
+            delta = summary.get("failed_delta")
+        else:
+            return None
+        return int(delta) if isinstance(delta, int) else None
+
+    def _delta_span(label: str, delta: int | None) -> str:
+        if delta is None:
+            return ""
+        text = f"[{delta:+d}]"
+        if delta == 0:
+            cls = "metric__delta metric__delta--neutral"
+        else:
+            is_good = (label == "Passed" and delta > 0) or (label == "Failed" and delta < 0)
+            is_bad = (label == "Passed" and delta < 0) or (label == "Failed" and delta > 0)
+            cls = (
+                "metric__delta metric__delta--good"
+                if is_good
+                else "metric__delta metric__delta--bad"
+                if is_bad
+                else "metric__delta metric__delta--neutral"
+            )
+        return f"<span class='{cls}' title='Δ vs previous report-backed run'>{text}</span>"
+
+    def _metric_row(label: str, count: int, delta: int | None) -> str:
+        return (
+            "<li>"
+            f"<span class='metric__label'>{label}:</span>"
+            "<span class='metric__value'>"
+            f"{_delta_span(label, delta)}"
+            f"<span class='metric__count'>{count}</span>"
+            "</span>"
+            "</li>"
+        )
+
     # Build summary list items
     summary_items = "".join(
-        f"<li><span class='label'>{label}:</span> <span class='count'>{count}</span></li>"
-        for label, count, _ in segments
+        _metric_row(label, count, _delta_for(label)) for label, count, _color in segments
     )
 
     # Commit metadata
@@ -1040,8 +1092,14 @@ def _build_main_panel(summary: dict, history: list[dict] | None = None) -> str:
     charts_html = _build_trend_charts(history or [])
 
     content = f"""        <div class="status ghost">
-          <div class="status__left">Run status: <span class="pill">{status}</span></div>
-          <div class="status__right">Total tests: {total}</div>
+          <div class="status__left">
+            <span class="status__label">Run status:</span>
+            <span class="pill">{status}</span>
+          </div>
+          <div class="status__meta">
+            <div class="status__kv"><span class="status__k">Total tests:</span> <span class="status__v">{total}</span></div>
+            <div class="status__kv"><span class="status__k">Runs:</span> <span class="status__v">{run_count}</span></div>
+          </div>
         </div>
         {charts_html}
         <ul class="ghost">{summary_items}</ul>
