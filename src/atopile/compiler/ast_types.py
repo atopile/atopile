@@ -9,7 +9,7 @@ Rules:
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Iterable, Self
+from typing import ClassVar, Iterable, Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -906,15 +906,13 @@ class ConnectStmt(fabll.Node):
 
 class DirectedConnectStmt(fabll.Node):
     class Direction(StrEnum):
-        RIGHT = "RIGHT"
-        LEFT = "LEFT"
+        RIGHT = "RIGHT"  # ~> arrow points right
+        LEFT = "LEFT"  # <~ arrow points left
 
     _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
+    _direction_identifier: ClassVar[str] = "direction"
 
     source = SourceChunk.MakeChild()
-    direction = F.Literals.EnumsFactory(Direction).MakeChild(
-        *Direction.__members__.values()
-    )
     lhs = F.Collections.Pointer.MakeChild()
     rhs = F.Collections.Pointer.MakeChild()
 
@@ -926,7 +924,19 @@ class DirectedConnectStmt(fabll.Node):
         rhs: "is_connectable | DirectedConnectStmt",
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.direction.get().setup(direction)
+
+        # Create direction literal dynamically and add as named child
+        direction_literal = (
+            F.Literals.Strings.bind_typegraph(tg=self.tg)
+            .create_instance(g=self.instance.g())
+            .setup_from_values(direction.value)
+        )
+        EdgeComposition.add_child(
+            bound_node=self.instance,
+            child=direction_literal.instance.node(),
+            child_identifier=self._direction_identifier,
+        )
+
         # Store the is_connectable trait directly (not the raw host object)
         self.lhs.get().point(lhs)
         _add_anon_child(self, lhs)
@@ -943,6 +953,17 @@ class DirectedConnectStmt(fabll.Node):
         if node.isinstance(DirectedConnectStmt):
             return node.cast(t=DirectedConnectStmt)
         return node.cast(t=is_connectable)
+
+    def get_direction(self) -> "Direction":
+        """Get the direction enum value from the dynamically created literal."""
+        direction_node = EdgeComposition.get_child_by_identifier(
+            bound_node=self.instance,
+            child_identifier=self._direction_identifier,
+        )
+        if direction_node is None:
+            raise ValueError("Direction not set")
+        direction_literal = fabll.Node(instance=direction_node).cast(F.Literals.Strings)
+        return DirectedConnectStmt.Direction(direction_literal.get_single())
 
 
 class RetypeStmt(fabll.Node):

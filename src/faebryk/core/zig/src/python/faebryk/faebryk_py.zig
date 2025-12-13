@@ -3875,7 +3875,7 @@ fn wrap_typegraph_debug_add_reference() type {
     return struct {
         pub const descr = method_descr{
             .name = "debug_add_reference",
-            .doc = "Test helper: build a Reference node chain from child identifiers",
+            .doc = "Test helper: build a Reference node chain. Accepts list[str | EdgeTraversal].",
             .args_def = struct {
                 type_node: *graph.BoundNodeReference,
                 path: *py.PyObject,
@@ -3893,7 +3893,7 @@ fn wrap_typegraph_debug_add_reference() type {
 
             const path_obj = kwarg_obj.path;
             if (py.PySequence_Check(path_obj) != 1) {
-                py.PyErr_SetString(py.PyExc_TypeError, "path must be a sequence of strings");
+                py.PyErr_SetString(py.PyExc_TypeError, "path must be a sequence");
                 return null;
             }
 
@@ -3902,8 +3902,10 @@ fn wrap_typegraph_debug_add_reference() type {
                 return null;
             }
 
-            var segments = std.ArrayList([]const u8).init(std.heap.c_allocator);
-            defer segments.deinit();
+            // Parse path items into EdgeTraversals
+            const ET = faebryk.typegraph.TypeGraph.ChildReferenceNode.EdgeTraversal;
+            var traversals = std.ArrayList(ET).init(std.heap.c_allocator);
+            defer traversals.deinit();
 
             var idx: usize = 0;
             const path_len_int: usize = @intCast(path_len);
@@ -3914,14 +3916,18 @@ fn wrap_typegraph_debug_add_reference() type {
                 }
                 defer py.Py_DECREF(item.?);
 
-                const segment = bind.unwrap_str_copy(item) orelse return null;
-                segments.append(segment) catch {
+                const traversal = _parse_path_item(item.?) orelse {
+                    py.PyErr_SetString(py.PyExc_TypeError, "path items must be str or EdgeTraversal");
+                    return null;
+                };
+
+                traversals.append(traversal) catch {
                     py.PyErr_SetString(py.PyExc_MemoryError, "failed to build path");
                     return null;
                 };
             }
 
-            const bnode = faebryk.typegraph.TypeGraph.ChildReferenceNode.create_and_insert(wrapper.data, segments.items) catch {
+            const bnode = faebryk.typegraph.TypeGraph.ChildReferenceNode.create_and_insert(wrapper.data, traversals.items) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "debug_add_reference failed");
                 return null;
             };
@@ -5059,6 +5065,22 @@ fn wrap_edge_trait_try_get_trait_instance_of_type() type {
     };
 }
 
+fn wrap_edge_trait_get_tid() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_tid",
+            .doc = "Return the type ID of trait edges",
+            .args_def = struct {},
+            .static = true,
+        };
+
+        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const tid = faebryk.trait.EdgeTrait.tid;
+            return py.PyLong_FromLongLong(@intCast(tid));
+        }
+    };
+}
+
 fn wrap_edge_trait(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_edge_trait_create(),
@@ -5074,6 +5096,7 @@ fn wrap_edge_trait(root: *py.PyObject) void {
         wrap_edge_trait_add_trait_instance(),
         wrap_edge_trait_visit_trait_instances_of_type(),
         wrap_edge_trait_try_get_trait_instance_of_type(),
+        wrap_edge_trait_get_tid(),
     };
     bind.wrap_namespace_struct(root, faebryk.trait.EdgeTrait, extra_methods);
 }
@@ -5433,11 +5456,43 @@ pub fn make_python_module() ?*py.PyObject {
     return module;
 }
 
+/// Helper to parse a path item (str or EdgeTraversal) into an EdgeTraversal
+fn _parse_path_item(item: *py.PyObject) ?faebryk.typegraph.TypeGraph.ChildReferenceNode.EdgeTraversal {
+    const ET = faebryk.typegraph.TypeGraph.ChildReferenceNode.EdgeTraversal;
+
+    // Check if it's a string (default to Composition)
+    if (bind.unwrap_str_copy(item)) |identifier| {
+        return ET.composition(identifier);
+    }
+    // Clear any error from failed string conversion before checking for EdgeTraversal
+    py.PyErr_Clear();
+
+    // Check if it's an EdgeTraversal object (has .identifier and .edge_type attributes)
+    const identifier_attr = py.PyObject_GetAttrString(item, "identifier");
+    if (identifier_attr == null) {
+        py.PyErr_Clear();
+        return null;
+    }
+    defer py.Py_DECREF(identifier_attr.?);
+
+    const edge_type_attr = py.PyObject_GetAttrString(item, "edge_type");
+    if (edge_type_attr == null) {
+        py.PyErr_Clear();
+        return null;
+    }
+    defer py.Py_DECREF(edge_type_attr.?);
+
+    const identifier = bind.unwrap_str_copy(identifier_attr) orelse return null;
+    const edge_type: graph.Edge.EdgeType = @intCast(py.PyLong_AsLong(edge_type_attr.?));
+
+    return .{ .identifier = identifier, .edge_type = edge_type };
+}
+
 fn wrap_typegraph_ensure_child_reference() type {
     return struct {
         pub const descr = method_descr{
             .name = "ensure_child_reference",
-            .doc = "Return a ChildReferenceNode for the given path. Delegates to the mount-aware resolver in the Zig TypeGraph so Python never mirrors structural logic.",
+            .doc = "Return a ChildReferenceNode for the given path. Accepts list[str | EdgeTraversal].",
             .args_def = struct {
                 type_node: *graph.BoundNodeReference,
                 path: *py.PyObject,
@@ -5456,19 +5511,38 @@ fn wrap_typegraph_ensure_child_reference() type {
 
             const path_obj = kwarg_obj.path;
             if (py.PySequence_Check(path_obj) != 1) {
-                py.PyErr_SetString(py.PyExc_TypeError, "path must be a sequence of strings");
+                py.PyErr_SetString(py.PyExc_TypeError, "path must be a sequence");
                 return null;
             }
 
-            var segments = std.ArrayList([]const u8).init(std.heap.c_allocator);
-            defer segments.deinit();
-
-            if (_copy_string_sequence(path_obj, &segments)) |_| {} else |err| {
-                switch (err) {
-                    error.MemoryError => py.PyErr_SetString(py.PyExc_MemoryError, "failed to build path"),
-                    error.TypeError => py.PyErr_SetString(py.PyExc_TypeError, "path must contain only strings"),
-                }
+            const path_len = py.PySequence_Size(path_obj);
+            if (path_len < 0) {
                 return null;
+            }
+
+            // Parse path items into EdgeTraversals
+            const ET = faebryk.typegraph.TypeGraph.ChildReferenceNode.EdgeTraversal;
+            var traversals = std.ArrayList(ET).init(std.heap.c_allocator);
+            defer traversals.deinit();
+
+            var idx: usize = 0;
+            const path_len_int: usize = @intCast(path_len);
+            while (idx < path_len_int) : (idx += 1) {
+                const item = py.PySequence_GetItem(path_obj, @intCast(idx));
+                if (item == null) {
+                    return null;
+                }
+                defer py.Py_DECREF(item.?);
+
+                const traversal = _parse_path_item(item.?) orelse {
+                    py.PyErr_SetString(py.PyExc_TypeError, "path items must be str or EdgeTraversal");
+                    return null;
+                };
+
+                traversals.append(traversal) catch {
+                    py.PyErr_SetString(py.PyExc_MemoryError, "failed to build traversals");
+                    return null;
+                };
             }
 
             var failure: ?faebryk.typegraph.TypeGraph.PathResolutionFailure = null;
@@ -5476,19 +5550,14 @@ fn wrap_typegraph_ensure_child_reference() type {
             const reference = faebryk.typegraph.TypeGraph.ensure_path_reference_mountaware(
                 wrapper.data,
                 kwarg_obj.type_node.*,
-                segments.items,
+                traversals.items,
                 py.PyObject_IsTrue(kwarg_obj.validate) == 1,
                 &failure,
             ) catch |err| {
-                raise_typegraph_path_exception(
-                    err,
-                    failure,
-                    segments.items,
-                    .{
-                        .fallback = "child path not found",
-                        .unresolved = "child path type is unresolved",
-                    },
-                );
+                switch (err) {
+                    error.EmptyPath, error.ChildNotFound => py.PyErr_SetString(py.PyExc_ValueError, "path cannot be empty or invalid"),
+                    else => py.PyErr_SetString(py.PyExc_ValueError, "failed to create reference"),
+                }
                 return null;
             };
 

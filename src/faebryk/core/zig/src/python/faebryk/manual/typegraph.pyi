@@ -1,3 +1,5 @@
+# Re-export EdgeTraversal from the actual implementation
+from faebryk.core.edge_traversal import EdgeTraversal as EdgeTraversal
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
 from faebryk.core.zig.gen.faebryk.nodebuilder import NodeCreationAttributes
 from faebryk.core.zig.gen.graph.graph import BoundNode, GraphView, Literal
@@ -52,9 +54,11 @@ class TypeGraph:
         def build(*, value: str | None = ...) -> NodeCreationAttributes: ...
 
     def debug_add_reference(
-        self, *, type_node: BoundNode, path: list[str]
+        self, *, type_node: BoundNode, path: list[str | EdgeTraversal]
     ) -> BoundNode: ...
-    def add_reference(self, *, type_node: BoundNode, path: list[str]) -> BoundNode: ...
+    def add_reference(
+        self, *, type_node: BoundNode, path: list[str | EdgeTraversal]
+    ) -> BoundNode: ...
     def add_make_link(
         self,
         *,
@@ -67,9 +71,27 @@ class TypeGraph:
         self,
         *,
         type_node: BoundNode,
-        path: list[str],
+        path: list[str | EdgeTraversal],
         validate: bool = ...,
-    ) -> BoundNode: ...
+    ) -> BoundNode:
+        """Create a reference path for traversing the instance graph.
+
+        Path items can be:
+          - str: Composition edge (parent-child relationship)
+          - EdgeTraversal: Custom edge type (Trait, Pointer, etc.)
+
+        Example:
+            # Composition-only path (backwards compatible)
+            tg.ensure_child_reference(type_node=t, path=["child1", "child2"])
+
+            # Mixed path with different edge types
+            tg.ensure_child_reference(type_node=t, path=[
+                "resistor",
+                EdgeTraversal.trait("can_bridge"),
+                EdgeTraversal.pointer("in_"),
+            ])
+        """
+        ...
     def collect_pointer_members(
         self,
         *,

@@ -945,8 +945,10 @@ class ANTLRVisitor(AtoParserVisitor):
     ) -> AST.DirectedConnectStmt:
         match [ctx.SPERM(), ctx.LSPERM()]:
             case [_, None]:
+                # ~> (SPERM) - arrow points right, signal flows left-to-right
                 direction = AST.DirectedConnectStmt.Direction.RIGHT
             case [None, _]:
+                # <~ (LSPERM) - arrow points left, signal flows right-to-left
                 direction = AST.DirectedConnectStmt.Direction.LEFT
             case _:
                 raise ValueError(

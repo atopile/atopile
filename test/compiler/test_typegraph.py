@@ -6,7 +6,11 @@ import pytest
 
 from atopile.compiler.ast_visitor import DslException
 from atopile.compiler.build import Linker, StdlibRegistry, build_file, build_source
+from faebryk.core.edge_traversal import EdgeTraversal
+from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.linker import Linker as _Linker
+from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
+from faebryk.core.zig.gen.faebryk.trait import EdgeTrait
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph, TypeGraphPathError
 from faebryk.core.zig.gen.graph import graph
 from faebryk.core.zig.gen.graph.graph import GraphView
@@ -296,28 +300,6 @@ def test_for_loop_requires_experiment():
                     r ~ sink
             """
         )
-
-
-def test_connect_resistor_simple():
-    _, tg, _, result = _build_snippet(
-        """
-        import Resistor
-
-        module App:
-            left = new Resistor
-            right = new Resistor
-            left.unnamed[0] ~ right.unnamed[0]
-        """
-    )
-    app_type = result.state.type_roots["App"]
-    # Path segments with indices are combined: unnamed + [0] -> unnamed[0]
-    # This matches how fabll names list children
-    assert _check_make_links(
-        tg=tg,
-        type_node=app_type,
-        expected=[(["left", "unnamed[0]"], ["right", "unnamed[0]"])],
-        not_expected=[(["left"], ["right"])],
-    )
 
 
 def test_for_loop_over_sequence():
@@ -683,6 +665,28 @@ def test_simple_connect():
     )
 
 
+def test_connect_resistor_simple():
+    _, tg, _, result = _build_snippet(
+        """
+        import Resistor
+
+        module App:
+            left = new Resistor
+            right = new Resistor
+            left.unnamed[0] ~ right.unnamed[0]
+        """
+    )
+    app_type = result.state.type_roots["App"]
+    # Path segments with indices are combined: unnamed + [0] -> unnamed[0]
+    # This matches how fabll names list children
+    assert _check_make_links(
+        tg=tg,
+        type_node=app_type,
+        expected=[(["left", "unnamed[0]"], ["right", "unnamed[0]"])],
+        not_expected=[(["left"], ["right"])],
+    )
+
+
 def test_connect_unlinked_types():
     _, tg, _, result = _build_snippet(
         """
@@ -699,6 +703,29 @@ def test_connect_unlinked_types():
             tg=tg,
             type_node=result.state.type_roots["App"],
             expected=[(["left"], ["right"])],
+        )
+        is True
+    )
+
+
+def test_directed_connect():
+    """Test directed connect creates links through can_bridge traits."""
+    _, tg, _, result = _build_snippet(
+        """
+        import Resistor
+
+        module App:
+            left = new Resistor
+            right = new Resistor
+            left ~> right
+        """
+    )
+    # Directed connect goes through can_bridge: left.out_ -> right.in_
+    assert (
+        _check_make_links(
+            tg=tg,
+            type_node=result.state.type_roots["App"],
+            expected=[(["left", "can_bridge", "out_"], ["right", "can_bridge", "in_"])],
         )
         is True
     )
@@ -966,3 +993,261 @@ class TestTypeNamespacing:
             .node()
             .is_same(other=user_tg.get_self_node().node())
         )
+
+
+class TestEdgeTraversalPathResolution:
+    """
+    Tests for resolving paths through different edge types (Composition, Trait, Pointer)
+    """
+
+    def test_edge_traversal_helpers(self):
+        """Test that EdgeTraversal helper methods create correct edge types."""
+        comp = EdgeTraversal.composition("child")
+        assert comp.identifier == "child"
+        assert comp.edge_type == EdgeComposition.get_tid()
+
+        trait = EdgeTraversal.trait("my_trait")
+        assert trait.identifier == "my_trait"
+        assert trait.edge_type == EdgeTrait.get_tid()
+
+        ptr = EdgeTraversal.pointer("my_ptr")
+        assert ptr.identifier == "my_ptr"
+        assert ptr.edge_type == EdgePointer.get_tid()
+
+    def test_string_path_backwards_compatible(self):
+        """Test that string paths still work (default to Composition edges)."""
+        g = GraphView.create()
+        tg = TypeGraph.create(g=g)
+
+        Electrical = tg.add_type(identifier="Electrical")
+        Resistor = tg.add_type(identifier="Resistor")
+        tg.add_make_child(type_node=Resistor, child_type=Electrical, identifier="p1")
+        tg.add_make_child(type_node=Resistor, child_type=Electrical, identifier="p2")
+
+        # String path should work
+        ref = tg.ensure_child_reference(type_node=Resistor, path=["p1"], validate=False)
+        assert ref is not None
+
+        # Resolve against an instance
+        resistor_instance = tg.instantiate_node(type_node=Resistor, attributes={})
+        resolved = tg.reference_resolve(reference_node=ref, base_node=resistor_instance)
+        assert resolved is not None
+
+        # Verify it resolved to p1
+        p1_instance = EdgeComposition.get_child_by_identifier(
+            bound_node=resistor_instance, child_identifier="p1"
+        )
+        assert resolved.node().is_same(other=p1_instance.node())
+
+    def test_mixed_path_creates_reference_chain(self):
+        """Test that EdgeTraversal creates reference chains with correct edge types.
+
+        This test verifies the reference chain structure is correct.
+        Full integration testing with instantiation can be done once
+        the linker properly resolves all type references.
+        """
+        g = GraphView.create()
+        tg = TypeGraph.create(g=g)
+        stdlib = StdlibRegistry(tg)
+
+        # Get the stdlib Resistor type (which has can_bridge trait)
+        Resistor = stdlib.get("Resistor")
+
+        # Create a reference path with mixed edge types
+        # This just creates the reference chain, doesn't resolve it
+        ref = tg.ensure_child_reference(
+            type_node=Resistor,
+            path=[
+                EdgeTraversal.trait("can_bridge"),
+                EdgeTraversal.pointer("in_"),
+            ],
+            validate=False,
+        )
+        assert ref is not None
+
+        # Verify we can get the reference path back
+        path = tg.get_reference_path(reference=ref)
+        assert len(path) == 2
+        assert path[0] == "can_bridge"
+        assert path[1] == "in_"
+
+    def test_composition_and_traversal_path(self):
+        """Test creating reference chains with composition followed by EdgeTraversal.
+
+        Verifies the reference chain structure includes composition segments
+        (strings) followed by trait and pointer segments (EdgeTraversal).
+        """
+        g = GraphView.create()
+        tg = TypeGraph.create(g=g)
+        stdlib = StdlibRegistry(tg)
+
+        # Create a simple module type
+        App = tg.add_type(identifier="TestApp")
+        Resistor = stdlib.get("Resistor")
+
+        # Add resistor as child
+        tg.add_make_child(type_node=App, child_type=Resistor, identifier="r")
+
+        # Create a reference path: r (Composition) -> can_bridge (Trait) -> in_(Pointer)
+        ref = tg.ensure_child_reference(
+            type_node=App,
+            path=[
+                "r",  # String = Composition edge (default)
+                EdgeTraversal.trait("can_bridge"),
+                EdgeTraversal.pointer("in_"),
+            ],
+            validate=False,
+        )
+        assert ref is not None
+
+        # Verify the path was stored correctly
+        path = tg.get_reference_path(reference=ref)
+        assert len(path) == 3
+        assert path[0] == "r"
+        assert path[1] == "can_bridge"
+        assert path[2] == "in_"
+
+
+def _filter_directed_connect_links(make_links):
+    """Filter make_links to only include directed connect links (via can_bridge).
+
+    Excludes trait-related links that are automatically added to modules
+    (like is_ato_block, is_ato_module, is_module).
+    """
+    return [
+        (node, lhs, rhs) for node, lhs, rhs in make_links if lhs and "can_bridge" in lhs
+    ]
+
+
+class TestDirectedConnectStmt:
+    """Tests for visit_DirectedConnectStmt in the AST visitor.
+
+    These tests verify that directed connect statements (a ~> b, a <~ b)
+    create the correct MakeLink references through can_bridge traits.
+    """
+
+    def test_simple_directed_connect_right_arrow(self):
+        """Test a ~> b (Direction.RIGHT) creates correct links.
+
+        Direction RIGHT (~>) means arrow points right, signal flows LHS → RHS:
+        - a.can_bridge.out_ connects to b.can_bridge.in_
+        """
+        _, tg, stdlib, result = _build_snippet(
+            """
+            from "generics/resistors.ato" import Resistor
+
+            module App:
+                r1 = new Resistor
+                r2 = new Resistor
+                r1 ~> r2
+            """
+        )
+
+        App = result.state.type_roots["App"]
+
+        # Filter to only get directed connect links (exclude trait links)
+        make_links = _filter_directed_connect_links(_collect_make_links(tg, App))
+        assert len(make_links) == 1
+
+        _, lhs_path, rhs_path = make_links[0]
+        # LHS should be: r1 -> can_bridge -> out_
+        assert lhs_path == ["r1", "can_bridge", "out_"]
+        # RHS should be: r2 -> can_bridge -> in_
+        assert rhs_path == ["r2", "can_bridge", "in_"]
+
+    def test_simple_directed_connect_left_arrow(self):
+        """Test a <~ b (Direction.LEFT) creates correct links.
+
+        Direction LEFT (<~) means arrow points left, signal flows RHS → LHS:
+        - a.can_bridge.in_ connects to b.can_bridge.out_
+        """
+        _, tg, stdlib, result = _build_snippet(
+            """
+            from "generics/resistors.ato" import Resistor
+
+            module App:
+                r1 = new Resistor
+                r2 = new Resistor
+                r1 <~ r2
+            """
+        )
+
+        App = result.state.type_roots["App"]
+
+        make_links = _filter_directed_connect_links(_collect_make_links(tg, App))
+        assert len(make_links) == 1
+
+        _, lhs_path, rhs_path = make_links[0]
+        # Direction LEFT: LHS gets in_, RHS gets out_
+        assert lhs_path == ["r1", "can_bridge", "in_"]
+        assert rhs_path == ["r2", "can_bridge", "out_"]
+
+    def test_chained_directed_connect(self):
+        """Test a ~> b ~> c creates two connections.
+
+        Should create:
+        - a.can_bridge.out_ -> b.can_bridge.in_
+        - b.can_bridge.out_ -> c.can_bridge.in_
+        """
+        _, tg, stdlib, result = _build_snippet(
+            """
+            from "generics/resistors.ato" import Resistor
+
+            module App:
+                r1 = new Resistor
+                r2 = new Resistor
+                r3 = new Resistor
+                r1 ~> r2 ~> r3
+            """
+        )
+
+        App = result.state.type_roots["App"]
+
+        make_links = _filter_directed_connect_links(_collect_make_links(tg, App))
+        assert len(make_links) == 2
+
+        # Extract paths for comparison (order may vary)
+        link_paths = {(tuple(lhs), tuple(rhs)) for _, lhs, rhs in make_links}
+
+        # First link: r1.out -> r2.in
+        assert (
+            ("r1", "can_bridge", "out_"),
+            ("r2", "can_bridge", "in_"),
+        ) in link_paths
+
+        # Second link: r2.out -> r3.in
+        assert (
+            ("r2", "can_bridge", "out_"),
+            ("r3", "can_bridge", "in_"),
+        ) in link_paths
+
+    def test_longer_chain(self):
+        """Test a ~> b ~> c ~> d creates three connections."""
+        _, tg, stdlib, result = _build_snippet(
+            """
+            from "generics/resistors.ato" import Resistor
+
+            module App:
+                r1 = new Resistor
+                r2 = new Resistor
+                r3 = new Resistor
+                r4 = new Resistor
+                r1 ~> r2 ~> r3 ~> r4
+            """
+        )
+
+        App = result.state.type_roots["App"]
+
+        make_links = _filter_directed_connect_links(_collect_make_links(tg, App))
+        assert len(make_links) == 3
+
+        link_paths = {(tuple(lhs), tuple(rhs)) for _, lhs, rhs in make_links}
+
+        # Verify all expected connections exist
+        expected = [
+            (("r1", "can_bridge", "out_"), ("r2", "can_bridge", "in_")),
+            (("r2", "can_bridge", "out_"), ("r3", "can_bridge", "in_")),
+            (("r3", "can_bridge", "out_"), ("r4", "can_bridge", "in_")),
+        ]
+        for lhs_expected, rhs_expected in expected:
+            assert (lhs_expected, rhs_expected) in link_paths

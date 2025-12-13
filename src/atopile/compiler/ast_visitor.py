@@ -19,6 +19,7 @@ from atopile.compiler.gentypegraph import (
     ScopeState,
     Symbol,
 )
+from faebryk.core.edge_traversal import EdgeTraversal
 from faebryk.core.zig.gen.faebryk.interface import (  # type: ignore[import-untyped]
     EdgeInterfaceConnection,
 )
@@ -240,7 +241,9 @@ class _TypeContextStack:
     def _ensure_field_path(
         self, type_node: BoundNode, field_path: FieldPath, validate: bool = True
     ) -> BoundNode:
-        identifiers = list(field_path.identifiers())
+        # Cast to list[str | EdgeTraversal] for type compatibility with the
+        # ensure_child_reference API which accepts mixed string/EdgeTraversal paths
+        identifiers: list[str | EdgeTraversal] = list(field_path.identifiers())
         try:
             return self._tg.ensure_child_reference(
                 type_node=type_node, path=identifiers, validate=validate
@@ -296,8 +299,8 @@ class _TypeContextStack:
                 g=self._g, type_reference=type_reference, target_type_node=target
             )
 
-    # TODO FIXME this has no type checking to make sure we are only conneceting nodes with is_interface trait
-    # we should use the fabll connect_to method for this
+    # TODO FIXME: no type checking for is_interface trait on connected nodes.
+    # We should use the fabll connect_to method for this.
     def _add_link(self, type_node: BoundNode, action: AddMakeLinkAction) -> None:
         self._tg.add_make_link(
             type_node=type_node,
@@ -728,6 +731,112 @@ class ASTVisitor:
         rhs_ref = _ensure_reference(rhs_path)
 
         return AddMakeLinkAction(lhs_ref=lhs_ref, rhs_ref=rhs_ref)
+
+    def visit_DirectedConnectStmt(self, node: AST.DirectedConnectStmt):
+        """Handle directed connection statements like `a ~> b`.
+
+        Resolves the bridgeable endpoints through their can_bridge traits,
+        connecting out_ to in_ based on the arrow direction.
+
+        Direction semantics:
+        - `a ~> b` (Direction.RIGHT): Connect a.can_bridge.out_ to b.can_bridge.in_
+        - `a <~ b` (Direction.LEFT): Connect a.can_bridge.in_ to b.can_bridge.out_
+        """
+        lhs = node.get_lhs()
+        rhs = node.get_rhs()
+
+        # Get the base field path for LHS
+        lhs_node = fabll.Traits(lhs).get_obj_raw()
+        if not lhs_node.isinstance(AST.FieldRef):
+            raise NotImplementedError("Unhandled connectable type for LHS")
+        lhs_base_path = self.visit_FieldRef(lhs_node.cast(t=AST.FieldRef))
+
+        # Handle chained DirectedConnectStmt (recursive case)
+        # e.g., a ~> b ~> c becomes: connect(a.out, b.in), then recurse for b ~> c
+        if isinstance(rhs, AST.DirectedConnectStmt):
+            # Get the middle node (lhs of the nested stmt)
+            nested_lhs = rhs.get_lhs()
+            nested_lhs_node = fabll.Traits(nested_lhs).get_obj_raw()
+            if not nested_lhs_node.isinstance(AST.FieldRef):
+                raise NotImplementedError("Unhandled connectable type")
+            middle_base_path = self.visit_FieldRef(nested_lhs_node.cast(t=AST.FieldRef))
+
+            # Connect current lhs to middle node
+            action = self._add_directed_link(
+                lhs_base_path, middle_base_path, node.get_direction()
+            )
+            self._type_stack.apply_action(action)
+
+            # Recursively handle the rest of the chain
+            return self.visit_DirectedConnectStmt(rhs)
+
+        # Base case: connect lhs to rhs
+        rhs_node = fabll.Traits(rhs).get_obj_raw()
+        if not rhs_node.isinstance(AST.FieldRef):
+            raise NotImplementedError("Unhandled connectable type for RHS")
+        rhs_base_path = self.visit_FieldRef(rhs_node.cast(t=AST.FieldRef))
+
+        return self._add_directed_link(
+            lhs_base_path, rhs_base_path, node.get_direction()
+        )
+
+    def _add_directed_link(
+        self,
+        lhs_path: FieldPath,
+        rhs_path: FieldPath,
+        direction: AST.DirectedConnectStmt.Direction,
+    ) -> AddMakeLinkAction:
+        """Create a MakeLink between two nodes through their can_bridge traits.
+
+        For direction LEFT (a ~> b): connect a.can_bridge.out_ to b.can_bridge.in_
+        For direction RIGHT (a <~ b): connect a.can_bridge.in_ to b.can_bridge.out_
+        """
+        # Determine which pointer to use based on direction
+        # Direction.RIGHT (~>): arrow points right, signal flows LHS → RHS
+        # Direction.LEFT (<~): arrow points left, signal flows RHS → LHS
+        if direction == AST.DirectedConnectStmt.Direction.RIGHT:  # ~>
+            lhs_pointer = "out_"
+            rhs_pointer = "in_"
+        else:  # LEFT <~
+            lhs_pointer = "in_"
+            rhs_pointer = "out_"
+
+        # Build paths with EdgeTraversals:
+        # base_path -> can_bridge (trait) -> in_/out_ (pointer)
+        lhs_ref = self._resolve_bridge_path(lhs_path, lhs_pointer)
+        rhs_ref = self._resolve_bridge_path(rhs_path, rhs_pointer)
+
+        return AddMakeLinkAction(lhs_ref=lhs_ref, rhs_ref=rhs_ref)
+
+    def _resolve_bridge_path(self, base_path: FieldPath, pointer: str) -> BoundNode:
+        """Resolve a path through the can_bridge trait to a pointer.
+
+        Creates path: base_path -> can_bridge (Composition) -> pointer (Pointer)
+
+        This uses EdgeTraversal to specify different edge types in the path:
+        - The base_path segments use Composition edges (string identifiers)
+        - "can_bridge" uses Composition edge, trait instances are accessible as children
+        - "in_"/"out_" use Pointer edges (finds Pointer child and dereferences it)
+        """
+        # Build the full path with EdgeTraversals
+        base_identifiers = list(base_path.identifiers())
+        path: list[str | EdgeTraversal] = [
+            *base_identifiers,
+            EdgeTraversal.composition("can_bridge"),
+            EdgeTraversal.pointer(pointer),
+        ]
+
+        try:
+            return self._type_graph.ensure_child_reference(
+                type_node=self._type_stack.current(),
+                path=path,
+                # Validation for trait/pointer paths not yet implemented
+                validate=False,
+            )
+        except TypeGraphPathError as exc:
+            raise DslException(
+                f"Cannot resolve bridge path for {base_path}: {exc}"
+            ) from exc
 
     @staticmethod
     def _select_elements(
