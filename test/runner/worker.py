@@ -3,6 +3,7 @@ import sys
 import time
 
 import httpx
+import psutil
 import pytest
 
 # Ensure the current directory is in sys.path
@@ -18,6 +19,10 @@ from test.runner.common import (
 
 ORCHESTRATOR_URL = os.environ.get(ORCHESTRATOR_URL_ENV)
 
+FBRK_TEST_WORKER_MEMORY_LIMIT = (
+    int(os.environ.get("FBRK_TEST_WORKER_MEMORY_LIMIT_MB", 2 * 1024)) * 1024 * 1024
+)
+
 
 def main():
     if not ORCHESTRATOR_URL:
@@ -30,8 +35,18 @@ def main():
 
     # Keep session separate? Pytest reuses sys.modules.
 
+    mem = psutil.Process().memory_info().rss
+
     try:
         while True:
+            mem_usage = psutil.Process().memory_info().rss - mem
+            if mem_usage > FBRK_TEST_WORKER_MEMORY_LIMIT:
+                mem_usage_mb = mem_usage / 1024 / 1024
+                print(
+                    f"Worker {pid} memory usage exceeded limit: {mem_usage_mb:.2f}MB",
+                    file=sys.stderr,
+                )
+                return
             try:
                 request = ClaimRequest(pid=pid)
                 resp = client.post(

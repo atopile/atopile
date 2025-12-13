@@ -14,7 +14,7 @@ jobs:
   pytest:
     #runs-on: blacksmith-4vcpu-ubuntu-2404
     #runs-on: blacksmith-32vcpu-ubuntu-2404-arm
-    runs-on: blacksmith-32vcpu-ubuntu-2404
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     #runs-on: [self-hosted]
     #runs-on: ubuntu-latest
     steps:
@@ -74,6 +74,8 @@ jobs:
           FBRK_TEST_WORKERS: -2 # 32 threads/16 cpus -> 32 workers
           FBRK_TEST_PERIODIC_HTML: 0
           FBRK_TEST_GENERATE_HTML: 1
+          # threshold for worker to restart after exceeding after a test run
+          FBRK_TEST_WORKER_MEMORY_LIMIT_MB: 1024
           PYTHON_UNBUFFERED: 1
 
       - name: Upload test report json artifact
