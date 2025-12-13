@@ -29,9 +29,8 @@ class has_explicit_part(fabll.Node):
         self,
         mfr: str,
         partno: str,
-        pinmap: dict[str, fabll._ChildField[F.Electrical] | None] | None = None,
-        override_footprint: tuple[fabll._ChildField[F.Footprints.is_footprint], str]
-        | None = None,
+        pinmap: dict[str, F.Electrical | None] | None = None,
+        override_footprint: tuple[F.Footprints.is_footprint, str] | None = None,
     ) -> Self:
         self.mfr_.get().alias_to_literal(mfr)
         self.partno_.get().alias_to_literal(partno)
@@ -42,9 +41,8 @@ class has_explicit_part(fabll.Node):
         self,
         supplier_partno: str,
         supplier_id: str = "lcsc",
-        pinmap: dict[str, fabll._ChildField[F.Electrical] | None] | None = None,
-        override_footprint: tuple[fabll._ChildField[F.Footprints.is_footprint], str]
-        | None = None,
+        pinmap: dict[str, F.Electrical | None] | None = None,
+        override_footprint: tuple[F.Footprints.is_footprint, str] | None = None,
     ) -> Self:
         if supplier_id != "lcsc":
             raise NotImplementedError(f"Supplier {supplier_id} not supported")

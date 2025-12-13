@@ -117,14 +117,14 @@ def _compact_bomlines(bomlines: list[BOMLine]) -> list[BOMLine]:
 
 
 def _get_bomline(cmp: fabll.Node, jlcpcb_format: bool = True) -> BOMLine | None:
-    if not cmp.has_trait(F.Footprints.has_associated_footprint):
-        logger.warning(f"Missing associated footprint on component '{cmp}'")
-        return
-    # TODO make extra trait for this
-    if cmp.has_trait(F.has_part_picked) and isinstance(
-        cmp.get_trait(F.has_part_picked), F.has_part_removed
+    if not (
+        footprint_trait := cmp.try_get_trait(F.Footprints.has_associated_footprint)
     ):
-        return
+        logger.warning(f"Missing associated footprint on component '{cmp}'")
+        return None
+    if cmp.has_trait(F.has_part_picked) and cmp.has_trait(F.has_part_removed):
+        logger.warning(f"Component '{cmp}' has part picked and removed")
+        return None
 
     if missing := [
         t.__name__
@@ -135,13 +135,23 @@ def _get_bomline(cmp: fabll.Node, jlcpcb_format: bool = True) -> BOMLine | None:
         if not cmp.has_trait(t)
     ]:
         logger.warning(f"Missing fields on component '{cmp}': {missing}")
-        return
+        return None
 
     part = cmp.get_trait(F.has_part_picked).get_part()
 
-    footprint = F.KiCadFootprints.has_associated_kicad_pcb_footprint.bind_typegraph(
-        cmp.tg
-    ).get_instances()[0]
+    kicad_footprint_trait = footprint_trait.get_footprint().try_get_trait(
+        F.KiCadFootprints.has_associated_kicad_pcb_footprint
+    )
+    if kicad_footprint_trait is None:
+        kicad_library_footprint_trait = footprint_trait.get_footprint().try_get_trait(
+            F.KiCadFootprints.has_associated_kicad_library_footprint
+        )
+        if kicad_library_footprint_trait is None:
+            logger.warning(f"Missing any form of kicad footprint on component '{cmp}'")
+            return None
+        footprint_name = kicad_library_footprint_trait.library_name
+    else:
+        footprint_name = kicad_footprint_trait.get_footprint().name
 
     value = (
         cmp.get_trait(F.has_simple_value_representation).get_value()
@@ -156,8 +166,6 @@ def _get_bomline(cmp: fabll.Node, jlcpcb_format: bool = True) -> BOMLine | None:
 
     manufacturer = part.manufacturer
     partnumber = part.partno
-
-    footprint_name = footprint.get_footprint().name
 
     return BOMLine(
         Designator=designator,
@@ -179,12 +187,13 @@ def test_get_bomline():
     tg = fbrk.TypeGraph.create(g=g)
 
     pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE).kicad_pcb
-    fp = pcb.footprints[1]
+    k_pcb_fp = pcb.footprints[1]
+
+    class TestFootprint(fabll.Node):
+        is_footprint_ = fabll.Traits.MakeEdge(F.Footprints.is_footprint.MakeChild())
+        pass
 
     class TestNode(fabll.Node):
-        class TestFootprint(fabll.Node):
-            pass
-
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         _has_designator = fabll.Traits.MakeEdge(F.has_designator.MakeChild("R1"))
         _has_part_picked = fabll.Traits.MakeEdge(
@@ -196,18 +205,20 @@ def test_get_bomline():
                 )
             )
         )
-        _has_associated_footprint = fabll.Traits.MakeEdge(
+        has_associated_footprint_ = fabll.Traits.MakeEdge(
             F.Footprints.has_associated_footprint.MakeChild()
         )
-        fp = TestFootprint.MakeChild()
 
     node = TestNode.bind_typegraph(tg).create_instance(g=g)
+    fp_node = TestFootprint.bind_typegraph(tg).create_instance(g=g)
+    node.has_associated_footprint_.get().setup(fp_node.is_footprint_.get())
 
     transformer = PCB_Transformer(pcb, node)
 
     fabll.Traits.create_and_add_instance_to(
-        node=node.fp.get(), trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint
-    ).setup(fp, transformer)
+        node=node.has_associated_footprint_.get().get_footprint(),
+        trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint,
+    ).setup(k_pcb_fp, transformer)
 
     bomline = _get_bomline(node)
 
