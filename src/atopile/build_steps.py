@@ -270,7 +270,9 @@ def prepare_nets(
     if len(nets) == 0:
         logger.warning("No nets found")
     for net in nets:
-        logger.info(f"Net found: {net.get_name()}")
+        if net.get_name() is None:
+            continue
+        logger.info(f"Net with name '{net.get_name()}' found")
     # We have to re-attach the footprints, and subsequently nets, because the first
     # attachment is typically done before the footprints have been created
     # and therefore many nets won't be re-attached properly. Also, we just created

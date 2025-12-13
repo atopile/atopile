@@ -1,5 +1,6 @@
 import logging
 from itertools import pairwise
+from typing import TYPE_CHECKING
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
@@ -8,7 +9,13 @@ from faebryk.libs.util import KeyErrorAmbiguous, once
 
 logger = logging.getLogger(__name__)
 
-def bind_fbrk_nets_to_kicad_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView, transformer):
+if TYPE_CHECKING:
+    from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+
+
+def bind_fbrk_nets_to_kicad_nets(
+    tg: fbrk.TypeGraph, g: fabll.graph.GraphView, transformer: "PCB_Transformer"
+):
     """
     Gets named fbrk nets and attempts to map them to existing kicad nets
     """
@@ -45,9 +52,11 @@ def bind_fbrk_nets_to_kicad_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView, t
         if not kicad_net_name_counts:
             continue
 
-        # pick the highest occuring kicad net name
+        # pick the highest occuring kicad net name (highest count)
         # + check at least 80% of fbrk pads have it
-        best_kicad_net_name = max(kicad_net_name_counts, key=kicad_net_name_counts.get)
+        best_kicad_net_name = max(
+            kicad_net_name_counts, key=lambda x: kicad_net_name_counts[x]
+        )
         best_count = kicad_net_name_counts[best_kicad_net_name]
         if best_count <= pad_count * 0.8:
             continue
@@ -80,10 +89,15 @@ def bind_electricals_to_fbrk_nets(
             if is_lead.has_trait(F.Lead.has_associated_pads):
                 electricals_filtered.add(electrical)
             else:
-                logger.warning(f"Lead of {electrical.get_name()} has no associated pads")
+                logger.warning(
+                    f"Lead of {electrical.get_name()} has no associated pads"
+                )
 
     # collect buses in a sorted manner
-    buses = sorted(fabll.is_interface.group_into_buses(electricals_filtered), key=_get_stable_node_name)
+    buses = sorted(
+        fabll.is_interface.group_into_buses(electricals_filtered),
+        key=_get_stable_node_name,
+    )
 
     # find or generate nets
     for bus in buses:
@@ -96,6 +110,7 @@ def bind_electricals_to_fbrk_nets(
 
     return fbrk_nets
 
+
 def get_named_net(electrical: "F.Electrical") -> "F.Net | None":
     """
     Returnes exactly one named net that this electrical is part of.
@@ -106,14 +121,14 @@ def get_named_net(electrical: "F.Electrical") -> "F.Net | None":
 
     for bus_member in bus_members:
         # check if the parent of an electrical has the has_net_name trait
-        if member_parent := bus_member.get_parent()[0]:
-            if has_net_name := member_parent.try_get_trait(F.has_net_name):
+        if member_parent := bus_member.get_parent():
+            if has_net_name := member_parent[0].try_get_trait(F.has_net_name):
                 named_nets_on_bus.add(has_net_name)
 
     # if there's one net, let's return that
     if len(named_nets_on_bus) == 1:
-        named_net, = named_nets_on_bus
-        return fabll.Traits.bind(named_net).get_obj_raw()
+        (named_net,) = named_nets_on_bus
+        return fabll.Traits.bind(named_net).get_obj_raw().cast(F.Net)
 
     elif not named_nets_on_bus:
         return None
@@ -131,27 +146,48 @@ def _get_stable_node_name(node: fabll.Node) -> str:
 
 
 def test_bind_nets_from_electricals():
+    from faebryk.libs.net_naming import attach_net_names
+
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    # TODO fix this test, it doesn't add the is_lead or has_associated_pads traits yet
+    class TestPad(fabll.Node):
+        is_pad = fabll.Traits.MakeEdge(
+            F.Footprints.is_pad.MakeChild(pad_name="TST_PAD", pad_number="1")
+        )
+
     class TestModule(fabll.Node):
         elec = F.Electrical.MakeChild()
+        lead = fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [elec])
+        elec.add_dependant(lead)
         _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    bus_1 = [F.Electrical.bind_typegraph(tg).create_instance(g=g) for _ in range(2)]
+    bus_1 = [TestModule.bind_typegraph(tg).create_instance(g=g) for _ in range(2)]
+    for module in bus_1:
+        pad = TestPad.bind_typegraph(tg).create_instance(g=g)
+        fabll.Traits.create_and_add_instance_to(
+            node=module.elec.get().get_trait(F.Lead.is_lead),
+            trait=F.Lead.has_associated_pads,
+        ).setup(pad.is_pad.get())
     for left, right in pairwise(bus_1):
-        left._is_interface.get().connect_to(right)
+        left.elec.get()._is_interface.get().connect_to(right.elec.get())
 
-    bus_2 = [F.Electrical.bind_typegraph(tg).create_instance(g=g) for _ in range(5)]
+    bus_2 = [TestModule.bind_typegraph(tg).create_instance(g=g) for _ in range(3)]
+    for module in bus_2:
+        pad = TestPad.bind_typegraph(tg).create_instance(g=g)
+        fabll.Traits.create_and_add_instance_to(
+            node=module.elec.get().get_trait(F.Lead.is_lead),
+            trait=F.Lead.has_associated_pads,
+        ).setup(pad.is_pad.get())
     for left, right in pairwise(bus_2):
-        left._is_interface.get().connect_to(right)
-
-    bus_3 = [TestModule.bind_typegraph(tg).create_instance(g=g) for _ in range(3)]
-    for left, right in pairwise(bus_3):
         left.elec.get()._is_interface.get().connect_to(right.elec.get())
 
     nets = bind_electricals_to_fbrk_nets(tg, g)
+    attach_net_names(nets)
 
-    #TODO make this test actually check something
-    assert False
+    assert len(nets) == 2
+    for i, net in enumerate(nets):
+        assert net.get_name() == f"elec-{i}"
+        assert len(net.get_connected_interfaces()) == 2 + i
+        assert len(net.get_connected_pads()) == 2 + i
+        assert len(net.part_of.get()._is_interface.get().get_connected()) == 2 + i
