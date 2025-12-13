@@ -651,7 +651,7 @@ def attach(
                 logger.debug(
                     f"matched pad and lead: "
                     f"{matched_pad.pad_name}:{lead_t.get_lead_name()}"
-                    f"for {partno} -> {component_node.get_name()}"
+                    f"for {partno} -> {component_node.get_name(accept_no_parent=True)}"
                 )
         except F.Lead.PadMatchException as e:
             raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
@@ -672,7 +672,9 @@ def attach(
             library_name=apart.path.name,
             kicad_footprint_file_path=str(apart.fp_path),
         )
-    logger.debug(f"Attached {partno} to -> {component_node.get_name()}")
+    logger.debug(
+        f"Attached {partno} to -> {component_node.get_name(accept_no_parent=True)}"
+    )
 
     # 3D model done by kicad (in fp)
 
