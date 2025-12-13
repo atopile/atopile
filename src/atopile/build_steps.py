@@ -24,7 +24,6 @@ from atopile.errors import (
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom
 from faebryk.exporters.documentation.i2c import export_i2c_tree
-from faebryk.exporters.netlist.graph import attach_net_names
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
 from faebryk.exporters.pcb.kicad.artifacts import (
     KicadCliExportError,
@@ -55,6 +54,7 @@ from faebryk.libs.app.pcb import (
 from faebryk.libs.app.picking import load_part_info_from_pcb, save_part_info_to_pcb
 from faebryk.libs.exceptions import accumulate, iter_leaf_exceptions
 from faebryk.libs.kicad.fileformats import Property, kicad
+from faebryk.libs.net_naming import attach_net_names
 from faebryk.libs.nets import bind_electricals_to_fbrk_nets
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
 from faebryk.libs.util import (

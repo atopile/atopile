@@ -8,11 +8,6 @@ import faebryk.library._F as F
 class has_net_name_suggestion(fabll.Node):
     """Provide a net name suggestion or expectation"""
 
-    # TODO:
-    # Currently this is just a data-class, which is EXPECRTED to be used by
-    # src/faebryk/exporters/netlist/graph.py to compute the net names
-    # The intelligence of graph.py should be split and moved here
-
     class Level(StrEnum):
         SUGGESTED = "SUGGESTED"
         EXPECTED = "EXPECTED"
