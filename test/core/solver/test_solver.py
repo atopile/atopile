@@ -20,7 +20,7 @@ from faebryk.core.solver.utils import (
 )
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.localpick import PickerOption, pick_module_by_params
-from faebryk.libs.picker.picker import pick_part_recursively
+from faebryk.libs.picker.picker import PickedPart, pick_part_recursively
 from faebryk.libs.test.boundexpressions import BoundExpressions
 from faebryk.libs.util import cast_assert, not_none
 
@@ -1158,7 +1158,9 @@ def test_simple_pick():
 
     assert led.has_trait(F.has_part_picked)
     assert (
-        cast_assert(PickedPartLCSC, led.get_trait(F.has_part_picked).get_part()).lcsc_id
+        cast_assert(
+            PickedPart, led.get_trait(F.has_part_picked).get_part()
+        ).supplier_partno
         == "C72043"
     )
 
