@@ -9,11 +9,12 @@ from functools import partial
 from math import inf
 from typing import Any, Callable, Iterable
 
+import hypothesis
 import pytest  # noqa: F401
 import typer
-from hypothesis import HealthCheck, Phase, assume, example, given, settings
+from hypothesis import HealthCheck, Phase, assume, given, settings
 from hypothesis import strategies as st
-from hypothesis.errors import NonInteractiveExampleWarning
+from hypothesis.errors import NonInteractiveExampleWarning, UnsatisfiedAssumption
 from hypothesis.strategies._internal.lazy import LazyStrategy
 from rich.console import Console
 from rich.table import Table
@@ -628,25 +629,58 @@ def evaluate_e_p_l(
 @contextmanager
 def graph_reset():
     global global_g, global_tg
-    print("global_g", global_g, hex(global_g.get_self_node().node().get_uuid()))
+    print("pre g", global_g, hex(global_g.get_self_node().node().get_uuid()))
     yield
+    print("post g", global_g, hex(global_g.get_self_node().node().get_uuid()))
+    global_g.destroy()
     global_g = graph.GraphView.create()
     global_tg = fbrk.TypeGraph.create(g=global_g)
+    print("new g", global_g, hex(global_g.get_self_node().node().get_uuid()))
+
+
+def _cleanup_g[T](f: Callable[..., T]) -> T:
+    def _(*args, **kwargs) -> T:
+        out = f(*args, **kwargs)
+        global global_g, global_tg
+        print("cleanup g", global_g, hex(global_g.get_self_node().node().get_uuid()))
+        # cant do this because the same runner might run a test in the same file again
+        # global_g.destroy()
+        return out
+
+    return _  # type: ignore
 
 
 # TODO: increase max_examples when graph is faster
-@given(st_exprs.trees)
-@settings(
-    deadline=None,  # timedelta(milliseconds=1000),
-    max_examples=100,
-)
-def test_can_evaluate_literals(expr: F.Parameters.can_be_operand):
-    with graph_reset():
+# @pytest.mark.not_in_ci
+# @given(st_exprs.trees)
+# @settings(
+#     deadline=None,  # timedelta(milliseconds=1000),
+#     max_examples=50,
+# )
+# def test_can_evaluate_literals_local(expr: F.Parameters.can_be_operand):
+#     try:
+#         result = evaluate_e_p_l(expr)
+#     except (ValueError, NotImplementedError):
+#         assume(False)
+#     assert isinstance(result, F.Literals.Numbers)
+
+
+_can_eval_examples = list(range(50))
+
+
+@pytest.mark.parametrize("expr_id", _can_eval_examples)
+def test_can_evaluate_literals_ci(expr_id: int):
+    # TODO: with graph_reset()
+    while True:
         try:
-            result = evaluate_e_p_l(expr)
-        except (ValueError, NotImplementedError):
-            assume(False)
-        assert isinstance(result, F.Literals.Numbers)
+            expr = st_exprs.trees.example()
+            break
+        except UnsatisfiedAssumption:
+            continue
+    print(f"expr: {expr.pretty()}")
+    result = evaluate_e_p_l(expr)
+    print(f"result: {result.pretty_str()}")
+    assert isinstance(result, F.Literals.Numbers)
 
 
 def _track():
@@ -660,6 +694,8 @@ def _track():
     return _track.count
 
 
+@pytest.mark.not_in_ci
+@_cleanup_g
 @given(st_exprs.trees)
 @settings(
     deadline=None,  # timedelta(milliseconds=1000),
@@ -681,7 +717,7 @@ def _track():
     ],
     print_blob=True,
 )
-def test_discover_literal_folding(expr: F.Parameters.can_be_operand):
+def test_discover_literal_folding_local(expr: F.Parameters.can_be_operand):
     """
     Disble xfail and
     run with:
@@ -694,64 +730,68 @@ def test_discover_literal_folding(expr: F.Parameters.can_be_operand):
     ./test/runpytest.sh -k "test_discover_literal_folding"
     ```
     """
-    with graph_reset():
-        # TODO: Copying the graph seems to loose literals aliased to parameters
-        # Tests are way too slow if we have all the nodes, so this is a hack
-        # make sure all root operands are copied over to test graph
-        app = fabll.Node.bind_typegraph(tg=global_tg).create_instance(g=global_g)
-        for root_operand in expr.get_root_operands():
-            global_g.insert_edge(
-                edge=fbrk.EdgePointer.create(
-                    from_node=app.instance.node(),
-                    to_node=root_operand.instance.node(),
-                )
+    # TODO: Copying the graph seems to loose literals aliased to parameters
+    # Tests are way too slow if we have all the nodes, so this is a hack
+    # make sure all root operands are copied over to test graph
+    app = fabll.Node.bind_typegraph(tg=global_tg).create_instance(g=global_g)
+    for root_operand in expr.get_root_operands():
+        global_g.insert_edge(
+            edge=fbrk.EdgePointer.create(
+                from_node=app.instance.node(),
+                to_node=root_operand.instance.node(),
             )
-
-        solver = DefaultSolver()
-
-        test_g = graph.GraphView.create()
-        test_g.insert_subgraph(subgraph=global_tg.get_type_subgraph())
-
-        app_copy = app.copy_into(test_g)
-
-        # Get the expression node that owns the can_be_operand trait, then copy that
-        expr_node = fabll.Traits(expr).get_obj_raw()
-        test_expr_node = fabll.Node.bind_instance(
-            instance=test_g.bind(node=expr_node.instance.node())
         )
-        test_expr = test_expr_node.get_trait(F.Parameters.can_be_operand)
-        test_tg = app_copy.tg
 
-        E = BoundExpressions(g=test_g, tg=test_tg)
-        root = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
-        E.is_(root, test_expr, assert_=True)
+    solver = DefaultSolver()
 
-        # Evaluate using our test evaluator
-        # Skip expressions that can't be evaluated (e.g., sqrt of negative)
-        try:
-            evaluated_expr = evaluate_e_p_l(test_expr)
-        except (ValueError, NotImplementedError, OverflowError):
-            assume(False)
-        assert isinstance(evaluated_expr, F.Literals.Numbers)
+    test_g = graph.GraphView.create()
+    test_g.insert_subgraph(subgraph=global_tg.get_type_subgraph())
 
-        # Run the solver
-        solver.update_superset_cache(root)
-        solver_result = solver.inspect_get_known_supersets(
-            root.get_sibling_trait(F.Parameters.is_parameter)
-        )
-        solver_result_num = fabll.Traits(solver_result).get_obj(F.Literals.Numbers)
+    app_copy = app.copy_into(test_g)
 
-        # Compare results (need to pass g and tg for Numbers.equals)
-        match = solver_result_num.equals(evaluated_expr, g=test_g, tg=test_tg)
-        print("\n" + "=" * 70)
-        print("COMPARISON")
-        print("=" * 70)
-        print(f"Test Evaluated: {evaluated_expr.pretty_str()}")
-        print(f"Solver Result:  {solver_result_num.pretty_str()}")
-        print(f"Match:          {'✓ PASS' if match else '✗ FAIL'}")
-        print("=" * 70 + "\n")
-        # assert match, f"Solver: {solver_result_num} != Test: {evaluated_expr}"
-        assert solver_result_num.equals(evaluated_expr, g=test_g, tg=test_tg)
+    # Get the expression node that owns the can_be_operand trait, then copy that
+    expr_node = fabll.Traits(expr).get_obj_raw()
+    test_expr_node = fabll.Node.bind_instance(
+        instance=test_g.bind(node=expr_node.instance.node())
+    )
+    test_expr = test_expr_node.get_trait(F.Parameters.can_be_operand)
+    test_tg = app_copy.tg
+
+    E = BoundExpressions(g=test_g, tg=test_tg)
+    root = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
+    E.is_(root, test_expr, assert_=True)
+
+    # Evaluate using our test evaluator
+    # Skip expressions that can't be evaluated (e.g., sqrt of negative)
+    try:
+        evaluated_expr = evaluate_e_p_l(test_expr)
+    except (ValueError, NotImplementedError, OverflowError):
+        assume(False)
+    assert isinstance(evaluated_expr, F.Literals.Numbers)
+
+    # Run the solver
+    solver.update_superset_cache(root)
+    solver_result = solver.inspect_get_known_supersets(
+        root.get_sibling_trait(F.Parameters.is_parameter)
+    )
+    solver_result_num = fabll.Traits(solver_result).get_obj(F.Literals.Numbers)
+
+    # Compare results (need to pass g and tg for Numbers.equals)
+    match = solver_result_num.equals(evaluated_expr, g=test_g, tg=test_tg)
+    print("\n" + "=" * 70)
+    print("COMPARISON")
+    print("=" * 70)
+    expr_compact = test_expr.get_sibling_trait(
+        F.Expressions.is_expression
+    ).compact_repr()
+    print(f"Expression: {expr_compact}")
+    print(f"Test Evaluated: {evaluated_expr.pretty_str()}")
+    print(f"Solver Result:  {solver_result_num.pretty_str()}")
+    print(f"Match:          {'✓ PASS' if match else '✗ FAIL'}")
+    print("=" * 70 + "\n")
+    # assert match, f"Solver: {solver_result_num} != Test: {evaluated_expr}"
+    # solver_result.g.destroy()
+    assert solver_result_num.equals(evaluated_expr, g=test_g, tg=test_tg)
 
 
 # Examples -----------------------------------------------------------------------------
@@ -823,25 +863,22 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
     input()
 
 
-@example(expr=Add.c(lit(1.0), Builders.build_parameter(lit(1.0))))
-@example(
-    Log.c(
+# List of regression example expressions for test_regression_literal_folding
+regression_examples: list[Callable[[], F.Parameters.can_be_operand]] = [
+    lambda: Add.c(lit(1.0), Builders.build_parameter(lit(1.0))),
+    lambda: Log.c(
         Sin.c(
             Add.c(
                 lit_op_single(0),
                 lit_op_single(1),
             )
         )
-    )
-)
-@example(
-    Add.c(
+    ),
+    lambda: Add.c(
         Add.c(lit_op_single(0), lit_op_single(0)),
         Sqrt.c(Cos.c(lit_op_single(0))),
     ),
-)
-@example(
-    Divide.c(
+    lambda: Divide.c(
         Divide.c(
             Add.c(
                 Sqrt.c(lit_op_single(2.0)),
@@ -851,18 +888,14 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
         ),
         lit_op_single(2.0),
     ),
-)
-@example(
-    Divide.c(
+    lambda: Divide.c(
         Divide.c(
             Sqrt.c(Add.c(lit_op_single(2))),
             lit_op_single(2),
         ),
         lit_op_single(710038921),
-    )
-)
-@example(
-    Sin.c(
+    ),
+    lambda: Sin.c(
         Sin.c(
             Subtract.c(
                 lit_op_single(1),
@@ -870,18 +903,14 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
             ),
         ),
     ),
-)
-@example(
-    Divide.c(
+    lambda: Divide.c(
         Add.c(
             Subtract.c(lit_op_single(0), lit_op_single(1)),
             Abs.c(lit_op_range(-inf, inf)),
         ),
         lit_op_single(1),
     ),
-)
-@example(
-    Add.c(
+    lambda: Add.c(
         lit_op_single(1),
         Abs.c(
             Add.c(
@@ -890,21 +919,15 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
             ),
         ),
     ),
-)
-@example(
-    Add.c(
+    lambda: Add.c(
         Sqrt.c(lit_op_single(1)),
         Abs.c(lit_op_range(-inf, inf)),
     ),
-)
-@example(
-    expr=Add.c(
+    lambda: Add.c(
         Add.c(lit_op_single(-999_999_950_000)),
         Subtract.c(lit_op_single(50000), lit_op_single(-999_997_650_001)),
     ),
-)
-@example(
-    expr=Subtract.c(
+    lambda: Subtract.c(
         Add.c(
             Add.c(lit_op_single(0)),
             Subtract.c(
@@ -913,43 +936,31 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
             ),
         ),
         Add.c(lit_op_single(1)),
-    )
-)
-@example(
-    expr=Subtract.c(
+    ),
+    lambda: Subtract.c(
         Subtract.c(
             lit_op_single(1),
             lit_op_range(-inf, inf),
         ),
         Add.c(lit_op_single(0)),
     ),
-)
-@example(
-    Subtract.c(
+    lambda: Subtract.c(
         Abs.c(lit_op_range(-inf, inf)),
         Abs.c(lit_op_range(-inf, inf)),
-    )
-)
-@example(
-    Subtract.c(
+    ),
+    lambda: Subtract.c(
         Abs.c(lit_op_range(5, 6)),
         Abs.c(lit_op_range(5, 6)),
-    )
-)
-@example(
-    expr=Multiply.c(
+    ),
+    lambda: Multiply.c(
         Sqrt.c(Sqrt.c(lit_op_single(2))),
         Sqrt.c(Sqrt.c(lit_op_single(2))),
-    )
-)
-@example(
-    expr=Subtract.c(
+    ),
+    lambda: Subtract.c(
         Round.c(lit_op_range(2, 10)),
         Round.c(lit_op_range(2, 10)),
     ),
-)
-@example(
-    expr=Subtract.c(
+    lambda: Subtract.c(
         Round.c(
             Subtract.c(
                 lit_op_single(0),
@@ -961,44 +972,34 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
             lit_op_range(-17297878, 999_999_992_070),
         ),
     ),
-)
-@example(expr=Abs.c(Round.c(lit_op_range(-inf, inf))))
-@example(
-    expr=Divide.c(
+    lambda: Abs.c(Round.c(lit_op_range(-inf, inf))),
+    lambda: Divide.c(
         Divide.c(
             lit_op_single(0),
             lit_op_range(-1, -2.2250738585072014e-308),
         ),
         lit_op_range(-1, -2.2250738585072014e-308),
     ),
-)
-@example(
-    Multiply.c(
+    lambda: Multiply.c(
         Add.c(lit_op_single(0)),
         Abs.c(lit_op_range(-inf, inf)),
-    )
-)
-@example(Add.c(Add.c(lit_op_single(0)), Abs.c(lit_op_single(-1))))
-@example(Abs.c(lit_op_single(-1)))
-@example(
-    expr=Round.c(
+    ),
+    lambda: Add.c(Add.c(lit_op_single(0)), Abs.c(lit_op_single(-1))),
+    lambda: Abs.c(lit_op_single(-1)),
+    lambda: Round.c(
         Add.c(
             Abs.c(lit_op_single(0)),
             Round.c(lit_op_single(-1)),
         )
-    )
-)
-@example(
-    expr=Add.c(
+    ),
+    lambda: Add.c(
         Add.c(lit_op_single(0)),
         Multiply.c(Add.c(lit_op_single(0)), Add.c(lit_op_single(0))),
-    )
-)
-@example(expr=F.Expressions.Subtract.c(lit_op_single(1), lit_op_single(0))).via(
-    "discovered failure"
-)
-@example(
-    expr=Add.c(
+    ),
+    lambda: F.Expressions.Subtract.c(
+        lit_op_single(1), lit_op_single(0)
+    ),  # .via("discovered failure") omitted as .via is a Hypothesis construct
+    lambda: Add.c(
         Sqrt.c(Add.c(lit_op_single(1.0), lit_op_single(1.0))),
         Divide.c(
             Add.c(
@@ -1007,10 +1008,8 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
             ),
             lit_op_single(0.5),
         ),
-    )
-)
-@example(
-    expr=Ceil.c(
+    ),
+    lambda: Ceil.c(
         Add.c(
             Log.c(Add.c(lit_op_single(0.99999), lit_op_single(1e-12))),
             Subtract.c(
@@ -1018,100 +1017,86 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
                 Ceil.c(lit_op_range(171863143702.99387, 881769170316.1082)),
             ),
         ),
-    )
-)
-@example(
-    expr=Add.c(
+    ),
+    lambda: Add.c(
         Sqrt.c(lit_op_single(1.0)),
         Sin.c(lit_op_range(0.0, 1.0)),
-    )
-)
-@example(
-    expr=Add.c(
+    ),
+    lambda: Add.c(
         Sqrt.c(Sqrt.c(lit_op_single(1.0))),
         Sin.c(Sqrt.c(lit_op_single(1.0))),
-    )
-)
-@example(expr=Sin.c(Floor.c(Round.c(lit_op_single(16933103.0)))))
-@example(expr=Floor.c(Cos.c(lit(1e-12))))
-# --------------------------------------------------------------------------------------
-@given(st_exprs.trees)
-@settings(
-    deadline=None,  # timedelta(milliseconds=1000),
-    max_examples=10000,
-    report_multiple_bugs=False,
-    phases=(
-        # Phase.reuse,
-        Phase.explicit,
-        Phase.target,
-        Phase.shrink,
-        Phase.explain,
     ),
-    suppress_health_check=[
-        HealthCheck.data_too_large,
-        HealthCheck.too_slow,
-        HealthCheck.filter_too_much,
-        HealthCheck.large_base_example,
-    ],
-    print_blob=False,
-)
-def test_regression_literal_folding(expr: F.Parameters.can_be_operand):
-    # make sure all root operands are copied over to test graph
-    app = fabll.Node.bind_typegraph(tg=global_tg).create_instance(g=global_g)
-    for root_operand in expr.get_root_operands():
-        global_g.insert_edge(
-            edge=fbrk.EdgePointer.create(
-                from_node=app.instance.node(),
-                to_node=root_operand.instance.node(),
+    lambda: Sin.c(Floor.c(Round.c(lit_op_single(16933103.0)))),
+    lambda: Floor.c(Cos.c(lit(1e-12))),
+]
+
+
+@pytest.mark.parametrize("expr_factory", regression_examples)
+def test_regression_literal_folding(
+    expr_factory: Callable[[], F.Parameters.can_be_operand],
+):
+    with graph_reset():
+        expr = expr_factory()
+        # make sure all root operands are copied over to test graph
+        app = fabll.Node.bind_typegraph(tg=global_tg).create_instance(g=global_g)
+        for root_operand in expr.get_root_operands():
+            global_g.insert_edge(
+                edge=fbrk.EdgePointer.create(
+                    from_node=app.instance.node(),
+                    to_node=root_operand.instance.node(),
+                )
             )
+
+        solver = DefaultSolver()
+
+        test_g = graph.GraphView.create()
+        test_g.insert_subgraph(subgraph=global_tg.get_type_subgraph())
+
+        app_copy = app.copy_into(test_g)
+
+        # Get the expression node that owns the can_be_operand trait, then copy that
+        expr_node = fabll.Traits(expr).get_obj_raw()
+        test_expr_node = fabll.Node.bind_instance(
+            instance=test_g.bind(node=expr_node.instance.node())
         )
+        test_expr = test_expr_node.get_trait(F.Parameters.can_be_operand)
+        test_tg = app_copy.tg
 
-    solver = DefaultSolver()
+        E = BoundExpressions(g=test_g, tg=test_tg)
+        root = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
+        E.is_(root, test_expr, assert_=True)
 
-    test_g = graph.GraphView.create()
-    test_g.insert_subgraph(subgraph=global_tg.get_type_subgraph())
+        # Evaluate using our test evaluator
+        # Skip expressions that can't be evaluated (e.g., sqrt of negative)
+        try:
+            evaluated_expr = evaluate_e_p_l(test_expr)
+        except (ValueError, NotImplementedError, OverflowError):
+            # bad example, skip
+            return
+        assert isinstance(evaluated_expr, F.Literals.Numbers)
 
-    app_copy = app.copy_into(test_g)
+        # Run the solver
+        solver.update_superset_cache(root)
+        solver_result = solver.inspect_get_known_supersets(
+            root.get_sibling_trait(F.Parameters.is_parameter)
+        )
+        solver_result_num = fabll.Traits(solver_result).get_obj(F.Literals.Numbers)
 
-    # Get the expression node that owns the can_be_operand trait, then copy that
-    expr_node = fabll.Traits(expr).get_obj_raw()
-    test_expr_node = fabll.Node.bind_instance(
-        instance=test_g.bind(node=expr_node.instance.node())
-    )
-    test_expr = test_expr_node.get_trait(F.Parameters.can_be_operand)
-    test_tg = app_copy.tg
+        # Compare results (need to pass g and tg for Numbers.equals)
+        match = solver_result_num.equals(evaluated_expr, g=test_g, tg=test_tg)
+        print("\n" + "=" * 70)
+        print("COMPARISON")
+        print("=" * 70)
+        print(f"Expression: {expr.pretty()}")
+        print(f"Test Evaluated: {evaluated_expr.pretty_str()}")
+        print(f"Solver Result:  {solver_result_num.pretty_str()}")
+        print(f"Match:          {'✓ PASS' if match else '✗ FAIL'}")
+        print("=" * 70 + "\n")
+        # assert match, f"Solver: {solver_result_num} != Test: {evaluated_expr}"
+        ok = solver_result_num.equals(evaluated_expr, g=test_g, tg=test_tg)
 
-    E = BoundExpressions(g=test_g, tg=test_tg)
-    root = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
-    E.is_(root, test_expr, assert_=True)
-
-    # Evaluate using our test evaluator
-    # Skip expressions that can't be evaluated (e.g., sqrt of negative)
-    try:
-        evaluated_expr = evaluate_e_p_l(test_expr)
-    except (ValueError, NotImplementedError, OverflowError):
-        assume(False)
-    assert isinstance(evaluated_expr, F.Literals.Numbers)
-
-    # Run the solver
-    solver.update_superset_cache(root)
-    solver_result = solver.inspect_get_known_supersets(
-        root.get_sibling_trait(F.Parameters.is_parameter)
-    )
-    solver_result_num = fabll.Traits(solver_result).get_obj(F.Literals.Numbers)
-
-    # Compare results (need to pass g and tg for Numbers.equals)
-    match = solver_result_num.equals(evaluated_expr, g=test_g, tg=test_tg)
-    print("\n" + "=" * 70)
-    print("COMPARISON")
-    print("=" * 70)
-    print(f"Expression: {expr.pretty()}")
-    print(f"Test Evaluated: {evaluated_expr.pretty_str()}")
-    print(f"Solver Result:  {solver_result_num.pretty_str()}")
-    print(f"Match:          {'✓ PASS' if match else '✗ FAIL'}")
-    print("=" * 70 + "\n")
-    # assert match, f"Solver: {solver_result_num} != Test: {evaluated_expr}"
-    assert solver_result_num.equals(evaluated_expr, g=test_g, tg=test_tg)
+        # solver_result.g.destroy()
+        assert ok
 
 
 class Stats:
@@ -1224,76 +1209,73 @@ def test_folding_statistics(expr: F.Expressions.is_expression):
     -k "test_folding_statistics"
     ```
     """
-    with graph_reset():
-        stats = Stats.get()
-        test_g = graph.GraphView.create()
-        test_g.insert_subgraph(subgraph=global_tg.get_type_subgraph())
-        test_expr = expr.copy_into(test_g)
-        test_tg = test_expr.tg
-        stats.event("generate", test_expr, terminal=False)
-        solver = DefaultSolver()
-        E = BoundExpressions(g=test_g, tg=test_tg)
-        root = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
-        E.is_(
-            root, test_expr.get_sibling_trait(F.Parameters.can_be_operand), assert_=True
+    stats = Stats.get()
+    test_g = graph.GraphView.create()
+    test_g.insert_subgraph(subgraph=global_tg.get_type_subgraph())
+    test_expr = expr.copy_into(test_g)
+    test_tg = test_expr.tg
+    stats.event("generate", test_expr, terminal=False)
+    solver = DefaultSolver()
+    E = BoundExpressions(g=test_g, tg=test_tg)
+    root = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
+    E.is_(root, test_expr.get_sibling_trait(F.Parameters.can_be_operand), assert_=True)
+
+    try:
+        evaluated_expr = evaluate_e_p_l(
+            test_expr.get_sibling_trait(F.Parameters.can_be_operand)
         )
+        stats.event("evaluate", test_expr, terminal=False)
+    except NotImplementedError:
+        stats.event("not implemented in literals", test_expr)
+        return
+    except Exception as e:
+        stats.event("eval exc", test_expr, exc=e)
+        return
 
+    assert isinstance(evaluated_expr, F.Literals.Numbers)
+
+    try:
+        solver.update_superset_cache(root)
+        solver_result = solver.inspect_get_known_supersets(
+            root.get_sibling_trait(F.Parameters.is_parameter)
+        )
+        assert isinstance(solver_result, F.Literals.Numbers)
+    except Contradiction:
+        stats.event("contradiction", test_expr)
+        return
+    except TimeoutError:
+        stats.event("timeout", test_expr)
+        return
+    except NotImplementedError:
+        stats.event("not implemented in solver", test_expr)
+        return
+    except Exception as e:
+        stats.event("exc", test_expr, exc=e)
+        return
+
+    if solver_result != evaluated_expr:
         try:
-            evaluated_expr = evaluate_e_p_l(
-                test_expr.get_sibling_trait(F.Parameters.can_be_operand)
-            )
-            stats.event("evaluate", test_expr, terminal=False)
-        except NotImplementedError:
-            stats.event("not implemented in literals", test_expr)
-            return
-        except Exception as e:
-            stats.event("eval exc", test_expr, exc=e)
-            return
-
-        assert isinstance(evaluated_expr, F.Literals.Numbers)
-
-        try:
-            solver.update_superset_cache(root)
-            solver_result = solver.inspect_get_known_supersets(
-                root.get_sibling_trait(F.Parameters.is_parameter)
-            )
-            assert isinstance(solver_result, F.Literals.Numbers)
-        except Contradiction:
-            stats.event("contradiction", test_expr)
-            return
-        except TimeoutError:
-            stats.event("timeout", test_expr)
-            return
-        except NotImplementedError:
-            stats.event("not implemented in solver", test_expr)
-            return
-        except Exception as e:
-            stats.event("exc", test_expr, exc=e)
-            return
-
-        if solver_result != evaluated_expr:
-            try:
-                deviation = solver_result.op_deviation_to(
-                    evaluated_expr, relative=True, g=global_g, tg=global_tg
-                ).get_single()
-            except Exception:
-                deviation = solver_result.op_deviation_to(
-                    evaluated_expr, g=global_g, tg=global_tg
-                ).get_single()
-                if deviation <= 1:
-                    stats.event("incorrect <= 1 ", expr)
-                else:
-                    stats.event("incorrect > 1 ", expr)
-                return
-            if deviation < 0.01:
-                stats.event("incorrect <1% dev", expr)
-            elif deviation < 0.1:
-                stats.event("incorrect <10% dev", expr)
+            deviation = solver_result.op_deviation_to(
+                evaluated_expr, relative=True, g=global_g, tg=global_tg
+            ).get_single()
+        except Exception:
+            deviation = solver_result.op_deviation_to(
+                evaluated_expr, g=global_g, tg=global_tg
+            ).get_single()
+            if deviation <= 1:
+                stats.event("incorrect <= 1 ", expr)
             else:
-                stats.event("incorrect >10% dev", expr)
+                stats.event("incorrect > 1 ", expr)
             return
+        if deviation < 0.01:
+            stats.event("incorrect <1% dev", expr)
+        elif deviation < 0.1:
+            stats.event("incorrect <10% dev", expr)
+        else:
+            stats.event("incorrect >10% dev", expr)
+        return
 
-        stats.event("correct", expr)
+    stats.event("correct", expr)
 
 
 # DEBUG --------------------------------------------------------------------------------
@@ -1361,92 +1343,6 @@ if __name__ == "__main__":
 
     from faebryk.libs.logging import setup_basic_logging
 
-    # expr = F.Expressions.Log.c(
-    #     F.Expressions.Sin.c(
-    #         F.Expressions.Add.c(
-    #             lit_op_single(1),
-    #             lit_op_single(1),
-    #         )
-    #     )
-    # )
-    # expr = F.Expressions.Sin.c(
-    #     F.Expressions.Add.c(
-    #         lit_op_single(1),
-    #         lit_op_single(1),
-    #     )
-    # )
-
-    # expr = Sin.c(
-    #     Sin.c(
-    #         Subtract.c(
-    #             lit_op_single(1),
-    #             lit_op_range(-inf, inf),
-    #         ),
-    #     ),
-    # )
-    # expr = Sin.c(Sin.c(lit_op_range(-10, 10)))
-    # expr = Sin.c(lit_op_range(-1, 1))
-
-    # expr = Multiply.c(
-    #     Sqrt.c(Sqrt.c(lit_op_single(2))),
-    #     Sqrt.c(Sqrt.c(lit_op_single(2))),
-    # )
-
-    # expr = Add.c(
-    #     Abs.c(lit_op_range(-inf, inf)),
-    #     Sqrt.c(lit_op_single(1)),
-    # )
-
-    # expr = Subtract.c(
-    #     Round.c(lit_op_range(2, 10)),
-    #     Round.c(lit_op_range(2, 10)),
-    # )
-    # expr = Subtract.c(
-    #     Round.c(
-    #         Subtract.c(
-    #             lit_op_single(0),
-    #             lit_op_range(-999_999_999_905, -0.3333333333333333),
-    #         ),
-    #     ),
-    #     Subtract.c(
-    #         lit_op_single(-999_999_983_213),
-    #         lit_op_range(-17297878, 999_999_992_070),
-    #     ),
-    # )
-    # expr = Round.c(
-    #     Add.c(
-    #         Abs.c(lit_op_single(0)),
-    #         Round.c(lit_op_single(-1)),
-    #     )
-    # )
-    # expr = Log.c(
-    #     Sin.c(
-    #         Add.c(
-    #             lit_op_single(0),
-    #             lit_op_single(1),
-    #         )
-    #     )
-    # )
-    # expr = Add.c(
-    #     Sqrt.c(Add.c(lit_op_single(1.0), lit_op_single(1.0))),
-    #     Divide.c(
-    #         Add.c(
-    #             lit_op_single(1.0),
-    #             lit_op_range(1.0, 1.0),
-    #         ),
-    #         lit_op_single(0.5),
-    #     ),
-    # )
-    # expr = Ceil.c(
-    # expr = Add.c(
-    #     Log.c(Add.c(lit_op_single(0.99999), lit_op_single(1e-12))),
-    #     Subtract.c(
-    #         Add.c(lit_op_single(1e-12), lit_op_single(1.1)),
-    #         Ceil.c(lit_op_range(171863143702.99387, 881769170316.1082)),
-    #     ),
-    #     # ),
-    # )
-
     # Reset global graph to avoid solver processing unrelated nodes from strategy init
     # global_g = graph.GraphView.create()
     # global_tg = fbrk.TypeGraph.create(g=global_g)
@@ -1459,4 +1355,4 @@ if __name__ == "__main__":
     # expr = Add.c(lit(1.0), p(1.0))
     expr = Floor.c(Cos.c(lit(1e-12)))
     setup_basic_logging()
-    typer.run(lambda: test_regression_literal_folding(expr))
+    typer.run(lambda: test_regression_literal_folding(lambda: expr))

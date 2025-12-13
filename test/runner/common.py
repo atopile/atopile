@@ -35,3 +35,6 @@ class EventRequest(BaseModel):
     nodeid: Optional[str] = None
     outcome: Optional[Outcome] = None
     output: Optional[Dict[str, str]] = None
+    error_message: Optional[str] = None
+    memory_usage_mb: Optional[float] = None
+    memory_peak_mb: Optional[float] = None

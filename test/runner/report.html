@@ -42,6 +42,15 @@
             font-weight: bold;
         }}
         
+        .error-cell {{
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 11px;
+            color: #c00;
+        }}
+        
         /* Modal styles */
         .modal {{ display: none; position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }}
         .modal-content {{ background-color: #fefefe; margin: 5% auto; padding: 15px; border: 1px solid #888; width: 90%; max-height: 85vh; overflow-y: auto; }}
@@ -206,8 +215,8 @@
                 var xVal = x.textContent.toLowerCase().trim();
                 var yVal = y.textContent.toLowerCase().trim();
                 
-                // Numeric sort for Duration (column 5 now)
-                if (n === 5) {{
+                // Numeric sort for Duration (column 5), Memory (column 6), and Peak Memory (column 7)
+                if (n === 5 || n === 6 || n === 7) {{
                     // Use data-value attribute if present, otherwise parse text
                     var xAttr = x.getAttribute("data-value");
                     var yAttr = y.getAttribute("data-value");
@@ -260,6 +269,8 @@
         <span id="status-text"><strong>Status:</strong> {status}</span> <br>
         <strong>Workers:</strong> {workers_active} active / {workers_total} total <br>
         <strong>Duration:</strong> {total_duration} <br>
+        <strong>Sum Duration:</strong> {total_summed_duration} <br>
+        <strong>Total Memory:</strong> {total_memory} <br>
         <strong>Passed:</strong> <span class="passed">{passed}</span> | 
         <strong>Failed:</strong> <span class="failed">{failed}</span> | 
         <strong>Errors:</strong> <span class="error">{errors}</span> | 
@@ -298,6 +309,9 @@
                 <th onclick="sortTable(3)">Params</th>
                 <th onclick="sortTable(4)">Outcome</th>
                 <th onclick="sortTable(5)">Duration</th>
+                <th onclick="sortTable(6)">Memory</th>
+                <th onclick="sortTable(7)">Peak Mem</th>
+                <th onclick="sortTable(8)">Error</th>
                 <th>Logs</th>
             </tr>
         </thead>

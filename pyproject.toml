@@ -142,9 +142,6 @@ addopts = [
     "--ignore=test/runtest.py",
     "--ignore=test/conftest.py",
 ]
-filterwarnings = [
-    "ignore:Benchmarks are automatically disabled:pytest_benchmark.logger.PytestBenchmarkWarning",
-]
 testpaths = ["test", "src"]
 python_files = ["test_*.py", "*_test.py", "*.py"]
 python_functions = ["test_*"]

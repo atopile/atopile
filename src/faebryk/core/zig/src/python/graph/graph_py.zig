@@ -8,32 +8,51 @@ const bind = pyzig.pyzig;
 const type_registry = pyzig.type_registry;
 const method_descr = bind.method_descr;
 
+// Some wrappers (notably BoundNodeReference/BoundEdgeReference) are sometimes created as
+// "borrowed views" by auto-generated struct wrappers (e.g. get/set code) where `wrapper.data`
+// may point into non-owned memory (including stack temporaries). For objects we create here, we
+// want to own+free the payload; for borrowed views we must NOT free.
+//
+// We tag owned payload allocations with a magic header so tp_dealloc can distinguish them.
+const owned_magic_node: u64 = 0x424E4F44455F4F57; // "BNODE_OW"
+const owned_magic_edge: u64 = 0x42454447455F4F57; // "BEDGE_OW"
+
+const OwnedBoundNodePayload = struct {
+    magic: u64,
+    payload: graph.graph.BoundNodeReference,
+};
+
+const OwnedBoundEdgePayload = struct {
+    magic: u64,
+    payload: graph.graph.BoundEdgeReference,
+};
+
 pub fn makeBoundNodePyObject(value: graph.graph.BoundNodeReference) ?*py.PyObject {
     const allocator = std.heap.c_allocator;
-    const ptr = allocator.create(graph.graph.BoundNodeReference) catch {
+    const owned = allocator.create(OwnedBoundNodePayload) catch {
         py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
         return null;
     };
-    ptr.* = value;
+    owned.* = .{ .magic = owned_magic_node, .payload = value };
 
-    const pyobj = bind.wrap_obj("BoundNodeReference", &bound_node_type, BoundNodeWrapper, ptr);
+    const pyobj = bind.wrap_obj("BoundNodeReference", &bound_node_type, BoundNodeWrapper, &owned.payload);
     if (pyobj == null) {
-        allocator.destroy(ptr);
+        allocator.destroy(owned);
     }
     return pyobj;
 }
 
 pub fn makeBoundEdgePyObject(value: graph.graph.BoundEdgeReference) ?*py.PyObject {
     const allocator = std.heap.c_allocator;
-    const ptr = allocator.create(graph.graph.BoundEdgeReference) catch {
+    const owned = allocator.create(OwnedBoundEdgePayload) catch {
         py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
         return null;
     };
-    ptr.* = value;
+    owned.* = .{ .magic = owned_magic_edge, .payload = value };
 
-    const pyobj = bind.wrap_obj("BoundEdgeReference", &bound_edge_type, BoundEdgeWrapper, ptr);
+    const pyobj = bind.wrap_obj("BoundEdgeReference", &bound_edge_type, BoundEdgeWrapper, &owned.payload);
     if (pyobj == null) {
-        allocator.destroy(ptr);
+        allocator.destroy(owned);
     }
     return pyobj;
 }
@@ -114,6 +133,42 @@ pub var bfs_path_type: ?*py.PyTypeObject = null;
 
 const Literal = graph.graph.Literal;
 
+fn bound_node_dealloc(self: *py.PyObject) callconv(.C) void {
+    const wrapper = @as(*BoundNodeWrapper, @ptrCast(@alignCast(self)));
+    // Only free if this payload was allocated by makeBoundNodePyObject().
+    const owned: *OwnedBoundNodePayload = @fieldParentPtr("payload", wrapper.data);
+    if (owned.magic == owned_magic_node) {
+        std.heap.c_allocator.destroy(owned);
+    }
+
+    if (py.Py_TYPE(self)) |type_obj| {
+        if (type_obj.tp_free) |free_fn_any| {
+            const free_fn = @as(*const fn (?*py.PyObject) callconv(.C) void, @ptrCast(@alignCast(free_fn_any)));
+            free_fn(self);
+            return;
+        }
+    }
+    py._Py_Dealloc(self);
+}
+
+fn bound_edge_dealloc(self: *py.PyObject) callconv(.C) void {
+    const wrapper = @as(*BoundEdgeWrapper, @ptrCast(@alignCast(self)));
+    // Only free if this payload was allocated by makeBoundEdgePyObject().
+    const owned: *OwnedBoundEdgePayload = @fieldParentPtr("payload", wrapper.data);
+    if (owned.magic == owned_magic_edge) {
+        std.heap.c_allocator.destroy(owned);
+    }
+
+    if (py.Py_TYPE(self)) |type_obj| {
+        if (type_obj.tp_free) |free_fn_any| {
+            const free_fn = @as(*const fn (?*py.PyObject) callconv(.C) void, @ptrCast(@alignCast(free_fn_any)));
+            free_fn(self);
+            return;
+        }
+    }
+    py._Py_Dealloc(self);
+}
+
 fn freeLiteral(literal: Literal) void {
     switch (literal) {
         .String => |value| {
@@ -185,14 +240,22 @@ fn literalMapToPyDict(map: std.StringHashMap(Literal)) ?*py.PyObject {
     }
     var it = map.iterator();
     while (it.next()) |e| {
-        // Ensure the key is 0-terminated before passing to Python C API
+        // Avoid allocating a 0-terminated copy for the key (that would leak).
         const key_slice = e.key_ptr.*;
-        const key_str = pyzig.util.terminateString(std.heap.c_allocator, key_slice) catch return null;
-        if (py.PyDict_SetItemString(py_map.?, key_str, literalToPyObject(e.value_ptr.*)) < 0) {
+        const key_ptr: [*c]const u8 = if (key_slice.len == 0) "" else @ptrCast(key_slice.ptr);
+        const key_obj = py.PyUnicode_FromStringAndSize(key_ptr, @intCast(key_slice.len)) orelse return null;
+        const val_obj = literalToPyObject(e.value_ptr.*) orelse {
+            py.Py_DECREF(key_obj);
+            return null;
+        };
+        if (py.PyDict_SetItem(py_map.?, key_obj, val_obj) < 0) {
+            py.Py_DECREF(val_obj);
+            py.Py_DECREF(key_obj);
             return null;
         }
+        py.Py_DECREF(val_obj);
+        py.Py_DECREF(key_obj);
     }
-    py.Py_INCREF(py_map.?);
     return py_map.?;
 }
 
@@ -767,6 +830,7 @@ fn wrap_bound_node(root: *py.PyObject) void {
         // Add hash and comparison support for dictionary keys
         typ.tp_hash = @ptrCast(@constCast(&bound_node_hash));
         typ.tp_richcompare = @ptrCast(@constCast(&bound_node_richcompare));
+        typ.tp_dealloc = @ptrCast(&bound_node_dealloc);
 
         typ.ob_base.ob_base.ob_refcnt += 1;
         if (py.PyModule_AddObject(root, "BoundNode", @ptrCast(typ)) < 0) {
@@ -816,6 +880,7 @@ fn wrap_bound_edge(root: *py.PyObject) void {
     bound_edge_type = type_registry.getRegisteredTypeObject("BoundEdgeReference");
 
     if (bound_edge_type) |typ| {
+        typ.tp_dealloc = @ptrCast(&bound_edge_dealloc);
         typ.ob_base.ob_base.ob_refcnt += 1;
         if (py.PyModule_AddObject(root, "BoundEdge", @ptrCast(typ)) < 0) {
             typ.ob_base.ob_base.ob_refcnt -= 1;

@@ -91,6 +91,12 @@ class DefaultSolver(Solver):
     class SolverState:
         data: "DefaultSolver.IterationData"
 
+        def destroy(self) -> None:
+            self.data.mutation_map.destroy()
+
+        def __del__(self) -> None:
+            self.destroy()
+
     def __init__(self) -> None:
         super().__init__()
 

@@ -1039,6 +1039,23 @@ class MutationMap:
     def tg_out(self) -> fbrk.TypeGraph:
         return self.last_stage.tg_out
 
+    def destroy(self) -> None:
+        from faebryk.libs.util import groupby
+
+        all_gs = {stage.G_out for stage in self.mutation_stages}
+        gs = groupby(all_gs, lambda g: g.get_self_node().node().get_uuid())
+        del gs[self.G_in.get_self_node().node().get_uuid()]
+        del gs[self.G_out.get_self_node().node().get_uuid()]
+
+        for g in gs.values():
+            g_to_destroy = next(iter(g))
+            logger.debug(
+                "destroying graph",
+                g_to_destroy,
+                hex(g_to_destroy.get_self_node().node().get_uuid()),
+            )
+            g_to_destroy.destroy()
+
 
 @dataclass
 class AlgoResult:

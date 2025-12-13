@@ -11,6 +11,7 @@ import datetime
 import json
 import os
 import queue
+import shutil
 import socket
 import subprocess
 import sys
@@ -291,6 +292,7 @@ GENERATE_PERIODIC_HTML = os.getenv("FBRK_TEST_PERIODIC_HTML", "1") == "1"
 # Global state
 test_queue = queue.Queue()
 tests_total = 0
+workers: dict[int, subprocess.Popen[bytes]] = {}
 
 # Read HTML template from file
 HTML_TEMPLATE = (Path(__file__).parent / "report.html").read_text(encoding="utf-8")
@@ -304,6 +306,9 @@ class TestState:
     outcome: Outcome | None = None
     finish_time: datetime.datetime | None = None
     output: dict | None = None
+    error_message: str | None = None
+    memory_usage_mb: float = 0.0
+    memory_peak_mb: float = 0.0
 
 
 def _ts() -> str:
@@ -359,12 +364,21 @@ class TestAggregator:
                 nodeid = data.nodeid
                 outcome_str = data.outcome
                 output = data.output
+                error_message = data.error_message
+                memory_usage_mb = data.memory_usage_mb
+                memory_peak_mb = data.memory_peak_mb
                 if nodeid and nodeid in self._tests and outcome_str:
                     try:
                         self._tests[nodeid].outcome = outcome_str
                         self._tests[nodeid].finish_time = datetime.datetime.now()
                         if output:
                             self._tests[nodeid].output = output
+                        if error_message:
+                            self._tests[nodeid].error_message = error_message
+                        if memory_usage_mb is not None:
+                            self._tests[nodeid].memory_usage_mb = memory_usage_mb
+                        if memory_peak_mb is not None:
+                            self._tests[nodeid].memory_peak_mb = memory_peak_mb
                     except ValueError:
                         pass
 
@@ -373,10 +387,13 @@ class TestAggregator:
             # Find any test running on this pid
             for t in self._tests.values():
                 if t.pid == pid and t.outcome is None and t.start_time is not None:
+                    worker_id = [w for w in workers.keys() if workers[w].pid == pid][0]
+                    log_file = get_log_file(worker_id)
+                    output = log_file.read_text(encoding="utf-8")
                     t.outcome = Outcome.CRASHED
                     t.finish_time = datetime.datetime.now()
                     t.output = {
-                        "error": f"Worker process {pid} crashed while running this test."  # noqa: E501
+                        "error": f"Worker process {pid} crashed while running this test.\n\n{output}"  # noqa: E501
                     }
                     self._exited_pids.add(pid)
                     if pid in self._active_pids:
@@ -464,10 +481,23 @@ class TestAggregator:
 
         # Calculate percentiles
         durations = []
+        memories = []
+        peaks = []
+        sum_test_durations = 0.0
         for t in tests:
             if t.finish_time and t.start_time:
-                durations.append((t.finish_time - t.start_time).total_seconds())
+                d = (t.finish_time - t.start_time).total_seconds()
+                durations.append(d)
+                sum_test_durations += d
+            if t.memory_usage_mb > 0:
+                memories.append(t.memory_usage_mb)
+            if t.memory_peak_mb > 0:
+                peaks.append(t.memory_peak_mb)
         durations.sort()
+        memories.sort()
+        peaks.sort()
+
+        total_memory_mb = sum(t.memory_usage_mb for t in tests)
 
         rows = []
 
@@ -575,6 +605,52 @@ class TestAggregator:
             # We add a data-value attribute for sorting
             duration_cell = f'<td style="{duration_style}" title="{worker_info}" data-value="{duration_val}">{duration}</td>'  # noqa: E501
 
+            # Memory
+            memory_val = t.memory_usage_mb
+            memory_str = f"{memory_val:.2f} MB" if memory_val > 0 else "-"
+            memory_style = ""
+            if memories and memory_val > 0:
+                rank = bisect.bisect_left(memories, memory_val)
+                pct = rank / (len(memories) - 1) if len(memories) > 1 else 0
+                hue = 120 * (1 - pct)
+                memory_style = f"background-color: hsl({hue:.0f}, 90%, 85%)"
+
+            memory_cell = f'<td style="{memory_style}" data-value="{memory_val}">{memory_str}</td>'
+
+            # Peak Memory
+            peak_val = t.memory_peak_mb
+            peak_str = f"{peak_val:.2f} MB" if peak_val > 0 else "-"
+            peak_style = ""
+            if peaks and peak_val > 0:
+                rank = bisect.bisect_left(peaks, peak_val)
+                pct = rank / (len(peaks) - 1) if len(peaks) > 1 else 0
+                hue = 120 * (1 - pct)
+                peak_style = f"background-color: hsl({hue:.0f}, 90%, 85%)"
+
+            peak_cell = (
+                f'<td style="{peak_style}" data-value="{peak_val}">{peak_str}</td>'
+            )
+
+            # Error message cell
+            error_msg = t.error_message or ""
+            if error_msg:
+                # Escape HTML in error message
+                error_msg_escaped = (
+                    error_msg.replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                    .replace('"', "&quot;")
+                )
+                # Truncate for display if too long
+                error_msg_display = (
+                    error_msg_escaped[:100] + "..."
+                    if len(error_msg_escaped) > 100
+                    else error_msg_escaped
+                )
+                error_cell = f'<td class="error-cell" title="{error_msg_escaped}">{error_msg_display}</td>'
+            else:
+                error_cell = "<td>-</td>"
+
             row_class = f"row-{outcome_class}"
 
             rows.append(f"""
@@ -585,6 +661,9 @@ class TestAggregator:
                 <td>{params}</td>
                 <td class="{outcome_class}">{outcome_text}</td>
                 {duration_cell}
+                {memory_cell}
+                {peak_cell}
+                {error_cell}
                 <td>{log_button} {log_modal}</td>
             </tr>
             """)
@@ -655,6 +734,8 @@ class TestAggregator:
                 rows="\n".join(rows),
                 timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 total_duration=total_duration_str,
+                total_summed_duration=format_duration(sum_test_durations),
+                total_memory=f"{total_memory_mb:.2f} MB",
                 refresh_meta="",
                 commit_info_html=commit_info_html,
                 ci_info_html=ci_info_html,
@@ -693,6 +774,8 @@ class TestAggregator:
 
             test_results = []
 
+            sum_test_durations = 0.0
+
             def extract_params(s):
                 if s.endswith("]") and "[" in s:
                     idx = s.rfind("[")
@@ -704,6 +787,7 @@ class TestAggregator:
                 duration = 0.0
                 if t.finish_time and t.start_time:
                     duration = (t.finish_time - t.start_time).total_seconds()
+                sum_test_durations += duration
 
                 # Split nodeid logic (reused from HTML)
                 parts = t.nodeid.split("::")
@@ -728,6 +812,9 @@ class TestAggregator:
                         "function": function_name,
                         "outcome": str(t.outcome) if t.outcome else "QUEUED",
                         "duration": duration,
+                        "error_message": t.error_message,
+                        "memory_usage_mb": t.memory_usage_mb,
+                        "memory_peak_mb": t.memory_peak_mb,
                         "worker_pid": t.pid,
                     }
                 )
@@ -777,6 +864,8 @@ class TestAggregator:
                     "skipped": skipped,
                     "total": len(tests),
                     "total_duration": total_duration,
+                    "total_summed_duration": sum_test_durations,
+                    "total_memory_mb": sum(t.memory_usage_mb for t in tests),
                     "workers_used": workers_used,
                 },
                 "commit": commit_dict if commit_dict else None,
@@ -900,8 +989,15 @@ def start_server(port):
     return t
 
 
+def get_log_file(worker_id: int) -> Path:
+    return LOG_DIR / f"worker-{worker_id}.log"
+
+
+LOG_DIR = Path("artifacts/logs")
+
+
 def main():
-    global tests_total, commit_info, ci_info
+    global tests_total, commit_info, ci_info, workers
 
     # Gather commit and CI info at startup (robust to failures)
     commit_info = get_commit_info()
@@ -938,29 +1034,37 @@ def main():
 
     # 3. Start Workers
     worker_script = Path(__file__).parent / "worker.py"
-    workers: list[subprocess.Popen] = []
 
     env = os.environ.copy()
     env["FBRK_TEST_ORCHESTRATOR_URL"] = url
     # Ensure workers can find test modules
     env["PYTHONPATH"] = os.getcwd()
 
-    _print(f"Spawning {WORKER_COUNT} workers...")
+    worker_count = min(WORKER_COUNT, tests_total)
+
+    _print(f"Spawning {worker_count} workers...")
 
     # Create logs directory
-    log_dir = Path("artifacts/logs")
-    log_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.rmtree(LOG_DIR, ignore_errors=True)
+    except Exception:
+        pass
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     worker_files = []
 
-    for i in range(WORKER_COUNT):
-        log_path = log_dir / f"worker-{i}.log"
+    def start_worker():
+        i = max(workers.keys()) + 1 if workers else 0
+        log_path = get_log_file(i)
         f = open(log_path, "w")
         worker_files.append(f)
         p = subprocess.Popen(
             [sys.executable, str(worker_script)], env=env, stdout=f, stderr=f
         )
-        workers.append(p)
+        workers[i] = p
+
+    for _ in range(worker_count):
+        start_worker()
 
     # 4. Monitor
     timer = ReportTimer(aggregator, REPORT_INTERVAL_SECONDS)
@@ -969,32 +1073,28 @@ def main():
     try:
         while True:
             # Check if workers are alive
-            for i, p in enumerate(workers):
-                if p.poll() is not None:
-                    # Worker died.
-                    # Handle crash in aggregator
-                    aggregator.handle_worker_crash(p.pid)
+            for i, p in list(workers.items()):
+                if p.poll() is None:
+                    continue
+                # Worker died.
+                # Handle crash in aggregator
+                aggregator.handle_worker_crash(p.pid)
 
-                    # If queue is not empty, restart it.
-                    if not test_queue.empty():
-                        _print(f"Worker {i} (pid {p.pid}) died. Restarting.")
-                        # Close old file
-                        try:
-                            worker_files[i].close()
-                        except Exception:
-                            pass
-                        # Open new file
-                        log_path = log_dir / f"worker-{i}-{int(time.time())}.log"
-                        f = open(log_path, "w")
-                        worker_files[i] = f
-                        workers[i] = subprocess.Popen(
-                            [sys.executable, str(worker_script)],
-                            env=env,
-                            stdout=f,
-                            stderr=f,
-                        )
+                # If queue is not empty, restart it.
+                if test_queue.empty():
+                    continue
 
-            all_workers_exited = all(p.poll() is not None for p in workers)
+                # Close old file
+                try:
+                    worker_files[i].close()
+                except Exception:
+                    pass
+                del workers[i]
+
+                # respawn worker
+                start_worker()
+
+            all_workers_exited = all(p.poll() is not None for p in workers.values())
             if all_workers_exited and test_queue.empty():
                 _print("All workers exited and queue is empty.")
                 break
@@ -1010,13 +1110,13 @@ def main():
 
     except KeyboardInterrupt:
         _print("Interrupted. Stopping workers...")
-        for p in workers:
+        for p in workers.values():
             p.terminate()
 
     finally:
         timer.stop()
         # Kill remaining workers
-        for p in workers:
+        for p in workers.values():
             if p.poll() is None:
                 p.terminate()
                 try:

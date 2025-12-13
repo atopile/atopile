@@ -92,3 +92,16 @@ NOTE TO SELF WEDNESDAY
 
     - slowly start going one-by-one through solver errors
       (might want to first focus on the lit folding to make sure)
+
+NOTE TO SELF FRIDAY
+
+- trying to get rid of the memory leaks in the tests
+
+  - its not the most important thing ever, but having a good understanding here is key for the tool
+  - last thing is auto destroy solver state to clean intermediate graphs
+  - for some reason we got a bunch of crashes
+  - also asked clanker to expose total memory allocated in html
+
+- [ ] fix hypothesis ci (parametrize)
+- [ ] errors in test report
+- [ ] measure mem usage of single node, edge, etc

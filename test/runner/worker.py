@@ -5,6 +5,7 @@ import time
 import httpx
 import psutil
 import pytest
+import typer
 
 # Ensure the current directory is in sys.path
 sys.path.insert(0, os.getcwd())
@@ -105,4 +106,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    typer.run(main)

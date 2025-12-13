@@ -7,11 +7,27 @@ and send JSON events for test start/finish.
 
 import os
 import time
+import tracemalloc
 
 import httpx
+import psutil
 import pytest
 
 from test.runner.common import ORCHESTRATOR_URL_ENV, EventRequest, EventType, Outcome
+
+
+def _extract_error_message(longreprtext: str) -> str:
+    """
+    Extract a concise error message from the full pytest traceback.
+
+    For assertion errors, extract the assertion message.
+    For other exceptions, extract the exception type and message.
+    """
+    # look from the back for first '\n'
+    try:
+        return longreprtext.rstrip("\n").rsplit("\n", 1)[-1].strip()
+    except Exception:
+        return "<Could not extract error message>"
 
 
 class HttpClient:
@@ -26,6 +42,9 @@ class HttpClient:
         nodeid: str | None = None,
         outcome: Outcome | None = None,
         output: dict | None = None,
+        error_message: str | None = None,
+        memory_usage_mb: float | None = None,
+        memory_peak_mb: float | None = None,
     ):
         event = EventRequest(
             type=event_type,
@@ -34,6 +53,9 @@ class HttpClient:
             nodeid=nodeid,
             outcome=outcome,
             output=output,
+            error_message=error_message,
+            memory_usage_mb=memory_usage_mb,
+            memory_peak_mb=memory_peak_mb,
         )
 
         try:
@@ -51,6 +73,7 @@ class HttpClient:
 
 
 _client: HttpClient | None = None
+_start_memory: int = 0
 
 
 def _get_client() -> HttpClient | None:
@@ -70,6 +93,9 @@ def pytest_configure(config):
 
 
 def pytest_runtest_logstart(nodeid, location):
+    global _start_memory
+    _start_memory = psutil.Process().memory_info().rss
+    tracemalloc.start()
     client = _get_client()
     if client:
         client.send_event(EventType.START, nodeid=nodeid)
@@ -108,6 +134,7 @@ def pytest_runtest_logreport(report: pytest.TestReport):
     # elif report.when == "setup" and report.skipped: ...
 
     output = {}
+    error_message = None
     if outcome:
         # Capture output
         if hasattr(report, "capstdout"):
@@ -116,7 +143,43 @@ def pytest_runtest_logreport(report: pytest.TestReport):
             output["stderr"] = report.capstderr
         if hasattr(report, "longreprtext"):
             output["error"] = report.longreprtext
+            # Extract a concise error message from the full traceback
+            # The last non-empty line typically contains the actual error
+            error_message = _extract_error_message(report.longreprtext)
+
+        # Capture peak memory usage during the test
+        try:
+            current_traced, peak_traced = tracemalloc.get_traced_memory()
+            tracemalloc.stop()
+            memory_peak_mb = peak_traced / 1024 / 1024
+        except Exception:
+            memory_peak_mb = 0.0
+
+        import gc
+
+        gc.collect()
+        try:
+            import ctypes
+
+            libc = ctypes.CDLL(None)
+            trimmer = getattr(libc, "malloc_trim")
+            if trimmer is not None:
+                trimmer.argtypes = [ctypes.c_size_t]
+                trimmer.restype = ctypes.c_int
+                trimmer(0)
+        except Exception as e:
+            print(f"Failed to trim memory: {e}")
+            pass
+
+        current_memory = psutil.Process().memory_info().rss
+        memory_usage_mb = (current_memory - _start_memory) / 1024 / 1024
 
         client.send_event(
-            EventType.FINISH, nodeid=report.nodeid, outcome=outcome, output=output
+            EventType.FINISH,
+            nodeid=report.nodeid,
+            outcome=outcome,
+            output=output,
+            error_message=error_message,
+            memory_usage_mb=memory_usage_mb,
+            memory_peak_mb=memory_peak_mb,
         )
