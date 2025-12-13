@@ -1212,6 +1212,25 @@ fn wrap_graphview_get_self_node() type {
     };
 }
 
+fn wrap_graphview_destroy() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "destroy",
+            .doc = "Destroy the GraphView and free all resources. The object should not be used after calling this.",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
+            const allocator = std.heap.c_allocator;
+            wrapper.data.deinit();
+            allocator.destroy(wrapper.data);
+            return bind.wrap_none();
+        }
+    };
+}
+
 fn graphview_repr(self: ?*py.PyObject) callconv(.C) ?*py.PyObject {
     const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
     const count = wrapper.data.get_node_count();
@@ -1235,6 +1254,7 @@ fn wrap_graphview(root: *py.PyObject) void {
         wrap_graphview_get_self_node(),
         wrap_graphview_get_subgraph_from_nodes(),
         wrap_graphview_insert_subgraph(),
+        wrap_graphview_destroy(),
     };
     bind.wrap_namespace_struct(root, graph.graph.GraphView, extra_methods);
     graph_view_type = type_registry.getRegisteredTypeObject("GraphView");

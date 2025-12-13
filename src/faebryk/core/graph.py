@@ -258,9 +258,7 @@ class InstanceGraphFunctions:
         def collect(ctx, edge):
             ctx.append(edge)
 
-        EdgePointer.visit_pointed_edges(
-            bound_node=bound_node, ctx=edges, f=collect
-        )
+        EdgePointer.visit_pointed_edges(bound_node=bound_node, ctx=edges, f=collect)
         return edges
 
     @staticmethod
@@ -550,15 +548,25 @@ class InstanceGraphFunctions:
                     # Shared node - show reference to original
                     original_name = first_rendered_at.get(child_key, "?")
                     print_child_line(
-                        prefix, is_last, edge_type_name, child_display_name,
-                        node_label, child_key, f"(same as {original_name})"
+                        prefix,
+                        is_last,
+                        edge_type_name,
+                        child_display_name,
+                        node_label,
+                        child_key,
+                        f"(same as {original_name})",
                     )
                 else:
                     # New node - show count
                     child_count = count_new_nodes(child_bound, visited)
                     print_child_line(
-                        prefix, is_last, edge_type_name, child_display_name,
-                        node_label, child_key, f"({child_count})"
+                        prefix,
+                        is_last,
+                        edge_type_name,
+                        child_display_name,
+                        node_label,
+                        child_key,
+                        f"({child_count})",
                     )
 
                 render_node(
@@ -647,3 +655,53 @@ __all__ = [
     "GraphView",
     "Node",
 ]
+
+
+def test_graph_garbage_collection():
+    import gc
+
+    import psutil
+
+    mem = psutil.Process().memory_info().rss
+
+    def _get_mem_diff() -> int:
+        nonlocal mem
+        old_mem = mem
+        mem = psutil.Process().memory_info().rss
+        return mem - old_mem
+
+    # pre measure memory
+    g = GraphView.create()
+
+    for _ in range(10**5):
+        g.insert_node(node=Node.create())
+
+    mem_create = _get_mem_diff()
+
+    g.destroy()
+
+    mem_destroy = _get_mem_diff()
+
+    # run gc
+
+    gc.collect()
+
+    mem_gc = _get_mem_diff()
+
+    mem_leaked = sum([mem_create, mem_destroy, mem_gc])
+
+    print("Mem create: ", mem_create / 1024 / 1024, "MB")
+    print("Mem destroy: ", mem_destroy / 1024 / 1024, "MB")
+    print("Mem gc: ", mem_gc / 1024 / 1024, "MB")
+    print("Mem leaked: ", mem_leaked / 1024 / 1024, "MB")
+
+    assert mem_leaked < 1000
+
+
+if __name__ == "__main__":
+    import typer
+
+    from faebryk.libs.logging import setup_basic_logging
+
+    setup_basic_logging()
+    typer.run(test_graph_garbage_collection)

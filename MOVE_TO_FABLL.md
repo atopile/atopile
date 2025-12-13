@@ -81,7 +81,7 @@ solver todo
 - [ ] re-enable has_usage_example MakeChild and has_simple_value_representation
 - [ ] consider making negative=True default (default domain creates no constraints, then we can remove DOMAIN_SKIP)
 
-NOTE TO SELF MONDAY
+NOTE TO SELF WEDNESDAY
 
 - currently going through `test_solver.py`
 - running `./test/runpytesttable.sh -m "not slow" test/core/solver/test_solver.py`
@@ -89,5 +89,6 @@ NOTE TO SELF MONDAY
 - got rid of all superficial errors
 
   - now only slow / contradiction / assert result errors (actual solver errors) left
+
     - slowly start going one-by-one through solver errors
       (might want to first focus on the lit folding to make sure)
