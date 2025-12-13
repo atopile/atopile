@@ -1032,7 +1032,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def get_root_id(self) -> str:
         return f"0x{self.instance.node().get_uuid():X}"
 
-    def get_name(self, accept_no_parent: bool = False) -> str:
+    def get_name(self, accept_no_parent: bool = True) -> str:
         parent = self.get_parent()
         if parent is None:
             if accept_no_parent:
@@ -1368,7 +1368,9 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         if (parent := self.get_parent()) is not None:
             parent_node, name = parent
             if not parent_node.no_include_parents_in_full_name:
-                if (parent_full := parent_node.get_full_name(types=False, include_uuid=include_uuid)):
+                if parent_full := parent_node.get_full_name(
+                    types=False, include_uuid=include_uuid
+                ):
                     parts.append(parent_full)
             if name:
                 parts.append(name)

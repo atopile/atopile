@@ -644,9 +644,7 @@ def attach(
             library_name=apart.path.name,
             kicad_footprint_file_path=str(apart.fp_path),
         )
-    logger.debug(
-        f"Attached {partno} to -> {component_node.get_name(accept_no_parent=True)}"
-    )
+    logger.debug(f"Attached {partno} to -> {component_node.get_name()}")
 
     # 3D model done by kicad (in fp)
 

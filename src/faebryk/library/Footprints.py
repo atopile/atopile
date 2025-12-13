@@ -153,7 +153,7 @@ class has_associated_footprint(fabll.Node):
                 logger.debug(
                     f"matched pad and lead: "
                     f"{matched_pad.pad_name}:{lead_t.get_lead_name()}"
-                    f"for {component_node.get_name(accept_no_parent=True)}"
+                    f"for {component_node.get_name()}"
                 )
         self.setup(fp_trait)
         return self
