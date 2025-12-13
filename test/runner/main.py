@@ -18,7 +18,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, cast
+from typing import Any, Optional, cast
 
 import uvicorn
 from fastapi import FastAPI
@@ -62,6 +62,83 @@ class CIInfo:
     ref: Optional[str] = None
 
 
+def _load_github_event() -> Optional[dict[str, Any]]:
+    """
+    Load the GitHub Actions event payload if available.
+
+    In GitHub Actions, `GITHUB_EVENT_PATH` points to a JSON file describing the
+    triggering event (push, pull_request, etc.).
+    """
+
+    event_path = os.environ.get("GITHUB_EVENT_PATH")
+    if not event_path:
+        return None
+
+    try:
+        raw = Path(event_path).read_text(encoding="utf-8")
+        return cast(dict[str, Any], json.loads(raw))
+    except Exception:
+        # Robustness: malformed JSON / file missing / permissions / etc.
+        return None
+
+
+def _commit_info_from_github_event_for_merge_ref(
+    event: Optional[dict[str, Any]], ref: str
+) -> Optional[CommitInfo]:
+    """
+    GitHub Actions quirk:
+    - For `pull_request` workflows, the default checkout ref is often
+      `refs/pull/<id>/merge` (a synthetic merge commit created by GitHub).
+    - `git log -1` on that ref yields a merge commit subject like
+      "Merge <head> into <base>", which is not useful in our report.
+
+    When we detect this, prefer the PR head SHA. If the head commit object is
+    present locally (our workflow does `git fetch --unshallow`), we can then
+    `git log -1 <sha>` to get the real commit subject/author/time.
+
+    If the commit object is *not* present, we still return a useful message
+    (PR title) from the event payload.
+    """
+
+    if not (ref.startswith("refs/pull/") and ref.endswith("/merge")):
+        return None
+
+    if not event:
+        return None
+
+    pr = event.get("pull_request")
+    if not isinstance(pr, dict):
+        return None
+
+    head = pr.get("head")
+    if not isinstance(head, dict):
+        return None
+
+    sha = head.get("sha")
+    if not isinstance(sha, str) or not sha:
+        return None
+
+    info = CommitInfo(hash=sha, short_hash=sha[:8])
+
+    # Best-effort fallback values if we can't resolve the commit via git.
+    title = pr.get("title")
+    if isinstance(title, str) and title:
+        info.message = title
+
+    user = pr.get("user")
+    if isinstance(user, dict):
+        login = user.get("login")
+        if isinstance(login, str) and login:
+            info.author = login
+
+    # Note: this is PR metadata time, not the commit time, but better than nothing.
+    updated_at = pr.get("updated_at") or pr.get("created_at")
+    if isinstance(updated_at, str) and updated_at:
+        info.time = updated_at
+
+    return info
+
+
 def get_commit_info() -> CommitInfo:
     """
     Get git commit information. Returns CommitInfo with None fields if not in a git repo
@@ -70,6 +147,18 @@ def get_commit_info() -> CommitInfo:
     info = CommitInfo()
 
     try:
+        # If we're in CI on a PR merge ref, prefer the PR's head SHA from the event
+        # payload. This avoids reporting the synthetic merge commit subject.
+        event = (
+            _load_github_event() if os.environ.get("GITHUB_ACTIONS") == "true" else None
+        )
+        ref = os.environ.get("GITHUB_REF") or ""
+        event_commit = _commit_info_from_github_event_for_merge_ref(
+            event=event, ref=ref
+        )
+        if event_commit is not None:
+            info = event_commit
+
         # Check if we're in a git repository
         result = subprocess.run(
             ["git", "rev-parse", "--git-dir"], capture_output=True, text=True, timeout=5
@@ -77,9 +166,39 @@ def get_commit_info() -> CommitInfo:
         if result.returncode != 0:
             return info  # Not a git repo
 
-        # Get commit hash
+        # Choose which commit we want to report.
+        #
+        # - If we already found a preferred commit hash from the GitHub event, use it,
+        #   but only if it exists in this checkout (best-effort verify).
+        # - Otherwise:
+        #   - In CI, fall back to GITHUB_SHA (push events)
+        #   - Finally fall back to HEAD
+        sha: Optional[str] = info.hash
+        if sha:
+            verify = subprocess.run(
+                ["git", "rev-parse", "--verify", f"{sha}^{{commit}}"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if verify.returncode != 0:
+                # Can't resolve the commit object; keep fallback event info but don't
+                # attempt git log on this sha.
+                sha = None
+
+        if not sha:
+            sha = (
+                os.environ.get("GITHUB_SHA")
+                if os.environ.get("GITHUB_ACTIONS") == "true"
+                else None
+            )
+
+        if not sha:
+            sha = "HEAD"
+
+        # Normalize/resolve to full hash.
         result = subprocess.run(
-            ["git", "rev-parse", "HEAD"], capture_output=True, text=True, timeout=5
+            ["git", "rev-parse", sha], capture_output=True, text=True, timeout=5
         )
         if result.returncode == 0:
             info.hash = result.stdout.strip()
@@ -87,7 +206,7 @@ def get_commit_info() -> CommitInfo:
 
         # Get author
         result = subprocess.run(
-            ["git", "log", "-1", "--format=%an <%ae>"],
+            ["git", "log", "-1", "--format=%an <%ae>", sha],
             capture_output=True,
             text=True,
             timeout=5,
@@ -97,7 +216,7 @@ def get_commit_info() -> CommitInfo:
 
         # Get commit message (first line only)
         result = subprocess.run(
-            ["git", "log", "-1", "--format=%s"],
+            ["git", "log", "-1", "--format=%s", sha],
             capture_output=True,
             text=True,
             timeout=5,
@@ -107,7 +226,7 @@ def get_commit_info() -> CommitInfo:
 
         # Get commit time
         result = subprocess.run(
-            ["git", "log", "-1", "--format=%ci"],
+            ["git", "log", "-1", "--format=%ci", sha],
             capture_output=True,
             text=True,
             timeout=5,
