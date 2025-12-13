@@ -64,7 +64,9 @@ class is_footprint(fabll.Node):
 
     def get_pads(self) -> list[is_pad]:
         parent = fabll.Traits(self).get_obj_raw()
-        pads_nodes = parent.get_children(direct_only=False, types=(fabll.Node, is_pad))
+        pads_nodes = parent.get_children(
+            direct_only=False, types=fabll.Node, required_trait=is_pad
+        )
         return [p.get_trait(is_pad) for p in pads_nodes]
 
 
@@ -155,15 +157,15 @@ def test_is_footprint(capsys):
 
     class TestFootprint(fabll.Node):
         is_footprint_ = fabll.Traits.MakeEdge(is_footprint.MakeChild())
-        pads_ = [TestPad.MakeChild() for _ in range(3)]
+        pads = [TestPad.MakeChild() for _ in range(3)]
+        for i, pad in enumerate(pads):
+            pad.add_dependant(
+                fabll.Traits.MakeEdge(is_pad.MakeChild(f"pad_{i}", f"{i}"), [pad])
+            )
 
-    footprint_instance = TestFootprint.bind_typegraph(tg=tg).create_instance(g=g)
-    for i, pad in enumerate(footprint_instance.pads_):
-        fabll.Traits.create_and_add_instance_to(pad.get(), is_pad).setup(
-            f"pad_{i}", f"{i}"
-        )
+    footprint_node = TestFootprint.bind_typegraph(tg=tg).create_instance(g=g)
 
-    pads = footprint_instance.is_footprint_.get().get_pads()
+    pads = footprint_node.is_footprint_.get().get_pads()
     assert len(pads) == 3
     for i, pad in enumerate(pads):
         assert pad.pad_name == f"pad_{i}"
