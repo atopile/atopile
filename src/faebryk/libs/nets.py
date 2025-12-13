@@ -8,7 +8,7 @@ from faebryk.libs.util import KeyErrorAmbiguous, once
 
 logger = logging.getLogger(__name__)
 
-def bind_fbrk_nets_to_kicad_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView):
+def bind_fbrk_nets_to_kicad_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView, transformer):
     """
     Gets named fbrk nets and attempts to map them to existing kicad nets
     """
@@ -53,9 +53,16 @@ def bind_fbrk_nets_to_kicad_nets(tg: fbrk.TypeGraph, g: fabll.graph.GraphView):
             continue
 
         # bind the kicad net to the fabll net
-        fabll.Traits.create_and_add_instance_to(
+        trait_instance = fabll.Traits.create_and_add_instance_to(
             fbrk_net, F.KiCadFootprints.has_associated_kicad_pcb_net
         )
+
+        # TODO for now since the transformer and kicadpcbnet are not in the graph yet
+        nets_by_name = {}
+        for pcb_net in transformer.pcb.nets:
+            if pcb_net.name:
+                nets_by_name[pcb_net.name] = pcb_net
+        trait_instance.setup(nets_by_name[best_kicad_net_name], transformer)
 
 
 def bind_electricals_to_fbrk_nets(

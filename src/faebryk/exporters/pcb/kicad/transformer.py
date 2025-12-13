@@ -221,7 +221,7 @@ class PCB_Transformer:
                 )
 
         # net attach
-        bind_fbrk_nets_to_kicad_nets(self.tg, self.g)
+        bind_fbrk_nets_to_kicad_nets(self.tg, self.g, self)
 
     def check_unattached_fps(self):
         """
