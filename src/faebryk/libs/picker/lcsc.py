@@ -27,7 +27,6 @@ from easyeda2kicad.kicad.export_kicad_footprint import ExporterFootprintKicad
 from easyeda2kicad.kicad.export_kicad_symbol import ExporterSymbolKicad, KicadVersion
 from more_itertools import first
 
-import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.config import config as Gcfg
@@ -609,7 +608,7 @@ def attach(
             matched_pads.append(
                 lead_t.find_matching_pad([p[0] for p in tmp_pads], associate=False)
             )
-    except F.Lead.PadMatchException as e:
+    except F.Lead.LeadPadMatchException as e:
         raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
 
     if check_only:
@@ -618,48 +617,21 @@ def attach(
 
         logger.debug(f"Checking pinmap for {partno} -> {component_node.get_name()}")
         return
-
-    if not component_node.has_trait(F.Footprints.has_associated_footprint):
-        # we need to create and add a footprint node to the component if it
-        # doesn't exist yet
-        fp = fabll.Node.bind_typegraph_from_instance(
-            component_node.instance
-        ).create_instance(g=component_node.instance.g())
-        fabll.Traits.create_and_add_instance_to(
-            node=fp, trait=F.Footprints.is_footprint
+    # create and link footprint to the component
+    try:
+        associated_footprint = fabll.Traits.create_and_add_instance_to(
+            node=component_node,
+            trait=F.Footprints.has_associated_footprint,
         )
-        # add pad_nodes to the footprint with composition edge
-        for pad in tmp_pads:
-            fp.connect(
-                to=pad[1],
-                edge_attrs=fbrk.EdgeComposition.build(child_identifier=f"{id(pad)}"),
-            )
-
-        fp_trait = fp.get_trait(F.Footprints.is_footprint)
-
-        fabll.Traits.create_and_add_instance_to(
-            node=component_node, trait=F.Footprints.has_associated_footprint
-        ).setup(fp_trait)
-
-        pads_t = fp_trait.get_pads()
-        try:
-            # only attach to leads that don't have associated pads yet
-            for lead_t in [
-                lt for lt in leads_t if not lt.has_trait(F.Lead.has_associated_pads)
-            ]:
-                matched_pad = lead_t.find_matching_pad(pads_t)
-                logger.debug(
-                    f"matched pad and lead: "
-                    f"{matched_pad.pad_name}:{lead_t.get_lead_name()}"
-                    f"for {partno} -> {component_node.get_name(accept_no_parent=True)}"
-                )
-        except F.Lead.PadMatchException as e:
-            raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
-
-    # link footprint to the component
-    footprint = component_node.get_trait(
-        F.Footprints.has_associated_footprint
-    ).get_footprint()
+        footprint = associated_footprint.setup_from_pads_and_leads(
+            component_node=component_node,
+            pads=[p[1] for p in tmp_pads],
+            leads=leads_t,
+        ).get_footprint()
+    except F.Footprints.FootprintError as e:
+        raise LCSCException(partno, f"Failed to create footprint: {e}") from e
+    except F.Lead.LeadPadMatchException as e:
+        raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
 
     if not footprint.has_trait(
         F.KiCadFootprints.has_associated_kicad_library_footprint
@@ -838,7 +810,7 @@ def test_attach_failure():
             check_only=True,
         )
 
-    attach(component_with_fp=component_with_fp, partno=MOSFET_LCSC_ID, check_only=False)
+    attach(component_with_fp=component_with_fp, partno=MOSFET_LCSC_ID)
 
     associated_footprint = component.try_get_trait(
         F.Footprints.has_associated_footprint
@@ -848,9 +820,10 @@ def test_attach_failure():
 
     footprint = associated_footprint.get_footprint()
 
-    kicad_library_footprint = footprint.get_trait(
+    kicad_library_footprint = footprint.try_get_trait(
         F.KiCadFootprints.has_associated_kicad_library_footprint
     )
+    assert kicad_library_footprint is not None
     assert kicad_library_footprint.pad_names == ["1", "2", "3"]
 
 

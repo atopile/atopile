@@ -13,7 +13,7 @@ from faebryk.library import _F as F
 logger = logging.getLogger(__name__)
 
 
-class PadMatchException(Exception):
+class LeadPadMatchException(Exception):
     pass
 
 
@@ -52,7 +52,7 @@ class is_lead(fabll.Node):
                 ).setup(pad=pad)
             return pad
 
-        raise PadMatchException(
+        raise LeadPadMatchException(
             f"No matching pad found for lead: {self.get_lead_name()}"
         )
 
@@ -79,7 +79,7 @@ class can_attach_to_any_pad(fabll.Node):
         for pad in pads:
             if pad not in claimed_pads:
                 return pad
-        raise PadMatchException(
+        raise LeadPadMatchException(
             f"No pad available for lead "
             f"[{self.get_name()}] - All pads are probably claimed by other leads."
         )
@@ -138,11 +138,11 @@ class can_attach_to_pad_by_name(fabll.Node):
         if len(matched_pads) == 1:
             return matched_pads[0]
         if len(matched_pads) > 1:
-            raise PadMatchException(
+            raise LeadPadMatchException(
                 f"Matched {len(matched_pads)} out of {len(pads)} pads for lead "
                 f"[{self.get_name()}] with regex [{regex.pattern}]"
             )
-        raise PadMatchException(
+        raise LeadPadMatchException(
             f"No matching pad found for lead [{self.get_name()}] "
             f"with regex [{regex.pattern}]"
         )
@@ -306,7 +306,7 @@ def test_can_attach_to_any_pad():
         node=module.unnamed[1].get(), trait=has_associated_pads
     ).setup(pad=pad2)
 
-    with pytest.raises(PadMatchException):
+    with pytest.raises(LeadPadMatchException):
         module.unnamed[2].get().get_trait(is_lead).find_matching_pad(pads)
 
     assert unnamed_0_pad.is_same(pad0)

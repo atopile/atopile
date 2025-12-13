@@ -2,11 +2,18 @@
 # SPDX-License-Identifier: MIT
 
 
+import logging
 from typing import Self
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 from faebryk.library import _F as F
+
+logger = logging.getLogger(__name__)
+
+
+class FootprintError(Exception):
+    pass
 
 
 class is_pad(fabll.Node):
@@ -91,6 +98,65 @@ class has_associated_footprint(fabll.Node):
 
     def setup(self, footprint: is_footprint):
         self.footprint_.get().point(footprint)
+        return self
+
+    def setup_from_pads_and_leads(
+        self,
+        component_node: fabll.Node,
+        pads: list[fabll.Node],
+        leads: list["F.Lead.is_lead"] | None = None,
+    ) -> Self:
+        """
+        Create and attach the following to a component node:
+        - a footprint node (via this trait)
+            - with attached pad nodes with each the is pad trait and name/number
+        - add edge pointing to the footprint node
+
+        If leads are provided, match the pads and leads.
+        """
+        from faebryk.library.Lead import has_associated_pads
+
+        if not component_node.has_trait(can_attach_to_footprint):
+            raise FootprintError(
+                f"{component_node.get_name(accept_no_parent=True)} cannot attach to a "
+                "footprint"
+            )
+
+        # we need to create and add a footprint node to the component node
+        # (via can_attach_to_footprint trait) if it doesn't exist yet
+        fp = fabll.Node.bind_typegraph_from_instance(
+            component_node.instance
+        ).create_instance(g=component_node.instance.g())
+        fp_trait = fabll.Traits.create_and_add_instance_to(node=fp, trait=is_footprint)
+        # add pad_nodes to the footprint with composition edge
+        for pad_node in pads:
+            if not pad_node.has_trait(is_pad):
+                raise FootprintError(
+                    f"{pad_node.get_name(accept_no_parent=True)} is not a pad"
+                )
+            fp.connect(
+                to=pad_node,
+                edge_attrs=fbrk.EdgeComposition.build(
+                    child_identifier=f"{id(pad_node)}"
+                ),
+            )
+
+        fabll.Traits.create_and_add_instance_to(
+            node=component_node, trait=has_associated_footprint
+        ).setup(fp_trait)
+
+        pads_t = fp_trait.get_pads()
+        if leads is not None:
+            # only attach to leads that don't have associated pads yet
+            for lead_t in [lt for lt in leads if not lt.has_trait(has_associated_pads)]:
+                matched_pad = lead_t.find_matching_pad(pads_t)
+                logger.debug(
+                    f"matched pad and lead: "
+                    f"{matched_pad.pad_name}:{lead_t.get_lead_name()}"
+                    f"for {component_node.get_name(accept_no_parent=True)}"
+                )
+        self.setup(fp_trait)
+        return self
 
 
 # TODO this is a placeholder for now, will be removed
