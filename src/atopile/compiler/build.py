@@ -10,6 +10,7 @@ from typing import Iterable
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
+import faebryk.core.node as fabll
 from atopile.compiler import ast_types as AST
 from atopile.compiler.antlr_visitor import ANTLRVisitor
 from atopile.compiler.ast_visitor import STDLIB_ALLOWLIST, ASTVisitor, BuildState
@@ -29,21 +30,24 @@ class BuildFileResult:
 class StdlibRegistry:
     """Lazy loader for stdlib types."""
 
-    def __init__(self, tg: fbrk.TypeGraph) -> None:
+    def __init__(
+        self, tg: fbrk.TypeGraph, allowlist: dict[str, type[fabll.Node]] | None = None
+    ) -> None:
         self._tg = tg
         self._cache: dict[str, graph.BoundNode] = {}
+        self._allowlist = allowlist or STDLIB_ALLOWLIST.copy()
 
     def get(self, name: str) -> graph.BoundNode:
         if name not in self._cache:
-            if name not in STDLIB_ALLOWLIST:
+            if name not in self._allowlist:
                 raise KeyError(f"Unknown stdlib type: {name}")
-            obj = STDLIB_ALLOWLIST[name]
+            obj = self._allowlist[name]
             type_node = obj.bind_typegraph(self._tg).get_or_create_type()
             self._cache[name] = type_node
         return self._cache[name]
 
     def __contains__(self, name: str) -> bool:
-        return name in STDLIB_ALLOWLIST
+        return name in self._allowlist
 
 
 class TestStdlibRegistry:

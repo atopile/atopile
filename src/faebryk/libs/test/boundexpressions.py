@@ -177,6 +177,14 @@ class BoundExpressions:
             ((F.Units.Meter, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["k"],
         )
+        nH = UnitExpressionFactory(
+            ((F.Units.Henry, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["n"],
+        )
+        kohm = UnitExpressionFactory(
+            ((F.Units.Ohm, 1),),
+            multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["k"],
+        )
 
         def __init__(self, E: "BoundExpressions") -> None:
             self.E = E

@@ -8,12 +8,9 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 from atopile.compiler.ast_visitor import DslException
 from atopile.compiler.build import Linker, StdlibRegistry, build_file, build_source
-from faebryk.core.faebrykpy import (
-    EdgeComposition,
-    EdgePointer,
-    EdgeTrait,
-)
+from faebryk.core.faebrykpy import EdgeComposition, EdgePointer, EdgeTrait
 from faebryk.libs.util import not_none
+from test.compiler.conftest import build_type
 
 NULL_CONFIG = SimpleNamespace(project=None)
 
@@ -81,7 +78,7 @@ def _collect_children_by_name(type_graph, type_node, name: str):
 
 
 def test_block_definitions_recorded():
-    _, _, _, result = _build_snippet(
+    _, _, _, result = build_type(
         """
         module Root:
             pass
@@ -102,7 +99,7 @@ def test_block_definitions_recorded():
 
 
 def test_make_child_and_linking():
-    graph, tg, stdlib, result = _build_snippet(
+    graph, tg, stdlib, result = build_type(
         """
         module Electrical:
             pass
@@ -140,7 +137,7 @@ def test_make_child_and_linking():
 
 
 def test_new_with_count_creates_pointer_sequence():
-    g, tg, _, result = _build_snippet(
+    g, tg, _, result = build_type(
         """
         module Inner:
             pass
@@ -171,7 +168,7 @@ def test_new_with_count_creates_pointer_sequence():
 
 
 def test_new_with_count_children_have_mounts():
-    g, tg, _, result = _build_snippet(
+    g, tg, _, result = build_type(
         """
         module Inner:
             pass
@@ -196,7 +193,7 @@ def test_new_with_count_rejects_out_of_range_index():
         DslException,
         match=r"Field `members\[(2|2\.0)\]` is not defined in scope",
     ):
-        _build_snippet(
+        build_type(
             """
             module Inner:
                 pass
@@ -209,7 +206,7 @@ def test_new_with_count_rejects_out_of_range_index():
 
 
 def test_typegraph_path_error_metadata():
-    g, tg, _, result = _build_snippet(
+    g, tg, _, result = build_type(
         """
         module Inner:
             pass
@@ -250,7 +247,7 @@ def test_typegraph_path_error_metadata():
 
 
 def test_for_loop_connects_twice():
-    _, tg, _, result = _build_snippet(
+    _, tg, _, result = build_type(
         """
         #pragma experiment("FOR_LOOP")
 
@@ -283,7 +280,7 @@ def test_for_loop_connects_twice():
 
 def test_for_loop_requires_experiment():
     with pytest.raises(DslException, match="(?i)experiment.*enabled"):
-        _build_snippet(
+        build_type(
             """
             module Electrical:
                 pass
@@ -303,7 +300,7 @@ def test_for_loop_requires_experiment():
 
 
 def test_for_loop_over_sequence():
-    _, tg, _, result = _build_snippet(
+    _, tg, _, result = build_type(
         """
         #pragma experiment("FOR_LOOP")
 
@@ -339,7 +336,7 @@ def test_for_loop_over_sequence():
 
 
 def test_for_loop_over_sequence_slice():
-    _, tg, _, result = _build_snippet(
+    _, tg, _, result = build_type(
         """
         #pragma experiment("FOR_LOOP")
 
@@ -374,7 +371,7 @@ def test_for_loop_over_sequence_slice():
 
 def test_for_loop_over_sequence_slice_zero_step_errors():
     with pytest.raises(DslException, match="Slice step cannot be zero"):
-        _build_snippet(
+        build_type(
             """
             #pragma experiment("FOR_LOOP")
 
@@ -391,7 +388,7 @@ def test_for_loop_over_sequence_slice_zero_step_errors():
 
 
 def test_for_loop_over_sequence_stride():
-    _, tg, _, result = _build_snippet(
+    _, tg, _, result = build_type(
         """
         #pragma experiment("FOR_LOOP")
 
@@ -430,7 +427,7 @@ def test_for_loop_over_sequence_stride():
 
 def test_for_loop_alias_does_not_leak():
     with pytest.raises(DslException, match="not defined"):
-        _build_snippet(
+        build_type(
             """
             #pragma experiment("FOR_LOOP")
 
@@ -450,7 +447,7 @@ def test_for_loop_alias_does_not_leak():
 
 
 def test_for_loop_nested_field_paths():
-    _, tg, _, result = _build_snippet(
+    _, tg, _, result = build_type(
         """
         #pragma experiment("FOR_LOOP")
 
@@ -482,7 +479,7 @@ def test_for_loop_nested_field_paths():
 
 
 def test_for_loop_assignment_creates_children():
-    _, tg, _, result = _build_snippet(
+    _, tg, _, result = build_type(
         """
         #pragma experiment("FOR_LOOP")
 
@@ -513,7 +510,7 @@ def test_for_loop_assignment_creates_children():
 
 
 def test_two_for_loops_same_var_accumulates_links():
-    _, tg, _, result = _build_snippet(
+    _, tg, _, result = build_type(
         """
         #pragma experiment("FOR_LOOP")
 
@@ -547,7 +544,7 @@ def test_two_for_loops_same_var_accumulates_links():
 
 def test_for_loop_alias_shadow_symbol_raises():
     with pytest.raises(DslException, match="shadow"):
-        _build_snippet(
+        build_type(
             """
             #pragma experiment("FOR_LOOP")
             import Resistor
@@ -567,7 +564,7 @@ def test_for_loop_alias_shadow_symbol_raises():
 
 
 def test_nested_make_child_uses_mount_reference():
-    _, tg, _, result = _build_snippet(
+    _, tg, _, result = build_type(
         """
         module Electrical:
             pass
@@ -596,7 +593,7 @@ def test_nested_make_child_uses_mount_reference():
 
 
 def test_connects_between_top_level_fields():
-    _, tg, _, result = _build_snippet(
+    _, tg, _, result = build_type(
         """
         module Electrical:
             pass
@@ -629,7 +626,7 @@ def test_connects_between_top_level_fields():
 
 def test_assignment_requires_existing_field():
     with pytest.raises(DslException, match="not defined"):
-        _build_snippet(
+        build_type(
             """
         module Electrical:
             pass
@@ -644,7 +641,7 @@ def test_assignment_requires_existing_field():
 
 
 def test_simple_connect():
-    _, tg, _, result = _build_snippet(
+    _, tg, _, result = build_type(
         """
         module A:
             pass
@@ -688,7 +685,7 @@ def test_connect_resistor_simple():
 
 
 def test_connect_unlinked_types():
-    _, tg, _, result = _build_snippet(
+    _, tg, _, result = build_type(
         """
         from "A.ato" import A
 
@@ -733,7 +730,7 @@ def test_directed_connect():
 
 def test_connect_requires_existing_fields():
     with pytest.raises(DslException, match="not defined"):
-        _build_snippet(
+        build_type(
             """
         module Electrical:
             pass
@@ -749,7 +746,7 @@ def test_connect_requires_existing_fields():
 
 
 def test_nested_connects_across_child_fields():
-    _, tg, _, result = _build_snippet(
+    _, tg, _, result = build_type(
         """
         module Electrical:
             pass
@@ -778,7 +775,7 @@ def test_nested_connects_across_child_fields():
 
 
 def test_deep_nested_connects_across_child_fields():
-    _, tg, _, result = _build_snippet(
+    _, tg, _, result = build_type(
         """
         module Electrical:
             pass
@@ -814,35 +811,34 @@ def test_deep_nested_connects_across_child_fields():
     )
 
 
-# TODO: should fail at instantiation?
-# def test_nested_connect_missing_prefix_raises():
-#     with pytest.raises(
-#         DslException, match=r"Field `left\.missing\.branch` is not defined in scope"
-#     ):
-#         _, _, _, result = _build_snippet(
-#             """
-#         module Electrical:
-#             pass
+def test_nested_connect_missing_prefix_raises():
+    with pytest.raises(
+        DslException, match=r"Field `left\.missing\.branch` is not defined in scope"
+    ):
+        build_type(
+            """
+            module Electrical:
+                pass
 
-#         module Resistor:
-#             unnamed = new Electrical[2]
+            module Resistor:
+                unnamed = new Electrical[2]
 
-#         module Level2:
-#             branch = new Resistor
+            module Level2:
+                branch = new Resistor
 
-#         module Level1:
-#             intermediate = new Level2
+            module Level1:
+                intermediate = new Level2
 
-#         module App:
-#             left = new Level1
-#             left.missing.branch ~ left.intermediate.branch
-#             """
-#         )
+            module App:
+                left = new Level1
+                left.missing.branch ~ left.intermediate.branch
+            """
+        )
 
 
 def test_nested_block_definition_disallowed():
     with pytest.raises(DslException, match="not permitted"):
-        _build_snippet(
+        build_type(
             """
         import Resistor
 
@@ -901,7 +897,7 @@ def test_external_import_linking(tmp_path: Path):
 def test_local_type_cannot_shadow_import():
     """Local type definition cannot shadow imported type of same name."""
     with pytest.raises(DslException, match="already defined"):
-        _build_snippet(
+        build_type(
             """
             import Resistor
 
@@ -913,7 +909,7 @@ def test_local_type_cannot_shadow_import():
 
 def test_multiple_local_references():
     """Multiple uses of the same local type should resolve to the same node."""
-    _, tg, _, result = _build_snippet(
+    _, tg, _, result = build_type(
         """
         module Module:
             pass
@@ -945,7 +941,7 @@ class TestTypeNamespacing:
 
     def test_ato_types_namespaced(self):
         """Types from .ato files get namespaced identifiers."""
-        _, tg, _, result = _build_snippet(
+        _, tg, _, result = build_type(
             """
             module MyModule:
                 pass
@@ -971,7 +967,7 @@ class TestTypeNamespacing:
     def test_single_typegraph_for_build(self):
         """All types from a build share the same TypeGraph."""
 
-        _, _, stdlib, result = _build_snippet(
+        _, _, stdlib, result = build_type(
             """
             import Resistor
 

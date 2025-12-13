@@ -31,7 +31,3 @@ class has_package_requirements(fabll.Node):
     def setup(self, *sizes: SMDSize):
         self.size_.get().alias_to_literal(*sizes)
         return self
-
-    # def get_sizes(self, solver: Solver) -> EnumSet[SMDSize]:
-    #     ss = self.size.get_last_known_deduced_superset(solver)
-    #     return cast_assert(EnumSet, ss)

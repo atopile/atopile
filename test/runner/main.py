@@ -310,6 +310,8 @@ def extract_params(s: str) -> tuple[str, str]:
 
 @dataclass
 class TestState:
+    __test__ = False
+
     nodeid: str
     pid: int | None
     start_time: datetime.datetime | None
@@ -342,6 +344,8 @@ def format_duration(seconds: float) -> str:
 
 class TestAggregator:
     """Aggregates test events from multiple workers."""
+
+    __test__ = False
 
     def __init__(self, all_tests: list[str]):
         self._tests: dict[str, TestState] = {
