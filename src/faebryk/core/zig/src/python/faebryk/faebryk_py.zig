@@ -478,6 +478,50 @@ fn wrap_edge_composition_get_tid() type {
     };
 }
 
+fn wrap_edge_composition_traverse() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "traverse",
+            .doc = "Create an EdgeTraversal for following a Composition edge by identifier",
+            .args_def = struct {
+                identifier: *py.PyObject,
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            _ = self;
+            const kwarg_obj = bind.parse_kwargs(null, args, kwargs, descr.args_def) orelse return null;
+
+            const identifier_str = bind.unwrap_str(kwarg_obj.identifier) orelse return null;
+
+            // Return a SimpleNamespace with identifier and edge_type attributes
+            const types_module = py.PyImport_ImportModule("types") orelse return null;
+            defer py.Py_DECREF(types_module);
+
+            const simple_namespace = py.PyObject_GetAttrString(types_module, "SimpleNamespace") orelse return null;
+            defer py.Py_DECREF(simple_namespace);
+
+            const kwargs_dict = py.PyDict_New() orelse return null;
+            defer py.Py_DECREF(kwargs_dict);
+
+            // Use PyUnicode_FromStringAndSize to handle non-null-terminated strings
+            const identifier_py = py.PyUnicode_FromStringAndSize(
+                @ptrCast(identifier_str.ptr),
+                @as(isize, @intCast(identifier_str.len)),
+            ) orelse return null;
+            _ = py.PyDict_SetItemString(kwargs_dict, "identifier", identifier_py);
+            py.Py_DECREF(identifier_py);
+
+            const edge_type_py = py.PyLong_FromLongLong(@intCast(faebryk.composition.EdgeComposition.tid));
+            _ = py.PyDict_SetItemString(kwargs_dict, "edge_type", edge_type_py.?);
+            py.Py_DECREF(edge_type_py.?);
+
+            return py.PyObject_Call(simple_namespace, py.PyTuple_New(0), kwargs_dict);
+        }
+    };
+}
+
 fn wrap_edge_composition_get_child_by_identifier() type {
     return struct {
         pub const descr = method_descr{
@@ -735,6 +779,7 @@ fn wrap_edge_composition(root: *py.PyObject) void {
         wrap_edge_composition_add_anon_child(),
         wrap_edge_composition_get_name(),
         wrap_edge_composition_get_tid(),
+        wrap_edge_composition_traverse(),
         wrap_edge_composition_get_child_by_identifier(),
         wrap_edge_composition_visit_children_of_type(),
         wrap_edge_composition_try_get_single_child_of_type(),
@@ -1329,6 +1374,49 @@ fn wrap_edge_operand_get_tid() type {
     };
 }
 
+fn wrap_edge_operand_traverse() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "traverse",
+            .doc = "Create an EdgeTraversal for finding an operand by identifier (e.g., 'lhs', 'rhs')",
+            .args_def = struct {
+                identifier: *py.PyObject,
+            },
+            .static = true,
+        };
+
+        pub fn impl(_: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(null, args, kwargs, descr.args_def) orelse return null;
+
+            const identifier_str = bind.unwrap_str(kwarg_obj.identifier) orelse return null;
+
+            // Return a SimpleNamespace with identifier and edge_type attributes
+            const types_module = py.PyImport_ImportModule("types") orelse return null;
+            defer py.Py_DECREF(types_module);
+
+            const simple_namespace = py.PyObject_GetAttrString(types_module, "SimpleNamespace") orelse return null;
+            defer py.Py_DECREF(simple_namespace);
+
+            const kwargs_dict = py.PyDict_New() orelse return null;
+            defer py.Py_DECREF(kwargs_dict);
+
+            // Use PyUnicode_FromStringAndSize to handle non-null-terminated strings
+            const identifier_py = py.PyUnicode_FromStringAndSize(
+                @ptrCast(identifier_str.ptr),
+                @as(isize, @intCast(identifier_str.len)),
+            ) orelse return null;
+            _ = py.PyDict_SetItemString(kwargs_dict, "identifier", identifier_py);
+            py.Py_DECREF(identifier_py);
+
+            const edge_type_py = py.PyLong_FromLongLong(@intCast(faebryk.operand.EdgeOperand.tid));
+            _ = py.PyDict_SetItemString(kwargs_dict, "edge_type", edge_type_py.?);
+            py.Py_DECREF(edge_type_py.?);
+
+            return py.PyObject_Call(simple_namespace, py.PyTuple_New(0), kwargs_dict);
+        }
+    };
+}
+
 fn wrap_edge_operand_get_operand_by_identifier() type {
     return struct {
         pub const descr = method_descr{
@@ -1378,6 +1466,7 @@ fn wrap_edge_operand(root: *py.PyObject) void {
         wrap_edge_operand_add_operand(),
         wrap_edge_operand_get_name(),
         wrap_edge_operand_get_tid(),
+        wrap_edge_operand_traverse(),
         wrap_edge_operand_get_operand_by_identifier(),
     };
     bind.wrap_namespace_struct(root, faebryk.operand.EdgeOperand, extra_methods);
@@ -2473,6 +2562,40 @@ fn wrap_edge_pointer_get_tid() type {
     };
 }
 
+fn wrap_edge_pointer_traverse() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "traverse",
+            .doc = "Create an EdgeTraversal for dereferencing the current Pointer node (no identifier needed)",
+            .args_def = struct {},
+            .static = true,
+        };
+
+        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            // Return a SimpleNamespace with identifier="" and edge_type attributes
+            const types_module = py.PyImport_ImportModule("types") orelse return null;
+            defer py.Py_DECREF(types_module);
+
+            const simple_namespace = py.PyObject_GetAttrString(types_module, "SimpleNamespace") orelse return null;
+            defer py.Py_DECREF(simple_namespace);
+
+            const kwargs_dict = py.PyDict_New() orelse return null;
+            defer py.Py_DECREF(kwargs_dict);
+
+            // Empty identifier for pointer traversal
+            const identifier_py = py.PyUnicode_FromString("") orelse return null;
+            _ = py.PyDict_SetItemString(kwargs_dict, "identifier", identifier_py);
+            py.Py_DECREF(identifier_py);
+
+            const edge_type_py = py.PyLong_FromLongLong(@intCast(faebryk.pointer.EdgePointer.tid));
+            _ = py.PyDict_SetItemString(kwargs_dict, "edge_type", edge_type_py.?);
+            py.Py_DECREF(edge_type_py.?);
+
+            return py.PyObject_Call(simple_namespace, py.PyTuple_New(0), kwargs_dict);
+        }
+    };
+}
+
 fn wrap_edge_pointer_get_order() type {
     return struct {
         pub const descr = method_descr{
@@ -2696,6 +2819,7 @@ fn wrap_pointer(root: *py.PyObject) void {
         wrap_edge_pointer_get_referenced_node(),
         wrap_edge_pointer_get_referenced_node_from_node(),
         wrap_edge_pointer_get_tid(),
+        wrap_edge_pointer_traverse(),
         wrap_edge_pointer_get_order(),
         wrap_edge_pointer_visit_pointed_edges(),
         wrap_edge_pointer_visit_pointed_edges_with_identifier(),
@@ -5081,6 +5205,49 @@ fn wrap_edge_trait_get_tid() type {
     };
 }
 
+fn wrap_edge_trait_traverse() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "traverse",
+            .doc = "Create an EdgeTraversal for finding a trait instance by type name",
+            .args_def = struct {
+                trait_type_name: *py.PyObject,
+            },
+            .static = true,
+        };
+
+        pub fn impl(_: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(null, args, kwargs, descr.args_def) orelse return null;
+
+            const type_name_str = bind.unwrap_str(kwarg_obj.trait_type_name) orelse return null;
+
+            // Return a SimpleNamespace with identifier and edge_type attributes
+            const types_module = py.PyImport_ImportModule("types") orelse return null;
+            defer py.Py_DECREF(types_module);
+
+            const simple_namespace = py.PyObject_GetAttrString(types_module, "SimpleNamespace") orelse return null;
+            defer py.Py_DECREF(simple_namespace);
+
+            const kwargs_dict = py.PyDict_New() orelse return null;
+            defer py.Py_DECREF(kwargs_dict);
+
+            // Use PyUnicode_FromStringAndSize to handle non-null-terminated strings
+            const identifier_py = py.PyUnicode_FromStringAndSize(
+                @ptrCast(type_name_str.ptr),
+                @as(isize, @intCast(type_name_str.len)),
+            ) orelse return null;
+            _ = py.PyDict_SetItemString(kwargs_dict, "identifier", identifier_py);
+            py.Py_DECREF(identifier_py);
+
+            const edge_type_py = py.PyLong_FromLongLong(@intCast(faebryk.trait.EdgeTrait.tid));
+            _ = py.PyDict_SetItemString(kwargs_dict, "edge_type", edge_type_py.?);
+            py.Py_DECREF(edge_type_py.?);
+
+            return py.PyObject_Call(simple_namespace, py.PyTuple_New(0), kwargs_dict);
+        }
+    };
+}
+
 fn wrap_edge_trait(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_edge_trait_create(),
@@ -5097,6 +5264,7 @@ fn wrap_edge_trait(root: *py.PyObject) void {
         wrap_edge_trait_visit_trait_instances_of_type(),
         wrap_edge_trait_try_get_trait_instance_of_type(),
         wrap_edge_trait_get_tid(),
+        wrap_edge_trait_traverse(),
     };
     bind.wrap_namespace_struct(root, faebryk.trait.EdgeTrait, extra_methods);
 }
@@ -5458,11 +5626,9 @@ pub fn make_python_module() ?*py.PyObject {
 
 /// Helper to parse a path item (str or EdgeTraversal) into an EdgeTraversal
 fn _parse_path_item(item: *py.PyObject) ?faebryk.typegraph.TypeGraph.ChildReferenceNode.EdgeTraversal {
-    const ET = faebryk.typegraph.TypeGraph.ChildReferenceNode.EdgeTraversal;
-
     // Check if it's a string (default to Composition)
     if (bind.unwrap_str_copy(item)) |identifier| {
-        return ET.composition(identifier);
+        return faebryk.composition.EdgeComposition.traverse(identifier);
     }
     // Clear any error from failed string conversion before checking for EdgeTraversal
     py.PyErr_Clear();

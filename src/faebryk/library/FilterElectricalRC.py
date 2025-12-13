@@ -28,9 +28,7 @@ class FilterElectricalRC(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_module = fabll.Traits.MakeEdge(
-        fabll.is_module.MakeChild()
-    )
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
     # ----------------------------------------
     #                WIP
@@ -63,9 +61,7 @@ class FilterElectricalRC(fabll.Node):
 
     _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
 
-    can_bridge = fabll.Traits.MakeEdge(
-        F.can_bridge.MakeChild(in_=in_, out_=out)
-    )
+    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeEdge(["in_"], ["out"]))
 
     # @classmethod
     # def hardcoded_rc(cls, resistance: Quantity_Set, capacitance: Quantity_Set):
@@ -102,8 +98,6 @@ class FilterElectricalRC(fabll.Node):
             input_signal ~ rc_filter.in_
             rc_filter.out ~ output_signal
 
-            # Alternative: use hardcoded values for faster solving
-            rc_filter_fixed = FilterElectricalRC.hardcoded_rc(1kohm +/- 5%, 100nF +/- 10%)
             """,
             language=F.has_usage_example.Language.ato,
         ).put_on_type()

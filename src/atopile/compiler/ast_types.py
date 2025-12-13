@@ -929,7 +929,7 @@ class DirectedConnectStmt(fabll.Node):
             .create_instance(g=self.instance.g())
             .setup_from_values(direction.value)
         )
-        EdgeComposition.add_child(
+        fbrk.EdgeComposition.add_child(
             bound_node=self.instance,
             child=direction_literal.instance.node(),
             child_identifier=self._direction_identifier,
@@ -954,7 +954,7 @@ class DirectedConnectStmt(fabll.Node):
 
     def get_direction(self) -> "Direction":
         """Get the direction enum value from the dynamically created literal."""
-        direction_node = EdgeComposition.get_child_by_identifier(
+        direction_node = fbrk.EdgeComposition.get_child_by_identifier(
             bound_node=self.instance,
             child_identifier=self._direction_identifier,
         )

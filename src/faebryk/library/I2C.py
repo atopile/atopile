@@ -42,6 +42,8 @@ class I2C(fabll.Node):
         F.has_single_electric_reference.MakeChild()
     )
 
+    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeEdge(in_=[""], out_=[""]))
+
     # ----------------------------------------
     #                 functions
     # ----------------------------------------
@@ -139,7 +141,7 @@ class I2C(fabll.Node):
     #                 duplicates=duplicates, bus=bus_interfaces
     #             )
 
-    #         # TODO: Consider raising MaybeUnfulfilled if there are unresolved addresses?
+    #         # TODO: Consider raising MaybeUnfulfilled if there are unresolved addr
     #         # For now, we only raise if we find concrete duplicates.
 
     # address_check = requires_unique_addresses.MakeChild()

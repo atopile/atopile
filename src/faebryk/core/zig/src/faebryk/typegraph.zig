@@ -273,24 +273,14 @@ pub const TypeGraph = struct {
         /// EdgeTraversal specifies how to traverse a single path segment.
         /// It pairs an identifier (the edge name to match) with an edge type
         /// (Composition, Trait, or Pointer) to determine the traversal method.
+        ///
+        /// Use the traverse() methods on the edge types to create these:
+        /// - EdgeComposition.traverse(identifier) - follow a Composition edge by name
+        /// - EdgeTrait.traverse(trait_type_name) - find a trait instance by type name
+        /// - EdgePointer.traverse() - dereference the current Pointer node
         pub const EdgeTraversal = struct {
             identifier: str,
             edge_type: Edge.EdgeType,
-
-            /// Helper to create a Composition traversal (the most common case)
-            pub fn composition(identifier: str) EdgeTraversal {
-                return .{ .identifier = identifier, .edge_type = EdgeComposition.tid };
-            }
-
-            /// Helper to create a Trait traversal
-            pub fn trait(identifier: str) EdgeTraversal {
-                return .{ .identifier = identifier, .edge_type = EdgeTrait.tid };
-            }
-
-            /// Helper to create a Pointer traversal
-            pub fn pointer(identifier: str) EdgeTraversal {
-                return .{ .identifier = identifier, .edge_type = EdgePointer.tid };
-            }
         };
 
         /// Create a reference chain where each segment specifies both an identifier
@@ -373,37 +363,36 @@ pub const TypeGraph = struct {
             } else {
                 // Dispatch based on edge type to traverse different edge kinds
                 if (edge_type == EdgeComposition.tid) {
-                    // Default: traverse composition (parent-child) edges
-                    const child = EdgeComposition.get_child_by_identifier(instance, child_identifier);
+                    // Traverse composition (parent-child) edges
+                    // Use `target` (not `instance`) so chained paths work correctly
+                    const child = EdgeComposition.get_child_by_identifier(target, child_identifier);
                     if (child) |_child| {
                         target = _child;
                     }
                 } else if (edge_type == EdgeTrait.tid) {
-                    // Traverse trait edges to find trait instance by identifier
-                    const trait_instance = EdgeTrait.try_get_trait_instance_by_identifier(instance, child_identifier);
-                    if (trait_instance) |_trait_instance| {
-                        target = _trait_instance;
+                    // Traverse trait edges by looking up the trait type, then finding an instance.
+                    if (tg.get_type_by_name(child_identifier)) |trait_type| {
+                        const trait_instance = EdgeTrait.try_get_trait_instance_of_type(target, trait_type.node);
+                        if (trait_instance) |_trait_instance| {
+                            target = _trait_instance;
+                        }
                     }
                 } else if (edge_type == EdgePointer.tid) {
-                    // Pointer traversal: Two strategies to find the target.
-                    // Strategy 1: Look for a direct EdgePointer edge with this identifier
-                    const direct_pointed = EdgePointer.get_pointed_node_by_identifier(instance, child_identifier);
-                    if (direct_pointed) |_pointed| {
-                        target = _pointed;
+                    // Pointer traversal: dereference the current node.
+                    // The current node should be a Pointer node - follow its EdgePointer edge.
+                    // No identifier needed - we just dereference whatever the current node points to.
+                    const dereferenced = EdgePointer.get_referenced_node_from_node(target);
+                    if (dereferenced) |_dereferenced| {
+                        target = _dereferenced;
                     } else {
-                        // Strategy 2: The identifier might refer to a Composition child that is a
-                        // Pointer node. Find it and dereference through its EdgePointer edge.
-                        const pointer_child = EdgeComposition.get_child_by_identifier(instance, child_identifier);
-                        if (pointer_child) |_pointer_child| {
-                            // Dereference the Pointer node to get the actual target
-                            const dereferenced = EdgePointer.get_referenced_node_from_node(_pointer_child);
-                            if (dereferenced) |_dereferenced| {
-                                target = _dereferenced;
-                            } else {
-                                // Pointer exists but doesn't point anywhere - stay at the Pointer node
-                                target = _pointer_child;
-                            }
-                        }
+                        // Dereference failed - the node is not a valid Pointer or has no target
+                        return null;
+                    }
+                } else if (edge_type == EdgeOperand.tid) {
+                    // Operand traversal: find operand by identifier (e.g., "lhs", "rhs")
+                    const operand = EdgeOperand.get_operand_by_identifier(target, child_identifier);
+                    if (operand) |_operand| {
+                        target = _operand;
                     }
                 }
             }
@@ -1177,7 +1166,7 @@ pub const TypeGraph = struct {
         var traversals = std.ArrayList(ChildReferenceNode.EdgeTraversal).init(self.self_node.g.allocator);
         defer traversals.deinit();
         for (container_path) |segment| {
-            traversals.append(ChildReferenceNode.EdgeTraversal.composition(segment)) catch return error.ChildNotFound;
+            traversals.append(EdgeComposition.traverse(segment)) catch return error.ChildNotFound;
         }
 
         var local_failure: ?PathResolutionFailure = null;
@@ -1737,9 +1726,8 @@ test "basic instantiation" {
     std.debug.print("TYPE collected children: {d}\n", .{resistor_children.items.len});
 
     // Build nested reference using EdgeTraversal
-    const ET = TypeGraph.ChildReferenceNode.EdgeTraversal;
-    const cap1p1_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{ ET.composition("cap1"), ET.composition("p1") });
-    const cap1p2_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{ ET.composition("cap1"), ET.composition("p2") });
+    const cap1p1_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{ EdgeComposition.traverse("cap1"), EdgeComposition.traverse("p1") });
+    const cap1p2_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{ EdgeComposition.traverse("cap1"), EdgeComposition.traverse("p2") });
 
     // test: resolve_instance_reference
     const cap1p1_reference_resolved = TypeGraph.ChildReferenceNode.resolve(cap1p1_reference, resistor).?;
@@ -1762,7 +1750,7 @@ test "basic instantiation" {
     std.debug.print("Instantiated Resistor Instance: {d}\n", .{instantiated_resistor.node.attributes.uuid});
     std.debug.print("Instantiated P1 Instance: {d}\n", .{instantiated_p1.node.attributes.uuid});
 
-    const cref = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{ ET.composition("<<Resistor"), ET.composition("p1") });
+    const cref = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{ EdgeComposition.traverse("<<Resistor"), EdgeComposition.traverse("p1") });
     const result_node = TypeGraph.ChildReferenceNode.resolve(cref, cref);
     std.debug.print("result node: {d}\n", .{result_node.?.node.attributes.uuid});
 
@@ -1796,15 +1784,14 @@ test "typegraph iterators and mount chains" {
     const Inner = try tg.add_type("Inner");
     const PointerSequence = try tg.add_type("PointerSequence");
 
-    const ET = TypeGraph.ChildReferenceNode.EdgeTraversal;
     const members = try tg.add_make_child(top, PointerSequence, "members", null, null);
     _ = try tg.add_make_child(top, Inner, "base", null, null);
-    const base_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{ET.composition("base")});
+    const base_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("base")});
     const extra = try tg.add_make_child(top, Inner, "extra", null, base_reference);
-    const container_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{ET.composition("members")});
+    const container_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("members")});
     const element0 = try tg.add_make_child(top, Inner, "0", null, container_reference);
     _ = try tg.add_make_child(top, Inner, "1", null, container_reference);
-    const extra_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{ET.composition("extra")});
+    const extra_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("extra")});
     const link_attrs = EdgeCreationAttributes{
         .edge_type = EdgePointer.tid,
         .directional = true,
@@ -1949,14 +1936,13 @@ test "get_type_subgraph" {
     var tg = TypeGraph.init(&g);
 
     // Build type graph
-    const ET = TypeGraph.ChildReferenceNode.EdgeTraversal;
     const SomeTrait = try tg.add_type("SomeTrait");
     const implements_trait_instance = try tg.instantiate_node(tg.get_ImplementsTrait());
     _ = EdgeTrait.add_trait_instance(SomeTrait, implements_trait_instance.node);
     const Electrical = try tg.add_type("Electrical");
     _ = try tg.add_make_child(Electrical, SomeTrait, "trait", null, null);
-    const trait_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{ET.composition("trait")});
-    const self_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{ET.composition("")});
+    const trait_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("trait")});
+    const self_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("")});
     _ = try tg.add_make_link(Electrical, trait_reference, self_reference, EdgeTrait.build());
     const Capacitor = try tg.add_type("Capacitor");
     _ = try tg.add_make_child(Capacitor, Electrical, "p1", null, null);
@@ -2041,16 +2027,26 @@ test "resolve path through trait and pointer edges" {
 
     std.debug.print("can_bridge instance: {d}\n", .{can_bridge_instance.node.attributes.uuid});
 
-    // 4. Add pointer edges from can_bridge to p1 (in_) and p2 (out_)
-    _ = EdgePointer.point_to(can_bridge_instance, p1_instance.node, "in_", null);
-    _ = EdgePointer.point_to(can_bridge_instance, p2_instance.node, "out_", null);
+    // 4. Add Pointer nodes as composition children of can_bridge, then point them to p1/p2
+    // Create Pointer type if not exists
+    const PointerType = tg.get_type_by_name("Pointer") orelse try tg.add_type("Pointer");
+    const in_ptr = try tg.instantiate_node(PointerType);
+    const out_ptr = try tg.instantiate_node(PointerType);
+
+    // Add as composition children of can_bridge (must use add_child to insert into graph index)
+    _ = EdgeComposition.add_child(can_bridge_instance, in_ptr.node, "in_");
+    _ = EdgeComposition.add_child(can_bridge_instance, out_ptr.node, "out_");
+
+    // Point the Pointer nodes to p1 and p2
+    _ = EdgePointer.point_to(in_ptr, p1_instance.node, null, null);
+    _ = EdgePointer.point_to(out_ptr, p2_instance.node, null, null);
 
     // 5. Create reference path using EdgeTraversal:
-    //    can_bridge (Trait edge) -> in_ (Pointer edge)
-    const ET = TypeGraph.ChildReferenceNode.EdgeTraversal;
-    const path = [_]ET{
-        ET.trait("can_bridge"),
-        ET.pointer("in_"),
+    //    can_bridge (Trait edge) -> in_ (Composition) -> dereference (Pointer)
+    const path = [_]TypeGraph.ChildReferenceNode.EdgeTraversal{
+        EdgeTrait.traverse("CanBridge"),
+        EdgeComposition.traverse("in_"),
+        EdgePointer.traverse(),
     };
 
     const reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &path);
@@ -2064,9 +2060,11 @@ test "resolve path through trait and pointer edges" {
     try std.testing.expect(Node.is_same(resolved.?.node, p1_instance.node));
 
     // 8. Test the out_ path as well
+    const ET = TypeGraph.ChildReferenceNode.EdgeTraversal;
     const path_out = [_]ET{
-        ET.trait("can_bridge"),
-        ET.pointer("out_"),
+        EdgeTrait.traverse("CanBridge"),
+        EdgeComposition.traverse("out_"),
+        EdgePointer.traverse(),
     };
     const reference_out = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &path_out);
     const resolved_out = TypeGraph.ChildReferenceNode.resolve(reference_out, resistor_instance);
@@ -2092,21 +2090,26 @@ test "resolve path through trait and pointer edges" {
 
     const child_can_bridge = try tg.instantiate_node(CanBridge);
     _ = EdgeTrait.add_trait_instance(resistor_child, child_can_bridge.node);
-    const child_trait_edge = EdgeTrait.get_owner_edge(child_can_bridge).?;
-    child_trait_edge.edge.attributes.name = "can_bridge";
-    _ = EdgePointer.point_to(child_can_bridge, child_p1.node, "in_", null);
-    _ = EdgePointer.point_to(child_can_bridge, child_p2.node, "out_", null);
+
+    // Add Pointer nodes as composition children of child_can_bridge
+    const child_in_ptr = try tg.instantiate_node(PointerType);
+    const child_out_ptr = try tg.instantiate_node(PointerType);
+    _ = EdgeComposition.add_child(child_can_bridge, child_in_ptr.node, "in_");
+    _ = EdgeComposition.add_child(child_can_bridge, child_out_ptr.node, "out_");
+    _ = EdgePointer.point_to(child_in_ptr, child_p1.node, null, null);
+    _ = EdgePointer.point_to(child_out_ptr, child_p2.node, null, null);
 
     std.debug.print("\nMixed path test:\n", .{});
     std.debug.print("TopModule instance: {d}\n", .{top_instance.node.attributes.uuid});
     std.debug.print("resistor child: {d}\n", .{resistor_child.node.attributes.uuid});
     std.debug.print("child_p1: {d}\n", .{child_p1.node.attributes.uuid});
 
-    // 9. Test MIXED path: resistor (Composition) -> can_bridge (Trait) -> in_ (Pointer)
+    // 9. Test MIXED path: resistor (Composition) -> can_bridge (Trait) -> in_ (Composition) -> dereference (Pointer)
     const mixed_path = [_]ET{
-        ET.composition("resistor"),
-        ET.trait("can_bridge"),
-        ET.pointer("in_"),
+        EdgeComposition.traverse("resistor"),
+        EdgeTrait.traverse("CanBridge"),
+        EdgeComposition.traverse("in_"),
+        EdgePointer.traverse(),
     };
 
     const mixed_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &mixed_path);
@@ -2116,8 +2119,8 @@ test "resolve path through trait and pointer edges" {
     std.debug.print("Mixed path resolved to: {d}\n", .{mixed_resolved.?.node.attributes.uuid});
     try std.testing.expect(Node.is_same(mixed_resolved.?.node, child_p1.node));
 
-    // 10. Test composition-only path using helper
-    const comp_path = [_]ET{ ET.composition("resistor"), ET.composition("p1") };
+    // 10. Test composition-only path
+    const comp_path = [_]ET{ EdgeComposition.traverse("resistor"), EdgeComposition.traverse("p1") };
     const comp_ref = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &comp_path);
     const comp_resolved = TypeGraph.ChildReferenceNode.resolve(comp_ref, top_instance);
 
@@ -2126,7 +2129,7 @@ test "resolve path through trait and pointer edges" {
     try std.testing.expect(Node.is_same(comp_resolved.?.node, child_p1.node));
 
     std.debug.print("All EdgeTraversal tests passed!\n", .{});
-    std.debug.print("  - Trait->Pointer path works\n", .{});
-    std.debug.print("  - Mixed Composition->Trait->Pointer path works\n", .{});
+    std.debug.print("  - Trait->Composition->Pointer path works\n", .{});
+    std.debug.print("  - Mixed Composition->Trait->Composition->Pointer path works\n", .{});
     std.debug.print("  - Composition-only path works\n", .{});
 }

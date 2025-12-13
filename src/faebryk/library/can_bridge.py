@@ -29,19 +29,20 @@ class can_bridge(fabll.Node):
             raise ValueError("out is None")
         return out_
 
+    # should be makeedge, take refpaths
     @classmethod
-    def MakeChild(cls, in_: fabll._ChildField, out_: fabll._ChildField):
+    def MakeEdge(cls, in_: fabll.RefPath, out_: fabll.RefPath):
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Collections.Pointer.MakeEdge(
                 [out, cls.in_],
-                [in_],
+                in_,
             )
         )
         out.add_dependant(
             F.Collections.Pointer.MakeEdge(
                 [out, cls.out_],
-                [out_],
+                out_,
             )
         )
         return out

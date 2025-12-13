@@ -1,5 +1,6 @@
 from typing import Callable
 
+from faebryk.core.faebrykpy import EdgeTraversal
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
 from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, Edge, Node
 
@@ -65,3 +66,7 @@ class EdgeComposition:
         sort: bool = False,
         required_traits: list[Node] | None = None,
     ) -> list[BoundNode]: ...
+    @staticmethod
+    def traverse(*, identifier: str) -> EdgeTraversal:
+        """Create an EdgeTraversal for following a Composition edge by identifier."""
+        ...

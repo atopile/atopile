@@ -75,6 +75,11 @@ pub const Trait = struct {
 pub const EdgeTrait = struct {
     pub const tid: Edge.EdgeType = 1762883874;
 
+    /// Create an EdgeTraversal for finding a trait instance by its type name.
+    pub fn traverse(trait_type_name: graph.str) TypeGraph.ChildReferenceNode.EdgeTraversal {
+        return .{ .identifier = trait_type_name, .edge_type = tid };
+    }
+
     pub fn init(allocator: std.mem.Allocator, owner: NodeReference, trait_instance: NodeReference) EdgeReference {
         const edge = Edge.init(allocator, owner, trait_instance, tid);
 

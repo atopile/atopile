@@ -33,6 +33,11 @@ pub const ChildQuery = struct {
 pub const EdgeComposition = struct {
     pub const tid: Edge.EdgeType = 1759269250;
 
+    /// Create an EdgeTraversal for following a Composition edge by identifier.
+    pub fn traverse(identifier: str) TypeGraph.ChildReferenceNode.EdgeTraversal {
+        return .{ .identifier = identifier, .edge_type = tid };
+    }
+
     pub fn init(allocator: std.mem.Allocator, parent: NodeReference, child: NodeReference, child_identifier: str) EdgeReference {
         const edge = Edge.init(allocator, parent, child, tid);
 

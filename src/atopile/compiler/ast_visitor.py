@@ -21,7 +21,13 @@ from atopile.compiler.gentypegraph import (
     ScopeState,
     Symbol,
 )
-from faebryk.core.edge_traversal import EdgeTraversal
+from faebryk.core.faebrykpy import (
+    EdgeComposition,
+    EdgePointer,
+    EdgeTrait,
+    EdgeTraversal,
+)
+from faebryk.library.can_bridge import can_bridge
 from faebryk.libs.util import cast_assert, not_none
 
 logger = logging.getLogger(__name__)
@@ -810,19 +816,20 @@ class ASTVisitor:
     ) -> graph.BoundNode:
         """Resolve a path through the can_bridge trait to a pointer.
 
-        Creates path: base_path -> can_bridge (Composition) -> pointer (Pointer)
+        Creates path: base -> can_bridge (trait) -> pointer_node -> dereference
 
-        This uses EdgeTraversal to specify different edge types in the path:
-        - The base_path segments use Composition edges (string identifiers)
-        - "can_bridge" uses Composition edge, trait instances are accessible as children
-        - "in_"/"out_" use Pointer edges (finds Pointer child and dereferences it)
+        Steps:
+        1. base_path segments: Composition edges to reach the bridgeable node
+        2. can_bridge: Trait edge to get the trait instance (type-safe)
+        3. pointer ("in_"/"out_"): Composition edge to get the Pointer node
+        4. pointer(): Dereference the Pointer to get the actual target
         """
-        # Build the full path with EdgeTraversals
         base_identifiers = list(base_path.identifiers())
         path: list[str | EdgeTraversal] = [
             *base_identifiers,
-            EdgeTraversal.composition("can_bridge"),
-            EdgeTraversal.pointer(pointer),
+            EdgeTrait.traverse(trait_type=can_bridge),  # Type-safe trait edge
+            EdgeComposition.traverse(identifier=pointer),  # Get the Pointer node
+            EdgePointer.traverse(),  # Dereference it
         ]
 
         try:

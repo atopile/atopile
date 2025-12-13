@@ -32,7 +32,6 @@ class Crystal_Oscillator(fabll.Node):
 
     def capacitance(self):
         pass
-        # return (self.crystal.get().load_capacitance.get(). - self._STRAY_CAPACITANCE.get()) * 2
 
     def __preinit__(self):
         for cap in self.capacitors:
@@ -48,8 +47,8 @@ class Crystal_Oscillator(fabll.Node):
         )
         self.crystal.unnamed[1].connect(self.xtal_if.xin)
 
-        _can_bridge = F.can_bridge.MakeChild(
-            in_=self.xtal_if.get().xin, out_=self.xtal_if.get().xout
+        _can_bridge = F.can_bridge.MakeEdge(
+            [self.xtal_if.get().xin], [self.xtal_if.get().xout]
         )
 
     usage_example = fabll.Traits.MakeEdge(

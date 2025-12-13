@@ -48,7 +48,7 @@ class BJT(fabll.Node):
     )
 
     _can_bridge = fabll.Traits.MakeEdge(
-        F.can_bridge.MakeChild(in_=collector, out_=emitter)
+        F.can_bridge.MakeEdge(["collector"], ["emitter"])
     )
 
     _pin_association_heuristic = fabll.Traits.MakeEdge(

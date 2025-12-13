@@ -2,6 +2,7 @@ const graph_mod = @import("graph");
 const std = @import("std");
 const composition_mod = @import("composition.zig");
 const edgebuilder_mod = @import("edgebuilder.zig");
+const typegraph_mod = @import("typegraph.zig");
 
 const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
@@ -17,9 +18,16 @@ const str = graph.str;
 const EdgeComposition = composition_mod.EdgeComposition;
 const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 const return_first = visitor.return_first;
+const TypeGraph = typegraph_mod.TypeGraph;
 
 pub const EdgePointer = struct {
     pub const tid: Edge.EdgeType = 1759771470;
+
+    /// Create an EdgeTraversal for dereferencing the current Pointer node.
+    /// No identifier needed - simply follows the EdgePointer from the current node to its target.
+    pub fn traverse() TypeGraph.ChildReferenceNode.EdgeTraversal {
+        return .{ .identifier = "", .edge_type = tid };
+    }
 
     pub fn init(allocator: std.mem.Allocator, from: NodeReference, to: NodeReference, identifier: ?str, order: ?u32) EdgeReference {
         const edge = Edge.init(allocator, from, to, tid);

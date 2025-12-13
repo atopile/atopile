@@ -63,7 +63,7 @@ class MultiCapacitor(fabll.Node):
         e.add_dependant(lead)
 
     _can_bridge = fabll.Traits.MakeEdge(
-        F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])
+        F.can_bridge.MakeEdge(["unnamed[0]"], ["unnamed[1]"])
     )
 
     S = F.has_simple_value_representation.Spec
@@ -82,26 +82,26 @@ class MultiCapacitor(fabll.Node):
     # ----------------------------------------
     #                WIP
     # ----------------------------------------
-    def capacitors(self) -> list[F.Capacitor]:
-        count = self.count
-        return times(count, F.Capacitor)
+    # def capacitors(self) -> list[F.Capacitor]:
+    #     count = self.count
+    #     return times(count, F.Capacitor)
 
-    def __preinit__(self):
-        # ------------------------------------
-        #           connections
-        # ------------------------------------
+    # def __preinit__(self):
+    #     # ------------------------------------
+    #     #           connections
+    #     # ------------------------------------
 
-        self.unnamed[0].connect(*(c.unnamed[0] for c in self.capacitors))
-        self.unnamed[1].connect(*(c.unnamed[1] for c in self.capacitors))
+    #     self.unnamed[0].connect(*(c.unnamed[0] for c in self.capacitors))
+    #     self.unnamed[1].connect(*(c.unnamed[1] for c in self.capacitors))
 
-        # ------------------------------------
-        #          parametrization
-        # ------------------------------------
-        self.capacitance.alias_is(Add(*(c.capacitance for c in self.capacitors)))
-        for c in self.capacitors:
-            # TODO use min once available
-            self.max_voltage.constrain_le(c.max_voltage)
-            self.temperature_coefficient.constrain_superset(c.temperature_coefficient)
+    #     # ------------------------------------
+    #     #          parametrization
+    #     # ------------------------------------
+    #     self.capacitance.alias_is(Add(*(c.capacitance for c in self.capacitors)))
+    #     for c in self.capacitors:
+    #         # TODO use min once available
+    #         self.max_voltage.constrain_le(c.max_voltage)
+    #         self.temperature_coefficient.constrain_superset(c.temperature_coefficient)
 
     # def set_equal_capacitance(self, capacitance: ParameterOperatable):
     #     op = capacitance / self._count

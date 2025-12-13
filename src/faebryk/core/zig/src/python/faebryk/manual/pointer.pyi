@@ -1,5 +1,6 @@
 from typing import Callable
 
+from faebryk.core.faebrykpy import EdgeTraversal
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
 from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, Edge, Node
 
@@ -46,3 +47,7 @@ class EdgePointer:
         identifier: str | None = None,
         order: int | None,
     ) -> BoundEdge: ...
+    @staticmethod
+    def traverse() -> EdgeTraversal:
+        """Create an EdgeTraversal for dereferencing the current Pointer node."""
+        ...

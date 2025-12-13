@@ -1,5 +1,6 @@
 from typing import Callable
 
+from faebryk.core.faebrykpy import EdgeTraversal
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
 from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, Edge, Node
 
@@ -66,3 +67,7 @@ class EdgeOperand:
     def get_operand_by_identifier(
         *, node: BoundNode, operand_identifier: str
     ) -> BoundNode | None: ...
+    @staticmethod
+    def traverse(*, identifier: str) -> EdgeTraversal:
+        """Create an EdgeTraversal for finding an operand by identifier."""
+        ...

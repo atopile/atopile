@@ -29,6 +29,8 @@ class ElectricPower(fabll.Node):
         unit=F.Units.Ampere,
     )
 
+    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeEdge(in_=[""], out_=[""]))
+
     def on_obj_set(self):
         fabll.Traits.create_and_add_instance_to(
             node=self.hv.get(), trait=F.has_net_name_suggestion

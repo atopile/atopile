@@ -1,5 +1,5 @@
-# Re-export EdgeTraversal from the actual implementation
-from faebryk.core.edge_traversal import EdgeTraversal as EdgeTraversal
+# Re-export EdgeTraversal from faebrykpy
+from faebryk.core.faebrykpy import EdgeTraversal as EdgeTraversal
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
 from faebryk.core.zig.gen.faebryk.nodebuilder import NodeCreationAttributes
 from faebryk.core.zig.gen.graph.graph import BoundNode, GraphView, Literal

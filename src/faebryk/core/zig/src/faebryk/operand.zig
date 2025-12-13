@@ -3,6 +3,7 @@ const std = @import("std");
 const edgebuilder_mod = @import("edgebuilder.zig");
 const node_type_mod = @import("node_type.zig");
 const composition_mod = @import("composition.zig");
+const typegraph_mod = @import("typegraph.zig");
 
 const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
@@ -14,9 +15,15 @@ const str = graph.str;
 const EdgeType = node_type_mod.EdgeType;
 const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 const EdgeComposition = composition_mod.EdgeComposition;
+const TypeGraph = typegraph_mod.TypeGraph;
 
 pub const EdgeOperand = struct {
     pub const tid: Edge.EdgeType = 1760649153;
+
+    /// Create an EdgeTraversal for finding an operand by identifier.
+    pub fn traverse(identifier: str) TypeGraph.ChildReferenceNode.EdgeTraversal {
+        return .{ .identifier = identifier, .edge_type = tid };
+    }
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -328,7 +335,8 @@ test "edge operand basic" {
 
     var collector = CollectOperands{ .edges = std.ArrayList(graph.BoundEdgeReference).init(a) };
     defer collector.edges.deinit();
-    const visit_result = EdgeOperand.visit_operand_edges(b_expr, void, &collector, CollectOperands.visit);
+    // Pass the operands container node directly (e.g., OperandSequence, OperandPointer)
+    const visit_result = EdgeOperand.visit_operand_edges(b_operands, void, &collector, CollectOperands.visit);
     try std.testing.expectEqual(visit_result, visitor.VisitResult(void){ .EXHAUSTED = {} });
     try std.testing.expectEqual(collector.edges.items.len, 3);
     try std.testing.expect(Node.is_same(EdgeOperand.get_operand_node(collector.edges.items[0].edge), operand_a));

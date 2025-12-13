@@ -8,7 +8,11 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 from atopile.compiler.ast_visitor import DslException
 from atopile.compiler.build import Linker, StdlibRegistry, build_file, build_source
-from faebryk.core.edge_traversal import EdgeTraversal
+from faebryk.core.faebrykpy import (
+    EdgeComposition,
+    EdgePointer,
+    EdgeTrait,
+)
 from faebryk.libs.util import not_none
 
 NULL_CONFIG = SimpleNamespace(project=None)
@@ -997,17 +1001,17 @@ class TestEdgeTraversalPathResolution:
     """
 
     def test_edge_traversal_helpers(self):
-        """Test that EdgeTraversal helper methods create correct edge types."""
-        comp = EdgeTraversal.composition("child")
+        """Test that Edge type traverse() methods create correct EdgeTraversals."""
+        comp = EdgeComposition.traverse(identifier="child")
         assert comp.identifier == "child"
         assert comp.edge_type == fbrk.EdgeComposition.get_tid()
 
-        trait = EdgeTraversal.trait("my_trait")
+        trait = EdgeTrait.traverse(trait_type_name="my_trait")
         assert trait.identifier == "my_trait"
         assert trait.edge_type == fbrk.EdgeTrait.get_tid()
 
-        ptr = EdgeTraversal.pointer("my_ptr")
-        assert ptr.identifier == "my_ptr"
+        ptr = EdgePointer.traverse()
+        assert ptr.identifier == ""  # Pointer traverse has no identifier
         assert ptr.edge_type == fbrk.EdgePointer.get_tid()
 
     def test_string_path_backwards_compatible(self):
@@ -1054,14 +1058,16 @@ class TestEdgeTraversalPathResolution:
         ref = tg.ensure_child_reference(
             type_node=Resistor,
             path=[
-                EdgeTraversal.trait("can_bridge"),
-                EdgeTraversal.pointer("in_"),
+                EdgeTrait.traverse(trait_type_name="can_bridge"),
+                EdgeComposition.traverse(identifier="in_"),
+                EdgePointer.traverse(),
             ],
             validate=False,
         )
         assert ref is not None
 
         # Verify we can get the reference path back
+        # Note: get_reference_path only returns non-empty identifiers
         path = tg.get_reference_path(reference=ref)
         assert len(path) == 2
         assert path[0] == "can_bridge"
@@ -1084,19 +1090,22 @@ class TestEdgeTraversalPathResolution:
         # Add resistor as child
         tg.add_make_child(type_node=App, child_type=Resistor, identifier="r")
 
-        # Create a reference path: r (Composition) -> can_bridge (Trait) -> in_(Pointer)
+        # Create a reference path:
+        # r (Composition) -> can_bridge (Trait) -> in_ (Composition) -> deref (Pointer)
         ref = tg.ensure_child_reference(
             type_node=App,
             path=[
                 "r",  # String = Composition edge (default)
-                EdgeTraversal.trait("can_bridge"),
-                EdgeTraversal.pointer("in_"),
+                EdgeTrait.traverse(trait_type_name="can_bridge"),
+                EdgeComposition.traverse(identifier="in_"),
+                EdgePointer.traverse(),
             ],
             validate=False,
         )
         assert ref is not None
 
         # Verify the path was stored correctly
+        # Note: get_reference_path only returns non-empty identifiers
         path = tg.get_reference_path(reference=ref)
         assert len(path) == 3
         assert path[0] == "r"

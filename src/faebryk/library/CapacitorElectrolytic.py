@@ -44,7 +44,7 @@ class CapacitorElectrolytic(fabll.Node):
     anode.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [anode]))
     cathode.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [cathode]))
 
-    _can_bridge = F.can_bridge.MakeChild(in_=anode, out_=cathode)
+    _can_bridge = F.can_bridge.MakeEdge(["anode"], ["cathode"])
 
     S = F.has_simple_value_representation.Spec
     _simple_repr = fabll.Traits.MakeEdge(
