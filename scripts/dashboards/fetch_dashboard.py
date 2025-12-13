@@ -2,8 +2,8 @@
 """
 Fetch and display pytest summaries from recent GitHub Actions runs.
 
-Polls a workflow on a branch, downloads the "test-report" (pytest-html) artifact,
-parses summary counts, caches results, and renders a CRT-style local HTML
+Polls a workflow on a branch, downloads the "test-report" artifact,
+parses summary counts from `test-report.json`, and renders a CRT-style local HTML
 dashboard with a multi-run trend chart.
 
 Requirements:
@@ -11,15 +11,13 @@ Requirements:
 - GH_TOKEN env var with "repo" or "public_repo" scope.
 
 Usage:
-  GH_TOKEN=... python scripts/dashboards/fetch_dashboard.py --branch feature/fabll_part2
+  GH_TOKEN=... python scripts/dashboards/fetch_dashboard.py
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 import time
@@ -29,23 +27,25 @@ import urllib.request
 import webbrowser
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from zoneinfo import ZoneInfo
 
 
-WORKFLOW_FILENAME = "pytest.yml"  # GitHub workflow file name (override with --workflow)
+REPO = "atopile/atopile"
+WORKFLOW_FILENAME = "pytest.yml"
+WORKFLOW_NAME = "pytest"
+BRANCH = "feature/fabll_part2"
+
 REPORT_ARTIFACT_NAME = "test-report"
-REPORT_COPY_BASENAME = "test-report.html"
+REPORT_JSON_BASENAME = "test-report.json"
+REPORT_COPY_BASENAME = REPORT_JSON_BASENAME
+
+RECENT_RUNS = 50
 POLL_SECONDS = 30
+OUTPUT_DIR = Path(__file__).resolve().parent
 BROWSER_CMD = "chromium-browser"
-DEFAULT_REPO = "atopile/atopile"
-DEFAULT_BRANCH = "feature/fabll_part2"
-DEFAULT_RECENT_RUNS = 50
-DEFAULT_DAYS_BACK = 7
-CACHE_FILENAME = ".dashboard_cache.json"
-SCRIPT_DIR = Path(__file__).resolve().parent
 
 
 def gh_request(url: str, token: str, accept: str | None = None) -> bytes:
@@ -87,26 +87,53 @@ def get_recent_runs_page(
     return runs
 
 
-def get_artifact_download_url(repo: str, run_id: int, token: str) -> str | None:
-    """
-    Find the archive_download_url for the named report artifact.
-    The artifacts list is paginated; page until found or exhausted.
-    """
+def get_recent_completed_runs(
+    repo: str,
+    branch: str,
+    token: str,
+    *,
+    workflow_filename: str | None,
+    max_runs: int,
+) -> list[dict]:
+    max_runs = max(1, max_runs)
+    collected: list[dict] = []
+    page = 1
+    per_page = min(100, max_runs)
+    while len(collected) < max_runs and page <= 10:
+        runs_page = get_recent_runs_page(
+            repo,
+            branch,
+            token,
+            workflow_filename=workflow_filename,
+            per_page=per_page,
+            page=page,
+            status="completed",
+        )
+        if not runs_page:
+            break
+        collected.extend(runs_page)
+        if len(runs_page) < per_page:
+            break
+        page += 1
+    return collected[:max_runs]
+
+
+def list_run_artifacts(repo: str, run_id: int, token: str) -> list[dict]:
+    artifacts: list[dict] = []
     page = 1
     per_page = 100
     while page <= 10:
-        url = f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/artifacts?per_page={per_page}&page={page}"
+        url = (
+            f"https://api.github.com/repos/{repo}/actions/runs/{run_id}/artifacts"
+            f"?per_page={per_page}&page={page}"
+        )
         data = json.loads(gh_request(url, token))
-        artifacts = data.get("artifacts", []) or []
-        for artifact in artifacts:
-            if artifact.get("name") == REPORT_ARTIFACT_NAME:
-                download_url = artifact.get("archive_download_url")
-                if download_url:
-                    return download_url
-        if len(artifacts) < per_page:
+        items = data.get("artifacts", []) or []
+        artifacts.extend(a for a in items if isinstance(a, dict))
+        if len(items) < per_page:
             break
         page += 1
-    return None
+    return artifacts
 
 
 def download_artifact_zip(url: str, token: str, dest_zip: Path) -> None:
@@ -134,11 +161,20 @@ def download_artifact_zip(url: str, token: str, dest_zip: Path) -> None:
         dest_zip.write_bytes(resp.read())
 
 
-def extract_artifact_member(zip_path: Path, dest_dir: Path, suffixes: tuple[str, ...]) -> Path | None:
+def extract_artifact_member(
+    zip_path: Path,
+    dest_dir: Path,
+    suffixes: tuple[str, ...],
+    *,
+    basenames: tuple[str, ...] | None = None,
+) -> Path | None:
     suffixes = tuple(s.lower() for s in suffixes)
+    basenames_norm = tuple(b.lower() for b in basenames) if basenames else None
     with zipfile.ZipFile(zip_path, "r") as zf:
         for member in zf.namelist():
             if member.lower().endswith(suffixes):
+                if basenames_norm and Path(member).name.lower() not in basenames_norm:
+                    continue
                 zf.extract(member, path=dest_dir)
                 return Path(dest_dir) / member
     return None
@@ -166,95 +202,43 @@ def _as_int(value: object) -> int:
         return 0
 
 
-def _extract_first_int(text: str) -> int:
-    if not text:
-        return 0
-    match = re.search(r"(-?\d[\d,]*)", text)
-    if not match:
-        return 0
-    return int(match.group(1).replace(",", ""))
-
-
-def parse_pytest_html_summary(html_text: str) -> dict:
-    """Return pytest result counts parsed from the pytest-html report."""
-    summary = {
-        "passed": 0,
-        "failed": 0,
-        "errors": 0,
-        "skipped": 0,
-        "xfailed": 0,
-        "xpassed": 0,
-        "tests": 0,
+def parse_test_report_summary(report: dict) -> dict[str, object]:
+    summary = (report.get("summary") or {}) if isinstance(report, dict) else {}
+    errors = _as_int(summary.get("errors"))
+    crashed = _as_int(summary.get("crashed"))
+    return {
+        "passed": _as_int(summary.get("passed")),
+        "failed": _as_int(summary.get("failed")),
+        "errors": errors,
+        "crashed": crashed,
+        "skipped": _as_int(summary.get("skipped")),
+        "tests": _as_int(summary.get("total")),
+        "total_duration": summary.get("total_duration", 0.0) or 0.0,
+        "workers_used": _as_int(summary.get("workers_used")),
     }
 
-    filters_block = None
-    marker = '<div class="filters">'
-    marker_idx = html_text.find(marker)
-    if marker_idx != -1:
-        after = html_text[marker_idx + len(marker) :]
-        end_idx = after.find("</div>")
-        if end_idx != -1:
-            filters_block = after[:end_idx]
 
-    class_map = {
-        "passed": "passed",
-        "failed": "failed",
-        "error": "errors",
-        "skipped": "skipped",
-        "xfailed": "xfailed",
-        "xpassed": "xpassed",
-    }
-
-    if filters_block:
-        for cls, key in class_map.items():
-            match = re.search(rf'<span class="{cls}">(.*?)</span>', filters_block, re.IGNORECASE | re.DOTALL)
-            if match:
-                summary[key] = _extract_first_int(match.group(1))
-
-    run_count_match = re.search(r'<p class="run-count">(.*?)</p>', html_text, re.IGNORECASE | re.DOTALL)
-    if run_count_match:
-        summary["tests"] = _extract_first_int(run_count_match.group(1))
-
-    if summary["tests"] <= 0:
-        summary["tests"] = sum(summary[k] for k in ("passed", "failed", "errors", "skipped", "xfailed", "xpassed"))
-
-    return summary
-
-
-def parse_failing_tests_by_file(html_text: str) -> list[tuple[str, int]]:
-    """
-    Extract failing tests from pytest-html report and group by file.
-    Returns list of (file_path, failure_count) tuples sorted by count descending.
-    """
-    import html
-
-    # Find the data-container JSON blob
-    match = re.search(r'<div[^>]+id="data-container"[^>]+data-jsonblob="([^"]+)"', html_text)
-    if not match:
+def parse_failing_files_from_test_report(report: dict) -> list[tuple[str, int]]:
+    tests = report.get("tests") if isinstance(report, dict) else None
+    if not isinstance(tests, list):
         return []
 
-    try:
-        json_str = html.unescape(match.group(1))
-        data = json.loads(json_str)
-        tests = data.get("tests", {})
-    except (json.JSONDecodeError, KeyError):
-        return []
-
-    # Count failures per file
     file_counts: dict[str, int] = {}
-    for test_id, runs in tests.items():
-        for run in runs:
-            # Check for failed or error status
-            result = run.get("result", "").lower()
-            if result in ("failed", "error"):
-                # Extract file path from test_id (format: "path/to/file.py::test_name")
-                file_path = test_id.split("::")[0]
-                file_counts[file_path] = file_counts.get(file_path, 0) + 1
-                break  # Only count once per test_id
+    for test in tests:
+        if not isinstance(test, dict):
+            continue
+        outcome = str(test.get("outcome") or "").lower()
+        if outcome not in {"failed", "error", "crashed"}:
+            continue
+        file_path = test.get("file") or ""
+        if not file_path:
+            nodeid = str(test.get("nodeid") or "")
+            file_path = nodeid.split("::")[0] if nodeid else ""
+        if not file_path:
+            continue
+        file_counts[file_path] = file_counts.get(file_path, 0) + 1
 
-    # Sort by count descending, then alphabetically by file path
-    sorted_files = sorted(file_counts.items(), key=lambda x: (-x[1], x[0]))
-    return sorted_files
+    return sorted(file_counts.items(), key=lambda x: (-x[1], x[0]))
 
 
 def format_commit_time(iso_time: str) -> str:
@@ -271,173 +255,265 @@ def format_commit_time(iso_time: str) -> str:
         return iso_time
 
 
-def inject_run_metadata(summary: dict, run: dict) -> None:
+def build_dashboard_summary(*, run: dict, report: dict) -> dict[str, object]:
+    """
+    Normalize a single run into the dict expected by the existing dashboard UI.
+    """
+    out: dict[str, object] = {}
+    out.update(parse_test_report_summary(report))
+
+    status = run.get("conclusion") or run.get("status") or "unknown"
+    out["status"] = status
+    out["run_url"] = run.get("html_url") or ""
+
+    run_time_iso = run.get("run_started_at") or run.get("created_at") or run.get("updated_at") or ""
+    out["run_time_iso"] = run_time_iso
+
     head_commit = run.get("head_commit") or {}
-    status = run.get("conclusion") or run.get("status")
-    if status:
-        summary["status"] = status
-    if "status" not in summary:
-        summary["status"] = "unknown"
+    commit_time_iso = head_commit.get("timestamp") or run.get("updated_at") or run.get("created_at") or ""
+    out["commit_time_iso"] = commit_time_iso
+    out["commit_time"] = format_commit_time(commit_time_iso) if commit_time_iso else "unknown"
 
-    run_url = run.get("html_url")
-    if run_url:
-        summary["run_url"] = run_url
-    if "run_url" not in summary:
-        summary["run_url"] = ""
-
-    commit_time_raw = (
-        head_commit.get("timestamp")
-        or run.get("updated_at")
-        or run.get("created_at")
-    )
-    if commit_time_raw:
-        summary["commit_time"] = format_commit_time(commit_time_raw)
-        summary["commit_time_iso"] = commit_time_raw
-    if "commit_time" not in summary:
-        summary["commit_time"] = "unknown"
-    if "commit_time_iso" not in summary:
-        summary["commit_time_iso"] = ""
-
-    message = (head_commit.get("message") or "").strip()
-    if message:
-        summary["commit_message"] = message
-    if "commit_message" not in summary:
-        summary["commit_message"] = "unknown"
-
-    author = (
-        (head_commit.get("author") or {}).get("name")
+    commit = report.get("commit") if isinstance(report, dict) else None
+    if not isinstance(commit, dict):
+        commit = {}
+    out["commit_message"] = (commit.get("message") or head_commit.get("message") or "").strip() or "unknown"
+    out["commit_short_hash"] = (commit.get("short_hash") or "").strip()
+    out["commit_author"] = (
+        commit.get("author")
+        or (head_commit.get("author") or {}).get("name")
         or (head_commit.get("author") or {}).get("email")
+        or (head_commit.get("committer") or {}).get("name")
+        or (head_commit.get("committer") or {}).get("email")
+        or "unknown"
     )
-    if not author:
-        author = (
-            (head_commit.get("committer") or {}).get("name")
-            or (head_commit.get("committer") or {}).get("email")
-        )
-    if author:
-        summary["commit_author"] = author
-    if "commit_author" not in summary:
-        summary["commit_author"] = "unknown"
+    return out
 
 
-def _load_cache(out_dir: Path) -> dict[str, dict]:
-    cache_path = out_dir / CACHE_FILENAME
-    if not cache_path.exists():
-        return {}
-    try:
-        data = json.loads(cache_path.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
-
-
-def _save_cache(out_dir: Path, cache: dict[str, dict]) -> None:
-    cache_path = out_dir / CACHE_FILENAME
-    try:
-        cache_path.write_text(json.dumps(cache, indent=2, sort_keys=True), encoding="utf-8")
-    except Exception:
-        pass
-
-
-def _fetch_summary_for_run(repo: str, run: dict, token: str) -> tuple[dict | None, str | None]:
-    """
-    Download the test-report artifact for a run and parse summary.
-    Returns (summary, html_text). html_text is provided for optional extra parsing.
-    """
+def fetch_test_report_for_run(repo: str, run: dict, token: str) -> dict | None:
     run_id = run.get("id")
     if not run_id:
-        return None, None
-    artifact_url = get_artifact_download_url(repo, run_id, token)
-    if not artifact_url:
-        return None, None
-    with TemporaryDirectory() as tmpdir:
-        zip_path = Path(tmpdir) / "artifact.zip"
-        download_artifact_zip(artifact_url, token, zip_path)
-        artifact_member = extract_artifact_member(zip_path, Path(tmpdir), (".html", ".htm"))
-        if not artifact_member:
-            return None, None
-        html_text = artifact_member.read_text(encoding="utf-8")
-        summary: dict[str, object] = parse_pytest_html_summary(html_text)
-        inject_run_metadata(summary, run)
-        return summary, html_text
+        return None
+
+    artifacts = list_run_artifacts(repo, run_id, token)
+    if not artifacts:
+        return None
+
+    # Prefer the expected artifact name, but ultimately search all artifacts.
+    def _prio(a: dict) -> tuple[int, str]:
+        name = str(a.get("name") or "")
+        return (0 if name == REPORT_ARTIFACT_NAME else 1, name)
+
+    for artifact in sorted(artifacts, key=_prio):
+        if artifact.get("expired"):
+            continue
+        artifact_url = artifact.get("archive_download_url")
+        if not artifact_url:
+            continue
+        with TemporaryDirectory() as tmpdir:
+            zip_path = Path(tmpdir) / "artifact.zip"
+            try:
+                download_artifact_zip(str(artifact_url), token, zip_path)
+            except Exception:
+                continue
+            artifact_member = extract_artifact_member(
+                zip_path,
+                Path(tmpdir),
+                (".json",),
+                basenames=(REPORT_JSON_BASENAME,),
+            )
+            if not artifact_member:
+                continue
+            try:
+                return json.loads(artifact_member.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+    return None
 
 
-def _run_timestamp(run: dict) -> datetime | None:
-    ts = run.get("run_started_at") or run.get("created_at") or run.get("updated_at")
-    if not ts:
+def _run_id(run: dict) -> int | None:
+    run_id = run.get("id")
+    return run_id if isinstance(run_id, int) else None
+
+
+def _run_sha(run: dict) -> str | None:
+    sha = run.get("head_sha")
+    if not isinstance(sha, str):
+        return None
+    sha = sha.strip()
+    return sha or None
+
+
+def _reports_cache_dir(out_dir: Path) -> Path:
+    return out_dir / "reports"
+
+
+def _cached_report_path(out_dir: Path, key: str) -> Path:
+    return _reports_cache_dir(out_dir) / f"{key}.json"
+
+
+def _missing_marker_path(out_dir: Path, key: str) -> Path:
+    return _reports_cache_dir(out_dir) / f"{key}.missing"
+
+
+def _load_cached_report(out_dir: Path, key: str) -> dict | None:
+    report_path = _cached_report_path(out_dir, key)
+    if not report_path.exists():
         return None
     try:
-        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        data = json.loads(report_path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
     except Exception:
         return None
 
 
-def _parse_iso_timestamp(ts: object) -> datetime | None:
-    if not ts or not isinstance(ts, str):
-        return None
-    try:
-        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
-    except Exception:
-        return None
+def _write_cached_report(out_dir: Path, key: str, report: dict) -> None:
+    cache_dir = _reports_cache_dir(out_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    report_path = _cached_report_path(out_dir, key)
+    tmp_path = report_path.with_suffix(".json.tmp")
+    tmp_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+    tmp_path.replace(report_path)
+    missing_path = _missing_marker_path(out_dir, key)
+    if missing_path.exists():
+        try:
+            missing_path.unlink()
+        except Exception:
+            pass
 
 
-def get_runs_within_window(
+def _mark_report_missing(out_dir: Path, key: str) -> None:
+    cache_dir = _reports_cache_dir(out_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    missing_path = _missing_marker_path(out_dir, key)
+    if not missing_path.exists():
+        missing_path.write_text("", encoding="utf-8")
+
+
+def refresh_dashboard_once(
+    *,
     repo: str,
     branch: str,
     token: str,
+    workflow_filename: str | None,
     max_runs: int,
-    days_back: int,
-    status: str | None = None,
-    workflow_filename: str | None = WORKFLOW_FILENAME,
-    debug: bool = False,
-) -> list[dict]:
-    """
-    Collect up to max_runs completed runs from the last days_back days.
-    Fetches additional pages if needed so the window can fill max_runs.
-    """
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
-    collected: list[dict] = []
-    page = 1
-    per_page = 100
+    interval_seconds: int,
+    out_dir: Path,
+    debug: bool,
+) -> Path | None:
+    runs = get_recent_completed_runs(
+        repo,
+        branch,
+        token,
+        workflow_filename=workflow_filename,
+        max_runs=max_runs,
+    )
+    if not runs:
+        print("No completed runs yet; waiting...")
+        return None
 
-    while len(collected) < max_runs and page <= 10:  # hard cap to avoid infinite loops
-        runs_page = get_recent_runs_page(
-            repo,
-            branch,
-            token,
-            workflow_filename=workflow_filename,
-            per_page=per_page,
-            page=page,
-            status=status,
-        )
-        if not runs_page:
-            break
-        for run in runs_page:
-            dt = _run_timestamp(run)
-            if dt is None:
-                continue
-            if dt >= cutoff:
-                collected.append(run)
-                if len(collected) >= max_runs:
-                    break
-        # If the oldest run in this page is already older than cutoff, no need to keep paging.
-        oldest_dt = _run_timestamp(runs_page[-1])
-        if oldest_dt is not None and oldest_dt < cutoff:
-            break
-        page += 1
+    out_dir.mkdir(parents=True, exist_ok=True)
+    _reports_cache_dir(out_dir).mkdir(parents=True, exist_ok=True)
 
-    # Ensure descending order (newest first)
-    collected.sort(key=lambda r: _run_timestamp(r) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
-    if debug:
-        newest = _run_timestamp(collected[0]) if collected else None
-        oldest = _run_timestamp(collected[-1]) if collected else None
-        wf = workflow_filename or "<all workflows>"
+    # Only fetch reports for commits we haven't downloaded yet.
+    # Cache key is commit hash (prefer run.head_sha; fallback to run.id for odd cases).
+    to_fetch: list[tuple[int, dict, str]] = []
+    cached: list[tuple[int, dict, dict]] = []
+    for i, run in enumerate(runs):
+        run_id = _run_id(run)
+        sha = _run_sha(run)
+        key = sha or (str(run_id) if run_id is not None else None)
+        if not key:
+            continue
+
+        # Migrate legacy run-id based cache files to sha-based names when possible.
+        if sha and run_id is not None:
+            legacy_json = _cached_report_path(out_dir, str(run_id))
+            legacy_missing = _missing_marker_path(out_dir, str(run_id))
+            sha_json = _cached_report_path(out_dir, sha)
+            sha_missing = _missing_marker_path(out_dir, sha)
+            if legacy_json.exists() and not sha_json.exists():
+                try:
+                    legacy_json.replace(sha_json)
+                except Exception:
+                    pass
+            if legacy_missing.exists() and not sha_missing.exists():
+                try:
+                    legacy_missing.replace(sha_missing)
+                except Exception:
+                    pass
+
+        if _cached_report_path(out_dir, key).exists():
+            report = _load_cached_report(out_dir, key)
+            if report:
+                cached.append((i, run, report))
+            else:
+                # corrupted cache file -> re-fetch
+                to_fetch.append((i, run, key))
+            continue
+        if _missing_marker_path(out_dir, key).exists():
+            continue
+        to_fetch.append((i, run, key))
+
+    fetched: list[tuple[int, dict, dict]] = []
+    if to_fetch:
+        max_workers = min(16, max(4, len(to_fetch)))
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            future_map = {
+                pool.submit(fetch_test_report_for_run, repo, run, token): (i, run, key)
+                for i, run, key in to_fetch
+            }
+            for fut in as_completed(future_map):
+                i, run, key = future_map[fut]
+                try:
+                    report = fut.result()
+                except Exception:
+                    report = None
+                if report:
+                    report_key = key
+                    commit = report.get("commit") if isinstance(report, dict) else None
+                    if isinstance(commit, dict):
+                        commit_hash = commit.get("hash")
+                        if isinstance(commit_hash, str) and commit_hash.strip():
+                            report_key = commit_hash.strip()
+                    _write_cached_report(out_dir, report_key, report)
+                    fetched.append((i, run, report))
+                else:
+                    _mark_report_missing(out_dir, key)
+
+    available = cached + fetched
+    if not available:
         print(
-            f"Debug: workflow={wf} fetched_pages={page-1} "
-            f"collected={len(collected)} cutoff={cutoff.isoformat()} "
-            f"newest={newest.isoformat() if newest else 'n/a'} "
-            f"oldest={oldest.isoformat() if oldest else 'n/a'}"
+            f"No {REPORT_JSON_BASENAME} found in last {len(runs)} workflow runs "
+            f"(downloaded {len(to_fetch)} new runs)."
         )
-    return collected[:max_runs]
+        return None
+
+    # runs are newest->oldest (index 0 is newest). Latest is smallest index we fetched.
+    latest_i, latest_run, latest_report = min(available, key=lambda t: t[0])
+    latest_summary = build_dashboard_summary(run=latest_run, report=latest_report)
+
+    html_url = latest_run.get("html_url")
+    print(
+        f"Refreshing latest run with report: {html_url} "
+        f"(cached {len(cached)}, downloaded {len(fetched)}/{len(to_fetch)}, total {len(available)}/{len(runs)})"
+    )
+
+    # History is oldest->newest for the chart.
+    history: list[dict] = []
+    for i, run, report in sorted(available, key=lambda t: t[0], reverse=True):
+        if i == latest_i:
+            history.append(latest_summary)
+        else:
+            history.append(build_dashboard_summary(run=run, report=report))
+
+    failing_files = parse_failing_files_from_test_report(latest_report)
+    (out_dir / REPORT_COPY_BASENAME).write_text(json.dumps(latest_report, indent=2, sort_keys=True), encoding="utf-8")
+    html = build_html(latest_summary, history=history, failing_files=failing_files)
+    dest = out_dir / "dashboard.html"
+    dest.write_text(html, encoding="utf-8")
+    inject_refresh(dest, interval_seconds)
+    return dest
 
 
 # =============================================================================
@@ -677,7 +753,7 @@ def _get_dashboard_css() -> str:
       padding: 8px;
       box-shadow: 0 0 12px rgba(158, 252, 141, 0.25) inset;
     }
-    .chart svg { width: 100%; height: 264px; display: block; }
+	    .chart svg { width: 100%; height: 343px; display: block; }
     .chart text {
       fill: var(--phosphor);
       font-size: 12px;
@@ -729,35 +805,29 @@ def _build_trend_charts(history: list[dict]) -> str:
                 _as_int(h.get("passed"))
                 + _as_int(h.get("failed"))
                 + _as_int(h.get("errors"))
+                + _as_int(h.get("crashed"))
                 + _as_int(h.get("skipped"))
-                + _as_int(h.get("xfailed"))
-                + _as_int(h.get("xpassed"))
             )
         totals.append(max(t, 0))
 
-    # Build x-axis labels at day intervals to reduce clutter.
+    # Build x-axis labels based on commit, not time.
     labels: list[str] = []
-    last_day: str | None = None
-    for h in history:
-        ct = h.get("commit_time") or ""
-        day_str = ""
-        if isinstance(ct, str) and ct != "unknown":
-            day_str = ct.split(" at ")[0]
-        if day_str and day_str != last_day:
-            labels.append(day_str)
-            last_day = day_str
+    n = len(history)
+    label_step = max(1, n // 6)
+    for i, h in enumerate(history):
+        short_hash = str(h.get("commit_short_hash") or "")
+        if not short_hash:
+            labels.append("")
+            continue
+        if i == 0 or i == n - 1 or (i % label_step) == 0:
+            labels.append(short_hash)
         else:
             labels.append("")
-    if labels and not labels[-1]:
-        # Ensure most recent point is labeled.
-        ct_last = history[-1].get("commit_time") or ""
-        if isinstance(ct_last, str) and ct_last != "unknown":
-            labels[-1] = ct_last.split(" at ")[0]
 
     max_y = max(passed + failed + errors + totals + [1])
 
     width = 900
-    height = int(220 * 1.2)
+    height = int(220 * 1.56)
     pad_left, pad_right, pad_top, pad_bottom = 48, 12, 12, 40
     mascot_gutter = 84  # reserved space on right for mascots
     plot_right = width - pad_right - mascot_gutter
@@ -767,59 +837,7 @@ def _build_trend_charts(history: list[dict]) -> str:
     def y(v: int) -> float:
         return pad_top + inner_h * (1 - (v / max_y))
 
-    n = len(history)
-    dts = [
-        _parse_iso_timestamp(h.get("commit_time_iso") or h.get("run_time_iso"))
-        for h in history
-    ]
-    known_dts = [dt for dt in dts if dt is not None]
-    if len(known_dts) >= 2:
-        local_tz = ZoneInfo("America/Los_Angeles")
-        work_start_h, work_end_h = 8, 20  # local hours inclusive of weekends
-
-        def _work_seconds_up_to(dt_local: datetime, base_date: datetime.date) -> float:
-            total_s = 0.0
-            day = base_date
-            last_day = dt_local.date()
-            one_day = timedelta(days=1)
-            full_day_s = (work_end_h - work_start_h) * 3600
-            while day < last_day:
-                total_s += full_day_s
-                day += one_day
-            ws = datetime(last_day.year, last_day.month, last_day.day, work_start_h, tzinfo=local_tz)
-            we = datetime(last_day.year, last_day.month, last_day.day, work_end_h, tzinfo=local_tz)
-            clamped = min(max(dt_local, ws), we)
-            total_s += max(0.0, (clamped - ws).total_seconds())
-            return total_s
-
-        known_locals = [dt.astimezone(local_tz) for dt in known_dts]
-        min_dt_local = min(known_locals)
-        base_date = min_dt_local.date()
-        base_offset = _work_seconds_up_to(min_dt_local, base_date)
-
-        work_vals: list[float | None] = []
-        for dt in dts:
-            if dt is None:
-                work_vals.append(None)
-                continue
-            dt_local = dt.astimezone(local_tz)
-            work_vals.append(_work_seconds_up_to(dt_local, base_date) - base_offset)
-
-        known_work = [v for v in work_vals if v is not None]
-        span_work = max(known_work) - min(known_work) if known_work else 0.0
-
-        if span_work > 0:
-            xs = []
-            for i, v in enumerate(work_vals):
-                if v is None:
-                    frac = i / (n - 1)
-                else:
-                    frac = v / span_work
-                xs.append(pad_left + inner_w * frac)
-        else:
-            xs = [pad_left + (inner_w * i / (n - 1)) for i in range(n)]
-    else:
-        xs = [pad_left + (inner_w * i / (n - 1)) for i in range(n)]
+    xs = [pad_left + (inner_w * i / (n - 1)) for i in range(n)]
 
     def polyline(values: list[int], color: str, width: float = 2.5, dash: str | None = None) -> str:
         points = " ".join(f"{xs[i]:.1f},{y(values[i]):.1f}" for i in range(n))
@@ -989,14 +1007,12 @@ def _build_main_panel(summary: dict, history: list[dict] | None = None) -> str:
     pass_count = _as_int(summary.get("passed"))
     fail_count = _as_int(summary.get("failed"))
     error_count = _as_int(summary.get("errors"))
+    crashed_count = _as_int(summary.get("crashed"))
     skip_count = _as_int(summary.get("skipped"))
-    xfailed_count = _as_int(summary.get("xfailed"))
-    xpassed_count = _as_int(summary.get("xpassed"))
 
     tests = _as_int(summary.get("tests"))
     inferred_total = (
-        pass_count + fail_count + error_count + skip_count
-        + xfailed_count + xpassed_count
+        pass_count + fail_count + error_count + crashed_count + skip_count
     )
     total = tests or inferred_total or 1
 
@@ -1005,8 +1021,7 @@ def _build_main_panel(summary: dict, history: list[dict] | None = None) -> str:
         ("Passed", pass_count, "#16a34a"),
         ("Failed", fail_count, "#dc2626"),
         ("Errors", error_count, "#facc15"),
-        ("Unexpected passes", xpassed_count, "#f97316"),
-        ("Expected failures", xfailed_count, "#8b5cf6"),
+        ("Crashed", crashed_count, "#f97316"),
         ("Skipped", skip_count, "#6b7280")
     ]
 
@@ -1117,155 +1132,40 @@ def open_in_browser(file_path: Path, browser_cmd: str | None = None) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Fetch latest pytest summary artifact and view it.")
-    parser.add_argument("--branch", default=DEFAULT_BRANCH, help=f"Branch to monitor (default: {DEFAULT_BRANCH})")
-    parser.add_argument("--interval", type=int, default=POLL_SECONDS, help=f"Polling interval seconds (default: {POLL_SECONDS})")
-    parser.add_argument(
-        "--workflow",
-        default=WORKFLOW_FILENAME,
-        help=f"Workflow filename to read runs from (default: {WORKFLOW_FILENAME}); use 'all' for any workflow",
-    )
-    parser.add_argument(
-        "--runs",
-        type=int,
-        default=DEFAULT_RECENT_RUNS,
-        help=f"Maximum number of recent completed runs to consider (default: {DEFAULT_RECENT_RUNS})",
-    )
-    parser.add_argument(
-        "--days",
-        type=int,
-        default=DEFAULT_DAYS_BACK,
-        help=f"Only include runs from the last N days (default: {DEFAULT_DAYS_BACK})",
-    )
-    parser.add_argument(
-        "--output-dir",
-        default=str(SCRIPT_DIR),
-        help=f"Directory to store the latest dashboard file (default: {SCRIPT_DIR})",
-    )
-    parser.add_argument("--debug", action="store_true", help="Print run filtering debug info each poll")
-    args = parser.parse_args()
-
-    repo = DEFAULT_REPO
-
     token = os.getenv("GH_TOKEN")
     if not token:
         print("GH_TOKEN environment variable is required", file=sys.stderr)
         return 1
 
-    workflow_filename = None if str(args.workflow).lower() in {"all", "*", "any"} else args.workflow
     print(
-        f"Watching {repo} workflow={workflow_filename or '<all workflows>'} branch={args.branch} "
-        f"(polling last {args.days} days, capped at {args.runs} runs)"
+        f"Watching {REPO} workflow={WORKFLOW_FILENAME} ({WORKFLOW_NAME}) branch={BRANCH} "
+        f"(checking last {RECENT_RUNS} workflow runs)"
     )
     opened_once = False
-    first_poll = True
     while True:
         try:
-            runs = get_runs_within_window(
-                repo,
-                args.branch,
-                token,
-                max_runs=args.runs,
-                days_back=args.days,
-                status="completed",
-                workflow_filename=workflow_filename,
-                debug=args.debug,
+            dest = refresh_dashboard_once(
+                repo=REPO,
+                branch=BRANCH,
+                token=token,
+                workflow_filename=WORKFLOW_FILENAME,
+                max_runs=RECENT_RUNS,
+                interval_seconds=POLL_SECONDS,
+                out_dir=OUTPUT_DIR,
+                debug=False,
             )
-            if not runs:
-                print("No completed runs yet; waiting...")
-            else:
-                latest_run = runs[0]
-                html_url = latest_run.get("html_url")
-                print(f"Refreshing latest completed run: {html_url}")
-
-                out_dir = Path(args.output_dir).resolve()
-                out_dir.mkdir(parents=True, exist_ok=True)
-                cache = _load_cache(out_dir)
-
-                # Always fetch latest for failing-files panel + fresh summary
-                latest_summary, latest_html = _fetch_summary_for_run(repo, latest_run, token)
-                if not latest_summary or not latest_html:
-                    print("No test-report artifact found for latest run.")
-                    continue
-
-                failing_files = parse_failing_tests_by_file(latest_html)
-
-                cache[str(latest_run["id"])] = latest_summary
-
-                # Build history for charts, oldest->newest.
-                # Cache entries may be either a parsed summary dict or {"_missing": True}.
-                history: list[dict] = []
-                missing_runs: list[dict] = []
-                for run in reversed(runs):
-                    run_id = run.get("id")
-                    if not run_id:
-                        continue
-                    cached = cache.get(str(run_id))
-                    if cached:
-                        if not cached.get("_missing"):
-                            history.append(cached)
-                        continue
-                    missing_runs.append(run)
-
-                # Backfill missing runs in parallel.
-                # On first poll this fills the full window; later polls usually only fetch new runs.
-                if missing_runs:
-                    to_fetch = missing_runs
-                    if args.debug:
-                        phase = "initial backfill" if first_poll else "backfilling"
-                        print(f"Debug: {phase} {len(to_fetch)} missing artifacts")
-                    with ThreadPoolExecutor(max_workers=4) as pool:
-                        future_map = {
-                            pool.submit(_fetch_summary_for_run, repo, run, token): run
-                            for run in to_fetch
-                        }
-                        for fut in as_completed(future_map):
-                            run = future_map[fut]
-                            run_id = run.get("id")
-                            try:
-                                summary, _ = fut.result()
-                            except Exception:
-                                summary = None
-                            if run_id:
-                                if summary:
-                                    cache[str(run_id)] = summary
-                                    history.append(summary)
-                                else:
-                                    cache[str(run_id)] = {
-                                        "_missing": True,
-                                        "checked_at": datetime.now(timezone.utc).isoformat(),
-                                    }
-
-                # Rebuild history from cache to ensure ordering and inclusion of newly fetched items.
-                history = []
-                for run in reversed(runs):
-                    run_id = run.get("id")
-                    if not run_id:
-                        continue
-                    cached = cache.get(str(run_id))
-                    if cached and not cached.get("_missing"):
-                        history.append(cached)
-
-                _save_cache(out_dir, cache)
-
-                # Keep a copy of the latest full report for drill-down
-                summary_copy = out_dir / REPORT_COPY_BASENAME
-                summary_copy.write_text(latest_html, encoding="utf-8")
-
-                html = build_html(latest_summary, history=history, failing_files=failing_files)
-                dest = out_dir / "dashboard.html"
-                dest.write_text(html, encoding="utf-8")
-                inject_refresh(dest, args.interval)
+            if dest:
                 if not opened_once:
                     open_in_browser(dest, None)
                     opened_once = True
                 else:
                     print(f"Dashboard updated at {dest} (refresh existing tab).")
-                first_poll = False
+        except KeyboardInterrupt:
+            return 0
         except Exception as exc:  # pragma: no cover - convenience loop
             print(f"Error: {exc}", file=sys.stderr)
 
-        time.sleep(args.interval)
+        time.sleep(POLL_SECONDS)
 
 
 if __name__ == "__main__":
