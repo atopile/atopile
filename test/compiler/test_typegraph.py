@@ -72,6 +72,10 @@ def _collect_children_by_name(type_graph, type_node, name: str):
     ]
 
 
+# TODO FIXME there's a lot of illegal use of for loops and connecting resistors together
+# especially in the for loop tests
+
+
 def test_block_definitions_recorded():
     _, _, _, result = _build_snippet(
         """

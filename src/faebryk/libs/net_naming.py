@@ -11,7 +11,6 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserException
 from faebryk.libs.util import FuncDict, groupby, once
-from faebryk.libs.nets import get_named_net
 
 logger = logging.getLogger(__name__)
 
@@ -546,7 +545,7 @@ def _get_fallback_prefix(net: F.Net) -> str | None:
 
     # Try lowest common ancestor
     if lcn := fabll.Node.nearest_common_ancestor(*interfaces):
-        return lcn[0].get_full_name()
+        return lcn[0].get_full_name(include_uuid=False)
 
     return None
 
@@ -617,7 +616,7 @@ def _resolve_conflicts_with_lca(names: FuncDict[F.Net, _NetName]) -> None:
             lcn = fabll.Node.nearest_common_ancestor(*interfaces)
 
             if lcn:
-                names[net].prefix = lcn[0].get_full_name()
+                names[net].prefix = lcn[0].get_full_name(include_uuid=False)
 
 
 def _resolve_conflicts_with_suffixes(names: FuncDict[F.Net, _NetName]) -> None:
