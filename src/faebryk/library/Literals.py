@@ -13,9 +13,6 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.zig.gen.faebryk.composition import (  # type: ignore[import-untyped]
-    EdgeComposition,
-)
 from faebryk.libs.util import not_none, once
 
 if TYPE_CHECKING:
@@ -3042,7 +3039,7 @@ class Numbers(fabll.Node):
         center: float,
         rel: float,
         unit: type[fabll.NodeT],
-    ) -> fabll._ChildField["Numbers"]:
+    ) -> fabll._ChildField[Self]:
         return cls.MakeChild(
             min=center - rel * center, max=center + rel * center, unit=unit
         )
@@ -6337,7 +6334,7 @@ class Booleans(fabll.Node):
                     g=self.g, attributes=BooleanAttributes(value=value)
                 )
                 self.values.get().append(lit)
-                EdgeComposition.add_anon_child(
+                fbrk.EdgeComposition.add_anon_child(
                     bound_node=self.instance, child=lit.instance.node()
                 )
         return self
@@ -7024,7 +7021,7 @@ LiteralLike = LiteralValues | LiteralNodes | is_literal
 
 
 def make_simple_lit_singleton(
-    g: graph.GraphView, tg: graph.TypeGraph, value: LiteralValues
+    g: graph.GraphView, tg: fbrk.TypeGraph, value: LiteralValues
 ) -> LiteralNodes:
     if value is True or value is False:
         return (
@@ -7067,7 +7064,7 @@ class BoundLiteralContext:
         my_number = ctx.Numbers.setup_from_singleton(value=1.0)
     """
 
-    def __init__(self, tg: graph.TypeGraph, g: graph.GraphView):
+    def __init__(self, tg: fbrk.TypeGraph, g: graph.GraphView):
         self.tg = tg
         self.g = g
         self._bound: dict = {}
@@ -7634,7 +7631,7 @@ class TestBooleans:
 def test_string_literal_on_type():
     values = ["a", "b", "c"]
     g = graph.GraphView.create()
-    tg = graph.TypeGraph.create(g=g)
+    tg = fbrk.TypeGraph.create(g=g)
 
     class MyType(fabll.Node):
         string_set = Strings.MakeChild(*values).put_on_type()
@@ -7649,7 +7646,7 @@ def test_string_literal_alias_to_literal():
 
     values = ["a", "b", "c"]
     g = graph.GraphView.create()
-    tg = graph.TypeGraph.create(g=g)
+    tg = fbrk.TypeGraph.create(g=g)
 
     class MyType(fabll.Node):
         string_param = StringParameter.MakeChild()
@@ -7718,7 +7715,7 @@ class TestEnums:
 
     def test_enum_literal_op_intersect_intervals(self):
         g = graph.GraphView.create()
-        tg = graph.TypeGraph.create(g=g)
+        tg = fbrk.TypeGraph.create(g=g)
 
         class TestEnum(Enum):
             A = "a"
@@ -7756,7 +7753,7 @@ class TestEnums:
     def test_serialize_enum_set_format(self):
         """Test serialization produces the expected EnumSet format."""
         g = graph.GraphView.create()
-        tg = graph.TypeGraph.create(g=g)
+        tg = fbrk.TypeGraph.create(g=g)
 
         class TestPackage(StrEnum):
             R0402 = "R0402"
@@ -7798,7 +7795,7 @@ class TestEnums:
     def test_deserialize_enum_set(self):
         """Test deserialization from the EnumSet format."""
         g = graph.GraphView.create()
-        tg = graph.TypeGraph.create(g=g)
+        tg = fbrk.TypeGraph.create(g=g)
 
         data = {
             "type": "EnumSet",
@@ -7823,7 +7820,7 @@ class TestEnums:
     def test_deserialize_multiple_elements(self):
         """Test deserialization with multiple selected elements."""
         g = graph.GraphView.create()
-        tg = graph.TypeGraph.create(g=g)
+        tg = fbrk.TypeGraph.create(g=g)
 
         data = {
             "type": "EnumSet",
@@ -7859,7 +7856,7 @@ class TestEnums:
     def test_serialize_deserialize_round_trip(self, values):
         """Test that serialize followed by deserialize returns equivalent enums."""
         g = graph.GraphView.create()
-        tg = graph.TypeGraph.create(g=g)
+        tg = fbrk.TypeGraph.create(g=g)
 
         class RoundTripEnum(StrEnum):
             A = "a"
@@ -7883,7 +7880,7 @@ class TestEnums:
     def test_is_literal_serialize_deserialize_round_trip(self):
         """Test round trip through is_literal for enums."""
         g = graph.GraphView.create()
-        tg = graph.TypeGraph.create(g=g)
+        tg = fbrk.TypeGraph.create(g=g)
 
         class TestEnum(StrEnum):
             FOO = "foo"
@@ -7911,7 +7908,7 @@ class TestEnums:
     def test_deserialize_invalid_type_raises(self):
         """Test that deserializing with wrong type raises ValueError."""
         g = graph.GraphView.create()
-        tg = graph.TypeGraph.create(g=g)
+        tg = fbrk.TypeGraph.create(g=g)
 
         data = {"type": "WrongType", "data": {}}
 
@@ -7921,7 +7918,7 @@ class TestEnums:
     def test_deserialize_backend_package_format(self):
         """Test deserialization matches the exact format from the user example."""
         g = graph.GraphView.create()
-        tg = graph.TypeGraph.create(g=g)
+        tg = fbrk.TypeGraph.create(g=g)
 
         # This is the exact format from the user's example (abbreviated)
         data = {
@@ -7956,7 +7953,7 @@ class TestEnums:
 
 # def test_make_lit():
 #     g = graph.GraphView.create()
-#     tg = graph.TypeGraph.create(g=g)
+#     tg = fbrk.TypeGraph.create(g=g)
 #     assert make_lit(g, tg, value=True).get_values() == [True]
 #     assert make_lit(g, tg, value=3).get_values() == [3]
 #     assert make_lit(g, tg, value="test").get_values() == ["test"]

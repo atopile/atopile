@@ -2,7 +2,6 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -12,15 +11,7 @@ import faebryk.libs.exceptions
 from atopile.address import AddrStr
 from atopile.compiler.ast_visitor import is_ato_module
 from atopile.config import ProjectConfig, config
-from faebryk.core.zig.gen.faebryk.pointer import (  # type: ignore[import-untyped]
-    EdgePointer,
-)
 from faebryk.libs.util import DefaultFactoryDict, KeyErrorNotFound, find, not_none
-
-if TYPE_CHECKING:
-    from faebryk.core.zig.gen.graph.graph import (  # type: ignore[import-untyped]
-        BoundNode,
-    )
 
 logger = logging.getLogger(__name__)
 
@@ -101,15 +92,15 @@ class in_sub_pcb(fabll.Node):
         return False
 
 
-def _index_module_layouts(tg: fbrk.TypeGraph) -> "dict[BoundNode, set[SubPCB]]":
+def _index_module_layouts(tg: fbrk.TypeGraph) -> "dict[graph.BoundNode, set[SubPCB]]":
     """Find, tag and return a set of all the modules with layouts."""
     from atopile.compiler import ast_types as AST
     from atopile.compiler.ast_visitor import AnyAtoBlock
 
     pcbs: dict[Path, SubPCB] = DefaultFactoryDict(lambda _: SubPCB)  # type: ignore[arg-type]
-    entries: "dict[BoundNode, set[SubPCB]]" = defaultdict(set)
+    entries: "dict[graph.BoundNode, set[SubPCB]]" = defaultdict(set)
 
-    modules_by_address: "dict[AddrStr, BoundNode]" = {}
+    modules_by_address: "dict[AddrStr, graph.BoundNode]" = {}
 
     modules = fabll.Traits.get_implementor_objects(
         is_ato_module.bind_typegraph(tg), g=tg.get_graph_view()
@@ -119,7 +110,7 @@ def _index_module_layouts(tg: fbrk.TypeGraph) -> "dict[BoundNode, set[SubPCB]]":
         type_node = not_none(module.get_type_node())
         definition = fabll.Node.bind_instance(
             not_none(
-                EdgePointer.get_pointed_node_by_identifier(
+                fbrk.EdgePointer.get_pointed_node_by_identifier(
                     bound_node=not_none(type_node),
                     identifier=AnyAtoBlock._definition_identifier,
                 )

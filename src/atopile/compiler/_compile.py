@@ -5,14 +5,14 @@ import typer
 
 import atopile.compiler.ast_types as AST
 import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 from atopile.compiler.build import Linker, StdlibRegistry, build_file
 from atopile.config import config
 from faebryk.core.node import TreeRenderer
-from faebryk.core.zig.gen.graph.graph import BoundNode, GraphView
 
 
-def extract_value(node: BoundNode, type_name: str) -> str | None:
+def extract_value(node: graph.BoundNode, type_name: str) -> str | None:
     """Extract display value, handling compiler-specific AST types."""
     if type_name == "FileLocation":
         loc = AST.FileLocation.bind_instance(node)
@@ -60,7 +60,7 @@ def main(
 ) -> None:
     """Compile an ato file and visualize its compilation stages."""
     section("Build logs", sep="")
-    g = GraphView.create()
+    g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     stdlib = StdlibRegistry(tg)
     result = build_file(g=g, tg=tg, import_path=file.name, path=file.resolve())

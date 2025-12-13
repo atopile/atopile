@@ -7,6 +7,7 @@ from typing import Self
 import pytest
 
 import faebryk.core.faebrykpy as fbrk
+from faebryk.core.graph_render import GraphRenderer
 import faebryk.core.node as fabll
 from faebryk.library import _F as F
 

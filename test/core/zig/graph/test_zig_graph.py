@@ -1,27 +1,16 @@
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
-from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
-
-
-def test_load_graph_module():
-    from faebryk.core.zig.gen.graph.graph import GraphView  # type: ignore  # noqa: F401
 
 
 def test_minimal_graph():
-    from faebryk.core.zig.gen.graph.graph import (  # type: ignore[import-untyped]
-        Edge,
-        GraphView,
-        Node,
-    )
+    g = graph.GraphView.create()
 
-    g = GraphView.create()
-
-    n1 = Node.create()
-    n2 = Node.create()
-    n3 = Node.create()
-    e120 = Edge.create(source=n1, target=n2, edge_type=0)
-    e130 = Edge.create(source=n1, target=n3, edge_type=0)
-    e121 = Edge.create(source=n1, target=n2, edge_type=1)
+    n1 = graph.Node.create()
+    n2 = graph.Node.create()
+    n3 = graph.Node.create()
+    e120 = graph.Edge.create(source=n1, target=n2, edge_type=0)
+    e130 = graph.Edge.create(source=n1, target=n3, edge_type=0)
+    e121 = graph.Edge.create(source=n1, target=n2, edge_type=1)
 
     bn1 = g.insert_node(node=n1)
     g.insert_node(node=n2)
@@ -51,19 +40,14 @@ def test_minimal_graph():
 
 
 def test_node_count():
-    from faebryk.core.zig.gen.graph.graph import (  # type: ignore
-        GraphView,
-        Node,
-    )
-
-    g = GraphView.create()
+    g = graph.GraphView.create()
 
     # GraphView starts with 1 node (the self_node)
     assert g.get_node_count() == 1
 
-    n1 = Node.create()
-    n2 = Node.create()
-    n3 = Node.create()
+    n1 = graph.Node.create()
+    n2 = graph.Node.create()
+    n3 = graph.Node.create()
 
     g.insert_node(node=n1)
     assert g.get_node_count() == 2
@@ -213,7 +197,7 @@ def test_typegraph_instantiate():
     rp1_ref = type_graph.debug_add_reference(type_node=Resistor, path=["p1"])
     rp2_ref = type_graph.debug_add_reference(type_node=Resistor, path=["p2"])
 
-    edge_attrs = EdgeCreationAttributes.create(
+    edge_attrs = fbrk.EdgeCreationAttributes.create(
         edge_type=fbrk.EdgePointer.get_tid(),
         directional=True,
         name="test",

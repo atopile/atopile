@@ -753,7 +753,7 @@ class BoundParameterContext:
         my_param = ctx.NumericParameter.setup(units=F .Units.Ohm)
     """
 
-    def __init__(self, tg: graph.TypeGraph, g: graph.GraphView):
+    def __init__(self, tg: fbrk.TypeGraph, g: graph.GraphView):
         self.tg = tg
         self.g = g
         self._bound: dict = {}

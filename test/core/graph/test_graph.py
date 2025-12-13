@@ -36,8 +36,8 @@ def test_component_instance_count(component_type: type, expected_count: int | No
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    component_instance = component_type.bind_typegraph(tg).create_instance(g)
-    count = graph.InstanceGraphFunctions.count_nodes(component_instance.instance)
+    _ = component_type.bind_typegraph(tg).create_instance(g)
+    count = g.get_node_count()
     print(f"{component_type.__name__} node count: {count}")
 
     if expected_count is not None:

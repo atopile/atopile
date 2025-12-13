@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import ClassVar
 
 import atopile.compiler.ast_types as AST
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.compiler.gentypegraph import (
@@ -20,19 +22,6 @@ from atopile.compiler.gentypegraph import (
     Symbol,
 )
 from faebryk.core.edge_traversal import EdgeTraversal
-from faebryk.core.zig.gen.faebryk.interface import (  # type: ignore[import-untyped]
-    EdgeInterfaceConnection,
-)
-from faebryk.core.zig.gen.faebryk.linker import Linker  # type: ignore[import-untyped]
-from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
-from faebryk.core.zig.gen.faebryk.typegraph import (  # type: ignore[import-untyped]
-    TypeGraph,
-    TypeGraphPathError,
-)
-from faebryk.core.zig.gen.graph.graph import (  # type: ignore[import-untyped]
-    BoundNode,
-    GraphView,
-)
 from faebryk.libs.util import cast_assert, not_none
 
 logger = logging.getLogger(__name__)
@@ -46,8 +35,8 @@ STDLIB_ALLOWLIST = {
 
 @dataclass
 class BuildState:
-    type_roots: dict[str, BoundNode]
-    external_type_refs: list[tuple[BoundNode, ImportRef]]
+    type_roots: dict[str, graph.BoundNode]
+    external_type_refs: list[tuple[graph.BoundNode, ImportRef]]
     file_path: Path | None
     import_path: str | None
 
@@ -175,21 +164,23 @@ class _TypeContextStack:
     preserves the enriched error metadata.
     """
 
-    def __init__(self, *, g: GraphView, tg: TypeGraph, state: BuildState) -> None:
-        self._stack: list[BoundNode] = []
+    def __init__(
+        self, *, g: graph.GraphView, tg: fbrk.TypeGraph, state: BuildState
+    ) -> None:
+        self._stack: list[graph.BoundNode] = []
         self._g = g
         self._tg = tg
         self._state = state
 
     @contextmanager
-    def enter(self, type_node: BoundNode) -> Generator[None, None, None]:
+    def enter(self, type_node: graph.BoundNode) -> Generator[None, None, None]:
         self._stack.append(type_node)
         try:
             yield
         finally:
             self._stack.pop()
 
-    def current(self) -> BoundNode:
+    def current(self) -> graph.BoundNode:
         if not self._stack:
             raise DslException("Type context is not available")
         return self._stack[-1]
@@ -209,13 +200,17 @@ class _TypeContextStack:
             case _:
                 raise NotImplementedError(f"Unhandled action: {action}")
 
-    def resolve_reference(self, path: FieldPath, validate: bool = True) -> BoundNode:
+    def resolve_reference(
+        self, path: FieldPath, validate: bool = True
+    ) -> graph.BoundNode:
         return self._ensure_field_path(
             type_node=self.current(), field_path=path, validate=validate
         )
 
     @staticmethod
-    def _format_path_error(field_path: FieldPath, error: TypeGraphPathError) -> str:
+    def _format_path_error(
+        field_path: FieldPath, error: fbrk.TypeGraphPathError
+    ) -> str:
         full_path = ".".join(error.path) if error.path else str(field_path)
 
         match error.kind:
@@ -239,8 +234,8 @@ class _TypeContextStack:
                 return f"Field `{full_path}` is not defined in scope"
 
     def _ensure_field_path(
-        self, type_node: BoundNode, field_path: FieldPath, validate: bool = True
-    ) -> BoundNode:
+        self, type_node: graph.BoundNode, field_path: FieldPath, validate: bool = True
+    ) -> graph.BoundNode:
         # Cast to list[str | EdgeTraversal] for type compatibility with the
         # ensure_child_reference API which accepts mixed string/EdgeTraversal paths
         identifiers: list[str | EdgeTraversal] = list(field_path.identifiers())
@@ -248,10 +243,12 @@ class _TypeContextStack:
             return self._tg.ensure_child_reference(
                 type_node=type_node, path=identifiers, validate=validate
             )
-        except TypeGraphPathError as exc:
+        except fbrk.TypeGraphPathError as exc:
             raise DslException(self._format_path_error(field_path, exc)) from exc
 
-    def _add_child(self, type_node: BoundNode, action: AddMakeChildAction) -> None:
+    def _add_child(
+        self, type_node: graph.BoundNode, action: AddMakeChildAction
+    ) -> None:
         if (parent_reference := action.parent_reference) is None and (
             parent_path := action.parent_path
         ) is not None:
@@ -295,18 +292,18 @@ class _TypeContextStack:
                     f"Type `{child_type_identifier}` is not defined in scope"
                 )
 
-            Linker.link_type_reference(
+            fbrk.Linker.link_type_reference(
                 g=self._g, type_reference=type_reference, target_type_node=target
             )
 
     # TODO FIXME: no type checking for is_interface trait on connected nodes.
     # We should use the fabll connect_to method for this.
-    def _add_link(self, type_node: BoundNode, action: AddMakeLinkAction) -> None:
+    def _add_link(self, type_node: graph.BoundNode, action: AddMakeLinkAction) -> None:
         self._tg.add_make_link(
             type_node=type_node,
             lhs_reference=action.lhs_ref,
             rhs_reference=action.rhs_ref,
-            edge_attributes=EdgeInterfaceConnection.build(shallow=False),
+            edge_attributes=fbrk.EdgeInterfaceConnection.build(shallow=False),
         )
 
 
@@ -350,8 +347,8 @@ class ASTVisitor:
     def __init__(
         self,
         ast_root: AST.File,
-        graph: GraphView,
-        type_graph: TypeGraph,
+        graph: graph.GraphView,
+        type_graph: fbrk.TypeGraph,
         import_path: str | None,
         file_path: Path | None,
     ) -> None:
@@ -535,7 +532,7 @@ class ASTVisitor:
         type_node = _Block.bind_typegraph(self._type_graph).get_or_create_type()
         self._state.type_roots[module_name] = type_node
 
-        EdgePointer.point_to(
+        fbrk.EdgePointer.point_to(
             bound_node=type_node,
             target_node=node.instance.node(),
             identifier=AnyAtoBlock._definition_identifier,
@@ -589,7 +586,7 @@ class ASTVisitor:
         self,
         target_path: FieldPath,
         new_spec: NewChildSpec,
-        parent_reference: BoundNode | None,
+        parent_reference: graph.BoundNode | None,
         parent_path: FieldPath | None,
     ) -> list[AddMakeChildAction] | AddMakeChildAction:
         self._scope_stack.add_field(target_path)
@@ -602,7 +599,7 @@ class ASTVisitor:
                         type_node=self._type_stack.current(),
                         container_path=list(parent_path.identifiers()),
                     )
-                except TypeGraphPathError as exc:
+                except fbrk.TypeGraphPathError as exc:
                     raise DslException(
                         self._type_stack._format_path_error(parent_path, exc)
                     ) from exc
@@ -666,7 +663,7 @@ class ASTVisitor:
         logger.info(f"Assignable: {assignable}")
 
         parent_path: FieldPath | None = None
-        parent_reference: BoundNode | None = None
+        parent_reference: graph.BoundNode | None = None
 
         if target_path.parent_segments:
             parent_path = FieldPath(segments=tuple(target_path.parent_segments))
@@ -718,7 +715,7 @@ class ASTVisitor:
         lhs_path = self.visit_FieldRef(lhs_node.cast(t=AST.FieldRef))
         rhs_path = self.visit_FieldRef(rhs_node.cast(t=AST.FieldRef))
 
-        def _ensure_reference(path: FieldPath) -> BoundNode:
+        def _ensure_reference(path: FieldPath) -> graph.BoundNode:
             (root, *_) = path.segments
             root_path = FieldPath(segments=(root,))
 
@@ -808,7 +805,9 @@ class ASTVisitor:
 
         return AddMakeLinkAction(lhs_ref=lhs_ref, rhs_ref=rhs_ref)
 
-    def _resolve_bridge_path(self, base_path: FieldPath, pointer: str) -> BoundNode:
+    def _resolve_bridge_path(
+        self, base_path: FieldPath, pointer: str
+    ) -> graph.BoundNode:
         """Resolve a path through the can_bridge trait to a pointer.
 
         Creates path: base_path -> can_bridge (Composition) -> pointer (Pointer)
@@ -833,7 +832,7 @@ class ASTVisitor:
                 # Validation for trait/pointer paths not yet implemented
                 validate=False,
             )
-        except TypeGraphPathError as exc:
+        except fbrk.TypeGraphPathError as exc:
             raise DslException(
                 f"Cannot resolve bridge path for {base_path}: {exc}"
             ) from exc
@@ -859,7 +858,7 @@ class ASTVisitor:
                 type_node=self._type_stack.current(),
                 container_path=list(container_path.identifiers()),
             )
-        except TypeGraphPathError as exc:
+        except fbrk.TypeGraphPathError as exc:
             raise DslException(
                 self._type_stack._format_path_error(container_path, exc)
             ) from exc

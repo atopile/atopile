@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 from atopile.compiler import ast_types as AST
 from atopile.compiler.antlr_visitor import ANTLRVisitor
 from atopile.compiler.ast_visitor import STDLIB_ALLOWLIST, ASTVisitor, BuildState
@@ -15,9 +17,6 @@ from atopile.compiler.gentypegraph import ImportRef
 from atopile.compiler.parse import parse_file, parse_text_as_file
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.config import find_project_dir
-from faebryk.core.zig.gen.faebryk.linker import Linker as _Linker
-from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
-from faebryk.core.zig.gen.graph.graph import BoundNode, GraphView
 from faebryk.libs.util import once, unique
 
 
@@ -30,11 +29,11 @@ class BuildFileResult:
 class StdlibRegistry:
     """Lazy loader for stdlib types."""
 
-    def __init__(self, tg: TypeGraph) -> None:
+    def __init__(self, tg: fbrk.TypeGraph) -> None:
         self._tg = tg
-        self._cache: dict[str, BoundNode] = {}
+        self._cache: dict[str, graph.BoundNode] = {}
 
-    def get(self, name: str) -> BoundNode:
+    def get(self, name: str) -> graph.BoundNode:
         if name not in self._cache:
             if name not in STDLIB_ALLOWLIST:
                 raise KeyError(f"Unknown stdlib type: {name}")
@@ -52,8 +51,8 @@ class TestStdlibRegistry:
 
     def test_lazy_loading(self):
         """Types are only created when first accessed."""
-        g = GraphView.create()
-        tg = TypeGraph.create(g=g)
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
         registry = StdlibRegistry(tg)
 
         assert tg.get_type_by_name(type_identifier="Resistor") is None
@@ -64,8 +63,8 @@ class TestStdlibRegistry:
 
     def test_caching(self):
         """Same type node returned on repeated access."""
-        g = GraphView.create()
-        tg = TypeGraph.create(g=g)
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
         registry = StdlibRegistry(tg)
 
         node1 = registry.get("Resistor")
@@ -76,8 +75,8 @@ class TestStdlibRegistry:
         """KeyError raised for unknown stdlib types."""
         import pytest
 
-        g = GraphView.create()
-        tg = TypeGraph.create(g=g)
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
         registry = StdlibRegistry(tg)
 
         with pytest.raises(KeyError):
@@ -92,7 +91,7 @@ class UnresolvedTypeReferencesError(LinkerException):
     def __init__(
         self,
         message: str,
-        unresolved_type_references: list[tuple[BoundNode, BoundNode]],
+        unresolved_type_references: list[tuple[graph.BoundNode, graph.BoundNode]],
     ) -> None:
         super().__init__(message)
         self.unresolved_type_references = unresolved_type_references
@@ -215,7 +214,7 @@ class Linker:
         self,
         config_obj,
         stdlib: StdlibRegistry,
-        tg: TypeGraph,
+        tg: fbrk.TypeGraph,
         extra_search_paths: Iterable[Path] | None = None,
     ) -> None:
         self._resolver = SearchPathResolver(
@@ -224,11 +223,11 @@ class Linker:
         self._stdlib = stdlib
         self._tg = tg
         self._active_paths: set[Path] = set()
-        self._linked_modules: dict[Path, dict[str, BoundNode]] = {}
+        self._linked_modules: dict[Path, dict[str, graph.BoundNode]] = {}
 
     def _build_imported_file(
-        self, graph: GraphView, import_ref: ImportRef, build_state: BuildState
-    ) -> BoundNode:
+        self, graph: graph.GraphView, import_ref: ImportRef, build_state: BuildState
+    ) -> graph.BoundNode:
         assert import_ref.path is not None
 
         source_path = self._resolver.resolve(
@@ -250,7 +249,7 @@ class Linker:
         self._linked_modules[source_path] = child_result.state.type_roots
         return child_result.state.type_roots[import_ref.name]
 
-    def link_imports(self, graph: GraphView, build_state: BuildState) -> None:
+    def link_imports(self, graph: graph.GraphView, build_state: BuildState) -> None:
         resolved_path = (
             self._resolver._normalize_path(build_state.file_path)
             if build_state.file_path is not None
@@ -270,14 +269,14 @@ class Linker:
                     self._linked_modules[resolved_path] = build_state.type_roots
 
         # Only check for unresolved refs at the top level
-        if unresolved := _Linker.collect_unresolved_type_references(
+        if unresolved := fbrk.Linker.collect_unresolved_type_references(
             type_graph=self._tg
         ):
             raise UnresolvedTypeReferencesError(
                 "Unresolved type references remaining after linking", unresolved
             )
 
-    def _link_recursive(self, graph: GraphView, build_state: BuildState) -> None:
+    def _link_recursive(self, graph: graph.GraphView, build_state: BuildState) -> None:
         """Link imports without checking unresolved refs (for recursive calls)."""
         resolved_path = (
             self._resolver._normalize_path(build_state.file_path)
@@ -297,9 +296,9 @@ class Linker:
                     self._link(graph, build_state)
                     self._linked_modules[resolved_path] = build_state.type_roots
 
-    def _link(self, graph: GraphView, build_state: BuildState) -> None:
+    def _link(self, graph: graph.GraphView, build_state: BuildState) -> None:
         for type_reference, import_ref in build_state.external_type_refs:
-            _Linker.link_type_reference(
+            fbrk.Linker.link_type_reference(
                 g=graph,
                 type_reference=type_reference,
                 target_type_node=(
@@ -311,12 +310,12 @@ class Linker:
 
     def _link_from_cache(
         self,
-        graph: GraphView,
+        graph: graph.GraphView,
         build_state: BuildState,
-        cached_type_roots: dict[str, BoundNode],
+        cached_type_roots: dict[str, graph.BoundNode],
     ) -> None:
         for type_reference, import_ref in build_state.external_type_refs:
-            _Linker.link_type_reference(
+            fbrk.Linker.link_type_reference(
                 g=graph,
                 type_reference=type_reference,
                 target_type_node=(
@@ -341,8 +340,8 @@ class Linker:
 
 def _build_from_ctx(
     *,
-    g: GraphView,
-    tg: TypeGraph,
+    g: graph.GraphView,
+    tg: fbrk.TypeGraph,
     import_path: str | None,
     root_ctx: AtoParser.File_inputContext,
     file_path: Path | None,
@@ -354,7 +353,7 @@ def _build_from_ctx(
 
 
 def build_file(
-    *, g: GraphView, tg: TypeGraph, import_path: str, path: Path
+    *, g: graph.GraphView, tg: fbrk.TypeGraph, import_path: str, path: Path
 ) -> BuildFileResult:
     return _build_from_ctx(
         g=g,
@@ -366,7 +365,11 @@ def build_file(
 
 
 def build_source(
-    *, g: GraphView, tg: TypeGraph, source: str, import_path: str | None = None
+    *,
+    g: graph.GraphView,
+    tg: fbrk.TypeGraph,
+    source: str,
+    import_path: str | None = None,
 ) -> BuildFileResult:
     import uuid
 

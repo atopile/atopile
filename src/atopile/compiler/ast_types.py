@@ -11,17 +11,15 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import ClassVar, Iterable, Self
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.zig.gen.faebryk.composition import (  # type: ignore[import-untyped]
-    EdgeComposition,
-)
 from faebryk.library import Collections
 from faebryk.libs.util import cast_assert
 
 
 def _add_anon_child(node: fabll.NodeT, child: fabll.NodeT):
-    EdgeComposition.add_anon_child(
+    fbrk.EdgeComposition.add_anon_child(
         bound_node=node.instance, child=child.instance.node()
     )
 

@@ -9,6 +9,8 @@ This is a pure Python class that complements the Zig typegraph bindings.
 
 from dataclasses import dataclass
 
+import faebryk.core.faebrykpy as fbrk
+
 
 @dataclass
 class EdgeTraversal:
@@ -34,20 +36,14 @@ class EdgeTraversal:
     @classmethod
     def composition(cls, identifier: str) -> "EdgeTraversal":
         """Create a Composition edge traversal (the default for strings)."""
-        from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
-
-        return cls(identifier, EdgeComposition.get_tid())
+        return cls(identifier, fbrk.EdgeComposition.get_tid())
 
     @classmethod
     def trait(cls, identifier: str) -> "EdgeTraversal":
         """Create a Trait edge traversal."""
-        from faebryk.core.zig.gen.faebryk.trait import EdgeTrait
-
-        return cls(identifier, EdgeTrait.get_tid())
+        return cls(identifier, fbrk.EdgeTrait.get_tid())
 
     @classmethod
     def pointer(cls, identifier: str) -> "EdgeTraversal":
         """Create a Pointer edge traversal."""
-        from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
-
-        return cls(identifier, EdgePointer.get_tid())
+        return cls(identifier, fbrk.EdgePointer.get_tid())

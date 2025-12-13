@@ -102,6 +102,6 @@ NOTE TO SELF FRIDAY
   - for some reason we got a bunch of crashes
   - also asked clanker to expose total memory allocated in html
 
-- [ ] fix hypothesis ci (parametrize)
-- [ ] errors in test report
+- [x] fix hypothesis ci (parametrize)
+- [x] errors in test report
 - [ ] measure mem usage of single node, edge, etc

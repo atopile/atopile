@@ -5,7 +5,7 @@ Shared data structures and helpers for the TypeGraph-generation IR.
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from faebryk.core.zig.gen.graph.graph import BoundNode
+import faebryk.core.graph as graph
 
 
 @dataclass(frozen=True)
@@ -22,7 +22,7 @@ class ImportRef:
 class Symbol:
     name: str
     import_ref: ImportRef | None = None
-    type_node: BoundNode | None = None
+    type_node: graph.BoundNode | None = None
 
     def __repr__(self) -> str:
         return (
@@ -89,7 +89,7 @@ class FieldPath:
 class NewChildSpec:
     symbol: Symbol | None = None
     type_identifier: str | None = None
-    type_node: BoundNode | None = None
+    type_node: graph.BoundNode | None = None
     count: int | None = None
 
 
@@ -97,14 +97,14 @@ class NewChildSpec:
 class AddMakeChildAction:
     target_path: FieldPath
     child_spec: NewChildSpec
-    parent_reference: BoundNode | None
+    parent_reference: graph.BoundNode | None
     parent_path: FieldPath | None
 
 
 @dataclass(frozen=True)
 class AddMakeLinkAction:
-    lhs_ref: BoundNode
-    rhs_ref: BoundNode
+    lhs_ref: graph.BoundNode
+    rhs_ref: graph.BoundNode
 
 
 @dataclass(frozen=True)

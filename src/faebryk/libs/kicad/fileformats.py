@@ -35,16 +35,15 @@ class Named(Protocol):
 
 # namespace
 class kicad:
-    # TODO fix LSP import errors
     from faebryk.core.zig.gen.sexp import (
-        footprint,  # noqa: E402, F401
-        footprint_v5,  # noqa: E402, F401
-        fp_lib_table,  # noqa: E402, F401
-        netlist,  # noqa: E402, F401
-        pcb,  # noqa: E402
-        schematic,  # noqa: E402, F401
-        symbol,  # noqa: E402, F401
-        symbol_v6,  # noqa: E402, F401
+        footprint,  # noqa: E402, F401 # type: ignore[import-untyped]
+        footprint_v5,  # noqa: E402, F401 # type: ignore[import-untyped]
+        fp_lib_table,  # noqa: E402, F401 # type: ignore[import-untyped]
+        netlist,  # noqa: E402, F401 # type: ignore[import-untyped]
+        pcb,  # noqa: E402, F401 # type: ignore[import-untyped]
+        schematic,  # noqa: E402, F401 # type: ignore[import-untyped]
+        symbol,  # noqa: E402, F401 # type: ignore[import-untyped]
+        symbol_v6,  # noqa: E402, F401 # type: ignore[import-untyped]
     )
 
     class project:

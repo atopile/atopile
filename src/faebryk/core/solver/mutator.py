@@ -2057,7 +2057,7 @@ def test_mutator_basic_bootstrap():
     from faebryk.core.solver.algorithm import algorithm
 
     g = graph.GraphView.create()
-    tg = graph.TypeGraph.create(g=g)
+    tg = fbrk.TypeGraph.create(g=g)
 
     class App(fabll.Node):
         param_str = F.Parameters.StringParameter.MakeChild()

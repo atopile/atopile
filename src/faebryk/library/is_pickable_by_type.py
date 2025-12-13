@@ -3,9 +3,9 @@
 
 from enum import StrEnum
 
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.zig.gen.graph.graph import BoundNode  # type: ignore[import-untyped]
 from faebryk.libs.util import not_none
 
 
@@ -60,7 +60,7 @@ class is_pickable_by_type(fabll.Node):
         return str(self.endpoint_.get().force_extract_literal().get_single())
 
     @property
-    def pick_type(self) -> BoundNode:
+    def pick_type(self) -> graph.BoundNode:
         parent_info = self.get_parent()
         if parent_info is None:
             raise Exception("is_pickable_by_type has no parent")

@@ -60,8 +60,6 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core import graph
-from faebryk.core.zig.gen.faebryk import typegraph
-from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.libs.util import not_none, once
 
 
@@ -163,7 +161,7 @@ class _BasisVector(fabll.Node):
                 fabll.MakeEdge(
                     [out],
                     [child],
-                    edge=EdgeComposition.build(child_identifier=field_name),
+                    edge=fbrk.EdgeComposition.build(child_identifier=field_name),
                 )
             )
         return out
@@ -179,7 +177,7 @@ class _BasisVector(fabll.Node):
         for field_name in BasisVector.__dataclass_fields__.keys():
             child = Counts.bind_typegraph(tg=tg).create_instance(g=g)
             child.setup_from_values(values=[getattr(vector, field_name)])
-            _ = EdgeComposition.add_child(
+            _ = fbrk.EdgeComposition.add_child(
                 bound_node=self.instance,
                 child=child.instance.node(),
                 child_identifier=field_name,
@@ -287,7 +285,9 @@ class is_unit(fabll.Node):
             fabll.MakeEdge(
                 [out],
                 [symbol_field],
-                edge=EdgeComposition.build(child_identifier=cls._symbol_identifier),
+                edge=fbrk.EdgeComposition.build(
+                    child_identifier=cls._symbol_identifier
+                ),
             )
         )
 
@@ -297,7 +297,9 @@ class is_unit(fabll.Node):
             fabll.MakeEdge(
                 [out],
                 [multiplier_field],
-                edge=EdgeComposition.build(child_identifier=cls._multiplier_identifier),
+                edge=fbrk.EdgeComposition.build(
+                    child_identifier=cls._multiplier_identifier
+                ),
             )
         )
 
@@ -307,7 +309,9 @@ class is_unit(fabll.Node):
             fabll.MakeEdge(
                 [out],
                 [offset_field],
-                edge=EdgeComposition.build(child_identifier=cls._offset_identifier),
+                edge=fbrk.EdgeComposition.build(
+                    child_identifier=cls._offset_identifier
+                ),
             )
         )
 
@@ -324,7 +328,7 @@ class is_unit(fabll.Node):
         return fabll._ChildField(cls)
 
     def _extract_multiplier(self) -> float:
-        multiplier_numeric = EdgeComposition.get_child_by_identifier(
+        multiplier_numeric = fbrk.EdgeComposition.get_child_by_identifier(
             bound_node=self.instance, child_identifier=self._multiplier_identifier
         )
         assert multiplier_numeric is not None
@@ -333,7 +337,7 @@ class is_unit(fabll.Node):
         return NumericInterval.bind_instance(multiplier_numeric).get_single()
 
     def _extract_offset(self) -> float:
-        offset_numeric = EdgeComposition.get_child_by_identifier(
+        offset_numeric = fbrk.EdgeComposition.get_child_by_identifier(
             bound_node=self.instance, child_identifier=self._offset_identifier
         )
         assert offset_numeric is not None
@@ -342,7 +346,7 @@ class is_unit(fabll.Node):
         return NumericInterval.bind_instance(offset_numeric).get_single()
 
     def _extract_symbols(self) -> list[str]:
-        symbol_field = EdgeComposition.get_child_by_identifier(
+        symbol_field = fbrk.EdgeComposition.get_child_by_identifier(
             bound_node=self.instance, child_identifier=self._symbol_identifier
         )
         assert symbol_field is not None
@@ -358,7 +362,7 @@ class is_unit(fabll.Node):
     def setup(  # type: ignore[invalid-method-override]
         self,
         g: graph.GraphView,
-        tg: graph.TypeGraph,
+        tg: fbrk.TypeGraph,
         symbols: list[str],
         unit_vector: BasisVector,
         multiplier: float = 1.0,
@@ -371,7 +375,7 @@ class is_unit(fabll.Node):
             .create_instance(g=g)
             .setup_from_values(*symbols)
         )
-        _ = EdgeComposition.add_child(
+        _ = fbrk.EdgeComposition.add_child(
             bound_node=self.instance,
             child=symbol.instance.node(),
             child_identifier=self._symbol_identifier,
@@ -381,7 +385,7 @@ class is_unit(fabll.Node):
             .create_instance(g=g)
             .setup_from_singleton(value=multiplier)
         )
-        _ = EdgeComposition.add_child(
+        _ = fbrk.EdgeComposition.add_child(
             bound_node=self.instance,
             child=multiplier_numeric.instance.node(),
             child_identifier=self._multiplier_identifier,
@@ -391,7 +395,7 @@ class is_unit(fabll.Node):
             .create_instance(g=g)
             .setup_from_singleton(value=offset)
         )
-        _ = EdgeComposition.add_child(
+        _ = fbrk.EdgeComposition.add_child(
             bound_node=self.instance,
             child=offset_numeric.instance.node(),
             child_identifier=self._offset_identifier,
@@ -417,7 +421,7 @@ class is_unit(fabll.Node):
         return fabll.Node.bind_instance(instance=owner)
 
     def get_symbols(self) -> list[str]:
-        lit = EdgeComposition.get_child_by_identifier(
+        lit = fbrk.EdgeComposition.get_child_by_identifier(
             bound_node=self.instance, child_identifier=self._symbol_identifier
         )
         assert lit is not None
@@ -449,7 +453,7 @@ class is_unit(fabll.Node):
         v = self._extract_basis_vector()
         return v == BasisVector(radian=1)
 
-    def to_base_units(self, g: graph.GraphView, tg: graph.TypeGraph) -> "is_unit":
+    def to_base_units(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "is_unit":
         """
         Returns a new anonymous unit with the same basis vector, but with multiplier=1.0
         and offset=0.0.
@@ -470,7 +474,7 @@ class is_unit(fabll.Node):
     def new(
         cls,
         g: graph.GraphView,
-        tg: graph.TypeGraph,
+        tg: fbrk.TypeGraph,
         vector: BasisVector,
         multiplier: float,
         offset: float,
@@ -486,7 +490,7 @@ class is_unit(fabll.Node):
         return unit.is_unit.get()
 
     def scaled_copy(
-        self, g: graph.GraphView, tg: graph.TypeGraph, multiplier: float
+        self, g: graph.GraphView, tg: fbrk.TypeGraph, multiplier: float
     ) -> "is_unit":
         return self.new(
             g=g,
@@ -497,7 +501,7 @@ class is_unit(fabll.Node):
         )
 
     def op_multiply(
-        self, g: graph.GraphView, tg: graph.TypeGraph, other: "is_unit"
+        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "is_unit"
     ) -> "is_unit":
         v1, v2 = self._extract_basis_vector(), other._extract_basis_vector()
         m1, m2 = self._extract_multiplier(), other._extract_multiplier()
@@ -514,7 +518,7 @@ class is_unit(fabll.Node):
         )
 
     def op_divide(
-        self, g: graph.GraphView, tg: graph.TypeGraph, other: "is_unit"
+        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "is_unit"
     ) -> "is_unit":
         v1, v2 = self._extract_basis_vector(), other._extract_basis_vector()
         m1, m2 = self._extract_multiplier(), other._extract_multiplier()
@@ -530,7 +534,7 @@ class is_unit(fabll.Node):
             offset=0.0,  # TODO
         )
 
-    def op_invert(self, g: graph.GraphView, tg: graph.TypeGraph) -> "is_unit":
+    def op_invert(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "is_unit":
         v = self._extract_basis_vector()
         m = self._extract_multiplier()
         return self.new(
@@ -542,7 +546,7 @@ class is_unit(fabll.Node):
         )
 
     def op_power(
-        self, g: graph.GraphView, tg: graph.TypeGraph, exponent: int
+        self, g: graph.GraphView, tg: fbrk.TypeGraph, exponent: int
     ) -> "is_unit":
         v = self._extract_basis_vector()
         m = self._extract_multiplier()
@@ -719,7 +723,7 @@ class is_binary_prefixed_unit(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
-def decode_symbol(g: graph.GraphView, tg: typegraph.TypeGraph, symbol: str) -> is_unit:
+def decode_symbol(g: graph.GraphView, tg: fbrk.TypeGraph, symbol: str) -> is_unit:
     # TODO: caching
     # TODO: optimisation: pre-compute symbol map; build suffix trie
 
@@ -919,13 +923,13 @@ class UnitExpression(fabll.Node):
         return self.expr.get().deref()
 
     def get_multiplier(self) -> float:
-        multiplier_child = EdgeComposition.get_child_by_identifier(
+        multiplier_child = fbrk.EdgeComposition.get_child_by_identifier(
             bound_node=self.instance, child_identifier=self._multiplier_identifier
         )
         return F.Literals.Numbers.bind_instance(not_none(multiplier_child)).get_single()
 
     def get_offset(self) -> float:
-        offset_child = EdgeComposition.get_child_by_identifier(
+        offset_child = fbrk.EdgeComposition.get_child_by_identifier(
             bound_node=self.instance, child_identifier=self._offset_identifier
         )
         return F.Literals.Numbers.bind_instance(not_none(offset_child)).get_single()
@@ -1064,7 +1068,7 @@ class _AnonymousUnit(fabll.Node):
 
 
 class _UnitExpressionResolver:
-    def __init__(self, g: graph.GraphView, tg: graph.TypeGraph):
+    def __init__(self, g: graph.GraphView, tg: fbrk.TypeGraph):
         self.g = g
         self.tg = tg
 
@@ -1166,7 +1170,7 @@ class _UnitExpressionResolver:
 
 
 def resolve_unit_expression(
-    g: graph.GraphView, tg: graph.TypeGraph, expr: graph.BoundNode
+    g: graph.GraphView, tg: fbrk.TypeGraph, expr: graph.BoundNode
 ) -> fabll.Node:
     # TODO: caching?
     resolver = _UnitExpressionResolver(g=g, tg=tg)

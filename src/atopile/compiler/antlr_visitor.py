@@ -8,14 +8,12 @@ from antlr4.TokenStreamRewriter import TokenStreamRewriter
 from antlr4.tree.Tree import TerminalNodeImpl
 
 import atopile.compiler.ast_types as AST
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
-from faebryk.core.zig.gen.faebryk.typegraph import (  # type: ignore[import-untyped]
-    TypeGraph,
-)
-from faebryk.core.zig.gen.graph.graph import GraphView  # type: ignore[import-untyped]
 
 
 class ANTLRVisitor(AtoParserVisitor):
@@ -27,7 +25,7 @@ class ANTLRVisitor(AtoParserVisitor):
     """
 
     def __init__(
-        self, graph: GraphView, type_graph: TypeGraph, file_path: Path | None
+        self, graph: graph.GraphView, type_graph: fbrk.TypeGraph, file_path: Path | None
     ) -> None:
         super().__init__()
         self._graph = graph

@@ -33,6 +33,7 @@ from test.runner.common import (
     EventRequest,
     EventType,
     Outcome,
+    Report,
 )
 
 
@@ -282,7 +283,7 @@ LONG_TEST_THRESHOLD = datetime.timedelta(
 # Default to CPU count
 WORKER_COUNT = int(os.getenv("FBRK_TEST_WORKERS", 0))
 if WORKER_COUNT == 0:
-    WORKER_COUNT = os.cpu_count()*2 or 1
+    WORKER_COUNT = os.cpu_count() * 2 or 1
 elif WORKER_COUNT < 0:
     WORKER_COUNT = max(((os.cpu_count() or 1) * -WORKER_COUNT) // 2, 1)
 # Generate HTML report
@@ -296,6 +297,15 @@ workers: dict[int, subprocess.Popen[bytes]] = {}
 
 # Read HTML template from file
 HTML_TEMPLATE = (Path(__file__).parent / "report.html").read_text(encoding="utf-8")
+
+
+# Helper to extract params from a string
+def extract_params(s: str) -> tuple[str, str]:
+    if s.endswith("]") and "[" in s:
+        # Find the last '['
+        idx = s.rfind("[")
+        return s[:idx], s[idx + 1 : -1]
+    return s, ""
 
 
 @dataclass
@@ -580,14 +590,6 @@ class TestAggregator:
             # Reconstruct the rest
             rest = parts[1:]
 
-            # Helper to extract params from a string
-            def extract_params(s):
-                if s.endswith("]") and "[" in s:
-                    # Find the last '['
-                    idx = s.rfind("[")
-                    return s[:idx], s[idx + 1 : -1]
-                return s, ""
-
             class_name = ""
             function_name = ""
 
@@ -754,14 +756,7 @@ class TestAggregator:
     def generate_json_report(self, output_path: str = "artifacts/test-report.json"):
         with self._lock:
             tests = list(self._tests.values())
-            # For workers, we might want the total unique workers seen
             workers_used = len(self._active_pids) + len(self._exited_pids)
-            # Actually, `_active_pids` are current, `_exited_pids` are gone.
-            # But we might want the set of ALL pids seen.
-            # We don't strictly track "all seen pids" separately, but we can infer it
-            # or just use active + exited.
-            # Let's count unique PIDs assigned to tests if we want accuracy or just
-            # use current active + exited.
 
             # Count outcomes
             passed = sum(1 for t in tests if t.outcome == Outcome.PASSED)
@@ -772,15 +767,8 @@ class TestAggregator:
 
             total_duration = (datetime.datetime.now() - self.start_time).total_seconds()
 
-            test_results = []
-
+            test_results: list[Report.Test] = []
             sum_test_durations = 0.0
-
-            def extract_params(s):
-                if s.endswith("]") and "[" in s:
-                    idx = s.rfind("[")
-                    return s[:idx], s[idx + 1 : -1]
-                return s, ""
 
             for t in tests:
                 # Calculate duration
@@ -800,83 +788,76 @@ class TestAggregator:
                 if len(rest) > 0:
                     if len(rest) > 1:
                         class_name = "::".join(rest[:-1])
-                        function_name, _ = extract_params(rest[-1])
+                        function_name, params = extract_params(rest[-1])
                     else:
                         class_name = ""
-                        function_name, _ = extract_params(rest[0])
+                        function_name, params = extract_params(rest[0])
 
                 test_results.append(
-                    {
-                        "file": file_path,
-                        "class": class_name,
-                        "function": function_name,
-                        "outcome": str(t.outcome) if t.outcome else "QUEUED",
-                        "duration": duration,
-                        "error_message": t.error_message,
-                        "memory_usage_mb": t.memory_usage_mb,
-                        "memory_peak_mb": t.memory_peak_mb,
-                        "worker_pid": t.pid,
-                    }
+                    Report.Test(
+                        file=file_path,
+                        class_=class_name,
+                        function=function_name,
+                        outcome=str(t.outcome) if t.outcome else "QUEUED",
+                        duration=duration,
+                        error_message=t.error_message,
+                        memory_usage_mb=t.memory_usage_mb,
+                        memory_peak_mb=t.memory_peak_mb,
+                        worker_pid=t.pid,
+                        params=params,
+                        fullnodeid=t.nodeid,
+                    )
                 )
 
-            # Build commit info dict (only include non-None values)
-            commit_dict = {}
+            # Build commit info (only if we have any data)
+            report_commit = None
             if commit_info.hash:
-                commit_dict["hash"] = commit_info.hash
-            if commit_info.short_hash:
-                commit_dict["short_hash"] = commit_info.short_hash
-            if commit_info.author:
-                commit_dict["author"] = commit_info.author
-            if commit_info.message:
-                commit_dict["message"] = commit_info.message
-            if commit_info.time:
-                commit_dict["time"] = commit_info.time
+                report_commit = Report.Commit(
+                    hash=commit_info.hash,
+                    short_hash=commit_info.short_hash,
+                    author=commit_info.author,
+                    message=commit_info.message,
+                    time=commit_info.time,
+                )
 
-            # Build CI info dict (only include if running in CI)
-            ci_dict = {}
+            # Build CI info (only if running in CI)
+            report_ci = None
             if ci_info.is_ci:
-                ci_dict["is_ci"] = True
-                if ci_info.run_id:
-                    ci_dict["run_id"] = ci_info.run_id
-                if ci_info.run_number:
-                    ci_dict["run_number"] = ci_info.run_number
-                if ci_info.workflow:
-                    ci_dict["workflow"] = ci_info.workflow
-                if ci_info.job:
-                    ci_dict["job"] = ci_info.job
-                if ci_info.runner_name:
-                    ci_dict["runner_name"] = ci_info.runner_name
-                if ci_info.runner_os:
-                    ci_dict["runner_os"] = ci_info.runner_os
-                if ci_info.actor:
-                    ci_dict["actor"] = ci_info.actor
-                if ci_info.repository:
-                    ci_dict["repository"] = ci_info.repository
-                if ci_info.ref:
-                    ci_dict["ref"] = ci_info.ref
+                report_ci = Report.Ci(
+                    is_ci=True,
+                    run_id=ci_info.run_id,
+                    run_number=ci_info.run_number,
+                    workflow=ci_info.workflow,
+                    job=ci_info.job,
+                    runner_name=ci_info.runner_name,
+                    runner_os=ci_info.runner_os,
+                    actor=ci_info.actor,
+                    repository=ci_info.repository,
+                    ref=ci_info.ref,
+                )
 
-            report = {
-                "summary": {
-                    "passed": passed,
-                    "failed": failed,
-                    "errors": errors,
-                    "crashed": crashed,
-                    "skipped": skipped,
-                    "total": len(tests),
-                    "total_duration": total_duration,
-                    "total_summed_duration": sum_test_durations,
-                    "total_memory_mb": sum(t.memory_usage_mb for t in tests),
-                    "workers_used": workers_used,
-                },
-                "commit": commit_dict if commit_dict else None,
-                "ci": ci_dict if ci_dict else None,
-                "tests": test_results,
-            }
+            report = Report(
+                summary=Report.Summary(
+                    passed=passed,
+                    failed=failed,
+                    errors=errors,
+                    crashed=crashed,
+                    skipped=skipped,
+                    total=len(tests),
+                    total_duration=total_duration,
+                    total_summed_duration=sum_test_durations,
+                    total_memory_mb=sum(t.memory_usage_mb for t in tests),
+                    workers_used=workers_used,
+                ),
+                commit=report_commit,
+                ci=report_ci,
+                tests=test_results,
+            )
 
             try:
                 Path(output_path).parent.mkdir(parents=True, exist_ok=True)
                 with open(output_path, "w") as f:
-                    json.dump(report, f, indent=2)
+                    f.write(report.to_json(indent=2))
             except Exception as e:
                 print(f"Failed to write JSON report: {e}")
 

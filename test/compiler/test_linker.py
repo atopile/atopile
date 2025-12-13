@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 from atopile.compiler.build import (
     ImportPathNotFoundError,
     Linker,
@@ -12,12 +13,10 @@ from atopile.compiler.build import (
     build_file,
     build_source,
 )
-from faebryk.core.zig.gen.faebryk.linker import Linker as _Linker
-from faebryk.core.zig.gen.graph.graph import GraphView
 
 
 def _init_graph():
-    g = GraphView.create()
+    g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     stdlib = StdlibRegistry(tg)
     return g, tg, stdlib
@@ -53,7 +52,7 @@ def test_stdlib_import_resolved():
     linker = Linker(None, stdlib, tg)
     linker.link_imports(g, result.state)
 
-    assert not _Linker.collect_unresolved_type_references(type_graph=tg)
+    assert not fbrk.Linker.collect_unresolved_type_references(type_graph=tg)
 
 
 def test_resolves_relative_ato_import(tmp_path: Path):
@@ -90,7 +89,7 @@ def test_resolves_relative_ato_import(tmp_path: Path):
     linker = Linker(None, stdlib, tg)
     linker.link_imports(g, result.state)
 
-    assert not _Linker.collect_unresolved_type_references(type_graph=tg)
+    assert not fbrk.Linker.collect_unresolved_type_references(type_graph=tg)
 
 
 def test_resolves_via_extra_search_path(tmp_path: Path):
@@ -119,7 +118,7 @@ def test_resolves_via_extra_search_path(tmp_path: Path):
     linker = Linker(None, stdlib, tg, extra_search_paths=(modules_root,))
     linker.link_imports(g, result.state)
 
-    assert not _Linker.collect_unresolved_type_references(type_graph=tg)
+    assert not fbrk.Linker.collect_unresolved_type_references(type_graph=tg)
 
 
 def test_package_identifier_rewrite(tmp_path: Path):
@@ -157,7 +156,7 @@ def test_package_identifier_rewrite(tmp_path: Path):
     linker = Linker(config_obj, stdlib, tg)
     linker.link_imports(g, result.state)
 
-    assert not _Linker.collect_unresolved_type_references(type_graph=tg)
+    assert not fbrk.Linker.collect_unresolved_type_references(type_graph=tg)
 
 
 def test_missing_import_raises_user_error():
@@ -199,9 +198,9 @@ def test_different_imports_resolve_to_different_nodes():
     for identifier, make_child in tg.collect_make_children(type_node=app_type):
         type_ref = tg.get_make_child_type_reference(make_child=make_child)
         if identifier == "r":
-            r_resolved = _Linker.get_resolved_type(type_reference=type_ref)
+            r_resolved = fbrk.Linker.get_resolved_type(type_reference=type_ref)
         elif identifier == "c":
-            c_resolved = _Linker.get_resolved_type(type_reference=type_ref)
+            c_resolved = fbrk.Linker.get_resolved_type(type_reference=type_ref)
 
     assert r_resolved is not None
     assert c_resolved is not None
@@ -224,7 +223,7 @@ def test_multiple_references_same_import():
     linker = Linker(None, stdlib, tg)
     linker.link_imports(g, result.state)
 
-    assert not _Linker.collect_unresolved_type_references(type_graph=tg)
+    assert not fbrk.Linker.collect_unresolved_type_references(type_graph=tg)
 
     app_type = result.state.type_roots["App"]
 
@@ -232,7 +231,7 @@ def test_multiple_references_same_import():
     for identifier, make_child in tg.collect_make_children(type_node=app_type):
         if identifier in ("first", "second", "third"):
             type_ref = tg.get_make_child_type_reference(make_child=make_child)
-            resolved = _Linker.get_resolved_type(type_reference=type_ref)
+            resolved = fbrk.Linker.get_resolved_type(type_reference=type_ref)
             assert resolved is not None
             resolved_nodes.append(resolved)
 

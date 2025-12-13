@@ -27,6 +27,7 @@ from easyeda2kicad.kicad.export_kicad_footprint import ExporterFootprintKicad
 from easyeda2kicad.kicad.export_kicad_symbol import ExporterSymbolKicad, KicadVersion
 from more_itertools import first
 
+from faebryk.core.graph_render import GraphRenderer
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.config import config as Gcfg

@@ -4,16 +4,12 @@ from types import SimpleNamespace
 
 import pytest
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 from atopile.compiler.ast_visitor import DslException
 from atopile.compiler.build import Linker, StdlibRegistry, build_file, build_source
 from faebryk.core.edge_traversal import EdgeTraversal
-from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
-from faebryk.core.zig.gen.faebryk.linker import Linker as _Linker
-from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
-from faebryk.core.zig.gen.faebryk.trait import EdgeTrait
-from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph, TypeGraphPathError
-from faebryk.core.zig.gen.graph import graph
-from faebryk.core.zig.gen.graph.graph import GraphView
+from faebryk.libs.util import not_none
 
 NULL_CONFIG = SimpleNamespace(project=None)
 
@@ -25,7 +21,7 @@ def _get_make_child(type_graph, type_node, name: str):
     raise AssertionError(f"expected make child `{name}`")
 
 
-def _collect_make_links(tg: TypeGraph, type_node: graph.BoundNode):
+def _collect_make_links(tg: fbrk.TypeGraph, type_node: graph.BoundNode):
     return [
         (make_link, list(lhs_path), list(rhs_path))
         for make_link, lhs_path, rhs_path in tg.collect_make_links(type_node=type_node)
@@ -33,7 +29,7 @@ def _collect_make_links(tg: TypeGraph, type_node: graph.BoundNode):
 
 
 def _check_make_links(
-    tg: TypeGraph,
+    tg: fbrk.TypeGraph,
     type_node: graph.BoundNode,
     expected: list[tuple[list[str] | tuple[str, ...], list[str] | tuple[str, ...]]]
     | None = None,
@@ -59,8 +55,8 @@ def _check_make_links(
 
 
 def _build_snippet(source: str, import_path: str | None = None):
-    g = GraphView.create()
-    tg = TypeGraph.create(g=g)
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
     stdlib = StdlibRegistry(tg)
     result = build_source(
         g=g, tg=tg, source=textwrap.dedent(source), import_path=import_path
@@ -127,7 +123,7 @@ def test_make_child_and_linking():
     res_node = _get_make_child(type_graph, app_type, "res")
     assert type_graph.debug_get_mount_chain(make_child=res_node) == []
 
-    unresolved = _Linker.collect_unresolved_type_references(type_graph=tg)
+    unresolved = fbrk.Linker.collect_unresolved_type_references(type_graph=tg)
     assert not unresolved
 
     linker = Linker(NULL_CONFIG, stdlib, tg)
@@ -135,7 +131,7 @@ def test_make_child_and_linking():
 
     type_ref = type_graph.get_make_child_type_reference(make_child=res_node)
     assert type_ref is not None
-    resolved = _Linker.get_resolved_type(type_reference=type_ref)
+    resolved = fbrk.Linker.get_resolved_type(type_reference=type_ref)
     assert resolved is not None
 
 
@@ -155,7 +151,7 @@ def test_new_with_count_creates_pointer_sequence():
 
     type_ref = tg.get_make_child_type_reference(make_child=members_node)
     assert type_ref is not None
-    resolved = _Linker.get_resolved_type(type_reference=type_ref)
+    resolved = fbrk.Linker.get_resolved_type(type_reference=type_ref)
     assert resolved is not None
 
     element_nodes = []
@@ -221,28 +217,28 @@ def test_typegraph_path_error_metadata():
 
     app_type = result.state.type_roots["App"]
 
-    with pytest.raises(TypeGraphPathError) as excinfo:
+    with pytest.raises(fbrk.TypeGraphPathError) as excinfo:
         tg.ensure_child_reference(
             type_node=app_type,
             path=["members", "5"],
             validate=True,
         )
     err = excinfo.value
-    assert isinstance(err, TypeGraphPathError)
+    assert isinstance(err, fbrk.TypeGraphPathError)
     assert err.kind == "invalid_index"
     assert err.path == ["members", "5"]
     assert err.failing_segment == "5"
     assert err.failing_segment_index == 1
     assert err.index_value is None
 
-    with pytest.raises(TypeGraphPathError) as excinfo_missing:
+    with pytest.raises(fbrk.TypeGraphPathError) as excinfo_missing:
         tg.ensure_child_reference(
             type_node=app_type,
             path=["missing", "child"],
             validate=True,
         )
 
-    assert isinstance(excinfo_missing.value, TypeGraphPathError)
+    assert isinstance(excinfo_missing.value, fbrk.TypeGraphPathError)
     err_missing = excinfo_missing.value
     assert err_missing.kind in {"missing_parent", "missing_child"}
     assert err_missing.path == ["missing", "child"]
@@ -878,15 +874,15 @@ def test_external_import_linking(tmp_path: Path):
         encoding="utf-8",
     )
 
-    g = GraphView.create()
-    tg = TypeGraph.create(g=g)
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
     stdlib = StdlibRegistry(tg)
 
     result = build_file(g=g, tg=tg, import_path="main.ato", path=main_path)
     app_type = result.state.type_roots["App"]
     child_node = _get_make_child(tg, app_type, "child")
 
-    unresolved = _Linker.collect_unresolved_type_references(type_graph=tg)
+    unresolved = fbrk.Linker.collect_unresolved_type_references(type_graph=tg)
     assert unresolved
 
     linker = Linker(NULL_CONFIG, stdlib, tg)
@@ -894,7 +890,7 @@ def test_external_import_linking(tmp_path: Path):
 
     type_ref = tg.get_make_child_type_reference(make_child=child_node)
     assert type_ref is not None
-    resolved = _Linker.get_resolved_type(type_reference=type_ref)
+    resolved = fbrk.Linker.get_resolved_type(type_reference=type_ref)
     assert resolved is not None
 
 
@@ -925,7 +921,7 @@ def test_multiple_local_references():
         """
     )
 
-    unresolved = _Linker.collect_unresolved_type_references(type_graph=tg)
+    unresolved = fbrk.Linker.collect_unresolved_type_references(type_graph=tg)
     assert not unresolved
 
     for identifier, make_child in tg.collect_make_children(
@@ -933,7 +929,7 @@ def test_multiple_local_references():
     ):
         if identifier in ("first", "second", "third"):
             type_ref = tg.get_make_child_type_reference(make_child=make_child)
-            resolved = _Linker.get_resolved_type(type_reference=type_ref)
+            resolved = fbrk.Linker.get_resolved_type(type_reference=type_ref)
             assert resolved is not None
             assert resolved.node().is_same(
                 other=result.state.type_roots["Module"].node()
@@ -955,17 +951,17 @@ class TestTypeNamespacing:
         assert "MyModule" in result.state.type_roots
 
         type_node = result.state.type_roots["MyModule"]
-        type_name = TypeGraph.get_type_name(type_node=type_node)
+        type_name = fbrk.TypeGraph.get_type_name(type_node=type_node)
         assert type_name == "test/file.ato::MyModule"
 
     def test_python_types_not_namespaced(self):
         """Python stdlib types use unprefixed names."""
-        g = GraphView.create()
-        tg = TypeGraph.create(g=g)
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
         registry = StdlibRegistry(tg)
 
         node = registry.get("Resistor")
-        type_name = TypeGraph.get_type_name(type_node=node)
+        type_name = fbrk.TypeGraph.get_type_name(type_node=node)
         assert "::" not in type_name
 
     def test_single_typegraph_for_build(self):
@@ -983,8 +979,8 @@ class TestTypeNamespacing:
         stdlib_type = stdlib.get("Resistor")
         user_type = result.state.type_roots["App"]
 
-        stdlib_tg = TypeGraph.of_type(type_node=stdlib_type)
-        user_tg = TypeGraph.of_type(type_node=user_type)
+        stdlib_tg = fbrk.TypeGraph.of_type(type_node=stdlib_type)
+        user_tg = fbrk.TypeGraph.of_type(type_node=user_type)
 
         assert stdlib_tg is not None
         assert user_tg is not None
@@ -1004,20 +1000,20 @@ class TestEdgeTraversalPathResolution:
         """Test that EdgeTraversal helper methods create correct edge types."""
         comp = EdgeTraversal.composition("child")
         assert comp.identifier == "child"
-        assert comp.edge_type == EdgeComposition.get_tid()
+        assert comp.edge_type == fbrk.EdgeComposition.get_tid()
 
         trait = EdgeTraversal.trait("my_trait")
         assert trait.identifier == "my_trait"
-        assert trait.edge_type == EdgeTrait.get_tid()
+        assert trait.edge_type == fbrk.EdgeTrait.get_tid()
 
         ptr = EdgeTraversal.pointer("my_ptr")
         assert ptr.identifier == "my_ptr"
-        assert ptr.edge_type == EdgePointer.get_tid()
+        assert ptr.edge_type == fbrk.EdgePointer.get_tid()
 
     def test_string_path_backwards_compatible(self):
         """Test that string paths still work (default to Composition edges)."""
-        g = GraphView.create()
-        tg = TypeGraph.create(g=g)
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
 
         Electrical = tg.add_type(identifier="Electrical")
         Resistor = tg.add_type(identifier="Resistor")
@@ -1034,10 +1030,10 @@ class TestEdgeTraversalPathResolution:
         assert resolved is not None
 
         # Verify it resolved to p1
-        p1_instance = EdgeComposition.get_child_by_identifier(
+        p1_instance = fbrk.EdgeComposition.get_child_by_identifier(
             bound_node=resistor_instance, child_identifier="p1"
         )
-        assert resolved.node().is_same(other=p1_instance.node())
+        assert resolved.node().is_same(other=not_none(p1_instance).node())
 
     def test_mixed_path_creates_reference_chain(self):
         """Test that EdgeTraversal creates reference chains with correct edge types.
@@ -1046,8 +1042,8 @@ class TestEdgeTraversalPathResolution:
         Full integration testing with instantiation can be done once
         the linker properly resolves all type references.
         """
-        g = GraphView.create()
-        tg = TypeGraph.create(g=g)
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
         stdlib = StdlibRegistry(tg)
 
         # Get the stdlib Resistor type (which has can_bridge trait)
@@ -1077,8 +1073,8 @@ class TestEdgeTraversalPathResolution:
         Verifies the reference chain structure includes composition segments
         (strings) followed by trait and pointer segments (EdgeTraversal).
         """
-        g = GraphView.create()
-        tg = TypeGraph.create(g=g)
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
         stdlib = StdlibRegistry(tg)
 
         # Create a simple module type
