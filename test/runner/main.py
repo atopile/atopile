@@ -282,7 +282,7 @@ LONG_TEST_THRESHOLD = datetime.timedelta(
 # Default to CPU count
 WORKER_COUNT = int(os.getenv("FBRK_TEST_WORKERS", 0))
 if WORKER_COUNT == 0:
-    WORKER_COUNT = os.cpu_count() or 1
+    WORKER_COUNT = os.cpu_count()*2 or 1
 elif WORKER_COUNT < 0:
     WORKER_COUNT = max(((os.cpu_count() or 1) * -WORKER_COUNT) // 2, 1)
 # Generate HTML report
@@ -1133,6 +1133,10 @@ def main():
 
     _print("-" * 80)
     _print(f"Final: {aggregator.get_report()}")
+
+    total_duration = (datetime.datetime.now() - aggregator.start_time).total_seconds()
+    _print(f"Total time: {format_duration(total_duration)}")
+
     aggregator.generate_html_report()
     aggregator.generate_json_report()
 

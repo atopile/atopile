@@ -203,7 +203,7 @@ def test_is_lead():
     assert connected_pad.pad_number == "0"
 
 
-def test_can_attach_to_pad_by_name(capsys):
+def test_can_attach_to_pad_by_name():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
@@ -245,15 +245,7 @@ def test_can_attach_to_pad_by_name(capsys):
     assert module.anode.get().get_trait(is_lead).has_trait(can_attach_to_pad_by_name)
     assert module.cathode.get().get_trait(is_lead).has_trait(can_attach_to_pad_by_name)
 
-    with capsys.disabled():
-        print(
-            fabll.graph.InstanceGraphFunctions.render(
-                module.instance, show_traits=True, show_pointers=True
-            )
-        )
-
     matched_anode_pad = module.anode.get().get_trait(is_lead).find_matching_pad(pads)
-
     matched_cathode_pad = (
         module.cathode.get().get_trait(is_lead).find_matching_pad(pads)
     )

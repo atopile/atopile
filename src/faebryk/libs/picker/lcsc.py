@@ -694,7 +694,7 @@ def setup_project_config(tmp_path):
 
 
 @pytest.mark.usefixtures("setup_project_config")
-def test_attach_resistor(capsys):
+def test_attach_resistor():
     import faebryk.core.faebrykpy as fbrk
     import faebryk.core.node as fabll
 
@@ -712,12 +712,6 @@ def test_attach_resistor(capsys):
 
     assert associated_footprint is None
 
-    with capsys.disabled():
-        print(
-            fabll.graph.InstanceGraphFunctions.render(
-                component.instance, show_traits=True, show_pointers=True
-            )
-        )
     component_with_fp = component.get_trait(F.Footprints.can_attach_to_footprint)
     attach(component_with_fp=component_with_fp, partno=LCSC_ID)
 

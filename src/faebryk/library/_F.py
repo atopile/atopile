@@ -22,8 +22,8 @@ from faebryk.library.is_source import is_source
 from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.Signal import Signal
-from faebryk.library.is_app_root import is_app_root
 from faebryk.library.has_part_removed import has_part_removed
+from faebryk.library.is_app_root import is_app_root
 from faebryk.library.is_lazy import is_lazy
 from faebryk.library.is_pickable import is_pickable
 import faebryk.library.Literals as Literals
@@ -121,8 +121,8 @@ __all__ = [
     "Logic",
     "Mechanical",
     "Signal",
-    "is_app_root",
     "has_part_removed",
+    "is_app_root",
     "is_lazy",
     "is_pickable",
     "Literals",

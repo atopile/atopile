@@ -130,7 +130,7 @@ def _get_stable_node_name(node: fabll.Node) -> str:
     return ".".join([p_name for p, p_name in node.get_hierarchy() if p.get_parent()])
 
 
-def test_bind_nets_from_electricals(capsys):
+def test_bind_nets_from_electricals():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
@@ -153,10 +153,5 @@ def test_bind_nets_from_electricals(capsys):
 
     nets = bind_electricals_to_fbrk_nets(tg, g)
 
-    with capsys.disabled():
-        print("hey")
-        for net in nets:
-            print(
-                f"Net: {net.get_hierarchy()} - "
-                f"Len: {len(net.part_of.get()._is_interface.get().get_connected())}"
-            )
+    #TODO make this test actually check something
+    assert False

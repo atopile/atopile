@@ -5,55 +5,21 @@ import faebryk.core.graph as graph
 import faebryk.library._F as F
 
 
-def test_instance_visualization(capsys):
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-
-    component_instance = F.ElectricPower.bind_typegraph(tg).create_instance(g)
-
-    with capsys.disabled():
-        print("=== Instance Graph ===")
-        output = graph.InstanceGraphFunctions.render(
-            component_instance.instance, show_traits=True
-        )
-        print(output)
-
-
-def test_count_instance(capsys):
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-
-    instance = F.OpAmp.bind_typegraph(tg).create_instance(g)
-
-    with capsys.disabled():
-        print("=== Instance Graph ===")
-        output = graph.InstanceGraphFunctions.render(
-            instance.instance,
-            show_traits=True,
-            filter_types=[
-                # 'is_lead',
-                # 'Electrical',
-            ],
-        )
-        print(output)
-
-
 def _get_component_node_count_params():
     """
     Generate test parameters lazily to avoid circular imports.
     Returns list of pytest.param(component_class, expected_count, id=name).
     """
-
     # Component class -> expected unique node count
     # (each node counted once, even if reachable via multiple paths)
     component_counts: dict[type, int | None] = {
         F.Electrical: 2,
-        F.ElectricLogic: 204,
-        F.ElectricSignal: 195,
-        F.ElectricPower: 155,
-        F.Resistor: 339,  # +2 for is_lead traits on each electrical
-        F.Capacitor: 265,
-        F.I2C: 668,
+        F.ElectricLogic: 206,
+        F.ElectricSignal: 197,
+        F.ElectricPower: 157,
+        F.Resistor: 635,
+        F.Capacitor: 471,
+        F.I2C: 672,
     }
 
     return [

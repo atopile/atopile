@@ -174,7 +174,7 @@ class GenericFootprint(fabll.Node):
         return self
 
 
-def test_has_associated_footprint(capsys):
+def test_has_associated_footprint():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
@@ -206,15 +206,8 @@ def test_has_associated_footprint(capsys):
         .is_same(other=footprint_instance._is_footprint.get().instance.node())
     )
 
-    with capsys.disabled():
-        print(
-            fabll.graph.InstanceGraphFunctions.render(
-                module_with_footprint.instance, show_traits=True, show_pointers=True
-            )
-        )
 
-
-def test_is_footprint(capsys):
+def test_is_footprint():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
