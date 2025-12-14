@@ -166,6 +166,10 @@ def test_zig_embedded(zig_test: tuple[Path, str]) -> None:
             "-fsanitize-c",
         ]
         print(f"Compile command: {_escape_shell_args(compile_cmd)}")
+        print(
+            "Reproduce with: `python test/core/zig/test_zig_embedded.py "
+            f'"{zig_file.name}" "{test_name}"`'
+        )
         compile_result = subprocess.run(
             compile_cmd,
             cwd=ZIG_SRC_DIR,

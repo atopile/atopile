@@ -926,7 +926,7 @@ def get_free_port():
         return s.getsockname()[1]
 
 
-def collect_tests(pytest_args):
+def collect_tests(pytest_args: list[str]) -> tuple[list[str], dict[str, str]]:
     """Collects tests using pytest --collect-only"""
     # Filter out empty strings if any
     pytest_args = [arg for arg in pytest_args if arg]
@@ -938,26 +938,37 @@ def collect_tests(pytest_args):
         "--collect-only",
         "-q",
         "--no-header",
-        "--no-summary",
+        # "--no-summary",
     ] + pytest_args
     _print(f"Collecting tests: {' '.join(cmd)}")
 
     # Capture output
     result = subprocess.run(cmd, capture_output=True, text=True)
+    stdout, summary = result.stdout.split("\n\n", maxsplit=1)
+    errors_clean = dict[str, str]()
     if result.returncode != 0:
         _print("Error collecting tests:")
-        print(result.stderr)
-        sys.exit(1)
+        errors = [
+            e.strip().strip("_").strip().split("____\n")
+            for e in (
+                summary.split("ERRORS ")[1]
+                .strip()
+                .lstrip("=")
+                .split(" short test summary info")[0]
+                .rstrip("=")
+            ).split(" ERROR collecting ")[1:]
+        ]
+        errors_clean = {e[0].strip("_").strip(): e[1] for e in errors}
 
-    tests = []
-    for line in result.stdout.splitlines():
+    tests = list[str]()
+    for line in stdout.splitlines():
         line = line.strip()
         if line and not line.startswith("no tests ran") and not line.startswith("="):
             # Check if it looks like a nodeid (simple heuristic)
             if "::" in line or line.endswith(".py"):
                 tests.append(line)
 
-    return tests
+    return tests, errors_clean
 
 
 def start_server(port):
@@ -996,7 +1007,7 @@ def main(args: list[str] | None = None):
     pytest_args = args if args is not None else sys.argv[1:]
 
     # 1. Collect tests
-    tests = collect_tests(pytest_args)
+    tests, errors = collect_tests(pytest_args)
     tests_total = len(tests)
     _print(f"Collected {tests_total} tests")
 
@@ -1007,6 +1018,16 @@ def main(args: list[str] | None = None):
     # Initialize aggregator with all tests (so we know what's queued)
     global aggregator
     aggregator = TestAggregator(tests)
+
+    for error_key, error_value in errors.items():
+        aggregator._tests[error_key] = TestState(
+            nodeid=error_key,
+            pid=None,
+            start_time=None,
+            output={"stderr": error_value},
+            outcome=Outcome.ERROR,
+            error_message=error_value.splitlines()[-1].strip(),
+        )
 
     for t in tests:
         test_queue.put(t)
