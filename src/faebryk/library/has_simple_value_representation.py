@@ -64,10 +64,24 @@ class has_simple_value_representation(fabll.Node):
         def _get_value(self) -> str:
             lit = self.param.get_trait(
                 F.Parameters.is_parameter_operatable
-            ).try_get_aliased_literal()
+            ).try_get_subset_or_alias_literal()
             if lit is None:
                 raise ValueError(f"No literal found for {self.param}")
-            return lit.pretty_str()
+
+            # Check if tolerance should be shown
+            tolerance_literal = F.Parameters.BooleanParameter.bind_instance(
+                self.tolerance_.get().instance
+            ).try_extract_constrained_literal()
+            show_tolerance = tolerance_literal is None or tolerance_literal.get_values()[0]
+
+            # For Numbers literals, use the show_tolerance parameter
+            # This only affects tolerance notation (center±X%), not ranges (min..max)
+            try:
+                numbers_lit = fabll.Traits(lit).get_obj(F.Literals.Numbers)
+                return numbers_lit.pretty_str(show_tolerance=show_tolerance)
+            except Exception:
+                # Not a Numbers literal, use default pretty_str
+                return lit.pretty_str()
 
             # TODO this is probably not the only place we will ever need
             #  this big switch

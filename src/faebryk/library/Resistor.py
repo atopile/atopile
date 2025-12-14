@@ -49,6 +49,7 @@ class Resistor(fabll.Node):
     S = F.has_simple_value_representation.Spec
     _simple_repr = fabll.Traits.MakeEdge(
         F.has_simple_value_representation.MakeChild(
+            S(resistance), # first spec shows up as value field
             S(resistance, tolerance=True),
             S(max_power),
             S(max_voltage),

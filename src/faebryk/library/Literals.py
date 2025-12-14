@@ -4318,7 +4318,7 @@ class Numbers(fabll.Node):
         result = cls.create_instance(g=g, tg=tg)
         return result.setup(numeric_set=numeric_set, unit=unit)
 
-    def pretty_str(self) -> str:
+    def pretty_str(self, show_tolerance: bool = False) -> str:
         """Format number with units and tolerance for display."""
         numeric_set = self.get_numeric_set()
         if self.is_empty():
@@ -4362,11 +4362,22 @@ class Numbers(fabll.Node):
                 center != 0
                 and (tolerance_rel := abs((max_val - min_val) / 2 / center) * 100) < 1
             ):
-                return f"{f(center)}±{tolerance_rel:.1f}%"
+                if show_tolerance:
+                    return f"{f(center)}±{tolerance_rel:.1f}%"
+                else:
+                    # Just center value, no tolerance notation
+                    return f"{f(center)}"
 
+            # For larger intervals, show as range
             return f"{f(min_val)}..{f(max_val)}"
 
         interval_strs = [format_interval(iv) for iv in intervals]
+        
+        # If suppressing tolerance and we have a single interval formatted as center value,
+        # format as singleton (no braces)
+        if not show_tolerance and len(interval_strs) == 1 and "±" not in interval_strs[0] and ".." not in interval_strs[0]:
+            return f"{interval_strs[0]}{unit_symbol}"
+        
         return f"{{{', '.join(interval_strs)}}}{unit_symbol}"
 
 

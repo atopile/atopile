@@ -7,6 +7,8 @@ class App(fabll.Node):
     res1 = F.Resistor.MakeChild()
     res2 = F.Resistor.MakeChild()
 
+    cap1 = F.Capacitor.MakeChild()
+
     r2r = fabll.MakeEdge(
         [res1, F.Resistor.unnamed[0]],
         [res2, F.Resistor.unnamed[1]],

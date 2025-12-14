@@ -67,10 +67,13 @@ class Capacitor(fabll.Node):
     )
 
     S = F.has_simple_value_representation.Spec
-    _simple_repr = F.has_simple_value_representation.MakeChild(
-        S(capacitance, tolerance=True),
-        S(max_voltage),
-        # S(temperature_coefficient),
+    _simple_repr = fabll.Traits.MakeEdge(
+        F.has_simple_value_representation.MakeChild(
+            S(capacitance), # first spec shows up as value field
+            S(capacitance, tolerance=True),
+            S(max_voltage),
+            S(temperature_coefficient),
+        )
     )
 
     designator_prefix = fabll.Traits.MakeEdge(

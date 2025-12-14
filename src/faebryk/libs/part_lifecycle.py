@@ -654,9 +654,26 @@ class PartLifecycle:
             Property.set_property(pcb_fp, _prop_factory("Reference", ref))
 
             if value_t := component.try_get_trait(F.has_simple_value_representation):
-                Property.set_property(
-                    pcb_fp, _prop_factory("Value", value_t.get_value())
-                )
+                # Get all specs and create separate properties for each
+                specs = value_t.get_specs()
+                if specs:
+                    # First spec goes into the standard "Value" field
+                    first_spec = specs[0]
+                    first_value = first_spec.get_value()
+                    Property.set_property(
+                        pcb_fp, _prop_factory("Value", first_value)
+                    )
+
+                    # Additional specs become separate properties
+                    for spec in specs:
+                        param_name = spec.param.get_name()
+                        spec_value = spec.get_value()
+                        if spec_value:  # Only add if not empty
+                            Property.set_property(
+                                pcb_fp, _prop_factory(param_name, spec_value)
+                            )
+                else:
+                    Property.set_property(pcb_fp, _prop_factory("Value", ""))
             else:
                 Property.set_property(pcb_fp, _prop_factory("Value", ""))
 
