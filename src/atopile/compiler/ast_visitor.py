@@ -358,6 +358,7 @@ class ASTVisitor:
         type_graph: fbrk.TypeGraph,
         import_path: str | None,
         file_path: Path | None,
+        stdlib_allowlist: dict[str, type[fabll.Node]] | None = None,
     ) -> None:
         self._ast_root = ast_root
         self._graph = graph
@@ -382,6 +383,7 @@ class ASTVisitor:
             tg=self._type_graph,
             state=self._state,
         )
+        self._stdlib_allowlist = stdlib_allowlist or STDLIB_ALLOWLIST
 
     @staticmethod
     def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]]:
@@ -491,7 +493,7 @@ class ASTVisitor:
         path = node.get_path()
         import_ref = ImportRef(name=type_ref_name, path=path)
 
-        if path is None and type_ref_name not in STDLIB_ALLOWLIST:
+        if path is None and type_ref_name not in self._stdlib_allowlist:
             raise DslException(f"Standard library import not found: {type_ref_name}")
 
         self._scope_stack.add_symbol(Symbol(name=type_ref_name, import_ref=import_ref))

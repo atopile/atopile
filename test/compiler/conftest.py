@@ -34,17 +34,19 @@ def build_instance(
     g = GraphView.create()
     tg = TypeGraph.create(g=g)
 
-    stdlib = StdlibRegistry(
-        tg,
-        allowlist=STDLIB_ALLOWLIST.copy()
-        | {
-            not_none(type_.bind_typegraph(tg).get_type_name()): type_
-            for type_ in stdlib_extra
-        },
-    )
+    allowlist = STDLIB_ALLOWLIST.copy() | {
+        not_none(type_.bind_typegraph(tg).get_type_name()): type_
+        for type_ in stdlib_extra
+    }
+
+    stdlib = StdlibRegistry(tg, allowlist=allowlist)
 
     result = build_source(
-        g=g, tg=tg, source=textwrap.dedent(source), import_path=import_path
+        g=g,
+        tg=tg,
+        source=textwrap.dedent(source),
+        import_path=import_path,
+        stdlib_allowlist=allowlist,
     )
 
     linker = Linker(None, stdlib, tg)
