@@ -12,7 +12,6 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.test.times import Times
-from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +25,7 @@ logger = logging.getLogger(__name__)
     if x
     else "simple",
 )
-def test_performance_graph_get_all(count_power: int, connected: bool):
+def test_performance_graph_get_all(count_power: int = 4, connected: bool = True):
     count = 10 * 2**count_power
     timings = Times()
 
@@ -92,69 +91,11 @@ def test_performance_graph_get_all(count_power: int, connected: bool):
     logger.info(f"----> Nodes generated: {num_nodes}")
 
 
-def test_performance_graph_merge_rec():
-    timings = Times()
-    count = 2**14
-    logger.info(f"Count: {count}")
+if __name__ == "__main__":
+    import typer
 
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-    node_factory = fabll.Node.bind_typegraph(tg)
+    from faebryk.libs.logging import setup_basic_logging
 
-    gs = times(count, lambda: node_factory.create_instance(g=g))
-    timings.add("instance")
+    setup_basic_logging()
 
-    def rec_connect(gs_sub: list[fabll.Node]):
-        if len(gs_sub) == 1:
-            return gs_sub[0]
-
-        mid = len(gs_sub) // 2
-
-        with timings.context(f"split {len(gs_sub)}"):
-            timings.add(f"recurse {len(gs_sub)}")
-            left = rec_connect(gs_sub[:mid])
-            right = rec_connect(gs_sub[mid:])
-
-        timings.add(f"connect {len(gs_sub)}")
-        fbrk.EdgeComposition.add_child(
-            bound_node=left.instance,
-            child=right.instance.node(),
-            child_identifier=str(len(gs_sub)),
-        )
-        timings.add("connect")
-
-        return left
-
-    with timings.context("total"):
-        rec_connect(gs)
-
-    logger.info(timings)
-    per_connect = timings.get_formatted("connect", Times.MultiSampleStrategy.AVG)
-    logger.info(f"----> Avg/connect: {per_connect}")
-
-
-def test_performance_graph_merge_it():
-    timings = Times(multi_sample_strategy=Times.MultiSampleStrategy.AVG_ACC)
-    count = 2**14
-    logger.info(f"Count: {count}")
-
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-    node_factory = fabll.Node.bind_typegraph(tg)
-
-    gs = times(count, lambda: node_factory.create_instance(g=g))
-    timings.add("instance")
-
-    for idx, (gl, gr) in enumerate(pairwise(gs)):
-        fbrk.EdgeComposition.add_child(
-            bound_node=gl.instance,
-            child=gr.instance.node(),
-            child_identifier=str(idx),
-        )
-        timings.add("connect")
-
-    assert gs[0].g.get_node_count() >= count
-
-    logger.info(timings)
-    per_connect = timings.get_formatted("connect", Times.MultiSampleStrategy.AVG)
-    logger.info(f"----> Avg/connect: {per_connect}")
+    typer.run(test_performance_graph_get_all)

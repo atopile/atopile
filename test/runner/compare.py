@@ -66,6 +66,7 @@ def check_perf_regression(before_val: float, after_val: float, min_diff: float) 
 
 def main(
     before_report: Path,
+    after_report: Path | None = None,
     show_perf: Annotated[
         bool,
         typer.Option(
@@ -78,7 +79,9 @@ def main(
     ] = None,
 ):
     before = Report.from_json(before_report.read_text())
-    after = Report.from_json(NEW_REPORT.read_text())
+    after = Report.from_json(
+        after_report.read_text() if after_report else NEW_REPORT.read_text()
+    )
 
     before_tests = {
         t.fullnodeid: t
