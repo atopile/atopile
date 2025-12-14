@@ -23,6 +23,7 @@ from typing import Any, Optional, cast
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.responses import FileResponse, HTMLResponse
 
 # Ensure we can import from test package
 sys.path.insert(0, os.getcwd())
@@ -530,9 +531,12 @@ class TestAggregator:
                 if durations:
                     rank = bisect.bisect_left(durations, d)
                     pct = rank / (len(durations) - 1) if len(durations) > 1 else 0
-                    # 120 (green) -> 0 (red)
-                    hue = 120 * (1 - pct)
-                    duration_style = f"background-color: hsl({hue:.0f}, 90%, 85%)"
+                    # Catppuccin Mocha: green (#a6e3a1) -> red (#f38ba8)
+                    # Interpolate RGB values
+                    r = int(166 + (243 - 166) * pct)
+                    g = int(227 + (139 - 227) * pct)
+                    b = int(161 + (168 - 161) * pct)
+                    duration_style = f"background-color: rgba({r}, {g}, {b}, 0.25)"
             elif t.start_time:
                 duration_val = (datetime.datetime.now() - t.start_time).total_seconds()
                 duration = f"{format_duration(duration_val)} (running)"
@@ -618,10 +622,16 @@ class TestAggregator:
             if memories and memory_val > 0:
                 rank = bisect.bisect_left(memories, memory_val)
                 pct = rank / (len(memories) - 1) if len(memories) > 1 else 0
-                hue = 120 * (1 - pct)
-                memory_style = f"background-color: hsl({hue:.0f}, 90%, 85%)"
+                # Catppuccin Mocha: green (#a6e3a1) -> red (#f38ba8)
+                r = int(166 + (243 - 166) * pct)
+                g = int(227 + (139 - 227) * pct)
+                b = int(161 + (168 - 161) * pct)
+                memory_style = f"background-color: rgba({r}, {g}, {b}, 0.25)"
 
-            memory_cell = f'<td style="{memory_style}" data-value="{memory_val}">{memory_str}</td>'
+            memory_cell = (
+                f'<td style="{memory_style}" data-value="{memory_val}">'
+                f"{memory_str}</td>"
+            )
 
             # Peak Memory
             peak_val = t.memory_peak_mb
@@ -630,8 +640,11 @@ class TestAggregator:
             if peaks and peak_val > 0:
                 rank = bisect.bisect_left(peaks, peak_val)
                 pct = rank / (len(peaks) - 1) if len(peaks) > 1 else 0
-                hue = 120 * (1 - pct)
-                peak_style = f"background-color: hsl({hue:.0f}, 90%, 85%)"
+                # Catppuccin Mocha: green (#a6e3a1) -> red (#f38ba8)
+                r = int(166 + (243 - 166) * pct)
+                g = int(227 + (139 - 227) * pct)
+                b = int(161 + (168 - 161) * pct)
+                peak_style = f"background-color: rgba({r}, {g}, {b}, 0.25)"
 
             peak_cell = (
                 f'<td style="{peak_style}" data-value="{peak_val}">{peak_str}</td>'
@@ -653,7 +666,10 @@ class TestAggregator:
                     if len(error_msg_escaped) > 100
                     else error_msg_escaped
                 )
-                error_cell = f'<td class="error-cell" title="{error_msg_escaped}">{error_msg_display}</td>'
+                error_cell = (
+                    f'<td class="error-cell" title="{error_msg_escaped}">'
+                    f"{error_msg_display}</td>"
+                )
             else:
                 error_cell = "<td>-</td>"
 
@@ -888,6 +904,29 @@ async def event(request: EventRequest):
     return {"status": "ok"}
 
 
+@app.get("/")
+async def report_redirect():
+    """Redirect root to the test report."""
+    return HTMLResponse(
+        content='<html><head><meta http-equiv="refresh" content="0; url=/report">'
+        "</head></html>"
+    )
+
+
+@app.get("/report")
+async def serve_report():
+    """Serve the test report HTML file."""
+    report_path = Path("artifacts/test-report.html")
+    if report_path.exists():
+        return FileResponse(report_path, media_type="text/html")
+    return HTMLResponse(
+        content="<html><body><h1>Report not yet generated...</h1>"
+        "<p>Refresh in a few seconds.</p>"
+        "<script>setTimeout(() => location.reload(), 2000);</script>"
+        "</body></html>"
+    )
+
+
 class ReportTimer:
     """Periodically prints status reports."""
 
@@ -1016,6 +1055,12 @@ def main(args: list[str] | None = None):
     url = f"http://127.0.0.1:{port}"
     _print(f"Starting orchestrator at {url}")
     start_server(port)
+
+    # Print clickable link to the report (ANSI hyperlink format for terminals)
+    report_url = f"{url}/report"
+    # Use OSC 8 hyperlink escape sequence for clickable links in modern terminals
+    clickable_link = f"\033]8;;{report_url}\033\\📊 {report_url}\033]8;;\033\\"
+    _print(f"Live report: {clickable_link}")
 
     # 3. Start Workers
     worker_script = Path(__file__).parent / "worker.py"

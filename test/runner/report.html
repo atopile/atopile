@@ -4,41 +4,73 @@
     <meta charset="UTF-8">
     <title>Test Execution Report</title>
     <style>
+        /* Catppuccin Mocha Palette */
+        :root {{
+            --ctp-rosewater: #f5e0dc;
+            --ctp-flamingo: #f2cdcd;
+            --ctp-pink: #f5c2e7;
+            --ctp-mauve: #cba6f7;
+            --ctp-red: #f38ba8;
+            --ctp-maroon: #eba0ac;
+            --ctp-peach: #fab387;
+            --ctp-yellow: #f9e2af;
+            --ctp-green: #a6e3a1;
+            --ctp-teal: #94e2d5;
+            --ctp-sky: #89dceb;
+            --ctp-sapphire: #74c7ec;
+            --ctp-blue: #89b4fa;
+            --ctp-lavender: #b4befe;
+            --ctp-text: #cdd6f4;
+            --ctp-subtext1: #bac2de;
+            --ctp-subtext0: #a6adc8;
+            --ctp-overlay2: #9399b2;
+            --ctp-overlay1: #7f849c;
+            --ctp-overlay0: #6c7086;
+            --ctp-surface2: #585b70;
+            --ctp-surface1: #45475a;
+            --ctp-surface0: #313244;
+            --ctp-base: #1e1e2e;
+            --ctp-mantle: #181825;
+            --ctp-crust: #11111b;
+        }}
+
         html {{ font-size: 12px; }}
-        body {{ font-family: sans-serif; margin: 10px; }}
-        h1 {{ font-size: 1.5rem; margin-bottom: 10px; }}
-        .summary {{ margin-bottom: 10px; padding: 5px; background: #f0f0f0; border-radius: 5px; }}
-        .progress-bar {{ width: 100%; background-color: #e0e0e0; border-radius: 5px; overflow: hidden; height: 15px; margin-bottom: 10px;}}
-        .progress-fill {{ height: 100%; background-color: #4caf50; transition: width 0.5s; text-align: center; color: white; line-height: 15px; font-size: 10px; }}
+        body {{ font-family: sans-serif; margin: 10px; background-color: var(--ctp-base); color: var(--ctp-text); }}
+        h1 {{ font-size: 1.5rem; margin-bottom: 10px; color: var(--ctp-text); }}
+        .summary {{ margin-bottom: 10px; padding: 8px; background: var(--ctp-mantle); border-radius: 5px; border: 1px solid var(--ctp-surface0); }}
+        .progress-bar {{ width: 100%; background-color: var(--ctp-surface0); border-radius: 5px; overflow: hidden; height: 15px; margin-bottom: 10px;}}
+        .progress-fill {{ height: 100%; background-color: var(--ctp-green); transition: width 0.5s; text-align: center; color: var(--ctp-crust); line-height: 15px; font-size: 10px; font-weight: bold; }}
         table {{ border-collapse: collapse; width: 100%; font-size: 12px; }}
-        th, td {{ border: 1px solid #ddd; padding: 4px; text-align: left; }}
-        th {{ background-color: #f2f2f2; cursor: pointer; user-select: none; position: relative; }}
-        th:hover {{ background-color: #ddd; }}
-        .passed {{ color: green; }}
-        .failed {{ color: red; font-weight: bold; }}
-        .error {{ color: darkred; font-weight: bold; }}
-        .crashed {{ color: purple; font-weight: bold; text-transform: uppercase; }}
-        .skipped {{ color: orange; }}
-        .running {{ color: blue; }}
-        .queued {{ color: gray; font-style: italic; }}
-        /* tr:nth-child(even) {{ background-color: #f9f9f9; }} */
-        tr.row-passed {{ background-color: #e8f5e9; }}
-        tr.row-failed {{ background-color: #ffebee; }}
-        tr.row-error {{ background-color: #fce4ec; }}
-        tr.row-crashed {{ background-color: #f3e5f5; }}
-        tr.row-skipped {{ background-color: #fff3e0; }}
-        tr.row-running {{ background-color: #e3f2fd; }}
-        tr.row-queued {{ background-color: #fafafa; }}
-        tr:hover {{ background-color: #f5f5f5; }}
+        th, td {{ border: 1px solid var(--ctp-surface0); padding: 4px; text-align: left; }}
+        th {{ background-color: var(--ctp-mantle); cursor: pointer; user-select: none; position: relative; color: var(--ctp-subtext1); }}
+        th:hover {{ background-color: var(--ctp-surface0); }}
+        .passed {{ color: var(--ctp-green); }}
+        .failed {{ color: var(--ctp-red); font-weight: bold; }}
+        .error {{ color: var(--ctp-maroon); font-weight: bold; }}
+        .crashed {{ color: var(--ctp-mauve); font-weight: bold; text-transform: uppercase; }}
+        .skipped {{ color: var(--ctp-yellow); }}
+        .running {{ color: var(--ctp-blue); }}
+        .queued {{ color: var(--ctp-overlay1); font-style: italic; }}
+        tr.row-passed {{ background-color: rgba(166, 227, 161, 0.1); }}
+        tr.row-failed {{ background-color: rgba(243, 139, 168, 0.15); }}
+        tr.row-error {{ background-color: rgba(235, 160, 172, 0.15); }}
+        tr.row-crashed {{ background-color: rgba(203, 166, 247, 0.15); }}
+        tr.row-skipped {{ background-color: rgba(249, 226, 175, 0.1); }}
+        tr.row-running {{ background-color: rgba(137, 180, 250, 0.15); }}
+        tr.row-queued {{ background-color: var(--ctp-mantle); }}
+        tr:hover {{ background-color: var(--ctp-surface0); }}
         .controls {{ margin-bottom: 5px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }}
-        .filter-input {{ padding: 3px; width: 200px; }}
+        .filter-input {{ padding: 3px; width: 200px; background-color: var(--ctp-surface0); border: 1px solid var(--ctp-surface1); color: var(--ctp-text); border-radius: 3px; }}
+        .filter-input::placeholder {{ color: var(--ctp-overlay0); }}
+        .filter-input:focus {{ outline: none; border-color: var(--ctp-lavender); }}
         .outcome-filters {{ display: flex; gap: 5px; }}
-        .outcome-filters label {{ cursor: pointer; }}
+        .outcome-filters label {{ cursor: pointer; color: var(--ctp-subtext0); }}
         
         .sort-indicator {{ margin-left: 5px; }}
         
         .log-match {{ 
-            background-color: yellow; 
+            background-color: var(--ctp-yellow); 
+            color: var(--ctp-crust);
             font-weight: bold;
         }}
         
@@ -48,16 +80,41 @@
             text-overflow: ellipsis;
             white-space: nowrap;
             font-size: 11px;
-            color: #c00;
+            color: var(--ctp-red);
         }}
         
         /* Modal styles */
-        .modal {{ display: none; position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }}
-        .modal-content {{ background-color: #fefefe; margin: 5% auto; padding: 15px; border: 1px solid #888; width: 90%; max-height: 85vh; overflow-y: auto; }}
-        .close {{ color: #aaa; float: right; font-size: 24px; font-weight: bold; cursor: pointer; }}
-        .close:hover, .close:focus {{ color: black; text-decoration: none; cursor: pointer; }}
-        pre {{ background: #eee; padding: 5px; overflow-x: auto; white-space: pre-wrap; font-size: 11px; }}
-        button {{ font-size: 11px; padding: 2px 5px; }}
+        .modal {{ display: none; position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(17, 17, 27, 0.8); }}
+        .modal-content {{ background-color: var(--ctp-mantle); margin: 5% auto; padding: 15px; border: 1px solid var(--ctp-surface1); width: 90%; max-height: 85vh; overflow-y: auto; border-radius: 8px; }}
+        .close {{ color: var(--ctp-overlay1); float: right; font-size: 24px; font-weight: bold; cursor: pointer; }}
+        .close:hover, .close:focus {{ color: var(--ctp-text); text-decoration: none; cursor: pointer; }}
+        pre {{ background: var(--ctp-crust); padding: 8px; overflow-x: auto; white-space: pre-wrap; font-size: 11px; color: var(--ctp-text); border-radius: 4px; border: 1px solid var(--ctp-surface0); }}
+        button {{ font-size: 11px; padding: 2px 8px; background-color: var(--ctp-surface0); color: var(--ctp-text); border: 1px solid var(--ctp-surface1); border-radius: 3px; cursor: pointer; }}
+        button:hover {{ background-color: var(--ctp-surface1); }}
+        
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
+        ::-webkit-scrollbar-track {{ background: var(--ctp-mantle); }}
+        ::-webkit-scrollbar-thumb {{ background: var(--ctp-surface1); border-radius: 4px; }}
+        ::-webkit-scrollbar-thumb:hover {{ background: var(--ctp-surface2); }}
+        
+        /* Links */
+        a {{ color: var(--ctp-blue); }}
+        a:hover {{ color: var(--ctp-sky); }}
+        
+        /* Code elements */
+        code {{ background-color: var(--ctp-surface0); padding: 2px 4px; border-radius: 3px; color: var(--ctp-peach); }}
+        
+        /* Strong/bold text */
+        strong {{ color: var(--ctp-text); }}
+        
+        /* Emphasis */
+        em {{ color: var(--ctp-subtext0); }}
+
+        /* Checkbox styling */
+        input[type="checkbox"] {{
+            accent-color: var(--ctp-lavender);
+        }}
     </style>
     <script>
         var currentSortColumn = -1;
