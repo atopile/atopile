@@ -22,16 +22,29 @@ class SPI(fabll.Node):
         F.has_single_electric_reference.MakeChild()
     )
 
-    def on_obj_set(self):
-        fabll.Traits.create_and_add_instance_to(
-            node=self.sclk.get(), trait=F.has_net_name_suggestion
-        ).setup(name="SCLK", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.miso.get(), trait=F.has_net_name_suggestion
-        ).setup(name="MISO", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.mosi.get(), trait=F.has_net_name_suggestion
-        ).setup(name="MOSI", level=F.has_net_name_suggestion.Level.SUGGESTED)
+    net_names = [
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="SCLK",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[sclk]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="MISO",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[miso]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="MOSI",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[mosi]
+        ),
+    ]
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

@@ -47,6 +47,8 @@ STDLIB_ALLOWLIST: set[type[fabll.Node]] = (
         F.Capacitor,
         F.Electrical,
         F.ElectricPower,
+        F.ElectricLogic,
+        F.ElectricSignal,
         F.Resistor,
         F.ResistorVoltageDivider,
         F.LED,

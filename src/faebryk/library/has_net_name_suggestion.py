@@ -10,7 +10,9 @@ class has_net_name_suggestion(fabll.Node):
 
     class Level(StrEnum):
         SUGGESTED = "SUGGESTED"
+
         EXPECTED = "EXPECTED"
+        """Raise exception if more than one expected net name is found"""
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 

@@ -28,34 +28,71 @@ class JTAG(fabll.Node):
         F.has_single_electric_reference.MakeChild()
     )
 
-    def on_obj_set(self):
-        fabll.Traits.create_and_add_instance_to(
-            node=self.dbgrq.get(), trait=F.has_net_name_suggestion
-        ).setup(name="DBGRQ", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.tdo.get(), trait=F.has_net_name_suggestion
-        ).setup(name="TDO", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.tdi.get(), trait=F.has_net_name_suggestion
-        ).setup(name="TDI", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.tms.get(), trait=F.has_net_name_suggestion
-        ).setup(name="TMS", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.tck.get(), trait=F.has_net_name_suggestion
-        ).setup(name="TCK", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.rtck.get(), trait=F.has_net_name_suggestion
-        ).setup(name="RTCK", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.n_trst.get(), trait=F.has_net_name_suggestion
-        ).setup(name="N_TRST", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.n_reset.get(), trait=F.has_net_name_suggestion
-        ).setup(name="N_RESET", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.vtref.get(), trait=F.has_net_name_suggestion
-        ).setup(name="VTREF", level=F.has_net_name_suggestion.Level.SUGGESTED)
+    net_names = [
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="DBGRQ",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[dbgrq]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="TDO",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[tdo]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="TDI",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[tdi]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="TMS",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[tms]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="TCK",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[tck]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="RTCK",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[rtck]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="N_TRST",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[n_trst]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="N_RESET",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[n_reset]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="VTREF",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[vtref]
+        ),
+    ]
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

@@ -37,15 +37,25 @@ class Ethernet(fabll.Node):
     #                WIP
     # ----------------------------------------
 
+    net_names = [
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="ETH_LED_SPEED",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[led_speed]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="ETH_LED_LINK",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[led_link]
+        ),
+    ]
+
     def on_obj_set(self):
-        fabll.Traits.create_and_add_instance_to(
-            node=self.led_speed.get(), trait=F.has_net_name_suggestion
-        ).setup(name="ETH_LED_SPEED", level=F.has_net_name_suggestion.Level.SUGGESTED)
-
-        fabll.Traits.create_and_add_instance_to(
-            node=self.led_link.get(), trait=F.has_net_name_suggestion
-        ).setup(name="ETH_LED_LINK", level=F.has_net_name_suggestion.Level.SUGGESTED)
-
+        # Note: pairs is a list, so we handle it dynamically in on_obj_set
         for i, pair in enumerate(self.pairs):
             fabll.Traits.create_and_add_instance_to(
                 node=pair.get().p.get(), trait=F.has_net_name_suggestion

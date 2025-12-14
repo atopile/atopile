@@ -21,3 +21,14 @@ class App(fabll.Node):
     res2_constraint = F.Literals.Numbers.MakeChild_ConstrainToSubsetLiteral(
         [res2, F.Resistor.resistance], 15, 40, unit=F.Units.Ohm
     )
+
+    ep1 = F.ElectricPower.MakeChild()
+    ep2 = F.ElectricPower.MakeChild()
+
+    connections = [
+        fabll.MakeEdge([ep1, "lv"], [res1, "unnamed[0]"], edge=fbrk.EdgeInterfaceConnection.build(shallow=False)),
+        fabll.MakeEdge([ep1, "hv"], [res1, "unnamed[1]"], edge=fbrk.EdgeInterfaceConnection.build(shallow=False)),
+        fabll.MakeEdge([ep2, "lv"], [res2, "unnamed[0]"], edge=fbrk.EdgeInterfaceConnection.build(shallow=False)),
+        fabll.MakeEdge([ep2, "hv"], [res2, "unnamed[1]"], edge=fbrk.EdgeInterfaceConnection.build(shallow=False)),
+    ]
+

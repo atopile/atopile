@@ -40,13 +40,25 @@ class MultiSPI(fabll.Node):
             )
         return out
 
+    net_names = [
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="CLOCK",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[clock]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="CHIP_SELECT",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[chip_select]
+        ),
+    ]
+
     def on_obj_set(self):
-        fabll.Traits.create_and_add_instance_to(
-            node=self.clock.get(), trait=F.has_net_name_suggestion
-        ).setup(name="CLOCK", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.chip_select.get(), trait=F.has_net_name_suggestion
-        ).setup(name="CHIP_SELECT", level=F.has_net_name_suggestion.Level.SUGGESTED)
+        # Note: data_ is a PointerSet, so we handle it dynamically in on_obj_set
         for i, line in enumerate(self.data_.get().as_list()):
             fabll.Traits.create_and_add_instance_to(
                 node=line, trait=F.has_net_name_suggestion
