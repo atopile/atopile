@@ -83,7 +83,7 @@ from faebryk.library.ResistorArray import ResistorArray
 from faebryk.library.has_designator import has_designator
 from faebryk.library.has_pulls import has_pulls
 from faebryk.library.LED import LED
-from faebryk.library.Addressor import Addressor
+import faebryk.library.Addressor as Addressor
 from faebryk.library.CAN_TTL import CAN_TTL
 from faebryk.library.I2S import I2S
 from faebryk.library.JTAG import JTAG
