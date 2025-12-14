@@ -574,6 +574,7 @@ class is_unit(fabll.Node):
         return (scale, offset)
 
     def compact_repr(self) -> str:
+        """Return compact unit repr (symbol or basis vector with multipliers)."""
         def to_superscript(n: int) -> str:
             """Convert an integer to Unicode superscript characters."""
             superscript_map = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")

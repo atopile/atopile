@@ -228,21 +228,25 @@ class is_literal(fabll.Node):
         raise ValueError(f"Cannot cast literal {self} of type {obj} to any of {types}")
 
     def __rich_repr__(self):
+        """Yield values for rich text display (pretty string and full type name)."""
         yield self.pretty_str()
         yield "on " + fabll.Traits(self).get_obj_raw().get_full_name(types=True)
 
     def pretty_repr(self) -> str:
+        """Return developer-friendly representation with type name and pretty string."""
         # TODO
         lit = self.switch_cast()
         return f"{lit.get_type_name()}({lit.pretty_str()})"
 
     def pretty_str(self) -> str:
+        """Return a human-readable string representation of the literal value."""
         return self.switch_cast().pretty_str()
 
     def is_not_correlatable(self) -> bool:
         return not self.is_singleton() and not self.is_empty()
 
     def serialize(self) -> dict:
+        """Serialize literal to JSON-compatible dict for API/disk storage."""
         return self.switch_cast().serialize()
 
     @classmethod
@@ -1155,9 +1159,11 @@ class NumericInterval(fabll.Node):
         return math.isclose(value, other, rel_tol=EPSILON_REL, abs_tol=EPSILON_ABS)
 
     def __repr__(self) -> str:
+        """Return a developer-friendly representation of the numeric interval."""
         return f"_interval({self.get_min_value()}, {self.get_max_value()})"
 
     def __str__(self) -> str:
+        """Return string showing singleton, tolerance, or range format."""
         if self.get_min_value() == self.get_max_value():
             return f"[{self.get_min_value()}]"
         center, rel = self.as_center_rel()
@@ -4137,6 +4143,7 @@ class Numbers(fabll.Node):
         )
 
     def __repr__(self) -> str:
+        """Return a developer-friendly representation showing numeric set and unit."""
         try:
             numeric_set = self.get_numeric_set()
             symbols = self.get_is_unit().get_symbols()
@@ -4146,6 +4153,7 @@ class Numbers(fabll.Node):
             return f"Numbers(<uninitialized>, error={type(e).__name__}: {e})"
 
     def __str__(self) -> str:
+        """Return a string representation (same as __repr__ for Numbers)."""
         return self.__repr__()
 
     def equals(

@@ -265,6 +265,7 @@ class is_expression(fabll.Node):
         use_name: bool = False,
         no_lit_suffix: bool = False,
     ) -> str:
+        """Return compact math repr with symbols (+, *, ≥, ¬, ∧) and precedence."""
         if context is None:
             context = F.Parameters.ReprContext()
 
