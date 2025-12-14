@@ -1615,3 +1615,142 @@ def test_reserved_keywords_as_identifiers(name: str, template: str):
 
     with pytest.raises(UserSyntaxError):
         build_type(template.format(name=name))
+
+
+class TestTraitStatements:
+    def test_simple_trait_on_self(self):
+        """Trait statement with no target attaches trait to enclosing block."""
+        _, tg, _, result = _build_snippet(
+            """
+            #pragma experiment("TRAITS")
+            import is_pickable
+
+            module MyModule:
+                pass
+                trait is_pickable
+            """
+        )
+
+        my_module_type = result.state.type_roots["MyModule"]
+
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=my_module_type)
+        ]
+        trait_children = [
+            (identifier, child)
+            for identifier, child in make_children
+            if identifier and "is_pickable" in identifier
+        ]
+        assert len(trait_children) == 1
+
+    def test_trait_on_child_field(self):
+        """Trait statement with target attaches trait to specified child."""
+        _, tg, _, result = _build_snippet(
+            """
+            #pragma experiment("TRAITS")
+            import is_pickable
+            import Resistor
+
+            module MyModule:
+                r1 = new Resistor
+                trait r1 is_pickable
+            """
+        )
+
+        my_module_type = result.state.type_roots["MyModule"]
+
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=my_module_type)
+        ]
+        assert any(identifier == "r1" for identifier, _ in make_children)
+        trait_children = [
+            (identifier, child)
+            for identifier, child in make_children
+            if identifier and "is_pickable" in identifier
+        ]
+        assert len(trait_children) == 1
+
+    def test_trait_requires_experiment_flag(self):
+        """Trait statement without experiment pragma raises error."""
+        with pytest.raises(DslException, match="TRAITS.*not enabled"):
+            _build_snippet(
+                """
+                import is_pickable
+
+                module MyModule:
+                    trait is_pickable
+                """
+            )
+
+    def test_trait_requires_import(self):
+        """Trait statement without importing the trait raises error."""
+        with pytest.raises(DslException, match="not available"):
+            _build_snippet(
+                """
+                #pragma experiment("TRAITS")
+
+                module MyModule:
+                    trait is_pickable
+                """
+            )
+
+    def test_trait_on_undefined_field_raises(self):
+        """Trait applied to undefined field raises error."""
+        with pytest.raises(DslException, match="not defined in scope"):
+            _build_snippet(
+                """
+                #pragma experiment("TRAITS")
+                import is_pickable
+
+                module MyModule:
+                    trait undefined_field is_pickable
+                """
+            )
+
+    def test_trait_with_template_args(self):
+        """Trait with template arguments parses correctly."""
+        _, tg, _, result = _build_snippet(
+            """
+            #pragma experiment("TRAITS")
+            import is_atomic_part
+
+            component MyComponent:
+                trait is_atomic_part<manufacturer="Murata", partnumber="GRM123", footprint="C0805.kicad_mod", symbol="cap.kicad_sym">
+            """
+        )
+
+        comp_type = result.state.type_roots["MyComponent"]
+
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=comp_type)
+        ]
+        trait_children = [
+            (identifier, child)
+            for identifier, child in make_children
+            if identifier and "is_atomic_part" in identifier
+        ]
+        assert len(trait_children) == 1
+
+    def test_trait_with_multiple_template_args(self):
+        """Trait with all template arguments."""
+        _, tg, _, result = _build_snippet(
+            """
+            #pragma experiment("TRAITS")
+            import is_atomic_part
+
+            component FullPart:
+                trait is_atomic_part<manufacturer="Test Inc", partnumber="PN-001", footprint="fp.kicad_mod", symbol="sym.kicad_sym", model="part.step">
+            """
+        )
+
+        comp_type = result.state.type_roots["FullPart"]
+        make_children = list(tg.collect_make_children(type_node=comp_type))
+        trait_children = [
+            (identifier, child)
+            for identifier, child in make_children
+            if identifier and "is_atomic_part" in identifier
+        ]
+        assert len(trait_children) == 1

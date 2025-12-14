@@ -14,6 +14,7 @@ import faebryk.library._F as F
 from atopile.compiler.gentypegraph import (
     AddMakeChildAction,
     AddMakeLinkAction,
+    AddTraitAction,
     FieldPath,
     ImportRef,
     NewChildSpec,
@@ -33,7 +34,6 @@ from faebryk.libs.util import cast_assert, not_none
 
 logger = logging.getLogger(__name__)
 
-
 # FIXME: needs expanding
 STDLIB_ALLOWLIST: set[type[fabll.Node]] = (
     # Modules
@@ -51,6 +51,8 @@ STDLIB_ALLOWLIST: set[type[fabll.Node]] = (
         F.has_explicit_part,
         F.has_net_name_suggestion,
         F.has_package_requirements,
+        F.is_pickable,
+        F.is_atomic_part,
     }
 )
 
@@ -213,6 +215,8 @@ class _TypeContextStack:
                 self._add_child(type_node=self.current(), action=action)
             case AddMakeLinkAction() as action:
                 self._add_link(type_node=self.current(), action=action)
+            case AddTraitAction() as action:
+                self._add_trait(type_node=self.current(), action=action)
             case list() | tuple() as actions:
                 for a in actions:
                     self.apply_action(a)
@@ -327,6 +331,54 @@ class _TypeContextStack:
             rhs_reference=action.rhs_ref,
             edge_attributes=fbrk.EdgeInterfaceConnection.build(shallow=False),
         )
+
+    def _add_trait(self, type_node: graph.BoundNode, action: AddTraitAction) -> None:
+        target_reference = action.target_reference or type_node
+        trait_identifier = f"_trait_{action.trait_type_identifier}"
+
+        make_child = self._tg.add_make_child_deferred(
+            type_node=type_node,
+            child_type_identifier=action.trait_type_identifier,
+            identifier=trait_identifier,
+            node_attributes=None,
+            mount_reference=target_reference,
+        )
+
+        type_reference = not_none(
+            self._tg.get_make_child_type_reference(make_child=make_child)
+        )
+
+        if action.trait_import_ref is not None:
+            self._state.external_type_refs.append(
+                (type_reference, action.trait_import_ref)
+            )
+        elif action.trait_type_node is not None:
+            fbrk.Linker.link_type_reference(
+                g=self._g,
+                type_reference=type_reference,
+                target_type_node=action.trait_type_node,
+            )
+        else:
+            raise DslException(
+                f"Trait `{action.trait_type_identifier}` has no type node or import ref"
+            )
+
+        self._tg.add_make_link(
+            type_node=type_node,
+            lhs_reference=target_reference,
+            rhs_reference=make_child,
+            edge_attributes=fbrk.EdgeTrait.build(),
+        )
+
+        if action.template_args:
+            for param_name, value in action.template_args.items():
+                # TODO: Use fabll MakeChild_ConstrainToLiteral once available
+                # param_ref = [trait_identifier, param_name]
+                # constraint = F.Literals.Strings.MakeChild_ConstrainToLiteral(...)
+                logger.info(
+                    f"Template arg {param_name}={value} for trait "
+                    f"{action.trait_type_identifier} (constraint pending)"
+                )
 
 
 class AnyAtoBlock(fabll.Node):
@@ -1011,3 +1063,36 @@ class ASTVisitor:
                     self._type_stack.apply_action(self.visit(stmt))
 
         return NoOpAction()
+
+    def visit_TraitStmt(self, node: AST.TraitStmt):
+        self.ensure_experiment(ASTVisitor._Experiment.TRAITS)
+
+        (trait_type_name,) = node.type_ref.get().name.get().get_values()
+        symbol = self._scope_stack.resolve_symbol(trait_type_name)
+
+        target_reference: graph.BoundNode | None = None
+        if (target_field_ref := node.get_target()) is not None:
+            target_path = self.visit_FieldRef(target_field_ref)
+            if not self._scope_stack.has_field(target_path):
+                raise DslException(f"Field `{target_path}` is not defined in scope")
+            target_reference = self._type_stack.resolve_reference(
+                target_path, validate=False
+            )
+
+        template_args: dict[str, str | bool | float] | None = None
+        if node.template.get().args.get().as_list():
+            template_args = {}
+            for arg_node in node.template.get().args.get().as_list():
+                arg = arg_node.cast(t=AST.TemplateArg)
+                (name,) = arg.name.get().get_values()
+                value = arg.get_value()
+                if value is not None:
+                    template_args[name] = value
+
+        return AddTraitAction(
+            trait_type_identifier=trait_type_name,
+            trait_type_node=symbol.type_node,
+            trait_import_ref=symbol.import_ref,
+            target_reference=target_reference,
+            template_args=template_args,
+        )

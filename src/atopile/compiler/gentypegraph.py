@@ -108,6 +108,15 @@ class AddMakeLinkAction:
 
 
 @dataclass(frozen=True)
+class AddTraitAction:
+    trait_type_identifier: str
+    trait_type_node: graph.BoundNode | None
+    trait_import_ref: "ImportRef | None"
+    target_reference: graph.BoundNode | None
+    template_args: dict[str, str | bool | float] | None = None
+
+
+@dataclass(frozen=True)
 class NoOpAction:
     pass
 

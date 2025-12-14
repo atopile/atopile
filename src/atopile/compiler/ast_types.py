@@ -1150,4 +1150,6 @@ class TraitStmt(fabll.Node):
         return self
 
     def get_target(self) -> FieldRef | None:
-        return self.target.get().deref().cast(t=FieldRef)
+        if (target := self.target.get().try_deref()) is None:
+            return None
+        return target.cast(t=FieldRef)

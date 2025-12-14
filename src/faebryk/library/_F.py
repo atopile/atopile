@@ -22,10 +22,10 @@ from faebryk.library.is_source import is_source
 from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.Signal import Signal
+from faebryk.library.is_pickable import is_pickable
 from faebryk.library.is_app_root import is_app_root
 from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.is_lazy import is_lazy
-from faebryk.library.is_pickable import is_pickable
 import faebryk.library.Literals as Literals
 from faebryk.library.can_bridge import can_bridge
 import faebryk.library.Parameters as Parameters
@@ -121,10 +121,10 @@ __all__ = [
     "Logic",
     "Mechanical",
     "Signal",
+    "is_pickable",
     "is_app_root",
     "has_part_removed",
     "is_lazy",
-    "is_pickable",
     "Literals",
     "can_bridge",
     "Parameters",
