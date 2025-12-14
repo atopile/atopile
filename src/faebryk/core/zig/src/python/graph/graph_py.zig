@@ -429,7 +429,7 @@ fn wrap_node_get_dynamic_attrs() type {
 
                 pub fn visit(ctx_ptr: *anyopaque, key: []const u8, literal: Literal, dynamic: bool) void {
                     const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
-                    if (dynamic) return;
+                    if (!dynamic) return;
                     ctx.map.put(key, literal) catch @panic("OOM dynamic attributes put");
                 }
             };

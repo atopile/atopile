@@ -3,7 +3,7 @@ const visitor = @import("visitor.zig");
 
 pub const str = []const u8;
 
-var global_graph_allocator: std.mem.Allocator = std.heap.page_allocator;
+var global_graph_allocator: std.mem.Allocator = std.heap.c_allocator;
 
 pub const NodeRefMap = struct {
     pub fn eql(_: @This(), a: NodeReference, b: NodeReference) bool {
@@ -131,6 +131,7 @@ pub const DynamicAttributes = struct {
             // realloc returns a slice with the new length already set
             self.values = global_graph_allocator.realloc(self.values, new_len) catch @panic("OOM");
         }
+        self.values.len = new_len;
     }
 
     pub fn deinit(self: *@This()) void {
@@ -145,6 +146,9 @@ pub const DynamicAttributes = struct {
     }
 
     pub fn copy_into(self: *const @This(), other: *@This()) void {
+        //for (self.values) |value| {
+        //    other.put(value.identifier, value.value);
+        //}
         const cur_len = other.values.len;
         other.grow_slice(self.values.len);
         @memcpy(other.values[cur_len..], self.values);
@@ -156,6 +160,9 @@ pub const DynamicAttributes = struct {
         //for (self.values) |*v| {
         //    if (std.mem.eql(u8, v.identifier, identifier)) {
         //        @panic("Overwrote value for identifier {s}");
+        //        //std.debug.print("Warning: Overwrote value for identifier {s}\n", .{identifier});
+        //        //v.value = value;
+        //        //return;
         //    }
         //}
         self.grow_slice(1);

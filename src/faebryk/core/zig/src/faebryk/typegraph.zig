@@ -148,7 +148,7 @@ pub const TypeGraph = struct {
 
                     pub fn visit(ctx: *anyopaque, key: str, value: graph.Literal, _dynamic: bool) void {
                         const s: *@This() = @ptrCast(@alignCast(ctx));
-                        if (_dynamic) return;
+                        if (!_dynamic) return;
                         if (std.mem.eql(u8, key, "child_identifier")) {
                             return;
                         }
@@ -438,7 +438,7 @@ pub const TypeGraph = struct {
 
                     pub fn visit(ctx: *anyopaque, key: str, value: graph.Literal, _dynamic: bool) void {
                         const s: *@This() = @ptrCast(@alignCast(ctx));
-                        if (_dynamic) return;
+                        if (!_dynamic) return;
                         s.dynamic.put(key, value);
                     }
                 };
@@ -1690,7 +1690,11 @@ test "basic instantiation" {
     _ = try tg.add_make_child(Capacitor, Electrical, "p1", null, null);
     _ = try tg.add_make_child(Capacitor, Electrical, "p2", null, null);
     const Resistor = try tg.add_type("Resistor");
-    const res_p1_makechild = try tg.add_make_child(Resistor, Electrical, "p1", null, null);
+    // Test: add node attributes to p1 MakeChild
+    var res_p1_attrs = TypeGraph.MakeChildNode.build(null);
+    res_p1_attrs.dynamic.put("test_attr", .{ .String = "test_value" });
+    res_p1_attrs.dynamic.put("pin_number", .{ .Int = 42 });
+    const res_p1_makechild = try tg.add_make_child(Resistor, Electrical, "p1", &res_p1_attrs, null);
     std.debug.print("RES_P1_MAKECHILD: {s}\n", .{try EdgeComposition.get_name(EdgeComposition.get_parent_edge(res_p1_makechild).?.edge)});
     _ = try tg.add_make_child(Resistor, Electrical, "p2", null, null);
     _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null, null);
@@ -1719,6 +1723,17 @@ test "basic instantiation" {
     try std.testing.expect(EdgeType.is_node_instance_of(cap1, Capacitor.node));
     try std.testing.expect(EdgeType.is_node_instance_of(cap1p1, Electrical.node));
     try std.testing.expect(EdgeType.is_node_instance_of(cap1p2, Electrical.node));
+
+    // Test: verify node attributes were copied from MakeChild to instance
+    const p1_test_attr = p1.node.attributes.get("test_attr");
+    try std.testing.expect(p1_test_attr != null);
+    try std.testing.expect(p1_test_attr.? == .String);
+    try std.testing.expect(std.mem.eql(u8, p1_test_attr.?.String, "test_value"));
+    const p1_pin_number = p1.node.attributes.get("pin_number");
+    try std.testing.expect(p1_pin_number != null);
+    try std.testing.expect(p1_pin_number.? == .Int);
+    try std.testing.expectEqual(@as(i64, 42), p1_pin_number.?.Int);
+    std.debug.print("Node attributes copied successfully: test_attr={s}, pin_number={d}\n", .{ p1_test_attr.?.String, p1_pin_number.?.Int });
 
     // print children of resistor
     var resistor_children = std.ArrayList(graph.BoundEdgeReference).init(a);

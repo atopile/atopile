@@ -164,6 +164,7 @@ def test_zig_embedded(zig_test: tuple[Path, str]) -> None:
             *["-O", "Debug"],
             "-fno-strip",
             "-fsanitize-c",
+            "-lc",  # Link against libc for c_allocator
         ]
         print(f"Compile command: {_escape_shell_args(compile_cmd)}")
         print(
