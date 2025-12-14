@@ -892,9 +892,13 @@ class TestAggregator:
                     log_modal = f"""
                     <div id="{modal_id}" class="modal">
                       <div class="modal-content">
-                        <span class="close" onclick="closeModal(\'{modal_id}\')">&times;</span>
-                        <button class="copy-btn" onclick="copyLogs('{modal_id}')">Copy</button>
-                        <h2>Logs for {t.nodeid}</h2>
+                        <div class="modal-header">
+                          <h2>Logs for {t.nodeid}</h2>
+                          <div class="modal-buttons">
+                            <button class="copy-btn" onclick="copyLogs('{modal_id}')">Copy</button>
+                            <button class="close-btn" onclick="closeModal('{modal_id}')">&times;</button>
+                          </div>
+                        </div>
                         {log_content}
                       </div>
                     </div>
