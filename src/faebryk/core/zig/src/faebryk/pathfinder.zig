@@ -166,10 +166,6 @@ pub const PathFinder = struct {
 
     pub fn count_paths(self: *Self, _: *BFSPath) visitor.VisitResult(void) {
         self.path_counter += 1;
-
-        if (self.path_counter > 1_000_000) {
-            return visitor.VisitResult(void){ .STOP = {} };
-        }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
