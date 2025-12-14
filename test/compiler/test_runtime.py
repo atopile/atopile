@@ -747,12 +747,7 @@ def test_directed_connect_signal_to_resistor():
     g, tg, stdlib, result, app_instance = build_instance(
         """
         #pragma experiment("BRIDGE_CONNECT")
-
-        module Electrical:
-            pass
-
-        module Resistor:
-            unnamed = new Electrical[2]
+        import Resistor
 
         module App:
             signal a
@@ -775,11 +770,7 @@ def test_directed_connect_non_bridge():
             """
             #pragma experiment("BRIDGE_CONNECT")
 
-            module Electrical:
-                pass
-
-            module Resistor:
-                unnamed = new Electrical[2]
+            import Resistor
 
             module A:
                 pass
@@ -873,13 +864,6 @@ def test_missing_pin_ref_raises():
 def test_regression_pin_refs():
     g, tg, stdlib, result, app_instance = build_instance(
         """
-        module Electrical:
-            pass
-
-        module ElectricPower:
-            hv = new Electrical
-            lv = new Electrical
-
         component App:
             signal CNT ~ pin 3
             signal NP ~ pin 5
@@ -970,12 +954,7 @@ def test_for_loop_nested_error():
         build_instance(
             """
             #pragma experiment("FOR_LOOP")
-
-            module Electrical:
-                pass
-
-            module Resistor:
-                unnamed = new Electrical[2]
+            import Resistor
 
             module App:
                 resistors = new Resistor[5]
@@ -1009,12 +988,7 @@ def test_for_loop_iterate_non_list():
         build_instance(
             """
             #pragma experiment("FOR_LOOP")
-
-            module Electrical:
-                pass
-
-            module Resistor:
-                unnamed = new Electrical[2]
+            import Resistor
 
             module App:
                 r_single = new Resistor
@@ -1049,13 +1023,7 @@ def test_for_loop_stale_ref():
         build_instance(
             """
             #pragma experiment("FOR_LOOP")
-
-            module Electrical:
-                pass
-
-            module Resistor:
-                unnamed = new Electrical[2]
-                resistance: ohm
+            import Resistor
 
             module App:
                 resistors = new Resistor[5]
@@ -1142,13 +1110,7 @@ def test_list_literal_nested():
     _, _, _, result, app_instance = build_instance(
         """
         #pragma experiment("FOR_LOOP")
-
-        module Electrical:
-            pass
-
-        module Resistor:
-            unnamed = new Electrical[2]
-            resistance: ohm
+        import Resistor
 
         module Nested:
             r1 = new Resistor
@@ -1187,13 +1149,7 @@ def test_list_literal_long():
     _, _, _, result, app_instance = build_instance(
         """
         #pragma experiment("FOR_LOOP")
-
-        module Electrical:
-            pass
-
-        module Resistor:
-            unnamed = new Electrical[2]
-            resistance: ohm
+        import Resistor
 
         module App:
             r1 = new Resistor
@@ -1229,13 +1185,7 @@ def test_list_literal_empty():
     _, _, _, result, app_instance = build_instance(
         """
         #pragma experiment("FOR_LOOP")
-
-        module Electrical:
-            pass
-
-        module Resistor:
-            unnamed = new Electrical[2]
-            resistance: ohm
+        import Resistor
 
         module App:
             r1 = new Resistor
@@ -1254,13 +1204,7 @@ def test_list_literal_invalid():
         _, _, _, result, app_instance = build_instance(
             """
             #pragma experiment("FOR_LOOP")
-
-            module Electrical:
-                pass
-
-            module Resistor:
-                unnamed = new Electrical[2]
-                resistance: ohm
+            import Resistor
 
             module App:
                 rs = new Resistor[2]
