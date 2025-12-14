@@ -921,7 +921,7 @@ class ASTVisitor:
                     target_path=FieldPath(
                         segments=(
                             *target_path.segments,
-                            FieldPath.Segment("resistance_is_number"),
+                            FieldPath.Segment("is_expression"),
                         )
                     ),
                     child_spec=NewChildSpec(
@@ -933,7 +933,7 @@ class ASTVisitor:
                         type_node=node.instance,
                     ),
                     child_field=F.Literals.Numbers.MakeChild_ConstrainToSingleton(
-                        param_ref=["r1", "resistance"],
+                        param_ref=list(target_path.identifiers()),
                         value=value,
                         unit=unit,
                     ),
@@ -946,7 +946,7 @@ class ASTVisitor:
                     target_path=FieldPath(
                         segments=(
                             *target_path.segments,
-                            FieldPath.Segment("string_is_string"),
+                            FieldPath.Segment("is_expression"),
                         )
                     ),
                     child_spec=NewChildSpec(
@@ -957,7 +957,7 @@ class ASTVisitor:
                         ),
                     ),
                     child_field=F.Literals.Strings.MakeChild_ConstrainToLiteralSubset(
-                        ["atomic_part", "footprint_"],
+                        list(target_path.identifiers()),
                         value,
                     ),
                     parent_reference=parent_reference,
