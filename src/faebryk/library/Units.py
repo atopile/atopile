@@ -575,6 +575,7 @@ class is_unit(fabll.Node):
 
     def compact_repr(self) -> str:
         """Return compact unit repr (symbol or basis vector with multipliers)."""
+
         def to_superscript(n: int) -> str:
             """Convert an integer to Unicode superscript characters."""
             superscript_map = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
@@ -836,9 +837,10 @@ class _UnitRegistry(Enum):
     Rpm = auto()
 
 
+DIMENSIONLESS_SYMBOL = "dimensionless"
 _UNIT_SYMBOLS: dict[_UnitRegistry, list[str]] = {
     # prefereed unit for display comes first (must be valid with prefixes)
-    _UnitRegistry.Dimensionless: ["dimensionless"],  # TODO: allow None?
+    _UnitRegistry.Dimensionless: [DIMENSIONLESS_SYMBOL],
     _UnitRegistry.Percent: ["%"],
     _UnitRegistry.Ppm: ["ppm"],
     _UnitRegistry.Ampere: ["A", "ampere"],

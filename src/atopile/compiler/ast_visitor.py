@@ -970,7 +970,7 @@ class ASTVisitor:
                 raise NotImplementedError(f"Unhandled assignable type: {assignable}")
 
     def visit_Quantity(self, node: AST.Quantity) -> _Quantity:
-        return (node.get_value(), node.get_unit())
+        return (node.get_value(), node.get_unit() or F.Units.DIMENSIONLESS_SYMBOL)
 
     def visit_NewExpression(self, node: AST.NewExpression):
         type_name = node.get_type_ref_name()

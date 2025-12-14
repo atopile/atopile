@@ -238,9 +238,8 @@ class Unit(fabll.Node):
     source = SourceChunk.MakeChild()
     symbol = F.Literals.Strings.MakeChild()
 
-    def setup(self, symbol: str, source_info: SourceInfo | None = None) -> Self:  # type: ignore[invalid-method-override]
-        if source_info is not None:
-            self.source.get().setup(source_info=source_info)
+    def setup(self, source_info: SourceInfo, symbol: str) -> Self:  # type: ignore[invalid-method-override]
+        self.source.get().setup(source_info=source_info)
         self.symbol.get().setup_from_values(symbol)
         return self
 
@@ -252,13 +251,16 @@ class Quantity(fabll.Node):
 
     source = SourceChunk.MakeChild()
     number = Decimal.MakeChild()
-    unit = Unit.MakeChild()
+    unit = F.Collections.Pointer()
 
     def get_value(self) -> float:
         return self.number.get().get_value()
 
-    def get_unit(self) -> str:
-        return self.unit.get().symbol.get().get_single()
+    def get_unit(self) -> str | None:
+        if (unit := self.unit.try_deref()) is None:
+            return None
+
+        return unit.cast(Unit).symbol.get().get_single()
 
     def setup(  # type: ignore[invalid-method-override]
         self,
@@ -272,10 +274,13 @@ class Quantity(fabll.Node):
 
         if unit is not None:
             symbol, unit_source = unit
-        else:
-            symbol = "Dimensionless"
-            unit_source = None
-        self.unit.get().setup(source_info=unit_source, symbol=symbol)
+            unit_node = (
+                Unit.bind_typegraph(self.tg)
+                .create_instance(g=self.g)
+                .setup(source_info=unit_source, symbol=symbol)
+            )
+            self.unit.point(unit_node)
+            _add_anon_child(self, unit_node)
 
         return self
 
