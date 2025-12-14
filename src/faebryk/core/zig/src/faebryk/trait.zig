@@ -80,6 +80,10 @@ pub const EdgeTrait = struct {
         return .{ .identifier = trait_type_name, .edge_type = tid };
     }
 
+    pub fn get_tid() Edge.EdgeType {
+        return tid;
+    }
+
     pub fn init(allocator: std.mem.Allocator, owner: NodeReference, trait_instance: NodeReference) EdgeReference {
         const edge = Edge.init(allocator, owner, trait_instance, tid);
 

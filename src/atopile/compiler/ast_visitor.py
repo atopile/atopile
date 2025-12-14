@@ -6,6 +6,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import ClassVar
 
+from rich import print
+
 import atopile.compiler.ast_types as AST
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -32,6 +34,10 @@ from faebryk.library.can_bridge import can_bridge
 from faebryk.library.Lead import can_attach_to_pad_by_name, is_lead
 from faebryk.libs.util import cast_assert, not_none
 
+_Unit = type[fabll.NodeT]
+_Quantity = tuple[float, str]
+_Range = tuple[float, float] | tuple[_Quantity, _Quantity]
+
 logger = logging.getLogger(__name__)
 
 # FIXME: needs expanding
@@ -44,6 +50,11 @@ STDLIB_ALLOWLIST: set[type[fabll.Node]] = (
         F.Resistor,
         F.ResistorVoltageDivider,
         F.LED,
+        F.Expressions.Is,
+        F.Expressions.IsSubset,
+        F.Literals.Numbers,
+        F.Literals.NumericSet,
+        F.Literals.NumericInterval,
     }
 ) | (
     # Traits
@@ -63,6 +74,7 @@ class BuildState:
     external_type_refs: list[tuple[graph.BoundNode, ImportRef]]
     file_path: Path | None
     import_path: str | None
+    type_roots_fabll: dict[str, type[fabll.Node]]
 
 
 class DslException(Exception):
@@ -192,13 +204,17 @@ class _TypeContextStack:
         self, *, g: graph.GraphView, tg: fbrk.TypeGraph, state: BuildState
     ) -> None:
         self._stack: list[graph.BoundNode] = []
+        self._fabll_type_stack: list[type[fabll.Node]] = []
         self._g = g
         self._tg = tg
         self._state = state
 
     @contextmanager
-    def enter(self, type_node: graph.BoundNode) -> Generator[None, None, None]:
+    def enter(
+        self, type_node: graph.BoundNode, fabll_type: type[fabll.Node]
+    ) -> Generator[None, None, None]:
         self._stack.append(type_node)
+        self._fabll_type_stack.append(fabll_type)
         try:
             yield
         finally:
@@ -208,6 +224,11 @@ class _TypeContextStack:
         if not self._stack:
             raise DslException("Type context is not available")
         return self._stack[-1]
+
+    def current_fabll(self) -> type[fabll.Node]:
+        if not self._fabll_type_stack:
+            raise DslException("fabll type context is not available")
+        return self._fabll_type_stack[-1]
 
     def apply_action(self, action) -> None:
         match action:
@@ -275,35 +296,69 @@ class _TypeContextStack:
     def _add_child(
         self, type_node: graph.BoundNode, action: AddMakeChildAction
     ) -> None:
-        if (parent_reference := action.parent_reference) is None and (
-            parent_path := action.parent_path
-        ) is not None:
-            parent_reference = self._ensure_field_path(
-                type_node=type_node, field_path=parent_path
-            )
-
         child_spec = action.child_spec
         symbol = child_spec.symbol
 
-        if (
-            child_type_identifier := child_spec.type_identifier
-        ) is None and symbol is not None:
-            child_type_identifier = symbol.name
+        # New fabll way of adding child fields
+        if action.child_field is not None:
+            # Add the child field to fabll type attributes
+            self._add_child_field(
+                type_node=type_node,
+                action=action.child_field,
+                identifier=str(action.target_path),
+            )
 
-        assert child_type_identifier is not None
+            # Get the fabll node and bound node of current type
+            assert self.current_fabll() is not None
+            tnbtg = fabll.TypeNodeBoundTG(tg=self._tg, t=self.current_fabll())
+            app_bnode = (
+                self.current_fabll().bind_typegraph(tg=self._tg).get_or_create_type()
+            )
+            assert isinstance(action.child_field.identifier, str)
+            # Execute the child field to create make child nodes on type node
+            fabll.Node._exec_field(t=tnbtg, field=action.child_field)
 
-        make_child = self._tg.add_make_child_deferred(
-            type_node=type_node,
-            child_type_identifier=child_type_identifier,
-            identifier=action.target_path.leaf.identifier,
-            node_attributes=None,
-            mount_reference=parent_reference,
-        )
+            # Link make child.type reference to the child type node
+            make_child = fbrk.EdgeComposition.get_child_by_identifier(
+                bound_node=app_bnode,
+                child_identifier=action.child_field.identifier,
+            )
+            assert fabll.Node(not_none(make_child)).get_type_name() == "MakeChild"
+            type_reference = self._tg.get_make_child_type_reference(
+                make_child=not_none(make_child)
+            )
+            assert (
+                fabll.Node(not_none(type_reference)).get_type_name() == "TypeReference"
+            )
 
-        type_reference = not_none(
-            self._tg.get_make_child_type_reference(make_child=make_child)
-        )
+        else:  # Old way
+            if (parent_reference := action.parent_reference) is None and (
+                parent_path := action.parent_path
+            ) is not None:
+                parent_reference = self._ensure_field_path(
+                    type_node=type_node, field_path=parent_path
+                )
 
+            if (
+                child_type_identifier := child_spec.type_identifier
+            ) is None and symbol is not None:
+                child_type_identifier = symbol.name
+
+            assert child_type_identifier is not None
+
+            make_child = self._tg.add_make_child_deferred(
+                type_node=type_node,
+                child_type_identifier=child_type_identifier,
+                identifier=action.target_path.leaf.identifier,
+                node_attributes=None,
+                mount_reference=parent_reference,
+            )
+
+            type_reference = not_none(
+                self._tg.get_make_child_type_reference(make_child=make_child)
+            )
+
+        # Link now (local) or later (external)
         if symbol is not None and symbol.import_ref:
             # External imports: defer linking to build phase
             self._state.external_type_refs.append((type_reference, symbol.import_ref))
@@ -329,7 +384,8 @@ class _TypeContextStack:
             type_node=type_node,
             lhs_reference=action.lhs_ref,
             rhs_reference=action.rhs_ref,
-            edge_attributes=fbrk.EdgeInterfaceConnection.build(shallow=False),
+            edge_attributes=action.edge
+            or fbrk.EdgeInterfaceConnection.build(shallow=False),
         )
 
     def _add_trait(self, type_node: graph.BoundNode, action: AddTraitAction) -> None:
@@ -379,6 +435,13 @@ class _TypeContextStack:
                     f"Template arg {param_name}={value} for trait "
                     f"{action.trait_type_identifier} (constraint pending)"
                 )
+
+    def _add_child_field(
+        self, type_node: graph.BoundNode, action: fabll._ChildField, identifier: str
+    ) -> None:
+        # ALT self.AppNode.testing = fabll._ChildField(F.Electrical)
+        if self.current_fabll() is not None:
+            self.current_fabll()._handle_cls_attr(str(identifier), action)
 
 
 class AnyAtoBlock(fabll.Node):
@@ -432,6 +495,7 @@ class ASTVisitor:
         self._type_graph = type_graph
         self._state = BuildState(
             type_roots={},
+            type_roots_fabll={},
             external_type_refs=[],
             file_path=file_path,
             import_path=import_path,
@@ -607,9 +671,8 @@ class ASTVisitor:
 
                 _Block = _Interface
 
-        type_identifier = self._make_type_identifier(module_name)
-        _Block.__name__ = type_identifier
-        _Block.__qualname__ = type_identifier
+        _Block.__name__ = module_name
+        _Block.__qualname__ = module_name
 
         type_node = _Block.bind_typegraph(self._type_graph).get_or_create_type()
         self._state.type_roots[module_name] = type_node
@@ -621,8 +684,11 @@ class ASTVisitor:
             order=None,
         )
 
+        # New fabll approach
+        self._state.type_roots_fabll[module_name] = _Block
+
         with self._scope_stack.enter():
-            with self._type_stack.enter(type_node):
+            with self._type_stack.enter(type_node, _Block):
                 for stmt in node.scope.get().stmts.get().as_list():
                     self._type_stack.apply_action(self.visit(stmt))
 
@@ -769,11 +835,13 @@ class ASTVisitor:
                 if target_path.leaf.identifier not in member_identifiers:
                     raise DslException(f"Field `{target_path}` is not defined in scope")
 
+            assert new_spec.type_identifier is not None
             return AddMakeChildAction(
                 target_path=target_path,
                 child_spec=new_spec,
                 parent_reference=parent_reference,
                 parent_path=parent_path,
+                child_field=fabll._ChildField(nodetype=new_spec.type_identifier),
             )
 
         pointer_action = AddMakeChildAction(
@@ -810,6 +878,15 @@ class ASTVisitor:
 
         return [pointer_action, *element_actions]
 
+    def _ensure_ref(self, path: FieldPath) -> graph.BoundNode:
+        (root, *_) = path.segments
+        root_path = FieldPath(segments=(root,))
+
+        if not self._scope_stack.has_field(root_path):
+            raise DslException(f"Field `{root_path}` is not defined in scope")
+
+        return self._type_stack.resolve_reference(path, validate=False)
+
     def visit_Assignment(self, node: AST.Assignment):
         # TODO: broaden assignable support and handle keyed/pin field references
 
@@ -829,18 +906,68 @@ class ASTVisitor:
 
             parent_reference = self._type_stack.resolve_reference(parent_path)
 
-        if self._scope_stack.has_field(target_path):
-            raise DslException(
-                f"Field `{target_path}` is already defined in this scope"
-            )
-
         match assignable:
             case NewChildSpec() as new_spec:
+                if self._scope_stack.has_field(target_path):
+                    raise DslException(
+                        f"Field `{target_path}` is already defined in this scope"
+                    )
                 return self._handle_new_child(
                     target_path, new_spec, parent_reference, parent_path
                 )
+            case (float() as value, str() as unit):
+                ## fabll method
+                is_expr = AddMakeChildAction(
+                    target_path=FieldPath(
+                        segments=(
+                            *target_path.segments,
+                            FieldPath.Segment("resistance_is_number"),
+                        )
+                    ),
+                    child_spec=NewChildSpec(
+                        symbol=Symbol(
+                            name="Is",
+                            import_ref=ImportRef(name="Is", path=None),
+                            type_node=node.instance,
+                        ),
+                        type_node=node.instance,
+                    ),
+                    child_field=F.Literals.Numbers.MakeChild_ConstrainToSingleton(
+                        param_ref=["r1", "resistance"],
+                        value=value,
+                        unit=unit,
+                    ),
+                    parent_reference=parent_reference,
+                    parent_path=parent_path,
+                )
+            case str() as value:
+                is_expr = AddMakeChildAction(
+                    target_path=FieldPath(
+                        segments=(
+                            *target_path.segments,
+                            FieldPath.Segment("string_is_string"),
+                        )
+                    ),
+                    child_spec=NewChildSpec(
+                        symbol=Symbol(
+                            name="Is",
+                            import_ref=ImportRef(name="Is", path=None),
+                            type_node=node.instance,
+                        ),
+                    ),
+                    child_field=F.Literals.Strings.MakeChild_ConstrainToLiteralSubset(
+                        ["atomic_part", "footprint_"],
+                        value,
+                    ),
+                    parent_reference=parent_reference,
+                    parent_path=parent_path,
+                )
+                return is_expr
             case _:
                 raise NotImplementedError(f"Unhandled assignable type: {assignable}")
+
+    def visit_Quantity(self, node: AST.Quantity) -> _Quantity:
+        return (node.get_value(), node.get_unit())
 
     def visit_NewExpression(self, node: AST.NewExpression):
         type_name = node.get_type_ref_name()

@@ -160,7 +160,7 @@ class _ChildField[T: NodeT](Field, ChildAccessor[T]):
 
     def __init__(
         self,
-        nodetype: type[T],
+        nodetype: type[T] | str,
         *,
         attributes: "NodeAttributes | None" = None,
         identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
@@ -174,6 +174,7 @@ class _ChildField[T: NodeT](Field, ChildAccessor[T]):
     def bind_to_parent_type[N: NodeT](
         self, t: "TypeNodeBoundTG[N, Any]"
     ) -> "InstanceChildBoundType[T]":
+        assert not isinstance(self.nodetype, str), "Function must be run after linker"
         return InstanceChildBoundType(nodetype=self.nodetype, t=t)
 
     def get(self) -> T:
@@ -235,7 +236,7 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
 
     def __init__[N: NodeT](
         self,
-        nodetype: type[T],
+        nodetype: type[T] | str,
         t: "TypeNodeBoundTG[N, Any]",
         attributes: "NodeAttributes | None" = None,
         identifier: str | None | PLACEHOLDER = None,
@@ -245,6 +246,9 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
         self.identifier = identifier
         self.attributes = attributes
 
+        if isinstance(nodetype, str):
+            # TODO: Add checking similar to below for prelinked childfields
+            return
         if nodetype.Attributes is not NodeAttributes and not isinstance(
             attributes, nodetype.Attributes
         ):
@@ -258,17 +262,29 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
         if isinstance(identifier, PLACEHOLDER):
             raise FabLLException("Placeholder identifier not allowed")
 
-        child_type_node = self.nodetype.bind_typegraph(self.t.tg).get_or_create_type()
-
-        self.t.tg.add_make_child(
-            type_node=self.t.get_or_create_type(),
-            child_type=child_type_node,
-            identifier=identifier,
-            node_attributes=self.attributes.to_node_attributes()
-            if self.attributes is not None
-            else None,
-            mount_reference=None,
-        )
+        if isinstance(self.nodetype, str):
+            self.t.tg.add_make_child_deferred(
+                type_node=self.t.get_or_create_type(),
+                child_type_identifier=self.nodetype,
+                identifier=identifier,
+                node_attributes=self.attributes.to_node_attributes()
+                if self.attributes is not None
+                else None,
+                mount_reference=None,
+            )
+        else:
+            child_type_node = self.nodetype.bind_typegraph(
+                self.t.tg
+            ).get_or_create_type()
+            self.t.tg.add_make_child(
+                type_node=self.t.get_or_create_type(),
+                child_type=child_type_node,
+                identifier=identifier,
+                node_attributes=self.attributes.to_node_attributes()
+                if self.attributes is not None
+                else None,
+                mount_reference=None,
+            )
 
     def get(self) -> T:
         raise InvalidState(
@@ -857,6 +873,10 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             for dependant in field._prepend_dependants:
                 cls._exec_field(t=t, field=dependant, type_field=type_field)
             if type_field:
+                if isinstance(field.nodetype, str):
+                    raise FabLLException(
+                        f"Type reference not resolved for child {identifier}"
+                    )
                 child_nodetype: type[NodeT] = field.nodetype
                 child_instance = child_nodetype.bind_typegraph(tg=t.tg).create_instance(
                     g=t.tg.get_graph_view(),
@@ -1664,7 +1684,7 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
     # construction ---------------------------------------------------------------------
     def MakeChild[C: NodeT](
         self,
-        nodetype: type[C],
+        nodetype: type[C] | str,
         *,
         identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
         attributes: NodeAttributes | None = None,
@@ -2067,15 +2087,25 @@ class TreeRenderer:
         return ".<anonymous>" if prefix_on_anonymous else "<anonymous>"
 
     @staticmethod
-    def collect_interface_connections(node: graph.BoundNode, root: "Node") -> list[str]:
+    def collect_interface_connections(
+        node: graph.BoundNode, root: "Node", edge_type: int
+    ) -> list[str]:
         """Collect interface connection descriptions for a node."""
         interface_edges: list[graph.BoundEdge] = []
         node.visit_edges_of_type(
-            edge_type=fbrk.EdgeInterfaceConnection.get_tid(),
+            edge_type=edge_type,
             ctx=interface_edges,
             f=lambda acc, bound_edge: acc.append(bound_edge),
         )
 
+        if edge_type == fbrk.EdgeOperand.get_tid():
+            edgechar = "op>"
+        elif edge_type == fbrk.EdgeInterfaceConnection.get_tid():
+            edgechar = "~"
+        elif edge_type == fbrk.EdgeTrait.get_tid():
+            edgechar = "t~"
+        else:
+            raise ValueError(f"Assign edgechar for edge type: {edge_type}")
         connections = []
         for bound_edge in interface_edges:
             if bound_edge.edge().source().is_same(other=node.node()):
@@ -2086,7 +2116,7 @@ class TreeRenderer:
                 continue
 
             partner_node = Node.bind_instance(bound_edge.g().bind(node=partner_ref))
-            connections.append(f"~ {partner_node.relative_address(root=root)}")
+            connections.append(f"{edgechar} {partner_node.relative_address(root=root)}")
 
         return connections
 

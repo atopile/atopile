@@ -349,6 +349,17 @@ class Strings(fabll.Node):
         return out
 
     @classmethod
+    def MakeChild_ConstrainToLiteralSubset(
+        cls, ref: fabll.RefPath, *values: str
+    ) -> fabll._ChildField[Self]:
+        from faebryk.library.Expressions import IsSubset
+
+        lit = cls.MakeChild(*values)
+        out = IsSubset.MakeChild_Constrain(ref, [lit])
+        out.add_dependant(lit, before=True)
+        return out
+
+    @classmethod
     def MakeChild_ConstrainToLiteral(
         cls, ref: fabll.RefPath, *values: str
     ) -> fabll._ChildField[Self]:
@@ -1732,7 +1743,7 @@ class NumericSet(fabll.Node):
         return out
 
     @classmethod
-    def MakeChild_Empty(cls) -> fabll._ChildField:
+    def MakeChild_Empty(cls) -> fabll._ChildField[Self]:
         return fabll._ChildField(cls)
 
     @classmethod
@@ -1801,6 +1812,14 @@ class NumericSet(fabll.Node):
 
     def get_max_value(self) -> float:
         return self.get_intervals()[-1].get_max_value()
+
+    def get_single(self) -> float:
+        if not self.is_singleton():
+            raise NotSingletonError(
+                f"Expected singleton value, got interval: "
+                f"[{self.get_min_value()}, {self.get_max_value()}]"
+            )
+        return self.get_min_value()
 
     def get_values(self) -> Iterable[float]:
         """Get singleton values from all intervals."""
@@ -2945,8 +2964,8 @@ class Numbers(fabll.Node):
         cls,
         min: float,
         max: float,
-        unit: type[fabll.NodeT],
-    ) -> fabll._ChildField[Self]:
+        unit: type[fabll.NodeT] | str,
+    ) -> fabll._ChildField["Numbers"]:
         """
         Create a Numbers literal as a child field at type definition time.
 
@@ -3011,7 +3030,7 @@ class Numbers(fabll.Node):
         param_ref: fabll.RefPath,
         min: float,
         max: float,
-        unit: type[fabll.NodeT],
+        unit: type[fabll.NodeT] | str,
     ) -> fabll._ChildField["F.Expressions.Is"]:
         """
         Create a Numbers literal and constrain a parameter to it.
@@ -3049,7 +3068,7 @@ class Numbers(fabll.Node):
         cls,
         param_ref: fabll.RefPath,
         value: float,
-        unit: type[fabll.NodeT],
+        unit: type[fabll.NodeT] | str,
     ) -> fabll._ChildField["F.Expressions.Is"]:
         """
         Create a singleton Numbers literal and constrain a parameter to it.
@@ -4372,12 +4391,16 @@ class Numbers(fabll.Node):
             return f"{f(min_val)}..{f(max_val)}"
 
         interval_strs = [format_interval(iv) for iv in intervals]
-        
-        # If suppressing tolerance and we have a single interval formatted as center value,
+        # If suppressing tolerance and we have a single interval formatted as center v
         # format as singleton (no braces)
-        if not show_tolerance and len(interval_strs) == 1 and "±" not in interval_strs[0] and ".." not in interval_strs[0]:
+        if (
+            not show_tolerance
+            and len(interval_strs) == 1
+            and "±" not in interval_strs[0]
+            and ".." not in interval_strs[0]
+        ):
             return f"{interval_strs[0]}{unit_symbol}"
-        
+
         return f"{{{', '.join(interval_strs)}}}{unit_symbol}"
 
 

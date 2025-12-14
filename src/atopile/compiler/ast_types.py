@@ -196,6 +196,9 @@ class Decimal(fabll.Node):
     source = SourceChunk.MakeChild()
     value = F.Literals.NumericSet.MakeChild_Empty()
 
+    def get_value(self) -> float:
+        return self.value.get().get_single()
+
     def setup(self, source_info: SourceInfo, value: int | float) -> Self:  # type: ignore[invalid-method-override]
         self.source.get().setup(source_info=source_info)
         self.value.get().setup_from_singleton(float(value))
@@ -249,6 +252,12 @@ class Quantity(fabll.Node):
     source = SourceChunk.MakeChild()
     number = Decimal.MakeChild()
     unit = Unit.MakeChild()
+
+    def get_value(self) -> float:
+        return self.number.get().get_value()
+
+    def get_unit(self) -> str:
+        return self.unit.get().symbol.get().get_single()
 
     def setup(  # type: ignore[invalid-method-override]
         self,

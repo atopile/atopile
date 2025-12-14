@@ -1718,7 +1718,7 @@ class TestTraitStatements:
 
             component MyComponent:
                 trait is_atomic_part<manufacturer="Murata", partnumber="GRM123", footprint="C0805.kicad_mod", symbol="cap.kicad_sym">
-            """
+            """  # noqa: E501
         )
 
         comp_type = result.state.type_roots["MyComponent"]
@@ -1743,7 +1743,7 @@ class TestTraitStatements:
 
             component FullPart:
                 trait is_atomic_part<manufacturer="Test Inc", partnumber="PN-001", footprint="fp.kicad_mod", symbol="sym.kicad_sym", model="part.step">
-            """
+            """  # noqa: E501
         )
 
         comp_type = result.state.type_roots["FullPart"]
@@ -1754,3 +1754,214 @@ class TestTraitStatements:
             if identifier and "is_atomic_part" in identifier
         ]
         assert len(trait_children) == 1
+
+
+def test_literal_assignment():
+    import logging
+
+    import faebryk.core.faebrykpy as fbrk
+    import faebryk.core.node as fabll
+    from faebryk.libs.util import not_none
+
+    logging.basicConfig(level=logging.DEBUG)
+    g, tg, stdlib, result = _build_snippet(
+        """
+        import Resistor
+
+        module Resistance:
+            pass
+
+        module LocalResistor:
+            resistance = new Resistance
+
+        module App:
+            lr = new LocalResistor
+            lr.resistance = 11 ohms
+
+            r1 = new Resistor
+            r1.resistance = 10 ohms
+        """
+    )
+    app_type = result.state.type_roots["App"]
+
+    linker = Linker(None, stdlib, tg)
+    linker.link_imports(g, result.state)
+
+    r1_make_child = not_none(
+        fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_type, child_identifier="r1"
+        )
+    )
+    print(tg)
+    print(tg.get_make_child_type_reference(make_child=r1_make_child))
+
+    app_instance = fabll.Node(app_type).bind_typegraph(tg=tg).create_instance(g=g)
+    app_instance = fabll.Node(tg.instantiate_node(type_node=app_type, attributes={}))
+
+    # for identifier, make_child in tg.collect_make_children(type_node=app_type):
+    #     type_ref = tg.get_make_child_type_reference(make_child=make_child)
+    # if identifier == "r1":
+    # r_resolved = _Linker.get_resolved_type(type_reference=type_ref)
+    # assert r_resolved is not None
+    # print("R1 resolved type")
+    # print(fabll.Node(r_resolved).get_direct_children())
+
+    print(app_instance.get_direct_children())
+    r1 = not_none(
+        fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_instance.instance, child_identifier="r1"
+        )
+    )
+    # r1_resistance = not_none(
+    #     fbrk.EdgeComposition.get_child_by_identifier(
+    #         bound_node=r1, child_identifier="resistance"
+    #     )
+    # )
+    children = fbrk.EdgeComposition.get_children_query(
+        bound_node=r1,
+        direct_only=True,
+    )
+    [
+        print(
+            fbrk.EdgeType.get_type_node(
+                edge=not_none(fbrk.EdgeType.get_type_edge(bound_node=node)).edge()
+            )
+            .get_dynamic_attrs()
+            .get("type_identifier"),
+            " | ",
+            fabll.Node(node).get_name(accept_no_parent=True),
+            "\n",
+            fabll.Node(node).get_direct_children(),
+        )
+        for node in children
+    ]
+
+    # res_param = F.Parameters.NumericParameter.bind_instance(r1_resistance)
+
+    # is_expr = F.Expressions.Is.bind_instance(
+    #     not_none(
+    #         fbrk.EdgeComposition.get_child_by_identifier(
+    #             bound_node=r1, child_identifier="IsE xp"
+    #         )
+    #     )
+    # )
+    # number_lit = F.Literals.Numbers.bind_instance(
+    #     not_none(
+    #         fbrk.EdgeComposition.get_child_by_identifier(
+    #             bound_node=r1, child_identifier="Numbers"
+    #         )
+    #     )
+    # )
+    # operands = fbrk.EdgeComposition.get_child_by_identifier(
+    #     bound_node=is_expr.instance, child_identifier="operands"
+    # )
+    # print("***OPERANDS***")
+    # print(is_expr.operands.get().as_list())
+
+    # res_param.alias_to_literal(g=g, value=number_lit)
+    # print(res_param.get_trait(F.Units.is_unit))
+    # print(f"RES PARAM {res_param.try_extract_aliased_literal()}")
+    # Quantity 5 ohms
+    # Bounded Quantity 5-10 ohms (composed of 2 quantities, dont redo qty visitor)
+    # Bilateral Quantity 5+/-10% ohms (composed of 2 quantities, dont red qty visitor)
+
+    # app_node = tg.get_type_by_name(type_identifier="App")
+    # assert app_node is not None
+    # # print(app_node)
+    # # print(fabll.Node(app_node).get_direct_children())
+
+    # # fabll.Node(app_type).bind_typegraph(tg=type_graph)
+
+    # app_instance = tg.instantiate_node(type_node=app_type, attributes={})
+    # print(fabll.Node(app_instance).get_direct_children())
+
+
+def test_fabll_compiler():
+    import logging
+
+    import faebryk.core.faebrykpy as fbrk
+    import faebryk.core.node as fabll
+    import faebryk.library._F as F
+    from faebryk.libs.util import not_none
+
+    logging.basicConfig(level=logging.DEBUG)
+    g, tg, stdlib, result = _build_snippet(
+        """
+        import Resistor
+        import is_atomic_part
+
+        module Resistance:
+            pass
+
+        module LocalResistor:
+            resistance = new Resistance
+
+        module App:
+            # lr = new LocalResistor
+            # lr.resistance = 11 Ohm
+
+            # r1 = new Resistor
+            # r1.resistance = 10 Ohm
+
+            atomic_part = new is_atomic_part
+            atomic_part.footprint_ = "R_0402"
+        """
+    )
+    app_type_node = result.state.type_roots["App"]
+
+    linker = Linker(None, stdlib, tg)
+    linker.link_imports(g, result.state)
+
+    app_fabll_type = result.state.type_roots_fabll.get("App")
+    assert app_fabll_type is not None
+    app_type_node = app_fabll_type.bind_typegraph(tg=tg).get_or_create_type()
+    app_fabll_type_node = app_fabll_type(app_type_node)
+    print(app_fabll_type_node.get_direct_children())
+    # mc = fbrk.EdgeComposition.get_child_by_identifier(
+    #     bound_node=app_type_node, child_identifier="electrical"
+    # )
+    # print(
+    #     tg.get_make_child_type_reference(make_child=not_none(mc))
+    #     .node()
+    #     .get_dynamic_attrs()
+    # )
+    # print(tg.get_make_child_type_reference(make_child=not_none(mc)))
+
+    app_instance = fabll.Node(
+        tg.instantiate_node(type_node=app_type_node, attributes={})
+    )
+
+    # print(app_instance.get_direct_children())
+
+    # r1_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+    #     bound_node=app_instance.instance, child_identifier="r1"
+    # )
+
+    atomic_party_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+        bound_node=app_instance.instance, child_identifier="atomic_part"
+    )
+    # resistor = F.Resistor.bind_instance(not_none(r1_bnode))
+    atomic_party = F.is_atomic_part.bind_instance(not_none(atomic_party_bnode))
+
+    # print(f"Resistor Instance Children:\n\n{resistor.get_direct_children()}\n\n")
+
+    print(
+        fabll.Traits(
+            not_none(
+                atomic_party.footprint.get()
+                .is_parameter_operatable.get()
+                .try_extract_literal(allow_subset=True)
+            )
+        )
+        .get_obj(F.Literals.Strings)
+        .get_values()
+    )
+
+
+if __name__ == "__main__":
+    import typer
+
+    from faebryk.libs.logging import setup_basic_logging
+
+    setup_basic_logging()
+    typer.run(test_fabll_compiler)
