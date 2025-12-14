@@ -23,7 +23,16 @@ def compile():
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
 )
 @capture("cli:dev_test_start", "cli:dev_test_end")
-def test(ctx: typer.Context, ci: bool = False):
+def test(
+    ctx: typer.Context,
+    ci: bool = False,
+    baseline: str = typer.Option(
+        None,
+        "--baseline",
+        "-b",
+        help="Git commit hash to compare against (fetches CI report for that commit)",
+    ),
+):
     import sys
 
     from faebryk.libs.util import repo_root
@@ -38,4 +47,4 @@ def test(ctx: typer.Context, ci: bool = False):
             raise NotImplementedError("CI mode does not support -m")
         args.extend(["-m", "not not_in_ci and not regression and not slow"])
 
-    main(args=args)
+    main(args=args, baseline_commit=baseline)
