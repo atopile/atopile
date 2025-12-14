@@ -151,6 +151,13 @@ pub const DynamicAttributes = struct {
     }
 
     pub fn put(self: *@This(), identifier: str, value: Literal) void {
+        // Careful! No override possible!
+        // commented out for performance reasons
+        //for (self.values) |*v| {
+        //    if (std.mem.eql(u8, v.identifier, identifier)) {
+        //        @panic("Overwrote value for identifier {s}");
+        //    }
+        //}
         self.grow_slice(1);
         self.values[self.values.len - 1] = .{ .identifier = identifier, .value = value };
     }

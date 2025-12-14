@@ -459,11 +459,20 @@ pub const TypeGraph = struct {
     const initialized_identifier = "initialized";
 
     fn get_initialized(self: *const @This()) bool {
-        return self.self_node.node.attributes.get(initialized_identifier).?.Bool;
+        const is_set = self.self_node.node.attributes.get(initialized_identifier);
+        if (is_set) |_is_set| {
+            return _is_set.Bool;
+        }
+        return false;
     }
 
     fn set_initialized(self: *@This(), initialized: bool) void {
-        self.self_node.node.attributes.put(initialized_identifier, .{ .Bool = initialized });
+        if (self.get_initialized() and !initialized) {
+            @panic("TypeGraph is already initialized");
+        }
+        if (initialized) {
+            self.self_node.node.attributes.put(initialized_identifier, .{ .Bool = initialized });
+        }
     }
 
     // TODO make cache for all these
