@@ -1561,6 +1561,12 @@ def main(args: list[str] | None = None, baseline_commit: str | None = None):
     aggregator.generate_html_report()
     aggregator.generate_json_report()
 
+    # Print link to the static report file
+    report_path = Path("artifacts/test-report.html").resolve()
+    file_url = f"file://{report_path}"
+    clickable_file = f"\033]8;;{file_url}\033\\📄 {report_path}\033]8;;\033\\"
+    _print(f"Report saved: {clickable_file}")
+
     if aggregator.has_failures():
         sys.exit(1)
 
