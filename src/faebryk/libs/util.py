@@ -2915,11 +2915,11 @@ def match_iterables[T, U](
     return zip_dicts_by_key(*dicts)  # type: ignore
 
 
-def debug_perf(*args):
+def debug_perf(*args, _logger: Callable[[str], Any] | None = None):
     def _debug_perf[T: Callable](func: T) -> T:
         # get module of function
         module = func.__module__
-        logger = logging.getLogger(module)
+        logger = _logger or logging.getLogger(module).info
 
         def _wrapper(*args, **kwargs):
             mem_start = psutil.Process().memory_info().rss
@@ -2940,7 +2940,7 @@ def debug_perf(*args):
                     mem_diff = round(mem_diff / (1000**i), 2)
                     break
 
-            logger.info(
+            logger(
                 f"{func.__name__} took {diff} {prefix}s "
                 f"and used {mem_diff} {mem_prefix}B"
             )
