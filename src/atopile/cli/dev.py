@@ -30,7 +30,7 @@ def test(
         None,
         "--baseline",
         "-b",
-        help="Git commit hash to compare against (fetches CI report for that commit)",
+        help="Compare against a baseline: commit hash, or number of commits back (e.g. 3)",  # noqa: E501
     ),
 ):
     import sys
@@ -47,4 +47,15 @@ def test(
             raise NotImplementedError("CI mode does not support -m")
         args.extend(["-m", "not not_in_ci and not regression and not slow"])
 
-    main(args=args, baseline_commit=baseline)
+    # Convert number to HEAD~N format (e.g. "3" -> "HEAD~3")
+    baseline_commit = baseline
+    if baseline is not None:
+        # Check if it's a plain number
+        try:
+            n = int(baseline)
+            if n > 0:
+                baseline_commit = f"HEAD~{n}"
+        except ValueError:
+            pass  # Not a number, use as-is
+
+    main(args=args, baseline_commit=baseline_commit)
