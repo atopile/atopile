@@ -466,19 +466,21 @@ class ASTVisitor:
 
         match pragma_func_name:
             case ASTVisitor._Pragma.EXPERIMENT.value:
-                match pragma_args:
-                    case [ASTVisitor._Experiment.BRIDGE_CONNECT]:
-                        self.enable_experiment(ASTVisitor._Experiment.BRIDGE_CONNECT)
-                    case [ASTVisitor._Experiment.FOR_LOOP]:
-                        self.enable_experiment(ASTVisitor._Experiment.FOR_LOOP)
-                    case [ASTVisitor._Experiment.TRAITS]:
-                        self.enable_experiment(ASTVisitor._Experiment.TRAITS)
-                    case [ASTVisitor._Experiment.MODULE_TEMPLATING]:
-                        self.enable_experiment(ASTVisitor._Experiment.MODULE_TEMPLATING)
-                    case [ASTVisitor._Experiment.INSTANCE_TRAITS]:
-                        self.enable_experiment(ASTVisitor._Experiment.INSTANCE_TRAITS)
-                    case _:
-                        raise DslException(f"Experiment not recognized: `{pragma}`")
+                if len(pragma_args) != 1:
+                    raise DslException(
+                        f"Experiment pragma takes exactly one argument: `{pragma}`"
+                    )
+
+                (experiment_name,) = pragma_args
+
+                try:
+                    experiment = ASTVisitor._Experiment(experiment_name)
+                except ValueError:
+                    raise DslException(
+                        f"Experiment not recognized: `{experiment_name}`"
+                    )
+
+                self.enable_experiment(experiment)
             case _:
                 raise DslException(f"Pragma function not recognized: `{pragma}`")
 
