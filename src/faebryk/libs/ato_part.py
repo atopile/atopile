@@ -297,14 +297,16 @@ class AtoPart:
 
         docstring = ato.parse_docstring()
 
-        fp = kicad.loads(kicad.footprint.FootprintFile, path / atomic_trait.footprint)
-        symbol = kicad.loads(kicad.symbol.SymbolFile, path / atomic_trait.symbol)
+        fp = kicad.loads(
+            kicad.footprint.FootprintFile, path / atomic_trait.get_footprint()
+        )
+        symbol = kicad.loads(kicad.symbol.SymbolFile, path / atomic_trait.get_symbol())
         model = (
-            C_kicad_model_file.loads(path / atomic_trait.model)
-            if atomic_trait.model
+            C_kicad_model_file.loads(path / model_name)
+            if (model_name := atomic_trait.get_model())
             else None
         )
-        mfn_pn = atomic_trait.manufacturer, atomic_trait.partnumber
+        mfn_pn = atomic_trait.get_manufacturer(), atomic_trait.get_partnumber()
 
         auto_generated = None
         if auto_generated_trait is not None:

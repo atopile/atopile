@@ -23,10 +23,19 @@ class UART_Base(fabll.Node):
         F.has_single_electric_reference.MakeChild()
     )
 
-    def on_obj_set(self):
-        fabll.Traits.create_and_add_instance_to(
-            node=self.rx.get(), trait=F.has_net_name_suggestion
-        ).setup(name="RX", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.tx.get(), trait=F.has_net_name_suggestion
-        ).setup(name="TX", level=F.has_net_name_suggestion.Level.SUGGESTED)
+    net_names = [
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="RX",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[rx]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="TX",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[tx]
+        ),
+    ]

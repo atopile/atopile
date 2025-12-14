@@ -4,41 +4,80 @@
     <meta charset="UTF-8">
     <title>Test Execution Report</title>
     <style>
+        /* Catppuccin Mocha Palette */
+        :root {{
+            --ctp-rosewater: #f5e0dc;
+            --ctp-flamingo: #f2cdcd;
+            --ctp-pink: #f5c2e7;
+            --ctp-mauve: #cba6f7;
+            --ctp-red: #f38ba8;
+            --ctp-maroon: #eba0ac;
+            --ctp-peach: #fab387;
+            --ctp-yellow: #f9e2af;
+            --ctp-green: #a6e3a1;
+            --ctp-teal: #94e2d5;
+            --ctp-sky: #89dceb;
+            --ctp-sapphire: #74c7ec;
+            --ctp-blue: #89b4fa;
+            --ctp-lavender: #b4befe;
+            --ctp-text: #cdd6f4;
+            --ctp-subtext1: #bac2de;
+            --ctp-subtext0: #a6adc8;
+            --ctp-overlay2: #9399b2;
+            --ctp-overlay1: #7f849c;
+            --ctp-overlay0: #6c7086;
+            --ctp-surface2: #585b70;
+            --ctp-surface1: #45475a;
+            --ctp-surface0: #313244;
+            --ctp-base: #1e1e2e;
+            --ctp-mantle: #181825;
+            --ctp-crust: #11111b;
+        }}
+
         html {{ font-size: 12px; }}
-        body {{ font-family: sans-serif; margin: 10px; }}
-        h1 {{ font-size: 1.5rem; margin-bottom: 10px; }}
-        .summary {{ margin-bottom: 10px; padding: 5px; background: #f0f0f0; border-radius: 5px; }}
-        .progress-bar {{ width: 100%; background-color: #e0e0e0; border-radius: 5px; overflow: hidden; height: 15px; margin-bottom: 10px;}}
-        .progress-fill {{ height: 100%; background-color: #4caf50; transition: width 0.5s; text-align: center; color: white; line-height: 15px; font-size: 10px; }}
+        body {{ font-family: sans-serif; margin: 10px; background-color: var(--ctp-base); color: var(--ctp-text); }}
+        h1 {{ font-size: 1.5rem; margin-bottom: 10px; color: var(--ctp-text); }}
+        .summary {{ margin-bottom: 10px; padding: 8px; background: var(--ctp-mantle); border-radius: 5px; border: 1px solid var(--ctp-surface0); }}
+        .progress-bar {{ width: 100%; background-color: var(--ctp-surface0); border-radius: 5px; overflow: hidden; height: 15px; margin-bottom: 10px;}}
+        .progress-fill {{ height: 100%; background-color: var(--ctp-green); transition: width 0.5s; text-align: center; color: var(--ctp-crust); line-height: 15px; font-size: 10px; font-weight: bold; }}
         table {{ border-collapse: collapse; width: 100%; font-size: 12px; }}
-        th, td {{ border: 1px solid #ddd; padding: 4px; text-align: left; }}
-        th {{ background-color: #f2f2f2; cursor: pointer; user-select: none; position: relative; }}
-        th:hover {{ background-color: #ddd; }}
-        .passed {{ color: green; }}
-        .failed {{ color: red; font-weight: bold; }}
-        .error {{ color: darkred; font-weight: bold; }}
-        .crashed {{ color: purple; font-weight: bold; text-transform: uppercase; }}
-        .skipped {{ color: orange; }}
-        .running {{ color: blue; }}
-        .queued {{ color: gray; font-style: italic; }}
-        /* tr:nth-child(even) {{ background-color: #f9f9f9; }} */
-        tr.row-passed {{ background-color: #e8f5e9; }}
-        tr.row-failed {{ background-color: #ffebee; }}
-        tr.row-error {{ background-color: #fce4ec; }}
-        tr.row-crashed {{ background-color: #f3e5f5; }}
-        tr.row-skipped {{ background-color: #fff3e0; }}
-        tr.row-running {{ background-color: #e3f2fd; }}
-        tr.row-queued {{ background-color: #fafafa; }}
-        tr:hover {{ background-color: #f5f5f5; }}
+        th, td {{ border: 1px solid var(--ctp-surface0); padding: 4px; text-align: left; }}
+        th {{ background-color: var(--ctp-mantle); cursor: pointer; user-select: none; position: relative; color: var(--ctp-subtext1); }}
+        th:hover {{ background-color: var(--ctp-surface0); }}
+        .passed {{ color: var(--ctp-green); }}
+        .failed {{ color: var(--ctp-red); font-weight: bold; }}
+        .error {{ color: var(--ctp-maroon); font-weight: bold; }}
+        .crashed {{ color: var(--ctp-mauve); font-weight: bold; text-transform: uppercase; }}
+        .skipped {{ color: var(--ctp-yellow); }}
+        .running {{ color: var(--ctp-blue); }}
+        .queued {{ color: var(--ctp-overlay1); font-style: italic; }}
+        tr.row-passed {{ background-color: rgba(166, 227, 161, 0.1); }}
+        tr.row-failed {{ background-color: rgba(243, 139, 168, 0.15); }}
+        tr.row-error {{ background-color: rgba(235, 160, 172, 0.15); }}
+        tr.row-crashed {{ background-color: rgba(203, 166, 247, 0.15); }}
+        tr.row-skipped {{ background-color: rgba(249, 226, 175, 0.1); }}
+        tr.row-running {{ background-color: rgba(137, 180, 250, 0.15); }}
+        tr.row-queued {{ background-color: var(--ctp-mantle); }}
+        tr:hover {{ background-color: var(--ctp-surface0); }}
+        
+        /* Regression highlighting - more prominent */
+        tr.row-regression {{ 
+            background-color: rgba(243, 139, 168, 0.3) !important;
+            border-left: 3px solid var(--ctp-red);
+        }}
+        
         .controls {{ margin-bottom: 5px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }}
-        .filter-input {{ padding: 3px; width: 200px; }}
-        .outcome-filters {{ display: flex; gap: 5px; }}
-        .outcome-filters label {{ cursor: pointer; }}
+        .filter-input {{ padding: 3px; width: 200px; background-color: var(--ctp-surface0); border: 1px solid var(--ctp-surface1); color: var(--ctp-text); border-radius: 3px; }}
+        .filter-input::placeholder {{ color: var(--ctp-overlay0); }}
+        .filter-input:focus {{ outline: none; border-color: var(--ctp-lavender); }}
+        .outcome-filters {{ display: flex; gap: 5px; flex-wrap: wrap; }}
+        .outcome-filters label {{ cursor: pointer; color: var(--ctp-subtext0); }}
         
         .sort-indicator {{ margin-left: 5px; }}
         
         .log-match {{ 
-            background-color: yellow; 
+            background-color: var(--ctp-yellow); 
+            color: var(--ctp-crust);
             font-weight: bold;
         }}
         
@@ -48,16 +87,134 @@
             text-overflow: ellipsis;
             white-space: nowrap;
             font-size: 11px;
-            color: #c00;
+            color: var(--ctp-red);
+        }}
+        
+        /* Comparison status styles */
+        .compare-regression {{ 
+            color: var(--ctp-red); 
+            font-weight: bold;
+            font-size: 11px;
+        }}
+        .compare-fixed {{ 
+            color: var(--ctp-green); 
+            font-weight: bold;
+            font-size: 11px;
+        }}
+        .compare-new {{ 
+            color: var(--ctp-blue); 
+            font-size: 11px;
+        }}
+        .compare-same {{ 
+            color: var(--ctp-overlay1); 
+            font-size: 11px;
+        }}
+        .compare-na {{ 
+            color: var(--ctp-overlay0); 
+            font-size: 11px;
+        }}
+        
+        /* Baseline info */
+        .baseline-error {{
+            color: var(--ctp-yellow);
+        }}
+        
+        /* Comparison summary badges */
+        .compare-badge {{
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            margin-left: 4px;
+        }}
+        .badge-regression {{
+            background-color: rgba(243, 139, 168, 0.3);
+            color: var(--ctp-red);
+        }}
+        .badge-fixed {{
+            background-color: rgba(166, 227, 161, 0.3);
+            color: var(--ctp-green);
+        }}
+        .badge-new {{
+            background-color: rgba(137, 180, 250, 0.3);
+            color: var(--ctp-blue);
         }}
         
         /* Modal styles */
-        .modal {{ display: none; position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }}
-        .modal-content {{ background-color: #fefefe; margin: 5% auto; padding: 15px; border: 1px solid #888; width: 90%; max-height: 85vh; overflow-y: auto; }}
-        .close {{ color: #aaa; float: right; font-size: 24px; font-weight: bold; cursor: pointer; }}
-        .close:hover, .close:focus {{ color: black; text-decoration: none; cursor: pointer; }}
-        pre {{ background: #eee; padding: 5px; overflow-x: auto; white-space: pre-wrap; font-size: 11px; }}
-        button {{ font-size: 11px; padding: 2px 5px; }}
+        .modal {{ display: none; position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(17, 17, 27, 0.8); }}
+        .modal-content {{ background-color: var(--ctp-mantle); margin: 5% auto; padding: 15px; border: 1px solid var(--ctp-surface1); width: 90%; max-height: 85vh; overflow-y: auto; border-radius: 8px; }}
+        pre {{ background: var(--ctp-crust); padding: 8px; overflow-x: auto; white-space: pre-wrap; font-size: 11px; color: var(--ctp-text); border-radius: 4px; border: 1px solid var(--ctp-surface0); }}
+        button {{ font-size: 11px; padding: 2px 8px; background-color: var(--ctp-surface0); color: var(--ctp-text); border: 1px solid var(--ctp-surface1); border-radius: 3px; cursor: pointer; }}
+        button:hover {{ background-color: var(--ctp-surface1); }}
+        
+        /* Modal header layout */
+        .modal-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--ctp-surface0);
+        }}
+        .modal-header h2 {{
+            margin: 0;
+            font-size: 14px;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }}
+        .modal-buttons {{
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }}
+        
+        /* Copy button styles */
+        .copy-btn {{
+            padding: 4px 12px;
+            font-size: 12px;
+        }}
+        .copy-btn.copied {{
+            background-color: var(--ctp-green);
+            color: var(--ctp-crust);
+        }}
+        .close-btn {{
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            color: var(--ctp-overlay1);
+            background: none;
+            border: none;
+            padding: 0 4px;
+        }}
+        .close-btn:hover {{
+            color: var(--ctp-text);
+        }}
+        
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {{ width: 8px; height: 8px; }}
+        ::-webkit-scrollbar-track {{ background: var(--ctp-mantle); }}
+        ::-webkit-scrollbar-thumb {{ background: var(--ctp-surface1); border-radius: 4px; }}
+        ::-webkit-scrollbar-thumb:hover {{ background: var(--ctp-surface2); }}
+        
+        /* Links */
+        a {{ color: var(--ctp-blue); }}
+        a:hover {{ color: var(--ctp-sky); }}
+        
+        /* Code elements */
+        code {{ background-color: var(--ctp-surface0); padding: 2px 4px; border-radius: 3px; color: var(--ctp-peach); }}
+        
+        /* Strong/bold text */
+        strong {{ color: var(--ctp-text); }}
+        
+        /* Emphasis */
+        em {{ color: var(--ctp-subtext0); }}
+
+        /* Checkbox styling */
+        input[type="checkbox"] {{
+            accent-color: var(--ctp-lavender);
+        }}
     </style>
     <script>
         var currentSortColumn = -1;
@@ -140,7 +297,7 @@
                 if (filter === "") {{
                     textMatch = true;
                 }} else {{
-                    // Search in File(0), Test(1), Subtest(2), Params(3)
+                    // Search in File(0), Class(1), Function(2), Params(3)
                     for (var j = 0; j < 4; j++) {{
                         td = tr[i].getElementsByTagName("td")[j];
                         if (td) {{
@@ -176,7 +333,7 @@
                 }}
 
                 var outcomeMatch = false;
-                // Outcome is now column 4
+                // Outcome is column 4
                 td = tr[i].getElementsByTagName("td")[4];
                 if (td) {{
                     var outcomeClass = td.className; 
@@ -215,8 +372,8 @@
                 var xVal = x.textContent.toLowerCase().trim();
                 var yVal = y.textContent.toLowerCase().trim();
                 
-                // Numeric sort for Duration (column 5), Memory (column 6), and Peak Memory (column 7)
-                if (n === 5 || n === 6 || n === 7) {{
+                // Numeric sort for Duration (column 6), Memory (column 7), Peak Memory (column 8)
+                if (n === 6 || n === 7 || n === 8) {{
                     // Use data-value attribute if present, otherwise parse text
                     var xAttr = x.getAttribute("data-value");
                     var yAttr = y.getAttribute("data-value");
@@ -255,6 +412,24 @@
             document.getElementById(id).style.display = "none";
         }}
         
+        function copyLogs(modalId) {{
+            var modal = document.getElementById(modalId);
+            var pres = modal.querySelectorAll('pre');
+            var text = '';
+            pres.forEach(function(pre) {{
+                text += pre.textContent + '\\n\\n';
+            }});
+            navigator.clipboard.writeText(text.trim()).then(function() {{
+                var btn = modal.querySelector('.copy-btn');
+                btn.textContent = 'Copied!';
+                btn.classList.add('copied');
+                setTimeout(function() {{
+                    btn.textContent = 'Copy';
+                    btn.classList.remove('copied');
+                }}, 2000);
+            }});
+        }}
+        
         window.onclick = function(event) {{
             if (event.target.className == "modal") {{
                 event.target.style.display = "none";
@@ -278,6 +453,12 @@
         <strong>Skipped:</strong> <span class="skipped">{skipped}</span> |
         <strong>Running:</strong> <span class="running">{running}</span> |
         <strong>Queued:</strong> <span class="queued">{remaining}</span>
+        <br>
+        <strong>Comparison:</strong>
+        <span class="compare-badge badge-regression">{regressions} regressions</span>
+        <span class="compare-badge badge-fixed">{fixed} fixed</span>
+        <span class="compare-badge badge-new">{new_tests} new</span>
+        {baseline_info_html}
         {commit_info_html}
         {ci_info_html}
     </div>
@@ -308,10 +489,11 @@
                 <th onclick="sortTable(2)">Function</th>
                 <th onclick="sortTable(3)">Params</th>
                 <th onclick="sortTable(4)">Outcome</th>
-                <th onclick="sortTable(5)">Duration</th>
-                <th onclick="sortTable(6)">Memory</th>
-                <th onclick="sortTable(7)">Peak Mem</th>
-                <th onclick="sortTable(8)">Error</th>
+                <th onclick="sortTable(5)">Delta</th>
+                <th onclick="sortTable(6)">Duration</th>
+                <th onclick="sortTable(7)">Memory</th>
+                <th onclick="sortTable(8)">Peak Mem</th>
+                <th onclick="sortTable(9)">Error</th>
                 <th>Logs</th>
             </tr>
         </thead>

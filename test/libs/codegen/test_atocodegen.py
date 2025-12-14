@@ -133,8 +133,8 @@ def test_parse_regression_1():
     import faebryk.library._F as F
 
     atomic_trait = ato.get_trait(F.is_atomic_part)
-    assert atomic_trait.manufacturer == "TDK INVENSENSE"
-    assert atomic_trait.partnumber == "ICM-20948"
-    assert atomic_trait.footprint == "QFN-24_L3.0-W3.0-P0.40-BL-EP.kicad_mod"
-    assert atomic_trait.symbol == "ICM-20948.kicad_sym"
-    assert atomic_trait.model == "QFN-24_L3.0-W3.0-H0.9-P0.40-BL-EP.step"
+    assert atomic_trait.get_manufacturer() == "TDK INVENSENSE"
+    assert atomic_trait.get_partnumber() == "ICM-20948"
+    assert atomic_trait.get_footprint() == "QFN-24_L3.0-W3.0-P0.40-BL-EP.kicad_mod"
+    assert atomic_trait.get_symbol() == "ICM-20948.kicad_sym"
+    assert atomic_trait.get_model() == "QFN-24_L3.0-W3.0-H0.9-P0.40-BL-EP.step"

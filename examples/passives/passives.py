@@ -43,6 +43,10 @@ class App(fabll.Node):
         edge=EdgeInterfaceConnection.build(shallow=False),
     )
 
+    F.Literals.Numbers.MakeChild_ConstrainToLiteral(
+        [resistor, F.Resistor.resistance], min=1000.0, max=1000.0, unit=F.Units.Ohm
+    )
+
 
 if __name__ == "__main__":
     g = graph.GraphView.create()

@@ -29,13 +29,26 @@ class PDM(fabll.Node):
 
     _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
 
-    def on_obj_set(self):
-        fabll.Traits.create_and_add_instance_to(
-            node=self.data.get(), trait=F.has_net_name_suggestion
-        ).setup(name="DATA", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.clock.get(), trait=F.has_net_name_suggestion
-        ).setup(name="CLOCK", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.select.get(), trait=F.has_net_name_suggestion
-        ).setup(name="SELECT", level=F.has_net_name_suggestion.Level.SUGGESTED)
+    net_names = [
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="DATA",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[data]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="CLOCK",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[clock]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="SELECT",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[select]
+        ),
+    ]

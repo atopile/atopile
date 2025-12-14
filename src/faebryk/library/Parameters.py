@@ -50,6 +50,7 @@ class can_be_operand(fabll.Node):
         return fabll.Traits(self).get_obj_raw()
 
     def pretty(self, use_name: bool = True) -> str:
+        """Return context-aware string (pretty_str for literals, compact_repr else)."""
         if lit := self.as_literal.try_get():
             return lit.pretty_str()
         if po := self.as_parameter_operatable.try_get():
@@ -227,6 +228,7 @@ class is_parameter_operatable(fabll.Node):
         use_name: bool = False,
         no_lit_suffix: bool = False,
     ) -> str:
+        """Return compact math representation (delegates to parameter or expression)."""
         if p := self.as_parameter.try_get():
             return p.compact_repr(
                 context=context, use_name=use_name, no_lit_suffix=no_lit_suffix
@@ -239,6 +241,7 @@ class is_parameter_operatable(fabll.Node):
         assert False
 
     def __rich_repr__(self):
+        """Yield values for rich text display (compact repr and full type name)."""
         yield self.compact_repr()
         yield "on " + fabll.Traits(self).get_obj_raw().get_full_name(types=True)
 

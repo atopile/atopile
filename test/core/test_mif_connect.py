@@ -54,15 +54,22 @@ def test_up_connect_simple_single():
      L1 -->  L1
     ```
     """
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class Lower(fabll.Node):
+        is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
     class High(fabll.Node):
-        lower: fabll.ModuleInterface
+        is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+        lower = Lower.MakeChild()
 
-    high1 = High()
-    high2 = High()
+    high = High.bind_typegraph(tg)
+    high1 = high.create_instance(g=g)
+    high2 = high.create_instance(g=g)
 
-    high1.lower.connect(high2.lower)
-    assert high1.is_connected_to(high2)
+    high1.lower.get().is_interface.get().connect_to(high2.lower.get())
+    assert high1.is_interface.get().is_connected_to(high2)
 
 
 @pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
@@ -75,16 +82,24 @@ def test_up_connect_simple_two():
     ```
     """
 
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class Lower(fabll.Node):
+        is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+
     class High(fabll.Node):
-        lower1: fabll.ModuleInterface
-        lower2: fabll.ModuleInterface
+        is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+        lower1 = Lower.MakeChild()
+        lower2 = Lower.MakeChild()
 
-    high1 = High()
-    high2 = High()
+    high = High.bind_typegraph(tg)
+    high1 = high.create_instance(g=g)
+    high2 = high.create_instance(g=g)
 
-    high1.lower1.connect(high2.lower1)
-    high1.lower2.connect(high2.lower2)
-    assert high1.is_connected_to(high2)
+    high1.lower1.get().is_interface.get().connect_to(high2.lower1.get())
+    high1.lower2.get().is_interface.get().connect_to(high2.lower2.get())
+    assert high1.is_interface.get().is_connected_to(high2)
 
 
 @pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
@@ -97,19 +112,25 @@ def test_up_connect_simple_multiple():
      L3 -->  L3
     ```
     """
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class Lower(fabll.Node):
+        is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
     class High(fabll.Node):
-        lower1: fabll.ModuleInterface
-        lower2: fabll.ModuleInterface
-        lower3: fabll.ModuleInterface
+        is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+        lower1 = Lower.MakeChild()
+        lower2 = Lower.MakeChild()
+        lower3 = Lower.MakeChild()
 
-    high1 = High()
-    high2 = High()
-
-    high1.lower1.connect(high2.lower1)
-    high1.lower2.connect(high2.lower2)
-    high1.lower3.connect(high2.lower3)
-    assert high1.is_connected_to(high2)
+    high = High.bind_typegraph(tg)
+    high1 = high.create_instance(g=g)
+    high2 = high.create_instance(g=g)
+    high1.lower1.get().is_interface.get().connect_to(high2.lower1.get())
+    high1.lower2.get().is_interface.get().connect_to(high2.lower2.get())
+    high1.lower3.get().is_interface.get().connect_to(high2.lower3.get())
+    assert high1.is_interface.get().is_connected_to(high2)
 
 
 @pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")

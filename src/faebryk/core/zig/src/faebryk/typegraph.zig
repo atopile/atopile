@@ -857,18 +857,21 @@ pub const TypeGraph = struct {
                     else => return err,
                 };
 
-                const child_type = MakeChildNode.get_child_type(make_child) orelse {
-                    if (failure) |f| {
-                        f.* = PathResolutionFailure{
-                            .kind = PathErrorKind.missing_child,
-                            .failing_segment_index = idx,
-                            .failing_segment = identifier,
-                            .has_index_value = false,
-                        };
-                    }
-                    return error.UnresolvedTypeReference;
-                };
-                current_type = child_type;
+                const child_type = MakeChildNode.get_child_type(make_child) orelse null;
+                // if (failure) |f| {
+                //     f.* = PathResolutionFailure{
+                //         .kind = PathErrorKind.missing_child,
+                //         .failing_segment_index = idx,
+                //         .failing_segment = identifier,
+                //         .has_index_value = false,
+                //     };
+                // }
+                // return error.UnresolvedTypeReference;
+                // make oresle null and update if not null
+                if (child_type) |_child_type| {
+                    current_type = _child_type;
+                }
+                // current_type = child_type;
             } else if (edge_type == EdgeTrait.tid) {
                 // Trait edge: look up trait type by identifier
                 // For type-level validation, we check if a trait with this name exists
@@ -1311,8 +1314,10 @@ pub const TypeGraph = struct {
 
     pub fn instantiate_node(tg: *@This(), type_node: BoundNodeReference) !graph.BoundNodeReference {
         // type_node may be linked from another TypeGraph
-        var type_owner_tg_val = TypeGraph.of_type(type_node) orelse tg.*;
-        const type_owner_tg: *TypeGraph = &type_owner_tg_val;
+        // std.debug.print("OG TG {any}\n", .{tg.get_MakeChild().node});
+        // var type_owner_tg_val = TypeGraph.of_type(type_node) orelse tg.*;
+        // const type_owner_tg: *TypeGraph = &type_owner_tg_val;
+        // std.debug.print("NEW TG {any}\n", .{type_owner_tg_val.get_MakeChild().node});
 
         // 1) Create instance and connect it to its type
         const new_instance = type_node.g.insert_node(Node.init());
@@ -1359,7 +1364,8 @@ pub const TypeGraph = struct {
             .type_graph = tg,
             .parent_instance = new_instance,
         };
-        const make_child_result = type_owner_tg.visit_make_children(type_node, void, &make_child_visitor, VisitMakeChildren.visit);
+        const make_child_result = tg.visit_make_children(type_node, void, &make_child_visitor, VisitMakeChildren.visit);
+        // const make_child_result = type_owner_tg.visit_make_children(type_node, void, &make_child_visitor, VisitMakeChildren.visit);
         switch (make_child_result) {
             .ERROR => |err| return err,
             else => {},
@@ -1408,12 +1414,14 @@ pub const TypeGraph = struct {
 
         // Only visit make_link children if TypeGraph is fully initialized
         // This avoids circular dependency during TypeGraph initialization
-        if (type_owner_tg.get_initialized()) {
+        if (tg.get_initialized()) {
+            // if (type_owner_tg.get_initialized()) {
             var make_link_visitor = VisitMakeLinks{
                 .type_graph = tg,
                 .parent_instance = new_instance,
             };
-            const make_link_result = EdgeComposition.visit_children_of_type(type_node, type_owner_tg.get_MakeLink().node, void, &make_link_visitor, VisitMakeLinks.visit);
+            const make_link_result = EdgeComposition.visit_children_of_type(type_node, tg.get_MakeLink().node, void, &make_link_visitor, VisitMakeLinks.visit);
+            // const make_link_result = EdgeComposition.visit_children_of_type(type_node, type_owner_tg.get_MakeLink().node, void, &make_link_visitor, VisitMakeLinks.visit);
             switch (make_link_result) {
                 .ERROR => |err| return err,
                 else => {},

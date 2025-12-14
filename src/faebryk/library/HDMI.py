@@ -44,6 +44,7 @@ class HDMI(fabll.Node):
         pass
 
     def on_obj_set(self):
+        # Note: data is a list, so we handle it dynamically in on_obj_set
         for i, data in enumerate(self.data):
             net_name = f"HDMI_D{i}"
             fabll.Traits.create_and_add_instance_to(

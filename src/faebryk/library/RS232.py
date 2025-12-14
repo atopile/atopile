@@ -27,28 +27,61 @@ class RS232(fabll.Node):
         F.has_single_electric_reference.MakeChild()
     )
 
-    def on_obj_set(self):
-        fabll.Traits.create_and_add_instance_to(
-            node=self.tx.get(), trait=F.has_net_name_suggestion
-        ).setup(name="TX", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.rx.get(), trait=F.has_net_name_suggestion
-        ).setup(name="RX", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.dtr.get(), trait=F.has_net_name_suggestion
-        ).setup(name="DTR", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.dcd.get(), trait=F.has_net_name_suggestion
-        ).setup(name="DCD", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.dsr.get(), trait=F.has_net_name_suggestion
-        ).setup(name="DSR", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.ri.get(), trait=F.has_net_name_suggestion
-        ).setup(name="RI", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.rts.get(), trait=F.has_net_name_suggestion
-        ).setup(name="RTS", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.cts.get(), trait=F.has_net_name_suggestion
-        ).setup(name="CTS", level=F.has_net_name_suggestion.Level.SUGGESTED)
+    net_names = [
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="TX",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[tx]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="RX",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[rx]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="DTR",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[dtr]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="DCD",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[dcd]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="DSR",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[dsr]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="RI",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[ri]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="RTS",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[rts]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="CTS",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[cts]
+        ),
+    ]

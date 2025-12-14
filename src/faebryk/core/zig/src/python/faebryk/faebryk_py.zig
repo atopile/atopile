@@ -4396,6 +4396,7 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_reference_resolve(),
         wrap_typegraph_get_type_by_name(),
         wrap_typegraph_get_type_name(),
+        wrap_typegraph_get_or_create_type(),
         wrap_typegraph_get_graph_view(),
         wrap_typegraph_get_self_node(),
         wrap_typegraph_get_type_subgraph(),

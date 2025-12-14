@@ -15,14 +15,17 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import StrEnum, auto
 from pathlib import Path
 from typing import Any, Optional, cast
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 
 # Ensure we can import from test package
 sys.path.insert(0, os.getcwd())
@@ -35,6 +38,248 @@ from test.runner.common import (
     Outcome,
     Report,
 )
+
+
+class CompareStatus(StrEnum):
+    """Status comparing local test to remote baseline."""
+
+    SAME = auto()  # Outcome unchanged
+    REGRESSION = auto()  # Was passing, now failing
+    FIXED = auto()  # Was failing, now passing
+    NEW = auto()  # Test didn't exist in baseline
+    REMOVED = auto()  # Test was removed (only in baseline)
+
+
+@dataclass
+class RemoteBaseline:
+    """Holds remote test results for comparison."""
+
+    tests: dict[str, str] = field(default_factory=dict)  # nodeid -> outcome
+    commit_hash: Optional[str] = None
+    branch: Optional[str] = None
+    loaded: bool = False
+    error: Optional[str] = None
+
+
+def get_current_branch() -> Optional[str]:
+    """Get the current git branch name."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
+def get_remote_tracking_branch() -> Optional[str]:
+    """Get the remote tracking branch (e.g., origin/main)."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
+def fetch_remote_report(commit_hash: Optional[str] = None) -> RemoteBaseline:
+    """
+    Fetch a test report from GitHub Actions.
+
+    If commit_hash is provided, fetches the report for that specific commit.
+    Otherwise, fetches the most recent completed run for the current branch
+    (falling back to 'main' if no runs exist for the current branch).
+
+    Uses the `gh` CLI to download artifacts from workflow runs.
+    """
+    baseline = RemoteBaseline()
+
+    # Check gh CLI is available and we're in a valid repo
+    try:
+        result = subprocess.run(
+            ["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            baseline.error = "Failed to get repository info (is gh CLI installed?)"
+            return baseline
+        # Successfully got repo info, gh CLI is working
+    except FileNotFoundError:
+        baseline.error = "gh CLI not found - install with: brew install gh"
+        return baseline
+    except Exception as e:
+        baseline.error = f"Error getting repo info: {e}"
+        return baseline
+
+    run_id = None
+
+    # If a specific commit hash is provided, find the workflow run for it
+    if commit_hash:
+        # Resolve short hash to full hash using git
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", commit_hash],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                full_hash = result.stdout.strip()
+            else:
+                full_hash = commit_hash  # Use as-is if git can't resolve
+        except Exception:
+            full_hash = commit_hash
+
+        try:
+            result = subprocess.run(
+                [
+                    "gh",
+                    "run",
+                    "list",
+                    "--commit",
+                    full_hash,
+                    "--workflow",
+                    "pytest.yml",
+                    "--status",
+                    "completed",
+                    "--limit",
+                    "1",
+                    "--json",
+                    "databaseId,headSha,headBranch",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode == 0:
+                runs = json.loads(result.stdout)
+                if runs:
+                    run_id = runs[0]["databaseId"]
+                    baseline.commit_hash = runs[0]["headSha"][:8]
+                    baseline.branch = runs[0].get("headBranch", "unknown")
+                else:
+                    baseline.error = f"No workflow run found for commit '{commit_hash}'"
+                    return baseline
+            else:
+                baseline.error = f"Failed to find run for commit: {result.stderr}"
+                return baseline
+        except Exception as e:
+            baseline.error = f"Error finding workflow run for commit: {e}"
+            return baseline
+    else:
+        # Auto-detect: find the most recent completed workflow run for this branch
+        # Fall back to 'main' if current branch has no runs.
+        branch = get_current_branch()
+        if not branch:
+            baseline.error = "Could not determine current branch"
+            return baseline
+        baseline.branch = branch
+
+        branches_to_try = [branch]
+        if branch != "main":
+            branches_to_try.append("main")
+
+        for try_branch in branches_to_try:
+            try:
+                result = subprocess.run(
+                    [
+                        "gh",
+                        "run",
+                        "list",
+                        "--branch",
+                        try_branch,
+                        "--workflow",
+                        "pytest.yml",
+                        "--status",
+                        "completed",
+                        "--limit",
+                        "1",
+                        "--json",
+                        "databaseId,headSha,conclusion",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                if result.returncode != 0:
+                    continue
+
+                runs = json.loads(result.stdout)
+                if runs:
+                    run_id = runs[0]["databaseId"]
+                    baseline.commit_hash = runs[0]["headSha"][:8]
+                    baseline.branch = try_branch
+                    break
+            except Exception:
+                continue
+
+        if run_id is None:
+            baseline.error = (
+                f"No completed workflow runs found for '{branch}' or 'main'"
+            )
+            return baseline
+
+    # Download the test-report.json artifact
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            result = subprocess.run(
+                [
+                    "gh",
+                    "run",
+                    "download",
+                    str(run_id),
+                    "--name",
+                    "test-report.json",
+                    "--dir",
+                    tmpdir,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if result.returncode != 0:
+                baseline.error = f"Failed to download artifact: {result.stderr}"
+                return baseline
+
+            # Look for test-report.json in the downloaded files
+            report_path = Path(tmpdir) / "test-report.json"
+            if not report_path.exists():
+                # Check if it's in a subdirectory
+                for p in Path(tmpdir).rglob("test-report.json"):
+                    report_path = p
+                    break
+
+            if not report_path.exists():
+                baseline.error = "test-report.json not found in artifact"
+                return baseline
+
+            # Parse the report
+            report = Report.from_json(report_path.read_text())
+            baseline.tests = {t.fullnodeid: t.outcome for t in report.tests}
+            baseline.loaded = True
+
+        except Exception as e:
+            baseline.error = f"Error downloading/parsing artifact: {e}"
+            return baseline
+
+    return baseline
+
+
+# Global baseline (fetched once at startup)
+remote_baseline: RemoteBaseline = RemoteBaseline()
 
 
 @dataclass
@@ -321,6 +566,8 @@ class TestState:
     error_message: str | None = None
     memory_usage_mb: float = 0.0
     memory_peak_mb: float = 0.0
+    compare_status: CompareStatus | None = None
+    baseline_outcome: str | None = None
 
 
 def _ts() -> str:
@@ -347,14 +594,70 @@ class TestAggregator:
 
     __test__ = False
 
-    def __init__(self, all_tests: list[str]):
-        self._tests: dict[str, TestState] = {
-            t: TestState(nodeid=t, pid=None, start_time=None) for t in all_tests
-        }
+    def __init__(self, all_tests: list[str], baseline: RemoteBaseline):
+        self._baseline = baseline
+        self._tests: dict[str, TestState] = {}
+        for t in all_tests:
+            state = TestState(nodeid=t, pid=None, start_time=None)
+            # Set baseline info if available
+            if baseline.loaded:
+                if t in baseline.tests:
+                    state.baseline_outcome = baseline.tests[t]
+                else:
+                    # Test is new (not in baseline)
+                    state.compare_status = CompareStatus.NEW
+            self._tests[t] = state
         self._lock = threading.Lock()
         self._active_pids: set[int] = set()
         self._exited_pids: set[int] = set()
         self.start_time = datetime.datetime.now()
+
+    def set_baseline(self, baseline: RemoteBaseline) -> None:
+        """
+        Update the baseline after initialization called when background fetch completes
+        Recomputes comparison status for any tests that have already finished.
+        """
+        with self._lock:
+            self._baseline = baseline
+            if not baseline.loaded:
+                return
+
+            # Update all tests with baseline info and recompute comparisons
+            for nodeid, test in self._tests.items():
+                if nodeid in baseline.tests:
+                    test.baseline_outcome = baseline.tests[nodeid]
+                    # Reset compare_status so it can be recomputed
+                    test.compare_status = None
+                else:
+                    test.compare_status = CompareStatus.NEW
+
+                # Recompute comparison for tests that have already finished
+                if test.outcome is not None:
+                    self._compute_compare_status(test)
+
+    def _compute_compare_status(self, test: TestState) -> None:
+        """Compute comparison status based on outcome vs baseline."""
+        if not self._baseline.loaded or test.outcome is None:
+            return
+
+        if test.compare_status == CompareStatus.NEW:
+            # Already marked as new
+            return
+
+        current = str(test.outcome).lower()
+        baseline = test.baseline_outcome.lower() if test.baseline_outcome else None
+
+        if baseline is None:
+            test.compare_status = CompareStatus.NEW
+        elif current == baseline:
+            test.compare_status = CompareStatus.SAME
+        elif baseline == "passed" and current in ("failed", "error", "crashed"):
+            test.compare_status = CompareStatus.REGRESSION
+        elif baseline in ("failed", "error", "crashed") and current == "passed":
+            test.compare_status = CompareStatus.FIXED
+        else:
+            # Other changes (e.g., skipped <-> failed)
+            test.compare_status = CompareStatus.SAME
 
     def handle_event(self, data: EventRequest):
         event_type = data.type
@@ -383,16 +686,19 @@ class TestAggregator:
                 memory_peak_mb = data.memory_peak_mb
                 if nodeid and nodeid in self._tests and outcome_str:
                     try:
-                        self._tests[nodeid].outcome = outcome_str
-                        self._tests[nodeid].finish_time = datetime.datetime.now()
+                        test = self._tests[nodeid]
+                        test.outcome = outcome_str
+                        test.finish_time = datetime.datetime.now()
                         if output:
-                            self._tests[nodeid].output = output
+                            test.output = output
                         if error_message:
-                            self._tests[nodeid].error_message = error_message
+                            test.error_message = error_message
                         if memory_usage_mb is not None:
-                            self._tests[nodeid].memory_usage_mb = memory_usage_mb
+                            test.memory_usage_mb = memory_usage_mb
                         if memory_peak_mb is not None:
-                            self._tests[nodeid].memory_peak_mb = memory_peak_mb
+                            test.memory_peak_mb = memory_peak_mb
+                        # Compute comparison status
+                        self._compute_compare_status(test)
                     except ValueError:
                         pass
 
@@ -487,6 +793,13 @@ class TestAggregator:
         )
         queued = sum(1 for t in tests if t.start_time is None)
 
+        # Comparison counts
+        regressions = sum(
+            1 for t in tests if t.compare_status == CompareStatus.REGRESSION
+        )
+        fixed = sum(1 for t in tests if t.compare_status == CompareStatus.FIXED)
+        new_tests = sum(1 for t in tests if t.compare_status == CompareStatus.NEW)
+
         tests_count = len(tests)
         total_finished = passed + failed + errors + crashed + skipped
         progress_percent = (
@@ -530,9 +843,12 @@ class TestAggregator:
                 if durations:
                     rank = bisect.bisect_left(durations, d)
                     pct = rank / (len(durations) - 1) if len(durations) > 1 else 0
-                    # 120 (green) -> 0 (red)
-                    hue = 120 * (1 - pct)
-                    duration_style = f"background-color: hsl({hue:.0f}, 90%, 85%)"
+                    # Catppuccin Mocha: green (#a6e3a1) -> red (#f38ba8)
+                    # Interpolate RGB values
+                    r = int(166 + (243 - 166) * pct)
+                    g = int(227 + (139 - 227) * pct)
+                    b = int(161 + (168 - 161) * pct)
+                    duration_style = f"background-color: rgba({r}, {g}, {b}, 0.25)"
             elif t.start_time:
                 duration_val = (datetime.datetime.now() - t.start_time).total_seconds()
                 duration = f"{format_duration(duration_val)} (running)"
@@ -576,8 +892,13 @@ class TestAggregator:
                     log_modal = f"""
                     <div id="{modal_id}" class="modal">
                       <div class="modal-content">
-                        <span class="close" onclick="closeModal(\'{modal_id}\')">&times;</span>
-                        <h2>Logs for {t.nodeid}</h2>
+                        <div class="modal-header">
+                          <h2>Logs for {t.nodeid}</h2>
+                          <div class="modal-buttons">
+                            <button class="copy-btn" onclick="copyLogs('{modal_id}')">Copy</button>
+                            <button class="close-btn" onclick="closeModal('{modal_id}')">&times;</button>
+                          </div>
+                        </div>
                         {log_content}
                       </div>
                     </div>
@@ -618,10 +939,16 @@ class TestAggregator:
             if memories and memory_val > 0:
                 rank = bisect.bisect_left(memories, memory_val)
                 pct = rank / (len(memories) - 1) if len(memories) > 1 else 0
-                hue = 120 * (1 - pct)
-                memory_style = f"background-color: hsl({hue:.0f}, 90%, 85%)"
+                # Catppuccin Mocha: green (#a6e3a1) -> red (#f38ba8)
+                r = int(166 + (243 - 166) * pct)
+                g = int(227 + (139 - 227) * pct)
+                b = int(161 + (168 - 161) * pct)
+                memory_style = f"background-color: rgba({r}, {g}, {b}, 0.25)"
 
-            memory_cell = f'<td style="{memory_style}" data-value="{memory_val}">{memory_str}</td>'
+            memory_cell = (
+                f'<td style="{memory_style}" data-value="{memory_val}">'
+                f"{memory_str}</td>"
+            )
 
             # Peak Memory
             peak_val = t.memory_peak_mb
@@ -630,8 +957,11 @@ class TestAggregator:
             if peaks and peak_val > 0:
                 rank = bisect.bisect_left(peaks, peak_val)
                 pct = rank / (len(peaks) - 1) if len(peaks) > 1 else 0
-                hue = 120 * (1 - pct)
-                peak_style = f"background-color: hsl({hue:.0f}, 90%, 85%)"
+                # Catppuccin Mocha: green (#a6e3a1) -> red (#f38ba8)
+                r = int(166 + (243 - 166) * pct)
+                g = int(227 + (139 - 227) * pct)
+                b = int(161 + (168 - 161) * pct)
+                peak_style = f"background-color: rgba({r}, {g}, {b}, 0.25)"
 
             peak_cell = (
                 f'<td style="{peak_style}" data-value="{peak_val}">{peak_str}</td>'
@@ -653,11 +983,32 @@ class TestAggregator:
                     if len(error_msg_escaped) > 100
                     else error_msg_escaped
                 )
-                error_cell = f'<td class="error-cell" title="{error_msg_escaped}">{error_msg_display}</td>'
+                error_cell = (
+                    f'<td class="error-cell" title="{error_msg_escaped}">'
+                    f"{error_msg_display}</td>"
+                )
             else:
                 error_cell = "<td>-</td>"
 
             row_class = f"row-{outcome_class}"
+
+            # Comparison status cell
+            compare_cell = ""
+            if self._baseline.loaded:
+                cmp = t.compare_status
+                if cmp == CompareStatus.REGRESSION:
+                    compare_cell = '<td class="compare-regression">regression</td>'
+                    row_class += " row-regression"
+                elif cmp == CompareStatus.FIXED:
+                    compare_cell = '<td class="compare-fixed">fixed</td>'
+                elif cmp == CompareStatus.NEW:
+                    compare_cell = '<td class="compare-new">new</td>'
+                elif cmp == CompareStatus.SAME:
+                    compare_cell = '<td class="compare-same">-</td>'
+                else:
+                    compare_cell = "<td>-</td>"
+            else:
+                compare_cell = '<td class="compare-na">-</td>'
 
             rows.append(f"""
             <tr class="{row_class}">
@@ -666,6 +1017,7 @@ class TestAggregator:
                 <td>{function_name}</td>
                 <td>{params}</td>
                 <td class="{outcome_class}">{outcome_text}</td>
+                {compare_cell}
                 {duration_cell}
                 {memory_cell}
                 {peak_cell}
@@ -725,6 +1077,21 @@ class TestAggregator:
                 if ci_parts:
                     ci_info_html = "<strong>CI:</strong> " + " | ".join(ci_parts)
 
+            # Build baseline info HTML
+            baseline_info_html = ""
+            if self._baseline.loaded:
+                baseline_info_html = (
+                    f"<br><strong>Baseline:</strong> "
+                    f"<code>{self._baseline.commit_hash}</code> "
+                    f"on <code>{self._baseline.branch}</code> "
+                    f"({len(self._baseline.tests)} tests)"
+                )
+            elif self._baseline.error:
+                baseline_info_html = (
+                    f'<br><span class="baseline-error">'
+                    f"<strong>Baseline:</strong> {self._baseline.error}</span>"
+                )
+
             html = HTML_TEMPLATE.format(
                 status="Running" if running > 0 or queued > 0 else "Finished",
                 workers_active=workers_active,
@@ -736,6 +1103,9 @@ class TestAggregator:
                 skipped=skipped,
                 running=running,
                 remaining=queued,
+                regressions=regressions,
+                fixed=fixed,
+                new_tests=new_tests,
                 progress_percent=progress_percent,
                 rows="\n".join(rows),
                 timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -745,6 +1115,7 @@ class TestAggregator:
                 refresh_meta="",
                 commit_info_html=commit_info_html,
                 ci_info_html=ci_info_html,
+                baseline_info_html=baseline_info_html,
             )
         except Exception as e:
             print(f"Failed to format HTML report: {e}")
@@ -888,6 +1259,34 @@ async def event(request: EventRequest):
     return {"status": "ok"}
 
 
+@app.get("/")
+async def report_redirect():
+    """Redirect root to the test report."""
+    return HTMLResponse(
+        content='<html><head><meta http-equiv="refresh" content="0; url=/report">'
+        "</head></html>"
+    )
+
+
+@app.get("/report")
+async def serve_report():
+    """Serve the test report HTML file."""
+    report_path = Path("artifacts/test-report.html")
+    if report_path.exists():
+        # Read file into memory to avoid race condition with regeneration
+        try:
+            content = report_path.read_text(encoding="utf-8")
+            return HTMLResponse(content=content)
+        except Exception:
+            pass
+    return HTMLResponse(
+        content="<html><body><h1>Report not yet generated...</h1>"
+        "<p>Refresh in a few seconds.</p>"
+        "<script>setTimeout(() => location.reload(), 2000);</script>"
+        "</body></html>"
+    )
+
+
 class ReportTimer:
     """Periodically prints status reports."""
 
@@ -992,7 +1391,7 @@ def get_log_file(worker_id: int) -> Path:
 LOG_DIR = Path("artifacts/logs")
 
 
-def main(args: list[str] | None = None):
+def main(args: list[str] | None = None, baseline_commit: str | None = None):
     global tests_total, commit_info, ci_info, workers
 
     # Gather commit and CI info at startup (robust to failures)
@@ -1015,9 +1414,40 @@ def main(args: list[str] | None = None):
         _print("No tests found.")
         sys.exit(0)
 
-    # Initialize aggregator with all tests (so we know what's queued)
+    # Start fetching baseline from GitHub in background (non-blocking)
+    global remote_baseline
+    baseline_fetch_complete = threading.Event()
+
+    def fetch_baseline_background():
+        global remote_baseline
+        try:
+            remote_baseline = fetch_remote_report(commit_hash=baseline_commit)
+            if remote_baseline.loaded:
+                _print(
+                    f"Baseline loaded: {remote_baseline.commit_hash} on "
+                    f"{remote_baseline.branch} ({len(remote_baseline.tests)} tests)"
+                )
+                # Update aggregator with loaded baseline
+                if aggregator:
+                    aggregator.set_baseline(remote_baseline)
+            elif remote_baseline.error:
+                _print(f"Baseline: {remote_baseline.error}")
+        except Exception as e:
+            _print(f"Baseline fetch failed: {e}")
+            remote_baseline = RemoteBaseline(error=str(e))
+        finally:
+            baseline_fetch_complete.set()
+
+    baseline_thread = threading.Thread(target=fetch_baseline_background, daemon=True)
+    baseline_thread.start()
+    if baseline_commit:
+        _print(f"Fetching baseline for commit {baseline_commit} (background)...")
+    else:
+        _print("Fetching baseline from GitHub (background)...")
+
+    # Initialize aggregator with empty baseline (will be updated when fetch completes)
     global aggregator
-    aggregator = TestAggregator(tests)
+    aggregator = TestAggregator(tests, RemoteBaseline())
 
     for error_key, error_value in errors.items():
         aggregator._tests[error_key] = TestState(
@@ -1037,6 +1467,12 @@ def main(args: list[str] | None = None):
     url = f"http://127.0.0.1:{port}"
     _print(f"Starting orchestrator at {url}")
     start_server(port)
+
+    # Print clickable link to the report (ANSI hyperlink format for terminals)
+    report_url = f"{url}/report"
+    # Use OSC 8 hyperlink escape sequence for clickable links in modern terminals
+    clickable_link = f"\033]8;;{report_url}\033\\📊 {report_url}\033]8;;\033\\"
+    _print(f"Live report: {clickable_link}")
 
     # 3. Start Workers
     worker_script = Path(__file__).parent / "worker.py"
@@ -1145,6 +1581,12 @@ def main(args: list[str] | None = None):
 
     aggregator.generate_html_report()
     aggregator.generate_json_report()
+
+    # Print link to the static report file
+    report_path = Path("artifacts/test-report.html").resolve()
+    file_url = f"file://{report_path}"
+    clickable_file = f"\033]8;;{file_url}\033\\📄 {report_path}\033]8;;\033\\"
+    _print(f"Report saved: {clickable_file}")
 
     if aggregator.has_failures():
         sys.exit(1)

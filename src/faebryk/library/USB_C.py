@@ -16,25 +16,50 @@ class USB_C(fabll.Node):
 
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
-    def on_obj_set(self):
-        fabll.Traits.create_and_add_instance_to(
-            node=self.cc1.get(), trait=F.has_net_name_suggestion
-        ).setup(name="CC1", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.cc2.get(), trait=F.has_net_name_suggestion
-        ).setup(name="CC2", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.sbu1.get(), trait=F.has_net_name_suggestion
-        ).setup(name="SBU1", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.sbu2.get(), trait=F.has_net_name_suggestion
-        ).setup(name="SBU2", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.rx.get(), trait=F.has_net_name_suggestion
-        ).setup(name="RX", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.tx.get(), trait=F.has_net_name_suggestion
-        ).setup(name="TX", level=F.has_net_name_suggestion.Level.SUGGESTED)
+    net_names = [
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="CC1",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[cc1]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="CC2",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[cc2]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="SBU1",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[sbu1]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="SBU2",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[sbu2]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="RX",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[rx]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="TX",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[tx]
+        ),
+    ]
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

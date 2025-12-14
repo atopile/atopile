@@ -31,13 +31,22 @@ class ElectricPower(fabll.Node):
 
     can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeEdge(in_=[""], out_=[""]))
 
-    def on_obj_set(self):
-        fabll.Traits.create_and_add_instance_to(
-            node=self.hv.get(), trait=F.has_net_name_suggestion
-        ).setup(name="hv", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.lv.get(), trait=F.has_net_name_suggestion
-        ).setup(name="lv", level=F.has_net_name_suggestion.Level.SUGGESTED)
+    net_names = [
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="hv",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[hv]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="lv",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[lv]
+        ),
+    ]
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

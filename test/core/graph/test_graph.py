@@ -2,6 +2,7 @@ import pytest
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
@@ -13,13 +14,14 @@ def _get_component_node_count_params():
     # Component class -> expected unique node count
     # (each node counted once, even if reachable via multiple paths)
     component_counts: dict[type, int | None] = {
-        F.Electrical: 2,
-        F.ElectricLogic: 206,
-        F.ElectricSignal: 197,
-        F.ElectricPower: 157,
-        F.Resistor: 635,
-        F.Capacitor: 471,
-        F.I2C: 672,
+        fabll.Node: 16,
+        F.Electrical: 453,
+        F.ElectricLogic: 1468,
+        F.ElectricSignal: 1382,
+        F.ElectricPower: 1154,
+        F.Resistor: 2592,
+        F.Capacitor: 2500,
+        F.I2C: 2468,
     }
 
     return [

@@ -5,7 +5,9 @@ Shared data structures and helpers for the TypeGraph-generation IR.
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
+import faebryk.core.node as fabll
 
 
 @dataclass(frozen=True)
@@ -20,6 +22,13 @@ class ImportRef:
 
 @dataclass(frozen=True)
 class Symbol:
+    """
+    Referring to type within file scope
+    name:
+    import_ref:
+    type_node:
+    """
+
     name: str
     import_ref: ImportRef | None = None
     type_node: graph.BoundNode | None = None
@@ -87,6 +96,15 @@ class FieldPath:
 
 @dataclass(frozen=True)
 class NewChildSpec:
+    """
+    Only for NewExpression
+
+    symbol: The symbol to use for the child type.
+    type_identifier: full path including file name. str for pre linker
+    type_node:
+    count: How many child instances to create
+    """
+
     symbol: Symbol | None = None
     type_identifier: str | None = None
     type_node: graph.BoundNode | None = None
@@ -95,16 +113,35 @@ class NewChildSpec:
 
 @dataclass(frozen=True)
 class AddMakeChildAction:
+    """
+    target_path: String path to target eg. resistor.resistance
+    relative to parent reference node. eg. app
+    child_spec: The specification of the child to add.
+    parent_reference: Parent of the makechild node.
+    parent_path: The path to the parent type.
+    """
+
     target_path: FieldPath
     child_spec: NewChildSpec
     parent_reference: graph.BoundNode | None
     parent_path: FieldPath | None
+    child_field: fabll._ChildField | None = None
 
 
 @dataclass(frozen=True)
 class AddMakeLinkAction:
     lhs_ref: graph.BoundNode
     rhs_ref: graph.BoundNode
+    edge: fbrk.EdgeCreationAttributes | None = None
+
+
+@dataclass(frozen=True)
+class AddTraitAction:
+    trait_type_identifier: str
+    trait_type_node: graph.BoundNode | None
+    trait_import_ref: "ImportRef | None"
+    target_reference: graph.BoundNode | None
+    template_args: dict[str, str | bool | float] | None = None
 
 
 @dataclass(frozen=True)

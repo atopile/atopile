@@ -22,10 +22,19 @@ class XtalIF(fabll.Node):
     # ----------------------------------------
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    def on_obj_set(self):
-        fabll.Traits.create_and_add_instance_to(
-            node=self.xin.get(), trait=F.has_net_name_suggestion
-        ).setup(name="XIN", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.xout.get(), trait=F.has_net_name_suggestion
-        ).setup(name="XOUT", level=F.has_net_name_suggestion.Level.SUGGESTED)
+    net_names = [
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="XIN",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[xin]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="XOUT",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[xout]
+        ),
+    ]

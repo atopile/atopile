@@ -574,6 +574,7 @@ class is_unit(fabll.Node):
         return (scale, offset)
 
     def compact_repr(self) -> str:
+        """Return compact unit repr (symbol or basis vector with multipliers)."""
         def to_superscript(n: int) -> str:
             """Convert an integer to Unicode superscript characters."""
             superscript_map = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
@@ -659,11 +660,14 @@ class has_unit(fabll.Node):
     unit = F.Collections.Pointer.MakeChild()
 
     @classmethod
-    def MakeChild(cls, unit: type[fabll.NodeT]) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
+    def MakeChild(cls, unit: type[fabll.NodeT] | str) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
         out = fabll._ChildField(cls)
-        unit_field = unit.MakeChild()
-        out.add_dependant(unit_field)
-        out.add_dependant(F.Collections.Pointer.MakeEdge([out, cls.unit], [unit_field]))
+        if not isinstance(unit, str):
+            unit_field = unit.MakeChild()
+            out.add_dependant(unit_field)
+            out.add_dependant(
+                F.Collections.Pointer.MakeEdge([out, cls.unit], [unit_field])
+            )
         return out
 
     def setup(self, unit: is_unit) -> Self:  # type: ignore[invalid-method-override]

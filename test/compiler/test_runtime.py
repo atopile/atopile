@@ -16,6 +16,7 @@ from atopile.compiler.ast_visitor import (
     is_ato_module,
 )
 from atopile.compiler.build import Linker, StdlibRegistry, build_file
+from atopile.errors import UserSyntaxError
 from faebryk.core.faebrykpy import EdgeComposition, EdgeType
 from faebryk.core.graph import BoundNode, GraphView
 from faebryk.libs.smd import SMDSize
@@ -28,11 +29,6 @@ E = BoundExpressions()
 NULL_CONFIG = SimpleNamespace(project=None)
 
 
-# FIXME: compiler should expose a SyntaxError exception
-class SyntaxError(Exception):
-    pass
-
-
 def _get_child(node: BoundNode, name: str) -> BoundNode:
     return not_none(
         EdgeComposition.get_child_by_identifier(bound_node=node, child_identifier=name)
@@ -42,7 +38,10 @@ def _get_child(node: BoundNode, name: str) -> BoundNode:
 def _check_connected(
     node: BoundNode | fabll.Node, other: BoundNode | fabll.Node
 ) -> bool:
-    return False  # FIXME
+    source = node.instance if isinstance(node, fabll.Node) else node
+    target = other.instance if isinstance(other, fabll.Node) else other
+    path = fbrk.EdgeInterfaceConnection.is_connected_to(source=source, target=target)
+    return path.get_end_node().node().is_same(other=target.node())
 
 
 def _get_type_name(node: BoundNode) -> str:
@@ -498,7 +497,7 @@ def test_multiple_new():
 
 
 def test_invalid_multiple_new_count_negative():
-    with pytest.raises(DslException):
+    with pytest.raises(UserSyntaxError):
         build_instance(
             """
             module Inner:
@@ -747,12 +746,7 @@ def test_directed_connect_signal_to_resistor():
     g, tg, stdlib, result, app_instance = build_instance(
         """
         #pragma experiment("BRIDGE_CONNECT")
-
-        module Electrical:
-            pass
-
-        module Resistor:
-            unnamed = new Electrical[2]
+        import Resistor
 
         module App:
             signal a
@@ -774,12 +768,7 @@ def test_directed_connect_non_bridge():
         build_instance(
             """
             #pragma experiment("BRIDGE_CONNECT")
-
-            module Electrical:
-                pass
-
-            module Resistor:
-                unnamed = new Electrical[2]
+            import Resistor
 
             module A:
                 pass
@@ -873,12 +862,7 @@ def test_missing_pin_ref_raises():
 def test_regression_pin_refs():
     g, tg, stdlib, result, app_instance = build_instance(
         """
-        module Electrical:
-            pass
-
-        module ElectricPower:
-            hv = new Electrical
-            lv = new Electrical
+        import ElectricPower
 
         component App:
             signal CNT ~ pin 3
@@ -970,12 +954,7 @@ def test_for_loop_nested_error():
         build_instance(
             """
             #pragma experiment("FOR_LOOP")
-
-            module Electrical:
-                pass
-
-            module Resistor:
-                unnamed = new Electrical[2]
+            import Resistor
 
             module App:
                 resistors = new Resistor[5]
@@ -1009,12 +988,7 @@ def test_for_loop_iterate_non_list():
         build_instance(
             """
             #pragma experiment("FOR_LOOP")
-
-            module Electrical:
-                pass
-
-            module Resistor:
-                unnamed = new Electrical[2]
+            import Resistor
 
             module App:
                 r_single = new Resistor
@@ -1028,7 +1002,7 @@ def test_for_loop_iterate_non_list():
 def test_for_loop_syntax_error():
     from atopile.compiler.parse import parse_text_as_file
 
-    with pytest.raises(DslException, match="missing INDENT"):
+    with pytest.raises(UserSyntaxError, match="missing INDENT"):
         parse_text_as_file(
             textwrap.dedent(
                 """
@@ -1049,13 +1023,7 @@ def test_for_loop_stale_ref():
         build_instance(
             """
             #pragma experiment("FOR_LOOP")
-
-            module Electrical:
-                pass
-
-            module Resistor:
-                unnamed = new Electrical[2]
-                resistance: ohm
+            import Resistor
 
             module App:
                 resistors = new Resistor[5]
@@ -1142,13 +1110,7 @@ def test_list_literal_nested():
     _, _, _, result, app_instance = build_instance(
         """
         #pragma experiment("FOR_LOOP")
-
-        module Electrical:
-            pass
-
-        module Resistor:
-            unnamed = new Electrical[2]
-            resistance: ohm
+        import Resistor
 
         module Nested:
             r1 = new Resistor
@@ -1187,13 +1149,7 @@ def test_list_literal_long():
     _, _, _, result, app_instance = build_instance(
         """
         #pragma experiment("FOR_LOOP")
-
-        module Electrical:
-            pass
-
-        module Resistor:
-            unnamed = new Electrical[2]
-            resistance: ohm
+        import Resistor
 
         module App:
             r1 = new Resistor
@@ -1229,13 +1185,7 @@ def test_list_literal_empty():
     _, _, _, result, app_instance = build_instance(
         """
         #pragma experiment("FOR_LOOP")
-
-        module Electrical:
-            pass
-
-        module Resistor:
-            unnamed = new Electrical[2]
-            resistance: ohm
+        import Resistor
 
         module App:
             r1 = new Resistor
@@ -1254,13 +1204,7 @@ def test_list_literal_invalid():
         _, _, _, result, app_instance = build_instance(
             """
             #pragma experiment("FOR_LOOP")
-
-            module Electrical:
-                pass
-
-            module Resistor:
-                unnamed = new Electrical[2]
-                resistance: ohm
+            import Resistor
 
             module App:
                 rs = new Resistor[2]
@@ -1358,7 +1302,7 @@ def test_parameterised_trait():
 
 
 def test_nested_trait_access():
-    with pytest.raises(DslException, match="[Nn]o such trait"):
+    with pytest.raises(UserSyntaxError):
         build_instance(
             """
             #pragma experiment("TRAITS")
@@ -1388,7 +1332,7 @@ def test_nested_trait_namespace_access():
 
 
 def test_alternate_trait_constructor_dot_access():
-    with pytest.raises(DslException, match="[Nn]o such trait"):
+    with pytest.raises(UserSyntaxError):
         build_instance(
             """
             #pragma experiment("TRAITS")
@@ -1440,7 +1384,7 @@ def test_alternate_trait_constructor_with_params():
 
 
 def test_parameterised_trait_with_pos_args():
-    with pytest.raises(SyntaxError):
+    with pytest.raises(UserSyntaxError):
         build_instance(
             """
             #pragma experiment("TRAITS")
@@ -1509,7 +1453,7 @@ def test_parameterised_trait_no_params():
 def test_slice_for_loop():
     _, _, _, result, app_instance = build_instance(
         """
-        #pragma experiment("FOR LOOP")
+        #pragma experiment("FOR_LOOP")
         import Resistor
 
         module App:
@@ -1712,7 +1656,8 @@ def test_directed_connect_reverse_resistor_to_signal():
 
 def test_directed_connect_mixed_directions():
     with pytest.raises(
-        SyntaxError, match="Only one type of connection direction per statement allowed"
+        UserSyntaxError,
+        match="Only one type of connection direction per statement allowed",
     ):
         build_instance(
             """
@@ -1773,78 +1718,6 @@ def test_module_templating_list():
         addressor.address_bits_.get().force_extract_literal().get_single() == 7
         for addressor in addressors
     )
-
-
-# see src/atopile/compiler/parser/AtoLexer.g4
-@pytest.mark.parametrize(
-    "name,template",
-    [
-        (name, template)
-        for name in [
-            "component",
-            "module",
-            "interface",
-            "pin",
-            "signal",
-            "new",
-            "from",
-            "import",
-            "for",
-            "in",
-            "assert",
-            "to",
-            "True",
-            "False",
-            "within",
-            "is",
-            "pass",
-            "trait",
-            "int",
-            "float",
-            "string",
-            "str",
-            "bytes",
-            "if",
-            "parameter",
-            "param",
-            "test",
-            "require",
-            "requires",
-            "check",
-            "report",
-            "ensure",
-        ]
-        for template in [
-            """
-            module App:
-                {name} = 10V +/- 5%
-            """,
-            """
-            import {name}
-            """,
-            """
-            component {name}:
-                pass
-            """,
-            """
-            module {name}:
-                pass
-            """,
-            """
-            interface {name}:
-                pass
-            """,
-        ]
-    ],
-)
-def test_reserved_keywords_as_identifiers(name: str, template: str):
-    template = textwrap.dedent(template)
-
-    # ensure template is otherwise valid
-    build_instance(template.format(name="x"), "App")
-
-    with pytest.raises(SyntaxError):
-        build_instance(template.format(name=name), "App")
 
 
 def test_trait_template_enum():

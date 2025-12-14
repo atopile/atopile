@@ -228,21 +228,25 @@ class is_literal(fabll.Node):
         raise ValueError(f"Cannot cast literal {self} of type {obj} to any of {types}")
 
     def __rich_repr__(self):
+        """Yield values for rich text display (pretty string and full type name)."""
         yield self.pretty_str()
         yield "on " + fabll.Traits(self).get_obj_raw().get_full_name(types=True)
 
     def pretty_repr(self) -> str:
+        """Return developer-friendly representation with type name and pretty string."""
         # TODO
         lit = self.switch_cast()
         return f"{lit.get_type_name()}({lit.pretty_str()})"
 
     def pretty_str(self) -> str:
+        """Return a human-readable string representation of the literal value."""
         return self.switch_cast().pretty_str()
 
     def is_not_correlatable(self) -> bool:
         return not self.is_singleton() and not self.is_empty()
 
     def serialize(self) -> dict:
+        """Serialize literal to JSON-compatible dict for API/disk storage."""
         return self.switch_cast().serialize()
 
     @classmethod
@@ -346,6 +350,17 @@ class Strings(fabll.Node):
         )
         out.add_dependant(*lits, before=True)
 
+        return out
+
+    @classmethod
+    def MakeChild_ConstrainToLiteralSubset(
+        cls, ref: fabll.RefPath, *values: str
+    ) -> fabll._ChildField[Self]:
+        from faebryk.library.Expressions import IsSubset
+
+        lit = cls.MakeChild(*values)
+        out = IsSubset.MakeChild_Constrain(ref, [lit])
+        out.add_dependant(lit, before=True)
         return out
 
     @classmethod
@@ -1144,9 +1159,11 @@ class NumericInterval(fabll.Node):
         return math.isclose(value, other, rel_tol=EPSILON_REL, abs_tol=EPSILON_ABS)
 
     def __repr__(self) -> str:
+        """Return a developer-friendly representation of the numeric interval."""
         return f"_interval({self.get_min_value()}, {self.get_max_value()})"
 
     def __str__(self) -> str:
+        """Return string showing singleton, tolerance, or range format."""
         if self.get_min_value() == self.get_max_value():
             return f"[{self.get_min_value()}]"
         center, rel = self.as_center_rel()
@@ -1732,7 +1749,7 @@ class NumericSet(fabll.Node):
         return out
 
     @classmethod
-    def MakeChild_Empty(cls) -> fabll._ChildField:
+    def MakeChild_Empty(cls) -> fabll._ChildField[Self]:
         return fabll._ChildField(cls)
 
     @classmethod
@@ -1801,6 +1818,14 @@ class NumericSet(fabll.Node):
 
     def get_max_value(self) -> float:
         return self.get_intervals()[-1].get_max_value()
+
+    def get_single(self) -> float:
+        if not self.is_singleton():
+            raise NotSingletonError(
+                f"Expected singleton value, got interval: "
+                f"[{self.get_min_value()}, {self.get_max_value()}]"
+            )
+        return self.get_min_value()
 
     def get_values(self) -> Iterable[float]:
         """Get singleton values from all intervals."""
@@ -2945,8 +2970,8 @@ class Numbers(fabll.Node):
         cls,
         min: float,
         max: float,
-        unit: type[fabll.NodeT],
-    ) -> fabll._ChildField[Self]:
+        unit: type[fabll.NodeT] | str,
+    ) -> fabll._ChildField["Numbers"]:
         """
         Create a Numbers literal as a child field at type definition time.
 
@@ -3011,7 +3036,7 @@ class Numbers(fabll.Node):
         param_ref: fabll.RefPath,
         min: float,
         max: float,
-        unit: type[fabll.NodeT],
+        unit: type[fabll.NodeT] | str,
     ) -> fabll._ChildField["F.Expressions.Is"]:
         """
         Create a Numbers literal and constrain a parameter to it.
@@ -3049,7 +3074,7 @@ class Numbers(fabll.Node):
         cls,
         param_ref: fabll.RefPath,
         value: float,
-        unit: type[fabll.NodeT],
+        unit: type[fabll.NodeT] | str,
     ) -> fabll._ChildField["F.Expressions.Is"]:
         """
         Create a singleton Numbers literal and constrain a parameter to it.
@@ -4118,6 +4143,7 @@ class Numbers(fabll.Node):
         )
 
     def __repr__(self) -> str:
+        """Return a developer-friendly representation showing numeric set and unit."""
         try:
             numeric_set = self.get_numeric_set()
             symbols = self.get_is_unit().get_symbols()
@@ -4127,6 +4153,7 @@ class Numbers(fabll.Node):
             return f"Numbers(<uninitialized>, error={type(e).__name__}: {e})"
 
     def __str__(self) -> str:
+        """Return a string representation (same as __repr__ for Numbers)."""
         return self.__repr__()
 
     def equals(
@@ -4318,7 +4345,7 @@ class Numbers(fabll.Node):
         result = cls.create_instance(g=g, tg=tg)
         return result.setup(numeric_set=numeric_set, unit=unit)
 
-    def pretty_str(self) -> str:
+    def pretty_str(self, show_tolerance: bool = False) -> str:
         """Format number with units and tolerance for display."""
         numeric_set = self.get_numeric_set()
         if self.is_empty():
@@ -4362,11 +4389,26 @@ class Numbers(fabll.Node):
                 center != 0
                 and (tolerance_rel := abs((max_val - min_val) / 2 / center) * 100) < 1
             ):
-                return f"{f(center)}±{tolerance_rel:.1f}%"
+                if show_tolerance:
+                    return f"{f(center)}±{tolerance_rel:.1f}%"
+                else:
+                    # Just center value, no tolerance notation
+                    return f"{f(center)}"
 
+            # For larger intervals, show as range
             return f"{f(min_val)}..{f(max_val)}"
 
         interval_strs = [format_interval(iv) for iv in intervals]
+        # If suppressing tolerance and we have a single interval formatted as center v
+        # format as singleton (no braces)
+        if (
+            not show_tolerance
+            and len(interval_strs) == 1
+            and "±" not in interval_strs[0]
+            and ".." not in interval_strs[0]
+        ):
+            return f"{interval_strs[0]}{unit_symbol}"
+
         return f"{{{', '.join(interval_strs)}}}{unit_symbol}"
 
 
@@ -7047,8 +7089,10 @@ def make_simple_lit_singleton(
                 g=g, attributes=LiteralsAttributes(value=value)
             )
         case str():
-            return Strings.bind_typegraph(tg=tg).create_instance(
-                g=g, attributes=LiteralsAttributes(value=value)
+            return (
+                Strings.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .setup_from_values(value)
             )
 
 

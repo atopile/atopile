@@ -8,6 +8,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 from atopile.compiler.ast_visitor import DslException
 from atopile.compiler.build import Linker, StdlibRegistry, build_file, build_source
+from atopile.errors import UserSyntaxError
 from faebryk.core.faebrykpy import EdgeComposition, EdgePointer, EdgeTrait
 from faebryk.libs.util import not_none
 from test.compiler.conftest import build_type
@@ -1252,3 +1253,578 @@ class TestDirectedConnectStmt:
         ]
         for lhs_expected, rhs_expected in expected:
             assert (lhs_expected, rhs_expected) in link_paths
+
+
+class TestSignalsAndPins:
+    """Tests for signal and pin declarations in the compiler."""
+
+    def test_signal_declaration_creates_electrical_child(self):
+        """Signal declaration creates an Electrical child with the signal name."""
+        _, tg, _, result = _build_snippet(
+            """
+            module App:
+                signal my_sig
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+        my_sig_node = _get_make_child(tg, app_type, "my_sig")
+        assert my_sig_node is not None
+
+    def test_signal_declaration_as_statement(self):
+        """Signal declaration works as a standalone statement."""
+        _, tg, _, result = _build_snippet(
+            """
+            module App:
+                signal first
+                signal second
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+        first_node = _get_make_child(tg, app_type, "first")
+        second_node = _get_make_child(tg, app_type, "second")
+        assert first_node is not None
+        assert second_node is not None
+
+    def test_signal_duplicate_raises(self):
+        """Duplicate signal declaration raises an error."""
+        with pytest.raises(DslException, match="already defined"):
+            _build_snippet(
+                """
+                module App:
+                    signal my_sig
+                    signal my_sig
+                """
+            )
+
+    def test_pin_declaration_creates_child(self):
+        """Pin declaration creates a child with is_lead trait."""
+        _, tg, _, result = _build_snippet(
+            """
+            component MyComp:
+                pin 1
+            """
+        )
+
+        comp_type = result.state.type_roots["MyComp"]
+        pin_node = _get_make_child(tg, comp_type, "pin_1")
+        assert pin_node is not None
+
+    def test_pin_declaration_with_name(self):
+        """Pin declaration with name works."""
+        _, tg, _, result = _build_snippet(
+            """
+            component MyComp:
+                pin vcc
+            """
+        )
+
+        comp_type = result.state.type_roots["MyComp"]
+        pin_node = _get_make_child(tg, comp_type, "pin_vcc")
+        assert pin_node is not None
+
+    def test_pin_declaration_with_string(self):
+        """Pin declaration with string label works."""
+        _, tg, _, result = _build_snippet(
+            """
+            component MyComp:
+                pin "GND"
+            """
+        )
+
+        comp_type = result.state.type_roots["MyComp"]
+        pin_node = _get_make_child(tg, comp_type, "pin_GND")
+        assert pin_node is not None
+
+    def test_signal_connect_to_field(self):
+        """Signal can be connected to an existing field."""
+        _, tg, _, result = _build_snippet(
+            """
+            import Electrical
+
+            module App:
+                e = new Electrical
+                signal my_sig
+                my_sig ~ e
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+
+        assert _check_make_links(
+            tg=tg,
+            type_node=app_type,
+            expected=[(["my_sig"], ["e"])],
+        )
+
+    def test_inline_signal_in_connect(self):
+        """Signal can be declared inline in a connect statement."""
+        _, tg, _, result = _build_snippet(
+            """
+            import Electrical
+
+            module App:
+                e = new Electrical
+                signal s ~ e
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+
+        # Verify signal was created
+        sig_node = _get_make_child(tg, app_type, "s")
+        assert sig_node is not None
+
+        # Verify connection was made
+        assert _check_make_links(
+            tg=tg,
+            type_node=app_type,
+            expected=[(["s"], ["e"])],
+        )
+
+    def test_inline_pin_in_connect(self):
+        """Pin can be declared inline in a connect statement."""
+        _, tg, _, result = _build_snippet(
+            """
+            import Electrical
+
+            component MyComp:
+                e = new Electrical
+                e ~ pin 1
+            """
+        )
+
+        comp_type = result.state.type_roots["MyComp"]
+
+        # Verify pin was created
+        pin_node = _get_make_child(tg, comp_type, "pin_1")
+        assert pin_node is not None
+
+        # Verify connection was made
+        assert _check_make_links(
+            tg=tg,
+            type_node=comp_type,
+            expected=[(["e"], ["pin_1"])],
+        )
+
+    def test_signal_to_pin_connect(self):
+        """Signal can connect to pin using ~ operator."""
+        _, tg, _, result = _build_snippet(
+            """
+            component MyComp:
+                signal my_sig ~ pin 1
+            """
+        )
+
+        comp_type = result.state.type_roots["MyComp"]
+
+        # Verify both signal and pin were created
+        sig_node = _get_make_child(tg, comp_type, "my_sig")
+        pin_node = _get_make_child(tg, comp_type, "pin_1")
+        assert sig_node is not None
+        assert pin_node is not None
+
+        # Verify connection was made
+        assert _check_make_links(
+            tg=tg,
+            type_node=comp_type,
+            expected=[(["my_sig"], ["pin_1"])],
+        )
+
+    def test_multiple_pins_different_types(self):
+        """Multiple pins with different label types work."""
+        _, tg, _, result = _build_snippet(
+            """
+            component MyComp:
+                pin 1
+                pin vcc
+                pin "GND"
+            """
+        )
+
+        comp_type = result.state.type_roots["MyComp"]
+
+        # Verify all pins were created
+        pin_1 = _get_make_child(tg, comp_type, "pin_1")
+        pin_vcc = _get_make_child(tg, comp_type, "pin_vcc")
+        pin_gnd = _get_make_child(tg, comp_type, "pin_GND")
+
+        assert pin_1 is not None
+        assert pin_vcc is not None
+        assert pin_gnd is not None
+
+    def test_inline_signal_in_directed_connect(self):
+        """Inline signals work in directed connect statements."""
+        _, tg, _, result = _build_snippet(
+            """
+            #pragma experiment("BRIDGE_CONNECT")
+
+            module App:
+                signal a ~> signal b
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+
+        # Verify both signals were created
+        sig_a = _get_make_child(tg, app_type, "a")
+        sig_b = _get_make_child(tg, app_type, "b")
+        assert sig_a is not None
+        assert sig_b is not None
+
+        # Verify directed connection was made through can_bridge
+        make_links = _filter_directed_connect_links(_collect_make_links(tg, app_type))
+        assert len(make_links) == 1
+
+        _, lhs_path, rhs_path = make_links[0]
+        assert lhs_path == ["a", "can_bridge", "out_"]
+        assert rhs_path == ["b", "can_bridge", "in_"]
+
+    def test_inline_pin_in_directed_connect(self):
+        """Inline pins work in directed connect statements."""
+        _, tg, _, result = _build_snippet(
+            """
+            #pragma experiment("BRIDGE_CONNECT")
+
+            component MyComp:
+                pin 1 ~> pin 2
+            """
+        )
+
+        comp_type = result.state.type_roots["MyComp"]
+
+        # Verify both pins were created
+        pin_1 = _get_make_child(tg, comp_type, "pin_1")
+        pin_2 = _get_make_child(tg, comp_type, "pin_2")
+        assert pin_1 is not None
+        assert pin_2 is not None
+
+        # Verify directed connection was made through can_bridge
+        make_links = _filter_directed_connect_links(_collect_make_links(tg, comp_type))
+        assert len(make_links) == 1
+
+        _, lhs_path, rhs_path = make_links[0]
+        assert lhs_path == ["pin_1", "can_bridge", "out_"]
+        assert rhs_path == ["pin_2", "can_bridge", "in_"]
+
+    def test_chained_directed_connect_with_inline_signal(self):
+        """Chained directed connect with inline signal in the middle works.
+
+        Tests that `a ~> signal b ~> c` correctly creates signal b once
+        and connects a->b and b->c.
+        """
+        _, tg, _, result = _build_snippet(
+            """
+            #pragma experiment("BRIDGE_CONNECT")
+            import Resistor
+
+            module App:
+                r1 = new Resistor
+                r2 = new Resistor
+                r1 ~> signal mid ~> r2
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+
+        # Verify signal was created (only once!)
+        mid_sig = _get_make_child(tg, app_type, "mid")
+        assert mid_sig is not None
+
+        # Verify both connections were made
+        make_links = _filter_directed_connect_links(_collect_make_links(tg, app_type))
+        assert len(make_links) == 2
+
+        link_paths = {(tuple(lhs), tuple(rhs)) for _, lhs, rhs in make_links}
+        expected = {
+            (("r1", "can_bridge", "out_"), ("mid", "can_bridge", "in_")),
+            (("mid", "can_bridge", "out_"), ("r2", "can_bridge", "in_")),
+        }
+        assert link_paths == expected
+
+
+# see src/atopile/compiler/parser/AtoLexer.g4
+@pytest.mark.parametrize(
+    "name,template",
+    [
+        (name, textwrap.dedent(template))
+        for name in [
+            "component",
+            "module",
+            "interface",
+            "pin",
+            "signal",
+            "new",
+            "from",
+            "import",
+            "for",
+            "in",
+            "assert",
+            "to",
+            "True",
+            "False",
+            "within",
+            "is",
+            "pass",
+            "trait",
+            "int",
+            "float",
+            "string",
+            "str",
+            "bytes",
+            "if",
+            "parameter",
+            "param",
+            "test",
+            "require",
+            "requires",
+            "check",
+            "report",
+            "ensure",
+        ]
+        for template in [
+            """
+            module App:
+                {name} = 10
+            """,
+            """
+            import {name}
+            """,
+            """
+            component {name}:
+                pass
+            """,
+            """
+            module {name}:
+                pass
+            """,
+            """
+            interface {name}:
+                pass
+            """,
+        ]
+    ],
+)
+def test_reserved_keywords_as_identifiers(name: str, template: str):
+    template = textwrap.dedent(template)
+
+    # ensure template is otherwise valid
+    # note requires a valid import symbol
+    build_type(template.format(name="Resistor"))
+
+    with pytest.raises(UserSyntaxError):
+        build_type(template.format(name=name))
+
+
+class TestTraitStatements:
+    def test_simple_trait_on_self(self):
+        """Trait statement with no target attaches trait to enclosing block."""
+        _, tg, _, result = _build_snippet(
+            """
+            #pragma experiment("TRAITS")
+            import is_pickable
+
+            module MyModule:
+                pass
+                trait is_pickable
+            """
+        )
+
+        my_module_type = result.state.type_roots["MyModule"]
+
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=my_module_type)
+        ]
+        trait_children = [
+            (identifier, child)
+            for identifier, child in make_children
+            if identifier and "is_pickable" in identifier
+        ]
+        assert len(trait_children) == 1
+
+    def test_trait_on_child_field(self):
+        """Trait statement with target attaches trait to specified child."""
+        _, tg, _, result = _build_snippet(
+            """
+            #pragma experiment("TRAITS")
+            import is_pickable
+            import Resistor
+
+            module MyModule:
+                r1 = new Resistor
+                trait r1 is_pickable
+            """
+        )
+
+        my_module_type = result.state.type_roots["MyModule"]
+
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=my_module_type)
+        ]
+        assert any(identifier == "r1" for identifier, _ in make_children)
+        trait_children = [
+            (identifier, child)
+            for identifier, child in make_children
+            if identifier and "is_pickable" in identifier
+        ]
+        assert len(trait_children) == 1
+
+    def test_trait_requires_experiment_flag(self):
+        """Trait statement without experiment pragma raises error."""
+        with pytest.raises(DslException, match="TRAITS.*not enabled"):
+            _build_snippet(
+                """
+                import is_pickable
+
+                module MyModule:
+                    trait is_pickable
+                """
+            )
+
+    def test_trait_requires_import(self):
+        """Trait statement without importing the trait raises error."""
+        with pytest.raises(DslException, match="not available"):
+            _build_snippet(
+                """
+                #pragma experiment("TRAITS")
+
+                module MyModule:
+                    trait is_pickable
+                """
+            )
+
+    def test_trait_on_undefined_field_raises(self):
+        """Trait applied to undefined field raises error."""
+        with pytest.raises(DslException, match="not defined in scope"):
+            _build_snippet(
+                """
+                #pragma experiment("TRAITS")
+                import is_pickable
+
+                module MyModule:
+                    trait undefined_field is_pickable
+                """
+            )
+
+    def test_trait_with_template_args(self):
+        """Trait with template arguments parses correctly."""
+        _, tg, _, result = _build_snippet(
+            """
+            #pragma experiment("TRAITS")
+            import is_atomic_part
+
+            component MyComponent:
+                trait is_atomic_part<manufacturer="Murata", partnumber="GRM123", footprint="C0805.kicad_mod", symbol="cap.kicad_sym">
+            """  # noqa: E501
+        )
+
+        comp_type = result.state.type_roots["MyComponent"]
+
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=comp_type)
+        ]
+        trait_children = [
+            (identifier, child)
+            for identifier, child in make_children
+            if identifier and "is_atomic_part" in identifier
+        ]
+        assert len(trait_children) == 1
+
+    def test_trait_with_multiple_template_args(self):
+        """Trait with all template arguments."""
+        _, tg, _, result = _build_snippet(
+            """
+            #pragma experiment("TRAITS")
+            import is_atomic_part
+
+            component FullPart:
+                trait is_atomic_part<manufacturer="Test Inc", partnumber="PN-001", footprint="fp.kicad_mod", symbol="sym.kicad_sym", model="part.step">
+            """  # noqa: E501
+        )
+
+        comp_type = result.state.type_roots["FullPart"]
+        make_children = list(tg.collect_make_children(type_node=comp_type))
+        trait_children = [
+            (identifier, child)
+            for identifier, child in make_children
+            if identifier and "is_atomic_part" in identifier
+        ]
+        assert len(trait_children) == 1
+
+
+def test_literal_assignment():
+    import logging
+
+    import faebryk.core.faebrykpy as fbrk
+    import faebryk.core.node as fabll
+    import faebryk.library._F as F
+    from faebryk.libs.util import not_none
+
+    logging.basicConfig(level=logging.DEBUG)
+    g, tg, stdlib, result = _build_snippet(
+        """
+        import Resistor
+        import is_atomic_part
+
+        module App:
+            r1 = new Resistor
+            r1.resistance = 10 Ohm
+            # r1.max_power = 3 Watts
+            # assert r1.max_voltage >= 100 Volts
+
+            atomic_part = new is_atomic_part
+            atomic_part.footprint_ = "R_0402"
+        """
+    )
+
+    linker = Linker(None, stdlib, tg)
+    linker.link_imports(g, result.state)
+
+    app_type_node = result.state.type_roots["App"]
+    app_fabll_type = result.state.type_roots_fabll.get("App")
+    assert app_fabll_type is not None
+    assert fabll.Node(
+        app_fabll_type.bind_typegraph(tg=tg).get_or_create_type()
+    ).is_same(other=fabll.Node(app_type_node))
+
+    app_instance = fabll.Node(
+        tg.instantiate_node(type_node=app_type_node, attributes={})
+    )
+    r1_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+        bound_node=app_instance.instance, child_identifier="r1"
+    )
+
+    resistor = F.Resistor.bind_instance(not_none(r1_bnode))
+    assert resistor.resistance.get().force_extract_literal().get_single() == 10.0
+
+    # atomic_party_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+    #     bound_node=app_instance.instance, child_identifier="atomic_part"
+    # )
+    # atomic_party = F.is_atomic_part.bind_instance(not_none(atomic_party_bnode))
+
+    # print(f"Resistor Instance Children:\n\n{resistor.get_direct_children()}\n\n")
+
+    # print(
+    #     fabll.Traits(
+    #         not_none(
+    #             atomic_party.footprint.get()
+    #             .is_parameter_operatable.get()
+    #             .try_extract_literal(allow_subset=True)
+    #         )
+    #     )
+    #     .get_obj(F.Literals.Strings)
+    #     .get_values()
+    # )
+
+
+if __name__ == "__main__":
+    import typer
+
+    from faebryk.libs.logging import setup_basic_logging
+
+    setup_basic_logging()
+    typer.run(test_literal_assignment)

@@ -34,16 +34,29 @@ class I2S(fabll.Node):
     #                WIP
     # ----------------------------------------
 
-    def on_obj_set(self):
-        fabll.Traits.create_and_add_instance_to(
-            node=self.sd.get(), trait=F.has_net_name_suggestion
-        ).setup(name="SD", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.ws.get(), trait=F.has_net_name_suggestion
-        ).setup(name="WS", level=F.has_net_name_suggestion.Level.SUGGESTED)
-        fabll.Traits.create_and_add_instance_to(
-            node=self.sck.get(), trait=F.has_net_name_suggestion
-        ).setup(name="SCK", level=F.has_net_name_suggestion.Level.SUGGESTED)
+    net_names = [
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="SD",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[sd]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="WS",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[ws]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="SCK",
+                level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[sck]
+        ),
+    ]
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

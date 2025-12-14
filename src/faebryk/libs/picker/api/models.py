@@ -235,17 +235,33 @@ class Component:
         # only for type picks
         if module.has_trait(F.is_pickable_by_type):
             attribute_literals = self.attribute_literals(g=module.g, tg=module.tg)
+            # Get parameters from the trait
+            design_params = {
+                p.get_name(): p
+                for p in module.get_trait(F.is_pickable_by_type).get_params()
+            }
             for name, literal in attribute_literals.items():
-                if not hasattr(module, name):
+                # Get parameter from the trait's registered params
+                param_node = design_params.get(name)
+                if param_node is None:
                     missing_attrs.append(name)
                     continue
 
-                p = getattr(module, name).get()
-                assert p.has_trait(F.Parameters.is_parameter)
-                if literal is None:
-                    literal = p.domain.unbounded(p)
+                # Get the parameter traits
+                assert param_node.has_trait(F.Parameters.is_parameter)
+                param_op = param_node.get_trait(F.Parameters.is_parameter_operatable)
+                param_operand = param_node.get_trait(F.Parameters.can_be_operand)
 
-                p.alias_is(literal)
+                if literal is None:
+                    literal = param_op.domain.unbounded(param_op)
+
+                # Create Is expression to alias parameter to the literal value
+                from faebryk.library.Expressions import Is
+                Is.bind_typegraph(tg=module.tg).create_instance(g=module.g).setup(
+                    param_operand,
+                    literal.as_operand.get(),
+                    assert_=True,
+                )
 
         if missing_attrs:
             with downgrade(UserException):

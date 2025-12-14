@@ -196,6 +196,9 @@ class Decimal(fabll.Node):
     source = SourceChunk.MakeChild()
     value = F.Literals.NumericSet.MakeChild_Empty()
 
+    def get_value(self) -> float:
+        return self.value.get().get_single()
+
     def setup(self, source_info: SourceInfo, value: int | float) -> Self:  # type: ignore[invalid-method-override]
         self.source.get().setup(source_info=source_info)
         self.value.get().setup_from_singleton(float(value))
@@ -235,8 +238,9 @@ class Unit(fabll.Node):
     source = SourceChunk.MakeChild()
     symbol = F.Literals.Strings.MakeChild()
 
-    def setup(self, source_info: SourceInfo, symbol: str) -> Self:  # type: ignore[invalid-method-override]
-        self.source.get().setup(source_info=source_info)
+    def setup(self, symbol: str, source_info: SourceInfo | None = None) -> Self:  # type: ignore[invalid-method-override]
+        if source_info is not None:
+            self.source.get().setup(source_info=source_info)
         self.symbol.get().setup_from_values(symbol)
         return self
 
@@ -250,6 +254,12 @@ class Quantity(fabll.Node):
     number = Decimal.MakeChild()
     unit = Unit.MakeChild()
 
+    def get_value(self) -> float:
+        return self.number.get().get_value()
+
+    def get_unit(self) -> str:
+        return self.unit.get().symbol.get().get_single()
+
     def setup(  # type: ignore[invalid-method-override]
         self,
         source_info: SourceInfo,
@@ -262,7 +272,10 @@ class Quantity(fabll.Node):
 
         if unit is not None:
             symbol, unit_source = unit
-            self.unit.get().setup(source_info=unit_source, symbol=symbol)
+        else:
+            symbol = "Dimensionless"
+            unit_source = None
+        self.unit.get().setup(source_info=unit_source, symbol=symbol)
 
         return self
 
@@ -815,7 +828,7 @@ class NewExpression(fabll.Node):
         return count
 
 
-class String(fabll.Node):
+class AstString(fabll.Node):
     @classmethod
     def _type_identifier(cls) -> str:
         # disambiguate from F.Literals.String
@@ -832,6 +845,9 @@ class String(fabll.Node):
         self.source.get().setup(source_info=source_info)
         self.text.get().setup_from_values(text)
         return self
+
+    def get_text(self) -> str:
+        return self.text.get().get_single()
 
 
 class Assignable(fabll.Node):
@@ -995,12 +1011,11 @@ class PinDeclaration(fabll.Node):
         STRING = "string"
 
     _is_connectable = fabll.Traits.MakeEdge(is_connectable.MakeChild())
+    _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
 
     source = SourceChunk.MakeChild()
     kind = F.Literals.EnumsFactory(Kind).MakeChild(*Kind.__members__.values())
     label = F.Collections.Pointer.MakeChild()
-
-    _is_connectable = fabll.Traits.MakeEdge(is_connectable.MakeChild())
 
     def setup(  # type: ignore[invalid-method-override]
         self,
@@ -1089,7 +1104,7 @@ class StringStmt(fabll.Node):
     _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
 
     source = SourceChunk.MakeChild()
-    string = String.MakeChild()
+    string = AstString.MakeChild()
 
     def setup(  # type: ignore[invalid-method-override]
         self,
@@ -1148,4 +1163,6 @@ class TraitStmt(fabll.Node):
         return self
 
     def get_target(self) -> FieldRef | None:
-        return self.target.get().deref().cast(t=FieldRef)
+        if (target := self.target.get().try_deref()) is None:
+            return None
+        return target.cast(t=FieldRef)

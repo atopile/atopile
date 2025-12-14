@@ -28,9 +28,9 @@ from faebryk.libs.util import cast_assert, groupby
 sys.path.append(str(Path(__file__).parent))
 
 if TYPE_CHECKING:
-    from components import ComponentTestCase
+    from test.libs.picker.components import ComponentTestCase
 
-from components import components_to_test
+from test.libs.picker.components import components_to_test
 
 logger = logging.getLogger(__name__)
 
@@ -608,14 +608,13 @@ def test_null_solver():
     pick_part_recursively(app, solver)
 
     assert app.cap.get().has_trait(F.has_part_picked)
-    assert (
-        app.cap.get().get_trait(F.has_package_requirements).get_sizes(solver)
-        == SMDSize.I0805
-    )
+    assert app.cap.get().get_trait(F.has_package_requirements).get_sizes(solver) == [
+        SMDSize.I0805
+    ]
     assert (
         (solver)
         .inspect_get_known_supersets(app.cap.get().capacitance.get().is_parameter.get())
-        .is_subset_of(capacitance.as_literal.get())
+        .is_subset_of(capacitance.as_literal.force_get())
     )
 
 
@@ -657,7 +656,7 @@ def test_pick_voltage_divider_complex():
 
     solver = DefaultSolver()
 
-    solver.simplify_symbolically(app)
+    solver.simplify_symbolically(tg, g)
 
     # pick_part_recursively(app, solver)
 
