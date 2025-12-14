@@ -539,7 +539,7 @@ fn wrap_edge_create() type {
             }
 
             const allocator = std.heap.c_allocator;
-            const edge_ptr = graph.graph.Edge.init(allocator, kwarg_obj.source, kwarg_obj.target, edge_type_value);
+            const edge_ptr = graph.graph.Edge.init(kwarg_obj.source, kwarg_obj.target, edge_type_value);
 
             var success = false;
             defer if (!success) {

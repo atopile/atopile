@@ -23,8 +23,8 @@ pub const EdgeCreationAttributes = struct {
         self.dynamic.copy_into(&edge.attributes.dynamic);
     }
 
-    pub fn create_edge(self: *const @This(), allocator: std.mem.Allocator, source: NodeReference, target: NodeReference) EdgeReference {
-        const edge = Edge.init(allocator, source, target, self.edge_type);
+    pub fn create_edge(self: *const @This(), source: NodeReference, target: NodeReference) EdgeReference {
+        const edge = Edge.init(source, target, self.edge_type);
         self.apply_to(edge);
         return edge;
     }

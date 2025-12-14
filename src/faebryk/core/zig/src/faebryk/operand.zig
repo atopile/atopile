@@ -32,7 +32,7 @@ pub const EdgeOperand = struct {
         operand: NodeReference,
         operand_identifier: ?str,
     ) EdgeReference {
-        const edge = Edge.init(allocator, operands_set, operand, tid);
+        const edge = Edge.init(operands_set, operand, tid);
 
         build(operand_identifier).apply_to(edge);
         return edge;

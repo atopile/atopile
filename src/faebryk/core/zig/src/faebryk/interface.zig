@@ -31,7 +31,7 @@ pub const EdgeInterfaceConnection = struct {
     }
 
     pub fn init(allocator: std.mem.Allocator, N1: NodeReference, N2: NodeReference, shallow: bool) !EdgeReference {
-        const edge = Edge.init(allocator, N1, N2, tid);
+        const edge = Edge.init(N1, N2, tid);
         var attrs = try build(allocator, shallow);
         defer attrs.deinit();
         attrs.apply_to(edge);

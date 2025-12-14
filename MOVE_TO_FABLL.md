@@ -105,3 +105,5 @@ NOTE TO SELF FRIDAY
 - [x] fix hypothesis ci (parametrize)
 - [x] errors in test report
 - [ ] measure mem usage of single node, edge, etc
+
+- [ ] fixing all zig tests now that we fucked with dynamicattributes

@@ -18,7 +18,7 @@ pub const EdgeType = struct {
     pub var registered: bool = false;
 
     pub fn init(allocator: std.mem.Allocator, type_node: NodeReference, instance_node: NodeReference) EdgeReference {
-        const edge = Edge.init(allocator, type_node, instance_node, tid);
+        const edge = Edge.init(type_node, instance_node, tid);
         build().apply_to(edge);
         return edge;
     }

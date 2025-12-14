@@ -122,8 +122,15 @@ pub const DynamicAttributes = struct {
     }
 
     fn grow_slice(self: *@This(), count: usize) void {
-        self.values = global_graph_allocator.realloc(self.values, self.values.len + count) catch @panic("OOM");
-        self.values.len += count;
+        const new_len = self.values.len + count;
+        if (self.values.len == 0) {
+            // Initial slice points to static memory (empty array literal), not heap memory.
+            // Must use alloc instead of realloc for the first allocation.
+            self.values = global_graph_allocator.alloc(LiteralKV, new_len) catch @panic("OOM");
+        } else {
+            // realloc returns a slice with the new length already set
+            self.values = global_graph_allocator.realloc(self.values, new_len) catch @panic("OOM");
+        }
     }
 
     pub fn deinit(self: *@This()) void {
@@ -352,7 +359,7 @@ pub const Edge = struct {
         edge.attributes.directional = null;
         edge.attributes.name = null;
 
-        edge._ref_count = GraphReferenceCounter.init(.{ .Edge = edge });
+        edge._ref_count = GraphReferenceCounter.init();
         return edge;
     }
 
@@ -368,7 +375,7 @@ pub const Edge = struct {
     pub fn hash_edge_type(comptime tid: u64) EdgeType {
         return @intCast(tid % 256);
     }
-    pub var type_set: IntMap.T(void) = IntMap.T(void).init(global_graph_allocator);
+    pub var type_set: IntMap.T(void) = IntMap.T(void).init(std.heap.page_allocator);
 
     /// Register type and check for duplicates during runtime
     /// Can't do during compile because python will do during runtime
@@ -440,6 +447,10 @@ pub const Edge = struct {
             .STOP => unreachable,
             .ERROR => |err| @panic(@errorName(err)),
         }
+    }
+
+    pub fn get_uuid(self: *@This()) UUID.T {
+        return @intFromPtr(self);
     }
 };
 
@@ -686,7 +697,8 @@ pub const GraphView = struct {
 
         var edge_it = g.edges.keyIterator();
         while (edge_it.next()) |edge| {
-            edge.*._ref_count.dec(g, .{ .Edge = edge });
+            const e = edge.*;
+            e._ref_count.dec(g, .{ .Edge = e });
         }
         g.edges.deinit();
         for (g.nodes.items) |node| {
@@ -1081,12 +1093,12 @@ test "basic" {
     const a = std.testing.allocator;
     var g = GraphView.init(a);
     defer g.deinit();
-    const TestLinkType = 1759269396;
+    const TestLinkType = Edge.hash_edge_type(1759269396);
     try Edge.register_type(TestLinkType);
 
-    const n1 = Node.init(a);
-    const n2 = Node.init(a);
-    const e12 = Edge.init(a, n1, n2, TestLinkType);
+    const n1 = Node.init();
+    const n2 = Node.init();
+    const e12 = Edge.init(n1, n2, TestLinkType);
     // no deinit defer required, since graph will deinit all nodes and edges if they reach 0
 
     _ = g.insert_node(n1);
@@ -1108,22 +1120,22 @@ test "BFSPath cloneAndExtend preserves start metadata" {
     var g = GraphView.init(a);
     defer g.deinit();
 
-    const TestEdgeType = 0xFBAF_0001;
+    const TestEdgeType = Edge.hash_edge_type(0xFBAF_0001);
     Edge.register_type(TestEdgeType) catch |err| switch (err) {
         error.DuplicateType => {},
         else => return err,
     };
 
-    const n1 = Node.init(a);
-    const n2 = Node.init(a);
-    const n3 = Node.init(a);
+    const n1 = Node.init();
+    const n2 = Node.init();
+    const n3 = Node.init();
 
     const bn1 = g.insert_node(n1);
     _ = g.insert_node(n2);
     _ = g.insert_node(n3);
 
-    const e12 = Edge.init(a, n1, n2, TestEdgeType);
-    const e23 = Edge.init(a, n2, n3, TestEdgeType);
+    const e12 = Edge.init(n1, n2, TestEdgeType);
+    const e23 = Edge.init(n2, n3, TestEdgeType);
     _ = g.insert_edge(e12);
     _ = g.insert_edge(e23);
 
@@ -1153,7 +1165,7 @@ test "BFSPath detects inconsistent graph view" {
     var g2 = GraphView.init(a);
     defer g2.deinit();
 
-    const n1 = Node.init(a);
+    const n1 = Node.init();
     const bn1 = g1.insert_node(n1);
 
     var path = try BFSPath.init(bn1);
@@ -1176,23 +1188,23 @@ test "get_subgraph_from_nodes" {
     var g = GraphView.init(a);
     defer g.deinit();
 
-    const TestEdgeTypeSubgraph = 0xFBAF_0002;
+    const TestEdgeTypeSubgraph = Edge.hash_edge_type(0xFBAF_0002);
     Edge.register_type(TestEdgeTypeSubgraph) catch |err| switch (err) {
         error.DuplicateType => {},
         else => return err,
     };
 
-    const n1 = Node.init(a);
-    const n2 = Node.init(a);
-    const n3 = Node.init(a);
+    const n1 = Node.init();
+    const n2 = Node.init();
+    const n3 = Node.init();
 
     _ = g.insert_node(n1);
     _ = g.insert_node(n2);
     _ = g.insert_node(n3);
 
-    const e12 = Edge.init(a, n1, n2, TestEdgeTypeSubgraph);
-    const e23 = Edge.init(a, n2, n3, TestEdgeTypeSubgraph);
-    const e13 = Edge.init(a, n1, n3, TestEdgeTypeSubgraph);
+    const e12 = Edge.init(n1, n2, TestEdgeTypeSubgraph);
+    const e23 = Edge.init(n2, n3, TestEdgeTypeSubgraph);
+    const e13 = Edge.init(n1, n3, TestEdgeTypeSubgraph);
 
     _ = g.insert_edge(e12);
     _ = g.insert_edge(e23);
@@ -1223,18 +1235,18 @@ test "duplicate edge insertion" {
     var g = GraphView.init(a);
     defer g.deinit();
 
-    const n1 = Node.init(a);
-    const n2 = Node.init(a);
+    const n1 = Node.init();
+    const n2 = Node.init();
     _ = g.insert_node(n1);
     _ = g.insert_node(n2);
 
-    const TestLinkType = 0xDEADBEEF;
+    const TestLinkType = Edge.hash_edge_type(0xDEADBEEF);
     Edge.register_type(TestLinkType) catch |err| switch (err) {
         error.DuplicateType => {},
         else => return err,
     };
 
-    const e1 = Edge.init(a, n1, n2, TestLinkType);
+    const e1 = Edge.init(n1, n2, TestLinkType);
 
     _ = g.insert_edge(e1);
     try std.testing.expectEqual(@as(usize, 1), g.edges.count());
@@ -1256,13 +1268,13 @@ test "insert_subgraph performance" {
 
     var i: usize = 0;
     while (i < num_nodes) : (i += 1) {
-        const n = Node.init(a);
+        const n = Node.init();
         _ = g1.insert_node(n);
     }
 
     i = 0;
     while (i < num_nodes) : (i += 1) {
-        const n = Node.init(a);
+        const n = Node.init();
         _ = g2.insert_node(n);
     }
 
@@ -1278,18 +1290,18 @@ test "get_edge_with_type_and_identifier" {
     var g = GraphView.init(a);
     defer g.deinit();
 
-    const n1 = Node.init(a);
-    const n2 = Node.init(a);
+    const n1 = Node.init();
+    const n2 = Node.init();
     _ = g.insert_node(n1);
     _ = g.insert_node(n2);
 
-    const TestEdgeType = 0xFBAF_0003;
+    const TestEdgeType = Edge.hash_edge_type(0xFBAF_0003);
     Edge.register_type(TestEdgeType) catch |err| switch (err) {
         error.DuplicateType => {},
         else => return err,
     };
 
-    const e12 = Edge.init(a, n1, n2, TestEdgeType);
+    const e12 = Edge.init(n1, n2, TestEdgeType);
     e12.attributes.directional = true;
     e12.attributes.name = "e12";
     _ = g.insert_edge(e12);
@@ -1435,7 +1447,7 @@ test "mem_node_with_string" {
 //
 //    var i: usize = 0;
 //    while (i < num_nodes) : (i += 1) {
-//        const n = Node.init(a);
+//        const n = Node.init();
 //        _ = nodes.append(n);
 //    }
 //}

@@ -312,13 +312,13 @@ test "visit_paths_bfs" {
     const n5 = Node.init(a);
     const n6 = Node.init(a);
     const n7 = Node.init(a);
-    const e1 = Edge.init(a, n1, n2, 1759242069);
-    const e2 = Edge.init(a, n1, n3, 1759242069);
-    const e3 = Edge.init(a, n2, n4, 1759242068);
-    const e4 = Edge.init(a, n2, n5, 1759242069);
-    const e5 = Edge.init(a, n5, n6, 1759242069);
-    const e6 = Edge.init(a, n6, n1, 1759242069);
-    const e7 = Edge.init(a, n4, n7, 1759242069);
+    const e1 = Edge.init(n1, n2, 1759242069);
+    const e2 = Edge.init(n1, n3, 1759242069);
+    const e3 = Edge.init(n2, n4, 1759242068);
+    const e4 = Edge.init(n2, n5, 1759242069);
+    const e5 = Edge.init(n5, n6, 1759242069);
+    const e6 = Edge.init(n6, n1, 1759242069);
+    const e7 = Edge.init(n4, n7, 1759242069);
     defer g.deinit();
 
     const bn1 = g.insert_node(n1);
@@ -354,9 +354,9 @@ test "filter_hierarchy_stack" {
     const bn2 = g.create_and_insert_node();
     const bn3 = g.create_and_insert_node();
     const bn4 = g.create_and_insert_node();
-    const be1 = g.insert_edge(Edge.init(g.allocator, bn2.node, bn1.node, EdgeComposition.tid));
-    const be2 = g.insert_edge(Edge.init(g.allocator, bn3.node, bn4.node, EdgeComposition.tid));
-    const be3 = g.insert_edge(Edge.init(g.allocator, bn2.node, bn3.node, EdgeInterfaceConnection.tid));
+    const be1 = g.insert_edge(Edge.init(bn2.node, bn1.node, EdgeComposition.tid));
+    const be2 = g.insert_edge(Edge.init(bn3.node, bn4.node, EdgeComposition.tid));
+    const be3 = g.insert_edge(Edge.init(bn2.node, bn3.node, EdgeInterfaceConnection.tid));
 
     var bfs_path = try BFSPath.init(bn1);
 

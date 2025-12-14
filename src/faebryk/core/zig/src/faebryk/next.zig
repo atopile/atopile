@@ -18,7 +18,7 @@ pub const EdgeNext = struct {
     pub var registered: bool = false;
 
     pub fn init(allocator: std.mem.Allocator, previous_node: NodeReference, next_node: NodeReference) EdgeReference {
-        const edge = Edge.init(allocator, previous_node, next_node, tid);
+        const edge = Edge.init(previous_node, next_node, tid);
         build().apply_to(edge);
         return edge;
     }

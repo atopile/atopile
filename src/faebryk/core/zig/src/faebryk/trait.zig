@@ -82,7 +82,7 @@ pub const EdgeTrait = struct {
     }
 
     pub fn init(allocator: std.mem.Allocator, owner: NodeReference, trait_instance: NodeReference) EdgeReference {
-        const edge = Edge.init(allocator, owner, trait_instance, tid);
+        const edge = Edge.init(owner, trait_instance, tid);
 
         build().apply_to(edge);
         return edge;

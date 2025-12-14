@@ -40,7 +40,7 @@ pub const EdgeComposition = struct {
     }
 
     pub fn init(allocator: std.mem.Allocator, parent: NodeReference, child: NodeReference, child_identifier: str) EdgeReference {
-        const edge = Edge.init(allocator, parent, child, tid);
+        const edge = Edge.init(parent, child, tid);
 
         build(child_identifier).apply_to(edge);
         return edge;

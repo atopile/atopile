@@ -31,7 +31,7 @@ pub const EdgePointer = struct {
     }
 
     pub fn init(allocator: std.mem.Allocator, from: NodeReference, to: NodeReference, identifier: ?str, order: ?u32) EdgeReference {
-        const edge = Edge.init(allocator, from, to, tid);
+        const edge = Edge.init(from, to, tid);
         build(allocator, identifier, order).apply_to(edge);
         return edge;
     }
