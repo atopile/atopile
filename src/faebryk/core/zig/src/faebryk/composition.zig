@@ -31,7 +31,8 @@ pub const ChildQuery = struct {
 };
 
 pub const EdgeComposition = struct {
-    pub const tid: Edge.EdgeType = 1759269250;
+    pub const tid: Edge.EdgeType = graph.Edge.hash_edge_type(1759269250);
+    pub var registered: bool = false;
 
     /// Create an EdgeTraversal for following a Composition edge by identifier.
     pub fn traverse(identifier: str) TypeGraph.ChildReferenceNode.EdgeTraversal {
@@ -46,6 +47,11 @@ pub const EdgeComposition = struct {
     }
 
     pub fn build(child_identifier: str) EdgeCreationAttributes {
+        if (!registered) {
+            @branchHint(.unlikely);
+            registered = true;
+            Edge.register_type(tid);
+        }
         return .{
             .edge_type = tid,
             .directional = true,

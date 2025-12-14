@@ -80,10 +80,10 @@ pub const TypeGraph = struct {
 
         pub fn set_type_name(self: @This(), name: str) void {
             // TODO consider making a put_string that copies the string instead and deallocates it again
-            self.node.attributes.dynamic.put(type_identifier, .{ .String = name });
+            self.node.attributes.put(type_identifier, .{ .String = name });
         }
         pub fn get_type_name(self: @This()) str {
-            return self.node.attributes.dynamic.get(type_identifier).?.String;
+            return self.node.attributes.get(type_identifier).?.String;
         }
     };
 
@@ -125,21 +125,19 @@ pub const TypeGraph = struct {
 
             pub fn set_child_identifier(self: @This(), identifier: ?str) void {
                 if (identifier) |_identifier| {
-                    self.node.node.attributes.dynamic.put(child_identifier, .{ .String = _identifier });
+                    self.node.node.attributes.put(child_identifier, .{ .String = _identifier });
                 }
             }
 
             pub fn get_child_identifier(self: @This()) ?str {
-                if (self.node.node.attributes.dynamic.get(child_identifier)) |value| {
+                if (self.node.node.attributes.get(child_identifier)) |value| {
                     return value.String;
                 }
                 return null;
             }
 
             pub fn set_node_attributes(self: @This(), attributes: NodeCreationAttributes) void {
-                if (attributes.dynamic) |d| {
-                    d.copy_into(&self.node.node.attributes.dynamic);
-                }
+                attributes.dynamic.copy_into(&self.node.node.attributes.dynamic);
             }
 
             pub fn get_node_attributes(self: @This()) NodeCreationAttributes {
@@ -148,8 +146,9 @@ pub const TypeGraph = struct {
                 const AttrVisitor = struct {
                     dynamic: *graph.DynamicAttributes,
 
-                    pub fn visit(ctx: *anyopaque, key: str, value: graph.Literal, _: bool) void {
+                    pub fn visit(ctx: *anyopaque, key: str, value: graph.Literal, _dynamic: bool) void {
                         const s: *@This() = @ptrCast(@alignCast(ctx));
+                        if (_dynamic) return;
                         if (std.mem.eql(u8, key, "child_identifier")) {
                             return;
                         }
@@ -157,20 +156,20 @@ pub const TypeGraph = struct {
                     }
                 };
                 var visit = AttrVisitor{ .dynamic = &dynamic };
-                self.node.node.attributes.dynamic.visit(&visit, AttrVisitor.visit);
+                self.node.node.attributes.visit(&visit, AttrVisitor.visit);
 
-                return .{ .dynamic = if (dynamic.has_values()) dynamic else null };
+                return .{ .dynamic = dynamic };
             }
         };
 
         pub fn build(allocator: std.mem.Allocator, value: ?str) NodeCreationAttributes {
-            var dynamic: ?graph.DynamicAttributes = null;
+            var dynamic = graph.DynamicAttributes.init(allocator);
+
             if (value) |v| {
-                dynamic = graph.DynamicAttributes.init(allocator);
-                dynamic.?.put("value", .{ .String = v });
+                dynamic.put("value", .{ .String = v });
             }
             return .{
-                .dynamic = if (dynamic) |d| d else null,
+                .dynamic = dynamic,
             };
         }
 
@@ -210,11 +209,11 @@ pub const TypeGraph = struct {
             pub const type_identifier = "type_identifier";
 
             pub fn set_type_identifier(self: @This(), identifier: str) void {
-                self.node.attributes.dynamic.put(type_identifier, .{ .String = identifier });
+                self.node.attributes.put(type_identifier, .{ .String = identifier });
             }
 
             pub fn get_type_identifier(self: @This()) str {
-                return self.node.attributes.dynamic.get(type_identifier).?.String;
+                return self.node.attributes.get(type_identifier).?.String;
             }
         };
 
@@ -229,13 +228,12 @@ pub const TypeGraph = struct {
         }
 
         pub fn build(allocator: std.mem.Allocator, value: ?str) NodeCreationAttributes {
-            var dynamic: ?graph.DynamicAttributes = null;
+            var dynamic = graph.DynamicAttributes.init(allocator);
             if (value) |v| {
-                dynamic = graph.DynamicAttributes.init(allocator);
-                dynamic.?.put("value", .{ .String = v });
+                dynamic.put("value", .{ .String = v });
             }
             return .{
-                .dynamic = if (dynamic) |d| d else null,
+                .dynamic = dynamic,
             };
         }
     };
@@ -252,23 +250,23 @@ pub const TypeGraph = struct {
             pub const edge_type_tid_key = "edge_type_tid";
 
             pub fn set_child_identifier(self: @This(), identifier: str) void {
-                self.node.attributes.dynamic.put(child_identifier, .{ .String = identifier });
+                self.node.attributes.put(child_identifier, .{ .String = identifier });
             }
 
             pub fn get_child_identifier(self: @This()) str {
-                return self.node.attributes.dynamic.get(child_identifier).?.String;
+                return self.node.attributes.get(child_identifier).?.String;
             }
 
             /// Set the edge type to traverse for this reference segment.
             /// If not set, defaults to EdgeComposition.tid.
             pub fn set_edge_type(self: @This(), tid: Edge.EdgeType) void {
-                self.node.attributes.dynamic.put(edge_type_tid_key, .{ .Int = tid });
+                self.node.attributes.put(edge_type_tid_key, .{ .Int = tid });
             }
 
             /// Get the edge type to traverse for this reference segment.
             /// Returns EdgeComposition.tid if not explicitly set.
             pub fn get_edge_type(self: @This()) Edge.EdgeType {
-                if (self.node.attributes.dynamic.get(edge_type_tid_key)) |val| {
+                if (self.node.attributes.get(edge_type_tid_key)) |val| {
                     return @intCast(val.Int);
                 }
                 return EdgeComposition.tid; // default to composition edges
@@ -420,39 +418,38 @@ pub const TypeGraph = struct {
             }
 
             pub fn set_edge_attributes(self: @This(), attributes: EdgeCreationAttributes) void {
-                self.node.node.attributes.dynamic.put("edge_type", .{ .Int = attributes.edge_type });
+                self.node.node.attributes.put("edge_type", .{ .Int = attributes.edge_type });
                 if (attributes.directional) |d| {
-                    self.node.node.attributes.dynamic.put("directional", .{ .Bool = d });
+                    self.node.node.attributes.put("directional", .{ .Bool = d });
                 }
                 if (attributes.name) |n| {
-                    self.node.node.attributes.dynamic.put("name", .{ .String = n });
+                    self.node.node.attributes.put("name", .{ .String = n });
                 }
-                if (attributes.dynamic) |d| {
-                    d.copy_into(&self.node.node.attributes.dynamic);
-                }
+                attributes.dynamic.copy_into(&self.node.node.attributes.dynamic);
             }
 
             pub fn get_edge_attributes(self: @This()) EdgeCreationAttributes {
-                const directional = self.node.node.attributes.dynamic.get("directional");
-                const name = self.node.node.attributes.dynamic.get("name");
+                const directional = self.node.node.attributes.get("directional");
+                const name = self.node.node.attributes.get("name");
                 var dynamic = graph.DynamicAttributes.init(self.node.g.allocator);
 
                 const AttrVisitor = struct {
                     dynamic: *graph.DynamicAttributes,
 
-                    pub fn visit(ctx: *anyopaque, key: str, value: graph.Literal, _: bool) void {
+                    pub fn visit(ctx: *anyopaque, key: str, value: graph.Literal, _dynamic: bool) void {
                         const s: *@This() = @ptrCast(@alignCast(ctx));
+                        if (_dynamic) return;
                         s.dynamic.put(key, value);
                     }
                 };
                 var visit = AttrVisitor{ .dynamic = &dynamic };
-                self.node.node.attributes.dynamic.visit(&visit, AttrVisitor.visit);
+                self.node.node.attributes.visit(&visit, AttrVisitor.visit);
 
                 const attributes: EdgeCreationAttributes = .{
-                    .edge_type = self.node.node.attributes.dynamic.get("edge_type").?.Int,
+                    .edge_type = self.node.node.attributes.get("edge_type").?.Int,
                     .directional = if (directional) |d| d.Bool else null,
                     .name = if (name) |n| n.String else null,
-                    .dynamic = if (dynamic.has_values()) dynamic else null,
+                    .dynamic = dynamic,
                 };
                 return attributes;
             }
@@ -462,7 +459,7 @@ pub const TypeGraph = struct {
     const initialized_identifier = "initialized";
 
     fn get_initialized(self: *const @This()) bool {
-        return self.self_node.node.attributes.dynamic.get(initialized_identifier).?.Bool;
+        return self.self_node.node.attributes.get(initialized_identifier).?.Bool;
     }
 
     fn set_initialized(self: *@This(), initialized: bool) void {
@@ -629,9 +626,7 @@ pub const TypeGraph = struct {
         MakeChildNode.Attributes.of(make_child).set_child_identifier(identifier);
         if (node_attributes) |_node_attributes| {
             MakeChildNode.Attributes.of(make_child).set_node_attributes(_node_attributes.*);
-            if (_node_attributes.dynamic) |*d| {
-                d.*.deinit();
-            }
+            _node_attributes.deinit();
         }
 
         const type_reference = try TypeReferenceNode.create_and_insert(self, child_type_identifier);
@@ -658,9 +653,7 @@ pub const TypeGraph = struct {
         MakeLinkNode.Attributes.of(make_link).set_edge_attributes(attrs);
 
         // Cleanup dynamic attributes after copying (like add_make_child does)
-        if (attrs.dynamic) |*d| {
-            d.deinit();
-        }
+        attrs.deinit();
 
         _ = EdgeComposition.add_child(make_link, lhs_reference.node, "lhs");
         _ = EdgeComposition.add_child(make_link, rhs_reference.node, "rhs");
@@ -1346,10 +1339,8 @@ pub const TypeGraph = struct {
 
                 // 2.4) Copy node attributes from MakeChild node to child instance
                 var node_attributes = MakeChildNode.Attributes.of(info.make_child).get_node_attributes();
-                if (node_attributes.dynamic) |d| {
-                    d.copy_into(&child.node.attributes.dynamic);
-                    node_attributes.dynamic.?.deinit();
-                }
+                defer node_attributes.deinit();
+                node_attributes.dynamic.copy_into(&child.node.attributes.dynamic);
 
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
@@ -1398,9 +1389,7 @@ pub const TypeGraph = struct {
                 const link_edge = Edge.init(self.parent_instance.g.allocator, lhs_resolved.node, rhs_resolved.node, edge_attributes.edge_type);
                 link_edge.attributes.directional = edge_attributes.directional;
                 link_edge.attributes.name = edge_attributes.name;
-                if (edge_attributes.dynamic) |d| {
-                    d.copy_into(&link_edge.attributes.dynamic);
-                }
+                edge_attributes.dynamic.copy_into(&link_edge.attributes.dynamic);
 
                 _ = self.parent_instance.g.insert_edge(link_edge);
 
@@ -1710,7 +1699,7 @@ test "basic instantiation" {
     const resistor = try tg.instantiate_node(Resistor);
 
     // test: instance graph
-    std.debug.print("Resistor Instance: {d}\n", .{resistor.node.attributes.uuid});
+    std.debug.print("Resistor Instance: {d}\n", .{resistor.node.get_uuid()});
     const p1 = EdgeComposition.get_child_by_identifier(resistor, "p1").?;
     const p2 = EdgeComposition.get_child_by_identifier(resistor, "p2").?;
     const cap1 = EdgeComposition.get_child_by_identifier(resistor, "cap1").?;
@@ -1754,12 +1743,12 @@ test "basic instantiation" {
     const instantiated_cap = EdgeComposition.get_child_by_identifier(instantiated_resistor, "cap1").?;
     const instantiated_cap_p1 = EdgeComposition.get_child_by_identifier(instantiated_cap, "p1").?;
     const instantiated_cap_p2 = EdgeComposition.get_child_by_identifier(instantiated_cap, "p2").?;
-    std.debug.print("Instantiated Resistor Instance: {d}\n", .{instantiated_resistor.node.attributes.uuid});
-    std.debug.print("Instantiated P1 Instance: {d}\n", .{instantiated_p1.node.attributes.uuid});
+    std.debug.print("Instantiated Resistor Instance: {d}\n", .{instantiated_resistor.node.get_uuid()});
+    std.debug.print("Instantiated P1 Instance: {d}\n", .{instantiated_p1.node.get_uuid()});
 
     const cref = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{ EdgeComposition.traverse("<<Resistor"), EdgeComposition.traverse("p1") });
     const result_node = TypeGraph.ChildReferenceNode.resolve(cref, cref);
-    std.debug.print("result node: {d}\n", .{result_node.?.node.attributes.uuid});
+    std.debug.print("result node: {d}\n", .{result_node.?.node.get_uuid()});
 
     // test: check edge created
     const _EdgeVisitor = struct {
@@ -1803,7 +1792,7 @@ test "typegraph iterators and mount chains" {
         .edge_type = EdgePointer.tid,
         .directional = true,
         .name = null,
-        .dynamic = null,
+        .dynamic = graph.DynamicAttributes.init(null),
     };
     _ = try tg.add_make_link(top, base_reference, extra_reference, link_attrs);
 
@@ -2021,9 +2010,9 @@ test "resolve path through trait and pointer edges" {
     const p1_instance = EdgeComposition.get_child_by_identifier(resistor_instance, "p1").?;
     const p2_instance = EdgeComposition.get_child_by_identifier(resistor_instance, "p2").?;
 
-    std.debug.print("\nResistor instance: {d}\n", .{resistor_instance.node.attributes.uuid});
-    std.debug.print("p1 instance: {d}\n", .{p1_instance.node.attributes.uuid});
-    std.debug.print("p2 instance: {d}\n", .{p2_instance.node.attributes.uuid});
+    std.debug.print("\nResistor instance: {d}\n", .{resistor_instance.node.get_uuid()});
+    std.debug.print("p1 instance: {d}\n", .{p1_instance.node.get_uuid()});
+    std.debug.print("p2 instance: {d}\n", .{p2_instance.node.get_uuid()});
 
     // 3. Create a can_bridge trait instance and attach to resistor
     const can_bridge_instance = try tg.instantiate_node(CanBridge);
@@ -2032,7 +2021,7 @@ test "resolve path through trait and pointer edges" {
     const trait_edge = EdgeTrait.get_owner_edge(can_bridge_instance).?;
     trait_edge.edge.attributes.name = "can_bridge";
 
-    std.debug.print("can_bridge instance: {d}\n", .{can_bridge_instance.node.attributes.uuid});
+    std.debug.print("can_bridge instance: {d}\n", .{can_bridge_instance.node.get_uuid()});
 
     // 4. Add Pointer nodes as composition children of can_bridge, then point them to p1/p2
     // Create Pointer type if not exists
@@ -2061,7 +2050,7 @@ test "resolve path through trait and pointer edges" {
     // 6. Resolve the reference starting from resistor_instance
     const resolved = TypeGraph.ChildReferenceNode.resolve(reference, resistor_instance);
     try std.testing.expect(resolved != null);
-    std.debug.print("Resolved node: {d}\n", .{resolved.?.node.attributes.uuid});
+    std.debug.print("Resolved node: {d}\n", .{resolved.?.node.get_uuid()});
 
     // 7. Verify we resolved to p1_instance
     try std.testing.expect(Node.is_same(resolved.?.node, p1_instance.node));
@@ -2107,9 +2096,9 @@ test "resolve path through trait and pointer edges" {
     _ = EdgePointer.point_to(child_out_ptr, child_p2.node, null, null);
 
     std.debug.print("\nMixed path test:\n", .{});
-    std.debug.print("TopModule instance: {d}\n", .{top_instance.node.attributes.uuid});
-    std.debug.print("resistor child: {d}\n", .{resistor_child.node.attributes.uuid});
-    std.debug.print("child_p1: {d}\n", .{child_p1.node.attributes.uuid});
+    std.debug.print("TopModule instance: {d}\n", .{top_instance.node.get_uuid()});
+    std.debug.print("resistor child: {d}\n", .{resistor_child.node.get_uuid()});
+    std.debug.print("child_p1: {d}\n", .{child_p1.node.get_uuid()});
 
     // 9. Test MIXED path: resistor (Composition) -> can_bridge (Trait) -> in_ (Composition) -> dereference (Pointer)
     const mixed_path = [_]ET{
@@ -2123,7 +2112,7 @@ test "resolve path through trait and pointer edges" {
     const mixed_resolved = TypeGraph.ChildReferenceNode.resolve(mixed_reference, top_instance);
 
     try std.testing.expect(mixed_resolved != null);
-    std.debug.print("Mixed path resolved to: {d}\n", .{mixed_resolved.?.node.attributes.uuid});
+    std.debug.print("Mixed path resolved to: {d}\n", .{mixed_resolved.?.node.get_uuid()});
     try std.testing.expect(Node.is_same(mixed_resolved.?.node, child_p1.node));
 
     // 10. Test composition-only path
@@ -2132,7 +2121,7 @@ test "resolve path through trait and pointer edges" {
     const comp_resolved = TypeGraph.ChildReferenceNode.resolve(comp_ref, top_instance);
 
     try std.testing.expect(comp_resolved != null);
-    std.debug.print("Composition path 'resistor.p1' resolved to: {d}\n", .{comp_resolved.?.node.attributes.uuid});
+    std.debug.print("Composition path 'resistor.p1' resolved to: {d}\n", .{comp_resolved.?.node.get_uuid()});
     try std.testing.expect(Node.is_same(comp_resolved.?.node, child_p1.node));
 
     std.debug.print("All EdgeTraversal tests passed!\n", .{});

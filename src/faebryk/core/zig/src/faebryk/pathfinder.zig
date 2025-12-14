@@ -288,7 +288,7 @@ pub const PathFinder = struct {
             }
 
             if (EdgeInterfaceConnection.is_instance(edge)) {
-                const shallow_edge = (edge.attributes.dynamic.get(shallow) orelse continue).Bool;
+                const shallow_edge = (edge.attributes.get(shallow) orelse continue).Bool;
                 if (shallow_edge and depth > 0) path.invalid_path = true;
             }
         }
@@ -319,20 +319,6 @@ test "visit_paths_bfs" {
     const e5 = Edge.init(a, n5, n6, 1759242069);
     const e6 = Edge.init(a, n6, n1, 1759242069);
     const e7 = Edge.init(a, n4, n7, 1759242069);
-    n1.attributes.uuid = 1001;
-    n2.attributes.uuid = 1002;
-    n3.attributes.uuid = 1003;
-    n4.attributes.uuid = 1004;
-    n5.attributes.uuid = 1005;
-    n6.attributes.uuid = 1006;
-    n7.attributes.uuid = 1007;
-    e1.attributes.uuid = 2001;
-    e2.attributes.uuid = 2002;
-    e3.attributes.uuid = 2003;
-    e4.attributes.uuid = 2004;
-    e5.attributes.uuid = 2005;
-    e6.attributes.uuid = 2006;
-    e7.attributes.uuid = 2007;
     defer g.deinit();
 
     const bn1 = g.insert_node(n1);

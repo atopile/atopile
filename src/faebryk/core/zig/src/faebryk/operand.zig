@@ -18,7 +18,8 @@ const EdgeComposition = composition_mod.EdgeComposition;
 const TypeGraph = typegraph_mod.TypeGraph;
 
 pub const EdgeOperand = struct {
-    pub const tid: Edge.EdgeType = 1760649153;
+    pub const tid: Edge.EdgeType = graph.Edge.hash_edge_type(1760649153);
+    pub var registered: bool = false;
 
     /// Create an EdgeTraversal for finding an operand by identifier.
     pub fn traverse(identifier: str) TypeGraph.ChildReferenceNode.EdgeTraversal {
@@ -38,11 +39,16 @@ pub const EdgeOperand = struct {
     }
 
     pub fn build(operand_identifier: ?str) EdgeCreationAttributes {
+        if (!registered) {
+            @branchHint(.unlikely);
+            registered = true;
+            Edge.register_type(tid);
+        }
         return .{
             .edge_type = tid,
             .directional = true,
             .name = operand_identifier,
-            .dynamic = null,
+            .dynamic = graph.DynamicAttributes.init(null),
         };
     }
 

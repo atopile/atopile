@@ -401,7 +401,7 @@ fn wrap_node_get_attr() type {
 
             const key_slice = bind.unwrap_str(kwarg_obj.key) orelse return null;
 
-            if (wrapper.data.attributes.dynamic.get(key_slice)) |value| {
+            if (wrapper.data.attributes.get(key_slice)) |value| {
                 return literalToPyObject(value) orelse null;
             }
 
@@ -428,14 +428,15 @@ fn wrap_node_get_dynamic_attrs() type {
             const Visitor = struct {
                 map: std.StringHashMap(Literal),
 
-                pub fn visit(ctx_ptr: *anyopaque, key: []const u8, literal: Literal, _: bool) void {
+                pub fn visit(ctx_ptr: *anyopaque, key: []const u8, literal: Literal, dynamic: bool) void {
                     const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                    if (dynamic) return;
                     ctx.map.put(key, literal) catch @panic("OOM dynamic attributes put");
                 }
             };
 
             var visitor_ctx = Visitor{ .map = map };
-            wrapper.data.attributes.dynamic.visit(&visitor_ctx, Visitor.visit);
+            wrapper.data.attributes.visit(&visitor_ctx, Visitor.visit);
 
             return literalMapToPyDict(visitor_ctx.map) orelse return null;
         }
@@ -576,7 +577,7 @@ fn wrap_edge_get_attr() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const key_slice = bind.unwrap_str(kwarg_obj.key) orelse return null;
-            if (wrapper.data.attributes.dynamic.get(key_slice)) |value| {
+            if (wrapper.data.attributes.get(key_slice)) |value| {
                 return literalToPyObject(value) orelse null;
             }
 
@@ -795,7 +796,7 @@ fn bound_node_hash(self: *py.PyObject) callconv(.C) isize {
     const wrapper = @as(*BoundNodeWrapper, @ptrCast(@alignCast(self)));
     const bound_node = wrapper.data;
     // Use the node's UUID as the hash
-    const uuid: usize = bound_node.node.attributes.uuid;
+    const uuid: usize = bound_node.node.get_uuid();
     return @intCast(uuid);
 }
 

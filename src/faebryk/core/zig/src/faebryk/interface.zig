@@ -22,7 +22,8 @@ const str = graph.str;
 const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 
 pub const EdgeInterfaceConnection = struct {
-    pub const tid: Edge.EdgeType = 1759242069;
+    pub const tid: Edge.EdgeType = graph.Edge.hash_edge_type(1759242069);
+    pub var registered: bool = false;
     pub const shallow_attribute = "shallow";
 
     pub fn get_tid() Edge.EdgeType {
@@ -32,7 +33,7 @@ pub const EdgeInterfaceConnection = struct {
     pub fn init(allocator: std.mem.Allocator, N1: NodeReference, N2: NodeReference, shallow: bool) !EdgeReference {
         const edge = Edge.init(allocator, N1, N2, tid);
         var attrs = try build(allocator, shallow);
-        defer if (attrs.dynamic) |*dyn| dyn.deinit();
+        defer attrs.deinit();
         attrs.apply_to(edge);
         return edge;
     }
@@ -40,6 +41,11 @@ pub const EdgeInterfaceConnection = struct {
     pub fn build(allocator: std.mem.Allocator, shallow: bool) !EdgeCreationAttributes {
         var dynamic = graph.DynamicAttributes.init(allocator);
         dynamic.put(shallow_attribute, .{ .Bool = shallow });
+        if (!registered) {
+            @branchHint(.unlikely);
+            registered = true;
+            Edge.register_type(tid);
+        }
         return .{
             .edge_type = tid,
             .directional = false,
@@ -180,23 +186,23 @@ test "basic" {
     const n2 = bn2.node;
     const n3 = bn3.node;
 
-    std.debug.print("n1.uuid = {}\n", .{n1.attributes.uuid});
-    std.debug.print("n2.uuid = {}\n", .{n2.attributes.uuid});
-    std.debug.print("n3.uuid = {}\n", .{n3.attributes.uuid});
+    std.debug.print("n1.uuid = {}\n", .{n1.get_uuid()});
+    std.debug.print("n2.uuid = {}\n", .{n2.get_uuid()});
+    std.debug.print("n3.uuid = {}\n", .{n3.get_uuid()});
 
     const be1 = try EdgeInterfaceConnection.connect(bn1, bn2);
 
-    std.debug.print("e1.uuid = {}\n", .{be1.edge.attributes.uuid});
-    std.debug.print("e1.source.uuid = {}\n", .{be1.edge.source.attributes.uuid});
-    std.debug.print("e1.target.uuid = {}\n", .{be1.edge.target.attributes.uuid});
+    std.debug.print("e1.uuid = {}\n", .{be1.edge.get_uuid()});
+    std.debug.print("e1.source.uuid = {}\n", .{be1.edge.source.get_uuid()});
+    std.debug.print("e1.target.uuid = {}\n", .{be1.edge.target.get_uuid()});
 
-    std.debug.print("n2.uuid = {}\n", .{n2.attributes.uuid});
+    std.debug.print("n2.uuid = {}\n", .{n2.get_uuid()});
 
-    std.debug.print("e1.source.uuid = {}\n", .{be1.edge.source.attributes.uuid});
-    std.debug.print("e1.target.uuid = {}\n", .{be1.edge.target.attributes.uuid});
+    std.debug.print("e1.source.uuid = {}\n", .{be1.edge.source.get_uuid()});
+    std.debug.print("e1.target.uuid = {}\n", .{be1.edge.target.get_uuid()});
 
     // Expect shallow flag to be present and false by default
-    const shallow_default = be1.edge.attributes.dynamic.get(EdgeInterfaceConnection.shallow_attribute).?;
+    const shallow_default = be1.edge.attributes.get(EdgeInterfaceConnection.shallow_attribute).?;
     try std.testing.expect(shallow_default.Bool == false);
 
     // Expect e1 source and target to match n1 and n2

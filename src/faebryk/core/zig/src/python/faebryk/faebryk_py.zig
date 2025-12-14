@@ -2847,21 +2847,14 @@ fn wrap_nodebuilder_init() type {
             const allocator = std.heap.c_allocator;
             const dynamic_obj: *py.PyObject = if (kwarg_obj.dynamic) |obj| obj else py.Py_None();
 
-            var dynamic_attrs = _unwrap_literal_str_dict(dynamic_obj, allocator) catch return null;
+            const dynamic = _unwrap_literal_str_dict(dynamic_obj, allocator) catch return null;
 
-            const attributes = allocator.create(faebryk.nodebuilder.NodeCreationAttributes) catch {
-                if (dynamic_attrs) |*attrs| attrs.deinit();
-                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                return null;
-            };
-            attributes.* = .{ .dynamic = dynamic_attrs };
-            dynamic_attrs = null;
+            const attributes = allocator.create(faebryk.nodebuilder.NodeCreationAttributes) catch @panic("Out of memory");
+            attributes.* = .{ .dynamic = dynamic };
 
             const wrapped = bind.wrap_obj("NodeCreationAttributes", &node_creation_attributes_type, NodeCreationAttributesWrapper, attributes);
             if (wrapped == null) {
-                if (attributes.*.dynamic) |*dynamic_value| {
-                    dynamic_value.deinit();
-                }
+                attributes.deinit();
                 allocator.destroy(attributes);
                 return null;
             }
@@ -3253,9 +3246,7 @@ fn wrap_typegraph_make_child_node_build() type {
 
             const wrapped = bind.wrap_obj("NodeCreationAttributes", &node_creation_attributes_type, NodeCreationAttributesWrapper, attributes);
             if (wrapped == null) {
-                if (attributes.*.dynamic) |*dynamic_value| {
-                    dynamic_value.deinit();
-                }
+                attributes.*.deinit();
                 allocator.destroy(attributes);
                 if (value_copy) |copy| allocator.free(copy);
                 return null;
@@ -3743,7 +3734,7 @@ fn _raise_path_error(
     py.Py_DECREF(exc_instance.?);
 }
 
-fn _unwrap_literal_str_dict(dict_obj: *py.PyObject, allocator: std.mem.Allocator) !?graph.DynamicAttributes {
+fn _unwrap_literal_str_dict(dict_obj: *py.PyObject, allocator: std.mem.Allocator) !graph.DynamicAttributes {
     if (dict_obj == py.Py_None()) {
         return null;
     }
@@ -3974,17 +3965,15 @@ fn wrap_typegraph_instantiate_node() type {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            var attributes = _unwrap_literal_str_dict(kwarg_obj.attributes, std.heap.c_allocator) catch return null;
-            defer if (attributes != null) attributes.?.deinit();
+            var dynamic = _unwrap_literal_str_dict(kwarg_obj.attributes, std.heap.c_allocator) catch return null;
+            defer dynamic.deinit();
 
             const bnode = faebryk.typegraph.TypeGraph.instantiate_node(wrapper.data, kwarg_obj.type_node.*) catch |err| {
                 py.PyErr_SetString(py.PyExc_ValueError, instantiation_error_message(err));
                 return null;
             };
 
-            if (attributes) |attrs| {
-                attrs.copy_into(&bnode.node.attributes.dynamic);
-            }
+            dynamic.copy_into(&bnode.node.attributes.dynamic);
 
             return graph_py.makeBoundNodePyObject(bnode);
         }

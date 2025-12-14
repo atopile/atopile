@@ -73,7 +73,8 @@ pub const Trait = struct {
 };
 
 pub const EdgeTrait = struct {
-    pub const tid: Edge.EdgeType = 1762883874;
+    pub const tid: Edge.EdgeType = graph.Edge.hash_edge_type(1762883874);
+    pub var registered: bool = false;
 
     /// Create an EdgeTraversal for finding a trait instance by its type name.
     pub fn traverse(trait_type_name: graph.str) TypeGraph.ChildReferenceNode.EdgeTraversal {
@@ -88,11 +89,16 @@ pub const EdgeTrait = struct {
     }
 
     pub fn build() EdgeCreationAttributes {
+        if (!registered) {
+            @branchHint(.unlikely);
+            registered = true;
+            Edge.register_type(tid);
+        }
         return .{
             .edge_type = tid,
             .directional = true,
             .name = null,
-            .dynamic = null,
+            .dynamic = graph.DynamicAttributes.init(null),
         };
     }
 

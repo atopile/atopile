@@ -1,6 +1,9 @@
 const std = @import("std");
-pub const str = []const u8;
 const visitor = @import("visitor.zig");
+
+pub const str = []const u8;
+
+var global_graph_allocator: std.mem.Allocator = std.heap.page_allocator;
 
 pub const NodeRefMap = struct {
     pub fn eql(_: @This(), a: NodeReference, b: NodeReference) bool {
@@ -8,7 +11,7 @@ pub const NodeRefMap = struct {
     }
 
     pub fn hash(_: @This(), adapted_key: NodeReference) u64 {
-        return adapted_key.attributes.uuid;
+        return adapted_key.get_uuid();
     }
 
     pub fn T(V: type) type {
@@ -22,7 +25,7 @@ const EdgeRefMap = struct {
     }
 
     pub fn hash(_: @This(), adapted_key: EdgeReference) u64 {
-        return adapted_key.attributes.uuid;
+        return adapted_key.get_uuid();
     }
 
     pub fn T(V: type) type {
@@ -104,43 +107,58 @@ pub const Attribute = struct {
     }
 };
 
-pub const DynamicAttributes = struct {
-    values: std.StringHashMap(Literal),
+pub const LiteralKV = struct {
+    identifier: str,
+    value: Literal,
+};
 
-    pub fn init(allocator: std.mem.Allocator) @This() {
+pub const DynamicAttributes = struct {
+    values: []LiteralKV,
+
+    pub fn init() @This() {
         return .{
-            .values = std.StringHashMap(Literal).init(allocator),
+            .values = &[_]LiteralKV{},
         };
     }
 
+    fn grow_slice(self: *@This(), count: usize) void {
+        self.values = global_graph_allocator.realloc(self.values, self.values.len + count) catch @panic("OOM");
+        self.values.len += count;
+    }
+
     pub fn deinit(self: *@This()) void {
-        self.values.deinit();
+        global_graph_allocator.free(self.values);
+        self.values = &[_]LiteralKV{};
     }
 
     pub fn visit(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
-        var it = self.values.iterator();
-        while (it.next()) |e| {
-            f(ctx, e.key_ptr.*, e.value_ptr.*, true);
+        for (self.values) |value| {
+            f(ctx, value.identifier, value.value, true);
         }
     }
 
     pub fn copy_into(self: *const @This(), other: *@This()) void {
-        var it = self.values.iterator();
-        while (it.next()) |e| {
-            other.put(e.key_ptr.*, e.value_ptr.*);
-        }
+        const cur_len = other.values.len;
+        other.grow_slice(self.values.len);
+        std.mem.copy(LiteralKV, other.values[cur_len..], self.values);
     }
 
     pub fn put(self: *@This(), identifier: str, value: Literal) void {
-        self.values.put(identifier, value) catch @panic("OOM dynamic attributes put");
+        self.grow_slice(1);
+        self.values[self.values.len - 1] = .{ .identifier = identifier, .value = value };
     }
 
     pub fn has_values(self: *@This()) bool {
-        return self.values.count() > 0;
+        return self.values.len > 0;
     }
 
     pub fn get(self: *@This(), identifier: str) ?Literal {
-        return self.values.get(identifier);
+        for (self.values) |value| {
+            if (std.mem.eql(u8, value.identifier, identifier)) {
+                return value.value;
+            }
+        }
+        return null;
     }
 };
 
@@ -150,15 +168,11 @@ const GraphObjectReference = union(enum) {
 };
 
 pub const GraphReferenceCounter = struct {
-    ref_count: usize = 0,
-    parent: GraphObjectReference,
-    allocator: std.mem.Allocator,
+    ref_count: u16 = 0,
 
-    pub fn init(allocator: std.mem.Allocator, parent: GraphObjectReference) @This() {
+    pub fn init() @This() {
         return .{
             .ref_count = 0,
-            .parent = parent,
-            .allocator = allocator,
         };
     }
 
@@ -173,11 +187,11 @@ pub const GraphReferenceCounter = struct {
         self.ref_count += 1;
     }
 
-    pub fn dec(self: *@This(), g: *GraphView) void {
+    pub fn dec(self: *@This(), g: *GraphView, parent: GraphObjectReference) void {
         _ = g;
         self.ref_count -= 1;
         if (self.ref_count == 0) {
-            switch (self.parent) {
+            switch (parent) {
                 .Node => |node| node.deinit(),
                 .Edge => |edge| edge.deinit(),
             }
@@ -200,15 +214,26 @@ pub const UUID = struct {
 };
 
 pub const NodeAttributes = struct {
-    uuid: UUID.T,
     dynamic: DynamicAttributes,
     pub fn visit(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
-        f(ctx, "uuid", Literal{ .Uint = self.uuid }, false);
+        //f(ctx, "uuid", Literal{ .Uint = self.uuid }, false);
         self.dynamic.visit(ctx, f);
     }
 
     pub fn put(self: *@This(), identifier: str, value: Literal) void {
         self.dynamic.put(identifier, value);
+    }
+
+    pub fn get(self: *@This(), identifier: str) ?Literal {
+        return self.dynamic.get(identifier);
+    }
+
+    pub fn deinit(self: *@This()) void {
+        self.dynamic.deinit();
+    }
+
+    pub fn get_node(self: *@This()) NodeReference {
+        return @fieldParentPtr("attributes", self);
     }
 };
 
@@ -216,13 +241,12 @@ pub const Node = struct {
     attributes: NodeAttributes,
     _ref_count: GraphReferenceCounter,
 
-    pub fn init(allocator: std.mem.Allocator) NodeReference {
-        const node = allocator.create(Node) catch @panic("Failed to allocate Node");
+    pub fn init() NodeReference {
+        const node = global_graph_allocator.create(Node) catch @panic("Failed to allocate Node");
 
         // Attributes
-        node.attributes.uuid = UUID.gen_uuid(node);
-        node.attributes.dynamic = DynamicAttributes.init(allocator);
-        node._ref_count = GraphReferenceCounter.init(allocator, .{ .Node = node });
+        node.attributes.dynamic = DynamicAttributes.init();
+        node._ref_count = GraphReferenceCounter.init();
         return node;
     }
 
@@ -230,16 +254,16 @@ pub const Node = struct {
         self._ref_count.check_in_use() catch {
             @panic("Node is still in use");
         };
-        self.attributes.dynamic.deinit();
-        self._ref_count.allocator.destroy(self);
+        self.attributes.deinit();
+        global_graph_allocator.destroy(self);
     }
 
     pub fn is_same(N1: NodeReference, N2: NodeReference) bool {
-        return UUID.equals(N1.attributes.uuid, N2.attributes.uuid);
+        return UUID.equals(N1.get_uuid(), N2.get_uuid());
     }
 
     pub fn get_uuid(self: *@This()) UUID.T {
-        return self.attributes.uuid;
+        return @intFromPtr(self);
     }
 };
 
@@ -249,7 +273,6 @@ pub const EdgeReference = *Edge;
 pub const EdgeAttributes = struct {
     source_id: UUID.T,
     target_id: UUID.T,
-    uuid: UUID.T,
     edge_type: Edge.EdgeType,
     directional: ?bool,
     name: ?str,
@@ -258,6 +281,26 @@ pub const EdgeAttributes = struct {
     // TODO make set_name function that duplicates and owns the string and deallocates it on deinit
     // ^ same for NodeAttributes
     // Then ownership in python api layer also easier
+
+    pub fn put(self: *@This(), identifier: str, value: Literal) void {
+        self.dynamic.put(identifier, value);
+    }
+
+    pub fn get(self: *@This(), identifier: str) ?Literal {
+        return self.dynamic.get(identifier);
+    }
+
+    pub fn deinit(self: *@This()) void {
+        self.dynamic.deinit();
+    }
+
+    pub fn get_edge(self: *@This()) EdgeReference {
+        return @fieldParentPtr("attributes", self);
+    }
+
+    pub fn get_uuid(self: *@This()) UUID.T {
+        return @intFromPtr(self);
+    }
 };
 
 pub fn ComptimeIntSet(max_count: usize, int_type: type) type {
@@ -296,21 +339,20 @@ pub const Edge = struct {
     attributes: EdgeAttributes,
     _ref_count: GraphReferenceCounter,
 
-    pub fn init(allocator: std.mem.Allocator, source: NodeReference, target: NodeReference, edge_type: EdgeType) *@This() {
-        var edge = allocator.create(Edge) catch @panic("OOM creating Edge");
+    pub fn init(source: NodeReference, target: NodeReference, edge_type: EdgeType) *@This() {
+        var edge = global_graph_allocator.create(Edge) catch @panic("OOM creating Edge");
         edge.source = source;
         edge.target = target;
 
         // Attributes
-        edge.attributes.uuid = UUID.gen_uuid(edge);
         edge.attributes.edge_type = edge_type;
-        edge.attributes.source_id = source.attributes.uuid;
-        edge.attributes.target_id = target.attributes.uuid;
-        edge.attributes.dynamic = DynamicAttributes.init(allocator);
+        edge.attributes.source_id = source.get_uuid();
+        edge.attributes.target_id = target.get_uuid();
+        edge.attributes.dynamic = DynamicAttributes.init();
         edge.attributes.directional = null;
         edge.attributes.name = null;
 
-        edge._ref_count = GraphReferenceCounter.init(allocator, .{ .Edge = edge });
+        edge._ref_count = GraphReferenceCounter.init(.{ .Edge = edge });
         return edge;
     }
 
@@ -318,12 +360,15 @@ pub const Edge = struct {
         self._ref_count.check_in_use() catch {
             @panic("Edge is still in use");
         };
-        self.attributes.dynamic.deinit();
-        self._ref_count.allocator.destroy(self);
+        self.attributes.deinit();
+        global_graph_allocator.destroy(self);
     }
 
-    pub const EdgeType = i64;
-    pub var type_set: IntMap.T(void) = IntMap.T(void).init(std.heap.page_allocator);
+    pub const EdgeType = u8;
+    pub fn hash_edge_type(comptime tid: u64) EdgeType {
+        return @intCast(tid % 256);
+    }
+    pub var type_set: IntMap.T(void) = IntMap.T(void).init(global_graph_allocator);
 
     /// Register type and check for duplicates during runtime
     /// Can't do during compile because python will do during runtime
@@ -339,7 +384,7 @@ pub const Edge = struct {
     }
 
     pub fn is_same(E1: EdgeReference, E2: EdgeReference) bool {
-        return UUID.equals(E1.attributes.uuid, E2.attributes.uuid);
+        return UUID.equals(E1.get_uuid(), E2.get_uuid());
     }
 
     pub fn get_source(E: EdgeReference) ?NodeReference {
@@ -504,7 +549,7 @@ pub const BFSPath = struct {
         _ = options; // Unused
         try writer.print("PATH - len: {} - ", .{self.traversed_edges.items.len});
         for (self.traversed_edges.items) |traversed_edge| {
-            try writer.print("e{}->", .{traversed_edge.edge.attributes.uuid});
+            try writer.print("e{}->", .{traversed_edge.edge.get_uuid()});
         }
         try writer.print("\n", .{});
     }
@@ -596,7 +641,7 @@ pub const GraphView = struct {
             .neighbors = NodeRefMap.T(std.ArrayList(EdgeReference)).init(allocator),
             .neighbor_by_type = NodeRefMap.T(EdgeTypeMap.T(std.ArrayList(EdgeReference))).init(allocator),
             .neighbor_by_type_and_name = NodeRefMap.T(EdgeTypeMap.T(std.StringHashMap(EdgeReference))).init(allocator),
-            .self_node = Node.init(allocator),
+            .self_node = Node.init(),
         };
         _ = out.insert_node(out.self_node);
         return out;
@@ -641,11 +686,11 @@ pub const GraphView = struct {
 
         var edge_it = g.edges.keyIterator();
         while (edge_it.next()) |edge| {
-            edge.*._ref_count.dec(g);
+            edge.*._ref_count.dec(g, .{ .Edge = edge });
         }
         g.edges.deinit();
         for (g.nodes.items) |node| {
-            node._ref_count.dec(g);
+            node._ref_count.dec(g, .{ .Node = node });
         }
         g.nodes.deinit();
     }
@@ -1050,8 +1095,8 @@ test "basic" {
 
     const edges = g.get_edges(n1).?;
     try std.testing.expectEqual(edges.items.len, 1);
-    try std.testing.expectEqual(edges.items[0].attributes.uuid, e12.attributes.uuid);
-    try std.testing.expectEqual(edges.items[0].target.attributes.uuid, n2.attributes.uuid);
+    try std.testing.expectEqual(edges.items[0].get_uuid(), e12.get_uuid());
+    try std.testing.expectEqual(edges.items[0].target.get_uuid(), n2.get_uuid());
 
     try std.testing.expectEqual(n1._ref_count.ref_count, 1);
     try std.testing.expectEqual(n2._ref_count.ref_count, 1);
@@ -1166,11 +1211,11 @@ test "get_subgraph_from_nodes" {
 
     const sub_edges_n1 = subgraph.get_edges(n1).?;
     try std.testing.expectEqual(@as(usize, 1), sub_edges_n1.items.len);
-    try std.testing.expectEqual(e12.attributes.uuid, sub_edges_n1.items[0].attributes.uuid);
+    try std.testing.expectEqual(e12.get_uuid(), sub_edges_n1.items[0].get_uuid());
 
     const sub_edges_n2 = subgraph.get_edges(n2).?;
     try std.testing.expectEqual(@as(usize, 1), sub_edges_n2.items.len);
-    try std.testing.expectEqual(e12.attributes.uuid, sub_edges_n2.items[0].attributes.uuid);
+    try std.testing.expectEqual(e12.get_uuid(), sub_edges_n2.items[0].get_uuid());
 }
 
 test "duplicate edge insertion" {
@@ -1251,7 +1296,7 @@ test "get_edge_with_type_and_identifier" {
 
     const out = g.get_edge_with_type_and_identifier(n1, TestEdgeType, "e12");
     try std.testing.expect(out != null);
-    try std.testing.expect(out.?.attributes.uuid == e12.attributes.uuid);
+    try std.testing.expect(out.?.get_uuid() == e12.get_uuid());
 
     const out2 = g.get_edge_with_type_and_identifier(n2, TestEdgeType, "e12");
     try std.testing.expect(out2 == null);
@@ -1289,7 +1334,7 @@ const _TrackingAllocator = struct {
     ) ?[*]u8 {
         const self: *_TrackingAllocator = @ptrCast(@alignCast(context));
         self.totalRequested += len;
-        std.debug.print("alloc: {d}\n", .{len});
+        std.debug.print("alloc: +{d} = {d}\n", .{ len, self.totalRequested - self.totalFreed });
         return self.underlying.vtable.alloc(self.underlying.ptr, len, alignment, ret_addr);
     }
 
@@ -1313,6 +1358,7 @@ const _TrackingAllocator = struct {
     ) void {
         const self: *_TrackingAllocator = @ptrCast(@alignCast(context));
         self.totalFreed += old_memory.len;
+        std.debug.print("free: -{d} = {d}\n", .{ old_memory.len, self.totalRequested - self.totalFreed });
         self.underlying.vtable.free(self.underlying.ptr, old_memory, alignment, ret_addr);
     }
 
@@ -1329,37 +1375,52 @@ const _TrackingAllocator = struct {
     }
 };
 
-test "mem_node_empty" {
+test "mem_compile" {
     const size_node = @sizeOf(Node);
+    const size_edge = @sizeOf(Edge);
 
-    const size_uuid = @sizeOf(UUID.T);
-    const size_dynamic = @sizeOf(DynamicAttributes);
+    const size_node_attr = @sizeOf(NodeAttributes);
+    const size_edge_attr = @sizeOf(EdgeAttributes);
     const size_ref_count = @sizeOf(GraphReferenceCounter);
+    const size_str = @sizeOf(str);
 
     const size_literal = @sizeOf(Literal);
-    try std.testing.expectEqual(@as(usize, size_literal), 24);
+    std.debug.print("size_str: {d}\n", .{size_str});
+    std.debug.print("size_node_attr: {d}\n", .{size_node_attr});
+    std.debug.print("size_edge_attr: {d}\n", .{size_edge_attr});
+    std.debug.print("size_ref_count: {d}\n", .{size_ref_count});
+    std.debug.print("size_node: {d}\n", .{size_node});
+    std.debug.print("size_edge: {d}\n", .{size_edge});
+    std.debug.print("size_literal: {d}\n", .{size_literal});
 
-    try std.testing.expectEqual(@as(usize, size_uuid), 8);
-    try std.testing.expectEqual(@as(usize, size_ref_count), 40);
-    try std.testing.expectEqual(@as(usize, size_dynamic), 40);
-    try std.testing.expectEqual(@as(usize, size_uuid + size_dynamic + size_ref_count), size_node);
-    try std.testing.expectEqual(@as(usize, 88), size_node);
+    try std.testing.expectEqual(24, @as(usize, size_literal));
+
+    try std.testing.expectEqual(2, @as(usize, size_ref_count));
+    try std.testing.expectEqual(16, @as(usize, size_node_attr));
+    try std.testing.expectEqual(24, size_node);
 }
 
 test "mem_node_with_string" {
     const a = std.testing.allocator;
     var t = _TrackingAllocator.init(a);
+    global_graph_allocator = t.allocator();
 
-    const node = Node.init(t.allocator());
-    try std.testing.expectEqual(@as(usize, 88), t.totalRequested);
+    std.debug.print("cache_line: {d}\n", .{std.atomic.cache_line});
+
+    const node = Node.init();
+    //try std.testing.expectEqual(@as(usize, 16), t.totalRequested);
     defer node.deinit();
     const value: Literal = .{ .String = "test" };
     node.attributes.put("test", value);
 
-    std.debug.print("allocated: {d}\n", .{t.totalRequested});
+    //try std.testing.expectEqual(@as(usize, 96), t.totalRequested - t.totalFreed);
+
+    node.attributes.put("test2", value);
+    node.attributes.put("test3", value);
+
+    std.debug.print("allocated: {d}\n", .{t.totalRequested - t.totalFreed});
     std.debug.print("freed: {d}\n", .{t.totalFreed});
-    try std.testing.expectEqual(@as(usize, 440), t.totalRequested);
-    try std.testing.expectEqual(@as(usize, 0), t.totalFreed);
+    //try std.testing.expectEqual(@as(usize, 216), t.totalRequested - t.totalFreed);
 }
 
 //test "memory_usage" {

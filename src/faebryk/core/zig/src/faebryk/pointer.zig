@@ -21,7 +21,8 @@ const return_first = visitor.return_first;
 const TypeGraph = typegraph_mod.TypeGraph;
 
 pub const EdgePointer = struct {
-    pub const tid: Edge.EdgeType = 1759771470;
+    pub const tid: Edge.EdgeType = graph.Edge.hash_edge_type(1759771470);
+    pub var registered: bool = false;
 
     /// Create an EdgeTraversal for dereferencing the current Pointer node.
     /// No identifier needed - simply follows the EdgePointer from the current node to its target.
@@ -36,10 +37,14 @@ pub const EdgePointer = struct {
     }
 
     pub fn build(allocator: std.mem.Allocator, identifier: ?str, order: ?u32) EdgeCreationAttributes {
-        var dynamic: ?graph.DynamicAttributes = null;
+        var dynamic = graph.DynamicAttributes.init(allocator);
         if (order) |o| {
-            dynamic = graph.DynamicAttributes.init(allocator);
-            dynamic.?.put("order", .{ .Int = o });
+            dynamic.put("order", .{ .Int = o });
+        }
+        if (!registered) {
+            @branchHint(.unlikely);
+            registered = true;
+            Edge.register_type(tid);
         }
         return .{
             .edge_type = tid,
@@ -50,7 +55,7 @@ pub const EdgePointer = struct {
     }
 
     pub fn get_order(edge: EdgeReference) ?u32 {
-        const order = edge.attributes.dynamic.get("order");
+        const order = edge.attributes.get("order");
         if (order) |o| {
             return @intCast(o.Int);
         }

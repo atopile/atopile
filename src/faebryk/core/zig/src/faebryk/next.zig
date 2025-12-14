@@ -14,7 +14,8 @@ const str = graph.str;
 const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 
 pub const EdgeNext = struct {
-    pub const tid: Edge.EdgeType = 1759356969;
+    pub const tid: Edge.EdgeType = graph.Edge.hash_edge_type(1759356969);
+    pub var registered: bool = false;
 
     pub fn init(allocator: std.mem.Allocator, previous_node: NodeReference, next_node: NodeReference) EdgeReference {
         const edge = Edge.init(allocator, previous_node, next_node, tid);
@@ -23,11 +24,16 @@ pub const EdgeNext = struct {
     }
 
     pub fn build() EdgeCreationAttributes {
+        if (!registered) {
+            @branchHint(.unlikely);
+            registered = true;
+            Edge.register_type(tid);
+        }
         return .{
             .edge_type = tid,
             .directional = true,
             .name = null,
-            .dynamic = null,
+            .dynamic = graph.DynamicAttributes.init(null),
         };
     }
 
