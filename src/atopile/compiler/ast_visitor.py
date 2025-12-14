@@ -940,6 +940,7 @@ class ASTVisitor:
                     parent_reference=parent_reference,
                     parent_path=parent_path,
                 )
+                return is_expr
             case str() as value:
                 is_expr = AddMakeChildAction(
                     target_path=FieldPath(

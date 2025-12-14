@@ -238,8 +238,9 @@ class Unit(fabll.Node):
     source = SourceChunk.MakeChild()
     symbol = F.Literals.Strings.MakeChild()
 
-    def setup(self, source_info: SourceInfo, symbol: str) -> Self:  # type: ignore[invalid-method-override]
-        self.source.get().setup(source_info=source_info)
+    def setup(self, symbol: str, source_info: SourceInfo | None = None) -> Self:  # type: ignore[invalid-method-override]
+        if source_info is not None:
+            self.source.get().setup(source_info=source_info)
         self.symbol.get().setup_from_values(symbol)
         return self
 
@@ -271,7 +272,10 @@ class Quantity(fabll.Node):
 
         if unit is not None:
             symbol, unit_source = unit
-            self.unit.get().setup(source_info=unit_source, symbol=symbol)
+        else:
+            symbol = "Dimensionless"
+            unit_source = None
+        self.unit.get().setup(source_info=unit_source, symbol=symbol)
 
         return self
 
