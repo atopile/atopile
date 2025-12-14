@@ -33,24 +33,6 @@ def test_app(config):
     assert "ERROR" not in stderr
 
 
-@pytest.mark.xfail(reason="Absolute performance will vary w/ hardware")
-@pytest.mark.benchmark(
-    min_rounds=10,
-    max_time=0.3,
-)
-def test_snappiness(benchmark):
-    def run_cli():
-        return run(
-            [sys.executable, "-m", "atopile", "--help"],
-            capture_output=True,
-            text=True,
-            env={**os.environ, "NONINTERACTIVE": "1"},
-        )
-
-    result = benchmark(run_cli)
-    assert result.returncode == 0
-
-
 @pytest.mark.usefixtures("from_temp_dir")
 def test_create_project():
     PROJECT_NAME = "My first ato project"

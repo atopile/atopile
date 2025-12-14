@@ -13,13 +13,13 @@ from faebryk.libs.exceptions import UserException as _BaseBaseUserException
 if TYPE_CHECKING:
     from rich.console import Console, ConsoleOptions, ConsoleRenderable
 
-    from faebryk.core.node import NodeException
+    import faebryk.core.node as fabll
 
 
 def _render_tokens(
     token_stream: CommonTokenStream, start_token: Token, stop_token: Token
 ) -> list["ConsoleRenderable"]:
-    from atopile.parse_utils import (
+    from atopile.compiler.parse_utils import (
         PygmentsLexerReconstructor,
         get_src_info_from_token,
     )
@@ -91,7 +91,7 @@ class _BaseUserException(_BaseBaseUserException):
     def attach_origin_from_ctx(self, ctx: ParserRuleContext) -> None:
         self.origin_start = ctx.start
         self.origin_stop = ctx.stop
-        self.token_stream = ctx.parser.getInputStream()  # type: ignore
+        self.token_stream = ctx.parser.getInputStream()  # type: ignore[reportOptionalMemberAccess]
 
     @classmethod
     def from_ctx[T: _BaseUserException](
@@ -136,7 +136,7 @@ class _BaseUserException(_BaseBaseUserException):
         return instance
 
     def get_frozen(self) -> tuple:
-        from atopile.parse_utils import get_src_info_from_token
+        from atopile.compiler.parse_utils import get_src_info_from_token
 
         if self.origin_start and self.origin_stop:
             return (
@@ -365,7 +365,7 @@ class UserNodeException(UserException):
     @classmethod
     def from_node_exception(
         cls,
-        node_ex: "NodeException",
+        node_ex: "fabll.NodeException",
         origin: ParserRuleContext | None,
         traceback: Sequence[ParserRuleContext | None] | None,
         *args,

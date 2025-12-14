@@ -54,8 +54,8 @@ def build_project(
 
         try:
             with log_exceptions(logs):
-                app = init_app()
-                buildutil.build(app)
+                app_root = init_app()
+                buildutil.build(app_root)
         except Exception:
             success = False
 

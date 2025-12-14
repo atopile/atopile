@@ -8,8 +8,6 @@ from typing import Annotated, Optional
 
 import typer
 
-from faebryk.libs.kicad.fileformats import kicad
-
 kicad_ipc_app = typer.Typer(rich_markup_mode="rich")
 
 logger = logging.getLogger(__name__)
@@ -69,6 +67,7 @@ def layout_sync(
     """
 
     from atopile.config import config as gcfg
+    from faebryk.libs.kicad.fileformats import kicad
     from faebryk.libs.kicad.ipc import PCBnew, reload_pcb
     from faebryk.libs.util import find, not_none, root_by_file
 

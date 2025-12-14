@@ -2,6 +2,7 @@ const graph_mod = @import("graph");
 const std = @import("std");
 const composition_mod = @import("composition.zig");
 const edgebuilder_mod = @import("edgebuilder.zig");
+const typegraph_mod = @import("typegraph.zig");
 
 const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
@@ -17,9 +18,16 @@ const str = graph.str;
 const EdgeComposition = composition_mod.EdgeComposition;
 const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 const return_first = visitor.return_first;
+const TypeGraph = typegraph_mod.TypeGraph;
 
 pub const EdgePointer = struct {
     pub const tid: Edge.EdgeType = 1759771470;
+
+    /// Create an EdgeTraversal for dereferencing the current Pointer node.
+    /// No identifier needed - simply follows the EdgePointer from the current node to its target.
+    pub fn traverse() TypeGraph.ChildReferenceNode.EdgeTraversal {
+        return .{ .identifier = "", .edge_type = tid };
+    }
 
     pub fn init(allocator: std.mem.Allocator, from: NodeReference, to: NodeReference, identifier: ?str, order: ?u32) EdgeReference {
         const edge = Edge.init(allocator, from, to, tid);
@@ -31,7 +39,7 @@ pub const EdgePointer = struct {
         var dynamic: ?graph.DynamicAttributes = null;
         if (order) |o| {
             dynamic = graph.DynamicAttributes.init(allocator);
-            dynamic.?.values.put("order", .{ .Int = o }) catch unreachable;
+            dynamic.?.put("order", .{ .Int = o });
         }
         return .{
             .edge_type = tid,
@@ -42,7 +50,7 @@ pub const EdgePointer = struct {
     }
 
     pub fn get_order(edge: EdgeReference) ?u32 {
-        const order = edge.attributes.dynamic.values.get("order");
+        const order = edge.attributes.dynamic.get("order");
         if (order) |o| {
             return @intCast(o.Int);
         }
@@ -80,7 +88,8 @@ pub const EdgePointer = struct {
         };
 
         var visit = Visit{ .cb_ctx = ctx, .cb = f };
-        return bound_node.visit_edges_of_type(tid, T, &visit, Visit.visit);
+        // directed = true: from is source, to is target
+        return bound_node.visit_edges_of_type(tid, T, &visit, Visit.visit, true);
     }
 
     pub fn visit_pointed_edges_with_identifier(
@@ -97,6 +106,7 @@ pub const EdgePointer = struct {
 
             pub fn visit(self_ptr: *anyopaque, bound_edge: BoundEdgeReference) visitor.VisitResult(T) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
+                // Direction filtering is handled by visit_pointed_edges with directed=true
                 if (bound_edge.edge.attributes.name) |name| {
                     if (!std.mem.eql(u8, name, self.identifier)) {
                         return visitor.VisitResult(T){ .CONTINUE = {} };

@@ -34,6 +34,7 @@ from atopile.cli import (
     view,
     lsp,
     mcp,
+    dev,
 )
 from atopile.cli.logging_ import handler, logger
 from atopile.errors import UserException, UserNoProjectException
@@ -162,6 +163,7 @@ app.command(rich_help_panel="Shortcuts")(install.remove)
 app.add_typer(lsp.lsp_app, name="lsp", hidden=True)
 app.add_typer(mcp.mcp_app, name="mcp", hidden=True)
 app.add_typer(kicad_ipc.kicad_ipc_app, name="kicad-ipc", hidden=True)
+app.add_typer(dev.dev_app, name="dev", hidden=True)
 
 
 @app.command(hidden=True)
@@ -194,7 +196,7 @@ def dump_config(format: ConfigFormat = ConfigFormat.python):
 def validate(
     path: Annotated[Path, typer.Argument(exists=True, file_okay=True, dir_okay=False)],
 ):
-    from atopile import front_end
+    from atopile.compiler import front_end
     from atopile.config import config
 
     path = path.resolve().relative_to(Path.cwd())

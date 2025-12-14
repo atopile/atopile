@@ -2,117 +2,178 @@
 # SPDX-License-Identifier: MIT
 
 
-import functools
 import logging
-import operator
-from typing import Callable, Iterable, cast
+from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import Any, Callable, cast
 
-from faebryk.core.parameter import (
-    Abs,
-    Add,
-    GreaterOrEqual,
-    GreaterThan,
-    Intersection,
-    Is,
-    IsBitSet,
-    IsSubset,
-    Log,
-    Multiply,
-    Not,
-    Or,
-    Power,
-    Round,
-    Sin,
-    SymmetricDifference,
-    Union,
-)
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
+import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
-from faebryk.core.solver.utils import (
-    CanonicalExpression,
-    MutatorUtils,
-    SolverAll,
-    SolverLiteral,
-    make_lit,
-)
-from faebryk.libs.sets.quantity_sets import (
-    Quantity_Interval_Disjoint,
-)
-from faebryk.libs.sets.sets import BoolSet, P_Set
+from faebryk.libs.test.boundexpressions import BoundExpressions
+from faebryk.libs.util import not_none
 
 logger = logging.getLogger(__name__)
 
 
-def _multi(op: Callable, init=None) -> Callable:
-    def wrapped(*args):
-        if init is not None:
-            init_lit = make_lit(init)
-            args = [init_lit, init_lit, *args]
-        assert args
-        return functools.reduce(op, args)
+@dataclass
+class _Multi:
+    f: Callable[..., Any]
+    default_arg: F.Literals.LiteralValues | None = None
 
-    return wrapped
+    def run(
+        self, *args: F.Literals.LiteralNodes, g: graph.GraphView, tg: fbrk.TypeGraph
+    ) -> F.Literals.is_literal:
+        if not args and self.default_arg is not None:
+            init_lit = F.Literals.make_simple_lit_singleton(g, tg, self.default_arg)
+            args = (init_lit,)
+
+        out = self.f(*args, g=g, tg=tg)
+
+        # TODO: remove hack for equals returning bool
+        if isinstance(out, F.Literals.LiteralValues):
+            out = F.Literals.make_simple_lit_singleton(g, tg, out)
+        return out if isinstance(out, F.Literals.is_literal) else out.is_literal.get()
 
 
-# TODO consider making the oprerator property of the expression type
+# TODO consider making this a trait instead
 
-_CanonicalExpressions = {
-    Add: _multi(operator.add, 0),
-    Multiply: _multi(operator.mul, 1),
-    Power: operator.pow,
-    Round: round,
-    Abs: abs,
-    Sin: Quantity_Interval_Disjoint.op_sin,
-    Log: Quantity_Interval_Disjoint.op_log,
-    Or: _multi(BoolSet.op_or, False),
-    Not: BoolSet.op_not,
-    Intersection: _multi(operator.and_),
-    Union: _multi(operator.or_),
-    SymmetricDifference: operator.xor,
-    Is: operator.eq,
-    GreaterOrEqual: operator.ge,
-    GreaterThan: operator.gt,
-    IsSubset: P_Set.is_subset_of,
-    IsBitSet: Quantity_Interval_Disjoint.op_is_bit_set,
+_CanonicalExpressions: dict[type[fabll.NodeT], _Multi] = {
+    F.Expressions.Add: _Multi(F.Literals.Numbers.op_add_intervals, 0),
+    F.Expressions.Subtract: _Multi(F.Literals.Numbers.op_subtract_intervals),
+    F.Expressions.Multiply: _Multi(F.Literals.Numbers.op_mul_intervals, 1),
+    F.Expressions.Divide: _Multi(F.Literals.Numbers.op_div_intervals),
+    F.Expressions.Power: _Multi(F.Literals.Numbers.op_pow_intervals),
+    F.Expressions.Sqrt: _Multi(F.Literals.Numbers.op_sqrt),
+    F.Expressions.Round: _Multi(F.Literals.Numbers.op_round),
+    F.Expressions.Abs: _Multi(F.Literals.Numbers.op_abs),
+    F.Expressions.Sin: _Multi(F.Literals.Numbers.op_sin),
+    F.Expressions.Log: _Multi(
+        F.Literals.Numbers.op_log,
+    ),
+    F.Expressions.And: _Multi(F.Literals.Booleans.op_and, True),
+    F.Expressions.Or: _Multi(F.Literals.Booleans.op_or, False),
+    F.Expressions.Xor: _Multi(F.Literals.Booleans.op_xor),
+    F.Expressions.Not: _Multi(F.Literals.Booleans.op_not),
+    F.Expressions.Intersection: _Multi(F.Literals.is_literal.op_intersect_intervals),
+    F.Expressions.Union: _Multi(F.Literals.is_literal.op_union_intervals),
+    F.Expressions.LessThan: _Multi(F.Literals.Numbers.op_mul_intervals),
+    F.Expressions.GreaterThan: _Multi(F.Literals.Numbers.op_mul_intervals),
+    F.Expressions.Floor: _Multi(F.Literals.Numbers.op_floor),
+    F.Expressions.Ceil: _Multi(F.Literals.Numbers.op_ceil),
+    F.Expressions.Min: _Multi(F.Literals.Numbers.min_elem),
+    F.Expressions.Max: _Multi(F.Literals.Numbers.max_elem),
+    F.Expressions.SymmetricDifference: _Multi(
+        F.Literals.is_literal.op_symmetric_difference_intervals
+    ),
+    F.Expressions.Is: _Multi(F.Literals.is_literal.equals),
+    F.Expressions.GreaterOrEqual: _Multi(F.Literals.Numbers.op_greater_or_equal),
+    F.Expressions.GreaterThan: _Multi(F.Literals.Numbers.op_greater_than),
+    F.Expressions.IsSubset: _Multi(F.Literals.is_literal.is_subset_of),
+    F.Expressions.IsBitSet: _Multi(F.Literals.Numbers.op_is_bit_set),
 }
 
 # Pure literal folding -----------------------------------------------------------------
 
 
 def _exec_pure_literal_operands(
-    expr_type: type[CanonicalExpression], operands: Iterable[SolverAll]
-) -> SolverLiteral | None:
+    g: graph.GraphView,
+    tg: fbrk.TypeGraph,
+    expr_type: "fabll.ImplementsType",
+    operands: Iterable[F.Parameters.can_be_operand],
+) -> F.Literals.is_literal | None:
     operands = list(operands)
-    if expr_type not in _CanonicalExpressions:
+    _map = {
+        k.bind_typegraph(expr_type.tg).get_or_create_type().node().get_uuid(): v
+        for k, v in _CanonicalExpressions.items()
+    }
+    expr_type_node = fabll.Traits(expr_type).get_obj_raw().instance.node()
+    if expr_type_node.get_uuid() not in _map:
         return None
-    if not all(MutatorUtils.is_literal(o) for o in operands):
+    lits = [o.as_literal.try_get() for o in operands]
+    if not all(lits):
         return None
+    lits = cast(list[F.Literals.is_literal], lits)
+    lits_nodes = [o.switch_cast() for o in lits]
     try:
-        return _CanonicalExpressions[expr_type](*operands)
-    except (ValueError, NotImplementedError, ZeroDivisionError):
+        return _map[expr_type_node.get_uuid()].run(g=g, tg=tg, *lits_nodes)
+    except (ValueError, NotImplementedError, ZeroDivisionError, TypeError):
         return None
 
 
-def _exec_pure_literal_expressions(expr: CanonicalExpression) -> SolverLiteral | None:
-    return _exec_pure_literal_operands(type(expr), expr.operands)
+def _exec_pure_literal_expressions(
+    g: graph.GraphView,
+    tg: fbrk.TypeGraph,
+    expr: F.Expressions.is_expression,
+) -> F.Literals.is_literal | None:
+    return _exec_pure_literal_operands(
+        g,
+        tg,
+        not_none(
+            fabll.TypeNodeBoundTG.try_get_trait_of_type(
+                fabll.ImplementsType,
+                not_none(fabll.Traits(expr).get_obj_raw().get_type_node()),
+            )
+        ),
+        # FIXME: there is no guarantee that this will return them in the correct order
+        expr.get_operands(),
+    )
 
 
 @algorithm("Fold pure literal expressions", terminal=False)
 def fold_pure_literal_expressions(mutator: Mutator):
-    exprs = mutator.nodes_of_types(
-        tuple(_CanonicalExpressions.keys()), sort_by_depth=True
-    )
-    exprs = cast(Iterable[CanonicalExpression], exprs)
+    exprs = mutator.get_expressions(sort_by_depth=True)
 
     for expr in exprs:
+        expr_po = expr.as_parameter_operatable.get()
         # TODO is this needed?
-        if mutator.has_been_mutated(expr) or mutator.is_removed(expr):
+        if mutator.has_been_mutated(expr_po) or mutator.is_removed(expr_po):
             continue
 
         # if expression is not evaluatable that's fine
         # just means we can't say anything about the result
-        result = _exec_pure_literal_expressions(expr)
+        result = _exec_pure_literal_expressions(
+            mutator.G_transient,
+            mutator.tg_in,
+            expr,
+        )
         if result is None:
             continue
-        # type ignore because function sig is not 100% correct
-        mutator.utils.alias_is_literal_and_check_predicate_eval(expr, result)  # type: ignore
+        mutator.utils.alias_is_literal_and_check_predicate_eval(expr, result)
+
+
+def test_fold_simple_literal_expressions_single():
+    """Test that Add(1, 2) folds to 3."""
+    from faebryk.core.solver.mutator import MutationMap
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    E = BoundExpressions(g=g, tg=tg)
+    expr = E.add(E.lit_op_single(1.0), E.lit_op_single(2.0))
+
+    mut_map = MutationMap.bootstrap(tg=tg, g=g)
+    mutator0 = Mutator(
+        mutation_map=mut_map,
+        algo=fold_pure_literal_expressions,
+        iteration=0,
+        terminal=True,
+    )
+    res0 = mutator0.run()
+    res0.mutation_stage.print_mutation_table()
+    mut_map = mut_map.extend(res0.mutation_stage)
+
+    lit = not_none(mut_map.try_get_literal(expr.as_parameter_operatable.force_get()))
+    assert lit.equals_singleton(3.0)
+
+
+if __name__ == "__main__":
+    import typer
+
+    from faebryk.libs.logging import setup_basic_logging
+
+    setup_basic_logging()
+    typer.run(test_fold_simple_literal_expressions_single)

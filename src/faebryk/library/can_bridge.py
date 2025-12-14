@@ -1,25 +1,53 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from abc import abstractmethod
-from typing import Any
+from typing import Self
 
 import faebryk.core.node as fabll
-from faebryk.library.Electrical import Electrical
+import faebryk.library._F as F
 
 
 class can_bridge(fabll.Node):
+    is_trait = fabll.Traits.MakeEdge((fabll.ImplementsTrait.MakeChild())).put_on_type()
+
+    in_ = F.Collections.Pointer.MakeChild()
+    out_ = F.Collections.Pointer.MakeChild()
+
+    def bridge(self, _in: fabll.Node, _out: fabll.Node):
+        _in._is_interface.get().connect_to(self.get_in())
+        _out._is_interface.get().connect_to(self.get_out())
+
+    def get_in(self) -> fabll.Node:
+        in_ = self.in_.get().deref()
+        if in_ is None:
+            raise ValueError("in is None")
+        return in_
+
+    def get_out(self) -> fabll.Node:
+        out_ = self.out_.get().deref()
+        if out_ is None:
+            raise ValueError("out is None")
+        return out_
+
+    # should be makeedge, take refpaths
     @classmethod
-    def create_type(cls, tg: fabll.TypeGraph) -> None:
-        cls._in = fabll.Child(nodetype=Electrical, tg=tg)
-        cls.out = fabll.Child(nodetype=Electrical, tg=tg)
+    def MakeEdge(cls, in_: fabll.RefPath, out_: fabll.RefPath):
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            F.Collections.Pointer.MakeEdge(
+                [out, cls.in_],
+                in_,
+            )
+        )
+        out.add_dependant(
+            F.Collections.Pointer.MakeEdge(
+                [out, cls.out_],
+                out_,
+            )
+        )
+        return out
 
-    def bridge(self, _in, out):
-        _in.connect(self.get_in())
-        out.connect(self.get_out())
-
-    @abstractmethod
-    def get_in(self) -> Any: ...
-
-    @abstractmethod
-    def get_out(self) -> Any: ...
+    def setup(self, in_: fabll.Node, out_: fabll.Node) -> Self:
+        self.in_.get().point(in_)
+        self.out_.get().point(out_)
+        return self

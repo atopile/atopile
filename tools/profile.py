@@ -87,10 +87,13 @@ def cprofile(
         code_bin = get_code_binary()
 
         if is_running_in_vscode_terminal():
-            subprocess.run(["code", str(dot_file)], check=True)
+            subprocess.run(["cursor", str(dot_file)], check=True)
         elif code_bin and get_vscode_instances_count(code_bin.name) > 0:
             subprocess.run([str(code_bin), "-r", str(dot_file)], check=True)
-        else:
+        elif (
+            subprocess.run(["which", "dot"], capture_output=True, text=True).returncode
+            == 0
+        ):
             png_file = temp_dir_path / "output.png"
             subprocess.run(
                 ["dot", "-Tpng", "-o", str(png_file), str(dot_file)], check=True
@@ -102,6 +105,9 @@ def cprofile(
 
         # Display with cursor
         typer.echo(str(dot_file))
+        import time
+
+        time.sleep(1)
 
 
 @app.command(
