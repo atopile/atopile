@@ -422,10 +422,22 @@ fn wrap_node_get_dynamic_attrs() type {
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("Node", &node_type, NodeWrapper, self) orelse return null;
 
-            const zig_map = wrapper.data.attributes.dynamic.values;
+            var map = std.StringHashMap(Literal).init(std.heap.c_allocator);
+            defer map.deinit();
 
-            const py_map = literalMapToPyDict(zig_map) orelse return null;
-            return py_map;
+            const Visitor = struct {
+                map: std.StringHashMap(Literal),
+
+                pub fn visit(ctx_ptr: *anyopaque, key: []const u8, literal: Literal, _: bool) void {
+                    const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                    ctx.map.put(key, literal) catch @panic("OOM dynamic attributes put");
+                }
+            };
+
+            var visitor_ctx = Visitor{ .map = map };
+            wrapper.data.attributes.dynamic.visit(&visitor_ctx, Visitor.visit);
+
+            return literalMapToPyDict(visitor_ctx.map) orelse return null;
         }
     };
 }

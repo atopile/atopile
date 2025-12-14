@@ -530,7 +530,7 @@ class Numeric(fabll.Node[NumericAttributes]):
         )
 
     def get_value(self) -> float:
-        value = self.instance.node().get_dynamic_attrs().get("value", None)
+        value = self.instance.node().get_attr(key="value")
         if value is None:
             raise ValueError("Numeric literal has no value")
         return float(value)
@@ -5734,7 +5734,7 @@ class _Count(fabll.Node[CountAttributes]):
         )
 
     def get_value(self) -> int:
-        value = self.instance.node().get_dynamic_attrs().get("value", None)
+        value = self.instance.node().get_attr(key="value")
         if value is None:
             raise ValueError("Count literal has no value")
         return int(value)
