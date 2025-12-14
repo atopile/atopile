@@ -1050,7 +1050,7 @@ class MutationMap:
         for g in gs.values():
             g_to_destroy = next(iter(g))
             logger.debug(
-                "destroying graph",
+                "destroying graph %s %s",
                 g_to_destroy,
                 hex(g_to_destroy.get_self_node().node().get_uuid()),
             )

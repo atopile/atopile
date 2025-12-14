@@ -1252,3 +1252,292 @@ class TestDirectedConnectStmt:
         ]
         for lhs_expected, rhs_expected in expected:
             assert (lhs_expected, rhs_expected) in link_paths
+
+
+class TestSignalsAndPins:
+    """Tests for signal and pin declarations in the compiler."""
+
+    def test_signal_declaration_creates_electrical_child(self):
+        """Signal declaration creates an Electrical child with the signal name."""
+        _, tg, _, result = _build_snippet(
+            """
+            module App:
+                signal my_sig
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+        my_sig_node = _get_make_child(tg, app_type, "my_sig")
+        assert my_sig_node is not None
+
+    def test_signal_declaration_as_statement(self):
+        """Signal declaration works as a standalone statement."""
+        _, tg, _, result = _build_snippet(
+            """
+            module App:
+                signal first
+                signal second
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+        first_node = _get_make_child(tg, app_type, "first")
+        second_node = _get_make_child(tg, app_type, "second")
+        assert first_node is not None
+        assert second_node is not None
+
+    def test_signal_duplicate_raises(self):
+        """Duplicate signal declaration raises an error."""
+        with pytest.raises(DslException, match="already defined"):
+            _build_snippet(
+                """
+                module App:
+                    signal my_sig
+                    signal my_sig
+                """
+            )
+
+    def test_pin_declaration_creates_child(self):
+        """Pin declaration creates a child with is_lead trait."""
+        _, tg, _, result = _build_snippet(
+            """
+            component MyComp:
+                pin 1
+            """
+        )
+
+        comp_type = result.state.type_roots["MyComp"]
+        pin_node = _get_make_child(tg, comp_type, "pin_1")
+        assert pin_node is not None
+
+    def test_pin_declaration_with_name(self):
+        """Pin declaration with name works."""
+        _, tg, _, result = _build_snippet(
+            """
+            component MyComp:
+                pin vcc
+            """
+        )
+
+        comp_type = result.state.type_roots["MyComp"]
+        pin_node = _get_make_child(tg, comp_type, "pin_vcc")
+        assert pin_node is not None
+
+    def test_pin_declaration_with_string(self):
+        """Pin declaration with string label works."""
+        _, tg, _, result = _build_snippet(
+            """
+            component MyComp:
+                pin "GND"
+            """
+        )
+
+        comp_type = result.state.type_roots["MyComp"]
+        pin_node = _get_make_child(tg, comp_type, "pin_GND")
+        assert pin_node is not None
+
+    def test_signal_connect_to_field(self):
+        """Signal can be connected to an existing field."""
+        _, tg, _, result = _build_snippet(
+            """
+            import Electrical
+
+            module App:
+                e = new Electrical
+                signal my_sig
+                my_sig ~ e
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+
+        assert _check_make_links(
+            tg=tg,
+            type_node=app_type,
+            expected=[(["my_sig"], ["e"])],
+        )
+
+    def test_inline_signal_in_connect(self):
+        """Signal can be declared inline in a connect statement."""
+        _, tg, _, result = _build_snippet(
+            """
+            import Electrical
+
+            module App:
+                e = new Electrical
+                signal s ~ e
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+
+        # Verify signal was created
+        sig_node = _get_make_child(tg, app_type, "s")
+        assert sig_node is not None
+
+        # Verify connection was made
+        assert _check_make_links(
+            tg=tg,
+            type_node=app_type,
+            expected=[(["s"], ["e"])],
+        )
+
+    def test_inline_pin_in_connect(self):
+        """Pin can be declared inline in a connect statement."""
+        _, tg, _, result = _build_snippet(
+            """
+            import Electrical
+
+            component MyComp:
+                e = new Electrical
+                e ~ pin 1
+            """
+        )
+
+        comp_type = result.state.type_roots["MyComp"]
+
+        # Verify pin was created
+        pin_node = _get_make_child(tg, comp_type, "pin_1")
+        assert pin_node is not None
+
+        # Verify connection was made
+        assert _check_make_links(
+            tg=tg,
+            type_node=comp_type,
+            expected=[(["e"], ["pin_1"])],
+        )
+
+    def test_signal_to_pin_connect(self):
+        """Signal can connect to pin using ~ operator."""
+        _, tg, _, result = _build_snippet(
+            """
+            component MyComp:
+                signal my_sig ~ pin 1
+            """
+        )
+
+        comp_type = result.state.type_roots["MyComp"]
+
+        # Verify both signal and pin were created
+        sig_node = _get_make_child(tg, comp_type, "my_sig")
+        pin_node = _get_make_child(tg, comp_type, "pin_1")
+        assert sig_node is not None
+        assert pin_node is not None
+
+        # Verify connection was made
+        assert _check_make_links(
+            tg=tg,
+            type_node=comp_type,
+            expected=[(["my_sig"], ["pin_1"])],
+        )
+
+    def test_multiple_pins_different_types(self):
+        """Multiple pins with different label types work."""
+        _, tg, _, result = _build_snippet(
+            """
+            component MyComp:
+                pin 1
+                pin vcc
+                pin "GND"
+            """
+        )
+
+        comp_type = result.state.type_roots["MyComp"]
+
+        # Verify all pins were created
+        pin_1 = _get_make_child(tg, comp_type, "pin_1")
+        pin_vcc = _get_make_child(tg, comp_type, "pin_vcc")
+        pin_gnd = _get_make_child(tg, comp_type, "pin_GND")
+
+        assert pin_1 is not None
+        assert pin_vcc is not None
+        assert pin_gnd is not None
+
+    def test_inline_signal_in_directed_connect(self):
+        """Inline signals work in directed connect statements."""
+        _, tg, _, result = _build_snippet(
+            """
+            #pragma experiment("BRIDGE_CONNECT")
+
+            module App:
+                signal a ~> signal b
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+
+        # Verify both signals were created
+        sig_a = _get_make_child(tg, app_type, "a")
+        sig_b = _get_make_child(tg, app_type, "b")
+        assert sig_a is not None
+        assert sig_b is not None
+
+        # Verify directed connection was made through can_bridge
+        make_links = _filter_directed_connect_links(_collect_make_links(tg, app_type))
+        assert len(make_links) == 1
+
+        _, lhs_path, rhs_path = make_links[0]
+        assert lhs_path == ["a", "can_bridge", "out_"]
+        assert rhs_path == ["b", "can_bridge", "in_"]
+
+    def test_inline_pin_in_directed_connect(self):
+        """Inline pins work in directed connect statements."""
+        _, tg, _, result = _build_snippet(
+            """
+            #pragma experiment("BRIDGE_CONNECT")
+
+            component MyComp:
+                pin 1 ~> pin 2
+            """
+        )
+
+        comp_type = result.state.type_roots["MyComp"]
+
+        # Verify both pins were created
+        pin_1 = _get_make_child(tg, comp_type, "pin_1")
+        pin_2 = _get_make_child(tg, comp_type, "pin_2")
+        assert pin_1 is not None
+        assert pin_2 is not None
+
+        # Verify directed connection was made through can_bridge
+        make_links = _filter_directed_connect_links(_collect_make_links(tg, comp_type))
+        assert len(make_links) == 1
+
+        _, lhs_path, rhs_path = make_links[0]
+        assert lhs_path == ["pin_1", "can_bridge", "out_"]
+        assert rhs_path == ["pin_2", "can_bridge", "in_"]
+
+    def test_chained_directed_connect_with_inline_signal(self):
+        """Chained directed connect with inline signal in the middle works.
+
+        Tests that `a ~> signal b ~> c` correctly creates signal b once
+        and connects a->b and b->c.
+        """
+        _, tg, _, result = _build_snippet(
+            """
+            #pragma experiment("BRIDGE_CONNECT")
+            import Resistor
+
+            module App:
+                r1 = new Resistor
+                r2 = new Resistor
+                r1 ~> signal mid ~> r2
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+
+        # Verify signal was created (only once!)
+        mid_sig = _get_make_child(tg, app_type, "mid")
+        assert mid_sig is not None
+
+        # Verify both connections were made
+        make_links = _filter_directed_connect_links(_collect_make_links(tg, app_type))
+        assert len(make_links) == 2
+
+        link_paths = {(tuple(lhs), tuple(rhs)) for _, lhs, rhs in make_links}
+        expected = {
+            (("r1", "can_bridge", "out_"), ("mid", "can_bridge", "in_")),
+            (("mid", "can_bridge", "out_"), ("r2", "can_bridge", "in_")),
+        }
+        assert link_paths == expected

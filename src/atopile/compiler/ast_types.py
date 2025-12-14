@@ -995,12 +995,11 @@ class PinDeclaration(fabll.Node):
         STRING = "string"
 
     _is_connectable = fabll.Traits.MakeEdge(is_connectable.MakeChild())
+    _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
 
     source = SourceChunk.MakeChild()
     kind = F.Literals.EnumsFactory(Kind).MakeChild(*Kind.__members__.values())
     label = F.Collections.Pointer.MakeChild()
-
-    _is_connectable = fabll.Traits.MakeEdge(is_connectable.MakeChild())
 
     def setup(  # type: ignore[invalid-method-override]
         self,

@@ -28,6 +28,7 @@ from faebryk.core.faebrykpy import (
     EdgeTraversal,
 )
 from faebryk.library.can_bridge import can_bridge
+from faebryk.library.Lead import can_attach_to_pad_by_name, is_lead
 from faebryk.libs.util import cast_assert, not_none
 
 logger = logging.getLogger(__name__)
@@ -371,6 +372,9 @@ class ASTVisitor:
         self._pointer_sequence_type = F.Collections.PointerSequence.bind_typegraph(
             self._type_graph
         ).get_or_create_type()
+        self._electrical_type = F.Electrical.bind_typegraph(
+            self._type_graph
+        ).get_or_create_type()
         self._experiments: set[ASTVisitor._Experiment] = set()
         self._scope_stack = _ScopeStack()
         self._type_stack = _TypeContextStack(
@@ -561,6 +565,119 @@ class ASTVisitor:
         # TODO: add docstring trait to preceding node
         return NoOpAction()
 
+    def visit_SignaldefStmt(self, node: AST.SignaldefStmt):
+        """Handle signal declaration statements like `signal my_sig`.
+
+        Creates an F.Electrical child with the signal's name. Signals are simple
+        electrical interfaces that can be connected to other signals or pins.
+        """
+        # Get the signal name from the AST node
+        (signal_name,) = node.name.get().get_values()
+
+        # Create a field path for the signal
+        target_path = FieldPath(segments=(FieldPath.Segment(identifier=signal_name),))
+
+        # Check if field already exists
+        if self._scope_stack.has_field(target_path):
+            raise DslException(
+                f"Signal `{signal_name}` is already defined in this scope"
+            )
+
+        # Register the field in scope
+        self._scope_stack.add_field(target_path)
+
+        # Return action to create an Electrical child
+        return AddMakeChildAction(
+            target_path=target_path,
+            child_spec=NewChildSpec(
+                type_identifier=F.Electrical.__name__,
+                type_node=self._electrical_type,
+            ),
+            parent_reference=None,
+            parent_path=None,
+        )
+
+    def _create_pin_type(self, pin_label: str) -> graph.BoundNode:
+        """Create a dynamic pin type with is_lead and can_attach_to_pad_by_name traits.
+
+        The pin type has:
+        - is_interface trait: marks this as connectable (like Electrical)
+        - is_lead trait: marks this as a lead that connects to footprint pads
+        - can_attach_to_pad_by_name: matches pad by regex from pin label
+        """
+        import re
+
+        # Create regex pattern for exact match of pin label
+        regex = f"^{re.escape(str(pin_label))}$"
+
+        # Create a new Node type (not subclassing Electrical due to fabll restriction)
+        class _Pin(fabll.Node):
+            # Make it connectable like Electrical
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+
+            # Add is_lead trait
+            _lead = is_lead.MakeChild()
+            _lead_trait = fabll.Traits.MakeEdge(_lead)
+
+            # Add can_attach_to_pad_by_name trait to the is_lead trait
+            _pad_attach = can_attach_to_pad_by_name.MakeChild(regex)
+            _lead.add_dependant(fabll.Traits.MakeEdge(_pad_attach, [_lead]))
+
+        type_identifier = self._make_type_identifier(f"__pin_{pin_label}__")
+        _Pin.__name__ = type_identifier
+        _Pin.__qualname__ = type_identifier
+
+        return _Pin.bind_typegraph(self._type_graph).get_or_create_type()
+
+    def visit_PinDeclaration(self, node: AST.PinDeclaration):
+        """Handle pin declarations like `pin 1`, `pin name`, or `pin "string"`.
+
+        Creates an F.Electrical child with is_lead and can_attach_to_pad_by_name
+        traits configured with the pin's label as a regex pattern.
+
+        Unlike signals, pins connect to physical footprint pads during the
+        attach/transform phase of the build process.
+        """
+        # Get the pin label from the AST node
+        pin_label = node.get_label()
+        if pin_label is None:
+            raise DslException("Pin declaration has no label")
+
+        # Convert to string for use as identifier and regex
+        # Numbers are stored as floats in literals, convert to int if whole number
+        if isinstance(pin_label, float) and pin_label.is_integer():
+            pin_label_str = str(int(pin_label))
+        else:
+            pin_label_str = str(pin_label)
+
+        # Create a field path for the pin using a sanitized name
+        # Pin labels can be numbers, so prefix with "pin_" for valid identifier
+        identifier = f"pin_{pin_label_str}"
+        target_path = FieldPath(segments=(FieldPath.Segment(identifier=identifier),))
+
+        # Check if field already exists
+        if self._scope_stack.has_field(target_path):
+            raise DslException(
+                f"Pin `{pin_label_str}` is already defined in this scope"
+            )
+
+        # Register the field in scope
+        self._scope_stack.add_field(target_path)
+
+        # Create a dynamic pin type with the appropriate traits
+        pin_type = self._create_pin_type(pin_label_str)
+
+        # Return action to create the pin child
+        return AddMakeChildAction(
+            target_path=target_path,
+            child_spec=NewChildSpec(
+                type_identifier=f"__pin_{pin_label_str}__",
+                type_node=pin_type,
+            ),
+            parent_reference=None,
+            parent_path=None,
+        )
+
     def visit_FieldRef(self, node: AST.FieldRef) -> FieldPath:
         segments: list[FieldPath.Segment] = []
 
@@ -707,33 +824,85 @@ class ASTVisitor:
 
         # TODO: handle template args
 
-    def visit_ConnectStmt(self, node: AST.ConnectStmt):
-        lhs, rhs = node.get_lhs(), node.get_rhs()
-        lhs_node, rhs_node = (
-            fabll.Traits(lhs).get_obj_raw(),
-            fabll.Traits(rhs).get_obj_raw(),
-        )
+    def _resolve_connectable_with_path(
+        self, connectable_node: fabll.Node
+    ) -> tuple[graph.BoundNode, FieldPath]:
+        """Resolve a connectable AST node to both a reference and its path.
 
-        # TODO: handle connectables other than field refs
-        if not lhs_node.isinstance(AST.FieldRef):
-            raise NotImplementedError("Unhandled connectable type for LHS")
-        if not rhs_node.isinstance(AST.FieldRef):
-            raise NotImplementedError("Unhandled connectable type for RHS")
+        Handles three types of connectables:
+        - FieldRef: resolves existing field path
+        - SignaldefStmt: creates signal child and returns reference
+        - PinDeclaration: creates pin child and returns reference
 
-        lhs_path = self.visit_FieldRef(lhs_node.cast(t=AST.FieldRef))
-        rhs_path = self.visit_FieldRef(rhs_node.cast(t=AST.FieldRef))
-
-        def _ensure_reference(path: FieldPath) -> graph.BoundNode:
+        Returns:
+            Tuple of (reference to the connectable, field path to the connectable)
+        """
+        if connectable_node.isinstance(AST.FieldRef):
+            # Field reference - resolve existing field
+            path = self.visit_FieldRef(connectable_node.cast(t=AST.FieldRef))
             (root, *_) = path.segments
             root_path = FieldPath(segments=(root,))
 
             if not self._scope_stack.has_field(root_path):
                 raise DslException(f"Field `{root_path}` is not defined in scope")
 
-            return self._type_stack.resolve_reference(path, validate=False)
+            ref = self._type_stack.resolve_reference(path, validate=False)
+            return ref, path
 
-        lhs_ref = _ensure_reference(lhs_path)
-        rhs_ref = _ensure_reference(rhs_path)
+        elif connectable_node.isinstance(AST.SignaldefStmt):
+            # Inline signal - create it (or return existing) and return reference
+            signal_node = connectable_node.cast(t=AST.SignaldefStmt)
+            (signal_name,) = signal_node.name.get().get_values()
+            target_path = FieldPath(
+                segments=(FieldPath.Segment(identifier=signal_name),)
+            )
+
+            # Check if signal already exists
+            if not self._scope_stack.has_field(target_path):
+                action = self.visit_SignaldefStmt(signal_node)
+                self._type_stack.apply_action(action)
+
+            ref = self._type_stack.resolve_reference(target_path, validate=False)
+            return ref, target_path
+
+        elif connectable_node.isinstance(AST.PinDeclaration):
+            # Inline pin - create it (or return existing) and return reference
+            pin_node = connectable_node.cast(t=AST.PinDeclaration)
+            pin_label = pin_node.get_label()
+            if pin_label is None:
+                raise DslException("Pin declaration has no label")
+
+            # Convert label to identifier (same logic as visit_PinDeclaration)
+            if isinstance(pin_label, float) and pin_label.is_integer():
+                pin_label_str = str(int(pin_label))
+            else:
+                pin_label_str = str(pin_label)
+            identifier = f"pin_{pin_label_str}"
+            target_path = FieldPath(
+                segments=(FieldPath.Segment(identifier=identifier),)
+            )
+
+            # Check if pin already exists (e.g., in chained connects)
+            if not self._scope_stack.has_field(target_path):
+                action = self.visit_PinDeclaration(pin_node)
+                self._type_stack.apply_action(action)
+
+            ref = self._type_stack.resolve_reference(target_path, validate=False)
+            return ref, target_path
+
+        else:
+            raise NotImplementedError(
+                f"Unhandled connectable type: {connectable_node.get_type_name()}"
+            )
+
+    def visit_ConnectStmt(self, node: AST.ConnectStmt):
+        lhs, rhs = node.get_lhs(), node.get_rhs()
+        lhs_node = fabll.Traits(lhs).get_obj_raw()
+        rhs_node = fabll.Traits(rhs).get_obj_raw()
+
+        # Resolve both sides - handles FieldRef, SignaldefStmt, and PinDeclaration
+        lhs_ref, _ = self._resolve_connectable_with_path(lhs_node)
+        rhs_ref, _ = self._resolve_connectable_with_path(rhs_node)
 
         return AddMakeLinkAction(lhs_ref=lhs_ref, rhs_ref=rhs_ref)
 
@@ -746,15 +915,15 @@ class ASTVisitor:
         Direction semantics:
         - `a ~> b` (Direction.RIGHT): Connect a.can_bridge.out_ to b.can_bridge.in_
         - `a <~ b` (Direction.LEFT): Connect a.can_bridge.in_ to b.can_bridge.out_
+
+        Supports inline signals and pins: `signal a ~> signal b`, `pin 1 ~> field`
         """
         lhs = node.get_lhs()
         rhs = node.get_rhs()
 
-        # Get the base field path for LHS
+        # Resolve LHS - handles FieldRef, SignaldefStmt, and PinDeclaration
         lhs_node = fabll.Traits(lhs).get_obj_raw()
-        if not lhs_node.isinstance(AST.FieldRef):
-            raise NotImplementedError("Unhandled connectable type for LHS")
-        lhs_base_path = self.visit_FieldRef(lhs_node.cast(t=AST.FieldRef))
+        _, lhs_base_path = self._resolve_connectable_with_path(lhs_node)
 
         # Handle chained DirectedConnectStmt (recursive case)
         # e.g., a ~> b ~> c becomes: connect(a.out, b.in), then recurse for b ~> c
@@ -762,9 +931,7 @@ class ASTVisitor:
             # Get the middle node (lhs of the nested stmt)
             nested_lhs = rhs.get_lhs()
             nested_lhs_node = fabll.Traits(nested_lhs).get_obj_raw()
-            if not nested_lhs_node.isinstance(AST.FieldRef):
-                raise NotImplementedError("Unhandled connectable type")
-            middle_base_path = self.visit_FieldRef(nested_lhs_node.cast(t=AST.FieldRef))
+            _, middle_base_path = self._resolve_connectable_with_path(nested_lhs_node)
 
             # Connect current lhs to middle node
             action = self._add_directed_link(
@@ -777,9 +944,7 @@ class ASTVisitor:
 
         # Base case: connect lhs to rhs
         rhs_node = fabll.Traits(rhs).get_obj_raw()
-        if not rhs_node.isinstance(AST.FieldRef):
-            raise NotImplementedError("Unhandled connectable type for RHS")
-        rhs_base_path = self.visit_FieldRef(rhs_node.cast(t=AST.FieldRef))
+        _, rhs_base_path = self._resolve_connectable_with_path(rhs_node)
 
         return self._add_directed_link(
             lhs_base_path, rhs_base_path, node.get_direction()

@@ -7058,8 +7058,10 @@ def make_simple_lit_singleton(
                 g=g, attributes=LiteralsAttributes(value=value)
             )
         case str():
-            return Strings.bind_typegraph(tg=tg).create_instance(
-                g=g, attributes=LiteralsAttributes(value=value)
+            return (
+                Strings.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .setup_from_values(value)
             )
 
 
