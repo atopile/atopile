@@ -80,10 +80,10 @@ pub const TypeGraph = struct {
 
         pub fn set_type_name(self: @This(), name: str) void {
             // TODO consider making a put_string that copies the string instead and deallocates it again
-            self.node.attributes.dynamic.values.put(type_identifier, .{ .String = name }) catch unreachable;
+            self.node.attributes.dynamic.put(type_identifier, .{ .String = name });
         }
         pub fn get_type_name(self: @This()) str {
-            return self.node.attributes.dynamic.values.get(type_identifier).?.String;
+            return self.node.attributes.dynamic.get(type_identifier).?.String;
         }
     };
 
@@ -125,12 +125,12 @@ pub const TypeGraph = struct {
 
             pub fn set_child_identifier(self: @This(), identifier: ?str) void {
                 if (identifier) |_identifier| {
-                    self.node.node.attributes.dynamic.values.put(child_identifier, .{ .String = _identifier }) catch unreachable;
+                    self.node.node.attributes.dynamic.put(child_identifier, .{ .String = _identifier });
                 }
             }
 
             pub fn get_child_identifier(self: @This()) ?str {
-                if (self.node.node.attributes.dynamic.values.get(child_identifier)) |value| {
+                if (self.node.node.attributes.dynamic.get(child_identifier)) |value| {
                     return value.String;
                 }
                 return null;
@@ -145,16 +145,21 @@ pub const TypeGraph = struct {
             pub fn get_node_attributes(self: @This()) NodeCreationAttributes {
                 var dynamic = graph.DynamicAttributes.init(self.node.g.allocator);
 
-                var it = self.node.node.attributes.dynamic.values.iterator();
-                while (it.next()) |e| {
-                    const key = e.key_ptr.*;
-                    if (std.mem.eql(u8, key, "child_identifier")) {
-                        continue;
-                    }
-                    dynamic.values.put(key, e.value_ptr.*) catch unreachable;
-                }
+                const AttrVisitor = struct {
+                    dynamic: *graph.DynamicAttributes,
 
-                return .{ .dynamic = if (dynamic.values.count() > 0) dynamic else null };
+                    pub fn visit(ctx: *anyopaque, key: str, value: graph.Literal, _: bool) void {
+                        const s: *@This() = @ptrCast(@alignCast(ctx));
+                        if (std.mem.eql(u8, key, "child_identifier")) {
+                            return;
+                        }
+                        s.dynamic.put(key, value);
+                    }
+                };
+                var visit = AttrVisitor{ .dynamic = &dynamic };
+                self.node.node.attributes.dynamic.visit(&visit, AttrVisitor.visit);
+
+                return .{ .dynamic = if (dynamic.has_values()) dynamic else null };
             }
         };
 
@@ -162,7 +167,7 @@ pub const TypeGraph = struct {
             var dynamic: ?graph.DynamicAttributes = null;
             if (value) |v| {
                 dynamic = graph.DynamicAttributes.init(allocator);
-                dynamic.?.values.put("value", .{ .String = v }) catch unreachable;
+                dynamic.?.put("value", .{ .String = v });
             }
             return .{
                 .dynamic = if (dynamic) |d| d else null,
@@ -205,11 +210,11 @@ pub const TypeGraph = struct {
             pub const type_identifier = "type_identifier";
 
             pub fn set_type_identifier(self: @This(), identifier: str) void {
-                self.node.attributes.dynamic.values.put(type_identifier, .{ .String = identifier }) catch unreachable;
+                self.node.attributes.dynamic.put(type_identifier, .{ .String = identifier });
             }
 
             pub fn get_type_identifier(self: @This()) str {
-                return self.node.attributes.dynamic.values.get(type_identifier).?.String;
+                return self.node.attributes.dynamic.get(type_identifier).?.String;
             }
         };
 
@@ -227,7 +232,7 @@ pub const TypeGraph = struct {
             var dynamic: ?graph.DynamicAttributes = null;
             if (value) |v| {
                 dynamic = graph.DynamicAttributes.init(allocator);
-                dynamic.?.values.put("value", .{ .String = v }) catch unreachable;
+                dynamic.?.put("value", .{ .String = v });
             }
             return .{
                 .dynamic = if (dynamic) |d| d else null,
@@ -247,23 +252,23 @@ pub const TypeGraph = struct {
             pub const edge_type_tid_key = "edge_type_tid";
 
             pub fn set_child_identifier(self: @This(), identifier: str) void {
-                self.node.attributes.dynamic.values.put(child_identifier, .{ .String = identifier }) catch unreachable;
+                self.node.attributes.dynamic.put(child_identifier, .{ .String = identifier });
             }
 
             pub fn get_child_identifier(self: @This()) str {
-                return self.node.attributes.dynamic.values.get(child_identifier).?.String;
+                return self.node.attributes.dynamic.get(child_identifier).?.String;
             }
 
             /// Set the edge type to traverse for this reference segment.
             /// If not set, defaults to EdgeComposition.tid.
             pub fn set_edge_type(self: @This(), tid: Edge.EdgeType) void {
-                self.node.attributes.dynamic.values.put(edge_type_tid_key, .{ .Int = tid }) catch unreachable;
+                self.node.attributes.dynamic.put(edge_type_tid_key, .{ .Int = tid });
             }
 
             /// Get the edge type to traverse for this reference segment.
             /// Returns EdgeComposition.tid if not explicitly set.
             pub fn get_edge_type(self: @This()) Edge.EdgeType {
-                if (self.node.attributes.dynamic.values.get(edge_type_tid_key)) |val| {
+                if (self.node.attributes.dynamic.get(edge_type_tid_key)) |val| {
                     return @intCast(val.Int);
                 }
                 return EdgeComposition.tid; // default to composition edges
@@ -415,12 +420,12 @@ pub const TypeGraph = struct {
             }
 
             pub fn set_edge_attributes(self: @This(), attributes: EdgeCreationAttributes) void {
-                self.node.node.attributes.dynamic.values.put("edge_type", .{ .Int = attributes.edge_type }) catch unreachable;
+                self.node.node.attributes.dynamic.put("edge_type", .{ .Int = attributes.edge_type });
                 if (attributes.directional) |d| {
-                    self.node.node.attributes.dynamic.values.put("directional", .{ .Bool = d }) catch unreachable;
+                    self.node.node.attributes.dynamic.put("directional", .{ .Bool = d });
                 }
                 if (attributes.name) |n| {
-                    self.node.node.attributes.dynamic.values.put("name", .{ .String = n }) catch unreachable;
+                    self.node.node.attributes.dynamic.put("name", .{ .String = n });
                 }
                 if (attributes.dynamic) |d| {
                     d.copy_into(&self.node.node.attributes.dynamic);
@@ -428,24 +433,26 @@ pub const TypeGraph = struct {
             }
 
             pub fn get_edge_attributes(self: @This()) EdgeCreationAttributes {
-                const directional = self.node.node.attributes.dynamic.values.get("directional");
-                const name = self.node.node.attributes.dynamic.values.get("name");
+                const directional = self.node.node.attributes.dynamic.get("directional");
+                const name = self.node.node.attributes.dynamic.get("name");
                 var dynamic = graph.DynamicAttributes.init(self.node.g.allocator);
 
-                var it = self.node.node.attributes.dynamic.values.iterator();
-                while (it.next()) |e| {
-                    const key = e.key_ptr.*;
-                    if (std.mem.eql(u8, key, "edge_type") or std.mem.eql(u8, key, "directional") or std.mem.eql(u8, key, "name")) {
-                        continue;
+                const AttrVisitor = struct {
+                    dynamic: *graph.DynamicAttributes,
+
+                    pub fn visit(ctx: *anyopaque, key: str, value: graph.Literal, _: bool) void {
+                        const s: *@This() = @ptrCast(@alignCast(ctx));
+                        s.dynamic.put(key, value);
                     }
-                    dynamic.values.put(key, e.value_ptr.*) catch unreachable;
-                }
+                };
+                var visit = AttrVisitor{ .dynamic = &dynamic };
+                self.node.node.attributes.dynamic.visit(&visit, AttrVisitor.visit);
 
                 const attributes: EdgeCreationAttributes = .{
-                    .edge_type = self.node.node.attributes.dynamic.values.get("edge_type").?.Int,
+                    .edge_type = self.node.node.attributes.dynamic.get("edge_type").?.Int,
                     .directional = if (directional) |d| d.Bool else null,
                     .name = if (name) |n| n.String else null,
-                    .dynamic = if (dynamic.values.count() > 0) dynamic else null,
+                    .dynamic = if (dynamic.has_values()) dynamic else null,
                 };
                 return attributes;
             }
@@ -455,7 +462,7 @@ pub const TypeGraph = struct {
     const initialized_identifier = "initialized";
 
     fn get_initialized(self: *const @This()) bool {
-        return self.self_node.node.attributes.dynamic.values.get(initialized_identifier).?.Bool;
+        return self.self_node.node.attributes.dynamic.get(initialized_identifier).?.Bool;
     }
 
     fn set_initialized(self: *@This(), initialized: bool) void {

@@ -288,7 +288,7 @@ pub const PathFinder = struct {
             }
 
             if (EdgeInterfaceConnection.is_instance(edge)) {
-                const shallow_edge = (edge.attributes.dynamic.values.get(shallow) orelse continue).Bool;
+                const shallow_edge = (edge.attributes.dynamic.get(shallow) orelse continue).Bool;
                 if (shallow_edge and depth > 0) path.invalid_path = true;
             }
         }

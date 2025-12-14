@@ -59,6 +59,7 @@ jobs:
         id: pytest
         continue-on-error: true
         # FIXME timeout
+        # TODO consider replacing with `ato dev test --ci`
         run: |
           uv run \
             test/runner/main.py \

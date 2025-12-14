@@ -283,7 +283,7 @@ LONG_TEST_THRESHOLD = datetime.timedelta(
 # Default to CPU count
 WORKER_COUNT = int(os.getenv("FBRK_TEST_WORKERS", 0))
 if WORKER_COUNT == 0:
-    WORKER_COUNT = os.cpu_count() * 2 or 1
+    WORKER_COUNT = os.cpu_count() or 1
 elif WORKER_COUNT < 0:
     WORKER_COUNT = max(((os.cpu_count() or 1) * -WORKER_COUNT) // 2, 1)
 # Generate HTML report
@@ -981,7 +981,7 @@ def get_log_file(worker_id: int) -> Path:
 LOG_DIR = Path("artifacts/logs")
 
 
-def main():
+def main(args: list[str] | None = None):
     global tests_total, commit_info, ci_info, workers
 
     # Gather commit and CI info at startup (robust to failures)
@@ -993,7 +993,7 @@ def main():
     if ci_info.is_ci:
         _print(f"CI: Run {ci_info.run_id} on {ci_info.runner_name or 'unknown runner'}")
 
-    pytest_args = sys.argv[1:]
+    pytest_args = args if args is not None else sys.argv[1:]
 
     # 1. Collect tests
     tests = collect_tests(pytest_args)

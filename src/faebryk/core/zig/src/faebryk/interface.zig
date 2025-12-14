@@ -32,14 +32,14 @@ pub const EdgeInterfaceConnection = struct {
     pub fn init(allocator: std.mem.Allocator, N1: NodeReference, N2: NodeReference, shallow: bool) !EdgeReference {
         const edge = Edge.init(allocator, N1, N2, tid);
         var attrs = try build(allocator, shallow);
-        defer if (attrs.dynamic) |*dyn| dyn.values.deinit();
+        defer if (attrs.dynamic) |*dyn| dyn.deinit();
         attrs.apply_to(edge);
         return edge;
     }
 
     pub fn build(allocator: std.mem.Allocator, shallow: bool) !EdgeCreationAttributes {
         var dynamic = graph.DynamicAttributes.init(allocator);
-        try dynamic.values.put(shallow_attribute, .{ .Bool = shallow });
+        dynamic.put(shallow_attribute, .{ .Bool = shallow });
         return .{
             .edge_type = tid,
             .directional = false,
@@ -196,7 +196,7 @@ test "basic" {
     std.debug.print("e1.target.uuid = {}\n", .{be1.edge.target.attributes.uuid});
 
     // Expect shallow flag to be present and false by default
-    const shallow_default = be1.edge.attributes.dynamic.values.get(EdgeInterfaceConnection.shallow_attribute).?;
+    const shallow_default = be1.edge.attributes.dynamic.get(EdgeInterfaceConnection.shallow_attribute).?;
     try std.testing.expect(shallow_default.Bool == false);
 
     // Expect e1 source and target to match n1 and n2

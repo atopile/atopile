@@ -298,12 +298,7 @@ fn applyAttributes(dynamic: *graph.graph.DynamicAttributes, kwargs: ?*py.PyObjec
             return err;
         };
 
-        dynamic.values.put(key_copy, literal) catch {
-            std.heap.c_allocator.free(key_copy);
-            freeLiteral(literal);
-            py.PyErr_SetString(py.PyExc_MemoryError, "Failed to store attribute");
-            return error.OutOfMemory;
-        };
+        dynamic.put(key_copy, literal);
     }
 }
 
@@ -406,7 +401,7 @@ fn wrap_node_get_attr() type {
 
             const key_slice = bind.unwrap_str(kwarg_obj.key) orelse return null;
 
-            if (wrapper.data.attributes.dynamic.values.get(key_slice)) |value| {
+            if (wrapper.data.attributes.dynamic.get(key_slice)) |value| {
                 return literalToPyObject(value) orelse null;
             }
 
@@ -569,7 +564,7 @@ fn wrap_edge_get_attr() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const key_slice = bind.unwrap_str(kwarg_obj.key) orelse return null;
-            if (wrapper.data.attributes.dynamic.values.get(key_slice)) |value| {
+            if (wrapper.data.attributes.dynamic.get(key_slice)) |value| {
                 return literalToPyObject(value) orelse null;
             }
 

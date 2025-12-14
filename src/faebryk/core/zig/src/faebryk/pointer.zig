@@ -39,7 +39,7 @@ pub const EdgePointer = struct {
         var dynamic: ?graph.DynamicAttributes = null;
         if (order) |o| {
             dynamic = graph.DynamicAttributes.init(allocator);
-            dynamic.?.values.put("order", .{ .Int = o }) catch unreachable;
+            dynamic.?.put("order", .{ .Int = o });
         }
         return .{
             .edge_type = tid,
@@ -50,7 +50,7 @@ pub const EdgePointer = struct {
     }
 
     pub fn get_order(edge: EdgeReference) ?u32 {
-        const order = edge.attributes.dynamic.values.get("order");
+        const order = edge.attributes.dynamic.get("order");
         if (order) |o| {
             return @intCast(o.Int);
         }

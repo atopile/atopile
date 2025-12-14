@@ -127,8 +127,20 @@ pub const DynamicAttributes = struct {
     pub fn copy_into(self: *const @This(), other: *@This()) void {
         var it = self.values.iterator();
         while (it.next()) |e| {
-            other.values.put(e.key_ptr.*, e.value_ptr.*) catch unreachable;
+            other.put(e.key_ptr.*, e.value_ptr.*);
         }
+    }
+
+    pub fn put(self: *@This(), identifier: str, value: Literal) void {
+        self.values.put(identifier, value) catch @panic("OOM dynamic attributes put");
+    }
+
+    pub fn has_values(self: *@This()) bool {
+        return self.values.count() > 0;
+    }
+
+    pub fn get(self: *@This(), identifier: str) ?Literal {
+        return self.values.get(identifier);
     }
 };
 
@@ -196,7 +208,7 @@ pub const NodeAttributes = struct {
     }
 
     pub fn put(self: *@This(), identifier: str, value: Literal) void {
-        self.dynamic.values.put(identifier, value) catch @panic("OOM dynamic attributes put");
+        self.dynamic.put(identifier, value);
     }
 };
 
@@ -1247,3 +1259,122 @@ test "get_edge_with_type_and_identifier" {
     const out3 = g.get_edge_with_type_and_identifier(n1, TestEdgeType, "e13");
     try std.testing.expect(out3 == null);
 }
+
+const _TrackingAllocator = struct {
+    underlying: std.mem.Allocator,
+    totalRequested: usize,
+    totalFreed: usize,
+
+    pub fn init(underlying: std.mem.Allocator) _TrackingAllocator {
+        return .{ .underlying = underlying, .totalRequested = 0, .totalFreed = 0 };
+    }
+
+    pub fn allocator(self: *_TrackingAllocator) std.mem.Allocator {
+        return std.mem.Allocator{
+            .ptr = self,
+            .vtable = &std.mem.Allocator.VTable{
+                .alloc = alloc,
+                .resize = resize,
+                .free = free,
+                .remap = remap,
+            },
+        };
+    }
+
+    fn alloc(
+        context: *anyopaque,
+        len: usize,
+        alignment: std.mem.Alignment,
+        ret_addr: usize,
+    ) ?[*]u8 {
+        const self: *_TrackingAllocator = @ptrCast(@alignCast(context));
+        self.totalRequested += len;
+        std.debug.print("alloc: {d}\n", .{len});
+        return self.underlying.vtable.alloc(self.underlying.ptr, len, alignment, ret_addr);
+    }
+
+    fn resize(
+        context: *anyopaque,
+        memory: []u8,
+        alignment: std.mem.Alignment,
+        new_len: usize,
+        ret_addr: usize,
+    ) bool {
+        const self: *_TrackingAllocator = @ptrCast(@alignCast(context));
+        self.totalRequested += new_len - memory.len;
+        return self.underlying.vtable.resize(self.underlying.ptr, memory, alignment, new_len, ret_addr);
+    }
+
+    fn free(
+        context: *anyopaque,
+        old_memory: []u8,
+        alignment: std.mem.Alignment,
+        ret_addr: usize,
+    ) void {
+        const self: *_TrackingAllocator = @ptrCast(@alignCast(context));
+        self.totalFreed += old_memory.len;
+        self.underlying.vtable.free(self.underlying.ptr, old_memory, alignment, ret_addr);
+    }
+
+    fn remap(
+        context: *anyopaque,
+        memory: []u8,
+        alignment: std.mem.Alignment,
+        new_len: usize,
+        return_address: usize,
+    ) ?[*]u8 {
+        const self: *_TrackingAllocator = @ptrCast(@alignCast(context));
+        self.totalRequested += new_len - memory.len;
+        return self.underlying.vtable.remap(self.underlying.ptr, memory, alignment, new_len, return_address);
+    }
+};
+
+test "mem_node_empty" {
+    const size_node = @sizeOf(Node);
+
+    const size_uuid = @sizeOf(UUID.T);
+    const size_dynamic = @sizeOf(DynamicAttributes);
+    const size_ref_count = @sizeOf(GraphReferenceCounter);
+
+    const size_literal = @sizeOf(Literal);
+    try std.testing.expectEqual(@as(usize, size_literal), 24);
+
+    try std.testing.expectEqual(@as(usize, size_uuid), 8);
+    try std.testing.expectEqual(@as(usize, size_ref_count), 40);
+    try std.testing.expectEqual(@as(usize, size_dynamic), 40);
+    try std.testing.expectEqual(@as(usize, size_uuid + size_dynamic + size_ref_count), size_node);
+    try std.testing.expectEqual(@as(usize, 88), size_node);
+}
+
+test "mem_node_with_string" {
+    const a = std.testing.allocator;
+    var t = _TrackingAllocator.init(a);
+
+    const node = Node.init(t.allocator());
+    try std.testing.expectEqual(@as(usize, 88), t.totalRequested);
+    defer node.deinit();
+    const value: Literal = .{ .String = "test" };
+    node.attributes.put("test", value);
+
+    std.debug.print("allocated: {d}\n", .{t.totalRequested});
+    std.debug.print("freed: {d}\n", .{t.totalFreed});
+    try std.testing.expectEqual(@as(usize, 440), t.totalRequested);
+    try std.testing.expectEqual(@as(usize, 0), t.totalFreed);
+}
+
+//test "memory_usage" {
+//    const a = std.testing.allocator;
+//    var g = GraphView.init(a);
+//    defer g.deinit();
+//
+//    const nodes = std.ArrayList(NodeReference).init(a);
+//    defer nodes.deinit();
+//    const num_nodes = 10000;
+//    try nodes.ensureTotalCapacity(num_nodes);
+//
+//    var i: usize = 0;
+//    while (i < num_nodes) : (i += 1) {
+//        const n = Node.init(a);
+//        _ = nodes.append(n);
+//    }
+//}

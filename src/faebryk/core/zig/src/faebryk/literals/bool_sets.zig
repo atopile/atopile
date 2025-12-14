@@ -24,7 +24,7 @@ pub const BoolNode = struct {
     }
 
     pub fn get_value(self: BoolNode) bool {
-        return self.node.node.attributes.dynamic.values.get(value_identifier).?.Bool;
+        return self.node.node.attributes.dynamic.get(value_identifier).?.Bool;
     }
 };
 

@@ -22,7 +22,7 @@ pub const StringNode = struct {
     }
 
     pub fn get_value(self: StringNode) ![]const u8 {
-        return self.node.node.attributes.dynamic.values.get(value_identifier).?.String;
+        return self.node.node.attributes.dynamic.get(value_identifier).?.String;
     }
 };
 

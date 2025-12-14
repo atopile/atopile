@@ -3771,11 +3771,7 @@ fn _unwrap_literal_str_dict(dict_obj: *py.PyObject, allocator: std.mem.Allocator
             py.PyErr_SetString(py.PyExc_TypeError, "edge_attributes values must be bool, int, float, or str");
             return null;
         };
-        attrs.values.put(key, literal) catch {
-            allocator.free(key);
-            py.PyErr_SetString(py.PyExc_MemoryError, "failed to store edge attribute");
-            return null;
-        };
+        attrs.put(key, literal);
     }
 
     if (py.PyErr_Occurred() != null) {
