@@ -39,19 +39,27 @@ def main(before_report: Path):
     # Build rows for the table
     rows: list[tuple[str, str, str, str]] = []
 
+    def sanitize_node_id(node_id: str) -> str:
+        return node_id.replace("[", " ").replace("]", "")
+
     # New tests (in after but not in before)
     for k in after_tests:
         if k not in before_tests:
             t = after_tests[k]
             rows.append(
-                (t.fullnodeid, "[cyan]NEW[/cyan]", "-", style_outcome(t.outcome))
+                (
+                    sanitize_node_id(t.fullnodeid),
+                    "[cyan]NEW[/cyan]",
+                    "-",
+                    style_outcome(t.outcome),
+                )
             )
 
         # Changed tests (outcome changed)
         elif before_tests[k].outcome != after_tests[k].outcome:
             rows.append(
                 (
-                    k,
+                    sanitize_node_id(k),
                     "[yellow]CHANGED[/yellow]",
                     style_outcome(before_tests[k].outcome),
                     style_outcome(after_tests[k].outcome),
@@ -64,7 +72,7 @@ def main(before_report: Path):
             t = before_tests[k]
             rows.append(
                 (
-                    t.fullnodeid,
+                    sanitize_node_id(t.fullnodeid),
                     "[magenta]REMOVED[/magenta]",
                     style_outcome(t.outcome),
                     "-",
