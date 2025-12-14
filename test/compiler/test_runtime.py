@@ -42,7 +42,10 @@ def _get_child(node: BoundNode, name: str) -> BoundNode:
 def _check_connected(
     node: BoundNode | fabll.Node, other: BoundNode | fabll.Node
 ) -> bool:
-    return False  # FIXME
+    source = node.instance if isinstance(node, fabll.Node) else node
+    target = other.instance if isinstance(other, fabll.Node) else other
+    path = fbrk.EdgeInterfaceConnection.is_connected_to(source=source, target=target)
+    return path.get_end_node().node().is_same(other=target.node())
 
 
 def _get_type_name(node: BoundNode) -> str:
