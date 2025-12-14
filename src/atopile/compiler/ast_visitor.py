@@ -435,14 +435,12 @@ class ASTVisitor:
         return name
 
     def build(self) -> BuildState:
-        # must start with a File (for now)
         assert self._ast_root.isinstance(AST.File)
         self.visit(self._ast_root)
         return self._state
 
     def visit(self, node: fabll.Node):
         # TODO: less magic dispatch
-
         node_type = cast_assert(str, node.get_type_name())
         logger.info(f"Visiting node of type {node_type}")
 
@@ -566,27 +564,16 @@ class ASTVisitor:
         return NoOpAction()
 
     def visit_SignaldefStmt(self, node: AST.SignaldefStmt):
-        """Handle signal declaration statements like `signal my_sig`.
-
-        Creates an F.Electrical child with the signal's name. Signals are simple
-        electrical interfaces that can be connected to other signals or pins.
-        """
-        # Get the signal name from the AST node
         (signal_name,) = node.name.get().get_values()
-
-        # Create a field path for the signal
         target_path = FieldPath(segments=(FieldPath.Segment(identifier=signal_name),))
 
-        # Check if field already exists
         if self._scope_stack.has_field(target_path):
             raise DslException(
                 f"Signal `{signal_name}` is already defined in this scope"
             )
 
-        # Register the field in scope
         self._scope_stack.add_field(target_path)
 
-        # Return action to create an Electrical child
         return AddMakeChildAction(
             target_path=target_path,
             child_spec=NewChildSpec(
@@ -598,28 +585,14 @@ class ASTVisitor:
         )
 
     def _create_pin_type(self, pin_label: str) -> graph.BoundNode:
-        """Create a dynamic pin type with is_lead and can_attach_to_pad_by_name traits.
-
-        The pin type has:
-        - is_interface trait: marks this as connectable (like Electrical)
-        - is_lead trait: marks this as a lead that connects to footprint pads
-        - can_attach_to_pad_by_name: matches pad by regex from pin label
-        """
         import re
 
-        # Create regex pattern for exact match of pin label
         regex = f"^{re.escape(str(pin_label))}$"
 
-        # Create a new Node type (not subclassing Electrical due to fabll restriction)
         class _Pin(fabll.Node):
-            # Make it connectable like Electrical
             _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
-
-            # Add is_lead trait
             _lead = is_lead.MakeChild()
             _lead_trait = fabll.Traits.MakeEdge(_lead)
-
-            # Add can_attach_to_pad_by_name trait to the is_lead trait
             _pad_attach = can_attach_to_pad_by_name.MakeChild(regex)
             _lead.add_dependant(fabll.Traits.MakeEdge(_pad_attach, [_lead]))
 
@@ -630,44 +603,27 @@ class ASTVisitor:
         return _Pin.bind_typegraph(self._type_graph).get_or_create_type()
 
     def visit_PinDeclaration(self, node: AST.PinDeclaration):
-        """Handle pin declarations like `pin 1`, `pin name`, or `pin "string"`.
-
-        Creates an F.Electrical child with is_lead and can_attach_to_pad_by_name
-        traits configured with the pin's label as a regex pattern.
-
-        Unlike signals, pins connect to physical footprint pads during the
-        attach/transform phase of the build process.
-        """
-        # Get the pin label from the AST node
         pin_label = node.get_label()
         if pin_label is None:
             raise DslException("Pin declaration has no label")
 
-        # Convert to string for use as identifier and regex
-        # Numbers are stored as floats in literals, convert to int if whole number
         if isinstance(pin_label, float) and pin_label.is_integer():
             pin_label_str = str(int(pin_label))
         else:
             pin_label_str = str(pin_label)
 
-        # Create a field path for the pin using a sanitized name
         # Pin labels can be numbers, so prefix with "pin_" for valid identifier
         identifier = f"pin_{pin_label_str}"
         target_path = FieldPath(segments=(FieldPath.Segment(identifier=identifier),))
 
-        # Check if field already exists
         if self._scope_stack.has_field(target_path):
             raise DslException(
                 f"Pin `{pin_label_str}` is already defined in this scope"
             )
 
-        # Register the field in scope
         self._scope_stack.add_field(target_path)
-
-        # Create a dynamic pin type with the appropriate traits
         pin_type = self._create_pin_type(pin_label_str)
 
-        # Return action to create the pin child
         return AddMakeChildAction(
             target_path=target_path,
             child_spec=NewChildSpec(
@@ -827,18 +783,7 @@ class ASTVisitor:
     def _resolve_connectable_with_path(
         self, connectable_node: fabll.Node
     ) -> tuple[graph.BoundNode, FieldPath]:
-        """Resolve a connectable AST node to both a reference and its path.
-
-        Handles three types of connectables:
-        - FieldRef: resolves existing field path
-        - SignaldefStmt: creates signal child and returns reference
-        - PinDeclaration: creates pin child and returns reference
-
-        Returns:
-            Tuple of (reference to the connectable, field path to the connectable)
-        """
         if connectable_node.isinstance(AST.FieldRef):
-            # Field reference - resolve existing field
             path = self.visit_FieldRef(connectable_node.cast(t=AST.FieldRef))
             (root, *_) = path.segments
             root_path = FieldPath(segments=(root,))
@@ -850,14 +795,12 @@ class ASTVisitor:
             return ref, path
 
         elif connectable_node.isinstance(AST.SignaldefStmt):
-            # Inline signal - create it (or return existing) and return reference
             signal_node = connectable_node.cast(t=AST.SignaldefStmt)
             (signal_name,) = signal_node.name.get().get_values()
             target_path = FieldPath(
                 segments=(FieldPath.Segment(identifier=signal_name),)
             )
 
-            # Check if signal already exists
             if not self._scope_stack.has_field(target_path):
                 action = self.visit_SignaldefStmt(signal_node)
                 self._type_stack.apply_action(action)
@@ -866,13 +809,11 @@ class ASTVisitor:
             return ref, target_path
 
         elif connectable_node.isinstance(AST.PinDeclaration):
-            # Inline pin - create it (or return existing) and return reference
             pin_node = connectable_node.cast(t=AST.PinDeclaration)
             pin_label = pin_node.get_label()
             if pin_label is None:
                 raise DslException("Pin declaration has no label")
 
-            # Convert label to identifier (same logic as visit_PinDeclaration)
             if isinstance(pin_label, float) and pin_label.is_integer():
                 pin_label_str = str(int(pin_label))
             else:
@@ -882,7 +823,6 @@ class ASTVisitor:
                 segments=(FieldPath.Segment(identifier=identifier),)
             )
 
-            # Check if pin already exists (e.g., in chained connects)
             if not self._scope_stack.has_field(target_path):
                 action = self.visit_PinDeclaration(pin_node)
                 self._type_stack.apply_action(action)
@@ -900,49 +840,34 @@ class ASTVisitor:
         lhs_node = fabll.Traits(lhs).get_obj_raw()
         rhs_node = fabll.Traits(rhs).get_obj_raw()
 
-        # Resolve both sides - handles FieldRef, SignaldefStmt, and PinDeclaration
         lhs_ref, _ = self._resolve_connectable_with_path(lhs_node)
         rhs_ref, _ = self._resolve_connectable_with_path(rhs_node)
 
         return AddMakeLinkAction(lhs_ref=lhs_ref, rhs_ref=rhs_ref)
 
     def visit_DirectedConnectStmt(self, node: AST.DirectedConnectStmt):
-        """Handle directed connection statements like `a ~> b`.
-
-        Resolves the bridgeable endpoints through their can_bridge traits,
-        connecting out_ to in_ based on the arrow direction.
-
-        Direction semantics:
-        - `a ~> b` (Direction.RIGHT): Connect a.can_bridge.out_ to b.can_bridge.in_
-        - `a <~ b` (Direction.LEFT): Connect a.can_bridge.in_ to b.can_bridge.out_
-
-        Supports inline signals and pins: `signal a ~> signal b`, `pin 1 ~> field`
+        """
+        `a ~> b` connects a.can_bridge.out_ to b.can_bridge.in_
+        `a <~ b` connects a.can_bridge.in_ to b.can_bridge.out_
         """
         lhs = node.get_lhs()
         rhs = node.get_rhs()
 
-        # Resolve LHS - handles FieldRef, SignaldefStmt, and PinDeclaration
         lhs_node = fabll.Traits(lhs).get_obj_raw()
         _, lhs_base_path = self._resolve_connectable_with_path(lhs_node)
 
-        # Handle chained DirectedConnectStmt (recursive case)
-        # e.g., a ~> b ~> c becomes: connect(a.out, b.in), then recurse for b ~> c
         if isinstance(rhs, AST.DirectedConnectStmt):
-            # Get the middle node (lhs of the nested stmt)
             nested_lhs = rhs.get_lhs()
             nested_lhs_node = fabll.Traits(nested_lhs).get_obj_raw()
             _, middle_base_path = self._resolve_connectable_with_path(nested_lhs_node)
 
-            # Connect current lhs to middle node
             action = self._add_directed_link(
                 lhs_base_path, middle_base_path, node.get_direction()
             )
             self._type_stack.apply_action(action)
 
-            # Recursively handle the rest of the chain
             return self.visit_DirectedConnectStmt(rhs)
 
-        # Base case: connect lhs to rhs
         rhs_node = fabll.Traits(rhs).get_obj_raw()
         _, rhs_base_path = self._resolve_connectable_with_path(rhs_node)
 
@@ -956,23 +881,13 @@ class ASTVisitor:
         rhs_path: FieldPath,
         direction: AST.DirectedConnectStmt.Direction,
     ) -> AddMakeLinkAction:
-        """Create a MakeLink between two nodes through their can_bridge traits.
-
-        For direction LEFT (a ~> b): connect a.can_bridge.out_ to b.can_bridge.in_
-        For direction RIGHT (a <~ b): connect a.can_bridge.in_ to b.can_bridge.out_
-        """
-        # Determine which pointer to use based on direction
-        # Direction.RIGHT (~>): arrow points right, signal flows LHS → RHS
-        # Direction.LEFT (<~): arrow points left, signal flows RHS → LHS
         if direction == AST.DirectedConnectStmt.Direction.RIGHT:  # ~>
             lhs_pointer = "out_"
             rhs_pointer = "in_"
-        else:  # LEFT <~
+        else:  # <~
             lhs_pointer = "in_"
             rhs_pointer = "out_"
 
-        # Build paths with EdgeTraversals:
-        # base_path -> can_bridge (trait) -> in_/out_ (pointer)
         lhs_ref = self._resolve_bridge_path(lhs_path, lhs_pointer)
         rhs_ref = self._resolve_bridge_path(rhs_path, rhs_pointer)
 
@@ -981,29 +896,18 @@ class ASTVisitor:
     def _resolve_bridge_path(
         self, base_path: FieldPath, pointer: str
     ) -> graph.BoundNode:
-        """Resolve a path through the can_bridge trait to a pointer.
-
-        Creates path: base -> can_bridge (trait) -> pointer_node -> dereference
-
-        Steps:
-        1. base_path segments: Composition edges to reach the bridgeable node
-        2. can_bridge: Trait edge to get the trait instance (type-safe)
-        3. pointer ("in_"/"out_"): Composition edge to get the Pointer node
-        4. pointer(): Dereference the Pointer to get the actual target
-        """
         base_identifiers = list(base_path.identifiers())
         path: list[str | EdgeTraversal] = [
             *base_identifiers,
-            EdgeTrait.traverse(trait_type=can_bridge),  # Type-safe trait edge
-            EdgeComposition.traverse(identifier=pointer),  # Get the Pointer node
-            EdgePointer.traverse(),  # Dereference it
+            EdgeTrait.traverse(trait_type=can_bridge),
+            EdgeComposition.traverse(identifier=pointer),
+            EdgePointer.traverse(),
         ]
 
         try:
             return self._type_graph.ensure_child_reference(
                 type_node=self._type_stack.current(),
                 path=path,
-                # Validation for trait/pointer paths not yet implemented
                 validate=False,
             )
         except fbrk.TypeGraphPathError as exc:
@@ -1078,7 +982,6 @@ class ASTVisitor:
             raise DslException("Unexpected iterable type")
 
         (loop_var,) = node.target.get().get_values()
-        # Execute body for each item by aliasing the loop var to the item's path
         for item_path in item_paths:
             with self._scope_stack.temporary_alias(loop_var, item_path):
                 for stmt in node.scope.get().stmts.get().as_list():
