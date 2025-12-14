@@ -459,7 +459,7 @@ class ANTLRVisitor(AtoParserVisitor):
             case (None, None, None, string_ctx, None):
                 text, source_info = self.visitString(string_ctx)
                 return (
-                    self._new(AST.String)
+                    self._new(AST.AstString)
                     .setup(source_info=source_info, text=text)
                     ._is_assignable.get()
                 )

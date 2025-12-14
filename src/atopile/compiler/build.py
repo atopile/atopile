@@ -31,11 +31,14 @@ class StdlibRegistry:
     """Lazy loader for stdlib types."""
 
     def __init__(
-        self, tg: fbrk.TypeGraph, allowlist: dict[str, type[fabll.Node]] | None = None
+        self, tg: fbrk.TypeGraph, allowlist: set[type[fabll.Node]] | None = None
     ) -> None:
         self._tg = tg
         self._cache: dict[str, graph.BoundNode] = {}
-        self._allowlist = allowlist or STDLIB_ALLOWLIST.copy()
+        self._allowlist = {
+            type_._type_identifier(): type_
+            for type_ in allowlist or STDLIB_ALLOWLIST.copy()
+        }
 
     def get(self, name: str) -> graph.BoundNode:
         if name not in self._cache:
@@ -349,12 +352,17 @@ def _build_from_ctx(
     import_path: str | None,
     root_ctx: AtoParser.File_inputContext,
     file_path: Path | None,
-    stdlib_allowlist: dict[str, type[fabll.Node]] | None = None,
+    stdlib_allowlist: set[type[fabll.Node]] | None = None,
 ) -> BuildFileResult:
     ast_root = ANTLRVisitor(g, tg, file_path).visit(root_ctx)
     assert isinstance(ast_root, AST.File)
     build_state = ASTVisitor(
-        ast_root, g, tg, import_path, file_path, stdlib_allowlist
+        ast_root,
+        g,
+        tg,
+        import_path,
+        file_path,
+        stdlib_allowlist,
     ).build()
     return BuildFileResult(ast_root=ast_root, state=build_state)
 
@@ -383,7 +391,7 @@ def build_source(
     tg: fbrk.TypeGraph,
     source: str,
     import_path: str | None = None,
-    stdlib_allowlist: dict[str, type[fabll.Node]] | None = None,
+    stdlib_allowlist: set[type[fabll.Node]] | None = None,
 ) -> BuildFileResult:
     import uuid
 

@@ -5,7 +5,6 @@ from atopile.compiler.ast_visitor import STDLIB_ALLOWLIST
 from atopile.compiler.build import BuildFileResult, Linker, StdlibRegistry, build_source
 from faebryk.core.faebrykpy import TypeGraph
 from faebryk.core.graph import BoundNode, GraphView
-from faebryk.libs.util import not_none
 
 
 def build_type(
@@ -33,20 +32,15 @@ def build_instance(
 ) -> tuple[GraphView, TypeGraph, StdlibRegistry, BuildFileResult, BoundNode]:
     g = GraphView.create()
     tg = TypeGraph.create(g=g)
-
-    allowlist = STDLIB_ALLOWLIST.copy() | {
-        not_none(type_.bind_typegraph(tg).get_type_name()): type_
-        for type_ in stdlib_extra
-    }
-
-    stdlib = StdlibRegistry(tg, allowlist=allowlist)
+    stdlib_allowlist = STDLIB_ALLOWLIST.copy() | set(stdlib_extra)
+    stdlib = StdlibRegistry(tg, allowlist=stdlib_allowlist)
 
     result = build_source(
         g=g,
         tg=tg,
         source=textwrap.dedent(source),
         import_path=import_path,
-        stdlib_allowlist=allowlist,
+        stdlib_allowlist=stdlib_allowlist,
     )
 
     linker = Linker(None, stdlib, tg)

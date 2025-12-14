@@ -88,7 +88,7 @@ def test_ato_pick_resistor():
 
         module A:
             r1 = new Resistor
-            r1.package = 'R0805'
+            r1.package = "R0805"
         """,
         "A",
     )
@@ -171,7 +171,7 @@ def test_ato_pick_capacitor():
 
             module A:
                 r1 = new Capacitor
-                r1.package = 'C0402'
+                r1.package = "C0402"
                 r1.capacitance = 100nF +/- 20%
             """,
         "A",

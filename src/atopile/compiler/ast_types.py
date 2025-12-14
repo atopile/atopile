@@ -815,7 +815,7 @@ class NewExpression(fabll.Node):
         return count
 
 
-class String(fabll.Node):
+class AstString(fabll.Node):
     @classmethod
     def _type_identifier(cls) -> str:
         # disambiguate from F.Literals.String
@@ -832,6 +832,9 @@ class String(fabll.Node):
         self.source.get().setup(source_info=source_info)
         self.text.get().setup_from_values(text)
         return self
+
+    def get_text(self) -> str:
+        return self.text.get().get_single()
 
 
 class Assignable(fabll.Node):
@@ -1088,7 +1091,7 @@ class StringStmt(fabll.Node):
     _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
 
     source = SourceChunk.MakeChild()
-    string = String.MakeChild()
+    string = AstString.MakeChild()
 
     def setup(  # type: ignore[invalid-method-override]
         self,

@@ -33,11 +33,26 @@ from faebryk.libs.util import cast_assert, not_none
 
 logger = logging.getLogger(__name__)
 
-STDLIB_ALLOWLIST = {
-    "Resistor": F.Resistor,
-    "Capacitor": F.Capacitor,
-    "Electrical": F.Electrical,
-}
+
+# FIXME: needs expanding
+STDLIB_ALLOWLIST: set[type[fabll.Node]] = (
+    # Modules
+    {
+        F.Capacitor,
+        F.Electrical,
+        F.ElectricPower,
+        F.Resistor,
+        F.ResistorVoltageDivider,
+        F.LED,
+    }
+) | (
+    # Traits
+    {
+        F.has_explicit_part,
+        F.has_net_name_suggestion,
+        F.has_package_requirements,
+    }
+)
 
 
 @dataclass
@@ -358,7 +373,7 @@ class ASTVisitor:
         type_graph: fbrk.TypeGraph,
         import_path: str | None,
         file_path: Path | None,
-        stdlib_allowlist: dict[str, type[fabll.Node]] | None = None,
+        stdlib_allowlist: set[type[fabll.Node]] | None = None,
     ) -> None:
         self._ast_root = ast_root
         self._graph = graph
@@ -383,7 +398,10 @@ class ASTVisitor:
             tg=self._type_graph,
             state=self._state,
         )
-        self._stdlib_allowlist = stdlib_allowlist or STDLIB_ALLOWLIST
+        self._stdlib_allowlist = {
+            type_._type_identifier(): type_
+            for type_ in stdlib_allowlist or STDLIB_ALLOWLIST.copy()
+        }
 
     @staticmethod
     def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]]:
@@ -560,6 +578,9 @@ class ASTVisitor:
 
     def visit_PassStmt(self, node: AST.PassStmt):
         return NoOpAction()
+
+    def visit_AstString(self, node: AST.AstString):
+        return node.get_text()
 
     def visit_StringStmt(self, node: AST.StringStmt):
         # TODO: add docstring trait to preceding node

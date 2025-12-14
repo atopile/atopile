@@ -497,7 +497,7 @@ def test_multiple_new():
 
 
 def test_invalid_multiple_new_count_negative():
-    with pytest.raises(DslException):
+    with pytest.raises(UserSyntaxError):
         build_instance(
             """
             module Inner:
@@ -862,6 +862,8 @@ def test_missing_pin_ref_raises():
 def test_regression_pin_refs():
     g, tg, stdlib, result, app_instance = build_instance(
         """
+        import ElectricPower
+
         component App:
             signal CNT ~ pin 3
             signal NP ~ pin 5
@@ -1000,7 +1002,7 @@ def test_for_loop_iterate_non_list():
 def test_for_loop_syntax_error():
     from atopile.compiler.parse import parse_text_as_file
 
-    with pytest.raises(DslException, match="missing INDENT"):
+    with pytest.raises(UserSyntaxError, match="missing INDENT"):
         parse_text_as_file(
             textwrap.dedent(
                 """
@@ -1300,7 +1302,7 @@ def test_parameterised_trait():
 
 
 def test_nested_trait_access():
-    with pytest.raises(DslException, match="[Nn]o such trait"):
+    with pytest.raises(UserSyntaxError):
         build_instance(
             """
             #pragma experiment("TRAITS")
@@ -1330,7 +1332,7 @@ def test_nested_trait_namespace_access():
 
 
 def test_alternate_trait_constructor_dot_access():
-    with pytest.raises(DslException, match="[Nn]o such trait"):
+    with pytest.raises(UserSyntaxError):
         build_instance(
             """
             #pragma experiment("TRAITS")
@@ -1451,7 +1453,7 @@ def test_parameterised_trait_no_params():
 def test_slice_for_loop():
     _, _, _, result, app_instance = build_instance(
         """
-        #pragma experiment("FOR LOOP")
+        #pragma experiment("FOR_LOOP")
         import Resistor
 
         module App:
