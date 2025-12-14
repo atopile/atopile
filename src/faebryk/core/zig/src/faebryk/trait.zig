@@ -81,7 +81,7 @@ pub const EdgeTrait = struct {
         return .{ .identifier = trait_type_name, .edge_type = tid };
     }
 
-    pub fn init(allocator: std.mem.Allocator, owner: NodeReference, trait_instance: NodeReference) EdgeReference {
+    pub fn init(owner: NodeReference, trait_instance: NodeReference) EdgeReference {
         const edge = Edge.init(owner, trait_instance, tid);
 
         build().apply_to(edge);
@@ -92,13 +92,13 @@ pub const EdgeTrait = struct {
         if (!registered) {
             @branchHint(.unlikely);
             registered = true;
-            Edge.register_type(tid);
+            Edge.register_type(tid) catch {};
         }
         return .{
             .edge_type = tid,
             .directional = true,
             .name = null,
-            .dynamic = graph.DynamicAttributes.init(null),
+            .dynamic = graph.DynamicAttributes.init(),
         };
     }
 
@@ -169,7 +169,7 @@ pub const EdgeTrait = struct {
 
     pub fn add_trait_instance(bound_node: graph.BoundNodeReference, trait_instance: NodeReference) graph.BoundEdgeReference {
         // add existing trait instance to owner node
-        const link = EdgeTrait.init(bound_node.g.allocator, bound_node.node, trait_instance);
+        const link = EdgeTrait.init(bound_node.node, trait_instance);
         const bound_edge = bound_node.g.insert_edge(link);
         return bound_edge;
     }

@@ -63,7 +63,6 @@ fn wrap_edge_composition_create() type {
             const identifier_const: []const u8 = bind.unwrap_str_copy(kwarg_obj.child_identifier) orelse return null;
 
             const edge_ref = faebryk.composition.EdgeComposition.init(
-                std.heap.c_allocator,
                 kwarg_obj.parent,
                 kwarg_obj.child,
                 identifier_const,
@@ -818,7 +817,6 @@ fn wrap_edge_operand_create() type {
             }
 
             const edge_ref = faebryk.operand.EdgeOperand.init(
-                std.heap.c_allocator,
                 kwarg_obj.expression,
                 kwarg_obj.operand,
                 identifier_const,
@@ -1493,7 +1491,7 @@ fn wrap_edge_interface_connection_build() type {
                 return null;
             };
 
-            attributes.* = faebryk.interface.EdgeInterfaceConnection.build(allocator, shallow) catch {
+            attributes.* = faebryk.interface.EdgeInterfaceConnection.build(shallow) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "Failed to build interface connection edge creation attributes");
                 allocator.destroy(attributes);
                 return null;
@@ -1804,7 +1802,6 @@ fn wrap_edge_type_create() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const edge_ref = faebryk.node_type.EdgeType.init(
-                std.heap.c_allocator,
                 kwarg_obj.type_node,
                 kwarg_obj.instance_node,
             );
@@ -2105,7 +2102,6 @@ fn wrap_edge_next_create() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const edge_ref = faebryk.next.EdgeNext.init(
-                std.heap.c_allocator,
                 kwarg_obj.previous_node,
                 kwarg_obj.next_node,
             );
@@ -2409,7 +2405,6 @@ fn wrap_edge_pointer_create() type {
             }
 
             const edge_ref = faebryk.pointer.EdgePointer.init(
-                std.heap.c_allocator,
                 kwarg_obj.from_node,
                 kwarg_obj.to_node,
                 if (identifier_copy) |copy| copy else null,
@@ -2461,7 +2456,7 @@ fn wrap_edge_pointer_build() type {
                 py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
                 return null;
             };
-            attributes.* = faebryk.pointer.EdgePointer.build(std.heap.c_allocator, if (identifier_copy) |copy| copy else null, order);
+            attributes.* = faebryk.pointer.EdgePointer.build(if (identifier_copy) |copy| copy else null, order);
             return bind.wrap_obj("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, attributes);
         }
     };
@@ -2984,7 +2979,7 @@ fn wrap_edgebuilder_create_edge() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const attributes = bind.castWrapper("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
-            const edge = attributes.data.create_edge(std.heap.c_allocator, kwarg_obj.source, kwarg_obj.target);
+            const edge = attributes.data.create_edge(kwarg_obj.source, kwarg_obj.target);
             return bind.wrap_obj("Edge", &graph_py.edge_type, EdgeWrapper, edge);
         }
     };
@@ -3240,7 +3235,6 @@ fn wrap_typegraph_make_child_node_build() type {
             };
 
             attributes.* = faebryk.typegraph.TypeGraph.MakeChildNode.build(
-                allocator,
                 if (value_copy) |copy| @as([]const u8, copy) else null,
             );
 
@@ -3736,14 +3730,14 @@ fn _raise_path_error(
 
 fn _unwrap_literal_str_dict(dict_obj: *py.PyObject, allocator: std.mem.Allocator) !graph.DynamicAttributes {
     if (dict_obj == py.Py_None()) {
-        return null;
+        return graph.DynamicAttributes.init();
     }
 
     //if (py.PyDict_Check(dict_obj) != 1) {
     //    return error.UnsupportedValue;
     //}
 
-    var attrs = graph.DynamicAttributes.init(allocator);
+    var attrs = graph.DynamicAttributes.init();
     var success = false;
     defer if (!success) attrs.deinit();
 
@@ -3755,18 +3749,18 @@ fn _unwrap_literal_str_dict(dict_obj: *py.PyObject, allocator: std.mem.Allocator
         if (key_obj == null or value_obj == null) {
             continue;
         }
-        const key = bind.unwrap_str_copy(key_obj) orelse return null;
+        const key = bind.unwrap_str_copy(key_obj) orelse return error.InvalidKey;
 
         const literal = _unwrap_literal(value_obj.?) catch {
             allocator.free(key);
             py.PyErr_SetString(py.PyExc_TypeError, "edge_attributes values must be bool, int, float, or str");
-            return null;
+            return error.UnsupportedValue;
         };
         attrs.put(key, literal);
     }
 
     if (py.PyErr_Occurred() != null) {
-        return null;
+        return error.PythonError;
     }
 
     success = true;
@@ -4805,7 +4799,6 @@ fn wrap_edge_trait_create() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const edge_ref = faebryk.trait.EdgeTrait.init(
-                std.heap.c_allocator,
                 kwarg_obj.owner_node,
                 kwarg_obj.trait_instance,
             );

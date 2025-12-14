@@ -39,7 +39,7 @@ pub const EdgeComposition = struct {
         return .{ .identifier = identifier, .edge_type = tid };
     }
 
-    pub fn init(allocator: std.mem.Allocator, parent: NodeReference, child: NodeReference, child_identifier: str) EdgeReference {
+    pub fn init(parent: NodeReference, child: NodeReference, child_identifier: str) EdgeReference {
         const edge = Edge.init(parent, child, tid);
 
         build(child_identifier).apply_to(edge);
@@ -50,13 +50,13 @@ pub const EdgeComposition = struct {
         if (!registered) {
             @branchHint(.unlikely);
             registered = true;
-            Edge.register_type(tid);
+            Edge.register_type(tid) catch {};
         }
         return .{
             .edge_type = tid,
             .directional = true,
             .name = child_identifier,
-            .dynamic = null,
+            .dynamic = graph.DynamicAttributes.init(),
         };
     }
 
@@ -127,7 +127,7 @@ pub const EdgeComposition = struct {
 
     pub fn add_child(bound_node: graph.BoundNodeReference, child: NodeReference, child_identifier: ?str) graph.BoundEdgeReference {
         // if child identifier is null, then generate a unique identifier
-        const link = EdgeComposition.init(bound_node.g.allocator, bound_node.node, child, child_identifier orelse "");
+        const link = EdgeComposition.init(bound_node.node, child, child_identifier orelse "");
         const bound_edge = bound_node.g.insert_edge(link);
         return bound_edge;
     }

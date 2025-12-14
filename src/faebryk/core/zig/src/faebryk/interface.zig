@@ -30,21 +30,21 @@ pub const EdgeInterfaceConnection = struct {
         return tid;
     }
 
-    pub fn init(allocator: std.mem.Allocator, N1: NodeReference, N2: NodeReference, shallow: bool) !EdgeReference {
+    pub fn init(N1: NodeReference, N2: NodeReference, shallow: bool) !EdgeReference {
         const edge = Edge.init(N1, N2, tid);
-        var attrs = try build(allocator, shallow);
+        var attrs = try build(shallow);
         defer attrs.deinit();
         attrs.apply_to(edge);
         return edge;
     }
 
-    pub fn build(allocator: std.mem.Allocator, shallow: bool) !EdgeCreationAttributes {
-        var dynamic = graph.DynamicAttributes.init(allocator);
+    pub fn build(shallow: bool) !EdgeCreationAttributes {
+        var dynamic = graph.DynamicAttributes.init();
         dynamic.put(shallow_attribute, .{ .Bool = shallow });
         if (!registered) {
             @branchHint(.unlikely);
             registered = true;
-            Edge.register_type(tid);
+            Edge.register_type(tid) catch {};
         }
         return .{
             .edge_type = tid,
@@ -71,7 +71,7 @@ pub const EdgeInterfaceConnection = struct {
             }
         }
 
-        return bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.g.allocator, bn1.node, bn2.node, false));
+        return bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.node, bn2.node, false));
     }
 
     pub fn connect_shallow(bn1: BoundNodeReference, bn2: BoundNodeReference) !BoundEdgeReference {
@@ -91,7 +91,7 @@ pub const EdgeInterfaceConnection = struct {
             }
         }
 
-        return bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.g.allocator, bn1.node, bn2.node, true));
+        return bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.node, bn2.node, true));
     }
 
     pub fn is_instance(E: EdgeReference) bool {

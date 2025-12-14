@@ -71,7 +71,7 @@ def build_zig_test_command(zig_file: Path, test_filter: str | None = None) -> li
             cmd.append(f"-M{module_name}={module_path}")
 
     if test_filter:
-        cmd.extend(["--test-filter", test_filter])
+        cmd.extend(["--test-filter", f"{zig_file.stem}.test.{test_filter}"])
 
     return cmd
 
@@ -165,13 +165,14 @@ def test_zig_embedded(zig_test: tuple[Path, str]) -> None:
             "-fno-strip",
             "-fsanitize-c",
         ]
+        print(f"Compile command: {_escape_shell_args(compile_cmd)}")
         compile_result = subprocess.run(
             compile_cmd,
             cwd=ZIG_SRC_DIR,
             capture_output=False,
         )
         if not compile_result.returncode == 0:
-            print(f"Compile failed for {_escape_shell_args(cmd)}")
+            print("Compile failed")
             assert False
 
         result = subprocess.run(

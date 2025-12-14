@@ -27,7 +27,6 @@ pub const EdgeOperand = struct {
     }
 
     pub fn init(
-        allocator: std.mem.Allocator,
         operands_set: NodeReference,
         operand: NodeReference,
         operand_identifier: ?str,
@@ -42,13 +41,13 @@ pub const EdgeOperand = struct {
         if (!registered) {
             @branchHint(.unlikely);
             registered = true;
-            Edge.register_type(tid);
+            Edge.register_type(tid) catch {};
         }
         return .{
             .edge_type = tid,
             .directional = true,
             .name = operand_identifier,
-            .dynamic = graph.DynamicAttributes.init(null),
+            .dynamic = graph.DynamicAttributes.init(),
         };
     }
 
@@ -155,7 +154,6 @@ pub const EdgeOperand = struct {
     ) graph.BoundEdgeReference {
         const op_set = get_operands_set_node(bound_node).?;
         const link = EdgeOperand.init(
-            bound_node.g.allocator,
             op_set.node,
             operand,
             operand_identifier,
@@ -284,11 +282,11 @@ test "edge operand basic" {
     var g = graph.GraphView.init(std.testing.allocator);
     defer g.deinit();
 
-    const expression = Node.init(a);
-    const operands = Node.init(a);
-    const operand_a = Node.init(a);
-    const operand_b = Node.init(a);
-    const operand_c = Node.init(a);
+    const expression = Node.init();
+    const operands = Node.init();
+    const operand_a = Node.init();
+    const operand_b = Node.init();
+    const operand_c = Node.init();
 
     const b_expr = g.insert_node(expression);
     const b_operands = g.insert_node(operands);

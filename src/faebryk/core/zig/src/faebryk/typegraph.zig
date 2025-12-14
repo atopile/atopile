@@ -141,7 +141,7 @@ pub const TypeGraph = struct {
             }
 
             pub fn get_node_attributes(self: @This()) NodeCreationAttributes {
-                var dynamic = graph.DynamicAttributes.init(self.node.g.allocator);
+                var dynamic = graph.DynamicAttributes.init();
 
                 const AttrVisitor = struct {
                     dynamic: *graph.DynamicAttributes,
@@ -162,8 +162,8 @@ pub const TypeGraph = struct {
             }
         };
 
-        pub fn build(allocator: std.mem.Allocator, value: ?str) NodeCreationAttributes {
-            var dynamic = graph.DynamicAttributes.init(allocator);
+        pub fn build(value: ?str) NodeCreationAttributes {
+            var dynamic = graph.DynamicAttributes.init();
 
             if (value) |v| {
                 dynamic.put("value", .{ .String = v });
@@ -227,8 +227,8 @@ pub const TypeGraph = struct {
             return Linker.try_get_resolved_type(reference);
         }
 
-        pub fn build(allocator: std.mem.Allocator, value: ?str) NodeCreationAttributes {
-            var dynamic = graph.DynamicAttributes.init(allocator);
+        pub fn build(value: ?str) NodeCreationAttributes {
+            var dynamic = graph.DynamicAttributes.init();
             if (value) |v| {
                 dynamic.put("value", .{ .String = v });
             }
@@ -431,7 +431,7 @@ pub const TypeGraph = struct {
             pub fn get_edge_attributes(self: @This()) EdgeCreationAttributes {
                 const directional = self.node.node.attributes.get("directional");
                 const name = self.node.node.attributes.get("name");
-                var dynamic = graph.DynamicAttributes.init(self.node.g.allocator);
+                var dynamic = graph.DynamicAttributes.init();
 
                 const AttrVisitor = struct {
                     dynamic: *graph.DynamicAttributes,
@@ -446,7 +446,7 @@ pub const TypeGraph = struct {
                 self.node.node.attributes.visit(&visit, AttrVisitor.visit);
 
                 const attributes: EdgeCreationAttributes = .{
-                    .edge_type = self.node.node.attributes.get("edge_type").?.Int,
+                    .edge_type = @intCast(self.node.node.attributes.get("edge_type").?.Int),
                     .directional = if (directional) |d| d.Bool else null,
                     .name = if (name) |n| n.String else null,
                     .dynamic = dynamic,
@@ -1306,7 +1306,7 @@ pub const TypeGraph = struct {
         const type_owner_tg: *TypeGraph = &type_owner_tg_val;
 
         // 1) Create instance and connect it to its type
-        const new_instance = type_node.g.insert_node(Node.init(type_node.g.allocator));
+        const new_instance = type_node.g.insert_node(Node.init());
         _ = EdgeType.add_instance(type_node, new_instance);
 
         // 2) Visit MakeChild nodes of type_node
@@ -1386,7 +1386,7 @@ pub const TypeGraph = struct {
                 const edge_attributes = MakeLinkNode.Attributes.of(make_link).get_edge_attributes();
 
                 // Use the appropriate edge creation function based on link_type
-                const link_edge = Edge.init(self.parent_instance.g.allocator, lhs_resolved.node, rhs_resolved.node, edge_attributes.edge_type);
+                const link_edge = Edge.init(lhs_resolved.node, rhs_resolved.node, edge_attributes.edge_type);
                 link_edge.attributes.directional = edge_attributes.directional;
                 link_edge.attributes.name = edge_attributes.name;
                 edge_attributes.dynamic.copy_into(&link_edge.attributes.dynamic);
@@ -1686,7 +1686,7 @@ test "basic instantiation" {
     _ = try tg.add_make_child(Resistor, Electrical, "p2", null, null);
     _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null, null);
 
-    var node_attrs = TypeGraph.MakeChildNode.build(a, "test_string");
+    var node_attrs = TypeGraph.MakeChildNode.build("test_string");
     _ = try tg.add_make_child(
         Capacitor,
         Electrical,
@@ -1735,7 +1735,7 @@ test "basic instantiation" {
         .edge_type = EdgePointer.tid,
         .directional = true,
         .name = null,
-        .dynamic = graph.DynamicAttributes.init(a),
+        .dynamic = graph.DynamicAttributes.init(),
     });
 
     const instantiated_resistor = try tg.instantiate("Resistor");
@@ -1792,7 +1792,7 @@ test "typegraph iterators and mount chains" {
         .edge_type = EdgePointer.tid,
         .directional = true,
         .name = null,
-        .dynamic = graph.DynamicAttributes.init(null),
+        .dynamic = graph.DynamicAttributes.init(),
     };
     _ = try tg.add_make_link(top, base_reference, extra_reference, link_attrs);
 

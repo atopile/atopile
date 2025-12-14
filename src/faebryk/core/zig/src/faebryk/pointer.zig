@@ -30,21 +30,21 @@ pub const EdgePointer = struct {
         return .{ .identifier = "", .edge_type = tid };
     }
 
-    pub fn init(allocator: std.mem.Allocator, from: NodeReference, to: NodeReference, identifier: ?str, order: ?u32) EdgeReference {
+    pub fn init(from: NodeReference, to: NodeReference, identifier: ?str, order: ?u32) EdgeReference {
         const edge = Edge.init(from, to, tid);
-        build(allocator, identifier, order).apply_to(edge);
+        build(identifier, order).apply_to(edge);
         return edge;
     }
 
-    pub fn build(allocator: std.mem.Allocator, identifier: ?str, order: ?u32) EdgeCreationAttributes {
-        var dynamic = graph.DynamicAttributes.init(allocator);
+    pub fn build(identifier: ?str, order: ?u32) EdgeCreationAttributes {
+        var dynamic = graph.DynamicAttributes.init();
         if (order) |o| {
             dynamic.put("order", .{ .Int = o });
         }
         if (!registered) {
             @branchHint(.unlikely);
             registered = true;
-            Edge.register_type(tid);
+            Edge.register_type(tid) catch {};
         }
         return .{
             .edge_type = tid,
@@ -71,7 +71,7 @@ pub const EdgePointer = struct {
     }
 
     pub fn point_to(bound_node: BoundNodeReference, target_node: NodeReference, identifier: ?str, order: ?u32) BoundEdgeReference {
-        const edge = EdgePointer.init(bound_node.g.allocator, bound_node.node, target_node, identifier, order);
+        const edge = EdgePointer.init(bound_node.node, target_node, identifier, order);
         const bound_edge = bound_node.g.insert_edge(edge);
         return bound_edge;
     }
@@ -180,7 +180,7 @@ test "basic" {
 
     const n1 = g.create_and_insert_node();
     const n2 = g.create_and_insert_node();
-    const e12 = EdgePointer.init(a, n1.node, n2.node, null, null);
+    const e12 = EdgePointer.init(n1.node, n2.node, null, null);
 
     _ = g.insert_edge(e12);
 

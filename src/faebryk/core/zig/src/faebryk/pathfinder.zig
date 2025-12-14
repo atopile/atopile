@@ -305,20 +305,22 @@ pub const PathFinder = struct {
 test "visit_paths_bfs" {
     const a = std.testing.allocator;
     var g = GraphView.init(a);
-    const n1 = Node.init(a);
-    const n2 = Node.init(a);
-    const n3 = Node.init(a);
-    const n4 = Node.init(a);
-    const n5 = Node.init(a);
-    const n6 = Node.init(a);
-    const n7 = Node.init(a);
-    const e1 = Edge.init(n1, n2, 1759242069);
-    const e2 = Edge.init(n1, n3, 1759242069);
-    const e3 = Edge.init(n2, n4, 1759242068);
-    const e4 = Edge.init(n2, n5, 1759242069);
-    const e5 = Edge.init(n5, n6, 1759242069);
-    const e6 = Edge.init(n6, n1, 1759242069);
-    const e7 = Edge.init(n4, n7, 1759242069);
+    const n1 = Node.init();
+    const n2 = Node.init();
+    const n3 = Node.init();
+    const n4 = Node.init();
+    const n5 = Node.init();
+    const n6 = Node.init();
+    const n7 = Node.init();
+    const tid1 = Edge.hash_edge_type(1759242069);
+    const tid2 = Edge.hash_edge_type(1759242068);
+    const e1 = Edge.init(n1, n2, tid1);
+    const e2 = Edge.init(n1, n3, tid1);
+    const e3 = Edge.init(n2, n4, tid2);
+    const e4 = Edge.init(n2, n5, tid1);
+    const e5 = Edge.init(n5, n6, tid1);
+    const e6 = Edge.init(n6, n1, tid1);
+    const e7 = Edge.init(n4, n7, tid1);
     defer g.deinit();
 
     const bn1 = g.insert_node(n1);

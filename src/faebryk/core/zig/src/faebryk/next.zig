@@ -17,7 +17,7 @@ pub const EdgeNext = struct {
     pub const tid: Edge.EdgeType = graph.Edge.hash_edge_type(1759356969);
     pub var registered: bool = false;
 
-    pub fn init(allocator: std.mem.Allocator, previous_node: NodeReference, next_node: NodeReference) EdgeReference {
+    pub fn init(previous_node: NodeReference, next_node: NodeReference) EdgeReference {
         const edge = Edge.init(previous_node, next_node, tid);
         build().apply_to(edge);
         return edge;
@@ -27,18 +27,18 @@ pub const EdgeNext = struct {
         if (!registered) {
             @branchHint(.unlikely);
             registered = true;
-            Edge.register_type(tid);
+            Edge.register_type(tid) catch {};
         }
         return .{
             .edge_type = tid,
             .directional = true,
             .name = null,
-            .dynamic = graph.DynamicAttributes.init(null),
+            .dynamic = graph.DynamicAttributes.init(),
         };
     }
 
     pub fn add_next(bound_previous_node: graph.BoundNodeReference, bound_next_node: graph.BoundNodeReference) graph.BoundEdgeReference {
-        const link = EdgeNext.init(bound_previous_node.g.allocator, bound_previous_node.node, bound_next_node.node);
+        const link = EdgeNext.init(bound_previous_node.node, bound_next_node.node);
         const bound_edge = bound_previous_node.g.insert_edge(link);
         return bound_edge;
     }
@@ -90,7 +90,7 @@ test "basic chain" {
     const bn3 = g.create_and_insert_node();
 
     // init ---------------------------------------------------------------------------------------
-    const en12 = EdgeNext.init(g.allocator, bn1.node, bn2.node);
+    const en12 = EdgeNext.init(bn1.node, bn2.node);
 
     const ben12 = g.insert_edge(en12);
 

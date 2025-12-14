@@ -366,8 +366,7 @@ fn wrap_node_create() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             if (!bind.check_no_positional_args(self, args)) return null;
 
-            const allocator = std.heap.c_allocator;
-            const node = graph.graph.Node.init(allocator);
+            const node = graph.graph.Node.init();
 
             var success = false;
             defer if (!success) {
@@ -538,7 +537,6 @@ fn wrap_edge_create() type {
                 }
             }
 
-            const allocator = std.heap.c_allocator;
             const edge_ptr = graph.graph.Edge.init(kwarg_obj.source, kwarg_obj.target, edge_type_value);
 
             var success = false;

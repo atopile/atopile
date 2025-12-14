@@ -17,7 +17,7 @@ pub const EdgeType = struct {
     pub const tid: Edge.EdgeType = graph.Edge.hash_edge_type(1759276800);
     pub var registered: bool = false;
 
-    pub fn init(allocator: std.mem.Allocator, type_node: NodeReference, instance_node: NodeReference) EdgeReference {
+    pub fn init(type_node: NodeReference, instance_node: NodeReference) EdgeReference {
         const edge = Edge.init(type_node, instance_node, tid);
         build().apply_to(edge);
         return edge;
@@ -27,18 +27,18 @@ pub const EdgeType = struct {
         if (!registered) {
             @branchHint(.unlikely);
             registered = true;
-            Edge.register_type(tid);
+            Edge.register_type(tid) catch {};
         }
         return .{
             .edge_type = tid,
             .directional = true,
             .name = null,
-            .dynamic = graph.DynamicAttributes.init(null),
+            .dynamic = graph.DynamicAttributes.init(),
         };
     }
 
     pub fn add_instance(bound_type_node: graph.BoundNodeReference, bound_instance_node: graph.BoundNodeReference) graph.BoundEdgeReference {
-        const link = EdgeType.init(bound_type_node.g.allocator, bound_type_node.node, bound_instance_node.node);
+        const link = EdgeType.init(bound_type_node.node, bound_instance_node.node);
         const bound_edge = bound_type_node.g.insert_edge(link);
         return bound_edge;
     }
@@ -119,7 +119,7 @@ test "basic typegraph" {
     const bin2 = g.create_and_insert_node();
 
     // init ---------------------------------------------------------------------------------------
-    const et11 = EdgeType.init(g.allocator, btn1.node, bin1.node);
+    const et11 = EdgeType.init(btn1.node, bin1.node);
     _ = g.insert_edge(et11);
     try std.testing.expect(EdgeType.is_node_instance_of(bin1, btn1.node));
 

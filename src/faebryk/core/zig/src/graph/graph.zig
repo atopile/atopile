@@ -147,7 +147,7 @@ pub const DynamicAttributes = struct {
     pub fn copy_into(self: *const @This(), other: *@This()) void {
         const cur_len = other.values.len;
         other.grow_slice(self.values.len);
-        std.mem.copy(LiteralKV, other.values[cur_len..], self.values);
+        @memcpy(other.values[cur_len..], self.values);
     }
 
     pub fn put(self: *@This(), identifier: str, value: Literal) void {
@@ -740,7 +740,7 @@ pub const GraphView = struct {
     }
 
     pub fn create_and_insert_node(g: *@This()) BoundNodeReference {
-        return g.insert_node(Node.init(g.allocator));
+        return g.insert_node(Node.init());
     }
 
     pub fn bind(g: *@This(), node: NodeReference) BoundNodeReference {
@@ -1113,6 +1113,49 @@ test "basic" {
     try std.testing.expectEqual(n1._ref_count.ref_count, 1);
     try std.testing.expectEqual(n2._ref_count.ref_count, 1);
     try std.testing.expectEqual(e12._ref_count.ref_count, 1);
+}
+
+test "nodeattributes" {
+    const a = std.testing.allocator;
+    global_graph_allocator = a;
+    var g = GraphView.init(a);
+    defer g.deinit();
+
+    const n1 = Node.init();
+    defer n1.deinit();
+
+    try std.testing.expect(n1.attributes.get("test") == null);
+    n1.attributes.put("test", .{ .String = "test" });
+    const attr_read = n1.attributes.get("test");
+    try std.testing.expect(attr_read != null);
+    try std.testing.expect(attr_read.? == .String);
+    try std.testing.expect(std.mem.eql(u8, attr_read.?.String, "test"));
+
+    n1.attributes.put("test2", .{ .Int = 5 });
+    const attr_read2 = n1.attributes.get("test2");
+    try std.testing.expect(attr_read2 != null);
+    try std.testing.expect(attr_read2.? == .Int);
+    try std.testing.expect(attr_read2.?.Int == 5);
+
+    const VisitorCtx = struct {
+        values: std.ArrayList(Literal),
+        failed: bool,
+        pub fn visit(ctx: *anyopaque, key: str, value: Literal, _: bool) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx));
+            if (!std.mem.eql(u8, key, "test") and !std.mem.eql(u8, key, "test2")) {
+                self.failed = true;
+                return;
+            }
+            self.values.append(value) catch @panic("OOM");
+        }
+    };
+    var visitor_ctx = VisitorCtx{ .values = std.ArrayList(Literal).init(a), .failed = false };
+    defer visitor_ctx.values.deinit();
+
+    n1.attributes.visit(&visitor_ctx, VisitorCtx.visit);
+    try std.testing.expectEqual(@as(usize, 2), visitor_ctx.values.items.len);
+    try std.testing.expect(visitor_ctx.values.items[0] == .String);
+    try std.testing.expect(visitor_ctx.values.items[1] == .Int);
 }
 
 test "BFSPath cloneAndExtend preserves start metadata" {
