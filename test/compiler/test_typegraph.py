@@ -8,6 +8,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 from atopile.compiler.ast_visitor import DslException
 from atopile.compiler.build import Linker, StdlibRegistry, build_file, build_source
+from atopile.errors import UserSyntaxError
 from faebryk.core.faebrykpy import EdgeComposition, EdgePointer, EdgeTrait
 from faebryk.libs.util import not_none
 from test.compiler.conftest import build_type
@@ -1541,3 +1542,76 @@ class TestSignalsAndPins:
             (("mid", "can_bridge", "out_"), ("r2", "can_bridge", "in_")),
         }
         assert link_paths == expected
+
+
+# see src/atopile/compiler/parser/AtoLexer.g4
+@pytest.mark.parametrize(
+    "name,template",
+    [
+        (name, textwrap.dedent(template))
+        for name in [
+            "component",
+            "module",
+            "interface",
+            "pin",
+            "signal",
+            "new",
+            "from",
+            "import",
+            "for",
+            "in",
+            "assert",
+            "to",
+            "True",
+            "False",
+            "within",
+            "is",
+            "pass",
+            "trait",
+            "int",
+            "float",
+            "string",
+            "str",
+            "bytes",
+            "if",
+            "parameter",
+            "param",
+            "test",
+            "require",
+            "requires",
+            "check",
+            "report",
+            "ensure",
+        ]
+        for template in [
+            """
+            module App:
+                {name} = 10
+            """,
+            """
+            import {name}
+            """,
+            """
+            component {name}:
+                pass
+            """,
+            """
+            module {name}:
+                pass
+            """,
+            """
+            interface {name}:
+                pass
+            """,
+        ]
+    ],
+)
+def test_reserved_keywords_as_identifiers(name: str, template: str):
+    template = textwrap.dedent(template)
+
+    # ensure template is otherwise valid
+    # note requires a valid import symbol
+    build_type(template.format(name="Resistor"))
+
+    with pytest.raises(UserSyntaxError):
+        build_type(template.format(name=name))

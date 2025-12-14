@@ -16,6 +16,7 @@ from atopile.compiler.ast_visitor import (
     is_ato_module,
 )
 from atopile.compiler.build import Linker, StdlibRegistry, build_file
+from atopile.errors import UserSyntaxError
 from faebryk.core.faebrykpy import EdgeComposition, EdgeType
 from faebryk.core.graph import BoundNode, GraphView
 from faebryk.libs.smd import SMDSize
@@ -26,11 +27,6 @@ from test.compiler.conftest import build_instance
 E = BoundExpressions()
 
 NULL_CONFIG = SimpleNamespace(project=None)
-
-
-# FIXME: compiler should expose a SyntaxError exception
-class SyntaxError(Exception):
-    pass
 
 
 def _get_child(node: BoundNode, name: str) -> BoundNode:
@@ -772,7 +768,6 @@ def test_directed_connect_non_bridge():
         build_instance(
             """
             #pragma experiment("BRIDGE_CONNECT")
-
             import Resistor
 
             module A:
@@ -1387,7 +1382,7 @@ def test_alternate_trait_constructor_with_params():
 
 
 def test_parameterised_trait_with_pos_args():
-    with pytest.raises(SyntaxError):
+    with pytest.raises(UserSyntaxError):
         build_instance(
             """
             #pragma experiment("TRAITS")
@@ -1659,7 +1654,8 @@ def test_directed_connect_reverse_resistor_to_signal():
 
 def test_directed_connect_mixed_directions():
     with pytest.raises(
-        SyntaxError, match="Only one type of connection direction per statement allowed"
+        UserSyntaxError,
+        match="Only one type of connection direction per statement allowed",
     ):
         build_instance(
             """
@@ -1720,78 +1716,6 @@ def test_module_templating_list():
         addressor.address_bits_.get().force_extract_literal().get_single() == 7
         for addressor in addressors
     )
-
-
-# see src/atopile/compiler/parser/AtoLexer.g4
-@pytest.mark.parametrize(
-    "name,template",
-    [
-        (name, template)
-        for name in [
-            "component",
-            "module",
-            "interface",
-            "pin",
-            "signal",
-            "new",
-            "from",
-            "import",
-            "for",
-            "in",
-            "assert",
-            "to",
-            "True",
-            "False",
-            "within",
-            "is",
-            "pass",
-            "trait",
-            "int",
-            "float",
-            "string",
-            "str",
-            "bytes",
-            "if",
-            "parameter",
-            "param",
-            "test",
-            "require",
-            "requires",
-            "check",
-            "report",
-            "ensure",
-        ]
-        for template in [
-            """
-            module App:
-                {name} = 10V +/- 5%
-            """,
-            """
-            import {name}
-            """,
-            """
-            component {name}:
-                pass
-            """,
-            """
-            module {name}:
-                pass
-            """,
-            """
-            interface {name}:
-                pass
-            """,
-        ]
-    ],
-)
-def test_reserved_keywords_as_identifiers(name: str, template: str):
-    template = textwrap.dedent(template)
-
-    # ensure template is otherwise valid
-    build_instance(template.format(name="x"), "App")
-
-    with pytest.raises(SyntaxError):
-        build_instance(template.format(name=name), "App")
 
 
 def test_trait_template_enum():
