@@ -1107,7 +1107,7 @@ class _UnitExpressionResolver:
                 self.visit(op)
                 for op in (
                     node.numerator.get().deref(),
-                    *node.denominator.get().as_list(),
+                    *node.zdenominator.get().as_list(),
                 )
             ),
         )

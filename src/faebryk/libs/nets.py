@@ -193,6 +193,7 @@ def test_bind_nets_from_electricals():
     attach_net_names(nets)
 
     assert len(nets) == 2
+    print(nets)
     for i, net in enumerate(nets):
         assert net.get_name() == f"elec-{i}"
         assert len(net.get_connected_interfaces()) == 2 + i

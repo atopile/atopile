@@ -89,7 +89,11 @@ def _extract_and_check(
     if not isinstance(expected, F.Parameters.can_be_operand):
         matches = extracted.equals_singleton(expected)
         if not matches:
-            print(f"Expected {expected} but got {extracted.pretty_str()}")
+            print(
+                f"Expected {expected}"
+                f" but got {extracted.pretty_str()}"
+                f"\nfor op: {op.pretty()}"
+            )
         return matches
 
     matches = extracted.equals(expected.as_literal.force_get())
@@ -97,6 +101,7 @@ def _extract_and_check(
         print(
             f"Expected {expected.as_literal.force_get().pretty_str()}"
             f" but got {extracted.pretty_str()}"
+            f"\nfor op: {op.pretty()}"
         )
     return matches
 

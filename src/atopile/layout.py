@@ -179,8 +179,10 @@ def attach_subaddresses_to_modules(app: fabll.Node):
     in_sub_pcb_bound = in_sub_pcb.bind_typegraph_from_instance(app.instance)
     g = app.instance.g()
     for module in pcb_modules:
-        for footprint_child, _ in module.iter_children_with_trait(
-            F.Footprints.has_associated_footprint
+        for footprint_child in module.get_children(
+            direct_only=False,
+            types=fabll.Node,
+            required_trait=F.Footprints.has_associated_footprint,
         ):
             footprint_child.add_child(
                 in_sub_pcb_bound.create_instance(g=g).setup(sub_root_module=module)

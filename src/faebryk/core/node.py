@@ -2850,14 +2850,14 @@ def test_get_children_modules_tree():
         types=Capacitor,
         required_trait=is_module,
     )
-    assert mods == {cap1, cap2}
+    assert mods == [cap1, cap2]
 
     mods = app.get_children(
         direct_only=False,
         types=Capacitor,
         required_trait=is_module,
     )
-    assert mods == {cap1, cap2, cap3, cap4}
+    assert mods == [cap1, cap2, cap3, cap4]
 
 
 def test_copy_into_basic():

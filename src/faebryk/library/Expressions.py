@@ -4,6 +4,8 @@ from enum import Enum, auto
 from itertools import permutations
 from typing import TYPE_CHECKING, Any, Iterable, Self, Sequence, get_args
 
+import pytest
+
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
@@ -1021,7 +1023,7 @@ class Divide(fabll.Node):
     is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
     numerator = OperandPointer.MakeChild()
-    denominator = OperandSequence.MakeChild()
+    zdenominator = OperandSequence.MakeChild()
 
     def setup(
         self,
@@ -1030,7 +1032,7 @@ class Divide(fabll.Node):
     ) -> Self:
         self.numerator.get().point(numerator)
         for denominator in denominators:
-            self.denominator.get().append(denominator)
+            self.zdenominator.get().append(denominator)
         return self
 
     @classmethod
@@ -2962,7 +2964,36 @@ def test_compact_repr():
     assert or_repr == "A ∨! B"
 
 
+@pytest.mark.parametrize(
+    "expr_type",
+    [
+        Subtract,
+        Divide,
+        Power,
+        Log,
+        Implies,
+        Difference,
+        LessThan,
+        GreaterThan,
+        LessOrEqual,
+        GreaterOrEqual,
+        IsBitSet,
+        IsSubset,
+        IsSuperset,
+    ],
+)
+def test_operand_order(expr_type: type[ExpressionNodes]):
+    from faebryk.libs.test.boundexpressions import BoundExpressions
+
+    E = BoundExpressions()
+
+    arg1 = E.lit_op_single(10)
+    arg2 = E.lit_op_single(5)
+    expr = expr_type.from_operands(arg1, arg2)  # type: ignore
+    assert expr.is_expression.get().get_operands() == [arg1, arg2]
+
+
 if __name__ == "__main__":
     import typer
 
-    typer.run(test_compact_repr)
+    typer.run(test_operand_order)
