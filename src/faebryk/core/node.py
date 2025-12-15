@@ -1186,7 +1186,9 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         sort: bool = True,
         required_trait: "type[NodeT] | tuple[type[NodeT], ...] | None" = None,
         tg: fbrk.TypeGraph | None = None,
-    ) -> OrderedSet[C]:
+    ) -> list[C]:
+        # This function is optimized to basically 0 overhead in python
+
         type_tuple = types if isinstance(types, tuple) else (types,)
         trait_tuple: tuple[type[NodeT], ...] | None
         if required_trait is None:
@@ -1223,32 +1225,34 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             direct_only=direct_only,
             types=zig_types,
             include_root=include_root,
-            sort=False,  # We'll sort in Python since Zig doesn't implement it yet
+            sort=sort,
             required_traits=zig_traits,
         )
 
+        # fast cast
+        if zig_types and len(zig_types) == 1:
+            tp = type_tuple[0]
+
+            def _cast(n: graph.BoundNode) -> C:
+                return tp.bind_instance(n)
+        elif zig_types:
+            paired = zip(type_tuple, zig_types)
+
+            def _cast(n: graph.BoundNode) -> C:
+                for t, tn in paired:
+                    if fbrk.EdgeType.is_node_instance_of(bound_node=n, node_type=tn):
+                        return t.bind_instance(n)
+                assert False, "get_children_query broken?"
+        else:
+
+            def _cast(n: graph.BoundNode) -> C:
+                return cast(C, Node(instance=n))
+
         # Convert BoundNode results back to Python Node objects
-        result: list[C] = []
-        for bound_node in bound_nodes:
-            node = Node(instance=bound_node)
-            # Cast to the correct type
-            if len(type_tuple) == 1:
-                candidate = node.try_cast(type_tuple[0])
-                if candidate is None:
-                    continue
-            else:
-                candidate = cast(C, node)
+        nodes = (_cast(n) for n in bound_nodes)
+        result: list[C] = [node for node in nodes if (not f_filter or f_filter(node))]
 
-            # Apply f_filter if provided (Zig doesn't support this)
-            if f_filter and not f_filter(candidate):
-                continue
-
-            result.append(candidate)
-
-        if sort:
-            result.sort(key=lambda n: n.get_name(accept_no_parent=True))
-
-        return OrderedSet(result)
+        return result
 
     @deprecated("refactor callers and remove")
     def get_tree[C: Node](

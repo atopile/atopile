@@ -210,17 +210,23 @@ pub const EdgeComposition = struct {
     pub fn get_children_query(node: graph.BoundNodeReference, query: ChildQuery, allocator: std.mem.Allocator) std.ArrayList(graph.NodeReference) {
         var out = std.ArrayList(graph.NodeReference).init(allocator);
 
+        const ChildEntry = struct {
+            node: graph.NodeReference,
+            name: str,
+        };
+
         // First, collect ALL direct children (without filtering)
-        var direct_children = std.ArrayList(graph.NodeReference).init(allocator);
+        var direct_children = std.ArrayList(ChildEntry).init(allocator);
         defer direct_children.deinit();
 
         const CollectAllChildren = struct {
-            children: *std.ArrayList(graph.NodeReference),
+            children: *std.ArrayList(ChildEntry),
 
             pub fn visit_edge(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
                 const child = EdgeComposition.get_child_node(bound_edge.edge);
-                self.children.append(child) catch @panic("OOM");
+                const name = bound_edge.edge.attributes.name orelse "";
+                self.children.append(.{ .node = child, .name = name }) catch @panic("OOM");
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
         };
@@ -228,8 +234,18 @@ pub const EdgeComposition = struct {
         var collector = CollectAllChildren{ .children = &direct_children };
         _ = EdgeComposition.visit_children_edges(node, void, &collector, CollectAllChildren.visit_edge);
 
+        if (query.sort) {
+            const Sorter = struct {
+                pub fn lessThan(_: void, lhs: ChildEntry, rhs: ChildEntry) bool {
+                    return std.mem.lessThan(u8, lhs.name, rhs.name);
+                }
+            };
+            std.sort.block(ChildEntry, direct_children.items, {}, Sorter.lessThan);
+        }
+
         // For each direct child: add if matches, and recurse if not direct_only
-        for (direct_children.items) |child_node| {
+        for (direct_children.items) |entry| {
+            const child_node = entry.node;
             const bound_child = node.g.bind(child_node);
 
             // Add to result if it matches the filter
@@ -239,7 +255,14 @@ pub const EdgeComposition = struct {
 
             // Recursively visit ALL children (regardless of match), if not direct_only
             if (!query.direct_only) {
-                var child_results = EdgeComposition.get_children_query(bound_child, query, allocator);
+                const down_query = ChildQuery{
+                    .direct_only = false,
+                    .types = query.types,
+                    .include_root = false,
+                    .sort = query.sort,
+                    .required_traits = query.required_traits,
+                };
+                var child_results = EdgeComposition.get_children_query(bound_child, down_query, allocator);
                 defer child_results.deinit();
                 out.appendSlice(child_results.items) catch @panic("OOM");
             }
@@ -247,11 +270,7 @@ pub const EdgeComposition = struct {
 
         // Check and add root if requested
         if (query.include_root and check_node_matches(node, query)) {
-            out.append(node.node) catch @panic("OOM");
-        }
-
-        if (query.sort) {
-            // TODO sort by name
+            out.insert(0, node.node) catch @panic("OOM");
         }
 
         return out;
@@ -570,4 +589,37 @@ test "get_children_query recursive with type filtering" {
     for (electrical_recursive.items) |child| {
         try std.testing.expect(EdgeType.is_node_instance_of(g.bind(child), Electrical.node));
     }
+}
+
+test "get_children_query sorted" {
+    const a = std.testing.allocator;
+    var g = graph.GraphView.init(a);
+    defer g.deinit();
+
+    const parent = g.create_and_insert_node();
+    const child1 = g.create_and_insert_node();
+    const child2 = g.create_and_insert_node();
+    const child3 = g.create_and_insert_node();
+
+    // Insert in unsorted order: c, a, b
+    _ = EdgeComposition.add_child(parent, child3.node, "c");
+    _ = EdgeComposition.add_child(parent, child1.node, "a");
+    _ = EdgeComposition.add_child(parent, child2.node, "b");
+
+    const query = ChildQuery{
+        .direct_only = true,
+        .types = &[_]graph.NodeReference{},
+        .include_root = false,
+        .sort = true,
+        .required_traits = &[_]graph.NodeReference{},
+    };
+
+    var children = EdgeComposition.get_children_query(parent, query, a);
+    defer children.deinit();
+
+    try std.testing.expectEqual(@as(usize, 3), children.items.len);
+    // Should be a, b, c (child1, child2, child3)
+    try std.testing.expect(Node.is_same(children.items[0], child1.node));
+    try std.testing.expect(Node.is_same(children.items[1], child2.node));
+    try std.testing.expect(Node.is_same(children.items[2], child3.node));
 }

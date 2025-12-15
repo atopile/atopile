@@ -66,11 +66,26 @@ class GraphRenderer:
         return edges
 
     @staticmethod
+    def _collect_operand_edges(bound_node: graph.BoundNode) -> list:
+        """Collect all operand edges of a node."""
+        edges: list[graph.BoundEdge] = []
+
+        def collect(ctx: list[graph.BoundEdge], edge: graph.BoundEdge) -> None:
+            ctx.append(edge)
+
+        fbrk.EdgeOperand.visit_operand_edges(
+            bound_node=bound_node, ctx=edges, f=collect
+        )
+
+        return edges
+
+    @staticmethod
     def render(
         root: graph.BoundNode,
         show_traits: bool = True,
         show_pointers: bool = False,
         show_connections: bool = True,
+        show_operands: bool = False,
         filter_types: list[str] | None = None,
     ) -> str:
         """
@@ -114,6 +129,7 @@ class GraphRenderer:
         collect_trait_edges = GraphRenderer._collect_trait_edges
         collect_pointer_edges = GraphRenderer._collect_pointer_edges
         collect_connection_edges = GraphRenderer._collect_connection_edges
+        collect_operand_edges = GraphRenderer._collect_operand_edges
 
         def get_node_name(bound_node: graph.BoundNode) -> str:
             """Get just the node name (not the full label with type)."""
@@ -237,6 +253,12 @@ class GraphRenderer:
                         # Use target node's name to show what we're connected to
                         conn_name = get_node_name(target_bound)
                         children.append((conn_name, "Conn", target_type, target_bound))
+
+            if show_operands:
+                for edge in collect_operand_edges(bound_node):
+                    target_bound = edge.g().bind(node=edge.edge().target())
+                    target_type = get_type_name(target_bound) or ""
+                    children.append(("→", "Op", target_type, target_bound))
 
             # Sort by target type name first, then edge type (Comp before Ptr/Trait)
             children.sort(key=lambda item: (item[2], item[1]))

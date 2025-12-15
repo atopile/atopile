@@ -161,19 +161,9 @@ class is_expression(fabll.Node):
 
         node = fabll.Traits(self).get_obj_raw()
         operands: list[F.Parameters.can_be_operand] = []
-        pointers: set[PointerProtocol] = (
-            node.get_children(
-                direct_only=True,
-                types=OperandPointer,  # type: ignore
-            )
-            | node.get_children(
-                direct_only=True,
-                types=OperandSequence,  # type: ignore
-            )
-            | node.get_children(
-                direct_only=True,
-                types=OperandSet,  # type: ignore
-            )
+        pointers: list[PointerProtocol] = node.get_children(
+            direct_only=True,
+            types=(OperandPointer, OperandSequence, OperandSet),  # type: ignore
         )
         for pointer in pointers:
             li = pointer.as_list()

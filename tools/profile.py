@@ -230,7 +230,7 @@ def perf(ctx: typer.Context, report_only: bool = False):
             [
                 "perf",
                 "record",
-                *["-F", "9999"],
+                *["-F", "31000"],  # 31k samples per second
                 *["--call-graph", "dwarf"],
                 "-g",
                 *["-o", str(perf_data_file)],
@@ -292,7 +292,7 @@ def perf(ctx: typer.Context, report_only: bool = False):
         )
 
     print(
-        "To run speedscoe install the vscode extension "
+        "To run speedscope install the vscode extension "
         "`speedscope on VScode (need vsix)`. \n"
         "Then use cmd+p and open the speedscope view. \n"
         "Navigate it to artifacts/perf/perf_i.txt"

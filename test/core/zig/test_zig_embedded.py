@@ -1,4 +1,5 @@
 import itertools
+import os
 import re
 import shutil
 import subprocess
@@ -199,8 +200,6 @@ def test_zig_embedded(
 
 
 def main(glob_pattern: str, test_name: str):
-    from faebryk.core.zig import RELEASEMODE
-
     paths = list(ZIG_SRC_DIR.rglob(glob_pattern))
     if not len(paths) == 1:
         raise ValueError(f"Expected 1 path, got {len(paths)}")
@@ -211,7 +210,7 @@ def main(glob_pattern: str, test_name: str):
             path,
             test_name,
         ),
-        release_mode=RELEASEMODE.get(),
+        release_mode=os.getenv("FBRK_ZIG_RELEASEMODE", "ReleaseFast"),
     )
 
 

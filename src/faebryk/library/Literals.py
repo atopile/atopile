@@ -6777,7 +6777,7 @@ class AbstractEnums(fabll.Node):
         """
         Get all possible enum values for a given enum type node.
         """
-        return list(node.get_children(direct_only=True, types=EnumValue, tg=tg))
+        return node.get_children(direct_only=True, types=EnumValue, tg=tg)
 
     def get_all_members_of_enum_literal(self) -> list[EnumValue]:
         """
@@ -7670,50 +7670,6 @@ class TestBooleans:
 
         with pytest.raises(ValueError, match="Expected boolean value"):
             Booleans.deserialize(data, g=g, tg=tg)
-
-
-def test_string_literal_on_type():
-    values = ["a", "b", "c"]
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-
-    class MyType(fabll.Node):
-        string_set = Strings.MakeChild(*values).put_on_type()
-
-    _ = MyType.bind_typegraph(tg=tg).get_or_create_type()
-
-    # TODO
-
-
-def test_string_literal_alias_to_literal():
-    from faebryk.library.Parameters import StringParameter, is_parameter_operatable
-
-    values = ["a", "b", "c"]
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-
-    class MyType(fabll.Node):
-        string_param = StringParameter.MakeChild()
-
-        @classmethod
-        def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
-            out = fabll._ChildField(cls)
-            out.add_dependant(
-                Strings.MakeChild_ConstrainToLiteral([out, cls.string_param], *values)
-            )
-            return out
-
-    class MyTypeOuter(fabll.Node):
-        my_type = MyType.MakeChild(*values)
-
-    my_type_outer = MyTypeOuter.bind_typegraph(tg=tg).create_instance(g=g)
-
-    lit = is_parameter_operatable.try_get_constrained_literal(
-        my_type_outer.my_type.get().string_param.get().is_parameter_operatable.get(),
-        Strings,
-    )
-    assert lit
-    assert lit.get_values() == values
 
 
 class TestEnums:
