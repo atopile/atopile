@@ -3285,11 +3285,16 @@ class Numbers(fabll.Node):
         """
         g = g or self.g
         tg = tg or self.tg
-        if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
-            raise UnitsNotCommensurableError(
-                "incompatible units",
-                incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
-            )
+        self_unit = self.get_is_unit()
+        other_unit = other.get_is_unit()
+
+        if not self_unit.is_commensurable_with(other_unit):
+            if not (self_unit.is_dimensionless() or other_unit.is_dimensionless()):
+                raise UnitsNotCommensurableError(
+                    "incompatible units",
+                    incommensurable_items=[self_unit, other_unit],
+                )
+
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         out_numeric_set = self.get_numeric_set().op_intersect_intervals(
             g=g, tg=tg, other=other_converted.get_numeric_set()
@@ -3401,13 +3406,22 @@ class Numbers(fabll.Node):
         """
         Convert to specified unit.
         """
-        if not self.get_is_unit().is_commensurable_with(unit):
+        current_unit = self.get_is_unit()
+
+        if not current_unit.is_commensurable_with(unit):
+            if current_unit.is_dimensionless() and not unit.is_dimensionless():
+                return Numbers.create_instance(g=g, tg=tg).setup(
+                    numeric_set=self.get_numeric_set(), unit=unit
+                )
+            if unit.is_dimensionless() and not current_unit.is_dimensionless():
+                return self.convert_to_dimensionless(g=g, tg=tg)
+
             raise UnitsNotCommensurableError(
-                f"Units {self.get_is_unit()} and {unit} are not commensurable",
-                incommensurable_items=[self.get_is_unit(), unit],
+                f"Units {current_unit} and {unit} are not commensurable",
+                incommensurable_items=[current_unit, unit],
             )
 
-        scale, offset = self.get_is_unit().get_conversion_to(unit)
+        scale, offset = current_unit.get_conversion_to(unit)
 
         # Generate a numeric set for the scale
         scale_numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(

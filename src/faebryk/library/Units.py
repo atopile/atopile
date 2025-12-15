@@ -46,6 +46,7 @@ TODO:
  - check all `is_unit`s in compiled designs for symbol conflicts
 """
 
+import logging
 import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, fields
@@ -639,7 +640,24 @@ class has_unit(fabll.Node):
         return self
 
     def get_is_unit(self) -> is_unit:
-        return self.unit.get().deref().get_trait(is_unit)
+        unit_ptr = self.unit.get()
+        unit = unit_ptr.try_deref()
+
+        # Some callers create has_unit nodes without pointing the unit pointer.
+        # Fallback to the dimensionless unit so downstream code can still
+        # treat the value as unitless rather than crashing on deref.
+        if unit is None:
+            import faebryk.library._F as F
+
+            log.warning("Unit pointer unset for %s; defaulting to dimensionless", self)
+            dimless_unit = (
+                F.Units.Dimensionless.bind_typegraph(tg=self.tg)
+                .create_instance(g=self.g)
+            )
+            unit_ptr.point(dimless_unit)
+            return dimless_unit.get_trait(is_unit)
+
+        return unit.get_trait(is_unit)
 
 
 class is_si_prefixed_unit(fabll.Node):
@@ -2490,3 +2508,5 @@ class TestUnitExpressions(_TestWithContext):
         unit = resolved.get_trait(is_unit)
         assert unit._extract_basis_vector() == _BasisVector.ORIGIN
         assert unit.is_dimensionless()
+log = logging.getLogger(__name__)
+
