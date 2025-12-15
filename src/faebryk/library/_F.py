@@ -83,7 +83,6 @@ from faebryk.library.ResistorArray import ResistorArray
 from faebryk.library.has_designator import has_designator
 from faebryk.library.has_pulls import has_pulls
 from faebryk.library.LED import LED
-import faebryk.library.Addressor as Addressor
 from faebryk.library.CAN_TTL import CAN_TTL
 from faebryk.library.I2S import I2S
 from faebryk.library.JTAG import JTAG
@@ -110,6 +109,7 @@ from faebryk.library.USB2_0 import USB2_0
 from faebryk.library.USB3_IF import USB3_IF
 from faebryk.library.I2C import I2C
 from faebryk.library.USB3 import USB3
+import faebryk.library.Addressor as Addressor
 from faebryk.library.HDMI import HDMI
 from faebryk.library.USB_C import USB_C
 
@@ -182,7 +182,6 @@ __all__ = [
     "has_designator",
     "has_pulls",
     "LED",
-    "Addressor",
     "CAN_TTL",
     "I2S",
     "JTAG",
@@ -209,6 +208,7 @@ __all__ = [
     "USB3_IF",
     "I2C",
     "USB3",
+    "Addressor",
     "HDMI",
     "USB_C",
 ]
