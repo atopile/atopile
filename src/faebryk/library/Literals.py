@@ -4,7 +4,7 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from enum import Enum, StrEnum
 from operator import ge
-from typing import TYPE_CHECKING, ClassVar, Iterable, Self, cast
+from typing import TYPE_CHECKING, Iterable, Self, cast
 from warnings import deprecated
 
 import pytest
@@ -586,8 +586,8 @@ class TestNumeric:
 
 
 class NumericInterval(fabll.Node):
-    _min_identifier: ClassVar[str] = "min"
-    _max_identifier: ClassVar[str] = "max"
+    min_numeric_ptr = F.Collections.Pointer.MakeChild()
+    max_numeric_ptr = F.Collections.Pointer.MakeChild()
 
     @classmethod
     def MakeChild(cls, min: float, max: float) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
@@ -596,39 +596,25 @@ class NumericInterval(fabll.Node):
         out = fabll._ChildField(cls)
         min_numeric = Numeric.MakeChild(Numeric.float_round(min, ABS_DIGITS))
         max_numeric = Numeric.MakeChild(Numeric.float_round(max, ABS_DIGITS))
-        out.add_dependant(min_numeric, identifier=cls._min_identifier)
-        out.add_dependant(max_numeric, identifier=cls._max_identifier)
+        out.add_dependant(min_numeric)
+        out.add_dependant(max_numeric)
         out.add_dependant(
-            fabll.MakeEdge(
-                lhs=[out],
-                rhs=[min_numeric],
-                edge=fbrk.EdgeComposition.build(child_identifier=cls._min_identifier),
-            ),
-            identifier=cls._min_identifier,
+            F.Collections.Pointer.MakeEdge([out, cls.min_numeric_ptr], [min_numeric])
         )
         out.add_dependant(
-            fabll.MakeEdge(
-                lhs=[out],
-                rhs=[max_numeric],
-                edge=fbrk.EdgeComposition.build(child_identifier=cls._max_identifier),
-            ),
-            identifier=cls._max_identifier,
+            F.Collections.Pointer.MakeEdge([out, cls.max_numeric_ptr], [max_numeric])
         )
         return out
 
     def get_min(self) -> Numeric:
-        numeric_instance = fbrk.EdgeComposition.get_child_by_identifier(
-            bound_node=self.instance, child_identifier=self._min_identifier
-        )
+        numeric_instance = self.min_numeric_ptr.get().deref()
         assert numeric_instance is not None
-        return Numeric.bind_instance(numeric_instance)
+        return Numeric.bind_instance(numeric_instance.instance)
 
     def get_max(self) -> Numeric:
-        numeric_instance = fbrk.EdgeComposition.get_child_by_identifier(
-            bound_node=self.instance, child_identifier=self._max_identifier
-        )
+        numeric_instance = self.max_numeric_ptr.get().deref()
         assert numeric_instance is not None
-        return Numeric.bind_instance(numeric_instance)
+        return Numeric.bind_instance(numeric_instance.instance)
 
     def get_single(self) -> float:
         if self.is_singleton():
@@ -670,16 +656,8 @@ class NumericInterval(fabll.Node):
         #  Add numeric literals to the node min and max fields
         min_numeric = Numeric.create_instance(g=g, tg=tg, value=min)
         max_numeric = Numeric.create_instance(g=g, tg=tg, value=max)
-        _ = fbrk.EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=min_numeric.instance.node(),
-            child_identifier=self._min_identifier,
-        )
-        _ = fbrk.EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=max_numeric.instance.node(),
-            child_identifier=self._max_identifier,
-        )
+        self.min_numeric_ptr.get().point(min_numeric)
+        self.max_numeric_ptr.get().point(max_numeric)
         return self
 
     def setup_from_singleton(self, value: float) -> "NumericInterval":
@@ -2962,16 +2940,16 @@ class Numbers(fabll.Node):
 
     is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
     can_be_operand = fabll.Traits.MakeEdge(can_be_operandT.MakeChild())
-    _numeric_set_identifier: ClassVar[str] = "numeric_set"
-    _has_unit_identifier: ClassVar[str] = "has_unit"
+    numeric_set_ptr = F.Collections.Pointer.MakeChild()
+    has_unit_ptr = F.Collections.Pointer.MakeChild()
 
     @classmethod
-    def MakeChild(  # type: ignore[invalid-method-override]
+    def MakeChild(
         cls,
         min: float,
         max: float,
         unit: type[fabll.NodeT] | str,
-    ) -> fabll._ChildField["Numbers"]:
+    ) -> fabll._ChildField[Self]:
         """
         Create a Numbers literal as a child field at type definition time.
 
@@ -2987,23 +2965,16 @@ class Numbers(fabll.Node):
             raise ValueError(f"Invalid interval: {min} > {max}")
         out = fabll._ChildField(cls)
         numeric_set = NumericSet.MakeChild(min=min, max=max)
-        out.add_dependant(numeric_set, identifier=cls._numeric_set_identifier)
+        out.add_dependant(numeric_set)
         out.add_dependant(
-            fabll.MakeEdge(
-                [out],
+            F.Collections.Pointer.MakeEdge(
+                [out, cls.numeric_set_ptr],
                 [numeric_set],
-                edge=fbrk.EdgeComposition.build(
-                    child_identifier=cls._numeric_set_identifier
-                ),
             ),
-            identifier=cls._numeric_set_identifier,
         )
         from faebryk.library.Units import has_unit
 
-        out.add_dependant(
-            fabll.Traits.MakeEdge(has_unit.MakeChild(unit), [out]),
-            identifier=cls._has_unit_identifier,
-        )
+        out.add_dependant(fabll.Traits.MakeEdge(has_unit.MakeChild(unit), [out]))
 
         return out
 
@@ -3012,7 +2983,7 @@ class Numbers(fabll.Node):
         cls,
         value: float,
         unit: type[fabll.NodeT],
-    ) -> fabll._ChildField:
+    ) -> fabll._ChildField[Self]:
         return cls.MakeChild(min=value, max=value, unit=unit)
 
     @classmethod
@@ -3103,11 +3074,7 @@ class Numbers(fabll.Node):
     ) -> "Numbers":
         g = self.g
         tg = self.tg
-        _ = fbrk.EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=numeric_set.instance.node(),
-            child_identifier=self._numeric_set_identifier,
-        )
+        self.numeric_set_ptr.get().point(numeric_set)
 
         from faebryk.library.Units import has_unit, is_unit
 
@@ -3176,11 +3143,9 @@ class Numbers(fabll.Node):
         return self.setup_from_min_max(min=value, max=value, unit=unit)
 
     def get_numeric_set(self) -> NumericSet:
-        numeric_set = fbrk.EdgeComposition.get_child_by_identifier(
-            bound_node=self.instance, child_identifier=self._numeric_set_identifier
-        )
+        numeric_set = self.numeric_set_ptr.get().deref()
         assert numeric_set is not None, "Numeric set child not found"
-        return NumericSet.bind_instance(numeric_set)
+        return NumericSet.bind_instance(numeric_set.instance)
 
     def get_is_unit(self) -> "is_unit":
         from faebryk.library.Units import has_unit
