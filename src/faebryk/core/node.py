@@ -14,12 +14,10 @@ from typing import (
     override,
 )
 
-from ordered_set import OrderedSet
 from typing_extensions import Callable, deprecated
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
-import faebryk.core.node as fabll
 from faebryk.libs.util import (
     KeyErrorNotFound,
     Tree,
@@ -1029,20 +1027,18 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         return cls(instance=instance)
 
     # instance methods -----------------------------------------------------------------
-    @deprecated("Use compose_with instead")
-    def add(self, node: "NodeT"):
-        # TODO node name
-        self.connect(
-            to=node,
-            edge_attrs=fbrk.EdgeComposition.build(child_identifier=f"{id(node)}"),
+    def add_child(self, node: "NodeT", identifier: str | None = None):
+        assert node.get_parent() is not None, "Node already has a parent"
+        fbrk.EdgeComposition.add_child(
+            bound_node=self.instance,
+            child=node.instance.node(),
+            child_identifier=identifier or f"{id(node)}",
         )
 
     # TODO this is soooo slow
     # def __setattr__(self, name: str, value: Any, /) -> None:
     #    if not name.startswith("_") and isinstance(value, Node):
-    #        self.connect(
-    #            to=value, edge_attrs=fbrk.EdgeComposition.build(child_identifier=name)
-    #        )
+    #        self.add(value, identifier=name)
     #    return super().__setattr__(name, value)
 
     def attributes(self) -> T:
@@ -1158,25 +1154,6 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
         return last_match
 
-    # TODO: remove when get_children() is visitor
-    def get_direct_children(self) -> list[tuple[str | None, "Node"]]:
-        children: list[tuple[str | None, "Node"]] = []
-        fbrk.EdgeComposition.visit_children_edges(
-            bound_node=self.instance,
-            ctx=children,
-            f=lambda ctx, edge: ctx.append(
-                (
-                    edge.edge().name(),
-                    Node(
-                        instance=edge.g().bind(
-                            node=fbrk.EdgeComposition.get_child_node(edge=edge.edge())
-                        )
-                    ),
-                )
-            ),
-        )
-        return children
-
     def get_children[C: Node](
         self,
         direct_only: bool,
@@ -1213,10 +1190,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         zig_traits: list[graph.Node] | None = None
         if trait_tuple:
             zig_traits = [
-                t.bind_typegraph_from_instance(self.instance)
-                .get_or_create_type()
-                .node()
-                for t in trait_tuple
+                t.bind_typegraph(tg=tg).get_or_create_type().node() for t in trait_tuple
             ]
 
         # Call Zig get_children_query
@@ -1236,21 +1210,25 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             def _cast(n: graph.BoundNode) -> C:
                 return tp.bind_instance(n)
         elif zig_types:
-            paired = zip(type_tuple, zig_types)
+            paired = list(zip(type_tuple, zig_types, strict=True))
+            type_dict = {zigt.get_uuid(): pyt for pyt, zigt in paired}
 
             def _cast(n: graph.BoundNode) -> C:
-                for t, tn in paired:
-                    if fbrk.EdgeType.is_node_instance_of(bound_node=n, node_type=tn):
-                        return t.bind_instance(n)
-                assert False, "get_children_query broken?"
+                node_typenode = fbrk.EdgeType.get_type_node(
+                    edge=not_none(fbrk.EdgeType.get_type_edge(bound_node=n)).edge()
+                )
+                return type_dict[node_typenode.get_uuid()].bind_instance(n)
         else:
 
             def _cast(n: graph.BoundNode) -> C:
-                return cast(C, Node(instance=n))
+                return cast(C, Node.bind_instance(instance=n))
 
         # Convert BoundNode results back to Python Node objects
         nodes = (_cast(n) for n in bound_nodes)
-        result: list[C] = [node for node in nodes if (not f_filter or f_filter(node))]
+        if f_filter:
+            result: list[C] = [node for node in nodes if f_filter(node)]
+        else:
+            result = list(nodes)
 
         return result
 
@@ -1393,7 +1371,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             parent_node, name = parent
             if not parent_node.no_include_parents_in_full_name:
                 if parent_full := parent_node.get_full_name(
-                    types=False, include_uuid=include_uuid
+                    types=types, include_uuid=include_uuid
                 ):
                     parts.append(parent_full)
             if name:
@@ -2650,8 +2628,8 @@ def test_resistor_instantiation():
     assert res_inst.unnamed[0].get().get_name() == "unnamed[0]"
     assert res_inst.resistance.get().get_name() == "resistance"
     assert res_inst.resistance.get().get_units().get_symbols()[0] == "Ω"
-    assert res_inst.resistance.get().get_units().get_symbols()[1] == "Ohm"
-    assert res_inst.get_trait(fabll.is_module)
+    assert res_inst.resistance.get().get_units().get_symbols()[1] == "ohm"
+    assert res_inst.get_trait(is_module)
     leads = [
         n.get_trait(F.Lead.is_lead)
         for n in res_inst.get_children(
@@ -2679,7 +2657,7 @@ def test_string_param():
     string_p.alias_to_single(value="IG constrained")
     assert string_p.force_extract_literal().get_values()[0] == "IG constrained"
 
-    class ExampleStringParameter(fabll.Node):
+    class ExampleStringParameter(Node):
         string_p_tg = F.Parameters.StringParameter.MakeChild()
         constraint = F.Literals.Strings.MakeChild_ConstrainToLiteral(
             [string_p_tg], "TG constrained"
@@ -2700,7 +2678,7 @@ def test_boolean_param():
     boolean_p.alias_to_single(value=True)
     assert boolean_p.force_extract_literal().get_values()
 
-    class ExampleBooleanParameter(fabll.Node):
+    class ExampleBooleanParameter(Node):
         boolean_p_tg = F.Parameters.BooleanParameter.MakeChild()
         constraint = F.Literals.Booleans.MakeChild_ConstrainToLiteral(
             [boolean_p_tg], True
@@ -2725,7 +2703,7 @@ def test_node_equality():
     assert n1_1 is not n1
 
     # equal with different type
-    class NewType(fabll.Node):
+    class NewType(Node):
         pass
 
     NT2 = NewType.bind_typegraph(tg=tg)
@@ -2847,7 +2825,50 @@ def test_get_children_modules_simple():
     m = app.m.get()
 
     mods = app.get_children(direct_only=False, types=Node, required_trait=is_module)
-    assert mods == {m}
+    assert mods == [m]
+
+
+def test_get_children_modules_hard():
+    import faebryk.library._F as F
+    from faebryk.libs.util import duplicates
+
+    g, tg = _make_graph_and_typegraph()
+
+    class App(Node):
+        resistors = [F.Resistor.MakeChild() for _ in range(2)]
+        _is_module = Traits.MakeEdge(is_module.MakeChild())
+
+    app = App.bind_typegraph(tg).create_instance(g=g)
+
+    rs = app.get_children(direct_only=False, types=F.Resistor)
+    assert rs == [app.resistors[0].get(), app.resistors[1].get()]
+
+    elec = app.get_children(direct_only=False, types=F.Electrical)
+    assert elec == [
+        app.resistors[0].get().unnamed[0].get(),
+        app.resistors[0].get().unnamed[1].get(),
+        app.resistors[1].get().unnamed[0].get(),
+        app.resistors[1].get().unnamed[1].get(),
+    ]
+
+    mods = app.get_children(
+        direct_only=False,
+        types=Node,
+        required_trait=is_module,
+        include_root=True,
+        sort=True,
+    )
+    # print(GraphRenderer.render(app.instance))
+    assert mods == [app, app.resistors[0].get(), app.resistors[1].get()]
+
+    all_nodes = app.get_children(
+        direct_only=False, types=Node, include_root=True, sort=True
+    )
+    assert all_nodes
+    dups = duplicates(all_nodes, lambda x: x.instance.node().get_uuid())
+    for _, v in dups.items():
+        print(f"dup: {len(v):2d}: {v[0].get_full_name(types=True)}")
+    assert not len(dups)
 
 
 def test_get_children_modules_tree():
@@ -2933,16 +2954,16 @@ def test_copy_into_basic():
     )
 
     def _get_name(n: graph.BoundNode) -> str:
-        f = fabll.Node.bind_instance(instance=n)
+        f = Node.bind_instance(instance=n)
         return repr(f)
 
-    def _container(ns: Iterable[fabll.Node]) -> str:
+    def _container(ns: Iterable[Node]) -> str:
         return indented_container(
             sorted(ns, key=lambda x: repr(x)), compress_large=1000
         )
 
-    g_nodes = {fabll.Node.bind_instance(instance=n) for n in g.get_nodes()}
-    g_new_nodes = {fabll.Node.bind_instance(instance=n) for n in g_new.get_nodes()}
+    g_nodes = {Node.bind_instance(instance=n) for n in g.get_nodes()}
+    g_new_nodes = {Node.bind_instance(instance=n) for n in g_new.get_nodes()}
     g_diff_new = g_new_nodes - g_nodes
     # tg.self & g_new.self
     assert len(g_diff_new) == 2, f"g_diff_new: {_container(g_diff_new)}"
@@ -3018,9 +3039,10 @@ def test_same_class_multiple_get_or_create_type_succeeds():
 if __name__ == "__main__":
     import typer
 
+    import faebryk.core.node as fabll
     # typer.run(test_fabll_basic)
 
     # test_manual_resistor_def()
 
     # typer.run(test_resistor_instantiation)
-    typer.run(test_copy_into_basic)
+    typer.run(fabll.test_get_children_modules_hard)

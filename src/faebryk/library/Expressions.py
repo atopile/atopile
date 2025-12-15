@@ -165,6 +165,8 @@ class is_expression(fabll.Node):
             direct_only=True,
             types=(OperandPointer, OperandSequence, OperandSet),  # type: ignore
         )
+        assert pointers
+
         for pointer in pointers:
             li = pointer.as_list()
             li_op = [c.cast(F.Parameters.can_be_operand) for c in li]

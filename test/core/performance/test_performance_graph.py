@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
     else "simple",
 )
 def test_performance_graph_get_all(count_power: int, connected: bool):
-    count = 10 * 2**count_power
+    count = int(10 * 2**count_power)
     timings = Times()
 
     def _simple_resistors():
@@ -65,6 +65,9 @@ def test_performance_graph_get_all(count_power: int, connected: bool):
 
         with timings.context(f"get_node_children_all {name}"):
             n.get_children(direct_only=False, types=fabll.Node)
+
+        with timings.context(f"get_node_children_multitype {name}"):
+            n.get_children(direct_only=False, types=(F.Resistor, fabll.is_module))
 
         with timings.context(f"get_node_children_direct {name}"):
             n.get_children(direct_only=True, types=fabll.Node)

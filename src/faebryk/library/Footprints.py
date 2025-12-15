@@ -135,12 +135,7 @@ class has_associated_footprint(fabll.Node):
                 raise FootprintError(
                     f"{pad_node.get_name(accept_no_parent=True)} is not a pad"
                 )
-            fp.connect(
-                to=pad_node,
-                edge_attrs=fbrk.EdgeComposition.build(
-                    child_identifier=f"{id(pad_node)}"
-                ),
-            )
+            fp.add_child(pad_node)
 
         fabll.Traits.create_and_add_instance_to(
             node=component_node, trait=has_associated_footprint

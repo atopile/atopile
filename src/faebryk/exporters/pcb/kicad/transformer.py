@@ -305,12 +305,7 @@ class PCB_Transformer:
                     fabll.Traits.create_and_add_instance_to(
                         node=pad_node, trait=F.Footprints.is_pad
                     ).setup(pad_number=pad.name, pad_name=pad.name)
-                    fp_node.connect(
-                        to=pad_node,
-                        edge_attrs=fbrk.EdgeComposition.build(
-                            child_identifier=f"pad_{pad.name}"
-                        ),
-                    )
+                    fp_node.add_child(pad_node, identifier=f"pad_{pad.name}")
             # Match leads to pads
             lead_nodes = module.get_children(
                 direct_only=False, types=fabll.Node, required_trait=F.Lead.is_lead

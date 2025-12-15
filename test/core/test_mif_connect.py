@@ -35,7 +35,7 @@ def bind_to_module(*nodes: fabll.Node) -> fabll.Module:
 
     harness = _Harness()
     for idx, node in enumerate(nodes):
-        harness.add(node, name=f"node_{idx}")
+        harness.add_child(node, identifier=f"node_{idx}")
     return harness
 
 
