@@ -6693,9 +6693,8 @@ class AbstractEnums(fabll.Node):
     ) -> EnumValue:
         tg = tg or s.tg
         for enum_value in s.get_children(direct_only=True, types=EnumValue, tg=tg):
-            enum_value_bound = EnumValue.bind_instance(instance=enum_value.instance)
-            if enum_value_bound.name == name or enum_value_bound.value == value:
-                return enum_value_bound
+            if enum_value.name == name or enum_value.value == value:
+                return enum_value
         raise ValueError(
             f"Enum member with name {name} or value {value} not found in enum type"
         )

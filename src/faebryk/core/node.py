@@ -1232,57 +1232,6 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
         return result
 
-    @deprecated("refactor callers and remove")
-    def get_tree[C: Node](
-        self,
-        types: type[C] | tuple[type[C], ...],
-        include_root: bool = True,
-        f_filter: Callable[[C], bool] | None = None,
-        sort: bool = True,
-    ) -> Tree[C]:
-        out = self.get_children(
-            direct_only=True,
-            types=types,
-            f_filter=f_filter,
-            sort=sort,
-        )
-
-        tree = Tree[C](
-            {
-                n: n.get_tree(
-                    types=types,
-                    include_root=False,
-                    f_filter=f_filter,
-                    sort=sort,
-                )
-                for n in out
-            }
-        )
-
-        if include_root:
-            if not isinstance(types, tuple):
-                types = (types,)
-            if self.isinstance(*types):
-                if not f_filter or f_filter(cast(C, self)):
-                    tree = Tree[C]({cast(C, self): tree})
-
-        return tree
-
-    # TODO: get rid of
-    def iter_children_with_trait[TR: Node](
-        self,
-        trait: type[TR],
-        include_self: bool = True,
-    ) -> Iterator[tuple["NodeT", TR]]:
-        for level in self.get_tree(
-            types=Node, include_root=include_self
-        ).iter_by_depth():
-            yield from (
-                (child, child.get_trait(trait))
-                for child in level
-                if child.has_trait(trait)
-            )
-
     @property
     def tg(self) -> fbrk.TypeGraph:
         tg = fbrk.TypeGraph.of_instance(instance_node=self.instance)

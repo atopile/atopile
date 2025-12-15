@@ -91,7 +91,7 @@ def test_performance_graph_get_all(count_power: int, connected: bool, factor: in
                 required_trait=fabll.is_interface,
             )
         with timings.context(f"get_node_children_trait(hue) {name}"):
-            c = n.get_children(
+            n.get_children(
                 direct_only=False,
                 types=fabll.Node,
                 required_trait=F.has_usage_example,
