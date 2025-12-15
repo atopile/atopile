@@ -173,9 +173,7 @@ class has_associated_kicad_pcb_pad(fabll.Node):
         )
 
     def get_pad(self) -> KiCadPCBPad:
-        pad_id = int(
-            self.pad_.get().force_extract_literal().get_values()[0]
-        )
+        pad_id = int(self.pad_.get().force_extract_literal().get_values()[0])
         return ctypes.cast(pad_id, ctypes.py_object).value[0]
 
     def get_transformer(self) -> "PCB_Transformer":
@@ -248,18 +246,35 @@ class has_associated_kicad_library_footprint(fabll.Node):
 
     @property
     def library_name(self) -> str:
-        return self.library_name_.get().force_extract_literal().get_values()[0]
+        lit = self.library_name_.get().try_extract_constrained_literal()
+        if lit is not None:
+            return lit.get_values()[0]
+        return Path(self.kicad_footprint_file_path).parent.name
 
     @property
     def kicad_identifier(self) -> str:
-        return self.kicad_identifier_.get().force_extract_literal().get_values()[0]
+        lit = self.kicad_identifier_.get().try_extract_constrained_literal()
+        if lit is not None:
+            return lit.get_values()[0]
+        return f"{self.library_name}:{Path(self.kicad_footprint_file_path).stem}"
 
     @property
     def kicad_footprint_file_path(self) -> str:
-        return (
-            self.kicad_footprint_file_path_.get()
-            .force_extract_literal()
-            .get_values()[0]
+        """
+        Get the KiCad footprint file path.
+
+        For LCSC-picked parts, this is set directly via setup().
+        For atomic parts, is_atomic_part.get_kicad_library_footprint() must be
+        called first to lazily set up this value.
+        """
+        param = self.kicad_footprint_file_path_.get()
+
+        if lit := param.try_extract_constrained_literal():
+            return lit.get_values()[0]
+
+        raise ValueError(
+            "kicad_footprint_file_path not set. "
+            "For atomic parts, call is_atomic_part.get_kicad_library_footprint() first."
         )
 
     @property
@@ -306,16 +321,22 @@ class has_associated_kicad_library_footprint(fabll.Node):
         )
 
     @classmethod
-    def MakeChild(
+    def MakeChild(  # type: ignore[override]
         cls, library_name: str | None, kicad_footprint_file_path: str
     ) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
-        fp_file = kicad.loads(
-            kicad.footprint.FootprintFile, Path(kicad_footprint_file_path)
+        fp_path = Path(kicad_footprint_file_path)
+
+        out.add_dependant(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                [out, cls.kicad_footprint_file_path_], kicad_footprint_file_path
+            )
         )
-        kicad_identifier, library_name = cls._create_kicad_identifier(
-            fp_file, library_name
-        )
+
+        # Read file to extract pad names and create kicad_identifier
+        fp_file = kicad.loads(kicad.footprint.FootprintFile, fp_path)
+        kicad_identifier, lib_name = cls._create_kicad_identifier(fp_file, library_name)
+
         out.add_dependant(
             F.Literals.Strings.MakeChild_ConstrainToLiteral(
                 [out, cls.kicad_identifier_], kicad_identifier
@@ -329,12 +350,7 @@ class has_associated_kicad_library_footprint(fabll.Node):
         )
         out.add_dependant(
             F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.library_name_], library_name
-            )
-        )
-        out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.kicad_footprint_file_path_], kicad_footprint_file_path
+                [out, cls.library_name_], lib_name
             )
         )
         return out
@@ -344,20 +360,19 @@ class has_associated_kicad_library_footprint(fabll.Node):
         kicad_footprint_file_path: str,
         library_name: str | None,
     ) -> Self:
+        fp_path = Path(kicad_footprint_file_path)
         self.kicad_footprint_file_path_.get().alias_to_literal(
             kicad_footprint_file_path
         )
 
-        fp_file = kicad.loads(
-            kicad.footprint.FootprintFile, Path(kicad_footprint_file_path)
-        )
+        fp_file = kicad.loads(kicad.footprint.FootprintFile, fp_path)
         pad_names = self._extract_pad_names_from_kicad_footprint_file(fp_file)
         self.pad_names_.get().alias_to_literal(*pad_names)
-        kicad_identifier, library_name = self._create_kicad_identifier(
+        kicad_identifier, lib_name = self._create_kicad_identifier(
             fp_file, library_name
         )
         self.kicad_identifier_.get().alias_to_literal(kicad_identifier)
-        self.library_name_.get().alias_to_literal(library_name)
+        self.library_name_.get().alias_to_literal(lib_name)
         return self
 
 

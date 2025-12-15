@@ -81,17 +81,22 @@ def bind_electricals_to_fbrk_nets(
     Groups electricals into buses, get or create a net, and return all the nets
     """
     fbrk_nets: set[F.Net] = set()
-    electricals_filtered: set[F.Electrical] = set()
+    electricals_filtered: set[fabll.Node] = set()
 
-    # filter for electricals that have is_lead -> has_associated_pads trait structure
-    for electrical in F.Electrical.bind_typegraph(tg).get_instances(g=g):
-        if is_lead := electrical.try_get_trait(F.Lead.is_lead):
-            if is_lead.has_trait(F.Lead.has_associated_pads):
-                electricals_filtered.add(electrical)
-            else:
-                logger.warning(
-                    f"Lead of {electrical.get_name()} has no associated pads"
-                )
+    for is_lead_trait in fabll.Traits.get_implementors(
+        F.Lead.is_lead.bind_typegraph(tg), g=g
+    ):
+        interface_node = fabll.Traits.bind(is_lead_trait).get_obj_raw()
+
+        if not interface_node.has_trait(fabll.is_interface):
+            continue
+
+        if is_lead_trait.has_trait(F.Lead.has_associated_pads):
+            electricals_filtered.add(interface_node)
+        else:
+            logger.warning(
+                f"Lead of {interface_node.get_name()} has no associated pads"
+            )
 
     # collect buses in a sorted manner
     buses = sorted(
@@ -116,7 +121,9 @@ def get_named_net(electrical: "F.Electrical") -> "F.Net | None":
     Returnes exactly one named net that this electrical is part of.
     Will raise an error if there's somehow more than one net connected.
     """
-    bus_members = electrical._is_interface.get().get_connected(include_self=True)
+    # Use trait API to get is_interface, works for both F.Electrical and pins
+    is_interface = electrical.get_trait(fabll.is_interface)
+    bus_members = is_interface.get_connected(include_self=True)
     named_nets_on_bus: set[F.has_net_name] = set()
 
     for bus_member in bus_members:

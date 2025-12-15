@@ -251,13 +251,13 @@ class Quantity(fabll.Node):
 
     source = SourceChunk.MakeChild()
     number = Decimal.MakeChild()
-    unit = F.Collections.Pointer()
+    unit = F.Collections.Pointer.MakeChild()
 
     def get_value(self) -> float:
         return self.number.get().get_value()
 
     def get_unit(self) -> str | None:
-        if (unit := self.unit.try_deref()) is None:
+        if (unit := self.unit.get().deref()) is None:
             return None
 
         return unit.cast(Unit).symbol.get().get_single()
@@ -279,7 +279,7 @@ class Quantity(fabll.Node):
                 .create_instance(g=self.g)
                 .setup(source_info=unit_source, symbol=symbol)
             )
-            self.unit.point(unit_node)
+            self.unit.get().point(unit_node)
             _add_anon_child(self, unit_node)
 
         return self
