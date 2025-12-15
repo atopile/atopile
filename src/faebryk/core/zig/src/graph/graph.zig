@@ -769,6 +769,10 @@ pub const GraphView = struct {
         return g.nodes.items.len;
     }
 
+    pub fn get_edge_count(g: *const @This()) usize {
+        return g.edges.count();
+    }
+
     pub fn get_nodes(g: *const @This()) []const NodeReference {
         return g.nodes.items;
     }

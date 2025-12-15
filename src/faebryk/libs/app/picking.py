@@ -20,9 +20,9 @@ logger = logging.getLogger(__name__)
 
 
 class Properties(StrEnum):
-    manufacturer = "Manufacturer" # component manufacturer
-    manufacturer_partno = "Partnumber" # manufacturer part number
-    supplier_partno = "LCSC" # LCSC part number
+    manufacturer = "Manufacturer"  # component manufacturer
+    manufacturer_partno = "Partnumber"  # manufacturer part number
+    supplier_partno = "LCSC"  # LCSC part number
     param_prefix = "PARAM_"
     # used in transformer
     param_wildcard = "PARAM_*"
@@ -46,7 +46,11 @@ def load_part_info_from_pcb(tg: fbrk.TypeGraph):
             continue
         assert F.SerializableMetadata.get_properties(node), "Should load when linking"
 
-        part_props = [Properties.supplier_partno, Properties.manufacturer, Properties.manufacturer_partno]
+        part_props = [
+            Properties.supplier_partno,
+            Properties.manufacturer,
+            Properties.manufacturer_partno,
+        ]
         if not (
             k_pcb_fp_t := fp_t.try_get_trait(
                 F.KiCadFootprints.has_associated_kicad_pcb_footprint
@@ -156,18 +160,17 @@ def save_part_info_to_pcb(app: fabll.Node):
     Save parameters to footprints (by copying them to descriptive properties).
     """
 
-    # TODO FIXME time.sleep() BAD clanker hack to bypass issues with finding instances from the typegraph
-    nodes = [
-        n
-        for n in app.get_children(
-            direct_only=False,
-            types=fabll.Node,
-            include_root=True,
-        )
-        if n.has_trait(F.has_part_picked)
-    ]
+    nodes = app.get_children(
+        direct_only=False,
+        types=fabll.Node,
+        include_root=True,
+        required_trait=F.has_part_picked,
+    )
 
-    # nodes = fabll.Traits.get_implementor_objects(F.has_part_picked.bind_typegraph(app.tg))
+    # TODO we should pick by graph instead of by app?
+    # nodes = fabll.Traits.get_implementor_objects(
+    #    F.has_part_picked.bind_typegraph(app.tg)
+    # )
 
     if len(nodes) == 0:
         logger.warning("No nodes with part picked found")

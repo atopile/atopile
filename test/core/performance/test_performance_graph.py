@@ -11,6 +11,7 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.test.times import Times
+from faebryk.libs.util import indented_container
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +25,8 @@ logger = logging.getLogger(__name__)
     if x
     else "simple",
 )
-def test_performance_graph_get_all(count_power: int, connected: bool):
-    count = int(10 * 2**count_power)
+def test_performance_graph_get_all(count_power: int, connected: bool, factor: int = 10):
+    count = factor * 2**count_power
     timings = Times()
 
     def _simple_resistors():
@@ -57,7 +58,13 @@ def test_performance_graph_get_all(count_power: int, connected: bool):
             left._is_interface.get().connect_to(*interfaces[1:])
 
     with timings.context("get_all_graph_nodes"):
-        num_nodes = len(g.get_nodes())
+        g.get_nodes()
+
+    with timings.context("get_graph_trait(mif)"):
+        fabll.Traits.get_implementors(fabll.is_module.bind_typegraph(tg), g=g)
+
+    with timings.context("get_graph_trait(has_usage_example)"):
+        fabll.Traits.get_implementors(F.has_usage_example.bind_typegraph(tg), g=g)
 
     for n in (app, app.resistors[0].get()):
         name = type(n).__name__[0]
@@ -72,17 +79,35 @@ def test_performance_graph_get_all(count_power: int, connected: bool):
         with timings.context(f"get_node_children_direct {name}"):
             n.get_children(direct_only=True, types=fabll.Node)
 
-        with timings.context(f"get_node_children_trait_filter {name}"):
+        with timings.context(f"get_node_children_direct(mif) {name}"):
             n.get_children(
+                direct_only=True, types=fabll.Node, required_trait=fabll.is_interface
+            )
+
+        with timings.context(f"get_node_children_trait(mif) {name}"):
+            c = n.get_children(
                 direct_only=False,
                 types=fabll.Node,
                 required_trait=fabll.is_interface,
             )
+        with timings.context(f"get_node_children_trait(hue) {name}"):
+            c = n.get_children(
+                direct_only=False,
+                types=fabll.Node,
+                required_trait=F.has_usage_example,
+            )
+        print(f"c: {len(c)}")
 
+    logger.info(f"Resistors: {count}")
     logger.info(f"\n\n{timings!r}")
     per_resistor = timings.get("create_instance") / count
     logger.info(f"----> Avg/resistor: {per_resistor * 1e3:.2f} ms")
-    logger.info(f"----> Nodes generated: {num_nodes}")
+    logger.info(f"----> G: {g}")
+    tg_overview = dict(
+        sorted(tg.get_type_instance_overview(), key=lambda x: x[1], reverse=True)
+    )
+    print(indented_container(tg_overview))
+    print("Total typed nodes:", sum(tg_overview.values()))
 
 
 if __name__ == "__main__":

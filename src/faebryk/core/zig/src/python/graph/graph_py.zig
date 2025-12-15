@@ -1304,10 +1304,11 @@ fn wrap_graphview_destroy() type {
 
 fn graphview_repr(self: ?*py.PyObject) callconv(.C) ?*py.PyObject {
     const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
-    const count = wrapper.data.get_node_count();
+    const node_count = wrapper.data.get_node_count();
+    const edge_count = wrapper.data.get_edge_count();
 
     var buf: [64]u8 = undefined;
-    const str = std.fmt.bufPrintZ(&buf, "GraphView(nodes={d})", .{count}) catch {
+    const str = std.fmt.bufPrintZ(&buf, "GraphView(|V|={d}, |E|={d})", .{ node_count, edge_count }) catch {
         return null;
     };
 
