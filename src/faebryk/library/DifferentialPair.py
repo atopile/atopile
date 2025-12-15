@@ -24,6 +24,17 @@ class DifferentialPair(fabll.Node):
         F.has_single_electric_reference.MakeChild()
     )
 
+    net_name_suffixes = [
+        fabll.Traits.MakeEdge(
+            F.has_net_name_affix.MakeChild(suffix="_P"),
+            owner=[p, "line"]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_affix.MakeChild(suffix="_N"),
+            owner=[n, "line"]
+        ),
+    ]
+
     def terminated(self) -> "DifferentialPair":
         terminated_bus = DifferentialPair.bind_typegraph(self.tg).create_instance(
             g=self.g
@@ -45,13 +56,13 @@ class DifferentialPair(fabll.Node):
 
         return terminated_bus
 
-    def on_obj_set(self):
-        fabll.Traits.create_and_add_instance_to(
-            node=self.p.get(), trait=F.has_net_name_affix
-        ).setup(suffix="_P")
-        fabll.Traits.create_and_add_instance_to(
-            node=self.n.get(), trait=F.has_net_name_affix
-        ).setup(suffix="_N")
+    # def on_obj_set(self):
+    #     fabll.Traits.create_and_add_instance_to(
+    #         node=self.p.get(), trait=F.has_net_name_affix
+    #     ).setup(suffix="_P")
+    #     fabll.Traits.create_and_add_instance_to(
+    #         node=self.n.get(), trait=F.has_net_name_affix
+    #     ).setup(suffix="_N")
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

@@ -48,10 +48,10 @@ TODO:
 
 import math
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from enum import Enum, auto
 from functools import reduce
-from typing import ClassVar, Self
+from typing import ClassVar, Self, cast
 
 import pytest
 from dataclasses_json import DataClassJsonMixin
@@ -146,24 +146,16 @@ class _BasisVector(fabll.Node):
         """
         Create a _BasisVector child field with exponent values set at type level.
         Each basis dimension (ampere, second, meter, etc.) is stored as a Counts child
-        with a composition edge linking it to this _BasisVector node.
+        linked to this _BasisVector node's fields pointer set.
         """
         out = fabll._ChildField(cls)
 
         from faebryk.library.Literals import Counts
 
-        for field_name in BasisVector.__dataclass_fields__.keys():
-            child = Counts.MakeChild(getattr(vector, field_name))
-            # Add as dependant to ensure it's created as a sibling node
+        for f in fields(BasisVector):
+            child = Counts.MakeChild(getattr(vector, f.name))
             out.add_dependant(child)
-            # Create composition edge to make it a child of this _BasisVector
-            out.add_dependant(
-                fabll.MakeEdge(
-                    [out],
-                    [child],
-                    edge=fbrk.EdgeComposition.build(child_identifier=field_name),
-                )
-            )
+            out.add_dependant(F.Collections.Pointer.MakeEdge([out, f.name], [child]))
         return out
 
     def setup(  # type: ignore[invalid-method-override]
@@ -174,31 +166,37 @@ class _BasisVector(fabll.Node):
         g = self.g
         tg = self.tg
 
-        for field_name in BasisVector.__dataclass_fields__.keys():
-            child = Counts.bind_typegraph(tg=tg).create_instance(g=g)
-            child.setup_from_values(values=[getattr(vector, field_name)])
-            _ = fbrk.EdgeComposition.add_child(
-                bound_node=self.instance,
-                child=child.instance.node(),
-                child_identifier=field_name,
+        for f in fields(BasisVector):
+            child = (
+                Counts.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .setup_from_values(values=[getattr(vector, f.name)])
             )
+            getattr(self, f.name).get().point(child)
 
         return self
 
     def extract_vector(self) -> BasisVector:
         from faebryk.library.Literals import Counts
 
-        children_by_name = {
-            name: child
-            for name, child in self.get_direct_children()
-            if name is not None
+        field_counts = {
+            cast(fabll.Node, pointer).get_name(): cast(
+                F.Collections.PointerProtocol, pointer
+            )
+            .deref()
+            .cast(Counts)
+            .get_single()
+            for pointer in self.get_children(
+                direct_only=True,
+                types=F.Collections.Pointer,  # type: ignore[arg-type]
+            )
         }
-        return BasisVector(
-            **{
-                name: children_by_name[name].cast(Counts).get_values()[0]
-                for name in BasisVector.__dataclass_fields__.keys()
-            }
-        )
+        assert field_counts
+        return BasisVector(**field_counts)
+
+
+for f in fields(BasisVector):
+    _BasisVector._add_field(f.name, F.Collections.Pointer.MakeChild())
 
 
 class TestBasisVector:
@@ -244,7 +242,7 @@ class is_base_unit(fabll.Node):
 class is_unit(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
-    _symbol_identifier: ClassVar[str] = "symbol"
+    symbol_ptr = F.Collections.Pointer.MakeChild()
     """
     Symbol or symbols representing the unit. Any member of the set is valid to indicate
     the unit in ato code. Must not conflict with symbols for other units
@@ -256,12 +254,12 @@ class is_unit(fabll.Node):
     of base units only.
     """
 
-    _multiplier_identifier: ClassVar[str] = "multiplier"
+    multiplier_ptr = F.Collections.Pointer.MakeChild()
     """
     Multiplier to apply when converting to SI base units.
     """
 
-    _offset_identifier: ClassVar[str] = "offset"
+    offset_ptr = F.Collections.Pointer.MakeChild()
     """
     Offset to apply when converting to SI base units.
     """
@@ -282,37 +280,21 @@ class is_unit(fabll.Node):
         out.add_dependant(symbol_field)
 
         out.add_dependant(
-            fabll.MakeEdge(
-                [out],
-                [symbol_field],
-                edge=fbrk.EdgeComposition.build(
-                    child_identifier=cls._symbol_identifier
-                ),
-            )
+            F.Collections.Pointer.MakeEdge([out, cls.symbol_ptr], [symbol_field])
         )
 
         multiplier_field = NumericInterval.MakeChild(min=multiplier, max=multiplier)
         out.add_dependant(multiplier_field)
         out.add_dependant(
-            fabll.MakeEdge(
-                [out],
-                [multiplier_field],
-                edge=fbrk.EdgeComposition.build(
-                    child_identifier=cls._multiplier_identifier
-                ),
+            F.Collections.Pointer.MakeEdge(
+                [out, cls.multiplier_ptr], [multiplier_field]
             )
         )
 
         offset_field = NumericInterval.MakeChild(min=offset, max=offset)
         out.add_dependant(offset_field)
         out.add_dependant(
-            fabll.MakeEdge(
-                [out],
-                [offset_field],
-                edge=fbrk.EdgeComposition.build(
-                    child_identifier=cls._offset_identifier
-                ),
-            )
+            F.Collections.Pointer.MakeEdge([out, cls.offset_ptr], [offset_field])
         )
 
         unit_vector_field = _BasisVector.MakeChild(unit_vector)
@@ -328,31 +310,25 @@ class is_unit(fabll.Node):
         return fabll._ChildField(cls)
 
     def _extract_multiplier(self) -> float:
-        multiplier_numeric = fbrk.EdgeComposition.get_child_by_identifier(
-            bound_node=self.instance, child_identifier=self._multiplier_identifier
-        )
+        multiplier_numeric = self.multiplier_ptr.get().deref()
         assert multiplier_numeric is not None
         from faebryk.library.Literals import NumericInterval
 
-        return NumericInterval.bind_instance(multiplier_numeric).get_single()
+        return NumericInterval.bind_instance(multiplier_numeric.instance).get_single()
 
     def _extract_offset(self) -> float:
-        offset_numeric = fbrk.EdgeComposition.get_child_by_identifier(
-            bound_node=self.instance, child_identifier=self._offset_identifier
-        )
+        offset_numeric = self.offset_ptr.get().deref()
         assert offset_numeric is not None
         from faebryk.library.Literals import NumericInterval
 
-        return NumericInterval.bind_instance(offset_numeric).get_single()
+        return NumericInterval.bind_instance(offset_numeric.instance).get_single()
 
     def _extract_symbols(self) -> list[str]:
-        symbol_field = fbrk.EdgeComposition.get_child_by_identifier(
-            bound_node=self.instance, child_identifier=self._symbol_identifier
-        )
+        symbol_field = self.symbol_ptr.get().deref()
         assert symbol_field is not None
         from faebryk.library.Literals import Strings
 
-        return Strings.bind_instance(symbol_field).get_values()
+        return Strings.bind_instance(symbol_field.instance).get_values()
 
     def _extract_basis_vector(self) -> BasisVector:
         return _BasisVector.bind_instance(
@@ -375,31 +351,19 @@ class is_unit(fabll.Node):
             .create_instance(g=g)
             .setup_from_values(*symbols)
         )
-        _ = fbrk.EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=symbol.instance.node(),
-            child_identifier=self._symbol_identifier,
-        )
+        self.symbol_ptr.get().point(symbol)
         multiplier_numeric = (
             NumericInterval.bind_typegraph(tg=tg)
             .create_instance(g=g)
             .setup_from_singleton(value=multiplier)
         )
-        _ = fbrk.EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=multiplier_numeric.instance.node(),
-            child_identifier=self._multiplier_identifier,
-        )
+        self.multiplier_ptr.get().point(multiplier_numeric)
         offset_numeric = (
             NumericInterval.bind_typegraph(tg=tg)
             .create_instance(g=g)
             .setup_from_singleton(value=offset)
         )
-        _ = fbrk.EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=offset_numeric.instance.node(),
-            child_identifier=self._offset_identifier,
-        )
+        self.offset_ptr.get().point(offset_numeric)
         basis_vector_field = (
             _BasisVector.bind_typegraph(tg=tg)
             .create_instance(g=g)
@@ -421,9 +385,7 @@ class is_unit(fabll.Node):
         return fabll.Node.bind_instance(instance=owner)
 
     def get_symbols(self) -> list[str]:
-        lit = fbrk.EdgeComposition.get_child_by_identifier(
-            bound_node=self.instance, child_identifier=self._symbol_identifier
-        )
+        lit = self.symbol_ptr.get().deref().instance
         assert lit is not None
         from faebryk.library.Literals import Strings
 

@@ -1931,3 +1931,21 @@ def test_literals(value: str, literal: F.Parameters.can_be_operand):
     )
     a = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "a"))
     assert literal.as_literal.get().equals(not_none(a.try_extract_aliased_literal()))
+
+
+def test_forward_declaration():
+    _, _, _, _, app_instance = build_instance(
+        """
+        module App:
+            bottom = new Bottom
+
+        module Bottom:
+            signal a
+        """,
+        "App",
+    )
+
+    bottom = _get_child(app_instance, "bottom")
+    _get_child(bottom, "a")
+
+    assert _get_type_name(bottom) == "Bottom"

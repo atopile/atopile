@@ -7,7 +7,6 @@ from typing import Self
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
-from faebryk.core.graph_render import GraphRenderer
 from faebryk.library import _F as F
 
 logger = logging.getLogger(__name__)
@@ -152,21 +151,6 @@ class has_associated_footprint(fabll.Node):
                     f"for {component_node.get_name()}"
                 )
         self.setup(fp_trait)
-        return self
-
-
-# TODO this is a placeholder for now, will be removed
-class GenericFootprint(fabll.Node):
-    """Generic footprint"""
-
-    is_footprint = fabll.Traits.MakeEdge(is_footprint.MakeChild())
-
-    pads_ = F.Collections.PointerSet.MakeChild()
-
-    def setup(self, pads: list[is_pad]):
-        """Setup the footprint with pads"""
-        for pad in pads:
-            self.pads_.get().append(pad)
         return self
 
 

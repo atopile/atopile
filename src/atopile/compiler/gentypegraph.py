@@ -122,10 +122,10 @@ class AddMakeChildAction:
     parent_path: The path to the parent type.
     """
 
-    target_path: FieldPath
-    child_spec: NewChildSpec
+    target_path: FieldPath | fabll.RefPath
     parent_reference: graph.BoundNode | None
     parent_path: FieldPath | None
+    child_spec: NewChildSpec | None = None
     child_field: fabll._ChildField | None = None
 
 

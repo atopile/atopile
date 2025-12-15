@@ -2178,6 +2178,19 @@ class LessThan(fabll.Node):
     left = OperandPointer.MakeChild()
     right = OperandPointer.MakeChild()
 
+    @classmethod
+    def MakeChild_Constrain(
+        cls, lhs: "fabll.RefPath", rhs: "fabll.RefPath"
+    ) -> fabll._ChildField[Any]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.left], lhs))
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.right], rhs))
+        out.add_dependant(
+            fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
+            identifier="constrain",
+        )
+        return out
+
     def setup(
         self,
         left: "F.Parameters.can_be_operand",
@@ -2233,6 +2246,19 @@ class GreaterThan(fabll.Node):
     left = OperandPointer.MakeChild()
     right = OperandPointer.MakeChild()
 
+    @classmethod
+    def MakeChild_Constrain(
+        cls, lhs: "fabll.RefPath", rhs: "fabll.RefPath"
+    ) -> fabll._ChildField[Any]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.left], lhs))
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.right], rhs))
+        out.add_dependant(
+            fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
+            identifier="constrain",
+        )
+        return out
+
     def setup(
         self,
         left: "F.Parameters.can_be_operand",
@@ -2286,6 +2312,19 @@ class LessOrEqual(fabll.Node):
 
     left = OperandPointer.MakeChild()
     right = OperandPointer.MakeChild()
+
+    @classmethod
+    def MakeChild_Constrain(
+        cls, lhs: "fabll.RefPath", rhs: "fabll.RefPath"
+    ) -> fabll._ChildField[Any]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.left], lhs))
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.right], rhs))
+        out.add_dependant(
+            fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
+            identifier="constrain",
+        )
+        return out
 
     def setup(
         self,
@@ -2342,6 +2381,19 @@ class GreaterOrEqual(fabll.Node):
 
     left = OperandPointer.MakeChild()
     right = OperandPointer.MakeChild()
+
+    @classmethod
+    def MakeChild_Constrain(
+        cls, lhs: "fabll.RefPath", rhs: "fabll.RefPath"
+    ) -> fabll._ChildField[Any]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.left], lhs))
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.right], rhs))
+        out.add_dependant(
+            fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
+            identifier="constrain",
+        )
+        return out
 
     def setup(
         self,
