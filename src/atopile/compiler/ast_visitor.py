@@ -1008,6 +1008,7 @@ class ASTVisitor:
                     target_path, new_spec, parent_reference, parent_path
                 )
             case (float() as value, str() as unit):
+                unit_type, multiplier = F.Units.get_unit_type_from_symbol(unit)
                 is_expr = AddMakeChildAction(
                     target_path=FieldPath(
                         segments=(
@@ -1017,8 +1018,8 @@ class ASTVisitor:
                     ),
                     child_field=F.Literals.Numbers.MakeChild_ConstrainToSingleton(
                         param_ref=list(target_path.identifiers()),
-                        value=value,
-                        unit=unit,
+                        value=value * multiplier,
+                        unit=unit_type,
                     ),
                     parent_reference=parent_reference,
                     parent_path=parent_path,
@@ -1046,6 +1047,7 @@ class ASTVisitor:
             ):
                 # TODO: handle different prefix of same units
                 assert start_unit == end_unit
+                unit_type, multiplier = F.Units.get_unit_type_from_symbol(start_unit)
                 is_expr = AddMakeChildAction(
                     target_path=FieldPath(
                         segments=(
@@ -1055,9 +1057,9 @@ class ASTVisitor:
                     ),
                     child_field=F.Literals.Numbers.MakeChild_ConstrainToSubsetLiteral(
                         param_ref=list(target_path.identifiers()),
-                        min=start_value,
-                        max=end_value,
-                        unit=start_unit,
+                        min=start_value * multiplier,
+                        max=end_value * multiplier,
+                        unit=unit_type,
                     ),
                     parent_reference=parent_reference,
                     parent_path=parent_path,
@@ -1080,8 +1082,9 @@ class ASTVisitor:
                 child_field = F.Literals.Strings.MakeChild(value)
                 return [child_field, "can_be_operand"]
             case (float() as value, str() as unit):
+                unit_type, multiplier = F.Units.get_unit_type_from_symbol(unit)
                 child_field = F.Literals.Numbers.MakeChild(
-                    min=value, max=value, unit=unit
+                    min=value * multiplier, max=value * multiplier, unit=unit_type
                 )
                 return [child_field, "can_be_operand"]
             case (
@@ -1089,10 +1092,11 @@ class ASTVisitor:
                 (float() as end_value, str() as end_unit),
             ):
                 assert start_unit == end_unit
+                unit_type, multiplier = F.Units.get_unit_type_from_symbol(start_unit)
                 child_field = F.Literals.Numbers.MakeChild(
-                    min=start_value,
-                    max=end_value,
-                    unit=start_unit,
+                    min=start_value * multiplier,
+                    max=end_value * multiplier,
+                    unit=unit_type,
                 )
                 return [child_field, "can_be_operand"]
 

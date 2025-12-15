@@ -728,6 +728,44 @@ def decode_symbol(g: graph.GraphView, tg: fbrk.TypeGraph, symbol: str) -> is_uni
     raise UnitNotFoundError(symbol)
 
 
+def get_unit_type_from_symbol(symbol: str) -> tuple[type[fabll.Node], float]:
+    """Return the unit Node class and prefix multiplier for a given symbol.
+
+    Returns:
+        tuple: (unit_type, multiplier) where multiplier is 1.0 for no prefix,
+               or the SI prefix multiplier if a prefix is present.
+    """
+
+    # 1. Try exact match first
+    for registry, symbols in _UNIT_SYMBOLS.items():
+        if symbol in symbols:
+            try:
+                return (globals()[registry.name], 1.0)
+            except KeyError as exc:  # pragma: no cover - defensive fallback
+                raise UnitNotFoundError(symbol) from exc
+
+    # 2. Try prefix + base unit parsing
+    # Sort all base unit symbols by length (longest first) to avoid false matches
+    all_base_symbols = []
+    for registry, symbols in _UNIT_SYMBOLS.items():
+        for base_symbol in symbols:
+            all_base_symbols.append((base_symbol, registry))
+    all_base_symbols.sort(key=lambda x: len(x[0]), reverse=True)
+
+    # Check if symbol ends with any base unit symbol
+    for base_symbol, registry in all_base_symbols:
+        if symbol.endswith(base_symbol):
+            prefix = symbol[: -len(base_symbol)]
+            if prefix and prefix in is_si_prefixed_unit.SI_PREFIXES:
+                try:
+                    multiplier = is_si_prefixed_unit.SI_PREFIXES[prefix]
+                    return (globals()[registry.name], multiplier)
+                except KeyError as exc:  # pragma: no cover - defensive fallback
+                    raise UnitNotFoundError(symbol) from exc
+
+    raise UnitNotFoundError(symbol)
+
+
 class _UnitRegistry(Enum):
     # TODO: check all `is_unit`s in design for symbol conflicts
 
