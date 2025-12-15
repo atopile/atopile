@@ -22,13 +22,30 @@ class has_net_name_affix(fabll.Node):
     required_prefix_ = F.Parameters.StringParameter.MakeChild()
     required_suffix_ = F.Parameters.StringParameter.MakeChild()
 
+    @classmethod
+    def MakeChild(cls, prefix: str | None = None, suffix: str | None = None) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        if prefix:
+            out.add_dependant(F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                [out, cls.required_prefix_], prefix)
+            )
+        if suffix:
+            out.add_dependant(F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                [out, cls.required_suffix_], suffix)
+            )
+        return out
+
     @property
     def prefix(self) -> F.Literals.Strings | None:
-        return self.required_prefix_.get().try_extract_constrained_literal()
+        if prefix := self.required_prefix_.get().try_extract_constrained_literal():
+            return prefix.get_values()[0]
+        return None
 
     @property
     def suffix(self) -> F.Literals.Strings | None:
-        return self.required_suffix_.get().try_extract_constrained_literal()
+        if suffix := self.required_suffix_.get().try_extract_constrained_literal():
+            return suffix.get_values()[0]
+        return None
 
     def setup(self, prefix: str | None = None, suffix: str | None = None) -> Self:
         if prefix is not None:

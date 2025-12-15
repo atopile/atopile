@@ -23,14 +23,16 @@ class RS485HalfDuplex(fabll.Node):
 
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    def on_obj_set(self):
-        fabll.Traits.create_and_add_instance_to(
-            node=self.diff_pair.get().p.get(), trait=F.has_net_name_affix
-        ).setup(suffix="_A")
-
-        fabll.Traits.create_and_add_instance_to(
-            node=self.diff_pair.get().n.get(), trait=F.has_net_name_affix
-        ).setup(suffix="_B")
+    net_name_affixes = [
+        fabll.Traits.MakeEdge(
+            F.has_net_name_affix.MakeChild(suffix="_A"),
+            owner=[diff_pair, "p", "line"]
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_affix.MakeChild(suffix="_B"),
+            owner=[diff_pair, "n", "line"]
+        ),
+    ]
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(
