@@ -3021,7 +3021,7 @@ class Numbers(fabll.Node):
         param_ref: fabll.RefPath,
         min: float,
         max: float,
-        unit: type[fabll.NodeT],
+        unit: type[fabll.NodeT] | str,
     ) -> fabll._ChildField["F.Expressions.IsSubset"]:
         from faebryk.library.Expressions import IsSubset
 
@@ -6722,10 +6722,11 @@ class AbstractEnums(fabll.Node):
     @staticmethod
     def get_enum_value(
         s: fabll.Node,
-        tg: fbrk.TypeGraph,  # TODO: do we need to pass in tg
+        tg: fbrk.TypeGraph | None = None,
         name: str | None = None,
         value: str | None = None,
     ) -> EnumValue:
+        tg = tg or s.tg
         for enum_value in s.get_children(direct_only=True, types=EnumValue, tg=tg):
             enum_value_bound = EnumValue.bind_instance(instance=enum_value.instance)
             if enum_value_bound.name == name or enum_value_bound.value == value:

@@ -24,6 +24,7 @@ from atopile.compiler.gentypegraph import (
     ScopeState,
     Symbol,
 )
+from atopile.errors import UserSyntaxError
 from faebryk.core.faebrykpy import (
     EdgeComposition,
     EdgePointer,
@@ -342,10 +343,22 @@ class _TypeContextStack:
         self, type_node: graph.BoundNode, action: AddMakeChildAction
     ) -> None:
         child_spec = action.child_spec
-        symbol = child_spec.symbol
 
         # New fabll way of adding child fields
         if action.child_field is not None:
+            type_name = (
+                action.child_field.nodetype
+                if isinstance(action.child_field.nodetype, str)
+                else action.child_field.nodetype.__name__
+            )
+            if child_spec is not None and child_spec.symbol is not None:
+                symbol = child_spec.symbol
+            else:
+                symbol = Symbol(
+                    name=type_name,
+                    import_ref=ImportRef(name=type_name, path=None),
+                    type_node=type_node,
+                )
             # Add the child field to fabll type attributes
             self._add_child_field(
                 type_node=type_node,
@@ -376,7 +389,9 @@ class _TypeContextStack:
                 fabll.Node(not_none(type_reference)).get_type_name() == "TypeReference"
             )
 
-        else:  # Old way
+        else:
+            assert child_spec is not None, "Child Spec or child field is required"
+            symbol = child_spec.symbol
             if (parent_reference := action.parent_reference) is None and (
                 parent_path := action.parent_path
             ) is not None:
@@ -390,6 +405,9 @@ class _TypeContextStack:
                 child_type_identifier = symbol.name
 
             assert child_type_identifier is not None
+            assert isinstance(action.target_path, FieldPath), (
+                "Target path must be a field path with child spec"
+            )
 
             make_child = self._tg.add_make_child_deferred(
                 type_node=type_node,
@@ -408,6 +426,7 @@ class _TypeContextStack:
             # External imports: defer linking to build phase
             self._state.external_type_refs.append((type_reference, symbol.import_ref))
         else:
+            assert child_spec is not None, "Child spec is required"
             # Local types: link immediately
             if (
                 target := symbol.type_node
@@ -989,21 +1008,12 @@ class ASTVisitor:
                     target_path, new_spec, parent_reference, parent_path
                 )
             case (float() as value, str() as unit):
-                ## fabll method
                 is_expr = AddMakeChildAction(
                     target_path=FieldPath(
                         segments=(
                             *target_path.segments,
                             FieldPath.Segment("is_expression"),
                         )
-                    ),
-                    child_spec=NewChildSpec(
-                        symbol=Symbol(
-                            name="Is",
-                            import_ref=ImportRef(name="Is", path=None),
-                            type_node=node.instance,
-                        ),
-                        type_node=node.instance,
                     ),
                     child_field=F.Literals.Numbers.MakeChild_ConstrainToSingleton(
                         param_ref=list(target_path.identifiers()),
@@ -1022,13 +1032,6 @@ class ASTVisitor:
                             FieldPath.Segment("is_expression"),
                         )
                     ),
-                    child_spec=NewChildSpec(
-                        symbol=Symbol(
-                            name="Is",
-                            import_ref=ImportRef(name="Is", path=None),
-                            type_node=node.instance,
-                        ),
-                    ),
                     child_field=F.Literals.Strings.MakeChild_ConstrainToLiteralSubset(
                         list(target_path.identifiers()),
                         value,
@@ -1037,11 +1040,161 @@ class ASTVisitor:
                     parent_path=parent_path,
                 )
                 return is_expr
+            case (
+                (float() as start_value, str() as start_unit),
+                (float() as end_value, str() as end_unit),
+            ):
+                # TODO: handle different prefix of same units
+                assert start_unit == end_unit
+                is_expr = AddMakeChildAction(
+                    target_path=FieldPath(
+                        segments=(
+                            *target_path.segments,
+                            FieldPath.Segment("is_subset_expression"),
+                        )
+                    ),
+                    child_field=F.Literals.Numbers.MakeChild_ConstrainToSubsetLiteral(
+                        param_ref=list(target_path.identifiers()),
+                        min=start_value,
+                        max=end_value,
+                        unit=start_unit,
+                    ),
+                    parent_reference=parent_reference,
+                    parent_path=parent_path,
+                )
+                return is_expr
             case _:
                 raise NotImplementedError(f"Unhandled assignable type: {assignable}")
 
+    # TODO: implement recursion until arrival at atomic
+    def to_expression_tree(self, node: AST.is_arithmetic) -> fabll.RefPath:
+        cbo_path: fabll.RefPath | None = None
+
+        assignable = self.visit(fabll.Traits(node).get_obj_raw())
+
+        match assignable:
+            case FieldPath() as field_path:
+                cbo_path = [*field_path.identifiers(), "can_be_operand"]
+                return cbo_path
+            case str() as value:
+                child_field = F.Literals.Strings.MakeChild(value)
+                return [child_field, "can_be_operand"]
+            case (float() as value, str() as unit):
+                child_field = F.Literals.Numbers.MakeChild(
+                    min=value, max=value, unit=unit
+                )
+                return [child_field, "can_be_operand"]
+            case (
+                (float() as start_value, str() as start_unit),
+                (float() as end_value, str() as end_unit),
+            ):
+                assert start_unit == end_unit
+                child_field = F.Literals.Numbers.MakeChild(
+                    min=start_value,
+                    max=end_value,
+                    unit=start_unit,
+                )
+                return [child_field, "can_be_operand"]
+
+        raise DslException(
+            f"Unknown arithmetic: {fabll.Traits(node).get_obj_raw().get_type_name()}"
+        )
+
+    def visit_AssertStmt(self, node: AST.AssertStmt):
+        expr = None
+        comparison_expression = node.get_comparison()
+        comparison_clauses = comparison_expression.get_comparison_clauses()
+
+        lhs_refpath = self.to_expression_tree(comparison_expression.get_lhs())
+        rhs_refpath = self.to_expression_tree(list(comparison_clauses)[0].get_rhs())
+
+        if len(list(comparison_clauses)) != 1:
+            raise UserSyntaxError(
+                "Assert statement must have exactly one comparison clause (operator)"
+            )
+        # for clause in comparison_clauses:
+        clause = list(comparison_clauses)[0]
+        operator = clause.get_operator()
+
+        if operator == ">":
+            expr = F.Expressions.GreaterThan.MakeChild_Constrain(
+                lhs_refpath, rhs_refpath
+            )
+        elif operator == ">=":
+            expr = F.Expressions.GreaterOrEqual.MakeChild_Constrain(
+                lhs_refpath, rhs_refpath
+            )
+        elif operator == "<":
+            expr = F.Expressions.LessThan.MakeChild_Constrain(lhs_refpath, rhs_refpath)
+        elif operator == "<=":
+            expr = F.Expressions.LessOrEqual.MakeChild_Constrain(
+                lhs_refpath, rhs_refpath
+            )
+        elif operator == "within":
+            expr = F.Expressions.IsSubset.MakeChild_Constrain(lhs_refpath, rhs_refpath)
+        elif operator == "is":
+            expr = F.Expressions.Is.MakeChild_Constrain([lhs_refpath, rhs_refpath])
+        else:
+            raise DslException(f"Unknown comparison operator: {operator}")
+
+        if expr is not None:
+            # Add childfields from expression tree as dependant to expression
+            for seg in lhs_refpath:
+                if isinstance(seg, fabll._ChildField):
+                    expr.add_dependant(seg, identifier="lhs", before=True)
+            for seg in rhs_refpath:
+                if isinstance(seg, fabll._ChildField):
+                    expr.add_dependant(seg, identifier="rhs", before=True)
+            return [
+                AddMakeChildAction(
+                    target_path=lhs_refpath,
+                    child_spec=None,
+                    parent_reference=None,
+                    parent_path=None,
+                    child_field=expr,
+                )
+            ]
+        return NoOpAction()
+
     def visit_Quantity(self, node: AST.Quantity) -> _Quantity:
         return (node.get_value(), node.get_unit() or F.Units.DIMENSIONLESS_SYMBOL)
+
+    def visit_BoundedQuantity(
+        self, node: AST.BoundedQuantity
+    ) -> tuple[_Quantity, _Quantity]:
+        return (
+            (
+                node.start.get().get_value(),
+                node.start.get().get_unit() or F.Units.DIMENSIONLESS_SYMBOL,
+            ),
+            (
+                node.end.get().get_value(),
+                node.end.get().get_unit() or F.Units.DIMENSIONLESS_SYMBOL,
+            ),
+        )
+
+    def visit_BilateralQuantity(
+        self, node: AST.BilateralQuantity
+    ) -> tuple[_Quantity, _Quantity]:
+        assert node.tolerance.get().get_unit() == "%" or (
+            node.quantity.get().get_unit() != node.tolerance.get().get_unit()
+        )
+        node_quantity_value = node.quantity.get().get_value()
+        node_tolerance_value = node.tolerance.get().get_value()
+        node_quantity_unit = node.quantity.get().get_unit()
+
+        if (node.tolerance.get().get_unit()) == "%":
+            tolerance_value = node_tolerance_value / 100
+            start_value = node_quantity_value * (1 - tolerance_value)
+            end_value = node_quantity_value * (1 + tolerance_value)
+        else:
+            start_value = node_quantity_value - node_tolerance_value
+            end_value = node_quantity_value + node_tolerance_value
+
+        return (
+            (start_value, node_quantity_unit or F.Units.DIMENSIONLESS_SYMBOL),
+            (end_value, node_quantity_unit or F.Units.DIMENSIONLESS_SYMBOL),
+        )
 
     def visit_NewExpression(self, node: AST.NewExpression):
         type_name = node.get_type_ref_name()

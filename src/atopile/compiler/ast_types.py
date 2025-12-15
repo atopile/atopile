@@ -257,7 +257,7 @@ class Quantity(fabll.Node):
         return self.number.get().get_value()
 
     def get_unit(self) -> str | None:
-        if (unit := self.unit.get().deref()) is None:
+        if (unit := self.unit.get().try_deref()) is None:
             return None
 
         return unit.cast(Unit).symbol.get().get_single()
@@ -352,9 +352,7 @@ class ComparisonClause(fabll.Node):
         IS = "is"
 
     source = SourceChunk.MakeChild()
-    operator = F.Literals.EnumsFactory(ComparisonOperator).MakeChild(
-        *ComparisonOperator.__members__.values()
-    )
+    operator = F.Parameters.EnumParameter.MakeChild(enum_t=ComparisonOperator)
     rhs = F.Collections.Pointer.MakeChild()
 
     def setup(  # type: ignore[invalid-method-override]
@@ -362,7 +360,7 @@ class ComparisonClause(fabll.Node):
     ) -> Self:
         operator_ = self.ComparisonOperator(operator)
         self.source.get().setup(source_info=source_info)
-        self.operator.get().setup(operator_)
+        self.operator.get().alias_to_literal(operator_)
         rhs_node = fabll.Traits(rhs).get_obj_raw()
         self.rhs.get().point(rhs_node)
         _add_anon_child(self, rhs_node)
@@ -370,6 +368,9 @@ class ComparisonClause(fabll.Node):
 
     def get_rhs(self) -> is_arithmetic:
         return self.rhs.get().deref().get_trait(is_arithmetic)
+
+    def get_operator(self) -> str | None:
+        return self.operator.get().force_extract_literal().get_single()
 
 
 class ComparisonExpression(fabll.Node):
@@ -395,6 +396,12 @@ class ComparisonExpression(fabll.Node):
 
     def get_lhs(self) -> is_arithmetic:
         return self.lhs.get().deref().get_trait(is_arithmetic)
+
+    def get_comparison_clauses(self) -> Iterable[ComparisonClause]:
+        return [
+            clause.cast(t=ComparisonClause, check=True)
+            for clause in self.rhs_clauses.get().as_list()
+        ]
 
 
 class BilateralQuantity(fabll.Node):
@@ -1078,7 +1085,7 @@ class AssertStmt(fabll.Node):
         return self
 
     def get_comparison(self) -> "ComparisonExpression":
-        return cast_assert(ComparisonExpression, self.comparison.get().deref())
+        return self.comparison.get().deref().cast(t=ComparisonExpression, check=True)
 
 
 class DeclarationStmt(fabll.Node):

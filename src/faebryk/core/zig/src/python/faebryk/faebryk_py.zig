@@ -5692,6 +5692,16 @@ fn wrap_typegraph_ensure_child_reference() type {
 
             var failure: ?faebryk.typegraph.TypeGraph.PathResolutionFailure = null;
 
+            // Extract string identifiers from traversals for error reporting
+            var path_strings = std.ArrayList([]const u8).init(std.heap.c_allocator);
+            defer path_strings.deinit();
+            for (traversals.items) |t| {
+                path_strings.append(t.identifier) catch {
+                    py.PyErr_SetString(py.PyExc_MemoryError, "failed to build path strings");
+                    return null;
+                };
+            }
+
             const reference = faebryk.typegraph.TypeGraph.ensure_path_reference_mountaware(
                 wrapper.data,
                 kwarg_obj.type_node.*,
@@ -5699,10 +5709,15 @@ fn wrap_typegraph_ensure_child_reference() type {
                 py.PyObject_IsTrue(kwarg_obj.validate) == 1,
                 &failure,
             ) catch |err| {
-                switch (err) {
-                    error.EmptyPath, error.ChildNotFound => py.PyErr_SetString(py.PyExc_ValueError, "path cannot be empty or invalid"),
-                    else => py.PyErr_SetString(py.PyExc_ValueError, "failed to create reference"),
-                }
+                raise_typegraph_path_exception(
+                    err,
+                    failure,
+                    path_strings.items,
+                    .{
+                        .fallback = "path resolution failed",
+                        .unresolved = "path contains unresolved type reference",
+                    },
+                );
                 return null;
             };
 

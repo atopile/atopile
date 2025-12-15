@@ -202,9 +202,11 @@ class is_parameter_operatable(fabll.Node):
         return None
 
     def force_extract_literal[T: "fabll.NodeT" = "Literals.is_literal"](
-        self, lit_type: type[T] | None = None
+        self,
+        lit_type: type[T] | None = None,
+        pred_type: type[fabll.NodeT] | None = None,
     ) -> T:
-        lit = self.try_get_constrained_literal(lit_type=lit_type)
+        lit = self.try_get_constrained_literal(lit_type=lit_type, pred_type=pred_type)
         if lit is None:
             raise ParameterIsNotConstrainedToLiteral(parameter=self)
         return lit
@@ -717,17 +719,37 @@ class NumericParameter(fabll.Node):
         return out
 
     def try_extract_aliased_literal(self) -> "Literals.Numbers | None":
+        from faebryk.library.Expressions import Is
         from faebryk.library.Literals import Numbers
 
         return self.is_parameter_operatable.get().try_get_constrained_literal(
-            lit_type=Numbers
+            lit_type=Numbers, pred_type=Is
         )
 
     def force_extract_literal(self) -> "Literals.Numbers":
+        from faebryk.library.Expressions import Is
         from faebryk.library.Literals import Numbers
 
         return self.is_parameter_operatable.get().force_extract_literal(
-            lit_type=Numbers
+            lit_type=Numbers,
+            pred_type=Is,
+        )
+
+    def try_extract_aliased_literal_subset(self) -> "Literals.Numbers | None":
+        from faebryk.library.Expressions import IsSubset
+        from faebryk.library.Literals import Numbers
+
+        return self.is_parameter_operatable.get().try_get_constrained_literal(
+            lit_type=Numbers, pred_type=IsSubset
+        )
+
+    def force_extract_literal_subset(self) -> "Literals.Numbers":
+        from faebryk.library.Expressions import IsSubset
+        from faebryk.library.Literals import Numbers
+
+        return self.is_parameter_operatable.get().force_extract_literal(
+            lit_type=Numbers,
+            pred_type=IsSubset,
         )
 
     def domain_set(

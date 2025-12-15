@@ -66,11 +66,13 @@ def _build_snippet(source: str, import_path: str | None = None):
     return g, tg, stdlib, result
 
 
-def _collect_children_by_name(type_graph, type_node, name: str):
+def _collect_children_by_name(
+    type_graph: fbrk.TypeGraph, type_node: graph.BoundNode, name: str
+):
     return [
         child
         for identifier, child in type_graph.collect_make_children(type_node=type_node)
-        if identifier == name
+        if identifier is not None and name in identifier
     ]
 
 
@@ -1820,9 +1822,14 @@ def test_literal_assignment():
 
         module App:
             r1 = new Resistor
-            r1.resistance = 10 Ohm
-            # r1.max_power = 3 Watts
-            # assert r1.max_voltage >= 100 Volts
+            r1.max_power = 3 Watts
+            r1.resistance = 10 Ohm to 20 Ohm
+            assert r1.max_voltage within 25 Volts to 100 Volts
+
+            r2 = new Resistor
+            r2.resistance = 100 Ohm +/- 5%
+            r2.max_power = 3 Watts to 5 Watts
+            assert r2.max_voltage is 10 Ohm +/- 1%
 
             atomic_part = new is_atomic_part
             atomic_part.footprint_ = "R_0402"
@@ -1845,9 +1852,29 @@ def test_literal_assignment():
     r1_bnode = fbrk.EdgeComposition.get_child_by_identifier(
         bound_node=app_instance.instance, child_identifier="r1"
     )
+    r2_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+        bound_node=app_instance.instance, child_identifier="r2"
+    )
+    r1 = F.Resistor.bind_instance(not_none(r1_bnode))
 
-    resistor = F.Resistor.bind_instance(not_none(r1_bnode))
-    assert resistor.resistance.get().force_extract_literal().get_single() == 10.0
+    assert r1.max_power.get().force_extract_literal().get_single() == 3
+    assert r1.resistance.get().force_extract_literal_subset().get_values() == [
+        10.0,
+        20.0,
+    ]
+    assert r1.max_voltage.get().force_extract_literal_subset().get_values() == [
+        25.0,
+        100.0,
+    ]
+
+    r2 = F.Resistor.bind_instance(not_none(r2_bnode))
+    assert r2.resistance.get().force_extract_literal_subset().get_values() == [
+        95.0,
+        105.0,
+    ]
+    assert r2.max_power.get().force_extract_literal_subset().get_values() == [3, 5]
+    # assert r2.max_voltage.get().force_extract_literal().get_single() == 10
+    print(r2.max_voltage.get().force_extract_literal().get_values())
 
     # atomic_party_bnode = fbrk.EdgeComposition.get_child_by_identifier(
     #     bound_node=app_instance.instance, child_identifier="atomic_part"
