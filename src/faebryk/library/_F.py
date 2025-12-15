@@ -47,10 +47,10 @@ from faebryk.library.is_pickable_by_supplier_id import is_pickable_by_supplier_i
 from faebryk.library.is_pickable_by_type import is_pickable_by_type
 import faebryk.library.Units as Units
 import faebryk.library.KiCadFootprints as KiCadFootprints
-from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.implements_design_check import implements_design_check
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
+from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.PCB import PCB
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Filter import Filter
@@ -146,10 +146,10 @@ __all__ = [
     "is_pickable_by_type",
     "Units",
     "KiCadFootprints",
-    "is_atomic_part",
     "implements_design_check",
     "Electrical",
     "has_simple_value_representation",
+    "is_atomic_part",
     "PCB",
     "ElectricPower",
     "Filter",

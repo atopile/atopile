@@ -1710,7 +1710,7 @@ class TestTraitStatements:
             )
 
     def test_trait_with_template_args(self):
-        """Trait with template arguments parses correctly."""
+        """Trait with template arguments creates trait and constraint children."""
         _, tg, _, result = _build_snippet(
             """
             #pragma experiment("TRAITS")
@@ -1727,15 +1727,14 @@ class TestTraitStatements:
             (identifier, child)
             for identifier, child in tg.collect_make_children(type_node=comp_type)
         ]
-        trait_children = [
-            (identifier, child)
-            for identifier, child in make_children
-            if identifier and "is_atomic_part" in identifier
-        ]
-        assert len(trait_children) == 1
+        identifiers = [id for id, _ in make_children if id]
+
+        assert "_trait_is_atomic_part" in identifiers
+        constraint_ids = [id for id in identifiers if id.startswith("constrain_")]
+        assert len(constraint_ids) == 4
 
     def test_trait_with_multiple_template_args(self):
-        """Trait with all template arguments."""
+        """Trait with all template arguments including optional model."""
         _, tg, _, result = _build_snippet(
             """
             #pragma experiment("TRAITS")
@@ -1748,12 +1747,61 @@ class TestTraitStatements:
 
         comp_type = result.state.type_roots["FullPart"]
         make_children = list(tg.collect_make_children(type_node=comp_type))
-        trait_children = [
-            (identifier, child)
-            for identifier, child in make_children
-            if identifier and "is_atomic_part" in identifier
-        ]
-        assert len(trait_children) == 1
+        identifiers = [id for id, _ in make_children if id]
+
+        assert "_trait_is_atomic_part" in identifiers
+        constraint_ids = [id for id in identifiers if id.startswith("constrain_")]
+        assert len(constraint_ids) == 5
+
+    def test_trait_template_args_create_constraints(self):
+        """Template args create constraint child fields on the type."""
+        _, tg, _, result = _build_snippet(
+            """
+            #pragma experiment("TRAITS")
+            import is_atomic_part
+
+            component ConstrainedPart:
+                trait is_atomic_part<manufacturer="ACME", partnumber="12345", footprint="fp.mod", symbol="sym.sym">
+            """  # noqa: E501
+        )
+
+        comp_type = result.state.type_roots["ConstrainedPart"]
+        make_children = list(tg.collect_make_children(type_node=comp_type))
+        identifiers = [id for id, _ in make_children if id]
+
+        assert "_trait_is_atomic_part" in identifiers
+        constraint_ids = [id for id in identifiers if id.startswith("constrain_")]
+        assert len(constraint_ids) == 4
+
+    def test_trait_template_args_literal_values(self):
+        """Template args constrain trait parameters to expected literal values."""
+        import faebryk.core.node as fabll
+        import faebryk.library._F as F
+        from atopile.compiler.build import Linker
+
+        g, tg, stdlib, result = _build_snippet(
+            """
+            #pragma experiment("TRAITS")
+            import is_atomic_part
+
+            component ConstrainedPart:
+                trait is_atomic_part<manufacturer="ACME Corp", partnumber="PN-99", footprint="fp.kicad_mod", symbol="sym.kicad_sym">
+            """  # noqa: E501
+        )
+
+        linker = Linker(None, stdlib, tg)
+        linker.link_imports(g, result.state)
+
+        comp_type = result.state.type_roots["ConstrainedPart"]
+        comp_instance = tg.instantiate_node(type_node=comp_type, attributes={})
+
+        part = fabll.Node.bind_instance(comp_instance)
+        trait = part.get_trait(F.is_atomic_part)
+
+        assert trait.get_manufacturer() == "ACME Corp"
+        assert trait.get_partnumber() == "PN-99"
+        assert trait.get_footprint() == "fp.kicad_mod"
+        assert trait.get_symbol() == "sym.kicad_sym"
 
 
 def test_literal_assignment():

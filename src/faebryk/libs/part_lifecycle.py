@@ -444,19 +444,14 @@ class PartLifecycle:
             try:
                 lib = _find_footprint([fp_lib_path], lib_id)
             except* (LibNotInTable, FileNotFoundError):
-                from atopile.compiler.front_end import from_dsl  # TODO: F.is_from_dsl
-
-                if (
-                    (is_atomic_part_ := component.try_get_trait(F.is_atomic_part))
-                    is not None
-                    and (from_dsl_ := is_atomic_part_.try_get_trait(from_dsl))
-                    is not None
-                    and from_dsl_.src_file is not None
-                ):
+                # For atomic parts, get the source directory from the trait
+                is_atomic_part_ = component.try_get_trait(F.is_atomic_part)
+                if is_atomic_part_ is not None:
                     # insert footprint on first use from dependency package
                     try:
-                        self._insert_fp_lib(lib_id, from_dsl_.src_file.parent)
-                    except FileNotFoundError:
+                        source_dir = is_atomic_part_.get_source_dir()
+                        self._insert_fp_lib(lib_id, source_dir)
+                    except (FileNotFoundError, ValueError):
                         raise
 
                     lib = _find_footprint([fp_lib_path], lib_id)
@@ -551,12 +546,17 @@ class PartLifecycle:
             f_fp = associated_fp_trait.get_footprint()
             component = fabll.Traits(associated_fp_trait).get_obj_raw()
 
+            # For atomic parts, ensure kicad library footprint is set up (lazy init)
+            if atomic_part := component.try_get_trait(F.is_atomic_part):
+                k_lib_file_fp_t = atomic_part.get_kicad_library_footprint()
+            else:
+                k_lib_file_fp_t = f_fp.try_get_trait(
+                    F.KiCadFootprints.has_associated_kicad_library_footprint
+                )
+
             # At this point, all footprints MUST have a KiCAD identifier
             k_pcb_fp_t = f_fp.try_get_trait(
                 F.KiCadFootprints.has_associated_kicad_pcb_footprint
-            )
-            k_lib_file_fp_t = f_fp.try_get_trait(
-                F.KiCadFootprints.has_associated_kicad_library_footprint
             )
             if k_pcb_fp_t:
                 fp_id = k_pcb_fp_t.kicad_identifier
@@ -660,9 +660,7 @@ class PartLifecycle:
                     # First spec goes into the standard "Value" field
                     first_spec = specs[0]
                     first_value = first_spec.get_value()
-                    Property.set_property(
-                        pcb_fp, _prop_factory("Value", first_value)
-                    )
+                    Property.set_property(pcb_fp, _prop_factory("Value", first_value))
 
                     # Additional specs become separate properties
                     for spec in specs:
@@ -678,7 +676,10 @@ class PartLifecycle:
                 Property.set_property(pcb_fp, _prop_factory("Value", ""))
 
             Property.set_property(
-                pcb_fp, _prop_factory("atopile_address", component.get_full_name(include_uuid=False))
+                pcb_fp,
+                _prop_factory(
+                    "atopile_address", component.get_full_name(include_uuid=False)
+                ),
             )
             if sub_pcb_t := component.try_get_trait(in_sub_pcb):
                 subaddresses = (

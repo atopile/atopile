@@ -181,9 +181,7 @@ def AbstractSequence(
             return fabll._EdgeField(
                 seq_ref,
                 elem_ref,
-                edge=type(cls)._edge_factory(
-                    identifier=cls._elem_identifier, order=order
-                ),
+                edge=cls._edge_factory(identifier=cls._elem_identifier, order=order),
             )
 
         @classmethod

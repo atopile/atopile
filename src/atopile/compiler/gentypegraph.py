@@ -4,6 +4,7 @@ Shared data structures and helpers for the TypeGraph-generation IR.
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import Any
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -142,6 +143,7 @@ class AddTraitAction:
     trait_import_ref: "ImportRef | None"
     target_reference: graph.BoundNode | None
     template_args: dict[str, str | bool | float] | None = None
+    trait_fabll_type: Any | None = None
 
 
 @dataclass(frozen=True)

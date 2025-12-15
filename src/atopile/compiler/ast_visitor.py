@@ -62,6 +62,10 @@ STDLIB_ALLOWLIST: set[type[fabll.Node]] = (
     # Traits
     {
         F.has_explicit_part,
+        F.has_designator_prefix,
+        F.has_part_picked,
+        F.has_datasheet,
+        F.is_auto_generated,
         F.has_net_name_suggestion,
         F.has_package_requirements,
         F.is_pickable,
@@ -93,6 +97,11 @@ class CompilerException(Exception):
 
 class is_ato_block(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    source_dir = F.Parameters.StringParameter.MakeChild()
+
+    def get_source_dir(self) -> str:
+        """Get the source directory path where the .ato file is located."""
+        return self.source_dir.get().force_extract_literal().get_values()[0]
 
 
 class is_ato_module(fabll.Node):
@@ -231,6 +240,38 @@ class _TypeContextStack:
         if not self._fabll_type_stack:
             raise DslException("fabll type context is not available")
         return self._fabll_type_stack[-1]
+
+    def _create_trait_field(
+        self,
+        trait_type: type[fabll.Node],
+        template_args: dict[str, str | bool | float] | None,
+    ) -> fabll._ChildField:
+        """Create a trait field, using MakeChild with template args if available."""
+        if template_args and hasattr(trait_type, "MakeChild"):
+            try:
+                return trait_type.MakeChild(**template_args)
+            except TypeError as e:
+                logger.warning(
+                    f"MakeChild for {trait_type.__name__} failed with template "
+                    f"args: {e}. Falling back to generic _ChildField."
+                )
+
+        # Fallback: create generic _ChildField and constrain string params
+        trait_field = fabll._ChildField(trait_type)
+        if template_args:
+            for param_name, value in template_args.items():
+                if isinstance(value, str):
+                    attr = getattr(trait_type, param_name, None)
+                    if attr is not None:
+                        constraint = F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                            [trait_field, attr], value
+                        )
+                        trait_field.add_dependant(constraint)
+                else:
+                    logger.warning(
+                        f"Template arg {param_name}={value} - non-string unsupported"
+                    )
+        return trait_field
 
     def apply_action(self, action) -> None:
         match action:
@@ -371,9 +412,13 @@ class _TypeContextStack:
                 if symbol is not None
                 else child_spec.type_node
             ) is None:
-                raise DslException(
-                    f"Type `{child_type_identifier}` is not defined in scope"
+                # Get identifier for error message
+                type_id = (
+                    child_spec.type_identifier
+                    or (symbol.name if symbol else None)
+                    or str(action.target_path)
                 )
+                raise DslException(f"Type `{type_id}` is not defined in scope")
 
             fbrk.Linker.link_type_reference(
                 g=self._g, type_reference=type_reference, target_type_node=target
@@ -391,52 +436,58 @@ class _TypeContextStack:
         )
 
     def _add_trait(self, type_node: graph.BoundNode, action: AddTraitAction) -> None:
-        target_reference = action.target_reference or type_node
         trait_identifier = f"_trait_{action.trait_type_identifier}"
 
-        make_child = self._tg.add_make_child_deferred(
-            type_node=type_node,
-            child_type_identifier=action.trait_type_identifier,
-            identifier=trait_identifier,
-            node_attributes=None,
-            mount_reference=target_reference,
-        )
+        if action.trait_fabll_type is not None:
+            trait_type = action.trait_fabll_type
 
-        type_reference = not_none(
-            self._tg.get_make_child_type_reference(make_child=make_child)
-        )
+            # Try calling trait's MakeChild with template args if available
+            trait_field = self._create_trait_field(trait_type, action.template_args)
 
-        if action.trait_import_ref is not None:
-            self._state.external_type_refs.append(
-                (type_reference, action.trait_import_ref)
+            trait_field_with_edge = fabll.Traits.MakeEdge(trait_field)
+            self._add_child_field(
+                type_node=type_node,
+                action=trait_field_with_edge,
+                identifier=trait_identifier,
             )
-        elif action.trait_type_node is not None:
-            fbrk.Linker.link_type_reference(
-                g=self._g,
-                type_reference=type_reference,
-                target_type_node=action.trait_type_node,
-            )
+            tnbtg = fabll.TypeNodeBoundTG(tg=self._tg, t=self.current_fabll())
+            fabll.Node._exec_field(t=tnbtg, field=trait_field_with_edge)
         else:
-            raise DslException(
-                f"Trait `{action.trait_type_identifier}` has no type node or import ref"
+            target_reference = action.target_reference or type_node
+
+            make_child = self._tg.add_make_child_deferred(
+                type_node=type_node,
+                child_type_identifier=action.trait_type_identifier,
+                identifier=trait_identifier,
+                node_attributes=None,
+                mount_reference=target_reference,
             )
 
-        self._tg.add_make_link(
-            type_node=type_node,
-            lhs_reference=target_reference,
-            rhs_reference=make_child,
-            edge_attributes=fbrk.EdgeTrait.build(),
-        )
+            type_reference = not_none(
+                self._tg.get_make_child_type_reference(make_child=make_child)
+            )
 
-        if action.template_args:
-            for param_name, value in action.template_args.items():
-                # TODO: Use fabll MakeChild_ConstrainToLiteral once available
-                # param_ref = [trait_identifier, param_name]
-                # constraint = F.Literals.Strings.MakeChild_ConstrainToLiteral(...)
-                logger.info(
-                    f"Template arg {param_name}={value} for trait "
-                    f"{action.trait_type_identifier} (constraint pending)"
+            if action.trait_import_ref is not None:
+                self._state.external_type_refs.append(
+                    (type_reference, action.trait_import_ref)
                 )
+            elif action.trait_type_node is not None:
+                fbrk.Linker.link_type_reference(
+                    g=self._g,
+                    type_reference=type_reference,
+                    target_type_node=action.trait_type_node,
+                )
+            else:
+                raise DslException(
+                    f"Trait `{action.trait_type_identifier}` has no type node"
+                )
+
+            self._tg.add_make_link(
+                type_node=type_node,
+                lhs_reference=target_reference,
+                rhs_reference=make_child,
+                edge_attributes=fbrk.EdgeTrait.build(),
+            )
 
     def _add_child_field(
         self, type_node: graph.BoundNode, action: fabll._ChildField, identifier: str
@@ -643,11 +694,24 @@ class ASTVisitor:
         if self._scope_stack.is_symbol_defined(module_name):
             raise DslException(f"Symbol `{module_name}` already defined in scope")
 
+        # Get source directory for is_ato_block trait
+        source_dir = str(self._state.file_path.parent) if self._state.file_path else ""
+
+        # Create is_ato_block with source_dir constrained
+        def _make_ato_block_field() -> fabll._ChildField:
+            field = is_ato_block.MakeChild()
+            field.add_dependant(
+                F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                    [field, is_ato_block.source_dir], source_dir
+                )
+            )
+            return field
+
         match node.get_block_type():
             case AST.BlockDefinition.BlockType.MODULE:
 
                 class _Module(fabll.Node):
-                    is_ato_block = fabll.Traits.MakeEdge(is_ato_block.MakeChild())
+                    _is_ato_block = fabll.Traits.MakeEdge(_make_ato_block_field())
                     is_ato_module = fabll.Traits.MakeEdge(is_ato_module.MakeChild())
                     is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
@@ -656,7 +720,7 @@ class ASTVisitor:
             case AST.BlockDefinition.BlockType.COMPONENT:
 
                 class _Component(fabll.Node):
-                    is_ato_block = fabll.Traits.MakeEdge(is_ato_block.MakeChild())
+                    _is_ato_block = fabll.Traits.MakeEdge(_make_ato_block_field())
                     is_ato_component = fabll.Traits.MakeEdge(
                         is_ato_component.MakeChild()
                     )
@@ -727,23 +791,27 @@ class ASTVisitor:
             parent_path=None,
         )
 
-    def _create_pin_type(self, pin_label: str) -> graph.BoundNode:
+    def _create_pin_child_field(self, pin_label: str) -> fabll._ChildField:
+        """
+        Create a pin as an Electrical with is_lead trait attached.
+        Pins are Electrical interfaces that also act as leads for footprint pads.
+        """
         import re
 
         regex = f"^{re.escape(str(pin_label))}$"
 
-        class _Pin(fabll.Node):
-            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
-            _lead = is_lead.MakeChild()
-            _lead_trait = fabll.Traits.MakeEdge(_lead)
-            _pad_attach = can_attach_to_pad_by_name.MakeChild(regex)
-            _lead.add_dependant(fabll.Traits.MakeEdge(_pad_attach, [_lead]))
+        # Start with Electrical's MakeChild
+        pin = F.Electrical.MakeChild()
 
-        type_identifier = self._make_type_identifier(f"__pin_{pin_label}__")
-        _Pin.__name__ = type_identifier
-        _Pin.__qualname__ = type_identifier
+        # Add is_lead trait to the pin (attached to pin itself via [pin])
+        lead = is_lead.MakeChild()
+        pin.add_dependant(fabll.Traits.MakeEdge(lead, [pin]))
 
-        return _Pin.bind_typegraph(self._type_graph).get_or_create_type()
+        # Add can_attach_to_pad_by_name trait to the lead (to match pin label to pad)
+        pad_attach = can_attach_to_pad_by_name.MakeChild(regex)
+        lead.add_dependant(fabll.Traits.MakeEdge(pad_attach, [lead]))
+
+        return pin
 
     def visit_PinDeclaration(self, node: AST.PinDeclaration):
         pin_label = node.get_label()
@@ -765,16 +833,17 @@ class ASTVisitor:
             )
 
         self._scope_stack.add_field(target_path)
-        pin_type = self._create_pin_type(pin_label_str)
+        pin_child_field = self._create_pin_child_field(pin_label_str)
 
         return AddMakeChildAction(
             target_path=target_path,
             child_spec=NewChildSpec(
-                type_identifier=f"__pin_{pin_label_str}__",
-                type_node=pin_type,
+                type_identifier=F.Electrical.__name__,
+                type_node=self._electrical_type,
             ),
             parent_reference=None,
             parent_path=None,
+            child_field=pin_child_field,
         )
 
     def visit_FieldRef(self, node: AST.FieldRef) -> FieldPath:
@@ -1219,10 +1288,13 @@ class ASTVisitor:
                 if value is not None:
                     template_args[name] = value
 
+        trait_fabll_type = self._stdlib_allowlist.get(trait_type_name)
+
         return AddTraitAction(
             trait_type_identifier=trait_type_name,
             trait_type_node=symbol.type_node,
             trait_import_ref=symbol.import_ref,
             target_reference=target_reference,
             template_args=template_args,
+            trait_fabll_type=trait_fabll_type,
         )
