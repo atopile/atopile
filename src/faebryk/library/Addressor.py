@@ -38,9 +38,9 @@ class AbstractAddressor(fabll.Node):
 
     def get_address_lines(self) -> list[F.ElectricLogic]:
         address_lines_pointer = not_none(
-            fbrk.EdgePointer.get_pointed_node_by_identifier(
+            fbrk.EdgeComposition.get_child_by_identifier(
                 bound_node=self.instance,
-                identifier=self._address_lines_identifier,
+                child_identifier=self._address_lines_identifier,
             )
         )
         return [
@@ -97,10 +97,13 @@ def AddressorFactory(address_bits: int) -> type[AbstractAddressor]:
             f"address_line_{i}",
             elec,
         )
-        F.Collections.Pointer.MakeEdge(
-            [ConcreteAddressor._address_lines_identifier], [elec]
+        ConcreteAddressor._add_field(
+            f"address_line_{i}_pointer",
+            F.Collections.Pointer.MakeEdge(
+                [ConcreteAddressor._address_lines_identifier, address_lines_pointer],
+                [elec],
+            ),
         )
-
     ConcreteAddressor._add_field(
         ConcreteAddressor._address_lines_identifier,
         address_lines_pointer,
