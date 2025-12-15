@@ -939,6 +939,37 @@ def test_multiple_local_references():
             )
 
 
+def test_forward_reference():
+    # confirm in-order
+    build_type(
+        """
+        module Child:
+            pass
+
+        module App:
+            child = new Child
+        """
+    )
+
+    # out-of-order
+    _, tg, _, result = build_type(
+        """
+        module App:
+            child = new Child
+
+        module Child:
+            pass
+        """
+    )
+
+    app_type = result.state.type_roots["App"]
+    child_node = _get_make_child(tg, app_type, "child")
+    type_ref = tg.get_make_child_type_reference(make_child=child_node)
+    assert type_ref is not None
+    resolved = fbrk.Linker.get_resolved_type(type_reference=type_ref)
+    assert resolved is not None
+
+
 class TestTypeNamespacing:
     """Tests for .ato type namespacing."""
 
