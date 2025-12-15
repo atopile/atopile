@@ -5,6 +5,7 @@ from pathlib import Path
 from types import ModuleType
 
 from faebryk.libs.util import (
+    ConfigFlag,
     ConfigFlagString,
     FileChangedWatcher,
     debug_perf,
@@ -21,7 +22,9 @@ _thisdir = _thisfile.parent
 _build_dir = _thisdir / "zig-out" / "lib"
 _pyi_dir = _build_dir / "gen"
 
+# TODO change back to Debug, False
 RELEASEMODE = ConfigFlagString("ZIG_RELEASEMODE", default="Debug")
+NORECOMPILE = ConfigFlag("ZIG_NORECOMPILE", default=False)
 
 
 @debug_perf
@@ -106,7 +109,8 @@ def load():
 
 # Fallback to editable build-on-import
 if is_editable_install():
-    compile_zig()
+    if not NORECOMPILE.get():
+        compile_zig()
     pyzig = load()
 
     _load_module(["faebryk", "core", "zig"], pyzig)

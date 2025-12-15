@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-import warnings
-from itertools import pairwise, product
+from itertools import product
 
 import pytest
 
@@ -25,7 +24,7 @@ logger = logging.getLogger(__name__)
     if x
     else "simple",
 )
-def test_performance_graph_get_all(count_power: int = 4, connected: bool = True):
+def test_performance_graph_get_all(count_power: int, connected: bool):
     count = 10 * 2**count_power
     timings = Times()
 
@@ -41,9 +40,12 @@ def test_performance_graph_get_all(count_power: int = 4, connected: bool = True)
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
 
-    with timings.context("bind_type"):
+    with timings.context("fabll stage0"):
         app_type = _simple_resistors().bind_typegraph(tg)
-        F.Resistor.bind_typegraph(tg).create_instance(g=g)  # warm up the typegraph >:)
+        bound_resistor = F.Resistor.bind_typegraph(tg)
+
+    with timings.context("typegraph"):
+        bound_resistor.get_or_create_type()
 
     with timings.context("create_instance"):
         app = app_type.create_instance(g=g)
@@ -51,39 +53,28 @@ def test_performance_graph_get_all(count_power: int = 4, connected: bool = True)
     if connected:
         with timings.context("connect_interfaces"):
             interfaces = [r.get().unnamed[0].get() for r in app.resistors]
-            for left, right in pairwise(interfaces):
-                left._is_interface.get().connect_to(right)
+            left = interfaces[0]
+            left._is_interface.get().connect_to(*interfaces[1:])
 
-    with timings.context("get_all_nodes"):
+    with timings.context("get_all_graph_nodes"):
         num_nodes = len(g.get_nodes())
 
-    # FIXME: remove usage of deprecated get_tree
-    with warnings.catch_warnings():
-        warnings.filterwarnings("default", category=DeprecationWarning)
-        for n in [app, app.resistors[0].get()]:  # type: ignore
-            name = type(n).__name__[0]
-            assert n.has_trait(fabll.is_module)
+    for n in (app, app.resistors[0].get()):
+        name = type(n).__name__[0]
+        assert n.has_trait(fabll.is_module)
 
-            with timings.context(f"get_node_children_all {name}"):
-                n.get_children(direct_only=False, types=fabll.Node)
+        with timings.context(f"get_node_children_all {name}"):
+            n.get_children(direct_only=False, types=fabll.Node)
 
-            with timings.context(f"get_node_children_direct {name}"):
-                n.get_children(direct_only=True, types=fabll.Node)
+        with timings.context(f"get_node_children_direct {name}"):
+            n.get_children(direct_only=True, types=fabll.Node)
 
-            with timings.context(f"get_node_children_trait_filter {name}"):
-                n.get_children(
-                    direct_only=True,
-                    types=fabll.Node,
-                    required_trait=fabll.is_interface,
-                )
-
-            with timings.context(f"get_node_tree {name}"):
-                n.get_tree(types=fabll.Node)
-
-            with timings.context(f"get_node_tree_trait_filter {name}"):
-                n.get_tree(
-                    types=fabll.Node, f_filter=lambda c: c.has_trait(fabll.is_interface)
-                )
+        with timings.context(f"get_node_children_trait_filter {name}"):
+            n.get_children(
+                direct_only=False,
+                types=fabll.Node,
+                required_trait=fabll.is_interface,
+            )
 
     logger.info(f"\n\n{timings!r}")
     per_resistor = timings.get("create_instance") / count

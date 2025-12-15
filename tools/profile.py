@@ -210,5 +210,94 @@ def memray(
             open_in_default_app(report_path)
 
 
+@app.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
+def perf(ctx: typer.Context, report_only: bool = False):
+    """Profile a Python program using perf."""
+    import re
+
+    artifact_dir = Path(__file__).parent.parent / "artifacts" / "perf"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    perf_data_file = artifact_dir / "perf.data"
+    fg_svg_file = artifact_dir / "fg.svg"
+    perf_txt_file = artifact_dir / "perf.txt"
+    perf_zig_txt_file = artifact_dir / "perf_zig.txt"
+    perf_i = artifact_dir / "perf_i.txt"
+
+    if not report_only:
+        subprocess.run(
+            [
+                "perf",
+                "record",
+                *["-F", "9999"],
+                *["--call-graph", "dwarf"],
+                "-g",
+                *["-o", str(perf_data_file)],
+                *ctx.args,
+                "--",
+            ],
+            check=True,
+        )
+
+    zig_dso = "--dsos=pyzig.so"
+
+    print("Generating perf_i.txt...")
+    with open(perf_i, "w") as f:
+        subprocess.run(
+            [
+                "perf",
+                "script",
+                *["-i", str(perf_data_file)],
+            ],
+            check=True,
+            stdout=f,
+        )
+
+    print("Generating flamegraph...")
+    subprocess.run(
+        f"cat {perf_i} | stackcollapse-perf.pl | flamegraph.pl > {fg_svg_file}",
+        check=True,
+        shell=True,
+    )
+
+    # perf report --call-graph graph,0.5,caller --stdio > perf.txt
+    print("Generating perf.txt...")
+    with open(perf_txt_file, "w") as f:
+        subprocess.run(
+            [
+                "perf",
+                "report",
+                *["-i", str(perf_data_file)],
+                *["--call-graph", "graph,0.5,caller"],
+                "--stdio",
+            ],
+            check=True,
+            stdout=f,
+        )
+
+    print("Generating perf_zig.txt...")
+    with open(perf_zig_txt_file, "w") as f:
+        subprocess.run(
+            [
+                "perf",
+                "report",
+                *["-i", str(perf_data_file)],
+                zig_dso,
+                *["--call-graph", "graph,0.5,caller"],
+                "--stdio",
+            ],
+            check=True,
+            stdout=f,
+        )
+
+    print(
+        "To run speedscoe install the vscode extension "
+        "`speedscope on VScode (need vsix)`. \n"
+        "Then use cmd+p and open the speedscope view. \n"
+        "Navigate it to artifacts/perf/perf_i.txt"
+    )
+
+
 if __name__ == "__main__":
     app()

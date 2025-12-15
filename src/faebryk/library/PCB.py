@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Self
 
 import faebryk.core.node as fabll
-from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 import faebryk.library._F as F
 
 # from faebryk.core.reference import reference
@@ -15,6 +14,9 @@ from faebryk.libs.kicad.fileformats import kicad
 
 # from faebryk.libs.units import to_si_str
 from faebryk.libs.util import find, groupby, md_list, not_none
+
+if TYPE_CHECKING:
+    from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +34,6 @@ class PCB(fabll.Node):
 
     _transformer_registry: ClassVar[dict[int, "PCB_Transformer"]] = {}
 
-
     def setup(self, path: str, app: fabll.Node) -> Self:
         self.app_.get().point(app)
         self.path_.get().alias_to_single(path)
@@ -40,6 +41,7 @@ class PCB(fabll.Node):
 
     def run_transformer(self) -> Self:
         from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+
         pcbfile = kicad.loads(kicad.pcb.PcbFile, self.path)
         self.pcb_file_.get().alias_to_single(value=str(id(pcbfile)))
         transformer = PCB_Transformer(pcbfile.kicad_pcb, self.app)

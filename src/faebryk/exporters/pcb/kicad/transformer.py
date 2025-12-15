@@ -17,9 +17,7 @@ from typing import (
     TypeVar,
 )
 
-import numpy as np
 from deprecated import deprecated
-from shapely import Polygon
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
@@ -541,6 +539,7 @@ class PCB_Transformer:
 
         from shapely import (
             LineString,
+            Polygon,
             get_geometry,
             get_num_geometries,
             polygonize_full,
@@ -1080,6 +1079,8 @@ class PCB_Transformer:
         line2: kicad.pcb.Line,
         radius: float,
     ) -> tuple[Line, Arc, Line]:
+        import numpy as np
+
         # Assert if the endpoints of the lines are not connected
         assert line1.end == line2.start, "The endpoints of the lines are not connected."
 

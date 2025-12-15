@@ -150,7 +150,9 @@ def run_gdb(test_bin: Path) -> None:
 
 
 @pytest.mark.parametrize("zig_test", discover_zig_tests(), ids=zig_test_id)
-def test_zig_embedded(zig_test: tuple[Path, str]) -> None:
+def test_zig_embedded(
+    zig_test: tuple[Path, str], release_mode: str = "ReleaseFast"
+) -> None:
     """Run a single zig embedded test."""
     zig_file, test_name = zig_test
     cmd = build_zig_test_command(zig_file, test_filter=test_name)
@@ -161,7 +163,7 @@ def test_zig_embedded(zig_test: tuple[Path, str]) -> None:
             "--test-no-exec",
             f"-femit-bin={test_bin}",
             "-fno-omit-frame-pointer",
-            *["-O", "Debug"],
+            *["-O", release_mode],
             "-fno-strip",
             "-fsanitize-c",
             "-lc",  # Link against libc for c_allocator
@@ -197,6 +199,8 @@ def test_zig_embedded(zig_test: tuple[Path, str]) -> None:
 
 
 def main(glob_pattern: str, test_name: str):
+    from faebryk.core.zig import RELEASEMODE
+
     paths = list(ZIG_SRC_DIR.rglob(glob_pattern))
     if not len(paths) == 1:
         raise ValueError(f"Expected 1 path, got {len(paths)}")
@@ -206,7 +210,8 @@ def main(glob_pattern: str, test_name: str):
         (
             path,
             test_name,
-        )
+        ),
+        release_mode=RELEASEMODE.get(),
     )
 
 

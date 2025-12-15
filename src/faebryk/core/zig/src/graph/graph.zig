@@ -1492,6 +1492,80 @@ test "mem_node_with_string" {
     //try std.testing.expectEqual(@as(usize, 216), t.totalRequested - t.totalFreed);
 }
 
+test "speed_insert_node_simple" {
+    const a = std.heap.c_allocator;
+    var g = GraphView.init(a);
+    defer g.deinit();
+
+    // measure time
+    var timer = try std.time.Timer.start();
+    const num_nodes = 100000;
+    var i: usize = 0;
+    while (i < num_nodes) : (i += 1) {
+        const n = Node.init();
+        _ = g.insert_node(n);
+    }
+    const duration = timer.read();
+    const total_ms = duration / std.time.ns_per_ms;
+    const per_node_ns = duration / num_nodes;
+    std.debug.print("insert_node with {d} nodes took {d}ms\n", .{ num_nodes, total_ms });
+    std.debug.print("per node: {d}ns\n", .{per_node_ns});
+}
+
+test "speed_insert_node_with_attr" {
+    const a = std.heap.c_allocator;
+    var g = GraphView.init(a);
+    defer g.deinit();
+
+    // measure time
+    var timer = try std.time.Timer.start();
+    const num_nodes = 100000;
+    var i: usize = 0;
+    while (i < num_nodes) : (i += 1) {
+        const n = Node.init();
+        _ = g.insert_node(n);
+        n.attributes.put("test", .{ .Int = @as(i64, @intCast(i)) });
+    }
+    const duration = timer.read();
+    const total_ms = duration / std.time.ns_per_ms;
+    const per_node_ns = duration / num_nodes;
+    std.debug.print("insert_node with {d} nodes took {d}ms\n", .{ num_nodes, total_ms });
+    std.debug.print("per node: {d}ns\n", .{per_node_ns});
+}
+
+test "speed_insert_edge_simple" {
+    const a = std.heap.c_allocator;
+    var g = GraphView.init(a);
+    defer g.deinit();
+
+    const count = 100000;
+
+    var n1s: [count]NodeReference = undefined;
+    var i: usize = 0;
+    while (i < count) : (i += 1) {
+        n1s[i] = g.insert_node(Node.init()).node;
+    }
+
+    var n2s: [count]NodeReference = undefined;
+    i = 0;
+    while (i < count) : (i += 1) {
+        n2s[i] = g.insert_node(Node.init()).node;
+    }
+
+    // measure time
+    var timer = try std.time.Timer.start();
+    i = 0;
+    while (i < count) : (i += 1) {
+        const e = Edge.init(n1s[i], n2s[i], 0);
+        _ = g.insert_edge(e);
+    }
+    const duration = timer.read();
+    const total_ms = duration / std.time.ns_per_ms;
+    const per_edge_ns = duration / count;
+    std.debug.print("insert_edge with {d} edges took {d}ms\n", .{ count, total_ms });
+    std.debug.print("per edge: {d}ns\n", .{per_edge_ns});
+}
+
 //test "memory_usage" {
 //    const a = std.testing.allocator;
 //    var g = GraphView.init(a);
