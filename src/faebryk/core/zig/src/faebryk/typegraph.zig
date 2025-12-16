@@ -680,6 +680,15 @@ pub const TypeGraph = struct {
         return EdgeComposition.get_child_by_identifier(type_node, identifier) orelse error.ChildNotFound;
     }
 
+    pub fn get_make_child_type_reference_by_identifier(
+        self: *@This(),
+        type_node: BoundNodeReference,
+        identifier: str,
+    ) ?BoundNodeReference {
+        const make_child = self.find_make_child_node(type_node, identifier) catch return null;
+        return MakeChildNode.get_type_reference(make_child);
+    }
+
     fn reference_matches_path(
         self: *@This(),
         reference: BoundNodeReference,

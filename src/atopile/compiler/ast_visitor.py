@@ -349,8 +349,23 @@ class _TypeContextStack:
         action: AddMakeChildAction,
     ) -> None:
         assert action.child_field is not None
-        action.child_field._set_locator(str(action.child_field.identifier))
+        action.child_field._set_locator(action.get_identifier())
         fabll.Node._exec_field(t=bound_tg, field=action.child_field)
+
+        is_unresolved_import = (
+            action.import_ref is not None
+            and action.child_field is not None
+            and isinstance(action.child_field.nodetype, str)
+        )
+
+        if is_unresolved_import:
+            assert isinstance(action.child_field.identifier, str)
+            type_ref = self._tg.get_make_child_type_reference_by_identifier(
+                type_node=type_node, identifier=action.child_field.identifier
+            )
+            self._state.external_type_refs.append(
+                (not_none(type_ref), not_none(action.import_ref))
+            )
 
     # TODO FIXME: no type checking for is_interface trait on connected nodes.
     # We should use the fabll connect_to method for this.
@@ -539,7 +554,6 @@ class ASTVisitor:
 
     def _make_type_identifier(self, name: str) -> str:
         """Create namespaced identifier for ato types."""
-        # FIXME: path sometimes not available
         if self._state.import_path is not None:
             return f"{self._state.import_path}::{name}"
         return name
@@ -662,7 +676,9 @@ class ASTVisitor:
         _Block.__name__ = type_identifier
         _Block.__qualname__ = type_identifier
 
-        type_node = self._type_graph.add_type(identifier=type_identifier)
+        type_node = self._type_graph.add_type(
+            identifier=self._make_type_identifier(module_name)
+        )
         type_node_bound_tg = fabll.TypeNodeBoundTG(tg=self._type_graph, t=_Block)
 
         with self._scope_stack.enter():
@@ -670,6 +686,7 @@ class ASTVisitor:
                 for stmt in node.scope.get().stmts.get().as_list():
                     self._type_stack.apply_action(self.visit(stmt))
 
+        # link back to AST node
         fbrk.EdgePointer.point_to(
             bound_node=type_node,
             target_node=node.instance.node(),
@@ -846,6 +863,7 @@ class ASTVisitor:
                     nodetype=new_spec.type_identifier,
                     identifier=target_path.leaf.identifier,
                 ),
+                import_ref=new_spec.symbol.import_ref if new_spec.symbol else None,
             )
 
         raise NotImplementedError()

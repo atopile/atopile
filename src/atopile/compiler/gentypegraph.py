@@ -136,6 +136,22 @@ class AddMakeChildAction:
     parent_reference: graph.BoundNode | None
     parent_path: FieldPath | None
     child_field: fabll._ChildField | None = None
+    import_ref: ImportRef | None = None
+
+    def get_identifier(self) -> str:
+        if isinstance(self.target_path, FieldPath):
+            return self.target_path.leaf.identifier
+        else:
+            (*_, tail) = self.target_path
+            match tail:
+                case fabll._ChildField():
+                    return tail.get_identifier()
+                case type():
+                    return tail._type_identifier()
+                case str():
+                    return tail
+                case _:
+                    raise ValueError(f"Invalid target path: {tail}")
 
 
 @dataclass(frozen=True)

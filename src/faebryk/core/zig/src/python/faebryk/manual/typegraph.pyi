@@ -48,6 +48,9 @@ class TypeGraph:
         mount_reference: BoundNode | None = ...,
     ) -> BoundNode: ...
     def get_make_child_type_reference(self, *, make_child: BoundNode) -> BoundNode: ...
+    def get_make_child_type_reference_by_identifier(
+        self, *, type_node: BoundNode, identifier: str
+    ) -> BoundNode | None: ...
 
     class MakeChildNode:
         @staticmethod
