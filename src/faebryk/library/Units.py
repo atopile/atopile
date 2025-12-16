@@ -728,6 +728,7 @@ def decode_symbol(g: graph.GraphView, tg: fbrk.TypeGraph, symbol: str) -> is_uni
     raise UnitNotFoundError(symbol)
 
 
+# FIXME: replace with full symbol decode
 def get_unit_type_from_symbol(symbol: str) -> tuple[type[fabll.Node], float]:
     """Return the unit Node class and prefix multiplier for a given symbol.
 

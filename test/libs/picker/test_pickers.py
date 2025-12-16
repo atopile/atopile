@@ -313,14 +313,9 @@ def test_pick_resistor_by_params():
             tg=tg,
         )
     )
-    assert (
-        app.r1.get()
-        .get_trait(F.has_package_requirements)
-        .size_.get()
-        .force_extract_literal()
-        .get_single_value_typed(SMDSize)
-        == SMDSize.I0805
-    )
+    assert app.r1.get().get_trait(F.has_package_requirements).get_sizes() == [
+        SMDSize.I0805
+    ]
 
 
 # I guess we need to support something like this?
@@ -608,7 +603,7 @@ def test_null_solver():
     pick_part_recursively(app, solver)
 
     assert app.cap.get().has_trait(F.has_part_picked)
-    assert app.cap.get().get_trait(F.has_package_requirements).get_sizes(solver) == [
+    assert app.cap.get().get_trait(F.has_package_requirements).get_sizes() == [
         SMDSize.I0805
     ]
     assert (

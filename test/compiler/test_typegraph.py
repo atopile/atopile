@@ -1837,6 +1837,7 @@ class TestTraitStatements:
         assert trait.get_symbol() == "sym.kicad_sym"
 
 
+# FIXME: break up
 def test_literal_assignment():
     import logging
 

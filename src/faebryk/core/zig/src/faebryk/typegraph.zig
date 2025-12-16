@@ -858,6 +858,7 @@ pub const TypeGraph = struct {
                 };
 
                 const child_type = MakeChildNode.get_child_type(make_child) orelse null;
+                // FIXME: restore this check?
                 // if (failure) |f| {
                 //     f.* = PathResolutionFailure{
                 //         .kind = PathErrorKind.missing_child,
@@ -1313,6 +1314,7 @@ pub const TypeGraph = struct {
     }
 
     pub fn instantiate_node(tg: *@This(), type_node: BoundNodeReference) !graph.BoundNodeReference {
+        // FIXME: restore
         // type_node may be linked from another TypeGraph
         // std.debug.print("OG TG {any}\n", .{tg.get_MakeChild().node});
         // var type_owner_tg_val = TypeGraph.of_type(type_node) orelse tg.*;
@@ -1365,6 +1367,7 @@ pub const TypeGraph = struct {
             .parent_instance = new_instance,
         };
         const make_child_result = tg.visit_make_children(type_node, void, &make_child_visitor, VisitMakeChildren.visit);
+        // FIXME: restore
         // const make_child_result = type_owner_tg.visit_make_children(type_node, void, &make_child_visitor, VisitMakeChildren.visit);
         switch (make_child_result) {
             .ERROR => |err| return err,
@@ -1415,12 +1418,14 @@ pub const TypeGraph = struct {
         // Only visit make_link children if TypeGraph is fully initialized
         // This avoids circular dependency during TypeGraph initialization
         if (tg.get_initialized()) {
+            // FIXME: restore
             // if (type_owner_tg.get_initialized()) {
             var make_link_visitor = VisitMakeLinks{
                 .type_graph = tg,
                 .parent_instance = new_instance,
             };
             const make_link_result = EdgeComposition.visit_children_of_type(type_node, tg.get_MakeLink().node, void, &make_link_visitor, VisitMakeLinks.visit);
+            // FIXME: restore
             // const make_link_result = EdgeComposition.visit_children_of_type(type_node, type_owner_tg.get_MakeLink().node, void, &make_link_visitor, VisitMakeLinks.visit);
             switch (make_link_result) {
                 .ERROR => |err| return err,

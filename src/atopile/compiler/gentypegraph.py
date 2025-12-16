@@ -9,6 +9,7 @@ from typing import Any
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 
 
 @dataclass(frozen=True)
@@ -94,6 +95,9 @@ class FieldPath:
                 parts.append(segment.identifier)
         return tuple(parts)
 
+    def to_ref_path(self) -> fabll.RefPath:
+        return [*self.identifiers()]
+
 
 @dataclass(frozen=True)
 class NewChildSpec:
@@ -113,11 +117,17 @@ class NewChildSpec:
 
 
 @dataclass(frozen=True)
+class ConstraintSpec:
+    operand: (
+        fabll._ChildField[F.Literals.Strings] | fabll._ChildField[F.Literals.Booleans]
+    )
+
+
+@dataclass(frozen=True)
 class AddMakeChildAction:
     """
     target_path: String path to target eg. resistor.resistance
     relative to parent reference node. eg. app
-    child_spec: The specification of the child to add.
     parent_reference: Parent of the makechild node.
     parent_path: The path to the parent type.
     """
@@ -125,7 +135,6 @@ class AddMakeChildAction:
     target_path: FieldPath | fabll.RefPath
     parent_reference: graph.BoundNode | None
     parent_path: FieldPath | None
-    child_spec: NewChildSpec | None = None
     child_field: fabll._ChildField | None = None
 
 
@@ -136,6 +145,7 @@ class AddMakeLinkAction:
     edge: fbrk.EdgeCreationAttributes | None = None
 
 
+# FIXME: AddMakeChildAction
 @dataclass(frozen=True)
 class AddTraitAction:
     trait_type_identifier: str

@@ -27,6 +27,25 @@ def _add_anon_child(node: fabll.NodeT, child: fabll.NodeT):
 class is_assignable(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
+    def switch_cast(
+        self,
+    ) -> "AstString | Boolean | NewExpression | Quantity | BinaryExpression | GroupExpression":
+        types = [
+            AstString,
+            Boolean,
+            NewExpression,
+            Quantity,
+            BinaryExpression,
+            GroupExpression,
+        ]
+        obj = fabll.Traits(self).get_obj_raw()
+        for t in types:
+            if obj.isinstance(t):
+                return obj.cast(t)
+        raise ValueError(
+            f"Cannot cast assignable {self} of type {obj} to any of {types}"
+        )
+
 
 class is_arithmetic(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
@@ -232,6 +251,9 @@ class Boolean(fabll.Node):
         self.source.get().setup(source_info=source_info)
         self.value.get().setup_from_values(value)
         return self
+
+    def get_value(self) -> bool:
+        return self.value.get().get_single()
 
 
 class Unit(fabll.Node):
