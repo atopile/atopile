@@ -4206,6 +4206,35 @@ fn wrap_typegraph_get_type_name() type {
     };
 }
 
+fn wrap_typegraph_get_type_reference_identifier() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_type_reference_identifier",
+            .args_def = struct {
+                type_reference: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .type_reference = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .doc = "Get the type identifier from a type reference node",
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            _ = self;
+            const kwarg_obj = bind.parse_kwargs(null, args, kwargs, descr.args_def) orelse return null;
+
+            const identifier = faebryk.typegraph.TypeGraph.TypeReferenceNode.get_type_identifier(kwarg_obj.type_reference.*);
+
+            return py.PyUnicode_FromStringAndSize(
+                @ptrCast(identifier.ptr),
+                @as(isize, @intCast(identifier.len)),
+            );
+        }
+    };
+}
+
 fn wrap_typegraph_get_or_create_type() type {
     return struct {
         pub const descr = method_descr{
@@ -4434,6 +4463,7 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_reference_resolve(),
         wrap_typegraph_get_type_by_name(),
         wrap_typegraph_get_type_name(),
+        wrap_typegraph_get_type_reference_identifier(),
         wrap_typegraph_get_or_create_type(),
         wrap_typegraph_get_graph_view(),
         wrap_typegraph_get_self_node(),

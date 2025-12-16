@@ -459,7 +459,7 @@ def test_simple_new():
     assert "SomeComponent" in result.state.type_roots
     child = _get_child(app_instance, "child")
 
-    assert _get_type_name(child) == "SomeComponent"
+    assert _get_type_name(child).endswith("SomeComponent")
     a = _get_child(child, "a")
     assert fabll.Node.bind_instance(a).isinstance(F.Electrical)
 
@@ -476,10 +476,10 @@ def test_multiple_new():
         "A",
     )
     assert "A" in result.state.type_roots
-    resistors = _get_child(app_instance, "resistors")
-    assert isinstance(resistors, list)
-    assert len(resistors) == 5
-    for i, r_node in enumerate(resistors):
+    resistors_container = _get_child(app_instance, "resistors")
+    assert resistors_container is not None
+    for i in range(5):
+        r_node = _get_child(app_instance, f"resistors[{i}]")
         assert isinstance(r_node, BoundNode)
         r = fabll.Node.bind_instance(r_node)
         assert r.isinstance(F.Resistor)
@@ -1928,21 +1928,3 @@ def test_literals(value: str, literal: F.Parameters.can_be_operand):
     )
     a = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "a"))
     assert literal.as_literal.get().equals(not_none(a.try_extract_aliased_literal()))
-
-
-def test_forward_declaration():
-    _, _, _, _, app_instance = build_instance(
-        """
-        module App:
-            bottom = new Bottom
-
-        module Bottom:
-            signal a
-        """,
-        "App",
-    )
-
-    bottom = _get_child(app_instance, "bottom")
-    _get_child(bottom, "a")
-
-    assert _get_type_name(bottom) == "Bottom"

@@ -20,7 +20,6 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 from faebryk.libs.util import (
     KeyErrorNotFound,
-    cast_assert,
     dataclass_as_kwargs,
     indented_container,
     not_none,
@@ -1272,11 +1271,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         type_node = self.get_type_node()
         if type_node is None:
             return None
-        # TODO make zig api for this
-        type_identifier = type_node.node().get_attr(key="type_identifier")
-        if type_identifier is None:
-            return None
-        return cast_assert(str, type_identifier)
+        return fbrk.TypeGraph.get_type_name(type_node=type_node)
 
     def isinstance(self, *type_node: "type[NodeT]") -> bool:
         """

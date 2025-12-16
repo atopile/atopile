@@ -7,7 +7,13 @@ import pytest
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 from atopile.compiler.ast_visitor import DslException
-from atopile.compiler.build import Linker, StdlibRegistry, build_file, build_source
+from atopile.compiler.build import (
+    Linker,
+    StdlibRegistry,
+    UndefinedSymbolError,
+    build_file,
+    build_source,
+)
 from atopile.errors import UserSyntaxError
 from faebryk.core.faebrykpy import EdgeComposition, EdgePointer, EdgeTrait
 from faebryk.libs.util import not_none
@@ -948,10 +954,21 @@ def test_forward_reference():
 
         module App:
             child = new Child
-        """
+        """,
+        link=True,
     )
 
-    # out-of-order
+    # no defintion later -> error
+    with pytest.raises(UndefinedSymbolError):
+        build_type(
+            """
+            module App:
+                child = new Child
+            """,
+            link=True,
+        )
+
+    # out-of-order (forward reference)
     _, tg, _, result = build_type(
         """
         module App:
@@ -959,7 +976,8 @@ def test_forward_reference():
 
         module Child:
             pass
-        """
+        """,
+        link=True,
     )
 
     app_type = result.state.type_roots["App"]

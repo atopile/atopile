@@ -108,6 +108,10 @@ class ImportPathNotFoundError(LinkerException):
     pass
 
 
+class UndefinedSymbolError(LinkerException):
+    pass
+
+
 class CircularImportError(LinkerException):
     pass
 
@@ -267,9 +271,7 @@ class Linker:
             case None:
                 self._link(graph, build_state)
             case _ if resolved_path in self._linked_modules:
-                self._link_from_cache(
-                    graph, build_state, self._linked_modules[resolved_path]
-                )
+                self._link(graph, build_state, self._linked_modules[resolved_path])
             case _:
                 with self._guard_path(resolved_path):
                     self._link(graph, build_state)
@@ -295,41 +297,43 @@ class Linker:
             case None:
                 self._link(graph, build_state)
             case _ if resolved_path in self._linked_modules:
-                self._link_from_cache(
-                    graph, build_state, self._linked_modules[resolved_path]
-                )
+                self._link(graph, build_state, self._linked_modules[resolved_path])
             case _:
                 with self._guard_path(resolved_path):
                     self._link(graph, build_state)
                     self._linked_modules[resolved_path] = build_state.type_roots
 
-    def _link(self, graph: graph.GraphView, build_state: BuildState) -> None:
-        for type_reference, import_ref in build_state.external_type_refs:
-            fbrk.Linker.link_type_reference(
-                g=graph,
-                type_reference=type_reference,
-                target_type_node=(
-                    self._stdlib.get(import_ref.name)
-                    if import_ref.path is None
-                    else self._build_imported_file(graph, import_ref, build_state)
-                ),
-            )
-
-    def _link_from_cache(
+    def _link(
         self,
         graph: graph.GraphView,
         build_state: BuildState,
-        cached_type_roots: dict[str, graph.BoundNode],
+        cached_type_roots: dict[str, graph.BoundNode] | None = None,
     ) -> None:
         for type_reference, import_ref in build_state.external_type_refs:
+            if import_ref is None:
+                # Local type reference — look up in type_roots
+                type_id = fbrk.TypeGraph.get_type_reference_identifier(
+                    type_reference=type_reference
+                )
+                target = build_state.type_roots.get(type_id)
+                if target is None:
+                    raise UndefinedSymbolError(
+                        f"Symbol `{type_id}` is not defined in this scope"
+                    )
+            elif import_ref.path is None:
+                # stdlib import
+                target = self._stdlib.get(import_ref.name)
+            elif cached_type_roots is not None:
+                # file import from cache
+                target = cached_type_roots[import_ref.name]
+            else:
+                # file import
+                target = self._build_imported_file(graph, import_ref, build_state)
+
             fbrk.Linker.link_type_reference(
                 g=graph,
                 type_reference=type_reference,
-                target_type_node=(
-                    self._stdlib.get(import_ref.name)
-                    if import_ref.path is None
-                    else cached_type_roots[import_ref.name]
-                ),
+                target_type_node=target,
             )
 
     @contextmanager

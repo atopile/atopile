@@ -227,6 +227,10 @@ pub const TypeGraph = struct {
             return Linker.try_get_resolved_type(reference);
         }
 
+        pub fn get_type_identifier(reference: BoundNodeReference) str {
+            return Attributes.of(reference.node).get_type_identifier();
+        }
+
         pub fn build(value: ?str) NodeCreationAttributes {
             var dynamic = graph.DynamicAttributes.init();
             if (value) |v| {
