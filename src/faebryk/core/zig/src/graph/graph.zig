@@ -389,15 +389,16 @@ pub const Edge = struct {
     pub fn hash_edge_type(comptime tid: u64) EdgeType {
         return @intCast(tid % 256);
     }
-    pub var type_set: IntMap.T(void) = IntMap.T(void).init(std.heap.page_allocator);
+    // Track registrations without heap allocations to stay robust across dylib loads.
+    var type_registered: [256]bool = [_]bool{false} ** 256;
 
     /// Register type and check for duplicates during runtime
     /// Can't do during compile because python will do during runtime
     pub fn register_type(edge_type: EdgeType) !void {
-        if (type_set.get(edge_type)) |_| {
+        if (type_registered[edge_type]) {
             return error.DuplicateType;
         }
-        type_set.put(edge_type, {}) catch @panic("OOM registering edge type");
+        type_registered[edge_type] = true;
     }
 
     pub fn is_instance(E: EdgeReference, edge_type: EdgeType) bool {

@@ -139,11 +139,11 @@ def cli(
         env[SAFE_MODE_OPTION.name] = "N"
 
         result = subprocess.run(args, env=env)
-        if result.returncode != 0:
+        if result.returncode > 1:
             from faebryk.libs.util import run_gdb
 
             run_gdb()
-            sys.exit(result.returncode)
+        sys.exit(result.returncode)
 
     if debug:
         import debugpy  # pylint: disable=import-outside-toplevel
