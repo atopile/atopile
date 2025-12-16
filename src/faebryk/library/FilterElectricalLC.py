@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-import math
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -23,7 +22,7 @@ class FilterElectricalLC(fabll.Node):
     capacitor = F.Capacitor.MakeChild()
     inductor = F.Inductor.MakeChild()
 
-    z0 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+    z0 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm.MakeChild())
 
     filter = F.Filter.MakeChild()
 

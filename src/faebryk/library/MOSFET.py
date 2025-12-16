@@ -29,15 +29,17 @@ class MOSFET(fabll.Node):
     channel_type = F.Parameters.EnumParameter.MakeChild(enum_t=ChannelType)
     saturation_type = F.Parameters.EnumParameter.MakeChild(enum_t=SaturationType)
     gate_source_threshold_voltage = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Volt
+        unit=F.Units.Volt.MakeChild()
     )
     max_drain_source_voltage = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Volt
+        unit=F.Units.Volt.MakeChild()
     )
     max_continuous_drain_current = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Ampere
+        unit=F.Units.Ampere.MakeChild()
     )
-    on_resistance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+    on_resistance = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Ohm.MakeChild()
+    )
 
     # ----------------------------------------
     #                 traits

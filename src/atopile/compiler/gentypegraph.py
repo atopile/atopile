@@ -110,7 +110,8 @@ class NewChildSpec:
     type_identifier: full path including file name. str for pre linker
     type_node:
     count: How many child instances to create
-    template_args: Template arguments for parameterized modules (e.g., Addressor<address_bits=2>)
+    template_args: Template arguments for parameterized modules
+    (e.g., Addressor<address_bits=2>)
     """
 
     symbol: Symbol | None = None
@@ -123,7 +124,9 @@ class NewChildSpec:
 @dataclass(frozen=True)
 class ConstraintSpec:
     operand: (
-        fabll._ChildField[F.Literals.Strings] | fabll._ChildField[F.Literals.Booleans]
+        fabll._ChildField[F.Literals.Strings]
+        | fabll._ChildField[F.Literals.Booleans]
+        | fabll._ChildField[F.Literals.Numbers]
     )
 
 

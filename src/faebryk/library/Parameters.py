@@ -666,7 +666,7 @@ class NumericParameter(fabll.Node):
     def setup(  # type: ignore[invalid-method-override]
         self,
         *,
-        units: "Units.is_unit",
+        is_unit: "Units.is_unit",
         # hard constraints
         within: "Literals.Numbers | None" = None,
         domain: "NumberDomain.Args | None | type[NumericParameter.DOMAIN_SKIP]" = None,
@@ -675,7 +675,7 @@ class NumericParameter(fabll.Node):
         from faebryk.library.NumberDomain import NumberDomain
         from faebryk.library.Units import has_unit
 
-        fabll.Traits.create_and_add_instance_to(self, has_unit).setup(unit=units)
+        fabll.Traits.create_and_add_instance_to(self, has_unit).setup(is_unit=is_unit)
 
         if within is not None:
             IsSubset.bind_typegraph(tg=self.tg).create_instance(g=self.g).setup(
@@ -695,7 +695,7 @@ class NumericParameter(fabll.Node):
                     .setup_from_min_max(
                         min=0,
                         max=math.inf,
-                        unit=units,
+                        unit=is_unit,
                     )
                     .can_be_operand.get(),
                     assert_=True,
@@ -706,7 +706,7 @@ class NumericParameter(fabll.Node):
     @classmethod
     def MakeChild(  # type: ignore[invalid-method-override]
         cls,
-        unit: type[fabll.NodeT],
+        unit: fabll._ChildField,
         domain: "NumberDomain.Args | None" = None,
     ):
         from faebryk.library.Units import has_unit
@@ -1068,7 +1068,7 @@ def test_new_definitions():
     parameters = BoundParameterContext(tg, g)
 
     parameters.NumericParameter.setup(
-        units=Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
+        is_unit=Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
     )
 
 
@@ -1099,12 +1099,12 @@ def test_compact_repr():
     p1 = (
         NumericParameter.bind_typegraph(tg=tg)
         .create_instance(g=g)
-        .setup(units=volt_unit)
+        .setup(is_unit=volt_unit)
     )
     p2 = (
         NumericParameter.bind_typegraph(tg=tg)
         .create_instance(g=g)
-        .setup(units=volt_unit)
+        .setup(is_unit=volt_unit)
     )
 
     context = ReprContext()
@@ -1181,7 +1181,7 @@ def test_compact_repr():
         return (
             NumericParameter.bind_typegraph(tg=tg)
             .create_instance(g=g)
-            .setup(units=dimensionless_unit)
+            .setup(is_unit=dimensionless_unit)
         )
 
     # Create parameters to exhaust letters D-Y (ord("Z") - ord("C") - 1 = 22)

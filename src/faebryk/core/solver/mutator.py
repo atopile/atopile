@@ -1127,7 +1127,7 @@ class Mutator:
             new_param = (
                 F.Parameters.NumericParameter.bind_typegraph(self.tg_out)
                 .create_instance(self.G_out)
-                .setup(units=units, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
+                .setup(is_unit=units, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
             )
         # else:
         #    new_param = param_obj.copy_into(self.G_out)
@@ -2061,7 +2061,9 @@ def test_mutator_basic_bootstrap():
 
     class App(fabll.Node):
         param_str = F.Parameters.StringParameter.MakeChild()
-        param_num = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+        param_num = F.Parameters.NumericParameter.MakeChild(
+            unit=F.Units.Dimensionless.MakeChild()
+        )
         param_bool = F.Parameters.BooleanParameter.MakeChild()
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)

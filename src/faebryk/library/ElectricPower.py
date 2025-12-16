@@ -23,10 +23,10 @@ class ElectricPower(fabll.Node):
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
     voltage = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Volt,
+        unit=F.Units.Volt.MakeChild(),
     )
     max_current = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Ampere,
+        unit=F.Units.Ampere.MakeChild(),
     )
 
     can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeEdge(in_=[""], out_=[""]))
@@ -34,17 +34,15 @@ class ElectricPower(fabll.Node):
     net_names = [
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="hv",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="hv", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[hv]
+            owner=[hv],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="lv",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="lv", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[lv]
+            owner=[lv],
         ),
     ]
 

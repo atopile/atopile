@@ -15,13 +15,15 @@ class CAN(fabll.Node):
     # ----------------------------------------
     diff_pair = F.DifferentialPair.MakeChild()
 
-    baudrate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.BitsPerSecond)
+    baudrate = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.BitsPerSecond.MakeChild()
+    )
     # TODO constrain CAN baudrate between 10kbps to 1Mbps
     # F.Expressions.Is.MakeChild_Constrain()
 
-    impedance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+    impedance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm.MakeChild())
     impedance_constraint = F.Literals.Numbers.MakeChild_ConstrainToLiteral(
-        [impedance], min=120.0, max=120.0, unit=F.Units.Ohm
+        [impedance], min=120.0, max=120.0, unit=F.Units.Ohm.MakeChild()
     )
 
     # ----------------------------------------
@@ -30,16 +32,17 @@ class CAN(fabll.Node):
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
     net_names = [
-        fabll.Traits.MakeEdge(F.has_net_name_suggestion.MakeChild(
-            name="CAN_H",
-            level=F.has_net_name_suggestion.Level.SUGGESTED
-            ), owner=[diff_pair, "p"]
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="CAN_H", level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[diff_pair, "p"],
         ),
-
-        fabll.Traits.MakeEdge(F.has_net_name_suggestion.MakeChild(
-            name="CAN_L",
-            level=F.has_net_name_suggestion.Level.SUGGESTED
-            ), owner=[diff_pair, "n"]
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="CAN_L", level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[diff_pair, "n"],
         ),
     ]
 

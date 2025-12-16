@@ -1,4 +1,6 @@
-import Resistor, ElectricPower, ElectricSignal
+import Resistor
+import ElectricPower
+import ElectricSignal
 
 module VoltageDivider:
     """

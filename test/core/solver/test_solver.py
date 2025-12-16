@@ -41,7 +41,10 @@ def _create_letters(
     context = F.Parameters.ReprContext()
 
     class App(fabll.Node):
-        params = [F.Parameters.NumericParameter.MakeChild(unit=units) for _ in range(n)]
+        params = [
+            F.Parameters.NumericParameter.MakeChild(unit=units.MakeChild())
+            for _ in range(n)
+        ]
 
     app = App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
     params = [p.get().is_parameter_operatable.get() for p in app.params]
@@ -111,9 +114,9 @@ def test_solve_phase_one():
     E = BoundExpressions()
 
     class App(fabll.Node):
-        voltage1 = F.Parameters.NumericParameter.MakeChild(unit=E.U.V)
-        voltage2 = F.Parameters.NumericParameter.MakeChild(unit=E.U.V)
-        voltage3 = F.Parameters.NumericParameter.MakeChild(unit=E.U.V)
+        voltage1 = F.Parameters.NumericParameter.MakeChild(unit=E.U.V.MakeChild())
+        voltage2 = F.Parameters.NumericParameter.MakeChild(unit=E.U.V.MakeChild())
+        voltage3 = F.Parameters.NumericParameter.MakeChild(unit=E.U.V.MakeChild())
 
     app = App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
     voltage1_op = app.voltage1.get().can_be_operand.get()
@@ -150,7 +153,10 @@ def test_simplify():
     E = BoundExpressions()
 
     class App(fabll.Node):
-        ops = [F.Parameters.NumericParameter.MakeChild(unit=E.U.dl) for _ in range(10)]
+        ops = [
+            F.Parameters.NumericParameter.MakeChild(unit=E.U.dl.MakeChild())
+            for _ in range(10)
+        ]
 
     app_type = App.bind_typegraph(tg=E.tg)
     app = app_type.create_instance(g=E.g)
@@ -1499,8 +1505,8 @@ def test_graph_split():
     E = BoundExpressions()
 
     class App(fabll.Node):
-        A = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl)
-        B = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl)
+        A = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl.MakeChild())
+        B = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl.MakeChild())
 
     app = App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
 

@@ -73,7 +73,9 @@ class requires_pulls(fabll.Node):
             super().__init__(message, nodes=list(bus))
 
     signals = F.Collections.PointerSet.MakeChild()
-    required_resistance = F.Parameters.NumericParameter.MakeChild(F.Units.Ohm)
+    required_resistance = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Ohm.MakeChild()
+    )
 
     def _get_bus(self, signal: SignalLike):
         return {

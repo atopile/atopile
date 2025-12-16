@@ -47,8 +47,12 @@ class LED(fabll.Node):
     # ----------------------------------------
     diode = F.Diode.MakeChild()
 
-    brightness = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Candela)
-    max_brightness = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Candela)
+    brightness = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Candela.MakeChild()
+    )
+    max_brightness = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Candela.MakeChild()
+    )
     color = F.Parameters.EnumParameter.MakeChild(enum_t=Color)
 
     # ----------------------------------------
@@ -111,7 +115,7 @@ class LED(fabll.Node):
             assert (power.voltage-led.forward_voltage) / res.resistance within led.current
 
             power.hv ~> res ~> led ~> power.lv
-            """,
+            """,  # noqa: E501
             language=F.has_usage_example.Language.ato,
         ).put_on_type()
     )

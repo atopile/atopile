@@ -20,7 +20,7 @@ from test.compiler.conftest import build_type
 NULL_CONFIG = SimpleNamespace(project=None)
 
 
-def _get_make_child(type_graph, type_node, name: str):
+def _get_make_child(type_graph: fbrk.TypeGraph, type_node: graph.BoundNode, name: str):
     for identifier, make_child in type_graph.collect_make_children(type_node=type_node):
         if identifier == name:
             return make_child
@@ -121,11 +121,11 @@ def test_make_child_and_linking():
     res_node = _get_make_child(type_graph, app_type, "res")
     assert type_graph.debug_get_mount_chain(make_child=res_node) == []
 
-    unresolved = fbrk.Linker.collect_unresolved_type_references(type_graph=tg)
-    assert not unresolved
-
     linker = Linker(NULL_CONFIG, stdlib, tg)
     linker.link_imports(graph, result.state)
+
+    unresolved = fbrk.Linker.collect_unresolved_type_references(type_graph=tg)
+    assert not unresolved
 
     type_ref = type_graph.get_make_child_type_reference(make_child=res_node)
     assert type_ref is not None
@@ -1862,17 +1862,17 @@ def test_literal_assignment():
 
         module App:
             r1 = new Resistor
-            r1.max_power = 3 Watts
-            r1.resistance = 10 Ohm to 20 Ohm
-            assert r1.max_voltage within 25 Volts to 100 Volts
+            r1.max_power = 3 mW
+            r1.resistance = 10ohm to 20ohm
+            assert r1.max_voltage within 25 volt to 100 volt
 
             r2 = new Resistor
-            r2.resistance = 100 Ohm +/- 5%
-            r2.max_power = 3 Watts to 5 Watts
-            assert r2.max_voltage is 10 Ohm +/- 1%
+            r2.resistance = 100 ohm +/- 5%
+            r2.max_power = 3 ohm to 5 ohm
+            assert r2.max_voltage within 100kV +/- 1%
 
             atomic_part = new is_atomic_part
-            atomic_part.footprint_ = "R_0402"
+            atomic_part.footprint = "R_0402"
         """
     )
 
@@ -1880,11 +1880,6 @@ def test_literal_assignment():
     linker.link_imports(g, result.state)
 
     app_type_node = result.state.type_roots["App"]
-    app_fabll_type = result.state.type_roots_fabll.get("App")
-    assert app_fabll_type is not None
-    assert fabll.Node(
-        app_fabll_type.bind_typegraph(tg=tg).get_or_create_type()
-    ).is_same(other=fabll.Node(app_type_node))
 
     app_instance = fabll.Node(
         tg.instantiate_node(type_node=app_type_node, attributes={})
@@ -1897,7 +1892,15 @@ def test_literal_assignment():
     )
     r1 = F.Resistor.bind_instance(not_none(r1_bnode))
 
-    assert r1.max_power.get().force_extract_literal().get_single() == 3
+    assert r1.max_power.get().force_extract_literal_subset().get_single() == 3
+    assert (
+        r1.max_power.get()
+        .force_extract_literal_subset()
+        .get_is_unit()
+        ._extract_multiplier()
+        == 0.001
+    )
+    assert fabll.Traits(r1.max_power.get().get_units()).get_obj(F.Units.Watt)
     assert r1.resistance.get().force_extract_literal_subset().get_values() == [
         10.0,
         20.0,
@@ -1913,27 +1916,31 @@ def test_literal_assignment():
         105.0,
     ]
     assert r2.max_power.get().force_extract_literal_subset().get_values() == [3, 5]
-    # assert r2.max_voltage.get().force_extract_literal().get_single() == 10
-    print(r2.max_voltage.get().force_extract_literal().get_values())
+    assert r2.max_voltage.get().force_extract_literal_subset().get_values() == [99, 101]
+    assert (
+        r2.max_voltage.get()
+        .force_extract_literal_subset()
+        .get_is_unit()
+        ._extract_multiplier()
+        == 1000
+    )
 
-    # atomic_party_bnode = fbrk.EdgeComposition.get_child_by_identifier(
-    #     bound_node=app_instance.instance, child_identifier="atomic_part"
-    # )
-    # atomic_party = F.is_atomic_part.bind_instance(not_none(atomic_party_bnode))
+    atomic_party_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+        bound_node=app_instance.instance, child_identifier="atomic_part"
+    )
+    atomic_party = F.is_atomic_part.bind_instance(not_none(atomic_party_bnode))
 
-    # print(f"Resistor Instance Children:\n\n{resistor.get_direct_children()}\n\n")
-
-    # print(
-    #     fabll.Traits(
-    #         not_none(
-    #             atomic_party.footprint.get()
-    #             .is_parameter_operatable.get()
-    #             .try_extract_literal(allow_subset=True)
-    #         )
-    #     )
-    #     .get_obj(F.Literals.Strings)
-    #     .get_values()
-    # )
+    assert (
+        # TODO: This accessor pattern is crazy
+        fabll.Traits(
+            atomic_party.footprint.get()
+            .is_parameter_operatable.get()
+            .try_extract_literal(allow_subset=True)
+        )
+        .get_obj(F.Literals.Strings)
+        .get_single()
+        == "R_0402"
+    )
 
 
 class TestModuleTemplating:
@@ -2000,7 +2007,7 @@ class TestModuleTemplating:
         mc = fabll.MakeChild.bind_instance(addressor_make_child)
         addressor_type = mc.get_child_type()
 
-        # Check the addressor type has address_lines children (4 lines for address_bits=4)
+        # Check addressor type has address_lines children (4 lines for address_bits=4)
         address_lines = [
             identifier
             for identifier, child in tg.collect_make_children(type_node=addressor_type)

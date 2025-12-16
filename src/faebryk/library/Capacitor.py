@@ -30,8 +30,10 @@ class Capacitor(fabll.Node):
     # ----------------------------------------
     unnamed = [F.Electrical.MakeChild() for _ in range(2)]
 
-    capacitance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Farad)
-    max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    capacitance = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Farad.MakeChild()
+    )
+    max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt.MakeChild())
     temperature_coefficient = F.Parameters.EnumParameter.MakeChild(
         enum_t=TemperatureCoefficient
     )
@@ -69,7 +71,7 @@ class Capacitor(fabll.Node):
     S = F.has_simple_value_representation.Spec
     _simple_repr = fabll.Traits.MakeEdge(
         F.has_simple_value_representation.MakeChild(
-            S(capacitance), # first spec shows up as value field
+            S(capacitance),  # first spec shows up as value field
             S(capacitance, tolerance=True),
             S(max_voltage),
             S(temperature_coefficient),

@@ -72,7 +72,9 @@ class has_simple_value_representation(fabll.Node):
             tolerance_literal = F.Parameters.BooleanParameter.bind_instance(
                 self.tolerance_.get().instance
             ).try_extract_constrained_literal()
-            show_tolerance = tolerance_literal is None or tolerance_literal.get_values()[0]
+            show_tolerance = (
+                tolerance_literal is None or tolerance_literal.get_values()[0]
+            )
 
             # For Numbers literals, use the show_tolerance parameter
             # This only affects tolerance notation (center±X%), not ranges (min..max)
@@ -270,9 +272,11 @@ def test_repr_chain_basic():
     tg = fbrk.TypeGraph.create(g=g)
 
     class TestModule(fabll.Node):
-        param1 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
-        param2 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
-        param3 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+        param1 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt.MakeChild())
+        param2 = F.Parameters.NumericParameter.MakeChild(
+            unit=F.Units.Ampere.MakeChild()
+        )
+        param3 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt.MakeChild())
 
         S = has_simple_value_representation.Spec
         _simple_repr = fabll.Traits.MakeEdge(
@@ -365,9 +369,11 @@ def test_repr_chain_no_literal():
     tg = fbrk.TypeGraph.create(g=g)
 
     class TestModule(fabll.Node):
-        param1 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
-        param2 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
-        param3 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+        param1 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt.MakeChild())
+        param2 = F.Parameters.NumericParameter.MakeChild(
+            unit=F.Units.Ampere.MakeChild()
+        )
+        param3 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt.MakeChild())
 
         S = has_simple_value_representation.Spec
         _simple_repr = fabll.Traits.MakeEdge(

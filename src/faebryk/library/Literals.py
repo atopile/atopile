@@ -2948,7 +2948,7 @@ class Numbers(fabll.Node):
         cls,
         min: float,
         max: float,
-        unit: type[fabll.NodeT] | str,
+        unit: fabll._ChildField,
     ) -> fabll._ChildField[Self]:
         """
         Create a Numbers literal as a child field at type definition time.
@@ -2982,7 +2982,7 @@ class Numbers(fabll.Node):
     def MakeChild_SingleValue(
         cls,
         value: float,
-        unit: type[fabll.NodeT],
+        unit: fabll._ChildField,
     ) -> fabll._ChildField[Self]:
         return cls.MakeChild(min=value, max=value, unit=unit)
 
@@ -2992,7 +2992,7 @@ class Numbers(fabll.Node):
         param_ref: fabll.RefPath,
         min: float,
         max: float,
-        unit: type[fabll.NodeT] | str,
+        unit: fabll._ChildField,
     ) -> fabll._ChildField["F.Expressions.IsSubset"]:
         from faebryk.library.Expressions import IsSubset
 
@@ -3007,7 +3007,7 @@ class Numbers(fabll.Node):
         param_ref: fabll.RefPath,
         min: float,
         max: float,
-        unit: type[fabll.NodeT] | str,
+        unit: fabll._ChildField,
     ) -> fabll._ChildField["F.Expressions.Is"]:
         """
         Create a Numbers literal and constrain a parameter to it.
@@ -3034,7 +3034,7 @@ class Numbers(fabll.Node):
         cls,
         center: float,
         rel: float,
-        unit: type[fabll.NodeT],
+        unit: fabll._ChildField,
     ) -> fabll._ChildField[Self]:
         return cls.MakeChild(
             min=center - rel * center, max=center + rel * center, unit=unit
@@ -3045,7 +3045,7 @@ class Numbers(fabll.Node):
         cls,
         param_ref: fabll.RefPath,
         value: float,
-        unit: type[fabll.NodeT] | str,
+        unit: fabll._ChildField,
     ) -> fabll._ChildField["F.Expressions.Is"]:
         """
         Create a singleton Numbers literal and constrain a parameter to it.
@@ -3083,7 +3083,10 @@ class Numbers(fabll.Node):
             .create_instance(g=g)
             # TODO remove unit copy hack
             .setup(
-                unit=fabll.Traits(unit).get_obj_raw().copy_into(g=g).get_trait(is_unit)
+                is_unit=fabll.Traits(unit)
+                .get_obj_raw()
+                .copy_into(g=g)
+                .get_trait(is_unit)
             )
         )
 
@@ -3155,7 +3158,7 @@ class Numbers(fabll.Node):
     def get_unit_node(self) -> fabll.Node:
         from faebryk.library.Units import has_unit
 
-        return self.get_trait(has_unit).unit.get().deref()
+        return self.get_trait(has_unit).is_unit_ptr.get().deref()
 
     def is_empty(self) -> bool:
         return self.get_numeric_set().is_empty()
@@ -4224,7 +4227,7 @@ class Numbers(fabll.Node):
 
         Values are expected to be in base SI units.
         """
-        from faebryk.library.Units import BasisVector, decode_symbol, is_unit
+        from faebryk.library.Units import BasisVector, decode_symbol_runtime, is_unit
 
         # Accept both Quantity_Interval_Disjoint and Quantity_Set_Discrete
         # They have the same internal structure, just different semantics:
@@ -4268,7 +4271,7 @@ class Numbers(fabll.Node):
         # Parse unit - can be a string symbol or a dict with full unit definition
         if isinstance(unit_data, str):
             # Unit is a symbol string, decode it
-            unit = decode_symbol(g=g, tg=tg, symbol=unit_data)
+            unit = decode_symbol_runtime(g=g, tg=tg, symbol=unit_data)
         elif isinstance(unit_data, dict):
             # Unit is a full definition with basis_vector, multiplier, offset
             symbols = unit_data.get("symbols", [])
@@ -4279,7 +4282,7 @@ class Numbers(fabll.Node):
             # Try to match by symbol first if available
             if symbols:
                 try:
-                    unit = decode_symbol(g=g, tg=tg, symbol=symbols[0])
+                    unit = decode_symbol_runtime(g=g, tg=tg, symbol=symbols[0])
                 except Exception:
                     # Fall back to creating anonymous unit from basis vector
                     basis_vector = BasisVector(**basis_vector_dict)
@@ -4385,7 +4388,7 @@ class TestNumbers:
         class App(fabll.Node):
             from faebryk.library.Units import Meter
 
-            quantity_set = Numbers.MakeChild(min=0.0, max=1.0, unit=Meter)
+            quantity_set = Numbers.MakeChild(min=0.0, max=1.0, unit=Meter.MakeChild())
 
         app = App.bind_typegraph(tg=tg).create_instance(g=g)
         numeric_set = app.quantity_set.get().get_numeric_set()
@@ -4400,7 +4403,9 @@ class TestNumbers:
         class App(fabll.Node):
             from faebryk.library.Units import Meter
 
-            quantity_set = Numbers.MakeChild_SingleValue(value=1.0, unit=Meter)
+            quantity_set = Numbers.MakeChild_SingleValue(
+                value=1.0, unit=Meter.MakeChild()
+            )
 
         app = App.bind_typegraph(tg=tg).create_instance(g=g)
         numeric_set = app.quantity_set.get().get_numeric_set()
@@ -5666,7 +5671,7 @@ class TestNumbers:
             Meter,
             Ohm,
             Volt,
-            decode_symbol,
+            decode_symbol_runtime,
         )
 
         # Instantiate base units so prefixed versions can be decoded
@@ -5676,7 +5681,7 @@ class TestNumbers:
         _ = Farad.bind_typegraph(tg=tg).create_instance(g=g)
         _ = Volt.bind_typegraph(tg=tg).create_instance(g=g)
 
-        prefixed_unit = decode_symbol(g=g, tg=tg, symbol=symbol)
+        prefixed_unit = decode_symbol_runtime(g=g, tg=tg, symbol=symbol)
 
         # Create original Numbers with prefixed unit
         original = Numbers.create_instance(g=g, tg=tg)

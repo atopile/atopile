@@ -23,7 +23,6 @@ from atopile.compiler.gentypegraph import (
     ScopeState,
     Symbol,
 )
-from atopile.errors import UserSyntaxError
 from faebryk.core.faebrykpy import (
     EdgeComposition,
     EdgePointer,
@@ -34,7 +33,7 @@ from faebryk.library.can_bridge import can_bridge
 from faebryk.library.Lead import can_attach_to_pad_by_name, is_lead
 from faebryk.libs.util import cast_assert, not_none
 
-_Quantity = tuple[float, str]
+_Quantity = tuple[float, fabll._ChildField]
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +54,6 @@ STDLIB_ALLOWLIST: set[type[fabll.Node]] = (
         F.Addressor,
         F.MultiCapacitor,
         # FIXME: separate list for internal types
-        F.Expressions.Is,
-        F.Expressions.IsSubset,
-        F.Literals.Numbers,
-        F.Literals.NumericSet,
-        F.Literals.NumericInterval,
     }
 ) | (
     # Traits
@@ -617,25 +611,12 @@ class ASTVisitor:
 
     def visit_Boolean(
         self, node: AST.Boolean
-    ) -> fabll._ChildField[F.Literals.Booleans]:
+    ) -> "fabll._ChildField[F.Literals.Booleans]":
         return F.Literals.Booleans.MakeChild(node.get_value())
-
-    def visit_Quantity(
-        self, node: AST.Quantity
-    ) -> fabll._ChildField[F.Literals.Numbers]:
-        if (unit := node.get_unit()) is not None:
-            unit_type, multiplier = F.Units.get_unit_type_from_symbol(unit)
-            return F.Literals.Numbers.MakeChild_SingleValue(
-                node.get_value() * multiplier, unit_type
-            )
-
-        return F.Literals.Numbers.MakeChild_SingleValue(
-            node.get_value(), F.Units.Dimensionless
-        )
 
     def visit_AstString(
         self, node: AST.AstString
-    ) -> fabll._ChildField[F.Literals.Strings]:
+    ) -> "fabll._ChildField[F.Literals.Strings]":
         return F.Literals.Strings.MakeChild(node.get_text())
 
     def visit_StringStmt(self, node: AST.StringStmt):
@@ -845,7 +826,6 @@ class ASTVisitor:
 
         target_path = self.visit_FieldRef(node.get_target())
         assignable = self.visit_Assignable(node.assignable.get())
-        logger.info(f"Assignable: {assignable}")
 
         parent_path: FieldPath | None = None
         parent_reference: graph.BoundNode | None = None
@@ -866,9 +846,16 @@ class ASTVisitor:
                 # FIXME: add constraint type (is, ss) to spec?
                 # FIXME: should be IsSubset unless top of stack is a component
 
+                unique_target_str = str(target_path).replace(".", "_")
+
                 # operand as child of type
                 operand_action = AddMakeChildAction(
-                    target_path=target_path,  # TODO: is this actually the path of the param?
+                    target_path=FieldPath(
+                        segments=(
+                            *target_path.segments,
+                            FieldPath.Segment(f"operand_{unique_target_str}"),
+                        )
+                    ),
                     parent_reference=parent_reference,
                     parent_path=parent_path,
                     child_field=constraint_spec.operand,
@@ -878,17 +865,16 @@ class ASTVisitor:
                 expr_action = AddMakeChildAction(
                     target_path=FieldPath(
                         segments=(
-                            *target_path.segments,  # FIXME: append _constraint suffix to target path tail segment?
-                            FieldPath.Segment("constraint"),  # FIXME: must be unique
+                            *target_path.segments,
+                            FieldPath.Segment(f"constraint_{unique_target_str}"),
                         )
                     ),
                     parent_reference=parent_reference,
                     parent_path=parent_path,
-                    child_field=F.Expressions.Is.MakeChild_Constrain(
-                        [target_path.to_ref_path(), [constraint_spec.operand]]
+                    child_field=F.Expressions.IsSubset.MakeChild_Constrain(
+                        target_path.to_ref_path(), [constraint_spec.operand]
                     ),
                 )
-
                 return [operand_action, expr_action]
             case _:
                 raise NotImplementedError(f"Unhandled assignable type: {assignable}")
@@ -907,7 +893,7 @@ class ASTVisitor:
                 | AST.BoundedQuantity() as quantity
             ):
                 lit = self.visit(quantity)
-                assert isinstance(lit, fabll._ChildField)  # F.Literals.Numbers
+                assert isinstance(lit, fabll._ChildField)
                 return ConstraintSpec(operand=lit)
             case AST.BinaryExpression() | AST.GroupExpression() as arithmetic:
                 expr = self.visit(arithmetic)
@@ -920,35 +906,24 @@ class ASTVisitor:
 
     # TODO: implement recursion until arrival at atomic
     def to_expression_tree(self, node: AST.is_arithmetic) -> fabll.RefPath:
+        """Convert an arithmetic AST node to a RefPath for expression trees.
+
+        Note: The returned paths do NOT include "can_be_operand" suffix.
+        This is because MakeChild_Constrain methods append it themselves.
+        """
         cbo_path: fabll.RefPath | None = None
 
         assignable = self.visit(fabll.Traits(node).get_obj_raw())
 
+        # TODO: handle arithmetic expressions within assert
         match assignable:
+            case fabll._ChildField() as child_field:
+                return [child_field]
             case FieldPath() as field_path:
-                cbo_path = [*field_path.identifiers(), "can_be_operand"]
+                cbo_path = list(field_path.identifiers())
                 return cbo_path
-            case str() as value:
-                child_field = F.Literals.Strings.MakeChild(value)
-                return [child_field, "can_be_operand"]
-            case (float() as value, str() as unit):
-                unit_type, multiplier = F.Units.get_unit_type_from_symbol(unit)
-                child_field = F.Literals.Numbers.MakeChild(
-                    min=value * multiplier, max=value * multiplier, unit=unit_type
-                )
-                return [child_field, "can_be_operand"]
-            case (
-                (float() as start_value, str() as start_unit),
-                (float() as end_value, str() as end_unit),
-            ):
-                assert start_unit == end_unit
-                unit_type, multiplier = F.Units.get_unit_type_from_symbol(start_unit)
-                child_field = F.Literals.Numbers.MakeChild(
-                    min=start_value * multiplier,
-                    max=end_value * multiplier,
-                    unit=unit_type,
-                )
-                return [child_field, "can_be_operand"]
+            # case fabll.Node() if assignable.has_trait(AST.is_arithmetic_atom):
+            #     return [assignable]
 
         raise DslException(
             f"Unknown arithmetic: {fabll.Traits(node).get_obj_raw().get_type_name()}"
@@ -963,7 +938,7 @@ class ASTVisitor:
         rhs_refpath = self.to_expression_tree(list(comparison_clauses)[0].get_rhs())
 
         if len(list(comparison_clauses)) != 1:
-            raise UserSyntaxError(
+            raise NotImplementedError(
                 "Assert statement must have exactly one comparison clause (operator)"
             )
         # for clause in comparison_clauses:
@@ -1001,7 +976,7 @@ class ASTVisitor:
                     expr.add_dependant(seg, identifier="rhs", before=True)
             return [
                 AddMakeChildAction(
-                    target_path=lhs_refpath,
+                    target_path=[*lhs_refpath, str(lhs_refpath).replace(".", "_")],
                     parent_reference=None,
                     parent_path=None,
                     child_field=expr,
@@ -1010,43 +985,68 @@ class ASTVisitor:
         # TODO: is a plain assert legal?
         return NoOpAction()
 
+    def visit_Quantity(
+        self, node: AST.Quantity
+    ) -> "fabll._ChildField[F.Literals.Numbers]":
+        # Make childfield and edge pointer to unit_ptr to unit node child field
+        unit_symbol = node.try_get_unit_symbol()
+        if unit_symbol is None:
+            # TODO: Dont allow to compile without unit symbol?
+            # raise DslException("Unit symbol is required for quantity")
+            unit_child_field = F.Units.Dimensionless.MakeChild()
+        else:
+            unit_child_field = F.Units.decode_symbol(
+                self._graph, self._type_graph, unit_symbol
+            )
+
+        return F.Literals.Numbers.MakeChild_SingleValue(
+            node.get_value(), unit_child_field
+        )
+
     def visit_BoundedQuantity(
         self, node: AST.BoundedQuantity
-    ) -> fabll._ChildField[F.Literals.Numbers]:
-        start_value = node.start.get().get_value()
-        end_value = node.end.get().get_value()
-        start_unit = node.start.get().get_unit()
-        end_unit = node.end.get().get_unit()
-
-        # If both have units, they must match
-        if start_unit is not None and end_unit is not None:
-            assert start_unit == end_unit, f"Unit mismatch: {start_unit} vs {end_unit}"
-            unit_type, multiplier = F.Units.get_unit_type_from_symbol(start_unit)
-        elif start_unit is not None:
-            unit_type, multiplier = F.Units.get_unit_type_from_symbol(start_unit)
-        elif end_unit is not None:
-            unit_type, multiplier = F.Units.get_unit_type_from_symbol(end_unit)
+    ) -> "fabll._ChildField[F.Literals.Numbers]":
+        start_unit_symbol = node.start.get().try_get_unit_symbol()
+        end_unit_symbol = node.end.get().try_get_unit_symbol()
+        # TODO: handle this more intelligentlly
+        if start_unit_symbol is not None and end_unit_symbol is not None:
+            assert start_unit_symbol == end_unit_symbol, (
+                f"Unit mismatch: {start_unit_symbol} vs {end_unit_symbol}"
+            )
+        if start_unit_symbol is None or end_unit_symbol is None:
+            raise DslException("Unit symbol is required for bounded quantity")
         else:
-            unit_type = F.Units.Dimensionless
-            multiplier = 1.0
+            unit_child_field = F.Units.decode_symbol(
+                self._graph, self._type_graph, start_unit_symbol
+            )
 
         return F.Literals.Numbers.MakeChild(
-            min=start_value * multiplier,
-            max=end_value * multiplier,
-            unit=unit_type,
+            min=node.start.get().get_value(),
+            max=node.end.get().get_value(),
+            unit=unit_child_field,
         )
 
     def visit_BilateralQuantity(
         self, node: AST.BilateralQuantity
-    ) -> fabll._ChildField[F.Literals.Numbers]:
-        assert node.tolerance.get().get_unit() == "%" or (
-            node.quantity.get().get_unit() != node.tolerance.get().get_unit()
+    ) -> "fabll._ChildField[F.Literals.Numbers]":
+        quantity_unit_symbol = node.quantity.get().try_get_unit_symbol()
+        tolerance_unit_symbol = node.tolerance.get().try_get_unit_symbol()
+        # TODO: handle this more intelligentlly
+        assert (
+            tolerance_unit_symbol == "%"
+            or quantity_unit_symbol == tolerance_unit_symbol
         )
+        if quantity_unit_symbol is None or tolerance_unit_symbol is None:
+            raise DslException("Unit symbol is required for bilateralquantity")
+        else:
+            unit_child_field = F.Units.decode_symbol(
+                self._graph, self._type_graph, quantity_unit_symbol
+            )
+
         node_quantity_value = node.quantity.get().get_value()
         node_tolerance_value = node.tolerance.get().get_value()
-        node_quantity_unit = node.quantity.get().get_unit()
 
-        if (node.tolerance.get().get_unit()) == "%":
+        if tolerance_unit_symbol == "%":
             tolerance_value = node_tolerance_value / 100
             start_value = node_quantity_value * (1 - tolerance_value)
             end_value = node_quantity_value * (1 + tolerance_value)
@@ -1054,18 +1054,10 @@ class ASTVisitor:
             start_value = node_quantity_value - node_tolerance_value
             end_value = node_quantity_value + node_tolerance_value
 
-        if node_quantity_unit is not None:
-            unit_type, multiplier = F.Units.get_unit_type_from_symbol(
-                node_quantity_unit
-            )
-        else:
-            unit_type = F.Units.Dimensionless
-            multiplier = 1.0
-
         return F.Literals.Numbers.MakeChild(
-            min=start_value * multiplier,
-            max=end_value * multiplier,
-            unit=unit_type,
+            min=start_value,
+            max=end_value,
+            unit=unit_child_field,
         )
 
     def visit_NewExpression(self, node: AST.NewExpression):

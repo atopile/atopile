@@ -65,6 +65,7 @@ from faebryk.library.has_single_electric_reference import has_single_electric_re
 from faebryk.library.Capacitor import Capacitor
 from faebryk.library.Comparator import Comparator
 from faebryk.library.Crystal import Crystal
+from faebryk.library.Diode import Diode
 from faebryk.library.Fuse import Fuse
 from faebryk.library.Inductor import Inductor
 from faebryk.library.MOSFET import MOSFET
@@ -73,16 +74,15 @@ from faebryk.library.Resistor import Resistor
 from faebryk.library.TestPoint import TestPoint
 from faebryk.library.BJT import BJT
 from faebryk.library.CapacitorElectrolytic import CapacitorElectrolytic
-from faebryk.library.Diode import Diode
 from faebryk.library.Battery import Battery
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.ElectricSignal import ElectricSignal
 from faebryk.library.MultiCapacitor import MultiCapacitor
+from faebryk.library.LED import LED
 from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
 from faebryk.library.ResistorArray import ResistorArray
 from faebryk.library.has_designator import has_designator
 from faebryk.library.has_pulls import has_pulls
-from faebryk.library.LED import LED
 from faebryk.library.CAN_TTL import CAN_TTL
 from faebryk.library.I2S import I2S
 from faebryk.library.JTAG import JTAG
@@ -164,6 +164,7 @@ __all__ = [
     "Capacitor",
     "Comparator",
     "Crystal",
+    "Diode",
     "Fuse",
     "Inductor",
     "MOSFET",
@@ -172,16 +173,15 @@ __all__ = [
     "TestPoint",
     "BJT",
     "CapacitorElectrolytic",
-    "Diode",
     "Battery",
     "ElectricLogic",
     "ElectricSignal",
     "MultiCapacitor",
+    "LED",
     "Crystal_Oscillator",
     "ResistorArray",
     "has_designator",
     "has_pulls",
-    "LED",
     "CAN_TTL",
     "I2S",
     "JTAG",

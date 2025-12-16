@@ -85,7 +85,7 @@ class BoundExpressions:
         L = F.Units.Liter
 
         # Angular frequency
-        rpm = F.Units.RPM
+        rpm = F.Units.Rpm
 
         # Data units
         bit = F.Units.Bit
@@ -244,7 +244,7 @@ class BoundExpressions:
             F.Parameters.NumericParameter.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
             .setup(
-                units=is_unit_node,
+                is_unit=is_unit_node,
                 within=within,
                 domain=domain,
             )

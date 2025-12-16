@@ -36,13 +36,15 @@ class MultiCapacitor(fabll.Node):
     # ----------------------------------------
     unnamed = [F.Electrical.MakeChild() for _ in range(2)]
 
-    capacitance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Farad)
-    max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    capacitance = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Farad.MakeChild()
+    )
+    max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt.MakeChild())
     temperature_coefficient = F.Parameters.EnumParameter.MakeChild(
         enum_t=TemperatureCoefficient
     )
     count = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Dimensionless,
+        unit=F.Units.Dimensionless.MakeChild(),
         domain=F.NumberDomain.Args(negative=False, integer=True),
     )
 

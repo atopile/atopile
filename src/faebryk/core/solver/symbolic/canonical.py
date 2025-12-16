@@ -294,7 +294,7 @@ def convert_to_canonical_operations(mutator: Mutator):
                 F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
                 .create_instance(mutator.G_out)
                 .setup(
-                    units=mutator.utils.dimensionless(),
+                    is_unit=mutator.utils.dimensionless(),
                     domain=F.Parameters.NumericParameter.DOMAIN_SKIP,
                 )
             )

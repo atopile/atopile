@@ -26,12 +26,14 @@ class I2C(fabll.Node):
     sda = F.ElectricLogic.MakeChild()
 
     address = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Bit, domain=F.NumberDomain.Args(negative=False, integer=True)
+        unit=F.Units.Bit.MakeChild(),
+        domain=F.NumberDomain.Args(negative=False, integer=True),
     )
     bus_addresses = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Bit, domain=F.NumberDomain.Args(negative=False, integer=True)
+        unit=F.Units.Bit.MakeChild(),
+        domain=F.NumberDomain.Args(negative=False, integer=True),
     )
-    frequency = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz)
+    frequency = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz.MakeChild())
 
     # ----------------------------------------
     #                 traits
@@ -54,7 +56,7 @@ class I2C(fabll.Node):
             self.sda,
             interface_type=I2C,
             required_resistance=F.Literals.Numbers.MakeChild(
-                min=1000 * (1 - 0.1), max=10000 * (1 + 0.1), unit=F.Units.Ohm
+                min=1000 * (1 - 0.1), max=10000 * (1 + 0.1), unit_type=F.Units.Ohm
             ),
         )
 

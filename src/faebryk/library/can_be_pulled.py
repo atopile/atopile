@@ -162,7 +162,7 @@ class can_be_pulled(fabll.Node):
             eff_param = (
                 F.Parameters.NumericParameter.bind_typegraph(tg=self.tg)
                 .create_instance(g=self.g)
-                .setup(units=parameters[0].get_units())
+                .setup(is_unit=parameters[0].get_units())
             )
             eff_param.alias_to_literal(g=self.g, value=eff_literal)
             return eff_param

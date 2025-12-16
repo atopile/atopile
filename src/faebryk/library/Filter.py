@@ -25,10 +25,10 @@ class Filter(fabll.Node):
     out: fabll._ChildField[F.Electrical]
 
     cutoff_frequency = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Hertz,
+        unit=F.Units.Hertz.MakeChild(),
     )
     order = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Dimensionless,
+        unit=F.Units.Dimensionless.MakeChild(),
         domain=F.NumberDomain.Args(negative=False, integer=True),
     )
     response = F.Parameters.EnumParameter.MakeChild(enum_t=Response)

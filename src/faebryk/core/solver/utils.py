@@ -1211,7 +1211,7 @@ class MutatorUtils:
                 .create_instance(self.mutator.G_out)
                 .setup(
                     # units removed in canonicalization
-                    units=F.Units.Dimensionless.bind_typegraph(self.mutator.tg_out)
+                    is_unit=F.Units.Dimensionless.bind_typegraph(self.mutator.tg_out)
                     .create_instance(self.mutator.G_out)
                     .is_unit.get(),
                     domain=F.Parameters.NumericParameter.DOMAIN_SKIP,

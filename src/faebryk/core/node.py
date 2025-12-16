@@ -96,6 +96,10 @@ class PLACEHOLDER:
         return "<PLACEHOLDER>"
 
 
+# Global counter for generating unique anonymous identifiers.
+_anon_counter = 0
+
+
 class Field:
     def __init__(self, identifier: str | None | PLACEHOLDER = PLACEHOLDER()):
         self.identifier: str | PLACEHOLDER = PLACEHOLDER()
@@ -107,8 +111,10 @@ class Field:
         self._is_dependant = False  # Set when added as a dependant of another field
 
     def _set_identifier(self, identifier: str | None) -> None:
+        global _anon_counter
         if identifier is None:
-            identifier = f"anon_{id(self):04x}"
+            _anon_counter += 1
+            identifier = f"anon{_anon_counter:04x}_{id(self):x}"
         self.identifier = identifier
 
     def get_identifier(self) -> str:

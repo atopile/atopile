@@ -29,14 +29,14 @@ class is_assignable(fabll.Node):
 
     def switch_cast(
         self,
-    ) -> "AstString | Boolean | NewExpression | Quantity | BinaryExpression | GroupExpression":  # noqa: E501
+    ) -> "AstString | Boolean | NewExpression | Quantity | BoundedQuantity | BilateralQuantity | BinaryExpression | GroupExpression":  # noqa: E501
         types = [
             AstString,
             Boolean,
             NewExpression,
             Quantity,
-            BilateralQuantity,
             BoundedQuantity,
+            BilateralQuantity,
             BinaryExpression,
             GroupExpression,
         ]
@@ -283,7 +283,7 @@ class Quantity(fabll.Node):
     def get_value(self) -> float:
         return self.number.get().get_value()
 
-    def get_unit(self) -> str | None:
+    def try_get_unit_symbol(self) -> str | None:
         if (unit := self.unit.get().try_deref()) is None:
             return None
 

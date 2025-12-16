@@ -2185,8 +2185,12 @@ class LessThan(fabll.Node):
         cls, lhs: "fabll.RefPath", rhs: "fabll.RefPath"
     ) -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
-        out.add_dependant(OperandPointer.MakeEdge([out, cls.left], lhs))
-        out.add_dependant(OperandPointer.MakeEdge([out, cls.right], rhs))
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.left], [*lhs, "can_be_operand"])
+        )
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.right], [*rhs, "can_be_operand"])
+        )
         out.add_dependant(
             fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
             identifier="constrain",
@@ -2253,8 +2257,12 @@ class GreaterThan(fabll.Node):
         cls, lhs: "fabll.RefPath", rhs: "fabll.RefPath"
     ) -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
-        out.add_dependant(OperandPointer.MakeEdge([out, cls.left], lhs))
-        out.add_dependant(OperandPointer.MakeEdge([out, cls.right], rhs))
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.left], [*lhs, "can_be_operand"])
+        )
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.right], [*rhs, "can_be_operand"])
+        )
         out.add_dependant(
             fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
             identifier="constrain",
@@ -2320,8 +2328,12 @@ class LessOrEqual(fabll.Node):
         cls, lhs: "fabll.RefPath", rhs: "fabll.RefPath"
     ) -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
-        out.add_dependant(OperandPointer.MakeEdge([out, cls.left], lhs))
-        out.add_dependant(OperandPointer.MakeEdge([out, cls.right], rhs))
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.left], [*lhs, "can_be_operand"])
+        )
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.right], [*rhs, "can_be_operand"])
+        )
         out.add_dependant(
             fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
             identifier="constrain",
@@ -2389,8 +2401,12 @@ class GreaterOrEqual(fabll.Node):
         cls, lhs: "fabll.RefPath", rhs: "fabll.RefPath"
     ) -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
-        out.add_dependant(OperandPointer.MakeEdge([out, cls.left], lhs))
-        out.add_dependant(OperandPointer.MakeEdge([out, cls.right], rhs))
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.left], [*lhs, "can_be_operand"])
+        )
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.right], [*rhs, "can_be_operand"])
+        )
         out.add_dependant(
             fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
             identifier="constrain",

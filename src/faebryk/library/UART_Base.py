@@ -12,7 +12,9 @@ class UART_Base(fabll.Node):
     rx = F.ElectricLogic.MakeChild()
     tx = F.ElectricLogic.MakeChild()
 
-    baud = F.Parameters.NumericParameter.MakeChild(unit=F.Units.BitsPerSecond)
+    baud = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.BitsPerSecond.MakeChild()
+    )
 
     # ----------------------------------------
     #                 traits
@@ -26,16 +28,14 @@ class UART_Base(fabll.Node):
     net_names = [
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="RX",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="RX", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[rx]
+            owner=[rx],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="TX",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="TX", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[tx]
+            owner=[tx],
         ),
     ]

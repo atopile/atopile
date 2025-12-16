@@ -29,7 +29,9 @@ class Fuse(fabll.Node):
 
     fuse_type = F.Parameters.EnumParameter.MakeChild(enum_t=FuseType)
     response_type = F.Parameters.EnumParameter.MakeChild(enum_t=ResponseType)
-    trip_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+    trip_current = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Ampere.MakeChild()
+    )
 
     # ----------------------------------------
     #                 traits

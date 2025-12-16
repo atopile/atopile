@@ -16,8 +16,10 @@ class I2S(fabll.Node):
     ws = F.ElectricLogic.MakeChild()  # Word Select (Left/Right Clock)
     sck = F.ElectricLogic.MakeChild()  # Serial Clock
 
-    sample_rate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz)
-    bit_depth = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Bit)
+    sample_rate = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Hertz.MakeChild()
+    )
+    bit_depth = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Bit.MakeChild())
 
     # ----------------------------------------
     #                 traits
@@ -37,24 +39,21 @@ class I2S(fabll.Node):
     net_names = [
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="SD",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="SD", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[sd]
+            owner=[sd],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="WS",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="WS", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[ws]
+            owner=[ws],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="SCK",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="SCK", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[sck]
+            owner=[sck],
         ),
     ]
 

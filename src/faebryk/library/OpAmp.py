@@ -15,12 +15,22 @@ class OpAmp(fabll.Node):
         F.Electrical.MakeChild()
     )  # TODO this should be an ElectricSignal with reference set to power
 
-    bandwidth = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz)
-    input_bias_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
-    input_offset_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
-    gain_bandwidth_product = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz)
-    output_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
-    slew_rate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.VoltsPerSecond)
+    bandwidth = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz.MakeChild())
+    input_bias_current = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Ampere.MakeChild()
+    )
+    input_offset_voltage = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Volt.MakeChild()
+    )
+    gain_bandwidth_product = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Hertz.MakeChild()
+    )
+    output_current = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Ampere.MakeChild()
+    )
+    slew_rate = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.VoltsPerSecond.MakeChild()
+    )
 
     # ----------------------------------------
     #                 traits
