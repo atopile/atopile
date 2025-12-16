@@ -56,6 +56,7 @@ def compile_zig():
     # Process all generated pyi files
     # only if any change in the pyi, formatting is expensive
     if changed := pyi_watcher.has_changed():
+        logger.info(f"Changed pyi files: {changed}")
         header = (
             get_header()
             + "\n"
