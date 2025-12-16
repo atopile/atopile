@@ -330,7 +330,11 @@ class PCB_Transformer:
         # the kicad pcb footprint pads
 
         for fpad in g_fp.get_pads():
-            pads = [pad for pad in pcb_pads if pad.name == fpad.pad_name]
+            pads = [
+                pad
+                for pad in pcb_pads
+                if pad.name == fpad.pad_name or pad.name == fpad.pad_number
+            ]
             pcb_pads -= FuncSet(pads)
             if not pads:
                 logger.warning(
@@ -338,6 +342,8 @@ class PCB_Transformer:
                     f"name: {fpad.pad_name}, "
                     f"number: {fpad.pad_number}"
                 )
+                continue
+
             # bind the kicad pcb pads to the fabll pad (is_pad trait)
             fabll.Traits.create_and_add_instance_to(
                 node=fpad, trait=F.KiCadFootprints.has_associated_kicad_pcb_pad

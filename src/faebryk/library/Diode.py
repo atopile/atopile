@@ -32,8 +32,16 @@ class Diode(fabll.Node):
         F.Footprints.can_attach_to_footprint.MakeChild()
     )
 
-    anode.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [anode]))
-    cathode.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [cathode]))
+    anode_lead = fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [anode])
+    cathode_lead = fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [cathode])
+
+    anode_attatchable = fabll.Traits.MakeEdge(
+        F.Lead.can_attach_to_pad_by_name.MakeChild(regex="a|anode|\+"), [anode_lead]
+    )
+    cathode_attatchable = fabll.Traits.MakeEdge(
+        F.Lead.can_attach_to_pad_by_name.MakeChild(regex="k|c|cathode|-"),
+        [cathode_lead],
+    )
 
     _can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeEdge(["anode"], ["cathode"]))
 
@@ -49,31 +57,18 @@ class Diode(fabll.Node):
         F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.D)
     )
 
-    _pin_association_heuristic = fabll.Traits.MakeEdge(
-        F.has_pin_association_heuristic.MakeChild(
-            mapping={
-                anode: ["A", "Anode", "+"],
-                cathode: ["K", "C", "Cathode", "-"],
-            },
-            accept_prefix=False,
-            case_sensitive=False,
-        )
-    )
-
     net_names = [
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="anode",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="anode", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[anode]
+            owner=[anode],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="cathode",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="cathode", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[cathode]
+            owner=[cathode],
         ),
     ]
 

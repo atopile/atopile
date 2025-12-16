@@ -101,10 +101,15 @@ class can_attach_to_pad_by_name(fabll.Node):
             self.case_sensitive_.get().force_extract_literal().get_boolean_values()[0]
         )
         regex = self.regex_.get().force_extract_literal().get_values()[0]
-        return re.compile(
-            regex,
-            flags=re.IGNORECASE if not case_sensitive else 0,
-        )
+        try:
+            return re.compile(
+                regex,
+                flags=re.IGNORECASE if not case_sensitive else 0,
+            )
+        except re.error as e:
+            raise LeadPadMatchException(
+                f"Invalid regex for lead [{self.get_name()}] with regex [{regex}]: {e}"
+            )
 
     @classmethod
     def MakeChild(
@@ -135,6 +140,12 @@ class can_attach_to_pad_by_name(fabll.Node):
         for pad in pads:
             if regex.match(pad.pad_name):
                 matched_pads.append(pad)
+
+        if not matched_pads:
+            for pad in pads:
+                if regex.match(pad.pad_number):
+                    matched_pads.append(pad)
+
         if len(matched_pads) == 1:
             return matched_pads[0]
         if len(matched_pads) > 1:
