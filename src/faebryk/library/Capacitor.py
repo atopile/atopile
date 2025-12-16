@@ -57,6 +57,7 @@ class Capacitor(fabll.Node):
     _can_bridge = fabll.Traits.MakeEdge(
         F.can_bridge.MakeEdge(["unnamed[0]"], ["unnamed[1]"])
     )
+
     _is_pickable = fabll.Traits.MakeEdge(
         F.is_pickable_by_type.MakeChild(
             endpoint=F.is_pickable_by_type.Endpoint.CAPACITORS,

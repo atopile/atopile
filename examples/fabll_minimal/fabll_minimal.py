@@ -4,13 +4,29 @@ from faebryk.core.faebrykpy import EdgeInterfaceConnection as interface
 
 
 class App(fabll.Node):
-    diode = F.Diode.MakeChild()
-    diode.add_dependant(
-        fabll.Traits.MakeEdge(
-            F.is_pickable_by_supplier_id.MakeChild(supplier_part_id="C64885"),
-            owner=[diode],
-        )
-    )
+    # diode = F.Diode.MakeChild()
+    # diode.add_dependant(
+    #     fabll.Traits.MakeEdge(
+    #         F.is_pickable_by_supplier_id.MakeChild(supplier_part_id="C64885"),
+    #         owner=[diode],
+    #     )
+    # )
+
+    # polarized_cap = F.CapacitorPolarized.MakeChild()
+    # polarized_cap.add_dependant(
+    #     fabll.Traits.MakeEdge(
+    #         F.is_pickable_by_supplier_id.MakeChild(supplier_part_id="C16133"),
+    #         owner=[polarized_cap],
+    #     )
+    # )
+
+    # led = F.LED.MakeChild()
+    # led.add_dependant(
+    #     fabll.Traits.MakeEdge(
+    #         F.is_pickable_by_supplier_id.MakeChild(supplier_part_id="C2286"),
+    #         owner=[led],
+    #     )
+    # )
 
     cap1 = F.Capacitor.MakeChild()
 

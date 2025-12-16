@@ -73,7 +73,8 @@ from faebryk.library.Net import Net
 from faebryk.library.Resistor import Resistor
 from faebryk.library.TestPoint import TestPoint
 from faebryk.library.BJT import BJT
-from faebryk.library.CapacitorElectrolytic import CapacitorElectrolytic
+from faebryk.library.CapacitorPolarized import CapacitorPolarized
+from faebryk.library.Diode import Diode
 from faebryk.library.Battery import Battery
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.ElectricSignal import ElectricSignal
@@ -172,7 +173,8 @@ __all__ = [
     "Resistor",
     "TestPoint",
     "BJT",
-    "CapacitorElectrolytic",
+    "CapacitorPolarized",
+    "Diode",
     "Battery",
     "ElectricLogic",
     "ElectricSignal",

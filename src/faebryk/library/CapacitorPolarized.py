@@ -10,17 +10,7 @@ import faebryk.library._F as F
 logger = logging.getLogger(__name__)
 
 
-class CapacitorElectrolytic(fabll.Node):
-    class TemperatureCoefficient(StrEnum):
-        Y5V = "Y5V"
-        Z5U = "Z5U"
-        X7S = "X7S"
-        X5R = "X5R"
-        X6R = "X6R"
-        X7R = "X7R"
-        X8R = "X8R"
-        C0G = "C0G"
-
+class CapacitorPolarized(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
@@ -31,40 +21,39 @@ class CapacitorElectrolytic(fabll.Node):
         unit=F.Units.Farad.MakeChild()
     )
     max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt.MakeChild())
-    temperature_coefficient = F.Parameters.EnumParameter.MakeChild(
-        enum_t=TemperatureCoefficient
-    )
 
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
     _can_attatch_to_footprint = fabll.Traits.MakeEdge(
         F.Footprints.can_attach_to_footprint.MakeChild()
     )
 
-    anode.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [anode]))
-    cathode.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [cathode]))
+    anode_lead = fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [anode])
+    cathode_lead = fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [cathode])
 
-    _can_bridge = F.can_bridge.MakeEdge(["anode"], ["cathode"])
+    pad_names = [
+        fabll.Traits.MakeEdge(
+            F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"a|anode|\+"),
+            [anode_lead],
+        ),
+        fabll.Traits.MakeEdge(
+            F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"k|c|cathode|-"),
+            [cathode_lead],
+        ),
+    ]
+
+    _can_bridge = fabll.Traits.MakeEdge(
+        F.can_bridge.MakeEdge(["anode"], ["cathode"]),
+    )
 
     S = F.has_simple_value_representation.Spec
     _simple_repr = fabll.Traits.MakeEdge(
         F.has_simple_value_representation.MakeChild(
             S(capacitance, tolerance=True),
             S(max_voltage),
-            # S(temperature_coefficient),
-        )
-    )
-
-    _pin_association_heuristic = fabll.Traits.MakeEdge(
-        F.has_pin_association_heuristic.MakeChild(
-            mapping={
-                anode: ["anode", "a"],
-                cathode: ["cathode", "c"],
-            },
-            accept_prefix=False,
-            case_sensitive=False,
         )
     )
 
@@ -97,9 +86,9 @@ class CapacitorElectrolytic(fabll.Node):
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(
             example="""
-        import CapacitorElectrolytic, ElectricPower
+        import CapacitorPolarized, ElectricPower
 
-        electrolytic_cap = new CapacitorElectrolytic
+        electrolytic_cap = new CapacitorPolarized
         electrolytic_cap.capacitance = 1000uF +/- 20%
         electrolytic_cap.max_voltage = 25V
         electrolytic_cap.package = "radial_8x12"  # 8mm diameter, 12mm height
