@@ -17,7 +17,7 @@ from faebryk.libs.util import indented_container
 
 logger = logging.getLogger(__name__)
 
-FLOG_FMT.set(True)
+FLOG_FMT.set(True, force=True)
 
 
 class DiscoveryMode(str, Enum):
