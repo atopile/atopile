@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT
 import logging
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 
@@ -32,24 +34,44 @@ class HDMI(fabll.Node):
     _single_electric_reference = fabll.Traits.MakeEdge(
         F.has_single_electric_reference.MakeChild()
     )
-    # ----------------------------------------
-    #                WIP
-    # ----------------------------------------
 
     # @staticmethod
     # def define_max_frequency_capability(mode: SpeedMode):
     #     return F.Range(I2C.SpeedMode.low_speed, mode)
 
-    def __preinit__(self) -> None:
-        pass
+    for i, diff_pair in enumerate(data):
+        diff_pair.add_dependant(
+            fabll.Traits.MakeEdge(
+                F.has_net_name_suggestion.MakeChild(
+                    name=f"HDMI_D{i}",
+                    level=F.has_net_name_suggestion.Level.SUGGESTED,
+                ),
+                owner=[diff_pair, "p"],
+            )
+        )
+        diff_pair.add_dependant(
+            fabll.Traits.MakeEdge(
+                F.has_net_name_suggestion.MakeChild(
+                    name=f"HDMI_D{i}",
+                    level=F.has_net_name_suggestion.Level.SUGGESTED,
+                ),
+                owner=[diff_pair, "n"],
+            )
+        )
 
-    def on_obj_set(self):
-        # Note: data is a list, so we handle it dynamically in on_obj_set
-        for i, data in enumerate(self.data):
-            net_name = f"HDMI_D{i}"
-            fabll.Traits.create_and_add_instance_to(
-                node=data.get().p.get(), trait=F.has_net_name_suggestion
-            ).setup(name=net_name, level=F.has_net_name_suggestion.Level.SUGGESTED)
-            fabll.Traits.create_and_add_instance_to(
-                node=data.get().n.get(), trait=F.has_net_name_suggestion
-            ).setup(name=net_name, level=F.has_net_name_suggestion.Level.SUGGESTED)
+
+def test_hdmi():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class App(fabll.Node):
+        hdmi = HDMI.MakeChild()
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    datapairs = [p.get() for p in app.hdmi.get().data]
+    assert len(datapairs) == 3
+    for index, diff_pair in enumerate(datapairs):
+        for line in [diff_pair.p.get(), diff_pair.n.get()]:
+            suggested_name_trait = line.try_get_trait(F.has_net_name_suggestion)
+            assert suggested_name_trait is not None
+            assert suggested_name_trait.name == f"HDMI_D{index}"

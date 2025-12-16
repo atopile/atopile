@@ -63,6 +63,7 @@ from faebryk.library.has_pin_association_heuristic import has_pin_association_he
 from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.Capacitor import Capacitor
+from faebryk.library.CapacitorPolarized import CapacitorPolarized
 from faebryk.library.Comparator import Comparator
 from faebryk.library.Crystal import Crystal
 from faebryk.library.Diode import Diode
@@ -73,8 +74,6 @@ from faebryk.library.Net import Net
 from faebryk.library.Resistor import Resistor
 from faebryk.library.TestPoint import TestPoint
 from faebryk.library.BJT import BJT
-from faebryk.library.CapacitorPolarized import CapacitorPolarized
-from faebryk.library.Diode import Diode
 from faebryk.library.Battery import Battery
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.ElectricSignal import ElectricSignal
@@ -163,6 +162,7 @@ __all__ = [
     "requires_external_usage",
     "has_single_electric_reference",
     "Capacitor",
+    "CapacitorPolarized",
     "Comparator",
     "Crystal",
     "Diode",
@@ -173,8 +173,6 @@ __all__ = [
     "Resistor",
     "TestPoint",
     "BJT",
-    "CapacitorPolarized",
-    "Diode",
     "Battery",
     "ElectricLogic",
     "ElectricSignal",

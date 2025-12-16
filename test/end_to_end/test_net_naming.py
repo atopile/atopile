@@ -10,8 +10,8 @@ def test_duplicate_specified_net_names(
         module App:
             a = new Resistor
             b = new Resistor
-            a.p1.override_net_name = "net"
-            b.p1.override_net_name = "net"
+            a.p1.has_net_name = "net"
+            b.p1.has_net_name = "net"
         """,
         [],
     )
@@ -28,8 +28,8 @@ def test_conflicting_net_names(build_app: EXEC_T, save_tmp_path_on_failure: None
             a = new Resistor
             b = new Resistor
             a.p1 ~ b.p1
-            a.p1.override_net_name = "net1"
-            b.p1.override_net_name = "net2"
+            a.p1.has_net_name = "net1"
+            b.p1.has_net_name = "net2"
         """,
         [],
     )
@@ -46,8 +46,8 @@ def test_agreeing_net_names(build_app: EXEC_T, save_tmp_path_on_failure: None):
             a = new Resistor
             b = new Resistor
             a.p1 ~ b.p1
-            a.p1.override_net_name = "net"
-            b.p1.override_net_name = "net"
+            a.p1.has_net_name = "net"
+            b.p1.has_net_name = "net"
         """,
         [],
     )
@@ -68,8 +68,8 @@ def test_duplicate_suggested_net_names(
         module App:
             a = new Resistor
             b = new Resistor
-            a.p1.suggest_net_name = "net"
-            b.p1.suggest_net_name = "net"
+            a.p1.has_net_name_suggestion = "net"
+            b.p1.has_net_name_suggestion = "net"
         """,
         [],
     )
@@ -91,8 +91,8 @@ def test_conflicting_suggested_names_on_same_net(
             a = new Resistor
             b = new Resistor
             a.p1 ~ b.p1
-            a.p1.suggest_net_name = "net1"
-            b.p1.suggest_net_name = "net2"
+            a.p1.has_net_name_suggestion = "net1"
+            b.p1.has_net_name_suggestion = "net2"
         """,
         [],
     )

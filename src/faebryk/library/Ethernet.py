@@ -40,30 +40,35 @@ class Ethernet(fabll.Node):
     net_names = [
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="ETH_LED_SPEED",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="ETH_LED_SPEED", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[led_speed]
+            owner=[led_speed],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="ETH_LED_LINK",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="ETH_LED_LINK", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[led_link]
+            owner=[led_link],
         ),
     ]
 
-    def on_obj_set(self):
-        # Note: pairs is a list, so we handle it dynamically in on_obj_set
-        for i, pair in enumerate(self.pairs):
-            fabll.Traits.create_and_add_instance_to(
-                node=pair.get().p.get(), trait=F.has_net_name_suggestion
-            ).setup(name=f"ETH_P{i}", level=F.has_net_name_suggestion.Level.SUGGESTED)
-
-            fabll.Traits.create_and_add_instance_to(
-                node=pair.get().n.get(), trait=F.has_net_name_suggestion
-            ).setup(name=f"ETH_P{i}", level=F.has_net_name_suggestion.Level.SUGGESTED)
+    for i, pair in enumerate(pairs):
+        pair.add_dependant(
+            fabll.Traits.MakeEdge(
+                F.has_net_name_suggestion.MakeChild(
+                    name=f"ETH_P{i}", level=F.has_net_name_suggestion.Level.SUGGESTED
+                ),
+                owner=[pair, "p"],
+            )
+        )
+        pair.add_dependant(
+            fabll.Traits.MakeEdge(
+                F.has_net_name_suggestion.MakeChild(
+                    name=f"ETH_N{i}", level=F.has_net_name_suggestion.Level.SUGGESTED
+                ),
+                owner=[pair, "n"],
+            )
+        )
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(
