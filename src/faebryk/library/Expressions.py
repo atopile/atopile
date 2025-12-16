@@ -877,6 +877,18 @@ class Add(fabll.Node):
         return self
 
     @classmethod
+    def MakeChild(cls, *operands: fabll.RefPath) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        for operand in operands:
+            # TODO: relying on a string identifier to connect to the correct
+            # trait is nasty
+            out.add_dependant(
+                OperandSet.MakeEdge([out, cls.operands], [*operand, "can_be_operand"]),
+                identifier="connect_operands",
+            )
+        return out
+
+    @classmethod
     def from_operands(
         cls,
         *operands: "F.Parameters.can_be_operand",
@@ -911,7 +923,7 @@ class Subtract(fabll.Node):
     )
     is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
     minuend = OperandPointer.MakeChild()
-    subtrahends = OperandSequence.MakeChild()
+    subtrahends = OperandSet.MakeChild()
 
     def setup(
         self,
@@ -922,6 +934,22 @@ class Subtract(fabll.Node):
         for subtrahend in subtrahends:
             self.subtrahends.get().append(subtrahend)
         return self
+
+    @classmethod
+    def MakeChild(
+        cls, minuend: fabll.RefPath, *subtrahends: fabll.RefPath
+    ) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.minuend], [*minuend, "can_be_operand"]),
+        )
+        for subtrahend in subtrahends:
+            out.add_dependant(
+                OperandSet.MakeEdge(
+                    [out, cls.subtrahends], [*subtrahend, "can_be_operand"]
+                ),
+            )
+        return out
 
     @classmethod
     def from_operands(
@@ -2798,6 +2826,21 @@ class Is(fabll.Node):
             )
         return out
 
+    @classmethod
+    def MakeChild(
+        cls, *operands: fabll.RefPath, assert_: bool = False
+    ) -> fabll._ChildField[Any]:
+        out = fabll._ChildField(cls)
+        if assert_:
+            out.add_dependant(
+                fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
+            )
+        for operand in operands:
+            out.add_dependant(
+                OperandSet.MakeEdge([out, cls.operands], [*operand, "can_be_operand"]),
+            )
+        return out
+
     def get_other_operand(
         self, operand: "F.Parameters.can_be_operand"
     ) -> "F.Parameters.can_be_operand | None":
@@ -3007,6 +3050,28 @@ def test_operand_order(expr_type: type[ExpressionNodes]):
     arg2 = E.lit_op_single(5)
     expr = expr_type.from_operands(arg1, arg2)  # type: ignore
     assert expr.is_expression.get().get_operands() == [arg1, arg2]
+
+
+class test_makechild:
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class App(fabll.Node):
+        op0 = F.Parameters.NumericParameter.MakeChild(F.Units.Dimensionless)
+        op1 = F.Parameters.NumericParameter.MakeChild(F.Units.Dimensionless)
+        op2 = F.Parameters.NumericParameter.MakeChild(F.Units.Dimensionless)
+        # expr = Subtract.MakeChild([op0], [op1], [op2])
+
+    return
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    sub = app.expr.get()
+    ops = [app.op0.get(), app.op1.get(), app.op2.get()]
+    assert sub.is_expression.get().get_operands() == ops
+    assert sub.minuend.get().deref() == ops[0]
+    assert sub.subtrahends.get().as_list() == ops[1:]
+
+    assert app
 
 
 if __name__ == "__main__":
