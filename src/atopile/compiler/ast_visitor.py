@@ -160,6 +160,17 @@ class _ScopeStack:
     def has_field(self, path: FieldPath) -> bool:
         return any(str(path) in state.fields for state in reversed(self.stack))
 
+    def ensure_not_defined(self, path: FieldPath, label: str | None = None) -> None:
+        """Raise if field is already defined in scope."""
+        if self.has_field(path):
+            name = label or str(path)
+            raise DslException(f"`{name}` is already defined in this scope")
+
+    def ensure_defined(self, path: FieldPath) -> None:
+        """Raise if field is not defined in scope."""
+        if not self.has_field(path):
+            raise DslException(f"Field `{path}` is not defined in scope")
+
     def resolve_symbol(self, name: str) -> Symbol:
         for state in reversed(self.stack):
             if name in state.symbols:
@@ -703,11 +714,7 @@ class ASTVisitor:
         (signal_name,) = node.name.get().get_values()
         target_path = FieldPath(segments=(FieldPath.Segment(identifier=signal_name),))
 
-        if self._scope_stack.has_field(target_path):
-            raise DslException(
-                f"Signal `{signal_name}` is already defined in this scope"
-            )
-
+        self._scope_stack.ensure_not_defined(target_path, f"Signal `{signal_name}`")
         self._scope_stack.add_field(target_path)
 
         return AddMakeChildAction(
@@ -754,12 +761,7 @@ class ASTVisitor:
         identifier = f"pin_{pin_label_str}"
         target_path = FieldPath(segments=(FieldPath.Segment(identifier=identifier),))
 
-        # TODO: helper method
-        if self._scope_stack.has_field(target_path):
-            raise DslException(
-                f"Pin `{pin_label_str}` is already defined in this scope"
-            )
-
+        self._scope_stack.ensure_not_defined(target_path, f"Pin `{pin_label_str}`")
         self._scope_stack.add_field(target_path)
 
         return AddMakeChildAction(
@@ -891,17 +893,13 @@ class ASTVisitor:
         if target_path.parent_segments:
             parent_path = FieldPath(segments=tuple(target_path.parent_segments))
 
-            if not self._scope_stack.has_field(parent_path):
-                raise DslException(f"Field `{parent_path}` is not defined in scope")
+            self._scope_stack.ensure_defined(parent_path)
 
             parent_reference = self._type_stack.resolve_reference(parent_path)
 
         match assignable:
             case NewChildSpec() as new_spec:
-                if self._scope_stack.has_field(target_path):
-                    raise DslException(
-                        f"Field `{target_path}` is already defined in this scope"
-                    )
+                self._scope_stack.ensure_not_defined(target_path)
                 return self._handle_new_child(
                     target_path, new_spec, parent_reference, parent_path
                 )
@@ -1112,8 +1110,7 @@ class ASTVisitor:
             (root, *_) = path.segments
             root_path = FieldPath(segments=(root,))
 
-            if not self._scope_stack.has_field(root_path):
-                raise DslException(f"Field `{root_path}` is not defined in scope")
+            self._scope_stack.ensure_defined(root_path)
 
             ref = self._type_stack.resolve_reference(path, validate=False)
             return ref, path
@@ -1324,8 +1321,7 @@ class ASTVisitor:
         target_reference: graph.BoundNode | None = None
         if (target_field_ref := node.get_target()) is not None:
             target_path = self.visit_FieldRef(target_field_ref)
-            if not self._scope_stack.has_field(target_path):
-                raise DslException(f"Field `{target_path}` is not defined in scope")
+            self._scope_stack.ensure_defined(target_path)
             target_reference = self._type_stack.resolve_reference(
                 target_path, validate=False
             )
