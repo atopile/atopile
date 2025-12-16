@@ -78,6 +78,12 @@ OperandSet = Collections.AbstractSet(
 )
 
 
+def get_operand_path(owner_ref: fabll.RefPath) -> fabll.RefPath:
+    # TODO: relying on a string identifier to connect to the correct
+    # trait is nasty
+    return [*owner_ref, "can_be_operand"]
+
+
 class is_expression(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     repr_placement = F.Collections.Pointer.MakeChild()
@@ -880,11 +886,8 @@ class Add(fabll.Node):
     def MakeChild(cls, *operands: fabll.RefPath) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
         for operand in operands:
-            # TODO: relying on a string identifier to connect to the correct
-            # trait is nasty
             out.add_dependant(
-                OperandSet.MakeEdge([out, cls.operands], [*operand, "can_be_operand"]),
-                identifier="connect_operands",
+                OperandSet.MakeEdge([out, cls.operands], get_operand_path(operand)),
             )
         return out
 
@@ -941,12 +944,12 @@ class Subtract(fabll.Node):
     ) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
         out.add_dependant(
-            OperandPointer.MakeEdge([out, cls.minuend], [*minuend, "can_be_operand"]),
+            OperandPointer.MakeEdge([out, cls.minuend], get_operand_path(minuend)),
         )
         for subtrahend in subtrahends:
             out.add_dependant(
                 OperandSet.MakeEdge(
-                    [out, cls.subtrahends], [*subtrahend, "can_be_operand"]
+                    [out, cls.subtrahends], get_operand_path(subtrahend)
                 ),
             )
         return out
@@ -996,14 +999,15 @@ class Multiply(fabll.Node):
     operands = OperandSet.MakeChild()
 
     @classmethod
-    def MakeChild_FromOperands(
-        cls, *operand_fields: fabll._ChildField
-    ) -> fabll._ChildField[Self]:
+    def MakeChild(cls, *operands: fabll.RefPath) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
 
-        for operand_field in operand_fields:
-            # TODO: to can_be_operand?
-            out.add_dependant(OperandSet.MakeEdge([out, cls.operands], [operand_field]))
+        for operand_field in operands:
+            out.add_dependant(
+                OperandSet.MakeEdge(
+                    [out, cls.operands], get_operand_path(operand_field)
+                )
+            )
 
         return out
 
@@ -1151,12 +1155,16 @@ class Power(fabll.Node):
     exponent = OperandPointer.MakeChild()
 
     @classmethod
-    def MakeChild_FromOperands(
-        cls, base: fabll._ChildField, exponent: fabll._ChildField
+    def MakeChild(
+        cls, base: fabll.RefPath, exponent: fabll.RefPath
     ) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
-        out.add_dependant(OperandPointer.MakeEdge([out, cls.base], [base]))
-        out.add_dependant(OperandPointer.MakeEdge([out, cls.exponent], [exponent]))
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.base], get_operand_path(base))
+        )
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.exponent], get_operand_path(exponent))
+        )
         return out
 
     def setup(
@@ -2609,21 +2617,19 @@ class IsSubset(fabll.Node):
     superset = OperandPointer.MakeChild()
 
     @classmethod
-    def MakeChild_Constrain(
-        cls, subset: fabll.RefPath, superset: fabll.RefPath
+    def MakeChild(
+        cls, subset: fabll.RefPath, superset: fabll.RefPath, assert_: bool = False
     ) -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
+        if assert_:
+            out.add_dependant(
+                fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
+            )
         out.add_dependant(
-            fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
-            identifier="constrain",
+            OperandPointer.MakeEdge([out, cls.subset], get_operand_path(subset)),
         )
         out.add_dependant(
-            OperandPointer.MakeEdge([out, cls.subset], [*subset, "can_be_operand"]),
-            identifier="connect_subset",
-        )
-        out.add_dependant(
-            OperandPointer.MakeEdge([out, cls.superset], [*superset, "can_be_operand"]),
-            identifier="connect_superset",
+            OperandPointer.MakeEdge([out, cls.superset], get_operand_path(superset)),
         )
         return out
 
@@ -2806,25 +2812,6 @@ class Is(fabll.Node):
         if assert_:
             self.is_assertable.get().assert_()
         return self
-
-    @classmethod
-    def MakeChild_Constrain(
-        cls, operands: list[fabll.RefPath]
-    ) -> fabll._ChildField[Any]:
-        out = fabll._ChildField(cls)
-        out.add_dependant(
-            fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
-            identifier="constrain",
-        )
-        for operand in operands:
-            # TODO: relying on a string identifier to connect to the correct
-            # trait is nasty
-            operand.append("can_be_operand")
-            out.add_dependant(
-                OperandSet.MakeEdge([out, cls.operands], operand),
-                identifier="connect_operands",
-            )
-        return out
 
     @classmethod
     def MakeChild(

@@ -359,7 +359,7 @@ class Strings(fabll.Node):
         from faebryk.library.Expressions import IsSubset
 
         lit = cls.MakeChild(*values)
-        out = IsSubset.MakeChild_Constrain(ref, [lit])
+        out = IsSubset.MakeChild(ref, [lit], assert_=True)
         out.add_dependant(lit, before=True)
         return out
 
@@ -370,7 +370,7 @@ class Strings(fabll.Node):
         from faebryk.library.Expressions import Is
 
         lit = cls.MakeChild(*values)
-        out = Is.MakeChild_Constrain([ref, [lit]])
+        out = Is.MakeChild(ref, [lit], assert_=True)
         out.add_dependant(lit, before=True)
         return out
 
@@ -2997,8 +2997,8 @@ class Numbers(fabll.Node):
         from faebryk.library.Expressions import IsSubset
 
         lit = cls.MakeChild(min=min, max=max, unit=unit)
-        out = IsSubset.MakeChild_Constrain(param_ref, [lit])
-        out.add_dependant(lit, identifier="lit", before=True)
+        out = IsSubset.MakeChild(param_ref, [lit], assert_=True)
+        out.add_dependant(lit, before=True)
         return out
 
     @classmethod
@@ -3025,8 +3025,8 @@ class Numbers(fabll.Node):
         from faebryk.library.Expressions import Is
 
         lit = cls.MakeChild(min=min, max=max, unit=unit)
-        out = Is.MakeChild_Constrain([param_ref, [lit]])
-        out.add_dependant(lit, identifier="lit", before=True)
+        out = Is.MakeChild(param_ref, [lit], assert_=True)
+        out.add_dependant(lit, before=True)
         return out
 
     @classmethod
@@ -6380,7 +6380,7 @@ class Booleans(fabll.Node):
         from faebryk.library.Expressions import Is
 
         lit = cls.MakeChild(*values)
-        out = Is.MakeChild_Constrain([ref, [lit]])
+        out = Is.MakeChild(ref, [lit], assert_=True)
         out.add_dependant(lit, before=True)
         return out
 
@@ -6811,8 +6811,8 @@ class AbstractEnums(fabll.Node):
         from faebryk.library.Expressions import Is
 
         lit = cls.MakeChild(*enum_members)
-        out = Is.MakeChild_Constrain([enum_parameter_ref, [lit]])
-        out.add_dependant(lit, identifier="lit", before=True)
+        out = Is.MakeChild(enum_parameter_ref, [lit], assert_=True)
+        out.add_dependant(lit, before=True)
         return out
 
     def as_literal(self) -> "is_literal":

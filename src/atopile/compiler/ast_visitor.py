@@ -871,8 +871,10 @@ class ASTVisitor:
                     ),
                     parent_reference=parent_reference,
                     parent_path=parent_path,
-                    child_field=F.Expressions.IsSubset.MakeChild_Constrain(
-                        target_path.to_ref_path(), [constraint_spec.operand]
+                    child_field=F.Expressions.Is.MakeChild(
+                        target_path.to_ref_path(),
+                        [constraint_spec.operand],
+                        assert_=True,
                     ),
                 )
                 return [operand_action, expr_action]
@@ -960,9 +962,11 @@ class ASTVisitor:
                 lhs_refpath, rhs_refpath
             )
         elif operator == "within":
-            expr = F.Expressions.IsSubset.MakeChild_Constrain(lhs_refpath, rhs_refpath)
+            expr = F.Expressions.IsSubset.MakeChild(
+                lhs_refpath, rhs_refpath, assert_=True
+            )
         elif operator == "is":
-            expr = F.Expressions.Is.MakeChild_Constrain([lhs_refpath, rhs_refpath])
+            expr = F.Expressions.Is.MakeChild(lhs_refpath, rhs_refpath, assert_=True)
         else:
             raise DslException(f"Unknown comparison operator: {operator}")
 

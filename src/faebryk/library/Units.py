@@ -1053,7 +1053,7 @@ class UnitExpression(fabll.Node):
         from faebryk.library.Expressions import Multiply, Power
 
         out = fabll._ChildField(cls)
-        term_fields = []
+        term_fields = list[fabll.RefPath]()
 
         for unit, exponent in cls._unit_vector_arg:
             unit_field = unit.MakeChild()
@@ -1068,17 +1068,17 @@ class UnitExpression(fabll.Node):
             exponent_lit = F.Literals.Numbers.MakeChild(
                 min=exponent, max=exponent, unit=Dimensionless.MakeChild()
             )
-            exponent_is_expr = F.Expressions.Is.MakeChild_Constrain(
-                [[exponent_field], [exponent_lit]]
+            exponent_is_expr = F.Expressions.Is.MakeChild(
+                [exponent_field], [exponent_lit], assert_=True
             )
             exponent_is_expr.add_dependant(exponent_lit, identifier="lit", before=True)
             out.add_dependant(exponent_is_expr)
 
-            term_field = Power.MakeChild_FromOperands(unit_field, exponent_field)
+            term_field = Power.MakeChild([unit_field], [exponent_field])
             out.add_dependant(term_field)
-            term_fields.append(term_field)
+            term_fields.append([term_field])
 
-        expr_field = Multiply.MakeChild_FromOperands(*term_fields)
+        expr_field = Multiply.MakeChild(*term_fields)
         out.add_dependant(expr_field)
         out.add_dependant(F.Collections.Pointer.MakeEdge([out, cls.expr], [expr_field]))
 
