@@ -44,7 +44,7 @@ def test_performance_pick_real_module():
     timings = Times()
 
     class App(fabll.Node):
-        resistors = [F.Resistor.MakeChild() for _ in range(1)]
+        resistors = [F.Resistor.MakeChild() for _ in range(2)]
 
     app = App.bind_typegraph(tg).create_instance(g=g)
     timings.add("construct")

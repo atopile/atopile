@@ -213,9 +213,14 @@ def memray(
 @app.command(
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
 )
-def perf(ctx: typer.Context, report_only: bool = False):
+def perf(
+    ctx: typer.Context,
+    report_only: bool = False,
+    samples_per_second: int = typer.Option(
+        3100, "-F", "--samples-per-second", help="Samples per second"
+    ),
+):
     """Profile a Python program using perf."""
-    import re
 
     artifact_dir = Path(__file__).parent.parent / "artifacts" / "perf"
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -230,7 +235,7 @@ def perf(ctx: typer.Context, report_only: bool = False):
             [
                 "perf",
                 "record",
-                *["-F", "31000"],  # 31k samples per second
+                *["-F", str(samples_per_second)],
                 *["--call-graph", "dwarf"],
                 "-g",
                 *["-o", str(perf_data_file)],

@@ -77,3 +77,20 @@ def test(
             pass  # Not a number, use as-is
 
     main(args=args, baseline_commit=baseline_commit)
+
+
+@dev_app.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
+def profile(
+    ctx: typer.Context,
+):
+    import sys
+
+    from faebryk.libs.util import repo_root
+
+    sys.path.insert(0, str(repo_root()))
+    from tools.profile import app
+
+    sys.argv = ["", *ctx.args]
+    app()
