@@ -105,16 +105,22 @@ def _load_module(path: list[str], module: ModuleType):
             _load_module(path_, obj)
 
 
+def _load_ext(path: Path, name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def load():
     # Insert at beginning to override any installed version
-    spec = importlib.util.spec_from_file_location("pyzig", _build_dir / "pyzig.so")
-    assert spec and spec.loader
+    return _load_ext(_build_dir / "pyzig.so", "pyzig")
 
-    # Import from the local build directory, not from installed package
-    pyzig = importlib.util.module_from_spec(spec)
-    sys.modules["pyzig_local"] = pyzig  # Use different name to avoid conflicts
-    spec.loader.exec_module(pyzig)
-    return pyzig
+
+def load_sexp():
+    return _load_ext(_build_dir / "pyzig_sexp.so", "pyzig_sexp")
 
 
 # Fallback to editable build-on-import
@@ -123,8 +129,28 @@ if is_editable_install():
         compile_zig()
     pyzig = load()
 
+    # load sexp
+    sexp = load_sexp()
+    # Attach the sexp module under pyzig.gen to keep the old API surface.
+    gen = getattr(pyzig, "gen", None)
+    if gen is not None:
+        setattr(gen, "sexp", sexp)
+    # Populate sys.modules entries for nested import paths.
+    sys.modules["pyzig.gen.sexp"] = sexp
+    sys.modules["faebryk.core.zig.gen.sexp"] = sexp
+    sexp.__name__ = "pyzig.gen.sexp"
+
     _load_module(["faebryk", "core", "zig"], pyzig)
 else:
     import pyzig
+    import pyzig_sexp
+
+    # Attach the sexp module under pyzig.gen to keep the old API surface.
+    gen = getattr(pyzig, "gen", None)
+    if gen is not None:
+        setattr(gen, "sexp", pyzig_sexp)
+    sys.modules["pyzig.gen.sexp"] = pyzig_sexp
+    sys.modules["faebryk.core.zig.gen.sexp"] = pyzig_sexp
+    pyzig_sexp.__name__ = "pyzig.gen.sexp"
 
     _load_module(["faebryk", "core", "zig"], pyzig)
