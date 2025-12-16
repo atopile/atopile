@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, Callable, ClassVar
 
 import atopile.compiler.ast_types as AST
 import faebryk.core.faebrykpy as fbrk
@@ -658,11 +658,11 @@ class ASTVisitor:
 
                 _Block = _Interface
 
-        # FIXME: sanitize
-        _Block.__name__ = self._make_type_identifier(module_name)
-        _Block.__qualname__ = self._make_type_identifier(module_name)
+        type_identifier = self._make_type_identifier(module_name)
+        _Block.__name__ = type_identifier
+        _Block.__qualname__ = type_identifier
 
-        type_node = self._type_graph.add_type(identifier=module_name)
+        type_node = self._type_graph.add_type(identifier=type_identifier)
         type_node_bound_tg = fabll.TypeNodeBoundTG(tg=self._type_graph, t=_Block)
 
         with self._scope_stack.enter():
@@ -719,12 +719,17 @@ class ASTVisitor:
 
         return AddMakeChildAction(
             target_path=target_path,
-            child_field=F.Electrical.MakeChild(),
+            child_field=fabll._ChildField(
+                nodetype=F.Electrical,
+                identifier=signal_name,
+            ),
             parent_reference=None,
             parent_path=None,
         )
 
-    def _create_pin_child_field(self, pin_label: str) -> fabll._ChildField:
+    def _create_pin_child_field(
+        self, pin_label: str, identifier: str
+    ) -> fabll._ChildField:
         """
         Create a pin as an Electrical with is_lead trait attached.
         Pins are Electrical interfaces that also act as leads for footprint pads.
@@ -733,8 +738,8 @@ class ASTVisitor:
 
         regex = f"^{re.escape(str(pin_label))}$"
 
-        # Start with Electrical's MakeChild
-        pin = F.Electrical.MakeChild()
+        # Create Electrical with explicit identifier
+        pin = fabll._ChildField(nodetype=F.Electrical, identifier=identifier)
 
         # Add is_lead trait to the pin (attached to pin itself via [pin])
         lead = is_lead.MakeChild()
@@ -768,7 +773,7 @@ class ASTVisitor:
             target_path=target_path,
             parent_reference=None,
             parent_path=None,
-            child_field=self._create_pin_child_field(pin_label_str),
+            child_field=self._create_pin_child_field(pin_label_str, identifier),
         )
 
     def visit_FieldRef(self, node: AST.FieldRef) -> FieldPath:
@@ -1104,33 +1109,60 @@ class ASTVisitor:
     def _resolve_connectable_with_path(
         self, connectable_node: fabll.Node
     ) -> tuple[graph.BoundNode, FieldPath]:
-        # FIXME: refactor
+        """Resolve a connectable node to a graph reference and path.
+
+        Handles two cases:
+        - FieldRef: reference to existing field (must exist)
+        - Declarations (Signal, Pin): may create if not exists
+        """
         if connectable_node.isinstance(AST.FieldRef):
-            path = self.visit_FieldRef(connectable_node.cast(t=AST.FieldRef))
-            (root, *_) = path.segments
-            root_path = FieldPath(segments=(root,))
+            return self._resolve_field_ref(connectable_node.cast(t=AST.FieldRef))
+        return self._resolve_declaration(connectable_node)
 
-            self._scope_stack.ensure_defined(root_path)
+    def _resolve_field_ref(
+        self, field_ref: AST.FieldRef
+    ) -> tuple[graph.BoundNode, FieldPath]:
+        """Resolve a reference to an existing field."""
+        path = self.visit_FieldRef(field_ref)
+        (root, *_) = path.segments
+        root_path = FieldPath(segments=(root,))
 
-            ref = self._type_stack.resolve_reference(path, validate=False)
-            return ref, path
+        self._scope_stack.ensure_defined(root_path)
 
-        elif connectable_node.isinstance(AST.SignaldefStmt):
-            signal_node = connectable_node.cast(t=AST.SignaldefStmt)
+        ref = self._type_stack.resolve_reference(path, validate=False)
+        return ref, path
+
+    def _resolve_declaration(
+        self, node: fabll.Node
+    ) -> tuple[graph.BoundNode, FieldPath]:
+        """Resolve a declaration node, creating it if it doesn't exist."""
+        target_path, visit_fn = self._get_declaration_info(node)
+
+        if not self._scope_stack.has_field(target_path):
+            action = visit_fn()
+            self._type_stack.apply_action(action)
+
+        ref = self._type_stack.resolve_reference(target_path, validate=False)
+        return ref, target_path
+
+    def _get_declaration_info(
+        self, node: fabll.Node
+    ) -> tuple[FieldPath, Callable[[], Any]]:
+        """Extract path and visit function for a declaration node.
+
+        Returns:
+            (target_path, visit_fn) where visit_fn creates the declaration action
+        """
+        if node.isinstance(AST.SignaldefStmt):
+            signal_node = node.cast(t=AST.SignaldefStmt)
             (signal_name,) = signal_node.name.get().get_values()
             target_path = FieldPath(
                 segments=(FieldPath.Segment(identifier=signal_name),)
             )
+            return target_path, lambda: self.visit_SignaldefStmt(signal_node)
 
-            if not self._scope_stack.has_field(target_path):
-                action = self.visit_SignaldefStmt(signal_node)
-                self._type_stack.apply_action(action)
-
-            ref = self._type_stack.resolve_reference(target_path, validate=False)
-            return ref, target_path
-
-        elif connectable_node.isinstance(AST.PinDeclaration):
-            pin_node = connectable_node.cast(t=AST.PinDeclaration)
+        elif node.isinstance(AST.PinDeclaration):
+            pin_node = node.cast(t=AST.PinDeclaration)
             pin_label = pin_node.get_label()
             if pin_label is None:
                 raise DslException("Pin declaration has no label")
@@ -1143,18 +1175,9 @@ class ASTVisitor:
             target_path = FieldPath(
                 segments=(FieldPath.Segment(identifier=identifier),)
             )
+            return target_path, lambda: self.visit_PinDeclaration(pin_node)
 
-            if not self._scope_stack.has_field(target_path):
-                action = self.visit_PinDeclaration(pin_node)
-                self._type_stack.apply_action(action)
-
-            ref = self._type_stack.resolve_reference(target_path, validate=False)
-            return ref, target_path
-
-        else:
-            raise NotImplementedError(
-                f"Unhandled connectable type: {connectable_node.get_type_name()}"
-            )
+        raise NotImplementedError(f"Unhandled declaration type: {node.get_type_name()}")
 
     def visit_ConnectStmt(self, node: AST.ConnectStmt):
         lhs, rhs = node.get_lhs(), node.get_rhs()
@@ -1177,9 +1200,8 @@ class ASTVisitor:
         lhs_node = fabll.Traits(lhs).get_obj_raw()
         _, lhs_base_path = self._resolve_connectable_with_path(lhs_node)
 
-        # FIXME: ideally no python instance checks
-        if isinstance(rhs, AST.DirectedConnectStmt):
-            nested_lhs = rhs.get_lhs()
+        if nested_rhs := rhs.try_cast(t=AST.DirectedConnectStmt):
+            nested_lhs = nested_rhs.get_lhs()
             nested_lhs_node = fabll.Traits(nested_lhs).get_obj_raw()
             _, middle_base_path = self._resolve_connectable_with_path(nested_lhs_node)
 
@@ -1188,7 +1210,7 @@ class ASTVisitor:
             )
             self._type_stack.apply_action(action)
 
-            return self.visit_DirectedConnectStmt(rhs)
+            return self.visit_DirectedConnectStmt(nested_rhs)
 
         rhs_node = fabll.Traits(rhs).get_obj_raw()
         _, rhs_base_path = self._resolve_connectable_with_path(rhs_node)
