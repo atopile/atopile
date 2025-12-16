@@ -35,6 +35,9 @@ def test(
     ),
     direct: bool = False,
     test_name: str | None = typer.Option(None, "-k", help="Test name pattern"),
+    test_paths: list[Path] = typer.Option(
+        [Path("test"), Path("src")], "-p", help="Test paths"
+    ),
 ):
     import sys
 
@@ -51,7 +54,7 @@ def test(
         if not test_name:
             raise ValueError("Test name is required when running directly")
 
-        run(test_name=test_name, filepaths=[Path("test"), Path("src")])
+        run(test_name=test_name, filepaths=test_paths)
         return
 
     from test.runner.main import main

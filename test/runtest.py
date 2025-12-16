@@ -34,15 +34,21 @@ def discover_tests(
     """
     matches = []
     for fp in filepaths:
-        spec = importlib.util.spec_from_file_location("test_module", fp)
-        if spec is None:
-            continue
-        module = importlib.util.module_from_spec(spec)
-        if spec.loader is None:
-            continue
         try:
+            if not re.search(test_pattern, fp.read_text(encoding="utf-8")):
+                continue
+            spec = importlib.util.spec_from_file_location("test_module", fp)
+            if spec is None:
+                continue
+            module = importlib.util.module_from_spec(spec)
+            if spec.loader is None:
+                continue
+            # redirect_stderr and redirect_stdout to devnull
+            # with redirect_stdout(open(os.devnull, "w")):
+            #   with redirect_stderr(open(os.devnull, "w")):
             spec.loader.exec_module(module)
         except Exception:
+            print("Error importing", fp)
             continue
         for v in vars(module).values():
             if not hasattr(v, "__name__"):
@@ -135,7 +141,7 @@ def run(
         if not filepath.is_dir():
             test_files.append(filepath)
         else:
-            test_files.extend(filepath.rglob("test_*.py"))
+            test_files.extend(filepath.rglob("*.py"))
 
     matches = discover_tests(test_files, test_name)
     if not matches:
