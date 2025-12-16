@@ -105,51 +105,6 @@ def _escape_shell_args(args: list[str]) -> str:
     return " ".join([_escape_arg(arg) for arg in args])
 
 
-def run_gdb(test_bin: Path) -> None:
-    # TODO move to util.py
-
-    core_file = test_bin.with_suffix(".core")
-    subprocess.run(
-        ["coredumpctl", "dump", test_bin, *["--output", core_file]],
-        capture_output=True,
-        check=True,
-    )
-
-    args = """-q -batch \
-        -ex 'set debuginfod enabled off' \
-        -ex 'thread apply all bt 20' \
-        -ex 'echo ===BOTTOM===\n' \
-        -ex 'thread apply all bt -20' \
-        | awk '
-        $0=="===BOTTOM===" {bottom=1; next}
-
-        # top section: print as-is
-        !bottom {print; next}
-
-        # bottom section: only print per-thread blocks if they contain frames >= 20
-        /^Thread [0-9]+/ {
-            if (seen) { for (i=1;i<=n;i++) print buf[i] }
-            delete buf; n=0; seen=0
-            buf[++n]=$0
-            next
-        }
-
-        # keep only frames #20+ (drop overlap/shallow)
-        match($0, /^#([0-9]+)/, m) {
-            if (m[1] >= 20) { buf[++n]=$0; seen=1 }
-            next
-        }
-
-        # keep other lines (but only if we end up keeping some frames)
-        { buf[++n]=$0 }
-        END { if (seen) { for (i=1;i<=n;i++) print buf[i] } }
-        '
-    """
-    cmd = f"gdb {test_bin} {core_file} {args}"
-    print(f"Attach gdb with: `gdb {test_bin} {core_file}")
-    subprocess.run(cmd, shell=True, capture_output=False, check=True)
-
-
 @pytest.mark.parametrize("zig_test", discover_zig_tests(), ids=zig_test_id)
 def test_zig_embedded(
     zig_test: tuple[Path, str], release_mode: str = "ReleaseFast"
@@ -189,8 +144,10 @@ def test_zig_embedded(
         )
 
         if result.returncode != 0:
+            from faebryk.libs.util import run_gdb
+
             try:
-                # TODO we should do this will all tests when they crash
+                # TODO we should do this with all tests when they crash
                 run_gdb(test_bin)
             except subprocess.CalledProcessError:
                 pass

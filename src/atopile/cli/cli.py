@@ -1,5 +1,7 @@
 import sys
 
+from faebryk.libs.util import ConfigFlag
+
 # fast-path for self-check
 # makes extension a lot faster
 if __name__ in ("__main__", "atopile.cli.cli"):
@@ -44,6 +46,11 @@ from faebryk.libs.exceptions import (
     iter_leaf_exceptions,
 )
 from faebryk.libs.logging import FLOG_FMT
+
+
+SAFE_MODE_OPTION = ConfigFlag(
+    "SAFE_MODE", False, "Handle exceptions gracefully (coredump)"
+)
 
 app = typer.Typer(
     no_args_is_help=True,
@@ -116,7 +123,28 @@ def cli(
         bool | None,
         typer.Option("--semver", callback=semver_callback, is_eager=True),
     ] = None,
+    safe_mode: Annotated[
+        bool,
+        typer.Option(
+            "--safe", help="Handle exceptions gracefully (coredump)", hidden=True
+        ),
+    ] = SAFE_MODE_OPTION.get(),
 ):
+    if safe_mode:
+        import os
+        import subprocess
+
+        args = [arg for arg in sys.argv if arg != "--safe"]
+        env = os.environ.copy()
+        env[SAFE_MODE_OPTION.name] = "N"
+
+        result = subprocess.run(args, env=env)
+        if result.returncode != 0:
+            from faebryk.libs.util import run_gdb
+
+            run_gdb()
+            sys.exit(result.returncode)
+
     if debug:
         import debugpy  # pylint: disable=import-outside-toplevel
 

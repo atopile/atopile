@@ -16,6 +16,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -3087,3 +3088,63 @@ def run_processes(cmds: list[list[str]]) -> bool:
         rcs.append(pid.wait())
 
     return all(rc == 0 for rc in rcs)
+
+
+def run_gdb(test_bin: Path | None = None) -> None:
+    # TODO move to util.py
+
+    if test_bin is None:
+        # run coredumpctl info and look for 'Executable: <test_bin>'
+        result = subprocess.run(
+            ["coredumpctl", "info"],
+            capture_output=True,
+            check=True,
+        )
+        match = re.search(
+            r"Executable: (.*)", result.stdout.decode("utf-8"), re.MULTILINE
+        )
+        if not match:
+            raise ValueError("Could not find test binary in coredump")
+        test_bin = Path(match.group(1))
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        core_file = Path(temp_dir) / "core.dump"
+        subprocess.run(
+            ["coredumpctl", "dump", test_bin, *["--output", core_file]],
+            capture_output=True,
+            check=True,
+        )
+
+        args = """-q -batch \
+            -ex 'set debuginfod enabled off' \
+            -ex 'thread apply all bt 20' \
+            -ex 'echo ===BOTTOM===\n' \
+            -ex 'thread apply all bt -20' \
+            | awk '
+            $0=="===BOTTOM===" {bottom=1; next}
+
+            # top section: print as-is
+            !bottom {print; next}
+
+            # bottom section: only print per-thread blocks if they contain frames >= 20
+            /^Thread [0-9]+/ {
+                if (seen) { for (i=1;i<=n;i++) print buf[i] }
+                delete buf; n=0; seen=0
+                buf[++n]=$0
+                next
+            }
+
+            # keep only frames #20+ (drop overlap/shallow)
+            match($0, /^#([0-9]+)/, m) {
+                if (m[1] >= 20) { buf[++n]=$0; seen=1 }
+                next
+            }
+
+            # keep other lines (but only if we end up keeping some frames)
+            { buf[++n]=$0 }
+            END { if (seen) { for (i=1;i<=n;i++) print buf[i] } }
+            '
+        """
+        cmd = f"gdb {test_bin} {core_file} {args}"
+        print(f"Attach gdb with: `gdb {test_bin} {core_file}")
+        subprocess.run(cmd, shell=True, capture_output=False, check=True)
