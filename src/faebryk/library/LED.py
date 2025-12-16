@@ -64,6 +64,10 @@ class LED(fabll.Node):
         F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.D)
     )
 
+    _can_bridge = fabll.Traits.MakeEdge(
+        F.can_bridge.MakeEdge(["diode", "anode"], ["diode", "cathode"])
+    )
+
     # ----------------------------------------
     #                WIP
     # ----------------------------------------

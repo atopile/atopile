@@ -29,7 +29,6 @@ class can_bridge(fabll.Node):
             raise ValueError("out is None")
         return out_
 
-    # should be makeedge, take refpaths
     @classmethod
     def MakeEdge(cls, in_: fabll.RefPath, out_: fabll.RefPath):
         out = fabll._ChildField(cls)
