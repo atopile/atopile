@@ -6983,7 +6983,7 @@ class AbstractEnums(fabll.Node):
         )
 
     def pretty_str(self) -> str:
-        values = self.get_values()
+        values = self.get_names()
         if len(values) == 1:
             return values[0]
         return str(values)

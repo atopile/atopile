@@ -54,7 +54,7 @@ def parameter_dependency_classes(
     )
 
     eq_exprs = [
-        e.as_expression()
+        e.as_expression.get()
         for e in F.Expressions.is_assertable.bind_typegraph(tg).get_instances()
         if e.has_trait(F.Expressions.is_predicate)
     ]
@@ -246,16 +246,17 @@ def export_parameters_to_file(module: fabll.Node, solver: Solver, path: Path):
             include_root=True,
             required_trait=F.Parameters.is_parameter,
         )
-        param_names = [param.get_full_name().split(".")[-1] for param in module_params]
-        param_values = sorted(
-            [
+        # Pair names and values together before sorting to maintain correct association
+        param_name_values = [
+            (
+                param.get_full_name().split(".")[-1],
                 solver.inspect_get_known_supersets(
                     param.get_trait(F.Parameters.is_parameter)
-                ).pretty_str()
-                for param in module_params
-            ]
-        )
-        parameters[module_name] = list(zip(param_names, param_values))
+                ).pretty_str(),
+            )
+            for param in module_params
+        ]
+        parameters[module_name] = sorted(param_name_values, key=lambda x: x[0])
 
     logger.info(f"Writing parameters to {path}")
 
