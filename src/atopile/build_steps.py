@@ -460,7 +460,7 @@ def post_pcb_checks(
         raise UserException(f"Detected DRC violations: \n{ex.pretty()}") from ex
 
 
-@muster.register("build-design", dependencies=[update_pcb], virtual=True)
+@muster.register("build-design", dependencies=[post_pcb_checks], virtual=True)
 def build_design(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:

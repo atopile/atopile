@@ -119,6 +119,7 @@ class implements_design_check(fabll.Node):
         owner_instance, owner_class = self._get_owner_with_type()
         if not hasattr(owner_class, "__check_post_design__"):
             return False
+        logger.info(f"Running {self.CheckStage.POST_DESIGN.name} {self.get_parent_force()[0].get_type_name()}")
         owner_class.__check_post_design__(owner_instance)  # type: ignore[attr-defined]
         return True
 
@@ -126,6 +127,7 @@ class implements_design_check(fabll.Node):
         owner_instance, owner_class = self._get_owner_with_type()
         if not hasattr(owner_class, "__check_post_solve__"):
             return False
+        logger.info(f"Running {self.CheckStage.POST_SOLVE.name} {self.get_parent_force()[0].get_type_name()}")
         owner_class.__check_post_solve__(owner_instance)  # type: ignore[attr-defined]
         return True
 
@@ -133,13 +135,12 @@ class implements_design_check(fabll.Node):
         owner_instance, owner_class = self._get_owner_with_type()
         if not hasattr(owner_class, "__check_post_pcb__"):
             return False
+        logger.info(f"Running {self.CheckStage.POST_PCB.name} {self.get_parent_force()[0].get_type_name()}")
         owner_class.__check_post_pcb__(owner_instance)  # type: ignore[attr-defined]
         return True
 
     def run(self, stage: CheckStage) -> bool:
-        type_name = self.get_parent_force()[0].get_type_name()
-        logger.info(f"Running {type_name} {stage.name}")
-
+        logger.info(f"Running {stage.name} checks")
         match stage:
             case implements_design_check.CheckStage.POST_DESIGN:
                 return self.check_post_design()

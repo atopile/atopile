@@ -23,8 +23,6 @@ def check_design(
         exclude: list of names of checks to exclude e.g:
         - `I2C.requires_unique_addresses`
     """
-    logger.info(f"Running design checks for stage {stage.name}")
-
     with accumulate(UserDesignCheckException) as accumulator:
         for check in F.implements_design_check.bind_typegraph(app.tg).get_instances():
             with accumulator.collect():
