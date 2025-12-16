@@ -65,7 +65,7 @@ class PathNotResolvable(NodeException):
     def __init__(
         self,
         node: "NodeT",
-        path: "list[str] | RefPath",
+        path: "list[str | fbrk.EdgeTraversal] | RefPath",
         error_node: "NodeT",
         error_identifier: str,
     ):
@@ -414,9 +414,9 @@ class _EdgeField(Field):
         self.edge = edge
 
     @staticmethod
-    def _resolve_path(path: "RefPath") -> list[str]:
+    def _resolve_path(path: "RefPath") -> list[str | fbrk.EdgeTraversal]:
         # TODO dont think we can assert here, raise FabLLException
-        resolved_path = []
+        resolved_path: list[str | fbrk.EdgeTraversal] = []
         for field in path:
             if isinstance(field, _ChildField):
                 resolved_path.append(not_none(field.get_identifier()))
@@ -428,7 +428,9 @@ class _EdgeField(Field):
 
     @staticmethod
     def _resolve_path_from_node(
-        path: "list[str] | RefPath", instance: graph.BoundNode, tg: fbrk.TypeGraph
+        path: "list[str | fbrk.EdgeTraversal] | RefPath",
+        instance: graph.BoundNode,
+        tg: fbrk.TypeGraph,
     ) -> graph.BoundNode:
         target = instance
         # TODO: consolidate resolution logic between type_fields and instance_fields
@@ -468,7 +470,7 @@ class _EdgeField(Field):
                 target = child
         return target
 
-    def lhs_resolved(self) -> list[str]:
+    def lhs_resolved(self) -> list[str | fbrk.EdgeTraversal]:
         return self._resolve_path(self.lhs)
 
     def lhs_resolved_on_node(
@@ -476,7 +478,7 @@ class _EdgeField(Field):
     ) -> graph.BoundNode:
         return self._resolve_path_from_node(self.lhs_resolved(), instance, tg)
 
-    def rhs_resolved(self) -> list[str]:
+    def rhs_resolved(self) -> list[str | fbrk.EdgeTraversal]:
         return self._resolve_path(self.rhs)
 
     def rhs_resolved_on_node(
@@ -1622,28 +1624,44 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
             nodetype=nodetype, t=self, identifier=identifier, attributes=attributes
         )
 
-    # TODO
-    # RefPath1 = list[str | InstanceChildBoundType[Any]]
-    RefPath1 = list[str]
-
     def MakeEdge(
         self,
         *,
-        lhs_reference_path: RefPath1,
-        rhs_reference_path: RefPath1,
+        lhs_reference_path: list[str | fbrk.EdgeTraversal],
+        rhs_reference_path: list[str | fbrk.EdgeTraversal],
         edge: fbrk.EdgeCreationAttributes,
     ) -> None:
         tg = self.tg
         type_node = self.get_or_create_type()
 
+        def normalize_path(
+            path: list[str | fbrk.EdgeTraversal],
+        ) -> list[str | fbrk.EdgeTraversal]:
+            """Convert self-reference markers to proper EdgeTraversal.
+
+            The zig layer uses EdgeComposition.traverse("") to represent "self".
+            Convert:
+            - [] (empty list) -> self reference
+            - [""] (SELF_OWNER_PLACEHOLDER) -> self reference
+            """
+            if not path or path == SELF_OWNER_PLACEHOLDER:
+                return [fbrk.EdgeComposition.traverse(identifier="")]
+            return path
+
+        lhs_path = normalize_path(lhs_reference_path)
+        rhs_path = normalize_path(rhs_reference_path)
+
+        lhs_ref = tg.ensure_child_reference(
+            type_node=type_node, path=lhs_path, validate=False
+        )
+        rhs_ref = tg.ensure_child_reference(
+            type_node=type_node, path=rhs_path, validate=False
+        )
+
         tg.add_make_link(
             type_node=type_node,
-            lhs_reference=tg.ensure_child_reference(
-                type_node=type_node, path=lhs_reference_path, validate=False
-            ),
-            rhs_reference=tg.ensure_child_reference(
-                type_node=type_node, path=rhs_reference_path, validate=False
-            ),
+            lhs_reference=lhs_ref,
+            rhs_reference=rhs_ref,
             edge_attributes=edge,
         )
 

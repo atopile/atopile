@@ -997,7 +997,8 @@ class TestTypeNamespacing:
             """
             module MyModule:
                 pass
-            """
+            """,
+            import_path="test/file.ato",
         )
 
         assert "MyModule" in result.state.type_roots

@@ -29,12 +29,14 @@ class is_assignable(fabll.Node):
 
     def switch_cast(
         self,
-    ) -> "AstString | Boolean | NewExpression | Quantity | BinaryExpression | GroupExpression":
+    ) -> "AstString | Boolean | NewExpression | Quantity | BinaryExpression | GroupExpression":  # noqa: E501
         types = [
             AstString,
             Boolean,
             NewExpression,
             Quantity,
+            BilateralQuantity,
+            BoundedQuantity,
             BinaryExpression,
             GroupExpression,
         ]

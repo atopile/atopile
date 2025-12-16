@@ -4,12 +4,14 @@ Shared data structures and helpers for the TypeGraph-generation IR.
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.core.faebrykpy import EdgeTraversal
+
+LinkPath = list[str | EdgeTraversal]
 
 
 @dataclass(frozen=True)
@@ -130,6 +132,8 @@ class AddMakeChildAction:
     relative to parent reference node. eg. app
     parent_reference: Parent of the makechild node.
     parent_path: The path to the parent type.
+    child_field: The child field to add.
+    import_ref: If set, this child has an external type that needs linking.
     """
 
     target_path: FieldPath | fabll.RefPath
@@ -156,20 +160,9 @@ class AddMakeChildAction:
 
 @dataclass(frozen=True)
 class AddMakeLinkAction:
-    lhs_ref: graph.BoundNode
-    rhs_ref: graph.BoundNode
+    lhs_path: LinkPath
+    rhs_path: LinkPath
     edge: fbrk.EdgeCreationAttributes | None = None
-
-
-# FIXME: AddMakeChildAction
-@dataclass(frozen=True)
-class AddTraitAction:
-    trait_type_identifier: str
-    trait_type_node: graph.BoundNode | None
-    trait_import_ref: "ImportRef | None"
-    target_reference: graph.BoundNode | None
-    template_args: dict[str, str | bool | float] | None = None
-    trait_fabll_type: Any | None = None
 
 
 @dataclass(frozen=True)
