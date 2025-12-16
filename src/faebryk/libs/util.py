@@ -2718,6 +2718,20 @@ def least_recently_modified_file(*paths: Path) -> tuple[Path, datetime] | None:
 
 
 class FileChangedWatcher:
+    """
+    Watches directories for changes since init.
+    Returns each changed/deleted/created file.
+    """
+
+    @dataclass
+    class Result:
+        created: list[Path]
+        deleted: list[Path]
+        changed: list[Path]
+
+        def __bool__(self) -> bool:
+            return bool(self.created or self.deleted or self.changed)
+
     class CheckMethod(Enum):
         FS = auto()
         HASH = auto()
@@ -2745,39 +2759,43 @@ class FileChangedWatcher:
             usedforsecurity=False,
         ).hexdigest()
 
-    def __init__(self, *paths: Path, method: CheckMethod):
-        self.paths = paths
-        self.method = method
-
-        match method:
-            case FileChangedWatcher.CheckMethod.FS:
-                self.before = FileChangedWatcher._get_mtime_recursive(*paths)
-            case FileChangedWatcher.CheckMethod.HASH:
-                self.before = FileChangedWatcher._get_hash_recursive(*paths)
-            case _:
-                self.before = None
-
-    def has_changed(self, reset: bool = False) -> bool:
-        changed = True
+    def _get_file_stamp(self, path: Path) -> Any:
         match self.method:
             case FileChangedWatcher.CheckMethod.FS:
-                new_val = FileChangedWatcher._get_mtime_recursive(*self.paths)
-                if self.before is not None:
-                    assert isinstance(self.before, float)
-                    changed = new_val > self.before
+                return path.stat().st_mtime
             case FileChangedWatcher.CheckMethod.HASH:
-                new_val = FileChangedWatcher._get_hash_recursive(*self.paths)
-                if self.before is not None:
-                    assert isinstance(self.before, str)
-                    changed = new_val != self.before
+                return hashlib.sha256(path.read_bytes()).hexdigest()
             case _:
-                new_val = None
-                changed = self.before is not None
+                return None
+
+    def _get_stamps(self) -> dict[Path, Any]:
+        return {
+            f: self._get_file_stamp(f)
+            for path in self.paths
+            for f in (path.rglob(self.glob) if path.is_dir() else [path])
+        }
+
+    def __init__(self, *paths: Path, method: CheckMethod, glob: str | None = None):
+        self.paths = paths
+        self.method = method
+        self.glob = glob or "**"
+        self.before_files = self._get_stamps()
+
+    def has_changed(self, reset: bool = False) -> Result:
+        new_stamps = self._get_stamps()
+
+        created = list(new_stamps.keys() - self.before_files.keys())
+        deleted = list(self.before_files.keys() - new_stamps.keys())
+        changed = [
+            f
+            for f, ns in new_stamps.items()
+            if f in self.before_files and ns != self.before_files[f]
+        ]
 
         if reset:
-            self.before = new_val
+            self.before_files = new_stamps
 
-        return changed
+        return self.Result(created, deleted, changed)
 
 
 def lazy_split[T: str | bytes](string: T, delimiter: T) -> Iterable[T]:
@@ -3040,3 +3058,32 @@ def debounce(delay_s: float):
 
 def crosswise[T, U](left: Iterable[T], right: Iterable[U]) -> Iterable[tuple[T, U]]:
     return ((le, ri) for le in left for ri in right)
+
+
+def insert_into_file(source: Path, header: str, target: Path | None = None):
+    import shutil
+    import tempfile
+
+    if target is None:
+        target = source
+
+    with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as tmp:
+        tmp.write(header)
+        with open(source) as f:
+            shutil.copyfileobj(f, tmp)
+
+    shutil.move(tmp.name, target)
+
+
+def run_processes(cmds: list[list[str]]) -> bool:
+    procs: list[subprocess.Popen] = []
+    rcs = []
+    for cmd in cmds:
+        pid = subprocess.Popen(
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        procs.append(pid)
+    for pid in procs:
+        rcs.append(pid.wait())
+
+    return all(rc == 0 for rc in rcs)

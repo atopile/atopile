@@ -26,6 +26,11 @@ pub fn main() !void {
 
     const source_dir = args[2];
 
+    // delete output directory
+    std.fs.cwd().deleteTree(output_dir) catch |err| {
+        if (err != error.FileNotFound) return err;
+    };
+
     // Ensure output directory exists
     std.fs.cwd().makePath(root_output_dir) catch |err| {
         if (err != error.PathAlreadyExists) return err;

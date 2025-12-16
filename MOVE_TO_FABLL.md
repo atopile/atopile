@@ -107,3 +107,18 @@ NOTE TO SELF FRIDAY
 - [ ] measure mem usage of single node, edge, etc
 
 - [ ] fixing all zig tests now that we fucked with dynamicattributes
+
+NOTE TO SELF SUNDAY
+
+- making stuff fast
+
+  - started with test_performance_graph.py
+    - improved get_children
+    - bunch of tests failing
+      -> compare and fix
+      - looks like its still get_operands
+
+- Speed ideas
+  - make no instance types
+    make a trait that marks types that their instances dont actually exists as nodes
+    this could help reduce the graph size, because of all the marker traits
