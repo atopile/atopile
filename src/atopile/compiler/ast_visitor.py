@@ -1275,6 +1275,29 @@ class ASTVisitor:
         ]
 
     def visit_ForStmt(self, node: AST.ForStmt):
+        def validate_stmt(stmt: fabll.Node) -> None:
+            def error(node: fabll.Node) -> str:
+                # TODO: make this less fragile
+                source_text = stmt.source.get().get_text()  # type: ignore
+                stmt_str = source_text.split(" ")[0]
+                raise DslException(f"Invalid statement in for loop: {stmt_str}")
+
+            for illegal_type in (
+                AST.ImportStmt,
+                AST.PinDeclaration,
+                AST.SignaldefStmt,
+                AST.TraitStmt,
+            ):
+                if stmt.isinstance(illegal_type):
+                    assert isinstance(stmt, illegal_type)
+                    error(stmt)
+
+            if stmt.isinstance(AST.Assignment):
+                assignment = stmt.cast(t=AST.Assignment)
+                assignable_value = assignment.assignable.get().get_value().switch_cast()
+                if assignable_value.isinstance(AST.NewExpression):
+                    error(stmt)
+
         self.ensure_experiment(ASTVisitor._Experiment.FOR_LOOP)
 
         iterable_node = node.iterable.get().deref()
@@ -1298,9 +1321,14 @@ class ASTVisitor:
             raise DslException("Unexpected iterable type")
 
         (loop_var,) = node.target.get().get_values()
+        stmts = node.scope.get().stmts.get().as_list()
+
+        for stmt in stmts:
+            validate_stmt(stmt)
+
         for item_path in item_paths:
             with self._scope_stack.temporary_alias(loop_var, item_path):
-                for stmt in node.scope.get().stmts.get().as_list():
+                for stmt in stmts:
                     self._type_stack.apply_action(self.visit(stmt))
 
         return NoOpAction()

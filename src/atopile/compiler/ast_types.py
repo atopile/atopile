@@ -133,6 +133,9 @@ class SourceChunk(fabll.Node):
         )
         return self
 
+    def get_text(self) -> str:
+        return self.text.get().get_single()
+
 
 class TypeRef(fabll.Node):
     name = F.Literals.Strings.MakeChild()
