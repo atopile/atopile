@@ -1691,7 +1691,7 @@ def test_module_templating():
     assert "App" in result.state.type_roots
     addressor7 = _get_child(app_instance, "addressor7")
     addressor7 = F.Addressor.bind_instance(addressor7)
-    assert addressor7.address_bits_.get().force_extract_literal().get_single() == 7
+    assert len(addressor7.address_lines) == 7
 
 
 def test_module_templating_list():
@@ -1714,10 +1714,7 @@ def test_module_templating_list():
         for addressor in addressors
     ]
     assert all(isinstance(addressor, F.Addressor) for addressor in addressors)
-    assert all(
-        addressor.address_bits_.get().force_extract_literal().get_single() == 7
-        for addressor in addressors
-    )
+    assert all(len(addressor.address_lines) == 7 for addressor in addressors)
 
 
 def test_trait_template_enum():
