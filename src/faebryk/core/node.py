@@ -486,11 +486,15 @@ class _EdgeField(Field):
         return self._resolve_path_from_node(self.rhs_resolved(), instance, tg)
 
     def __repr__(self) -> str:
-        return (
-            f"EdgeField(lhs={self.lhs_resolved()}, "
-            f"rhs={self.rhs_resolved()}, "
-            f"edge={self.edge})"
-        )
+        try:
+            lhs = self.lhs_resolved()
+        except FabLLException:
+            lhs = "<unresolvable>"
+        try:
+            rhs = self.rhs_resolved()
+        except FabLLException:
+            rhs = "<unresolvable>"
+        return f"EdgeField(lhs={lhs}, rhs={rhs}, edge={self.edge})"
 
 
 def MakeEdge(
