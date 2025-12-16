@@ -171,8 +171,9 @@ def cli(
 
         config.interactive = not non_interactive
 
-    if ctx.invoked_subcommand:
-        check_for_update()
+    # TODO use file to rate-limit check_for_update
+    # if ctx.invoked_subcommand:
+    #    check_for_update()
 
     configure.setup()
 
