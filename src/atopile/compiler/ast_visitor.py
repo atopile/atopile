@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Generator
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Callable, ClassVar
@@ -857,22 +857,17 @@ class ASTVisitor:
                 import_ref=new_spec.symbol.import_ref if new_spec.symbol else None,
             )
 
-        raise NotImplementedError()
-
         pointer_action = AddMakeChildAction(
             target_path=target_path,
-            child_spec=NewChildSpec(
-                type_identifier=F.Collections.PointerSequence.__name__,
-                type_node=self._pointer_sequence_type,
+            child_field=fabll._ChildField(
+                nodetype=F.Collections.PointerSequence.__name__,
+                identifier=target_path.leaf.identifier,
             ),
             parent_reference=parent_reference,
             parent_path=parent_path,
         )
 
-        element_spec = replace(new_spec, count=None)
-
         element_actions: list[AddMakeChildAction] = []
-
         for idx in range(new_spec.count):
             element_path = FieldPath(
                 segments=(
@@ -885,12 +880,14 @@ class ASTVisitor:
             element_actions.append(
                 AddMakeChildAction(
                     target_path=element_path,
-                    child_spec=element_spec,
-                    parent_reference=None,
-                    parent_path=FieldPath(segments=target_path.segments),
+                    child_field=fabll._ChildField(
+                        nodetype=not_none(new_spec.type_identifier),
+                        identifier=element_path.leaf.identifier,
+                    ),
+                    parent_reference=pointer_action.parent_reference,
+                    parent_path=pointer_action.parent_path,
                 )
             )
-
         return [pointer_action, *element_actions]
 
     def visit_Assignment(self, node: AST.Assignment):
