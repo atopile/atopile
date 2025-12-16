@@ -894,8 +894,7 @@ class ASTVisitor:
         # TODO: broaden assignable support and handle keyed/pin field references
 
         target_path = self.visit_FieldRef(node.get_target())
-        assignable_t = node.assignable.get().get_value()
-        assignable = self.visit(fabll.Traits(assignable_t).get_obj_raw())
+        assignable = self.visit_Assignable(node.assignable.get())
         logger.info(f"Assignable: {assignable}")
 
         parent_path: FieldPath | None = None
