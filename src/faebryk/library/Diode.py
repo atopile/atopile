@@ -36,10 +36,10 @@ class Diode(fabll.Node):
     cathode_lead = fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [cathode])
 
     anode_attatchable = fabll.Traits.MakeEdge(
-        F.Lead.can_attach_to_pad_by_name.MakeChild(regex="a|anode|\+"), [anode_lead]
+        F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"a|anode|\+"), [anode_lead]
     )
     cathode_attatchable = fabll.Traits.MakeEdge(
-        F.Lead.can_attach_to_pad_by_name.MakeChild(regex="k|c|cathode|-"),
+        F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"k|c|cathode|-"),
         [cathode_lead],
     )
 
