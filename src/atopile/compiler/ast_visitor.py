@@ -74,6 +74,9 @@ STDLIB_ALLOWLIST: set[type[fabll.Node]] = (
     }
 )
 
+TRAIT_ID_PREFIX = "_trait_"
+PIN_ID_PREFIX = "pin_"
+
 
 @dataclass
 class BuildState:
@@ -244,39 +247,6 @@ class _TypeContextStack:
         if not self._stack:
             raise DslException("Type context is not available")
         return self._stack[-1]
-
-    # FIXME: move to trait visitor
-    def _create_trait_field(
-        self,
-        trait_type: type[fabll.Node],
-        template_args: dict[str, str | bool | float] | None,
-    ) -> fabll._ChildField:
-        """Create a trait field, using MakeChild with template args if available."""
-        if template_args and hasattr(trait_type, "MakeChild"):
-            try:
-                return trait_type.MakeChild(**template_args)
-            except TypeError as e:
-                logger.warning(
-                    f"MakeChild for {trait_type.__name__} failed with template "
-                    f"args: {e}. Falling back to generic _ChildField."
-                )
-
-        # Fallback: create generic _ChildField and constrain string params
-        trait_field = fabll._ChildField(trait_type)
-        if template_args:
-            for param_name, value in template_args.items():
-                if isinstance(value, str):
-                    attr = getattr(trait_type, param_name, None)
-                    if attr is not None:
-                        constraint = F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                            [trait_field, attr], value
-                        )
-                        trait_field.add_dependant(constraint)
-                else:
-                    logger.warning(
-                        f"Template arg {param_name}={value} - non-string unsupported"
-                    )
-        return trait_field
 
     def apply_action(self, action) -> None:
         type_node, bound_tg = self.current()
@@ -721,7 +691,7 @@ class ASTVisitor:
 
         # TODO: can identifiers include arbitrary strings, given a valid prefix?
         # Pin labels can be numbers, so prefix with "pin_" for valid identifier
-        identifier = f"pin_{pin_label_str}"
+        identifier = f"{PIN_ID_PREFIX}{pin_label_str}"
         target_path = FieldPath(segments=(FieldPath.Segment(identifier=identifier),))
 
         self._scope_stack.add_field(target_path, label=f"Pin `{pin_label_str}`")
@@ -1144,13 +1114,13 @@ class ASTVisitor:
                 pin_label_str = str(int(pin_label))
             else:
                 pin_label_str = str(pin_label)
-            identifier = f"pin_{pin_label_str}"
+            identifier = f"{PIN_ID_PREFIX}{pin_label_str}"
             target_path = FieldPath(
                 segments=(FieldPath.Segment(identifier=identifier),)
             )
             return target_path, lambda: self.visit_PinDeclaration(pin_node)
 
-        raise NotImplementedError(f"Unhandled declaration type: {node.get_type_name()}")
+        raise CompilerException(f"Unhandled declaration type: {node.get_type_name()}")
 
     def visit_ConnectStmt(self, node: AST.ConnectStmt):
         lhs, rhs = node.get_lhs(), node.get_rhs()
@@ -1333,6 +1303,38 @@ class ASTVisitor:
 
         return NoOpAction()
 
+    def _create_trait_field(
+        self,
+        trait_type: type[fabll.Node],
+        template_args: dict[str, str | bool | float] | None,
+    ) -> fabll._ChildField:
+        """Create a trait field, using MakeChild with template args if available."""
+        if template_args and hasattr(trait_type, "MakeChild"):
+            try:
+                return trait_type.MakeChild(**template_args)
+            except TypeError as e:
+                logger.warning(
+                    f"MakeChild for {trait_type.__name__} failed with template "
+                    f"args: {e}. Falling back to generic _ChildField."
+                )
+
+        # Fallback: create generic _ChildField and constrain string params
+        trait_field = fabll._ChildField(trait_type)
+        if template_args:
+            for param_name, value in template_args.items():
+                if isinstance(value, str):
+                    attr = getattr(trait_type, param_name, None)
+                    if attr is not None:
+                        constraint = F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                            [trait_field, attr], value
+                        )
+                        trait_field.add_dependant(constraint)
+                else:
+                    logger.warning(
+                        f"Template arg {param_name}={value} - non-string unsupported"
+                    )
+        return trait_field
+
     def visit_TraitStmt(
         self, node: AST.TraitStmt
     ) -> list[AddMakeChildAction | AddMakeLinkAction]:
@@ -1347,7 +1349,6 @@ class ASTVisitor:
         self.ensure_experiment(ASTVisitor._Experiment.TRAITS)
 
         (trait_type_name,) = node.type_ref.get().name.get().get_values()
-        _ = self._scope_stack.resolve_symbol(trait_type_name)
 
         target_path_list: LinkPath = []
         if (target_field_ref := node.get_target()) is not None:
@@ -1365,14 +1366,12 @@ class ASTVisitor:
                 if value is not None:
                     template_args[name] = value
 
-        trait_identifier = f"_trait_{trait_type_name}"
+        trait_identifier = f"{TRAIT_ID_PREFIX}{trait_type_name}"
         trait_fabll_type = self._stdlib_allowlist.get(trait_type_name)
         actions: list[AddMakeChildAction | AddMakeLinkAction] = []
 
         if trait_fabll_type is not None:
-            trait_field = self._type_stack._create_trait_field(
-                trait_fabll_type, template_args
-            )
+            trait_field = self._create_trait_field(trait_fabll_type, template_args)
             trait_field._set_locator(trait_identifier)
 
             actions.append(
