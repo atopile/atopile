@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import logging
-from typing import ClassVar, Self
+from typing import ClassVar, Self, cast
 
 import pytest
 
@@ -12,12 +12,12 @@ from faebryk.core import graph, graph_render
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.exceptions import UserDesignCheckException
-from faebryk.libs.util import not_none, once
 
 logger = logging.getLogger(__name__)
 
 
-class AbstractAddressor(fabll.Node):
+class Addressor(fabll.Node):
+    is_abstract = fabll.Traits.MakeEdge(fabll.is_abstract.MakeChild()).put_on_type()
     address = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Bit, domain=F.NumberDomain.Args(negative=False, integer=True)
     )
@@ -28,35 +28,35 @@ class AbstractAddressor(fabll.Node):
         unit=F.Units.Bit, domain=F.NumberDomain.Args(negative=False, integer=True)
     )
 
-    _address_bits_identifier: ClassVar[str] = "address_bits"
-    _address_lines_identifier: ClassVar[str] = "address_lines"
+    # address lines made by the factory
+    address_lines: ClassVar[list[fabll._ChildField[F.ElectricLogic]]] = []
 
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
     _single_electric_reference = fabll.Traits.MakeEdge(
         F.has_single_electric_reference.MakeChild()
     )
 
-    def get_address_lines(self) -> list[F.ElectricLogic]:
-        address_lines_pointer = not_none(
-            fbrk.EdgeComposition.get_child_by_identifier(
-                bound_node=self.instance,
-                child_identifier=self._address_lines_identifier,
-            )
-        )
-        return [
-            F.ElectricLogic.bind_instance(line.instance)
-            for line in F.Collections.Pointer.bind_instance(
-                address_lines_pointer
-            ).as_list()
-        ]
+    @classmethod
+    def MakeChild(
+        cls, address_bits: int, offset: int = 0, base: int = 0
+    ) -> fabll._ChildField[Self]:
+        if address_bits <= 0:
+            raise ValueError("At least one address bit is required")
+        addressor = Addressor.factory(address_bits=address_bits)
 
-    def get_address_bits(self) -> int:
-        address_bits_child = not_none(
-            fbrk.EdgeComposition.get_child_by_identifier(
-                bound_node=self.instance, child_identifier=self._address_bits_identifier
+        out = fabll._ChildField(addressor)
+        out.add_dependant(
+            F.Literals.Numbers.MakeChild_ConstrainToSingleton(
+                [out, addressor.base], value=base, unit=F.Units.Dimensionless
             )
         )
-        return int(F.Literals.Numbers.bind_instance(address_bits_child).get_single())
+        out.add_dependant(
+            F.Literals.Numbers.MakeChild_ConstrainToSingleton(
+                [out, addressor.offset], value=offset, unit=F.Units.Dimensionless
+            )
+        )
+
+        return cast(fabll._ChildField[Self], out)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(
@@ -85,36 +85,14 @@ class AbstractAddressor(fabll.Node):
         ).put_on_type()
     )
 
+    @classmethod
+    def factory(cls, address_bits: int) -> type[Self]:
+        ConcreteAddressor = fabll.Node._copy_type(cls)
+        ConcreteAddressor.__name__ = f"Addressor<address_bits={address_bits}>"
+        address_lines = [F.ElectricLogic.MakeChild() for _ in range(address_bits)]
+        ConcreteAddressor._handle_cls_attr("address_lines", address_lines)
 
-@once
-def AddressorFactory(address_bits: int) -> type[AbstractAddressor]:
-    ConcreteAddressor = fabll.Node._copy_type(AbstractAddressor)
-
-    address_lines_pointer = F.Collections.Pointer.MakeChild()
-    for i in range(address_bits):
-        elec = F.ElectricLogic.MakeChild()
-        ConcreteAddressor._add_field(
-            f"address_line_{i}",
-            elec,
-        )
-        ConcreteAddressor._add_field(
-            f"address_line_{i}_pointer",
-            F.Collections.Pointer.MakeEdge(
-                [ConcreteAddressor._address_lines_identifier, address_lines_pointer],
-                [elec],
-            ),
-        )
-    ConcreteAddressor._add_field(
-        ConcreteAddressor._address_lines_identifier,
-        address_lines_pointer,
-    )
-    ConcreteAddressor._add_field(
-        ConcreteAddressor._address_bits_identifier,
-        F.Literals.Numbers.MakeChild_SingleValue(
-            value=address_bits, unit=F.Units.Dimensionless
-        ),
-    )
-    return ConcreteAddressor
+        return ConcreteAddressor
 
 
 @pytest.mark.parametrize("address_bits", [1, 2, 3])
@@ -122,7 +100,7 @@ def test_addressor_x_bit(address_bits: int):
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    addressor_type = AddressorFactory(address_bits=address_bits)
+    addressor_type = Addressor.factory(address_bits=address_bits)
     addressor = addressor_type.bind_typegraph(tg=tg).create_instance(g=g)
     # TODO: remove this
     print(
@@ -133,13 +111,32 @@ def test_addressor_x_bit(address_bits: int):
             show_connections=True,
         )
     )
-    assert addressor.get_address_bits() == address_bits
-    address_lines = addressor.get_address_lines()
+    address_lines = [al.get() for al in addressor.address_lines]
     assert len(address_lines) == address_bits
+    for line in address_lines:
+        assert isinstance(line, F.ElectricLogic)
+
+
+def test_addressor_make_child():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class App(fabll.Node):
+        addressor = Addressor.MakeChild(address_bits=3, offset=1, base=0x48)
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    assert app.addressor.get().offset.get().force_extract_literal().get_single() == 1
+    assert (
+        int(app.addressor.get().base.get().force_extract_literal().get_single()) == 0x48
+    )
+    address_lines = [al.get() for al in app.addressor.get().address_lines]
+    assert len(address_lines) == 3
+    for line in address_lines:
+        assert isinstance(line, F.ElectricLogic)
 
 
 class ConfigurableI2CClient(fabll.Node):
-    addressor = AddressorFactory(address_bits=3).MakeChild()
+    addressor = Addressor.MakeChild(address_bits=3)
     i2c = F.I2C.MakeChild()
     config = [F.ElectricLogic.MakeChild() for _ in range(3)]
     ref = F.ElectricPower.MakeChild()
@@ -168,8 +165,8 @@ class ConfigurableI2CClient(fabll.Node):
             ),
         )
 
-        for a, b in zip(self.addressor.get().get_address_lines(), self.config):
-            a._is_interface.get().connect_to(b.get())
+        for a, b in zip(self.addressor.get().address_lines, self.config):
+            a.get()._is_interface.get().connect_to(b.get())
 
         return self
 
@@ -180,7 +177,7 @@ def test_addressor():
     app = ConfigurableI2CClient.bind_typegraph(tg).create_instance(g=g).setup(g, tg)
     app.setup(g, tg)
 
-    app.addressor.get().offset.get().alias_to_literal(g, 3)
+    app.addressor.get().offset.get().alias_to_literal(g, 3.0)
     app.i2c.get().address.get().alias_to_literal(
         g,
         F.Literals.Numbers.bind_typegraph(tg)

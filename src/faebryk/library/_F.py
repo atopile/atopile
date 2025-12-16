@@ -15,8 +15,8 @@ This way we can add new modules without changing this file
 # flake8: noqa: I001
 # flake8: noqa: E501
 
-import faebryk.library.Collections as Collections
 from faebryk.library.NumberDomain import NumberDomain
+import faebryk.library.Collections as Collections
 from faebryk.library.is_sink import is_sink
 from faebryk.library.is_source import is_source
 from faebryk.library.Logic import Logic
@@ -109,13 +109,13 @@ from faebryk.library.USB2_0 import USB2_0
 from faebryk.library.USB3_IF import USB3_IF
 from faebryk.library.I2C import I2C
 from faebryk.library.USB3 import USB3
-import faebryk.library.Addressor as Addressor
+from faebryk.library.Addressor import Addressor
 from faebryk.library.HDMI import HDMI
 from faebryk.library.USB_C import USB_C
 
 __all__ = [
-    "Collections",
     "NumberDomain",
+    "Collections",
     "is_sink",
     "is_source",
     "Logic",

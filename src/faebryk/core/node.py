@@ -1969,6 +1969,10 @@ class is_interface(Node):
         return buses
 
 
+class is_abstract(Node):
+    is_trait = ImplementsTrait.MakeChild().put_on_type()
+
+
 # --------------------------------------------------------------------------------------
 # TODO remove
 # re-export graph.GraphView to be used from fabll namespace
