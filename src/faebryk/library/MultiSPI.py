@@ -1,6 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 
@@ -35,6 +37,15 @@ class MultiSPI(fabll.Node):
         for i in range(data_lane_count):
             data_line = F.ElectricLogic.MakeChild()
             out.add_dependant(data_line)
+            data_line.add_dependant(
+                fabll.Traits.MakeEdge(
+                    F.has_net_name_suggestion.MakeChild(
+                        name=f"DATA_{i}",
+                        level=F.has_net_name_suggestion.Level.SUGGESTED,
+                    ),
+                    owner=[data_line],
+                )
+            )
             out.add_dependant(
                 F.Collections.PointerSet.MakeEdge([out, cls.data_], [data_line])
             )
@@ -43,26 +54,17 @@ class MultiSPI(fabll.Node):
     net_names = [
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="CLOCK",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="CLOCK", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[clock]
+            owner=[clock],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="CHIP_SELECT",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="CHIP_SELECT", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[chip_select]
+            owner=[chip_select],
         ),
     ]
-
-    def on_obj_set(self):
-        # Note: data_ is a PointerSet, so we handle it dynamically in on_obj_set
-        for i, line in enumerate(self.data_.get().as_list()):
-            fabll.Traits.create_and_add_instance_to(
-                node=line, trait=F.has_net_name_suggestion
-            ).setup(name=f"DATA_{i}", level=F.has_net_name_suggestion.Level.SUGGESTED)
 
     # ----------------------------------------
     #              usage example
@@ -84,3 +86,18 @@ class MultiSPI(fabll.Node):
             language=F.has_usage_example.Language.ato,
         ).put_on_type()
     )
+
+
+def test_multisp():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class App(fabll.Node):
+        multisp = MultiSPI.MakeChild(data_lane_count=4)
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    assert len(app.multisp.get().data) == 4
+    for index, data_line in enumerate(app.multisp.get().data):
+        suggested_name_trait = data_line.try_get_trait(F.has_net_name_suggestion)
+        assert suggested_name_trait is not None
+        assert suggested_name_trait.name == f"DATA_{index}"

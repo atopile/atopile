@@ -26,12 +26,10 @@ class DifferentialPair(fabll.Node):
 
     net_name_suffixes = [
         fabll.Traits.MakeEdge(
-            F.has_net_name_affix.MakeChild(suffix="_P"),
-            owner=[p, "line"]
+            F.has_net_name_affix.MakeChild(suffix="_P"), owner=[p, "line"]
         ),
         fabll.Traits.MakeEdge(
-            F.has_net_name_affix.MakeChild(suffix="_N"),
-            owner=[n, "line"]
+            F.has_net_name_affix.MakeChild(suffix="_N"), owner=[n, "line"]
         ),
     ]
 
@@ -55,14 +53,6 @@ class DifferentialPair(fabll.Node):
         self._is_interface.get().connect_shallow_to(terminated_bus)
 
         return terminated_bus
-
-    # def on_obj_set(self):
-    #     fabll.Traits.create_and_add_instance_to(
-    #         node=self.p.get(), trait=F.has_net_name_affix
-    #     ).setup(suffix="_P")
-    #     fabll.Traits.create_and_add_instance_to(
-    #         node=self.n.get(), trait=F.has_net_name_affix
-    #     ).setup(suffix="_N")
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(
