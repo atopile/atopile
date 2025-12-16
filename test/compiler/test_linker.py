@@ -11,8 +11,8 @@ from atopile.compiler.build import (
     Linker,
     StdlibRegistry,
     build_file,
-    build_source,
 )
+from test.compiler.conftest import build_type
 
 
 def _init_graph():
@@ -20,12 +20,6 @@ def _init_graph():
     tg = fbrk.TypeGraph.create(g=g)
     stdlib = StdlibRegistry(tg)
     return g, tg, stdlib
-
-
-def _build_snippet(source: str):
-    g, tg, stdlib = _init_graph()
-    result = build_source(g=g, tg=tg, source=textwrap.dedent(source))
-    return g, tg, stdlib, result
 
 
 def _config_with_package(src: Path, package_identifier: str) -> SimpleNamespace:
@@ -40,17 +34,15 @@ def _config_with_package(src: Path, package_identifier: str) -> SimpleNamespace:
 
 
 def test_stdlib_import_resolved():
-    g, tg, stdlib, result = _build_snippet(
+    g, tg, stdlib, result = build_type(
         """
         import Resistor
 
         module Root:
             part = new Resistor
-        """
+        """,
+        link=True,
     )
-
-    linker = Linker(None, stdlib, tg)
-    linker.link_imports(g, result.state)
 
     assert not fbrk.Linker.collect_unresolved_type_references(type_graph=tg)
 
@@ -106,13 +98,13 @@ def test_resolves_via_extra_search_path(tmp_path: Path):
         encoding="utf-8",
     )
 
-    g, tg, stdlib, result = _build_snippet(
+    g, tg, stdlib, result = build_type(
         """
         from "generics/shim.ato" import ShimmedModule
 
         module Root:
             dep = new ShimmedModule
-        """
+        """,
     )
 
     linker = Linker(None, stdlib, tg, extra_search_paths=(modules_root,))
@@ -160,25 +152,23 @@ def test_package_identifier_rewrite(tmp_path: Path):
 
 
 def test_missing_import_raises_user_error():
-    g, tg, stdlib, result = _build_snippet(
-        """
-        from "missing/module.ato" import DoesNotExist
+    with pytest.raises(
+        ImportPathNotFoundError, match="Unable to resolve import `missing/module.ato`"
+    ):
+        g, tg, stdlib, result = build_type(
+            """
+            from "missing/module.ato" import DoesNotExist
 
-        module Root:
-            child = new DoesNotExist
-        """
-    )
-
-    linker = Linker(None, stdlib, tg)
-    with pytest.raises(ImportPathNotFoundError) as excinfo:
-        linker.link_imports(g, result.state)
-
-    assert "Unable to resolve import `missing/module.ato`" in str(excinfo.value)
+            module Root:
+                child = new DoesNotExist
+            """,
+            link=True,
+        )
 
 
 def test_different_imports_resolve_to_different_nodes():
     """Different imported types should resolve to different nodes."""
-    g, tg, stdlib, result = _build_snippet(
+    g, tg, stdlib, result = build_type(
         """
         import Resistor
         import Capacitor
@@ -186,11 +176,10 @@ def test_different_imports_resolve_to_different_nodes():
         module App:
             r = new Resistor
             c = new Capacitor
-        """
+        """,
+        link=True,
     )
 
-    linker = Linker(None, stdlib, tg)
-    linker.link_imports(g, result.state)
     app_type = result.state.type_roots["App"]
 
     r_resolved = None
@@ -209,7 +198,7 @@ def test_different_imports_resolve_to_different_nodes():
 
 def test_multiple_references_same_import():
     """Multiple uses of the same imported type should resolve to the same node."""
-    g, tg, stdlib, result = _build_snippet(
+    g, tg, stdlib, result = build_type(
         """
         import Resistor
 
@@ -217,11 +206,9 @@ def test_multiple_references_same_import():
             first = new Resistor
             second = new Resistor
             third = new Resistor
-        """
+        """,
+        link=True,
     )
-
-    linker = Linker(None, stdlib, tg)
-    linker.link_imports(g, result.state)
 
     assert not fbrk.Linker.collect_unresolved_type_references(type_graph=tg)
 

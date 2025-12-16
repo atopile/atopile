@@ -12,7 +12,6 @@ from atopile.compiler.build import (
     StdlibRegistry,
     UndefinedSymbolError,
     build_file,
-    build_source,
 )
 from atopile.errors import UserSyntaxError
 from faebryk.libs.util import not_none
@@ -59,16 +58,6 @@ def _check_make_links(
                 return False
 
     return True
-
-
-def _build_snippet(source: str, import_path: str | None = None):
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-    stdlib = StdlibRegistry(tg)
-    result = build_source(
-        g=g, tg=tg, source=textwrap.dedent(source), import_path=import_path
-    )
-    return g, tg, stdlib, result
 
 
 def _collect_children_by_name(
@@ -671,7 +660,7 @@ def test_simple_connect():
 
 
 def test_connect_resistor_simple():
-    _, tg, _, result = _build_snippet(
+    _, tg, _, result = build_type(
         """
         import Resistor
 
@@ -715,7 +704,7 @@ def test_connect_unlinked_types():
 
 def test_directed_connect():
     """Test directed connect creates links through can_bridge traits."""
-    _, tg, _, result = _build_snippet(
+    _, tg, _, result = build_type(
         """
         import Resistor
 
@@ -1185,7 +1174,7 @@ class TestDirectedConnectStmt:
         Direction RIGHT (~>) means arrow points right, signal flows LHS → RHS:
         - a.can_bridge.out_ connects to b.can_bridge.in_
         """
-        _, tg, stdlib, result = _build_snippet(
+        _, tg, stdlib, result = build_type(
             """
             from "generics/resistors.ato" import Resistor
 
@@ -1214,7 +1203,7 @@ class TestDirectedConnectStmt:
         Direction LEFT (<~) means arrow points left, signal flows RHS → LHS:
         - a.can_bridge.in_ connects to b.can_bridge.out_
         """
-        _, tg, stdlib, result = _build_snippet(
+        _, tg, stdlib, result = build_type(
             """
             from "generics/resistors.ato" import Resistor
 
@@ -1242,7 +1231,7 @@ class TestDirectedConnectStmt:
         - a.can_bridge.out_ -> b.can_bridge.in_
         - b.can_bridge.out_ -> c.can_bridge.in_
         """
-        _, tg, stdlib, result = _build_snippet(
+        _, tg, stdlib, result = build_type(
             """
             from "generics/resistors.ato" import Resistor
 
@@ -1276,7 +1265,7 @@ class TestDirectedConnectStmt:
 
     def test_longer_chain(self):
         """Test a ~> b ~> c ~> d creates three connections."""
-        _, tg, stdlib, result = _build_snippet(
+        _, tg, stdlib, result = build_type(
             """
             from "generics/resistors.ato" import Resistor
 
@@ -1311,7 +1300,7 @@ class TestSignalsAndPins:
 
     def test_signal_declaration_creates_electrical_child(self):
         """Signal declaration creates an Electrical child with the signal name."""
-        _, tg, _, result = _build_snippet(
+        _, tg, _, result = build_type(
             """
             module App:
                 signal my_sig
@@ -1324,7 +1313,7 @@ class TestSignalsAndPins:
 
     def test_signal_declaration_as_statement(self):
         """Signal declaration works as a standalone statement."""
-        _, tg, _, result = _build_snippet(
+        _, tg, _, result = build_type(
             """
             module App:
                 signal first
@@ -1341,7 +1330,7 @@ class TestSignalsAndPins:
     def test_signal_duplicate_raises(self):
         """Duplicate signal declaration raises an error."""
         with pytest.raises(DslException, match="already defined"):
-            _build_snippet(
+            build_type(
                 """
                 module App:
                     signal my_sig
@@ -1351,7 +1340,7 @@ class TestSignalsAndPins:
 
     def test_pin_declaration_creates_child(self):
         """Pin declaration creates a child with is_lead trait."""
-        _, tg, _, result = _build_snippet(
+        _, tg, _, result = build_type(
             """
             component MyComp:
                 pin 1
@@ -1364,7 +1353,7 @@ class TestSignalsAndPins:
 
     def test_pin_declaration_with_name(self):
         """Pin declaration with name works."""
-        _, tg, _, result = _build_snippet(
+        _, tg, _, result = build_type(
             """
             component MyComp:
                 pin vcc
@@ -1377,7 +1366,7 @@ class TestSignalsAndPins:
 
     def test_pin_declaration_with_string(self):
         """Pin declaration with string label works."""
-        _, tg, _, result = _build_snippet(
+        _, tg, _, result = build_type(
             """
             component MyComp:
                 pin "GND"
@@ -1390,7 +1379,7 @@ class TestSignalsAndPins:
 
     def test_signal_connect_to_field(self):
         """Signal can be connected to an existing field."""
-        _, tg, _, result = _build_snippet(
+        _, tg, _, result = build_type(
             """
             import Electrical
 
@@ -1411,7 +1400,7 @@ class TestSignalsAndPins:
 
     def test_inline_signal_in_connect(self):
         """Signal can be declared inline in a connect statement."""
-        _, tg, _, result = _build_snippet(
+        _, tg, _, result = build_type(
             """
             import Electrical
 
@@ -1436,7 +1425,7 @@ class TestSignalsAndPins:
 
     def test_inline_pin_in_connect(self):
         """Pin can be declared inline in a connect statement."""
-        _, tg, _, result = _build_snippet(
+        _, tg, _, result = build_type(
             """
             import Electrical
 
@@ -1461,7 +1450,7 @@ class TestSignalsAndPins:
 
     def test_signal_to_pin_connect(self):
         """Signal can connect to pin using ~ operator."""
-        _, tg, _, result = _build_snippet(
+        _, tg, _, result = build_type(
             """
             component MyComp:
                 signal my_sig ~ pin 1
@@ -1485,7 +1474,7 @@ class TestSignalsAndPins:
 
     def test_multiple_pins_different_types(self):
         """Multiple pins with different label types work."""
-        _, tg, _, result = _build_snippet(
+        _, tg, _, result = build_type(
             """
             component MyComp:
                 pin 1
@@ -1507,7 +1496,7 @@ class TestSignalsAndPins:
 
     def test_inline_signal_in_directed_connect(self):
         """Inline signals work in directed connect statements."""
-        _, tg, _, result = _build_snippet(
+        _, tg, _, result = build_type(
             """
             #pragma experiment("BRIDGE_CONNECT")
 
@@ -1534,7 +1523,7 @@ class TestSignalsAndPins:
 
     def test_inline_pin_in_directed_connect(self):
         """Inline pins work in directed connect statements."""
-        _, tg, _, result = _build_snippet(
+        _, tg, _, result = build_type(
             """
             #pragma experiment("BRIDGE_CONNECT")
 
@@ -1565,7 +1554,7 @@ class TestSignalsAndPins:
         Tests that `a ~> signal b ~> c` correctly creates signal b once
         and connects a->b and b->c.
         """
-        _, tg, _, result = _build_snippet(
+        _, tg, _, result = build_type(
             """
             #pragma experiment("BRIDGE_CONNECT")
             import Resistor
@@ -1671,7 +1660,7 @@ def test_reserved_keywords_as_identifiers(name: str, template: str):
 class TestTraitStatements:
     def test_simple_trait_on_self(self):
         """Trait statement with no target attaches trait to enclosing block."""
-        _, tg, _, result = _build_snippet(
+        _, tg, _, result = build_type(
             """
             #pragma experiment("TRAITS")
             import is_pickable
@@ -1697,7 +1686,7 @@ class TestTraitStatements:
 
     def test_trait_on_child_field(self):
         """Trait statement with target attaches trait to specified child."""
-        _, tg, _, result = _build_snippet(
+        _, tg, _, result = build_type(
             """
             #pragma experiment("TRAITS")
             import is_pickable
@@ -1726,7 +1715,7 @@ class TestTraitStatements:
     def test_trait_requires_experiment_flag(self):
         """Trait statement without experiment pragma raises error."""
         with pytest.raises(DslException, match="TRAITS.*not enabled"):
-            _build_snippet(
+            build_type(
                 """
                 import is_pickable
 
@@ -1737,20 +1726,21 @@ class TestTraitStatements:
 
     def test_trait_requires_import(self):
         """Trait statement without importing the trait raises error."""
-        with pytest.raises(DslException, match="not available"):
-            _build_snippet(
+        with pytest.raises(UndefinedSymbolError):
+            build_type(
                 """
                 #pragma experiment("TRAITS")
 
                 module MyModule:
                     trait is_pickable
-                """
+                """,
+                link=True,
             )
 
     def test_trait_on_undefined_field_raises(self):
         """Trait applied to undefined field raises error."""
         with pytest.raises(DslException, match="not defined in scope"):
-            _build_snippet(
+            build_type(
                 """
                 #pragma experiment("TRAITS")
                 import is_pickable
@@ -1762,7 +1752,7 @@ class TestTraitStatements:
 
     def test_trait_with_template_args(self):
         """Trait with template arguments creates trait and constraint children."""
-        _, tg, _, result = _build_snippet(
+        _, tg, _, result = build_type(
             """
             #pragma experiment("TRAITS")
             import is_atomic_part
@@ -1786,7 +1776,7 @@ class TestTraitStatements:
 
     def test_trait_with_multiple_template_args(self):
         """Trait with all template arguments including optional model."""
-        _, tg, _, result = _build_snippet(
+        _, tg, _, result = build_type(
             """
             #pragma experiment("TRAITS")
             import is_atomic_part
@@ -1806,7 +1796,7 @@ class TestTraitStatements:
 
     def test_trait_template_args_create_constraints(self):
         """Template args create constraint child fields on the type."""
-        _, tg, _, result = _build_snippet(
+        _, tg, _, result = build_type(
             """
             #pragma experiment("TRAITS")
             import is_atomic_part
@@ -1830,7 +1820,7 @@ class TestTraitStatements:
         import faebryk.library._F as F
         from atopile.compiler.build import Linker
 
-        g, tg, stdlib, result = _build_snippet(
+        g, tg, stdlib, result = build_type(
             """
             #pragma experiment("TRAITS")
             import is_atomic_part
@@ -1865,7 +1855,7 @@ def test_literal_assignment():
     from faebryk.libs.util import not_none
 
     logging.basicConfig(level=logging.DEBUG)
-    g, tg, stdlib, result = _build_snippet(
+    g, tg, stdlib, result = build_type(
         """
         import Resistor
         import is_atomic_part
