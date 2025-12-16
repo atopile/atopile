@@ -15,7 +15,6 @@ from atopile.compiler.build import (
     build_source,
 )
 from atopile.errors import UserSyntaxError
-from faebryk.core.faebrykpy import EdgeComposition, EdgePointer, EdgeTrait
 from faebryk.libs.util import not_none
 from test.compiler.conftest import build_type
 
@@ -1051,15 +1050,15 @@ class TestEdgeTraversalPathResolution:
 
     def test_edge_traversal_helpers(self):
         """Test that Edge type traverse() methods create correct EdgeTraversals."""
-        comp = EdgeComposition.traverse(identifier="child")
+        comp = fbrk.EdgeComposition.traverse(identifier="child")
         assert comp.identifier == "child"
         assert comp.edge_type == fbrk.EdgeComposition.get_tid()
 
-        trait = EdgeTrait.traverse(trait_type_name="my_trait")
+        trait = fbrk.EdgeTrait.traverse(trait_type_name="my_trait")
         assert trait.identifier == "my_trait"
         assert trait.edge_type == fbrk.EdgeTrait.get_tid()
 
-        ptr = EdgePointer.traverse()
+        ptr = fbrk.EdgePointer.traverse()
         assert ptr.identifier == ""  # Pointer traverse has no identifier
         assert ptr.edge_type == fbrk.EdgePointer.get_tid()
 
@@ -1107,9 +1106,9 @@ class TestEdgeTraversalPathResolution:
         ref = tg.ensure_child_reference(
             type_node=Resistor,
             path=[
-                EdgeTrait.traverse(trait_type_name="can_bridge"),
-                EdgeComposition.traverse(identifier="in_"),
-                EdgePointer.traverse(),
+                fbrk.EdgeTrait.traverse(trait_type_name="can_bridge"),
+                fbrk.EdgeComposition.traverse(identifier="in_"),
+                fbrk.EdgePointer.traverse(),
             ],
             validate=False,
         )
@@ -1145,9 +1144,9 @@ class TestEdgeTraversalPathResolution:
             type_node=App,
             path=[
                 "r",  # String = Composition edge (default)
-                EdgeTrait.traverse(trait_type_name="can_bridge"),
-                EdgeComposition.traverse(identifier="in_"),
-                EdgePointer.traverse(),
+                fbrk.EdgeTrait.traverse(trait_type_name="can_bridge"),
+                fbrk.EdgeComposition.traverse(identifier="in_"),
+                fbrk.EdgePointer.traverse(),
             ],
             validate=False,
         )

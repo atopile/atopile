@@ -1203,11 +1203,11 @@ class ASTVisitor:
         direction: AST.DirectedConnectStmt.Direction,
     ) -> AddMakeLinkAction:
         if direction == AST.DirectedConnectStmt.Direction.RIGHT:  # ~>
-            lhs_pointer = "out_"
-            rhs_pointer = "in_"
+            lhs_pointer = F.can_bridge.out_.get_identifier()
+            rhs_pointer = F.can_bridge.in_.get_identifier()
         else:  # <~
-            lhs_pointer = "in_"
-            rhs_pointer = "out_"
+            lhs_pointer = F.can_bridge.in_.get_identifier()
+            rhs_pointer = F.can_bridge.out_.get_identifier()
 
         lhs_link_path = self._build_bridge_path(lhs_path, lhs_pointer)
         rhs_link_path = self._build_bridge_path(rhs_path, rhs_pointer)
