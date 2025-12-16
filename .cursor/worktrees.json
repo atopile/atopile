@@ -2,6 +2,8 @@
   "setup-worktree": [
     "python -m venv .venv",
     "uv pip install -e .",
+    "uv sync --dev",
+    "alias ato='python -m atopile'",
     "ato self-check",
     "export FBRK_LOG_FMT=y",
     "export FBRK_ZIG_RELEASEMODE=ReleaseFast",
