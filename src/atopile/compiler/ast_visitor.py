@@ -148,10 +148,11 @@ class _ScopeStack:
 
         logger.info(f"Added symbol {symbol} to scope")
 
-    def add_field(self, path: FieldPath) -> None:
+    def add_field(self, path: FieldPath, label: str | None = None) -> None:
         current_state = self.current
         if (key := str(path)) in current_state.fields:
-            raise DslException(f"Field `{key}` already defined in scope")
+            name = label or str(path)
+            raise DslException(f"Field `{name}` already defined in scope")
 
         current_state.fields.add(key)
 
@@ -159,12 +160,6 @@ class _ScopeStack:
 
     def has_field(self, path: FieldPath) -> bool:
         return any(str(path) in state.fields for state in reversed(self.stack))
-
-    def ensure_not_defined(self, path: FieldPath, label: str | None = None) -> None:
-        """Raise if field is already defined in scope."""
-        if self.has_field(path):
-            name = label or str(path)
-            raise DslException(f"`{name}` is already defined in this scope")
 
     def ensure_defined(self, path: FieldPath) -> None:
         """Raise if field is not defined in scope."""
@@ -676,9 +671,7 @@ class ASTVisitor:
         _Block.__name__ = type_identifier
         _Block.__qualname__ = type_identifier
 
-        type_node = self._type_graph.add_type(
-            identifier=self._make_type_identifier(module_name)
-        )
+        type_node = self._type_graph.add_type(identifier=type_identifier)
         type_node_bound_tg = fabll.TypeNodeBoundTG(tg=self._type_graph, t=_Block)
 
         with self._scope_stack.enter():
@@ -731,8 +724,7 @@ class ASTVisitor:
         (signal_name,) = node.name.get().get_values()
         target_path = FieldPath(segments=(FieldPath.Segment(identifier=signal_name),))
 
-        self._scope_stack.ensure_not_defined(target_path, f"Signal `{signal_name}`")
-        self._scope_stack.add_field(target_path)
+        self._scope_stack.add_field(target_path, label=f"Signal `{signal_name}`")
 
         return AddMakeChildAction(
             target_path=target_path,
@@ -783,8 +775,7 @@ class ASTVisitor:
         identifier = f"pin_{pin_label_str}"
         target_path = FieldPath(segments=(FieldPath.Segment(identifier=identifier),))
 
-        self._scope_stack.ensure_not_defined(target_path, f"Pin `{pin_label_str}`")
-        self._scope_stack.add_field(target_path)
+        self._scope_stack.add_field(target_path, label=f"Pin `{pin_label_str}`")
 
         return AddMakeChildAction(
             target_path=target_path,
@@ -922,7 +913,6 @@ class ASTVisitor:
 
         match assignable:
             case NewChildSpec() as new_spec:
-                self._scope_stack.ensure_not_defined(target_path)
                 return self._handle_new_child(
                     target_path, new_spec, parent_reference, parent_path
                 )
