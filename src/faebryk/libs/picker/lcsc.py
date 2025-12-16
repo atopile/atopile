@@ -27,7 +27,6 @@ from easyeda2kicad.kicad.export_kicad_footprint import ExporterFootprintKicad
 from easyeda2kicad.kicad.export_kicad_symbol import ExporterSymbolKicad, KicadVersion
 from more_itertools import first
 
-from faebryk.core.graph_render import GraphRenderer
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.config import config as Gcfg
@@ -584,7 +583,7 @@ def attach(
         )
         for _ in range(len(pads_number_name_pairs))
     ]
-    tmp_pads: list[tuple[F.Footprints.is_pad, fabll.Node]] = [
+    is_pads: list[tuple[F.Footprints.is_pad, fabll.Node]] = [
         (
             fabll.Traits.create_and_add_instance_to(
                 node=node,
@@ -607,7 +606,7 @@ def attach(
         matched_pads: list[F.Footprints.is_pad] = []
         for lead_t in [t for t in leads_t if t not in matched_pads]:
             matched_pads.append(
-                lead_t.find_matching_pad([p[0] for p in tmp_pads], associate=False)
+                lead_t.find_matching_pad([p[0] for p in is_pads], associate=False)
             )
     except F.Lead.LeadPadMatchException as e:
         raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
@@ -626,7 +625,7 @@ def attach(
         )
         footprint = associated_footprint.setup_from_pads_and_leads(
             component_node=component_node,
-            pads=[p[1] for p in tmp_pads],
+            pads=[p[1] for p in is_pads],
             leads=leads_t,
         ).get_footprint()
     except F.Footprints.FootprintError as e:

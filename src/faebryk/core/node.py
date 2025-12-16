@@ -20,7 +20,6 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 from faebryk.libs.util import (
     KeyErrorNotFound,
-    Tree,
     cast_assert,
     dataclass_as_kwargs,
     indented_container,
@@ -1028,7 +1027,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
     # instance methods -----------------------------------------------------------------
     def add_child(self, node: "NodeT", identifier: str | None = None):
-        assert node.get_parent() is not None, "Node already has a parent"
+        assert node.get_parent() is None, "Node already has a parent"
         fbrk.EdgeComposition.add_child(
             bound_node=self.instance,
             child=node.instance.node(),
