@@ -132,8 +132,6 @@ class AddMakeChildAction:
     relative to parent reference node. eg. app
     parent_reference: Parent of the makechild node.
     parent_path: The path to the parent type.
-    child_field: The child field to add.
-    import_ref: If set, this child has an external type that needs linking.
     """
 
     target_path: FieldPath | fabll.RefPath

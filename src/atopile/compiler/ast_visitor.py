@@ -78,7 +78,7 @@ STDLIB_ALLOWLIST: set[type[fabll.Node]] = (
 @dataclass
 class BuildState:
     type_roots: dict[str, graph.BoundNode]
-    external_type_refs: list[tuple[graph.BoundNode, ImportRef]]
+    external_type_refs: list[tuple[graph.BoundNode, ImportRef | None]]
     file_path: Path | None
     import_path: str | None
 
@@ -166,12 +166,10 @@ class _ScopeStack:
         if not self.has_field(path):
             raise DslException(f"Field `{path}` is not defined in scope")
 
-    def resolve_symbol(self, name: str) -> Symbol:
+    def try_resolve_symbol(self, name: str) -> Symbol | None:
         for state in reversed(self.stack):
             if name in state.symbols:
                 return state.symbols[name]
-
-        raise DslException(f"Symbol `{name}` is not available in this scope")
 
     @contextmanager
     def temporary_alias(self, name: str, path: FieldPath):
@@ -197,6 +195,13 @@ class _ScopeStack:
 
     def resolve_alias(self, name: str) -> FieldPath | None:
         return self.current.aliases.get(name)
+
+    def add_alias(self, name: str, target: FieldPath) -> None:
+        """
+        Add a permanent alias in the current scope.
+        Used for pin declarations only.
+        """
+        self.current.aliases[name] = target
 
     @property
     def depth(self) -> int:
@@ -347,19 +352,14 @@ class _TypeContextStack:
         action.child_field._set_locator(action.get_identifier())
         fabll.Node._exec_field(t=bound_tg, field=action.child_field)
 
-        is_unresolved_import = (
-            action.import_ref is not None
-            and action.child_field is not None
-            and isinstance(action.child_field.nodetype, str)
-        )
-
-        if is_unresolved_import:
+        # Track unresolved type references (both imports and local forward refs)
+        if isinstance(action.child_field.nodetype, str):
             assert isinstance(action.child_field.identifier, str)
             type_ref = self._tg.get_make_child_type_reference_by_identifier(
                 type_node=type_node, identifier=action.child_field.identifier
             )
             self._state.external_type_refs.append(
-                (not_none(type_ref), not_none(action.import_ref))
+                (not_none(type_ref), action.import_ref)
             )
 
     # TODO FIXME: no type checking for is_interface trait on connected nodes.
@@ -628,6 +628,7 @@ class ASTVisitor:
                 for stmt in node.scope.get().stmts.get().as_list():
                     self._type_stack.apply_action(self.visit(stmt))
 
+        # link back to AST node
         fbrk.EdgePointer.point_to(
             bound_node=type_node,
             target_node=node.instance.node(),
@@ -724,6 +725,7 @@ class ASTVisitor:
         target_path = FieldPath(segments=(FieldPath.Segment(identifier=identifier),))
 
         self._scope_stack.add_field(target_path, label=f"Pin `{pin_label_str}`")
+        self._scope_stack.add_alias(pin_label_str, target_path)
 
         return AddMakeChildAction(
             target_path=target_path,
@@ -807,10 +809,7 @@ class ASTVisitor:
 
         pointer_action = AddMakeChildAction(
             target_path=target_path,
-            child_field=fabll._ChildField(
-                nodetype=F.Collections.PointerSequence.__name__,
-                identifier=target_path.leaf.identifier,
-            ),
+            child_field=F.Collections.PointerSequence.MakeChild(),
             parent_reference=parent_reference,
             parent_path=parent_path,
         )
@@ -830,10 +829,11 @@ class ASTVisitor:
                     target_path=element_path,
                     child_field=fabll._ChildField(
                         nodetype=not_none(new_spec.type_identifier),
-                        identifier=element_path.leaf.identifier,
+                        identifier=element_path.identifiers()[0],
                     ),
                     parent_reference=pointer_action.parent_reference,
                     parent_path=pointer_action.parent_path,
+                    import_ref=new_spec.symbol.import_ref if new_spec.symbol else None,
                 )
             )
         return [pointer_action, *element_actions]
@@ -866,7 +866,7 @@ class ASTVisitor:
 
                 # operand as child of type
                 operand_action = AddMakeChildAction(
-                    target_path=target_path,  # TODO: is this actually the path of the param? # noqa: E501
+                    target_path=target_path,  # TODO: is this actually the path of the param?
                     parent_reference=parent_reference,
                     parent_path=parent_path,
                     child_field=constraint_spec.operand,
@@ -876,7 +876,7 @@ class ASTVisitor:
                 expr_action = AddMakeChildAction(
                     target_path=FieldPath(
                         segments=(
-                            *target_path.segments,  # FIXME: append _constraint suffix to target path tail segment? # noqa: E501
+                            *target_path.segments,  # FIXME: append _constraint suffix to target path tail segment?
                             FieldPath.Segment("constraint"),  # FIXME: must be unique
                         )
                     ),
@@ -1068,12 +1068,12 @@ class ASTVisitor:
 
     def visit_NewExpression(self, node: AST.NewExpression):
         type_name = node.get_type_ref_name()
-        symbol = self._scope_stack.resolve_symbol(type_name)
+        symbol = self._scope_stack.try_resolve_symbol(type_name)
 
         return NewChildSpec(
             symbol=symbol,
-            type_identifier=symbol.name,
-            type_node=symbol.type_node,
+            type_identifier=type_name,
+            type_node=symbol.type_node if symbol else None,
             count=node.get_new_count(),
         )
 
