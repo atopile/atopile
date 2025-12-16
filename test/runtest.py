@@ -4,15 +4,16 @@
 import importlib.util
 import logging
 import re
-import subprocess
 import sys
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 import typer
 
 from faebryk.libs.logging import FLOG_FMT, setup_basic_logging
+from faebryk.libs.util import indented_container
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class DiscoveryMode(str, Enum):
     pytest = "pytest"
 
 
-def discover_tests_manual(
+def discover_tests(
     filepaths: list[Path], test_pattern: str
 ) -> list[tuple[Path, Callable]]:
     """
@@ -52,111 +53,104 @@ def discover_tests_manual(
     return matches
 
 
-def discover_tests_pytest(
-    filepaths: list[Path], test_pattern: str
-) -> list[tuple[Path, str]]:
-    """
-    Pytest-based test discovery using pytest's collection mechanism.
-    This properly discovers parametrized test variants.
+def _fixture_setup_project_config(tmp_path: Path):
+    from atopile.config import ProjectConfig, ProjectPaths, config
 
-    Returns list of (filepath, node_id) tuples where node_id is the full pytest
-    node identifier including parametrization (e.g. "test_file.py::test_func[param1]")
-    """
-    # Build pytest collect command
-    cmd = [
-        sys.executable,
-        "-m",
-        "pytest",
-        "--collect-only",
-        "-q",
-        # Filter by test name pattern (pytest uses -k for keyword expressions)
-        "-k",
-        test_pattern,
-    ]
-    # Add file paths
-    cmd.extend(str(fp) for fp in filepaths)
-
-    result = subprocess.run(cmd, capture_output=True, text=True)
-
-    # Parse output - each line that contains :: is a test node ID
-    # Format: path/to/test_file.py::TestClass::test_method[param]
-    # or:     path/to/test_file.py::test_function[param]
-    matches = []
-    for line in result.stdout.strip().split("\n"):
-        line = line.strip()
-        if "::" in line and not line.startswith("<"):
-            # Extract the file path from the node ID
-            file_part = line.split("::")[0]
-            filepath = Path(file_part)
-            matches.append((filepath, line))
-
-    return matches
+    config.project = ProjectConfig.skeleton(
+        entry="", paths=ProjectPaths(build=tmp_path / "build", root=tmp_path)
+    )
 
 
-def run_tests_manual(matches: list[tuple[Path, Callable]]) -> None:
+@dataclass
+class _PytestArgDef:
+    names: list[str]
+    values: list[tuple[Any, ...]]
+    id_fn: Callable[[Any], str] | None
+
+    def __post_init__(self):
+        for vs in self.values:
+            if len(vs) != len(self.names):
+                raise ValueError(f"Expected {len(self.names)} values, got {len(vs)}")
+
+
+def run_tests(matches: list[tuple[Path, Callable]]) -> None:
     """Run tests discovered via manual discovery."""
+    import tempfile
+
+    import typer
+
     setup_basic_logging()
 
     for filepath, test_func in matches:
-        if len(matches) > 1:
-            logger.info(f"Running {test_func.__name__}")
-        test_func()
+        logger.info(f"Running {test_func.__name__}")
+
+        with tempfile.TemporaryDirectory() as tmp_path_:
+            tmp_path = Path(tmp_path_)
+
+        # args: list[str] | None = None
+        arg_def: _PytestArgDef | None = None
+
+        # check if need to run fixtures
+        print(indented_container(test_func.__dict__, recursive=True))
+        if hasattr(test_func, "pytestmark"):
+            for mark in test_func.pytestmark:
+                if mark.name == "parametrize":
+                    arg_def = _PytestArgDef(
+                        names=[name.strip() for name in mark.args[0].split(",")],
+                        values=list(mark.args[1]),
+                        id_fn=mark.kwargs.get("ids"),
+                    )
+                if mark.name == "usefixtures":
+                    if "setup_project_config" in mark.args:
+                        _fixture_setup_project_config(tmp_path)
+                    else:
+                        raise ValueError(
+                            f"Test {test_func.__name__} is using usefixtures. "
+                            "Manual discovery does not support usefixtures."
+                        )
+
+        sys.argv = [test_func.__name__]
+
+        def fn():
+            if not arg_def:
+                test_func()
+                return
+            for values in arg_def.values:
+                kwargs = dict(zip(arg_def.names, values))
+                # name = arg_def.id_fn(kwargs) if arg_def.id_fn else str(values)
+                print(f"Running {test_func.__name__} with {kwargs}")
+                test_func(**kwargs)
+
+        typer.run(fn)
 
 
-def run_tests_pytest(matches: list[tuple[Path, str]]) -> None:
-    """Run tests discovered via pytest discovery."""
-    import pytest
+def run(
+    test_name: str,
+    filepaths: list[Path],
+):
+    test_files: list[Path] = []
+    for filepath in filepaths:
+        if not filepath.exists():
+            raise ValueError(f"Filepath {filepath} does not exist")
+        if not filepath.is_dir():
+            test_files.append(filepath)
+        else:
+            test_files.extend(filepath.rglob("test_*.py"))
 
-    setup_basic_logging()
-
-    for filepath, node_id in matches:
-        if len(matches) > 1:
-            logger.info(f"Running {node_id}")
-        # Run the specific test using pytest with its full node ID
-        # -s to not capture output, -v for verbose
-        pytest.main(
-            [
-                "-s",
-                "-o",
-                "addopts=''",
-                "--log-cli-level=INFO",
-                "-v",
-                node_id,
-            ]
-        )
+    matches = discover_tests(test_files, test_name)
+    if not matches:
+        raise ValueError(f"Test function '{test_name}' not found in {filepaths}")
+    run_tests(matches)
 
 
 def main(
-    filepath: Path = typer.Argument(Path("test")),
-    test_name: str = typer.Option(
-        ".*", "-k", help="Test name pattern (regex for manual, keyword expr for pytest)"
-    ),
-    discovery: DiscoveryMode = typer.Option(
-        DiscoveryMode.manual,
-        "--discovery",
-        "-d",
-        help="Test discovery mode: 'manual' (original, no parametrized tests) or "
-        "'pytest' (includes parametrized tests)",
-    ),
+    filepaths: list[Path] | None = None,
+    test_name: str = typer.Option("-k", help="Test name pattern"),
 ):
-    if not filepath.exists():
-        raise ValueError(f"Filepath {filepath} does not exist")
-    if not filepath.is_dir():
-        filepaths = [filepath]
-    else:
-        assert filepath.is_dir()
-        filepaths = list(filepath.rglob("test_*.py"))
-
-    if discovery == DiscoveryMode.manual:
-        matches = discover_tests_manual(filepaths, test_name)
-        if not matches:
-            raise ValueError(f"Test function '{test_name}' not found in {filepaths}")
-        run_tests_manual(matches)
-    else:
-        matches = discover_tests_pytest(filepaths, test_name)
-        if not matches:
-            raise ValueError(f"Test '{test_name}' not found in {filepaths}")
-        run_tests_pytest(matches)
+    assert test_name
+    if filepaths is None:
+        filepaths = [Path("test"), Path("src")]
+    run(test_name, filepaths)
 
 
 if __name__ == "__main__":

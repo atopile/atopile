@@ -4,10 +4,11 @@
 import logging
 from itertools import pairwise
 from textwrap import indent
-from typing import Callable
 
 import pytest
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import get_algorithms
@@ -36,28 +37,29 @@ def _setup():
 
 @pytest.mark.slow
 @pytest.mark.usefixtures("setup_project_config")
-@pytest.mark.parametrize(
-    "module_type",
-    [
-        lambda: F.MultiCapacitor(10),
-    ],
-)
-def test_performance_pick_real_module(module_type: Callable[[], fabll.Module]):
+def test_performance_pick_real_module():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
     timings = Times()
 
-    app = module_type()
+    class App(fabll.Node):
+        resistors = [F.Resistor.MakeChild() for _ in range(1)]
+
+    app = App.bind_typegraph(tg).create_instance(g=g)
     timings.add("construct")
 
-    F.is_bus_parameter.resolve_bus_parameters(app.tg)
-    timings.add("resolve bus params")
+    # F.is_bus_parameter.resolve_bus_parameters(app.tg)
+    # timings.add("resolve bus params")
 
     pick_tree = get_pick_tree(app)
     timings.add("pick tree")
 
     solver = DefaultSolver()
 
-    with timings.as_global("pick"):
-        pick_topologically(pick_tree, solver)
+    # with timings.as_global("pick"):
+    pick_topologically(pick_tree, solver)
+    timings.add("pick")
 
     logger.info(f"\n{timings}")
 
@@ -173,3 +175,22 @@ def test_performance_pick_rc_formulas():
 
     pick_time = timings.get_formatted("pick", strat=Times.MultiSampleStrategy.ACC)
     logger.info(f"Pick duration {_GROUPS}x{_GROUP_SIZE}: {pick_time}")
+
+
+if __name__ == "__main__":
+    import tempfile
+    from pathlib import Path
+
+    import typer
+
+    from atopile.config import ProjectConfig, ProjectPaths, config
+    from faebryk.libs.logging import setup_basic_logging
+
+    with tempfile.TemporaryDirectory() as tmp_path_:
+        tmp_path = Path(tmp_path_)
+        config.project = ProjectConfig.skeleton(
+            entry="", paths=ProjectPaths(build=tmp_path / "build", root=tmp_path)
+        )
+
+        setup_basic_logging()
+        typer.run(test_performance_pick_real_module)
