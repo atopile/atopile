@@ -1726,7 +1726,7 @@ class TestTraitStatements:
 
     def test_trait_requires_import(self):
         """Trait statement without importing the trait raises error."""
-        with pytest.raises(UndefinedSymbolError):
+        with pytest.raises(DslException, match="must be imported"):
             build_type(
                 """
                 #pragma experiment("TRAITS")
@@ -1934,6 +1934,189 @@ def test_literal_assignment():
     #     .get_obj(F.Literals.Strings)
     #     .get_values()
     # )
+
+
+class TestModuleTemplating:
+    """Test module templating with parameterized modules like Addressor."""
+
+    def test_module_templating_requires_experiment_flag(self):
+        """Module templating without experiment flag should fail."""
+        with pytest.raises(DslException, match="(?i)experiment"):
+            build_type(
+                """
+                import Addressor
+
+                module App:
+                    addressor = new Addressor<address_bits=2>
+                """
+            )
+
+    def test_module_templating_basic(self):
+        """Basic module templating creates the templated child."""
+        _, tg, _, result = build_type(
+            """
+            #pragma experiment("MODULE_TEMPLATING")
+            import Addressor
+
+            module App:
+                addressor = new Addressor<address_bits=3>
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=app_type)
+        ]
+        identifiers = [id for id, _ in make_children if id]
+
+        assert "addressor" in identifiers
+
+    def test_module_templating_with_integer_arg(self):
+        """Module templating with integer argument works correctly."""
+        import faebryk.core.node as fabll
+        from atopile.compiler.build import Linker
+
+        g, tg, stdlib, result = build_type(
+            """
+            #pragma experiment("MODULE_TEMPLATING")
+            import Addressor
+
+            module App:
+                addressor = new Addressor<address_bits=4>
+            """
+        )
+
+        linker = Linker(None, stdlib, tg)
+        linker.link_imports(g, result.state)
+
+        app_type = result.state.type_roots["App"]
+
+        # Get the addressor MakeChild node
+        addressor_make_child = _get_make_child(tg, app_type, "addressor")
+        assert addressor_make_child is not None
+
+        # Get the actual type from the MakeChild
+        mc = fabll.MakeChild.bind_instance(addressor_make_child)
+        addressor_type = mc.get_child_type()
+
+        # Check the addressor type has address_lines children (4 lines for address_bits=4)
+        address_lines = [
+            identifier
+            for identifier, child in tg.collect_make_children(type_node=addressor_type)
+            if identifier is not None and identifier.startswith("address_lines")
+        ]
+        assert len(address_lines) == 4
+
+    def test_module_templating_multicapacitor(self):
+        """MultiCapacitor module templating works correctly."""
+        from atopile.compiler.build import Linker
+
+        g, tg, stdlib, result = build_type(
+            """
+            #pragma experiment("MODULE_TEMPLATING")
+            import MultiCapacitor
+
+            module App:
+                caps = new MultiCapacitor<count=5>
+            """
+        )
+
+        linker = Linker(None, stdlib, tg)
+        linker.link_imports(g, result.state)
+
+        app_type = result.state.type_roots["App"]
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=app_type)
+        ]
+        identifiers = [id for id, _ in make_children if id]
+
+        assert "caps" in identifiers
+
+    def test_module_templating_array_with_template(self):
+        """Module templating works with array instantiation."""
+        _, tg, _, result = build_type(
+            """
+            #pragma experiment("MODULE_TEMPLATING")
+            import Addressor
+
+            module App:
+                addressors = new Addressor[3]<address_bits=2>
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=app_type)
+        ]
+        identifiers = [id for id, _ in make_children if id]
+
+        # Should have the pointer sequence and individual elements
+        assert "addressors" in identifiers
+        assert "addressors[0]" in identifiers
+        assert "addressors[1]" in identifiers
+        assert "addressors[2]" in identifiers
+
+    def test_module_templating_multiple_templated_instances(self):
+        """Multiple templated instances with different parameters."""
+        _, tg, _, result = build_type(
+            """
+            #pragma experiment("MODULE_TEMPLATING")
+            import Addressor
+
+            module App:
+                addressor2 = new Addressor<address_bits=2>
+                addressor4 = new Addressor<address_bits=4>
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=app_type)
+        ]
+        identifiers = [id for id, _ in make_children if id]
+
+        assert "addressor2" in identifiers
+        assert "addressor4" in identifiers
+
+    def test_module_templating_float_to_int_conversion(self):
+        """Template args that are whole-number floats are converted to int."""
+        import faebryk.core.node as fabll
+        from atopile.compiler.build import Linker
+
+        g, tg, stdlib, result = build_type(
+            """
+            #pragma experiment("MODULE_TEMPLATING")
+            import Addressor
+
+            module App:
+                addressor = new Addressor<address_bits=3>
+            """
+        )
+
+        linker = Linker(None, stdlib, tg)
+        linker.link_imports(g, result.state)
+
+        app_type = result.state.type_roots["App"]
+
+        # Get the addressor MakeChild node
+        addressor_make_child = _get_make_child(tg, app_type, "addressor")
+        assert addressor_make_child is not None
+
+        # Get the actual type from the MakeChild
+        mc = fabll.MakeChild.bind_instance(addressor_make_child)
+        addressor_type = mc.get_child_type()
+
+        # Should have 3 address lines (float 3.0 converted to int 3)
+        address_lines = [
+            identifier
+            for identifier, child in tg.collect_make_children(type_node=addressor_type)
+            if identifier is not None and identifier.startswith("address_lines")
+        ]
+        assert len(address_lines) == 3
 
 
 if __name__ == "__main__":

@@ -51,6 +51,9 @@ STDLIB_ALLOWLIST: set[type[fabll.Node]] = (
         F.Resistor,
         F.ResistorVoltageDivider,
         F.LED,
+        # Templated modules (support MakeChild with keyword args)
+        F.Addressor,
+        F.MultiCapacitor,
         # FIXME: separate list for internal types
         F.Expressions.Is,
         F.Expressions.IsSubset,
@@ -742,6 +745,13 @@ class ASTVisitor:
     ) -> list[AddMakeChildAction] | AddMakeChildAction:
         self._scope_stack.add_field(target_path)
 
+        # Check if module type is in stdlib and supports templating
+        module_fabll_type = (
+            self._stdlib_allowlist.get(new_spec.type_identifier)
+            if new_spec.type_identifier is not None
+            else None
+        )
+
         if new_spec.count is None:
             # TODO: review
             if target_path.leaf.is_index and parent_path is not None:
@@ -766,14 +776,25 @@ class ASTVisitor:
                     raise DslException(f"Field `{target_path}` is not defined in scope")
 
             assert new_spec.type_identifier is not None
+
+            # Use templated MakeChild if we have template args and a stdlib type
+            if new_spec.template_args and module_fabll_type is not None:
+                child_field = self._create_module_child_field(
+                    module_type=module_fabll_type,
+                    identifier=target_path.leaf.identifier,
+                    template_args=new_spec.template_args,
+                )
+            else:
+                child_field = fabll._ChildField(
+                    nodetype=new_spec.type_identifier,
+                    identifier=target_path.leaf.identifier,
+                )
+
             return AddMakeChildAction(
                 target_path=target_path,  # FIXME: this seems wrong
                 parent_reference=parent_reference,
                 parent_path=parent_path,
-                child_field=fabll._ChildField(
-                    nodetype=new_spec.type_identifier,
-                    identifier=target_path.leaf.identifier,
-                ),
+                child_field=child_field,
                 import_ref=new_spec.symbol.import_ref if new_spec.symbol else None,
             )
 
@@ -794,13 +815,24 @@ class ASTVisitor:
             )
 
             self._scope_stack.add_field(element_path)
+
+            # Use templated MakeChild for array elements if applicable
+            if new_spec.template_args and module_fabll_type is not None:
+                element_child_field = self._create_module_child_field(
+                    module_type=module_fabll_type,
+                    identifier=element_path.identifiers()[0],
+                    template_args=new_spec.template_args,
+                )
+            else:
+                element_child_field = fabll._ChildField(
+                    nodetype=not_none(new_spec.type_identifier),
+                    identifier=element_path.identifiers()[0],
+                )
+
             element_actions.append(
                 AddMakeChildAction(
                     target_path=element_path,
-                    child_field=fabll._ChildField(
-                        nodetype=not_none(new_spec.type_identifier),
-                        identifier=element_path.identifiers()[0],
-                    ),
+                    child_field=element_child_field,
                     parent_reference=pointer_action.parent_reference,
                     parent_path=pointer_action.parent_path,
                     import_ref=new_spec.symbol.import_ref if new_spec.symbol else None,
@@ -1040,14 +1072,18 @@ class ASTVisitor:
         type_name = node.get_type_ref_name()
         symbol = self._scope_stack.try_resolve_symbol(type_name)
 
+        # Extract template arguments if present (e.g., new Addressor<address_bits=2>)
+        template_args = self._extract_template_args(node.template.get())
+        if template_args is not None:
+            self.ensure_experiment(ASTVisitor._Experiment.MODULE_TEMPLATING)
+
         return NewChildSpec(
             symbol=symbol,
             type_identifier=type_name,
             type_node=symbol.type_node if symbol else None,
             count=node.get_new_count(),
+            template_args=template_args,
         )
-
-        # TODO: handle template args
 
     def _resolve_connectable_with_path(
         self, connectable_node: fabll.Node
@@ -1303,6 +1339,23 @@ class ASTVisitor:
 
         return NoOpAction()
 
+    def _extract_template_args(
+        self, template_node: AST.Template
+    ) -> dict[str, str | bool | float] | None:
+        args_list = template_node.args.get().as_list()
+        if not args_list:
+            return None
+
+        template_args: dict[str, str | bool | float] = {}
+        for arg_node in args_list:
+            arg = arg_node.cast(t=AST.TemplateArg)
+            (name,) = arg.name.get().get_values()
+            value = arg.get_value()
+            if value is not None:
+                template_args[name] = value
+
+        return template_args if template_args else None
+
     def _create_trait_field(
         self,
         trait_type: type[fabll.Node],
@@ -1335,6 +1388,36 @@ class ASTVisitor:
                     )
         return trait_field
 
+    def _create_module_child_field(
+        self,
+        module_type: type[fabll.Node],
+        identifier: str,
+        template_args: dict[str, str | bool | float] | None,
+    ) -> fabll._ChildField:
+        if template_args and hasattr(module_type, "MakeChild"):
+            converted_args: dict[str, str | bool | int | float] = {}
+            for key, value in template_args.items():
+                if isinstance(value, float) and value.is_integer():
+                    converted_args[key] = int(value)
+                else:
+                    converted_args[key] = value
+
+            try:
+                child_field = module_type.MakeChild(**converted_args)
+                child_field._set_locator(identifier)
+                return child_field
+            except TypeError as e:
+                logger.warning(
+                    f"MakeChild for {module_type.__name__} failed with template "
+                    f"args {converted_args}: {e}. Falling back to generic _ChildField."
+                )
+
+        # Fallback: create generic _ChildField (no template support)
+        return fabll._ChildField(
+            nodetype=module_type,
+            identifier=identifier,
+        )
+
     def visit_TraitStmt(
         self, node: AST.TraitStmt
     ) -> list[AddMakeChildAction | AddMakeLinkAction]:
@@ -1350,21 +1433,16 @@ class ASTVisitor:
 
         (trait_type_name,) = node.type_ref.get().name.get().get_values()
 
+        if not self._scope_stack.is_symbol_defined(trait_type_name):
+            raise DslException(f"Trait `{trait_type_name}` must be imported before use")
+
         target_path_list: LinkPath = []
         if (target_field_ref := node.get_target()) is not None:
             target_path = self.visit_FieldRef(target_field_ref)
             self._scope_stack.ensure_defined(target_path)
             target_path_list = list(target_path.identifiers())
 
-        template_args: dict[str, str | bool | float] | None = None
-        if node.template.get().args.get().as_list():
-            template_args = {}
-            for arg_node in node.template.get().args.get().as_list():
-                arg = arg_node.cast(t=AST.TemplateArg)
-                (name,) = arg.name.get().get_values()
-                value = arg.get_value()
-                if value is not None:
-                    template_args[name] = value
+        template_args = self._extract_template_args(node.template.get())
 
         trait_identifier = f"{TRAIT_ID_PREFIX}{trait_type_name}"
         trait_fabll_type = self._stdlib_allowlist.get(trait_type_name)

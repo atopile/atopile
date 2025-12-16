@@ -110,12 +110,14 @@ class NewChildSpec:
     type_identifier: full path including file name. str for pre linker
     type_node:
     count: How many child instances to create
+    template_args: Template arguments for parameterized modules (e.g., Addressor<address_bits=2>)
     """
 
     symbol: Symbol | None = None
     type_identifier: str | None = None
     type_node: graph.BoundNode | None = None
     count: int | None = None
+    template_args: dict[str, str | bool | float] | None = None
 
 
 @dataclass(frozen=True)
