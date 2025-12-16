@@ -27,34 +27,30 @@ class has_single_electric_reference(fabll.Node):
             raise ValueError("has_single_electric_reference has no reference")
         return reference.cast(F.ElectricPower)
 
-    def connect_all_references(
-        self,
-        ground_only: bool = False,
-    ):
+    def connect_all_references(self, ground_only: bool = False):
         parent_node = self.get_parent_force()[0]
         reference = F.ElectricPower.bind_typegraph(self.tg).create_instance(g=self.g)
         self.reference_ptr_.get().point(reference)
 
-        # if a child has the single electric reference trait,
-        # connect its shared reference to shared reference
+
         children_with_trait = parent_node.get_children(
             direct_only=True,
             types=fabll.Node,
             required_trait=has_single_electric_reference,
         )
 
-        # if a child is a power, connect to shared reference
         for child in children_with_trait:
+            child_trait = child.get_trait(has_single_electric_reference)
+
+            try:
+                child_trait.get_reference()
+            except ValueError:
+                child_trait.connect_all_references(ground_only=ground_only)
+
             if ground_only:
-                child.get_trait(
-                    has_single_electric_reference
-                ).get_reference().lv.get()._is_interface.get().connect_to(
-                    reference.lv.get()
-                )
+                child_trait.get_reference().lv.get()._is_interface.get().connect_to(reference.lv.get())
             else:
-                child.get_trait(
-                    has_single_electric_reference
-                ).get_reference()._is_interface.get().connect_to(reference)
+                child_trait.get_reference()._is_interface.get().connect_to(reference)
 
         children_that_are_power = parent_node.get_children(
             direct_only=True,

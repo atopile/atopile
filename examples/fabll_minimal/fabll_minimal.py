@@ -5,8 +5,19 @@ from faebryk.core.faebrykpy import EdgeInterfaceConnection as interface
 
 class App(fabll.Node):
     cap1 = F.Capacitor.MakeChild()
+
     res1 = F.Resistor.MakeChild()
     res2 = F.Resistor.MakeChild()
+
+    res3 = F.Resistor.MakeChild()
+    res4 = F.Resistor.MakeChild()
+
+
+    diff_pair = F.DifferentialPair.MakeChild()
+
+    i2c = F.I2C.MakeChild()
+
+    can = F.CAN.MakeChild()
 
     constraints = [
         F.Literals.Numbers.MakeChild_ConstrainToSubsetLiteral(
@@ -17,24 +28,36 @@ class App(fabll.Node):
         )
     ]
 
-    ep1 = F.ElectricPower.MakeChild()
-    ep2 = F.ElectricPower.MakeChild()
-
+    power_5v = F.ElectricPower.MakeChild()
+    power_3v3 = F.ElectricPower.MakeChild()
     gnd = F.Electrical.MakeChild()
 
-    connections = [
-        fabll.MakeEdge([gnd], [res1, "unnamed[0]"], edge=interface.build(shallow=False)),
-        fabll.MakeEdge([gnd], [res2, "unnamed[0]"], edge=interface.build(shallow=False)),
-        fabll.MakeEdge([ep1, "hv"], [res1, "unnamed[1]"], edge=interface.build(shallow=False)),
-        fabll.MakeEdge([ep2, "hv"], [res2, "unnamed[1]"], edge=interface.build(shallow=False)),
-        fabll.MakeEdge([ep1, "lv"], [gnd], edge=interface.build(shallow=False)),
-        fabll.MakeEdge([ep2, "lv"], [gnd], edge=interface.build(shallow=False)),
+    net_names = [
+        fabll.Traits.MakeEdge(F.has_net_name_suggestion.MakeChild(
+            name="GND", level=F.has_net_name_suggestion.Level.SUGGESTED), owner=[gnd]),
+        fabll.Traits.MakeEdge(F.has_net_name_suggestion.MakeChild(
+            name="+5V", level=F.has_net_name_suggestion.Level.SUGGESTED), owner=[power_5v, "hv"]),
+        fabll.Traits.MakeEdge(F.has_net_name_suggestion.MakeChild(
+            name="+3.3V", level=F.has_net_name_suggestion.Level.SUGGESTED), owner=[power_3v3, "hv"]),
     ]
 
-    res3 = F.Resistor.MakeChild()
-    diff_pair = F.DifferentialPair.MakeChild()
+    reference_connections = [
+        fabll.MakeEdge([power_5v, "lv"], [gnd], edge=interface.build(shallow=False)),
+        fabll.MakeEdge([power_3v3, "lv"], [gnd], edge=interface.build(shallow=False)),
+        fabll.MakeEdge([diff_pair, "reference"], [gnd], edge=interface.build(shallow=False)),
+    ]
+
+    resistor_connections = [
+        fabll.MakeEdge([res1, "unnamed[0]"], [gnd], edge=interface.build(shallow=False)),
+        fabll.MakeEdge([res2, "unnamed[0]"], [gnd], edge=interface.build(shallow=False)),
+        fabll.MakeEdge([res1, "unnamed[1]"], [power_5v, "hv"], edge=interface.build(shallow=False)),
+        fabll.MakeEdge([res2, "unnamed[1]"], [power_3v3, "hv"], edge=interface.build(shallow=False)),
+    ]
 
     connections2 = [
         fabll.MakeEdge([diff_pair, "p", "line"], [res3, "unnamed[0]"], edge=interface.build(shallow=False)),
-        fabll.MakeEdge([diff_pair, "n", "line"], [res3, "unnamed[1]"], edge=interface.build(shallow=False)),
+        fabll.MakeEdge([diff_pair, "p", "reference", "lv"], [res3, "unnamed[1]"], edge=interface.build(shallow=False)),
+
+        fabll.MakeEdge([diff_pair, "n", "line"], [res4, "unnamed[0]"], edge=interface.build(shallow=False)),
+        fabll.MakeEdge([diff_pair, "n", "reference", "lv"], [res4, "unnamed[1]"], edge=interface.build(shallow=False)),
     ]

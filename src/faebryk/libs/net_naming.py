@@ -7,6 +7,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Generator, Iterable, Mapping
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserException
@@ -149,6 +150,11 @@ def _register_named_nets(
             )
 
 
+def _get_hierarchy_depth(owner_node: fabll.Node) -> int:
+    """Get hierarchy depth of trait owner. Lower depth = higher priority."""
+    return len(owner_node.get_hierarchy())
+
+
 def _calculate_suggested_name_rank(mif: fabll.Node, base_depth: int) -> int:
     """Calculate rank for a suggested name based on hierarchy."""
     rank = base_depth
@@ -173,11 +179,43 @@ def _extract_net_name_info(
 
     depth = len(electrical.get_hierarchy())
 
-    if has_net_name_suggestion := electrical.try_get_trait(F.has_net_name_suggestion):
+    # Collect all has_net_name_suggestion trait instances to handle cases where
+    # both library-defined (type-level) and user-defined (instance-level) traits
+    # exist. Prioritize EXPECTED over SUGGESTED.
+    trait_type = (
+        F.has_net_name_suggestion.bind_typegraph(electrical.tg).get_or_create_type()
+    )
+
+    class TraitCollector:
+        def __init__(self):
+            self.instances = []
+
+        def collect(self, ctx, bound_edge):
+            trait_node = fbrk.EdgeTrait.get_trait_instance_node(edge=bound_edge.edge())
+            trait_instance = F.has_net_name_suggestion.bind_instance(
+                instance=bound_edge.g().bind(node=trait_node)
+            )
+            # Get the owner node where this trait is attached
+            owner_node = fbrk.EdgeTrait.get_owner_node(edge=bound_edge.edge())
+            owner_bound = bound_edge.g().bind(node=owner_node)
+            self.instances.append((trait_instance, owner_bound))
+
+    collector = TraitCollector()
+    fbrk.EdgeTrait.visit_trait_instances_of_type(
+        owner=electrical.instance,
+        trait_type=trait_type.node(),
+        ctx=collector,
+        f=collector.collect,
+    )
+
+    # Process all found trait instances, prioritizing EXPECTED
+    for has_net_name_suggestion, owner_bound in collector.instances:
         if has_net_name_suggestion.level == F.has_net_name_suggestion.Level.EXPECTED:
             required_names.add(has_net_name_suggestion.name)
         elif has_net_name_suggestion.level == F.has_net_name_suggestion.Level.SUGGESTED:
-            rank = _calculate_suggested_name_rank(electrical, depth)
+            # Rank based on hierarchy depth: lower depth = higher priority
+            owner_node = fabll.Node.bind_instance(instance=owner_bound)
+            rank = _get_hierarchy_depth(owner_node)
             suggested_names.append((has_net_name_suggestion.name, rank))
 
     # TODO not sure it makes sense to have net names on nodes that arent electricals
