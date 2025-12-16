@@ -3052,7 +3052,7 @@ def test_operand_order(expr_type: type[ExpressionNodes]):
     assert expr.is_expression.get().get_operands() == [arg1, arg2]
 
 
-class test_makechild:
+def test_expr_makechild():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
@@ -3060,13 +3060,13 @@ class test_makechild:
         op0 = F.Parameters.NumericParameter.MakeChild(F.Units.Dimensionless)
         op1 = F.Parameters.NumericParameter.MakeChild(F.Units.Dimensionless)
         op2 = F.Parameters.NumericParameter.MakeChild(F.Units.Dimensionless)
-        # expr = Subtract.MakeChild([op0], [op1], [op2])
-
-    return
+        expr = Subtract.MakeChild([op0], [op1], [op2])
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
     sub = app.expr.get()
-    ops = [app.op0.get(), app.op1.get(), app.op2.get()]
+    ops = [
+        op.can_be_operand.get() for op in [app.op0.get(), app.op1.get(), app.op2.get()]
+    ]
     assert sub.is_expression.get().get_operands() == ops
     assert sub.minuend.get().deref() == ops[0]
     assert sub.subtrahends.get().as_list() == ops[1:]
