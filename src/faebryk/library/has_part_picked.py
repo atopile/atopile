@@ -18,10 +18,10 @@ class has_part_picked(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     # Manual storage of the PickedPart dataclass
-    manufacturer_ = F.Parameters.StringParameter.MakeChild()
-    partno_ = F.Parameters.StringParameter.MakeChild()
-    supplier_partno_ = F.Parameters.StringParameter.MakeChild()
-    supplier_id_ = F.Parameters.StringParameter.MakeChild()
+    manufacturer = F.Parameters.StringParameter.MakeChild()
+    partno = F.Parameters.StringParameter.MakeChild()
+    supplier_partno = F.Parameters.StringParameter.MakeChild()
+    supplier_id = F.Parameters.StringParameter.MakeChild()
 
     def get_part(self) -> "PickedPart":
         return not_none(self.try_get_part())
@@ -30,7 +30,7 @@ class has_part_picked(fabll.Node):
         from faebryk.libs.picker.picker import PickedPart, PickSupplier
 
         class DummyPickSupplier(PickSupplier):
-            if supplier_id := self.supplier_id_.get().try_extract_constrained_literal():
+            if supplier_id := self.supplier_id.get().try_extract_constrained_literal():
                 supplier_id = supplier_id.get_values()[0]
             else:
                 supplier_id = None
@@ -38,17 +38,17 @@ class has_part_picked(fabll.Node):
             def attach(self, *args, **kwargs):
                 return None
 
-        if manufacturer := self.manufacturer_.get().try_extract_constrained_literal():
+        if manufacturer := self.manufacturer.get().try_extract_constrained_literal():
             manufacturer = manufacturer.get_values()[0]
         else:
             return None
 
-        if partno := self.partno_.get().try_extract_constrained_literal():
+        if partno := self.partno.get().try_extract_constrained_literal():
             partno = partno.get_values()[0]
         else:
             return None
 
-        if supplier_partno := self.supplier_partno_.get().try_extract_constrained_literal():
+        if supplier_partno := self.supplier_partno.get().try_extract_constrained_literal():
             supplier_partno = supplier_partno.get_values()[0]
         else:
             return None
@@ -61,10 +61,6 @@ class has_part_picked(fabll.Node):
         )
 
     @property
-    def part(self) -> "PickedPart | None":
-        return self.try_get_part()
-
-    @property
     def removed(self) -> bool:
         return self.has_trait(F.has_part_removed)
 
@@ -73,22 +69,22 @@ class has_part_picked(fabll.Node):
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.manufacturer_], picked_part.manufacturer
+                [out, cls.manufacturer], picked_part.manufacturer
             )
         )
         out.add_dependant(
             F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.partno_], picked_part.partno
+                [out, cls.partno], picked_part.partno
             )
         )
         out.add_dependant(
             F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.supplier_partno_], picked_part.supplier_partno
+                [out, cls.supplier_partno], picked_part.supplier_partno
             )
         )
         out.add_dependant(
             F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.supplier_id_], picked_part.supplier.supplier_id
+                [out, cls.supplier_id], picked_part.supplier.supplier_id
             )
         )
         return out
@@ -112,10 +108,10 @@ class has_part_picked(fabll.Node):
                 raise ValueError(f"Unknown supplier: {supplier_id}")
 
     def setup(self, picked_part: "PickedPart") -> Self:
-        self.manufacturer_.get().alias_to_single(value=picked_part.manufacturer)
-        self.partno_.get().alias_to_single(value=picked_part.partno)
-        self.supplier_partno_.get().alias_to_single(value=picked_part.supplier_partno)
-        self.supplier_id_.get().alias_to_single(value=picked_part.supplier.supplier_id)
+        self.manufacturer.get().alias_to_single(value=picked_part.manufacturer)
+        self.partno.get().alias_to_single(value=picked_part.partno)
+        self.supplier_partno.get().alias_to_single(value=picked_part.supplier_partno)
+        self.supplier_id.get().alias_to_single(value=picked_part.supplier.supplier_id)
         return self
 
     def by_supplier(
@@ -125,8 +121,8 @@ class has_part_picked(fabll.Node):
         Instance method alternative to the classmethod factory.
         Used by AtoCodeParse when parsing traits from ato files.
         """
-        self.manufacturer_.get().alias_to_single(value=manufacturer)
-        self.partno_.get().alias_to_single(value=partno)
-        self.supplier_partno_.get().alias_to_single(value=supplier_partno)
-        self.supplier_id_.get().alias_to_single(value=supplier_id)
+        self.manufacturer.get().alias_to_single(value=manufacturer)
+        self.partno.get().alias_to_single(value=partno)
+        self.supplier_partno.get().alias_to_single(value=supplier_partno)
+        self.supplier_id.get().alias_to_single(value=supplier_id)
         return self
