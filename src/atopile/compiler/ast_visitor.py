@@ -52,6 +52,7 @@ STDLIB_ALLOWLIST: set[type[fabll.Node]] = (
         F.LED,
         # Templated modules (support MakeChild with keyword args)
         F.Addressor,
+        F.I2C,
         F.MultiCapacitor,
         # FIXME: separate list for internal types
     }
