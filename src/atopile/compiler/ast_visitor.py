@@ -948,18 +948,20 @@ class ASTVisitor:
         operator = clause.get_operator()
 
         if operator == ">":
-            expr = F.Expressions.GreaterThan.MakeChild_Constrain(
-                lhs_refpath, rhs_refpath
+            expr = F.Expressions.GreaterThan.MakeChild(
+                lhs_refpath, rhs_refpath, assert_=True
             )
         elif operator == ">=":
-            expr = F.Expressions.GreaterOrEqual.MakeChild_Constrain(
-                lhs_refpath, rhs_refpath
+            expr = F.Expressions.GreaterOrEqual.MakeChild(
+                lhs_refpath, rhs_refpath, assert_=True
             )
         elif operator == "<":
-            expr = F.Expressions.LessThan.MakeChild_Constrain(lhs_refpath, rhs_refpath)
+            expr = F.Expressions.LessThan.MakeChild(
+                lhs_refpath, rhs_refpath, assert_=True
+            )
         elif operator == "<=":
-            expr = F.Expressions.LessOrEqual.MakeChild_Constrain(
-                lhs_refpath, rhs_refpath
+            expr = F.Expressions.LessOrEqual.MakeChild(
+                lhs_refpath, rhs_refpath, assert_=True
             )
         elif operator == "within":
             expr = F.Expressions.IsSubset.MakeChild(

@@ -1068,6 +1068,22 @@ class Divide(fabll.Node):
         return self
 
     @classmethod
+    def MakeChild(
+        cls, numerator: fabll.RefPath, *denominators: fabll.RefPath
+    ) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.numerator], get_operand_path(numerator))
+        )
+        for denominator in denominators:
+            out.add_dependant(
+                OperandSet.MakeEdge(
+                    [out, cls.zdenominator], get_operand_path(denominator)
+                )
+            )
+        return out
+
+    @classmethod
     def from_operands(
         cls,
         numerator: "F.Parameters.can_be_operand",
@@ -1113,6 +1129,14 @@ class Sqrt(fabll.Node):
     def setup(self, operand: "F.Parameters.can_be_operand") -> Self:
         self.operand.get().point(operand)
         return self
+
+    @classmethod
+    def MakeChild(cls, operand: fabll.RefPath) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.operand], get_operand_path(operand))
+        )
+        return out
 
     @classmethod
     def from_operands(
@@ -1240,6 +1264,20 @@ class Log(fabll.Node):
         return self
 
     @classmethod
+    def MakeChild(
+        cls, operand: fabll.RefPath, base: fabll.RefPath | None = None
+    ) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.operand], get_operand_path(operand))
+        )
+        if base is not None:
+            out.add_dependant(
+                OperandPointer.MakeEdge([out, cls.zbase], get_operand_path(base))
+            )
+        return out
+
+    @classmethod
     def from_operands(
         cls,
         operand: "F.Parameters.can_be_operand",
@@ -1283,6 +1321,14 @@ class Sin(fabll.Node):
         return self
 
     @classmethod
+    def MakeChild(cls, operand: fabll.RefPath) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.operand], get_operand_path(operand))
+        )
+        return out
+
+    @classmethod
     def from_operands(
         cls,
         operand: "F.Parameters.can_be_operand",
@@ -1320,6 +1366,14 @@ class Cos(fabll.Node):
     def setup(self, operand: "F.Parameters.can_be_operand") -> Self:
         self.operand.get().point(operand)
         return self
+
+    @classmethod
+    def MakeChild(cls, operand: fabll.RefPath) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.operand], get_operand_path(operand))
+        )
+        return out
 
     @classmethod
     def from_operands(
@@ -1364,6 +1418,14 @@ class Abs(fabll.Node):
         return self
 
     @classmethod
+    def MakeChild(cls, operand: fabll.RefPath) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.operand], get_operand_path(operand))
+        )
+        return out
+
+    @classmethod
     def from_operands(
         cls,
         operand: "F.Parameters.can_be_operand",
@@ -1406,6 +1468,14 @@ class Round(fabll.Node):
         return self
 
     @classmethod
+    def MakeChild(cls, operand: fabll.RefPath) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.operand], get_operand_path(operand))
+        )
+        return out
+
+    @classmethod
     def from_operands(
         cls,
         operand: "F.Parameters.can_be_operand",
@@ -1444,6 +1514,14 @@ class Floor(fabll.Node):
     def setup(self, operand: "F.Parameters.can_be_operand") -> Self:
         self.operand.get().point(operand)
         return self
+
+    @classmethod
+    def MakeChild(cls, operand: fabll.RefPath) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.operand], get_operand_path(operand))
+        )
+        return out
 
     @classmethod
     def from_operands(
@@ -1486,6 +1564,14 @@ class Ceil(fabll.Node):
         return self
 
     @classmethod
+    def MakeChild(cls, operand: fabll.RefPath) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.operand], get_operand_path(operand))
+        )
+        return out
+
+    @classmethod
     def from_operands(
         cls,
         operand: "F.Parameters.can_be_operand",
@@ -1526,6 +1612,15 @@ class Min(fabll.Node):
         return self
 
     @classmethod
+    def MakeChild(cls, *operands: fabll.RefPath) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        for operand in operands:
+            out.add_dependant(
+                OperandSet.MakeEdge([out, cls.operands], get_operand_path(operand))
+            )
+        return out
+
+    @classmethod
     def from_operands(
         cls,
         *operands: "F.Parameters.can_be_operand",
@@ -1564,6 +1659,15 @@ class Max(fabll.Node):
     def setup(self, *operands: "F.Parameters.can_be_operand") -> Self:
         self.operands.get().append(*operands)
         return self
+
+    @classmethod
+    def MakeChild(cls, *operands: fabll.RefPath) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        for operand in operands:
+            out.add_dependant(
+                OperandSet.MakeEdge([out, cls.operands], get_operand_path(operand))
+            )
+        return out
 
     @classmethod
     def from_operands(
@@ -1610,6 +1714,19 @@ class Integrate(fabll.Node):
         self.function.get().point(operand)
         self.variable.get().point(variable)
         return self
+
+    @classmethod
+    def MakeChild(
+        cls, operand: fabll.RefPath, variable: fabll.RefPath
+    ) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.function], get_operand_path(operand))
+        )
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.variable], get_operand_path(variable))
+        )
+        return out
 
     @classmethod
     def from_operands(
@@ -1660,6 +1777,19 @@ class Differentiate(fabll.Node):
         self.function.get().point(operand)
         self.variable.get().point(variable)
         return self
+
+    @classmethod
+    def MakeChild(
+        cls, operand: fabll.RefPath, variable: fabll.RefPath
+    ) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.function], get_operand_path(operand))
+        )
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.variable], get_operand_path(variable))
+        )
+        return out
 
     @classmethod
     def from_operands(
@@ -1713,6 +1843,15 @@ class And(fabll.Node):
         if assert_:
             self.is_assertable.get().assert_()
         return self
+
+    @classmethod
+    def MakeChild(cls, *operands: fabll.RefPath) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        for operand in operands:
+            out.add_dependant(
+                OperandSet.MakeEdge([out, cls.operands], get_operand_path(operand))
+            )
+        return out
 
     @classmethod
     def from_operands(
@@ -1770,6 +1909,15 @@ class Or(fabll.Node):
         return self
 
     @classmethod
+    def MakeChild(cls, *operands: fabll.RefPath) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        for operand in operands:
+            out.add_dependant(
+                OperandSet.MakeEdge([out, cls.operands], get_operand_path(operand))
+            )
+        return out
+
+    @classmethod
     def from_operands(
         cls,
         *operands: "F.Parameters.can_be_operand",
@@ -1817,6 +1965,14 @@ class Not(fabll.Node):
         if assert_:
             self.is_assertable.get().assert_()
         return self
+
+    @classmethod
+    def MakeChild(cls, operand: fabll.RefPath) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.operand], get_operand_path(operand))
+        )
+        return out
 
     @classmethod
     def from_operands(
@@ -1868,6 +2024,15 @@ class Xor(fabll.Node):
         if assert_:
             self.is_assertable.get().assert_()
         return self
+
+    @classmethod
+    def MakeChild(cls, *operands: fabll.RefPath) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        for operand in operands:
+            out.add_dependant(
+                OperandSet.MakeEdge([out, cls.operands], get_operand_path(operand))
+            )
+        return out
 
     @classmethod
     def from_operands(
@@ -1936,6 +2101,19 @@ class Implies(fabll.Node):
         return instance.setup(antecedent, consequent, assert_=assert_)
 
     @classmethod
+    def MakeChild(
+        cls, antecedent: fabll.RefPath, consequent: fabll.RefPath
+    ) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.antecedent], get_operand_path(antecedent))
+        )
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.consequent], get_operand_path(consequent))
+        )
+        return out
+
+    @classmethod
     def c(
         cls,
         antecedent: "F.Parameters.can_be_operand",
@@ -2000,6 +2178,25 @@ class IfThenElse(fabll.Node):
     ) -> "F.Parameters.can_be_operand":
         return _op(cls.from_operands(condition, then_value, else_value, g=g, tg=tg))
 
+    @classmethod
+    def MakeChild(
+        cls,
+        condition: fabll.RefPath,
+        then_value: fabll.RefPath,
+        else_value: fabll.RefPath,
+    ) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.condition], get_operand_path(condition))
+        )
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.then_value], get_operand_path(then_value))
+        )
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.else_value], get_operand_path(else_value))
+        )
+        return out
+
     def try_run(self):
         # TODO
         pass
@@ -2030,6 +2227,15 @@ class Union(fabll.Node):
     def setup(self, *operands: "F.Parameters.can_be_operand") -> Self:
         self.operands.get().append(*operands)
         return self
+
+    @classmethod
+    def MakeChild(cls, *operands: fabll.RefPath) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        for operand in operands:
+            out.add_dependant(
+                OperandSet.MakeEdge([out, cls.operands], get_operand_path(operand))
+            )
+        return out
 
     @classmethod
     def from_operands(
@@ -2076,6 +2282,15 @@ class Intersection(fabll.Node):
     def setup(self, *operands: "F.Parameters.can_be_operand") -> Self:
         self.operands.get().append(*operands)
         return self
+
+    @classmethod
+    def MakeChild(cls, *operands: fabll.RefPath) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        for operand in operands:
+            out.add_dependant(
+                OperandSet.MakeEdge([out, cls.operands], get_operand_path(operand))
+            )
+        return out
 
     @classmethod
     def from_operands(
@@ -2138,6 +2353,22 @@ class Difference(fabll.Node):
         return instance.setup(minuend, *subtrahends)
 
     @classmethod
+    def MakeChild(
+        cls, minuend: fabll.RefPath, *subtrahends: fabll.RefPath
+    ) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.minuend], get_operand_path(minuend))
+        )
+        for subtrahend in subtrahends:
+            out.add_dependant(
+                OperandSet.MakeEdge(
+                    [out, cls.subtrahends], get_operand_path(subtrahend)
+                )
+            )
+        return out
+
+    @classmethod
     def c(
         cls,
         minuend: "F.Parameters.can_be_operand",
@@ -2188,6 +2419,19 @@ class SymmetricDifference(fabll.Node):
         return instance.setup(left, right)
 
     @classmethod
+    def MakeChild(
+        cls, left: fabll.RefPath, right: fabll.RefPath
+    ) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.left], get_operand_path(left))
+        )
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.right], get_operand_path(right))
+        )
+        return out
+
+    @classmethod
     def c(
         cls,
         left: "F.Parameters.can_be_operand",
@@ -2217,20 +2461,16 @@ class LessThan(fabll.Node):
     right = OperandPointer.MakeChild()
 
     @classmethod
-    def MakeChild_Constrain(
-        cls, lhs: "fabll.RefPath", rhs: "fabll.RefPath"
+    def MakeChild(
+        cls, lhs: "fabll.RefPath", rhs: "fabll.RefPath", assert_: bool = False
     ) -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
-        out.add_dependant(
-            OperandPointer.MakeEdge([out, cls.left], [*lhs, "can_be_operand"])
-        )
-        out.add_dependant(
-            OperandPointer.MakeEdge([out, cls.right], [*rhs, "can_be_operand"])
-        )
-        out.add_dependant(
-            fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
-            identifier="constrain",
-        )
+        if assert_:
+            out.add_dependant(
+                fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
+            )
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.left], lhs))
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.right], rhs))
         return out
 
     def setup(
@@ -2289,20 +2529,16 @@ class GreaterThan(fabll.Node):
     right = OperandPointer.MakeChild()
 
     @classmethod
-    def MakeChild_Constrain(
-        cls, lhs: "fabll.RefPath", rhs: "fabll.RefPath"
+    def MakeChild(
+        cls, lhs: "fabll.RefPath", rhs: "fabll.RefPath", assert_: bool = False
     ) -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
-        out.add_dependant(
-            OperandPointer.MakeEdge([out, cls.left], [*lhs, "can_be_operand"])
-        )
-        out.add_dependant(
-            OperandPointer.MakeEdge([out, cls.right], [*rhs, "can_be_operand"])
-        )
-        out.add_dependant(
-            fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
-            identifier="constrain",
-        )
+        if assert_:
+            out.add_dependant(
+                fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
+            )
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.left], lhs))
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.right], rhs))
         return out
 
     def setup(
@@ -2360,20 +2596,16 @@ class LessOrEqual(fabll.Node):
     right = OperandPointer.MakeChild()
 
     @classmethod
-    def MakeChild_Constrain(
-        cls, lhs: "fabll.RefPath", rhs: "fabll.RefPath"
+    def MakeChild(
+        cls, lhs: "fabll.RefPath", rhs: "fabll.RefPath", assert_: bool = False
     ) -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
-        out.add_dependant(
-            OperandPointer.MakeEdge([out, cls.left], [*lhs, "can_be_operand"])
-        )
-        out.add_dependant(
-            OperandPointer.MakeEdge([out, cls.right], [*rhs, "can_be_operand"])
-        )
-        out.add_dependant(
-            fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
-            identifier="constrain",
-        )
+        if assert_:
+            out.add_dependant(
+                fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
+            )
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.left], lhs))
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.right], rhs))
         return out
 
     def setup(
@@ -2433,20 +2665,16 @@ class GreaterOrEqual(fabll.Node):
     right = OperandPointer.MakeChild()
 
     @classmethod
-    def MakeChild_Constrain(
-        cls, lhs: "fabll.RefPath", rhs: "fabll.RefPath"
+    def MakeChild(
+        cls, lhs: "fabll.RefPath", rhs: "fabll.RefPath", assert_: bool = False
     ) -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
-        out.add_dependant(
-            OperandPointer.MakeEdge([out, cls.left], [*lhs, "can_be_operand"])
-        )
-        out.add_dependant(
-            OperandPointer.MakeEdge([out, cls.right], [*rhs, "can_be_operand"])
-        )
-        out.add_dependant(
-            fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
-            identifier="constrain",
-        )
+        if assert_:
+            out.add_dependant(
+                fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
+            )
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.left], lhs))
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.right], rhs))
         return out
 
     def setup(
@@ -2516,6 +2744,19 @@ class NotEqual(fabll.Node):
         return self
 
     @classmethod
+    def MakeChild(
+        cls, left: fabll.RefPath, right: fabll.RefPath, assert_: bool = False
+    ) -> fabll._ChildField[Any]:
+        out = fabll._ChildField(cls)
+        if assert_:
+            out.add_dependant(
+                fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
+            )
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.left], left))
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.right], right))
+        return out
+
+    @classmethod
     def from_operands(
         cls,
         left: "F.Parameters.can_be_operand",
@@ -2583,6 +2824,19 @@ class IsBitSet(fabll.Node):
             cls, (value, bit_index), g=g, tg=tg
         )
         return instance.setup(value, bit_index, assert_=assert_)
+
+    @classmethod
+    def MakeChild(
+        cls, value: fabll.RefPath, bit_index: fabll.RefPath
+    ) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.value], get_operand_path(value))
+        )
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.zbit_index], get_operand_path(bit_index))
+        )
+        return out
 
     @classmethod
     def c(
@@ -2702,6 +2956,19 @@ class IsSuperset(fabll.Node):
         return self
 
     @classmethod
+    def MakeChild(
+        cls, superset: fabll.RefPath, subset: fabll.RefPath
+    ) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.superset], get_operand_path(superset))
+        )
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.zsubset], get_operand_path(subset))
+        )
+        return out
+
+    @classmethod
     def from_operands(
         cls,
         superset: "F.Parameters.can_be_operand",
@@ -2756,6 +3023,21 @@ class Cardinality(fabll.Node):
         if assert_:
             self.is_assertable.get().assert_()
         return self
+
+    @classmethod
+    def MakeChild(
+        cls, set: fabll.RefPath, cardinality: fabll.RefPath
+    ) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.set], get_operand_path(set))
+        )
+        out.add_dependant(
+            OperandPointer.MakeEdge(
+                [out, cls.cardinality], get_operand_path(cardinality)
+            )
+        )
+        return out
 
     @classmethod
     def from_operands(

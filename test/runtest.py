@@ -97,7 +97,8 @@ def run_tests(matches: list[tuple[Path, Callable]]) -> None:
         arg_def: _PytestArgDef | None = None
 
         # check if need to run fixtures
-        print(indented_container(test_func.__dict__, recursive=True))
+        if test_func.__dict__:
+            print(indented_container(test_func.__dict__, recursive=True))
         if hasattr(test_func, "pytestmark"):
             for mark in test_func.pytestmark:
                 if mark.name == "parametrize":
