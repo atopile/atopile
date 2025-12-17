@@ -523,13 +523,12 @@ def download_easyeda_info(lcsc_id: str, get_model: bool = True):
 def check_attachable(component: fabll.Node):
     if not component.has_trait(F.Footprints.has_associated_footprint):
         if not component.has_trait(F.Footprints.can_attach_to_footprint):
-            if not component.has_trait(F.has_pin_association_heuristic):
-                raise LCSC_PinmapException(
-                    "",
-                    f"Need either F.can_attach_to_footprint or "
-                    "F.has_pin_association_heuristic"
-                    f" for {component}",
-                )
+            raise LCSC_PinmapException(
+                "",
+                f"Need either F.can_attach_to_footprint or "
+                "F.has_pin_association_heuristic"
+                f" for {component}",
+            )
 
 
 def attach(

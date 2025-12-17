@@ -83,6 +83,7 @@ class can_attach_to_footprint(fabll.Node):
     """
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
+    is_immutable = fabll.Traits.MakeEdge(fabll.is_immutable.MakeChild())
 
 
 class has_associated_footprint(fabll.Node):

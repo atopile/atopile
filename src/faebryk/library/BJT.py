@@ -51,16 +51,17 @@ class BJT(fabll.Node):
         F.can_bridge.MakeEdge(["collector"], ["emitter"])
     )
 
-    _pin_association_heuristic = fabll.Traits.MakeEdge(
-        F.has_pin_association_heuristic.MakeChild(
-            mapping={
-                emitter: ["E", "Emitter"],
-                base: ["B", "Base"],
-                collector: ["C", "Collector"],
-            },
-            accept_prefix=False,
-            case_sensitive=False,
-        )
+    emitter_attachable = fabll.Traits.MakeEdge(
+        F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"e|emitter"),
+        [emitter],
+    )
+    base_attachable = fabll.Traits.MakeEdge(
+        F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"b|base"),
+        [base],
+    )
+    collector_attachable = fabll.Traits.MakeEdge(
+        F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"c|collector"),
+        [collector],
     )
 
     designator_prefix = fabll.Traits.MakeEdge(

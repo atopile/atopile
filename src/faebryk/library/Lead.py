@@ -63,6 +63,7 @@ class can_attach_to_any_pad(fabll.Node):
     """
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
+    is_immutable = fabll.Traits.MakeEdge(fabll.is_immutable.MakeChild()).put_on_type()
 
     def find_matching_pad(self, pads: list[F.Footprints.is_pad]) -> F.Footprints.is_pad:
         """

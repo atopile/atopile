@@ -9,8 +9,7 @@ class is_app_root(fabll.Node):
     Indicates that the module is the root of an application.
     """
 
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
-
-    def on_obj_set(self):
-        parent = self.get_parent_force()[0]
-        parent.no_include_parents_in_full_name = True
+    is_trait = fabll.Traits.MakeEdge(
+        fabll.ImplementsTrait.MakeChild().put_on_type()
+    ).put_on_type()
+    is_immutable = fabll.Traits.MakeEdge(fabll.is_immutable.MakeChild()).put_on_type()

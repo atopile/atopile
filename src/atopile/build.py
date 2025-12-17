@@ -26,6 +26,7 @@ def init_app() -> "fabll.Node":
             case BuildType.PYTHON:
                 app = _init_python_app(g=g, tg=tg)
                 fabll.Traits.create_and_add_instance_to(app, F.is_app_root)
+                app.no_include_parents_in_full_name = True
             case _:
                 raise ValueError(f"Unknown build type: {config.build.build_type}")
 

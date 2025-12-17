@@ -15,7 +15,7 @@ class has_package_requirements(fabll.Node):
     """
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
-
+    is_immutable = fabll.Traits.MakeEdge(fabll.is_immutable.MakeChild()).put_on_type()
     size_ = F.Parameters.EnumParameter.MakeChild(enum_t=SMDSize)
 
     def get_sizes(self, solver: Solver) -> list[SMDSize]:
@@ -34,7 +34,3 @@ class has_package_requirements(fabll.Node):
             )
         )
         return out
-
-    def setup(self, *sizes: SMDSize):
-        self.size_.get().alias_to_literal(*sizes)
-        return self

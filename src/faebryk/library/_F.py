@@ -25,7 +25,6 @@ from faebryk.library.Signal import Signal
 from faebryk.library.is_pickable import is_pickable
 from faebryk.library.is_app_root import is_app_root
 from faebryk.library.has_part_removed import has_part_removed
-from faebryk.library.is_lazy import is_lazy
 import faebryk.library.Literals as Literals
 from faebryk.library.can_bridge import can_bridge
 import faebryk.library.Parameters as Parameters
@@ -59,9 +58,9 @@ from faebryk.library.Symbol import Symbol
 from faebryk.library.XtalIF import XtalIF
 from faebryk.library.has_explicit_part import has_explicit_part
 from faebryk.library.has_net_name_affix import has_net_name_affix
-from faebryk.library.has_pin_association_heuristic import has_pin_association_heuristic
 from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
+from faebryk.library.BJT import BJT
 from faebryk.library.Capacitor import Capacitor
 from faebryk.library.CapacitorPolarized import CapacitorPolarized
 from faebryk.library.Comparator import Comparator
@@ -73,7 +72,6 @@ from faebryk.library.MOSFET import MOSFET
 from faebryk.library.Net import Net
 from faebryk.library.Resistor import Resistor
 from faebryk.library.TestPoint import TestPoint
-from faebryk.library.BJT import BJT
 from faebryk.library.Battery import Battery
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.ElectricSignal import ElectricSignal
@@ -124,7 +122,6 @@ __all__ = [
     "is_pickable",
     "is_app_root",
     "has_part_removed",
-    "is_lazy",
     "Literals",
     "can_bridge",
     "Parameters",
@@ -158,9 +155,9 @@ __all__ = [
     "XtalIF",
     "has_explicit_part",
     "has_net_name_affix",
-    "has_pin_association_heuristic",
     "requires_external_usage",
     "has_single_electric_reference",
+    "BJT",
     "Capacitor",
     "CapacitorPolarized",
     "Comparator",
@@ -172,7 +169,6 @@ __all__ = [
     "Net",
     "Resistor",
     "TestPoint",
-    "BJT",
     "Battery",
     "ElectricLogic",
     "ElectricSignal",

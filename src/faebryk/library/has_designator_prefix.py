@@ -223,6 +223,7 @@ class has_designator_prefix(fabll.Node):
         """Zener diode > often changed to "D" for diode"""
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_immutable = fabll.Traits.MakeEdge(fabll.is_immutable.MakeChild()).put_on_type()
     prefix = F.Parameters.StringParameter.MakeChild()
 
     @classmethod
@@ -239,10 +240,6 @@ class has_designator_prefix(fabll.Node):
 
     def get_prefix(self) -> str:
         return str(self.prefix.get().force_extract_literal().get_values()[0])
-
-    def setup(self, designator_prefix: str) -> Self:
-        self.prefix.get().alias_to_single(value=designator_prefix)
-        return self
 
 
 def test_has_designator_prefix():

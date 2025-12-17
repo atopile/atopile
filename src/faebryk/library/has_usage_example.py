@@ -15,6 +15,7 @@ class has_usage_example(fabll.Node):
         ato = "ato"
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_immutable = fabll.Traits.MakeEdge(fabll.is_immutable.MakeChild()).put_on_type()
 
     example_ = F.Parameters.StringParameter.MakeChild()
     language_ = F.Parameters.EnumParameter.MakeChild(enum_t=Language)
@@ -31,13 +32,13 @@ class has_usage_example(fabll.Node):
     def MakeChild(cls, example: str, language: Language) -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
         out.add_dependant(
-           F.Literals.Strings.MakeChild_ConstrainToLiteral(
-               [out, cls.example_], example
-           )
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                [out, cls.example_], example
+            )
         )
         out.add_dependant(
-           F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
-               [out, cls.language_], language
-           )
+            F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+                [out, cls.language_], language
+            )
         )
         return out

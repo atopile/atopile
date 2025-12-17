@@ -18,20 +18,27 @@ class has_net_name_affix(fabll.Node):
     """
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_immutable = fabll.Traits.MakeEdge(fabll.is_immutable.MakeChild()).put_on_type()
 
     required_prefix_ = F.Parameters.StringParameter.MakeChild()
     required_suffix_ = F.Parameters.StringParameter.MakeChild()
 
     @classmethod
-    def MakeChild(cls, prefix: str | None = None, suffix: str | None = None) -> fabll._ChildField[Self]:
+    def MakeChild(
+        cls, prefix: str | None = None, suffix: str | None = None
+    ) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
         if prefix:
-            out.add_dependant(F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.required_prefix_], prefix)
+            out.add_dependant(
+                F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                    [out, cls.required_prefix_], prefix
+                )
             )
         if suffix:
-            out.add_dependant(F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.required_suffix_], suffix)
+            out.add_dependant(
+                F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                    [out, cls.required_suffix_], suffix
+                )
             )
         return out
 
@@ -46,13 +53,6 @@ class has_net_name_affix(fabll.Node):
         if suffix := self.required_suffix_.get().try_extract_constrained_literal():
             return suffix.get_values()[0]
         return None
-
-    def setup(self, prefix: str | None = None, suffix: str | None = None) -> Self:
-        if prefix is not None:
-            self.required_prefix_.get().alias_to_single(value=prefix)
-        if suffix is not None:
-            self.required_suffix_.get().alias_to_single(value=suffix)
-        return self
 
     # TODO: Implement this
     # def handle_duplicate(self, old: TraitImpl, node: fabll.Node) -> bool:

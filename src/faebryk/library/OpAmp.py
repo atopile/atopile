@@ -58,18 +58,22 @@ class OpAmp(fabll.Node):
         )
     )
 
-    _pin_association_heuristic = fabll.Traits.MakeEdge(
-        F.has_pin_association_heuristic.MakeChild(
-            mapping={
-                # power.get().hv: ["V+", "Vcc", "Vdd", "Vcc+"], not possible for now
-                # power.get().lv: ["V-", "Vee", "Vss", "GND", "Vcc-"],
-                # input.get().n: ["-", "IN-"],
-                # input.get().p: ["+", "IN+"],
-                output: ["OUT"],
-            },
-            accept_prefix=False,
-            case_sensitive=False,
-        )
+    non_inverting_input_attatchable = fabll.Traits.MakeEdge(
+        F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"+|IN+"), [input, "p"]
+    )
+    inverting_input_attatchable = fabll.Traits.MakeEdge(
+        F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"-|IN-"), [input, "n"]
+    )
+    output_attatchable = fabll.Traits.MakeEdge(
+        F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"OUT"), [output]
+    )
+    power_positive_attatchable = fabll.Traits.MakeEdge(
+        F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"V\+|Vcc|Vdd|Vcc\+"),
+        [power, "hv"],
+    )
+    power_negative_attatchable = fabll.Traits.MakeEdge(
+        F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"V\-|Vee|Vss|GND|Vcc\-"),
+        [power, "lv"],
     )
 
     designator_prefix = fabll.Traits.MakeEdge(
