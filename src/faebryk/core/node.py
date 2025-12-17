@@ -2002,6 +2002,10 @@ class is_abstract(Node):
     is_trait = ImplementsTrait.MakeChild().put_on_type()
 
 
+class is_immutable(Node):
+    is_trait = ImplementsTrait.MakeChild().put_on_type()
+
+
 # --------------------------------------------------------------------------------------
 # TODO remove
 # re-export graph.GraphView to be used from fabll namespace
