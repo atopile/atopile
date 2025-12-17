@@ -99,6 +99,16 @@ class is_ato_block(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     source_dir = F.Parameters.StringParameter.MakeChild()
 
+    @classmethod
+    def MakeChild(cls, source_dir: str) -> fabll._ChildField:
+        field = fabll._ChildField(cls)
+        field.add_dependant(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                [field, cls.source_dir], source_dir
+            )
+        )
+        return field
+
     def get_source_dir(self) -> str:
         """Get the source directory path where the .ato file is located."""
         return self.source_dir.get().force_extract_literal().get_values()[0]
@@ -346,7 +356,9 @@ class _TypeContextStack:
 
 class AnyAtoBlock(fabll.Node):
     _definition_identifier: ClassVar[str] = "definition"
-    is_ato_block = fabll.Traits.MakeEdge(is_ato_block.MakeChild())
+    # FIXME: this should likely be removed or updated to use the new MakeChild
+    # For now, we'll pass an empty string as source_dir since this seems to be a base type
+    is_ato_block = fabll.Traits.MakeEdge(is_ato_block.MakeChild(source_dir=""))
 
 
 class ASTVisitor:
@@ -543,21 +555,13 @@ class ASTVisitor:
         # Get source directory for is_ato_block trait
         source_dir = str(self._state.file_path.parent) if self._state.file_path else ""
 
-        # Create is_ato_block with source_dir constrained
-        def _make_ato_block_field() -> fabll._ChildField:
-            field = is_ato_block.MakeChild()
-            field.add_dependant(
-                F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                    [field, is_ato_block.source_dir], source_dir
-                )
-            )
-            return field
-
         match node.get_block_type():
             case AST.BlockDefinition.BlockType.MODULE:
 
                 class _Module(fabll.Node):
-                    _is_ato_block = fabll.Traits.MakeEdge(_make_ato_block_field())
+                    _is_ato_block = fabll.Traits.MakeEdge(
+                        is_ato_block.MakeChild(source_dir=source_dir)
+                    )
                     is_ato_module = fabll.Traits.MakeEdge(is_ato_module.MakeChild())
                     is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
@@ -566,7 +570,9 @@ class ASTVisitor:
             case AST.BlockDefinition.BlockType.COMPONENT:
 
                 class _Component(fabll.Node):
-                    _is_ato_block = fabll.Traits.MakeEdge(_make_ato_block_field())
+                    _is_ato_block = fabll.Traits.MakeEdge(
+                        is_ato_block.MakeChild(source_dir=source_dir)
+                    )
                     is_ato_component = fabll.Traits.MakeEdge(
                         is_ato_component.MakeChild()
                     )
@@ -576,7 +582,9 @@ class ASTVisitor:
             case AST.BlockDefinition.BlockType.INTERFACE:
 
                 class _Interface(fabll.Node):
-                    is_ato_block = fabll.Traits.MakeEdge(is_ato_block.MakeChild())
+                    is_ato_block = fabll.Traits.MakeEdge(
+                        is_ato_block.MakeChild(source_dir=source_dir)
+                    )
                     is_ato_interface = fabll.Traits.MakeEdge(
                         is_ato_interface.MakeChild()
                     )
@@ -589,6 +597,11 @@ class ASTVisitor:
 
         type_node = self._type_graph.add_type(identifier=type_identifier)
         type_node_bound_tg = fabll.TypeNodeBoundTG(tg=self._type_graph, t=_Block)
+
+        # Process the class fields (traits) we just defined
+        # Since we manually added the type node above, get_or_create_type inside TypeNodeBoundTG
+        # will find it and skip _create_type, so we must call it manually.
+        _Block._create_type(type_node_bound_tg)
 
         with self._scope_stack.enter():
             with self._type_stack.enter(type_node, type_node_bound_tg):
