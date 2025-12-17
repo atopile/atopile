@@ -3326,9 +3326,15 @@ def test_expr_makechild():
     tg = fbrk.TypeGraph.create(g=g)
 
     class App(fabll.Node):
-        op0 = F.Parameters.NumericParameter.MakeChild(F.Units.Dimensionless)
-        op1 = F.Parameters.NumericParameter.MakeChild(F.Units.Dimensionless)
-        op2 = F.Parameters.NumericParameter.MakeChild(F.Units.Dimensionless)
+        op0 = F.Parameters.NumericParameter.MakeChild(
+            unit=F.Units.Dimensionless.MakeChild()
+        )
+        op1 = F.Parameters.NumericParameter.MakeChild(
+            unit=F.Units.Dimensionless.MakeChild()
+        )
+        op2 = F.Parameters.NumericParameter.MakeChild(
+            unit=F.Units.Dimensionless.MakeChild()
+        )
         expr = Subtract.MakeChild([op0], [op1], [op2])
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)

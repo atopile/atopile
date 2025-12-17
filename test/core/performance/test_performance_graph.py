@@ -117,7 +117,9 @@ def test_performance_parameters(A: int = 1, B: int = 1, rs: int = 0):
     def _build_recursive(depth: int) -> fabll._ChildField[F.Expressions.Add]:
         if depth == 1:
             ps = [
-                F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+                F.Parameters.NumericParameter.MakeChild(
+                    unit=F.Units.Dimensionless.MakeChild()
+                )
                 for _ in range(2)
             ]
         else:
