@@ -871,7 +871,7 @@ class ASTVisitor:
                     ),
                     parent_reference=parent_reference,
                     parent_path=parent_path,
-                    child_field=F.Expressions.IsSubset.MakeChild(
+                    child_field=F.Expressions.IsSubset.MakeChild(  # TODO: conditional
                         target_path.to_ref_path(),
                         [constraint_spec.operand],
                         assert_=True,
