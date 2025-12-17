@@ -167,8 +167,6 @@ pub fn build(b: *std.Build) void {
     });
     faebryk_mod.addImport("graph", graph_mod);
 
-    std.debug.print("build.zig\n", .{});
-
     // Build sexp once as a standalone static library (PIC for shared linking).
     const sexp_lib = b.addStaticLibrary(.{
         .name = "sexp",
