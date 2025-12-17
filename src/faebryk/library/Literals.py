@@ -3432,7 +3432,7 @@ class Numbers(fabll.Node):
 
         # Return the new quantity set
         return Numbers.create_instance(g=g, tg=tg).setup(
-            numeric_set=out_numeric_set, unit=self.get_is_unit()
+            numeric_set=out_numeric_set, unit=unit
         )
 
     def _convert_other_to_self_unit(
@@ -4311,7 +4311,10 @@ class Numbers(fabll.Node):
             values=parsed_intervals
         )
         result = cls.create_instance(g=g, tg=tg)
-        return result.setup(numeric_set=numeric_set, unit=unit)
+        # The values are in base SI units
+        return result.setup(
+            numeric_set=numeric_set, unit=unit.to_base_units(g=g, tg=tg)
+        )
 
     def pretty_str(self, show_tolerance: bool = False) -> str:
         """Format number with units and tolerance for display."""
