@@ -2126,6 +2126,307 @@ class TestModuleTemplating:
         assert len(address_lines) == 3
 
 
+class TestAssignmentOverride:
+    """Test assignment override functionality for legacy sugar syntax."""
+
+    def test_required_true_attaches_trait(self):
+        """Verify `power.required = True` attaches requires_external_usage trait."""
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.core.node as fabll
+        import faebryk.library._F as F
+
+        g, tg, stdlib, result = build_type(
+            """
+            import ElectricPower
+
+            module App:
+                power = new ElectricPower
+                power.required = True
+            """,
+            link=True,
+        )
+
+        app_type = result.state.type_roots["App"]
+
+        # Check that the trait child was created
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=app_type)
+        ]
+        identifiers = [id for id, _ in make_children if id]
+
+        assert "_trait_power_requires_external_usage" in identifiers
+
+        # Check that the trait was linked to the power interface
+        assert _check_make_links(
+            tg,
+            app_type,
+            expected=[(["power"], ["_trait_power_requires_external_usage"])],
+        )
+
+        # Instantiate and verify get_owner_node_of works
+        from faebryk.core.faebrykpy import EdgeComposition
+        from faebryk.libs.util import not_none
+
+        app_instance = tg.instantiate_node(type_node=app_type, attributes={})
+
+        # Get the power child
+        power_node = not_none(
+            EdgeComposition.get_child_by_identifier(
+                bound_node=app_instance, child_identifier="power"
+            )
+        )
+
+        # Get the trait instance on power
+        trait_instance = fabll.Node.bind_instance(instance=power_node).get_trait(
+            F.requires_external_usage
+        )
+
+        # Check that get_owner_node_of can find the owner
+        owner = fbrk.EdgeTrait.get_owner_node_of(bound_node=trait_instance.instance)
+        assert owner is not None, "EdgeTrait.get_owner_node_of returned None!"
+
+    def test_required_false_is_noop(self):
+        """Verify `power.required = False` does not attach any trait."""
+        _, tg, _, result = build_type(
+            """
+            import ElectricPower
+
+            module App:
+                power = new ElectricPower
+                power.required = False
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+
+        # Check that no requires_external_usage trait was created
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=app_type)
+        ]
+        identifiers = [id for id, _ in make_children if id]
+
+        assert "_trait_requires_external_usage" not in identifiers
+
+    def test_package_imperial_format(self):
+        """Test `package = "0402"` creates has_package_requirements trait."""
+        g, tg, stdlib, result = build_type(
+            """
+            import Resistor
+
+            module App:
+                resistor = new Resistor
+                resistor.package = "0402"
+            """,
+            link=True,
+        )
+
+        app_type = result.state.type_roots["App"]
+
+        # Check that the trait child was created
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=app_type)
+        ]
+        identifiers = [id for id, _ in make_children if id]
+
+        assert "_trait_resistor_has_package_requirements" in identifiers
+
+        # Check that the trait was linked to the resistor
+        assert _check_make_links(
+            tg,
+            app_type,
+            expected=[(["resistor"], ["_trait_resistor_has_package_requirements"])],
+        )
+
+    def test_package_with_prefix(self):
+        """Test `package = "R0402"` strips R prefix and works correctly."""
+        _, tg, _, result = build_type(
+            """
+            import Resistor
+
+            module App:
+                resistor = new Resistor
+                resistor.package = "R0402"
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+
+        # Check that the trait child was created
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=app_type)
+        ]
+        identifiers = [id for id, _ in make_children if id]
+
+        assert "_trait_resistor_has_package_requirements" in identifiers
+
+    def test_package_invalid_raises(self):
+        """Test invalid package string raises DslException."""
+        with pytest.raises(DslException, match="Invalid package"):
+            build_type(
+                """
+                import Resistor
+
+                module App:
+                    resistor = new Resistor
+                    resistor.package = "INVALID_SIZE"
+                """
+            )
+
+    def test_lcsc_id_attaches_trait(self):
+        """Verify `node.lcsc_id = "C12345"` attaches has_explicit_part trait."""
+        _, tg, _, result = build_type(
+            """
+            import Resistor
+
+            module App:
+                resistor = new Resistor
+                resistor.lcsc_id = "C12345"
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+
+        # Check that the trait child was created
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=app_type)
+        ]
+        identifiers = [id for id, _ in make_children if id]
+
+        assert "_trait_resistor_has_explicit_part" in identifiers
+
+        # Check that the trait was linked to the resistor
+        assert _check_make_links(
+            tg,
+            app_type,
+            expected=[(["resistor"], ["_trait_resistor_has_explicit_part"])],
+        )
+
+    def test_datasheet_url_attaches_trait(self):
+        """Verify `node.datasheet_url = "..."` attaches has_datasheet trait."""
+        _, tg, _, result = build_type(
+            """
+            import Resistor
+
+            module App:
+                resistor = new Resistor
+                resistor.datasheet_url = "https://example.com/datasheet.pdf"
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+
+        # Check that the trait child was created
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=app_type)
+        ]
+        identifiers = [id for id, _ in make_children if id]
+
+        assert "_trait_resistor_has_datasheet" in identifiers
+
+        # Check that the trait was linked to the resistor
+        assert _check_make_links(
+            tg,
+            app_type,
+            expected=[(["resistor"], ["_trait_resistor_has_datasheet"])],
+        )
+
+    def test_designator_prefix_attaches_trait(self):
+        """Verify `node.designator_prefix = "U"` attaches trait."""
+        _, tg, _, result = build_type(
+            """
+            import Resistor
+
+            module App:
+                resistor = new Resistor
+                resistor.designator_prefix = "R"
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+
+        # Check that the trait child was created
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=app_type)
+        ]
+        identifiers = [id for id, _ in make_children if id]
+
+        assert "_trait_resistor_has_designator_prefix" in identifiers
+
+        # Check that the trait was linked to the resistor
+        assert _check_make_links(
+            tg,
+            app_type,
+            expected=[(["resistor"], ["_trait_resistor_has_designator_prefix"])],
+        )
+
+    def test_override_net_name_attaches_trait(self):
+        """Verify `node.override_net_name = "VCC"` attaches trait."""
+        _, tg, _, result = build_type(
+            """
+            import Electrical
+
+            module App:
+                net = new Electrical
+                net.override_net_name = "VCC"
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+
+        # Check that the trait child was created
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=app_type)
+        ]
+        identifiers = [id for id, _ in make_children if id]
+
+        assert "_trait_net_has_net_name_suggestion" in identifiers
+
+        # Check that the trait was linked to the net
+        assert _check_make_links(
+            tg,
+            app_type,
+            expected=[(["net"], ["_trait_net_has_net_name_suggestion"])],
+        )
+
+    def test_suggest_net_name_attaches_trait(self):
+        """Verify `node.suggest_net_name = "GND"` attaches trait."""
+        _, tg, _, result = build_type(
+            """
+            import Electrical
+
+            module App:
+                net = new Electrical
+                net.suggest_net_name = "GND"
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+
+        # Check that the trait child was created
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=app_type)
+        ]
+        identifiers = [id for id, _ in make_children if id]
+
+        assert "_trait_net_has_net_name_suggestion" in identifiers
+
+        # Check that the trait was linked to the net
+        assert _check_make_links(
+            tg,
+            app_type,
+            expected=[(["net"], ["_trait_net_has_net_name_suggestion"])],
+        )
+
+
 if __name__ == "__main__":
     import typer
 

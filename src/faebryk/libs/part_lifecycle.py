@@ -546,7 +546,6 @@ class PartLifecycle:
             f_fp = associated_fp_trait.get_footprint()
             component = fabll.Traits(associated_fp_trait).get_obj_raw()
 
-            # For atomic parts, ensure kicad library footprint is set up (lazy init)
             if atomic_part := component.try_get_trait(F.is_atomic_part):
                 k_lib_file_fp_t = atomic_part.get_kicad_library_footprint()
             else:
@@ -698,6 +697,34 @@ class PartLifecycle:
                         subaddresses,
                     ),
                 )
+
+            # Add LCSC ID from picked part
+            if picked_t := component.try_get_trait(F.has_part_picked):
+                if picked_part := picked_t.try_get_part():
+                    if picked_part.supplier_partno:
+                        Property.set_property(
+                            pcb_fp,
+                            _prop_factory("lcsc_id", picked_part.supplier_partno),
+                        )
+
+            # Add package size from package requirements
+            if pkg_t := component.try_get_trait(F.has_package_requirements):
+                # Get size enum and format as string (e.g., "0402", "M1608")
+                from faebryk.libs.smd import SMDSize
+
+                sizes = pkg_t.size.get().try_extract_constrained_literal()
+                if sizes:
+                    size_values = sizes.get_values_typed(SMDSize)
+                    # Strip I prefix from imperial sizes (default), keep M for metric
+                    # e.g., "I0603" -> "0603", "M1608" -> "M1608"
+                    size_str = ", ".join(
+                        s.name[1:] if s.name.startswith("I") else s.name
+                        for s in size_values
+                    )
+                    Property.set_property(
+                        pcb_fp,
+                        _prop_factory("package", size_str),
+                    )
 
             # delete checksum
             Property.checksum.delete_checksum(pcb_fp)

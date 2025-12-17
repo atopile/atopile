@@ -43,6 +43,10 @@ class EdgeTraversal:
     identifier: str
     edge_type: int  # Edge type tid
 
+    def __str__(self) -> str:
+        """Return string representation suitable for use in identifiers."""
+        return self.identifier
+
 
 class _EdgeTraitMeta(type):
     """Metaclass that delegates attribute access to the Zig EdgeTrait,

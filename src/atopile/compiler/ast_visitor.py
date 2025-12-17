@@ -1,4 +1,5 @@
 import logging
+import re
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -31,6 +32,7 @@ from faebryk.core.faebrykpy import (
 )
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.Lead import can_attach_to_pad_by_name, is_lead
+from faebryk.libs.smd import SMDSize
 from faebryk.libs.util import cast_assert, not_none
 
 _Quantity = tuple[float, fabll._ChildField]
@@ -53,6 +55,10 @@ STDLIB_ALLOWLIST: set[type[fabll.Node]] = (
         # Templated modules (support MakeChild with keyword args)
         F.Addressor,
         F.I2C,
+        F.SPI,
+        F.I2S,
+        F.JTAG,
+        F.UART,
         F.MultiCapacitor,
         # FIXME: separate list for internal types
     }
@@ -69,6 +75,7 @@ STDLIB_ALLOWLIST: set[type[fabll.Node]] = (
         F.has_package_requirements,
         F.is_pickable,
         F.is_atomic_part,
+        F.requires_external_usage,
     }
 )
 
@@ -353,6 +360,292 @@ class _TypeContextStack:
             rhs_reference_path=action.rhs_path,
             edge=action.edge or fbrk.EdgeInterfaceConnection.build(shallow=False),
         )
+
+
+def _create_trait_actions(
+    trait_name: str,
+    trait_field: fabll._ChildField,
+    target_path: LinkPath,
+) -> list[AddMakeChildAction | AddMakeLinkAction]:
+    target_suffix = "_".join(str(p) for p in target_path) if target_path else "self"
+    trait_identifier = f"{TRAIT_ID_PREFIX}{target_suffix}_{trait_name}"
+    trait_field._set_locator(trait_identifier)
+
+    actions: list[AddMakeChildAction | AddMakeLinkAction] = [
+        AddMakeChildAction(
+            target_path=[trait_identifier],
+            parent_reference=None,
+            parent_path=None,
+            child_field=trait_field,
+        ),
+        AddMakeLinkAction(
+            lhs_path=target_path,
+            rhs_path=[trait_identifier],
+            edge=fbrk.EdgeTrait.build(),
+        ),
+    ]
+    return actions
+
+
+def _parse_smd_size(value: str) -> SMDSize:
+    """
+    Parse package string to SMDSize enum.
+
+    Handles:
+    - Prefixes like R0402, C0603, L0805 (strips prefix)
+    - Imperial format like 0402 (adds I prefix)
+    - Direct enum names like I0402
+    """
+    # Strip R/C/L prefix for resistors/capacitors/inductors
+    value = re.sub(r"^[RCL]", "I", value)
+
+    # Assume imperial if just digits
+    if re.match(r"^[0-9]+$", value):
+        value = f"I{value}"
+
+    # Validate against SMDSize enum
+    valid_names = {s.name for s in SMDSize}
+    if value not in valid_names:
+        from faebryk.libs.util import md_list
+
+        raise DslException(
+            f"Invalid package: `{value}`. Valid packages are:\n"
+            f"{md_list(s.name for s in SMDSize)}"
+        )
+
+    return SMDSize[value]
+
+
+class AssignmentOverrides:
+    """
+    Registry of assignment overrides that convert assignments to trait operations.
+
+    Handles legacy sugar syntax like:
+    - `power.required = True` -> attaches requires_external_usage trait
+    - `cap.package = "0402"` -> attaches has_package_requirements trait
+    - `node.lcsc_id = "C12345"` -> attaches has_explicit_part trait
+    - `node.datasheet_url = "https://..."` -> attaches has_datasheet trait
+    - `node.designator_prefix = "U"` -> attaches has_designator_prefix trait
+    - `net.override_net_name = "VCC"` -> attaches has_net_name_suggestion (EXPECTED)
+    - `net.suggest_net_name = "VCC"` -> attaches has_net_name_suggestion (SUGGESTED)
+    """
+
+    @staticmethod
+    def handle_required(
+        target_path: FieldPath,
+        value: bool,
+    ) -> list[AddMakeChildAction | AddMakeLinkAction] | None:
+        """Handle `node.required = True/False`."""
+        if not isinstance(value, bool):
+            raise DslException(
+                f"Invalid value for `required`: expected bool, "
+                f"got {type(value).__name__}"
+            )
+
+        if not value:
+            return [NoOpAction()]  # type: ignore[list-item]
+
+        if not target_path.parent_segments:
+            raise DslException("`required` must be set on a field, not at top level")
+
+        parent_path: LinkPath = list(
+            FieldPath(segments=tuple(target_path.parent_segments)).identifiers()
+        )
+        trait_field = F.requires_external_usage.MakeChild()
+        return _create_trait_actions(
+            "requires_external_usage", trait_field, parent_path
+        )
+
+    @staticmethod
+    def handle_package(
+        target_path: FieldPath,
+        value: str,
+    ) -> list[AddMakeChildAction | AddMakeLinkAction] | None:
+        """Handle `node.package = "0402"`."""
+        if not isinstance(value, str):
+            raise DslException(
+                f"Invalid value for `package`: expected str, got {type(value).__name__}"
+            )
+
+        if not target_path.parent_segments:
+            raise DslException("`package` must be set on a field, not at top level")
+
+        parent_path: LinkPath = list(
+            FieldPath(segments=tuple(target_path.parent_segments)).identifiers()
+        )
+        size = _parse_smd_size(value)
+        trait_field = F.has_package_requirements.MakeChild(size=size)
+        return _create_trait_actions(
+            "has_package_requirements", trait_field, parent_path
+        )
+
+    @staticmethod
+    def handle_lcsc_id(
+        target_path: FieldPath,
+        value: str,
+    ) -> list[AddMakeChildAction | AddMakeLinkAction] | None:
+        """Handle `node.lcsc_id = "C12345"`."""
+        if not isinstance(value, str):
+            raise DslException(
+                f"Invalid value for `lcsc_id`: expected str, got {type(value).__name__}"
+            )
+
+        if not target_path.parent_segments:
+            raise DslException("`lcsc_id` must be set on a field, not at top level")
+
+        parent_path: LinkPath = list(
+            FieldPath(segments=tuple(target_path.parent_segments)).identifiers()
+        )
+        trait_field = F.has_explicit_part.MakeChild(
+            mfr=None,
+            partno=None,
+            supplier_id="lcsc",
+            supplier_partno=value,
+            pinmap=None,
+            override_footprint=None,
+        )
+        return _create_trait_actions("has_explicit_part", trait_field, parent_path)
+
+    @staticmethod
+    def handle_datasheet_url(
+        target_path: FieldPath,
+        value: str,
+    ) -> list[AddMakeChildAction | AddMakeLinkAction] | None:
+        """Handle `node.datasheet_url = "https://..."`."""
+        if not isinstance(value, str):
+            raise DslException(
+                f"Invalid value for `datasheet_url`: expected str, "
+                f"got {type(value).__name__}"
+            )
+
+        if not target_path.parent_segments:
+            raise DslException(
+                "`datasheet_url` must be set on a field, not at top level"
+            )
+
+        parent_path: LinkPath = list(
+            FieldPath(segments=tuple(target_path.parent_segments)).identifiers()
+        )
+        trait_field = F.has_datasheet.MakeChild(datasheet=value)
+        return _create_trait_actions("has_datasheet", trait_field, parent_path)
+
+    @staticmethod
+    def handle_designator_prefix(
+        target_path: FieldPath,
+        value: str,
+    ) -> list[AddMakeChildAction | AddMakeLinkAction] | None:
+        """Handle `node.designator_prefix = "U"`."""
+        if not isinstance(value, str):
+            raise DslException(
+                f"Invalid value for `designator_prefix`: expected str, "
+                f"got {type(value).__name__}"
+            )
+
+        if not target_path.parent_segments:
+            raise DslException(
+                "`designator_prefix` must be set on a field, not at top level"
+            )
+
+        parent_path: LinkPath = list(
+            FieldPath(segments=tuple(target_path.parent_segments)).identifiers()
+        )
+        trait_field = F.has_designator_prefix.MakeChild(prefix=value)
+        return _create_trait_actions("has_designator_prefix", trait_field, parent_path)
+
+    @staticmethod
+    def handle_override_net_name(
+        target_path: FieldPath,
+        value: str,
+    ) -> list[AddMakeChildAction | AddMakeLinkAction] | None:
+        """Handle `node.override_net_name = "VCC"`."""
+        if not isinstance(value, str):
+            raise DslException(
+                f"Invalid value for `override_net_name`: expected str, "
+                f"got {type(value).__name__}"
+            )
+
+        if not target_path.parent_segments:
+            raise DslException(
+                "`override_net_name` must be set on a field, not at top level"
+            )
+
+        parent_path: LinkPath = list(
+            FieldPath(segments=tuple(target_path.parent_segments)).identifiers()
+        )
+        trait_field = F.has_net_name_suggestion.MakeChild(
+            name=value, level=F.has_net_name_suggestion.Level.EXPECTED
+        )
+        return _create_trait_actions(
+            "has_net_name_suggestion", trait_field, parent_path
+        )
+
+    @staticmethod
+    def handle_suggest_net_name(
+        target_path: FieldPath,
+        value: str,
+    ) -> list[AddMakeChildAction | AddMakeLinkAction] | None:
+        """Handle `node.suggest_net_name = "VCC"`."""
+        if not isinstance(value, str):
+            raise DslException(
+                f"Invalid value for `suggest_net_name`: expected str, "
+                f"got {type(value).__name__}"
+            )
+
+        if not target_path.parent_segments:
+            raise DslException(
+                "`suggest_net_name` must be set on a field, not at top level"
+            )
+
+        parent_path: LinkPath = list(
+            FieldPath(segments=tuple(target_path.parent_segments)).identifiers()
+        )
+        trait_field = F.has_net_name_suggestion.MakeChild(
+            name=value, level=F.has_net_name_suggestion.Level.SUGGESTED
+        )
+        return _create_trait_actions(
+            "has_net_name_suggestion", trait_field, parent_path
+        )
+
+    # Mapping of field names to handler functions
+    HANDLERS: ClassVar[dict[str, Callable[[FieldPath, Any], list | None]]] = {
+        "required": handle_required.__func__,  # type: ignore[attr-defined]
+        "package": handle_package.__func__,  # type: ignore[attr-defined]
+        "lcsc_id": handle_lcsc_id.__func__,  # type: ignore[attr-defined]
+        "datasheet_url": handle_datasheet_url.__func__,  # type: ignore[attr-defined]
+        "designator_prefix": handle_designator_prefix.__func__,  # type: ignore[attr-defined]
+        "override_net_name": handle_override_net_name.__func__,  # type: ignore[attr-defined]
+        "suggest_net_name": handle_suggest_net_name.__func__,  # type: ignore[attr-defined]
+    }
+
+    @classmethod
+    def try_handle(
+        cls,
+        target_path: FieldPath,
+        assignable_node: AST.Assignable,
+    ) -> list[AddMakeChildAction | AddMakeLinkAction] | None:
+        """
+        Check if this assignment is an override and handle it.
+
+        Returns:
+            List of actions if this is an override, None otherwise.
+        """
+        leaf_name = target_path.leaf.identifier
+        handler = cls.HANDLERS.get(leaf_name)
+
+        if handler is None:
+            return None
+
+        value_node = assignable_node.get_value().switch_cast()
+
+        value: str | bool
+        if value_node.isinstance(AST.AstString):
+            value = value_node.cast(t=AST.AstString).get_text()
+        elif value_node.isinstance(AST.Boolean):
+            value = value_node.cast(t=AST.Boolean).get_value()
+        else:
+            return None
+
+        return handler(target_path, value)
 
 
 class AnyAtoBlock(fabll.Node):
@@ -839,7 +1132,14 @@ class ASTVisitor:
         # TODO: broaden assignable support and handle keyed/pin field references
 
         target_path = self.visit_FieldRef(node.get_target())
-        assignable = self.visit_Assignable(node.assignable.get())
+
+        # Check for assignment overrides (legacy sugar like .required, .package)
+        assignable_node = node.assignable.get()
+        override_actions = AssignmentOverrides.try_handle(target_path, assignable_node)
+        if override_actions:
+            return override_actions
+
+        assignable = self.visit_Assignable(assignable_node)
 
         parent_path: FieldPath | None = None
         parent_reference: graph.BoundNode | None = None
@@ -1460,32 +1760,9 @@ class ASTVisitor:
 
         template_args = self._extract_template_args(node.template.get())
 
-        trait_identifier = f"{TRAIT_ID_PREFIX}{trait_type_name}"
         trait_fabll_type = self._stdlib_allowlist.get(trait_type_name)
-        actions: list[AddMakeChildAction | AddMakeLinkAction] = []
-
-        if trait_fabll_type is not None:
-            trait_field = self._create_trait_field(trait_fabll_type, template_args)
-            trait_field._set_locator(trait_identifier)
-
-            actions.append(
-                AddMakeChildAction(
-                    target_path=[trait_identifier],
-                    parent_reference=None,
-                    parent_path=None,
-                    child_field=trait_field,
-                )
-            )
-        else:
+        if trait_fabll_type is None:
             raise DslException(f"External trait `{trait_type_name}` not supported")
 
-        trait_path: LinkPath = [trait_identifier]
-        actions.append(
-            AddMakeLinkAction(
-                lhs_path=target_path_list if target_path_list else [],
-                rhs_path=trait_path,
-                edge=fbrk.EdgeTrait.build(),
-            )
-        )
-
-        return actions
+        trait_field = self._create_trait_field(trait_fabll_type, template_args)
+        return _create_trait_actions(trait_type_name, trait_field, target_path_list)
