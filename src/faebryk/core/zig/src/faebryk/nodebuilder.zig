@@ -11,7 +11,7 @@ pub const NodeCreationAttributes = struct {
     dynamic: graph.DynamicAttributes,
 
     pub fn apply_to(self: *const @This(), node: NodeReference) void {
-        self.dynamic.copy_into(&node.attributes.dynamic);
+        node.copy_dynamic_attributes_into(&self.dynamic);
     }
 
     pub fn deinit(self: *@This()) void {

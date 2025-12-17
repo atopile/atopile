@@ -342,7 +342,7 @@ fn nodeAttributesToPyDict(node: *graph.graph.Node) ?*py.PyObject {
     };
 
     var visitor_ctx = Visitor{ .dict = dict };
-    node.attributes.visit(&visitor_ctx, Visitor.visit);
+    node.visit_attributes(&visitor_ctx, Visitor.visit);
 
     if (visitor_ctx.had_error) {
         py.Py_DECREF(dict);
@@ -373,9 +373,11 @@ fn wrap_node_create() type {
                 node.deinit();
             };
 
-            applyAttributes(&node.attributes.dynamic, kwargs, &.{}) catch {
+            var dynamic = graph.graph.DynamicAttributes.init();
+            applyAttributes(&dynamic, kwargs, &.{}) catch {
                 return null;
             };
+            node.copy_dynamic_attributes_into(&dynamic);
 
             success = true;
             return bind.wrap_obj("Node", &node_type, NodeWrapper, node);
@@ -400,7 +402,7 @@ fn wrap_node_get_attr() type {
 
             const key_slice = bind.unwrap_str(kwarg_obj.key) orelse return null;
 
-            if (wrapper.data.attributes.get(key_slice)) |value| {
+            if (wrapper.data.get(key_slice)) |value| {
                 return literalToPyObject(value) orelse null;
             }
 
@@ -435,7 +437,7 @@ fn wrap_node_get_dynamic_attrs() type {
             };
 
             var visitor_ctx = Visitor{ .map = map };
-            wrapper.data.attributes.visit(&visitor_ctx, Visitor.visit);
+            wrapper.data.visit_attributes(&visitor_ctx, Visitor.visit);
 
             return literalMapToPyDict(visitor_ctx.map) orelse return null;
         }
@@ -545,13 +547,15 @@ fn wrap_edge_create() type {
                 edge_ptr.deinit();
             };
 
-            edge_ptr.attributes.directional = directional_value;
-            edge_ptr.attributes.name = name_copy;
+            edge_ptr.set_attribute_directional(directional_value);
+            edge_ptr.set_attribute_name(name_copy);
 
             const skip = &.{ "source", "target", "edge_type", "directional", "name" };
-            applyAttributes(&edge_ptr.attributes.dynamic, kwargs, skip) catch {
+            var dynamic = graph.graph.DynamicAttributes.init();
+            applyAttributes(&dynamic, kwargs, skip) catch {
                 return null;
             };
+            edge_ptr.copy_dynamic_attributes_into(&dynamic);
 
             success = true;
             return bind.wrap_obj("Edge", &edge_type, EdgeWrapper, edge_ptr);
@@ -575,7 +579,7 @@ fn wrap_edge_get_attr() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const key_slice = bind.unwrap_str(kwarg_obj.key) orelse return null;
-            if (wrapper.data.attributes.get(key_slice)) |value| {
+            if (wrapper.data.get(key_slice)) |value| {
                 return literalToPyObject(value) orelse null;
             }
 
@@ -653,7 +657,7 @@ fn wrap_edge_get_edge_type() type {
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
-            return bind.wrap_int(wrapper.data.attributes.edge_type);
+            return bind.wrap_int(wrapper.data.get_attribute_edge_type());
         }
     };
 }
@@ -669,7 +673,7 @@ fn wrap_edge_get_directional() type {
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
-            return bind.wrap_bool(wrapper.data.attributes.directional.?);
+            return bind.wrap_bool(wrapper.data.get_attribute_directional().?);
         }
     };
 }
@@ -685,7 +689,7 @@ fn wrap_edge_get_name() type {
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
-            return bind.wrap_str(wrapper.data.attributes.name);
+            return bind.wrap_str(wrapper.data.get_attribute_name());
         }
     };
 }

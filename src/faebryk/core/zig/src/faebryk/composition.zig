@@ -137,7 +137,7 @@ pub const EdgeComposition = struct {
             return error.InvalidEdgeType;
         }
 
-        return edge.attributes.name.?;
+        return edge.get_attribute_name().?;
     }
 
     pub fn get_child_by_identifier(bound_parent_node: graph.BoundNodeReference, child_identifier: str) ?graph.BoundNodeReference {
@@ -225,7 +225,7 @@ pub const EdgeComposition = struct {
             pub fn visit_edge(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
                 const child = EdgeComposition.get_child_node(bound_edge.edge);
-                const name = bound_edge.edge.attributes.name orelse "";
+                const name = bound_edge.edge.get_attribute_name() orelse "";
                 self.children.append(.{ .node = child, .name = name }) catch @panic("OOM");
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }

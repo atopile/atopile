@@ -40,7 +40,7 @@ const HierarchyElement = struct {
         const child_type_match = Node.is_same(self.child_type_node, other.child_type_node);
         const child_name_match = switch (self.traverse_direction) {
             .horizontal => true,
-            .up, .down => std.mem.eql(u8, self.edge.attributes.name orelse "", other.edge.attributes.name orelse ""),
+            .up, .down => std.mem.eql(u8, self.edge.get_attribute_name() orelse "", other.edge.get_attribute_name() orelse ""),
         };
 
         return parent_type_match and child_type_match and child_name_match and opposite_directions;
@@ -284,7 +284,7 @@ pub const PathFinder = struct {
             }
 
             if (EdgeInterfaceConnection.is_instance(edge)) {
-                const shallow_edge = (edge.attributes.get(shallow) orelse continue).Bool;
+                const shallow_edge = (edge.get(shallow) orelse continue).Bool;
                 if (shallow_edge and depth > 0) path.invalid_path = true;
             }
         }
@@ -345,7 +345,8 @@ test "visit_paths_bfs" {
 }
 
 test "filter_hierarchy_stack" {
-    var g = GraphView.init(std.testing.allocator);
+    const a = std.testing.allocator;
+    var g = GraphView.init(a);
     defer g.deinit();
 
     const bn1 = g.create_and_insert_node();
@@ -363,7 +364,7 @@ test "filter_hierarchy_stack" {
     try bfs_path.traversed_edges.append(TraversedEdge{ .edge = be2.edge, .forward = true }); // bn3 -> bn4 (source -> target)
     defer bfs_path.deinit();
 
-    var pf = PathFinder.init(g.allocator);
+    var pf = PathFinder.init(a);
     defer pf.deinit();
     _ = pf.filter_hierarchy_stack(bfs_path);
 }

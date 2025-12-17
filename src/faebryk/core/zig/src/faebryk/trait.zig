@@ -227,7 +227,7 @@ pub const EdgeTrait = struct {
             pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(graph.BoundNodeReference) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
                 // Skip trait edges without a name - only match by identifier if name is set
-                const edge_name = bound_edge.edge.attributes.name orelse return visitor.VisitResult(graph.BoundNodeReference){ .CONTINUE = {} };
+                const edge_name = bound_edge.edge.get_attribute_name() orelse return visitor.VisitResult(graph.BoundNodeReference){ .CONTINUE = {} };
                 if (std.mem.eql(u8, edge_name, self.identifier)) {
                     return visitor.VisitResult(graph.BoundNodeReference){ .OK = bound_edge.g.bind(EdgeTrait.get_trait_instance_node(bound_edge.edge)) };
                 }

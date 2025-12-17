@@ -55,7 +55,7 @@ pub const EdgePointer = struct {
     }
 
     pub fn get_order(edge: EdgeReference) ?u32 {
-        const order = edge.attributes.get("order");
+        const order = edge.get("order");
         if (order) |o| {
             return @intCast(o.Int);
         }
@@ -112,7 +112,7 @@ pub const EdgePointer = struct {
             pub fn visit(self_ptr: *anyopaque, bound_edge: BoundEdgeReference) visitor.VisitResult(T) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
                 // Direction filtering is handled by visit_pointed_edges with directed=true
-                if (bound_edge.edge.attributes.name) |name| {
+                if (bound_edge.edge.get_attribute_name()) |name| {
                     if (!std.mem.eql(u8, name, self.identifier)) {
                         return visitor.VisitResult(T){ .CONTINUE = {} };
                     }

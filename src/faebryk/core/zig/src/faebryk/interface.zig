@@ -202,7 +202,7 @@ test "basic" {
     std.debug.print("e1.target.uuid = {}\n", .{be1.edge.target.get_uuid()});
 
     // Expect shallow flag to be present and false by default
-    const shallow_default = be1.edge.attributes.get(EdgeInterfaceConnection.shallow_attribute).?;
+    const shallow_default = be1.edge.get(EdgeInterfaceConnection.shallow_attribute).?;
     try std.testing.expect(shallow_default.Bool == false);
 
     // Expect e1 source and target to match n1 and n2
@@ -754,7 +754,7 @@ test "loooooong_chain" {
     var timer = try std.time.Timer.start();
 
     // Test pathfinding from first to last node
-    var path = try EdgeInterfaceConnection.is_connected_to(g.allocator, nodes.items[0], nodes.items[chain_length - 1]);
+    var path = try EdgeInterfaceConnection.is_connected_to(allocator, nodes.items[0], nodes.items[chain_length - 1]);
     defer path.deinit();
 
     // Stop timer

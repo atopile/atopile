@@ -4004,7 +4004,7 @@ fn wrap_typegraph_instantiate_node() type {
                 return null;
             };
 
-            dynamic.copy_into(&bnode.node.attributes.dynamic);
+            bnode.node.copy_dynamic_attributes_into(&dynamic);
 
             return graph_py.makeBoundNodePyObject(bnode);
         }

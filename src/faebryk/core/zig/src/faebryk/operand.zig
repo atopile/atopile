@@ -167,7 +167,7 @@ pub const EdgeOperand = struct {
             return error.InvalidEdgeType;
         }
 
-        return edge.attributes.name;
+        return edge.get_attribute_name();
     }
 
     pub fn get_operand_by_identifier(
@@ -179,7 +179,7 @@ pub const EdgeOperand = struct {
 
             pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(graph.BoundNodeReference) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
-                if (bound_edge.edge.attributes.name) |n| {
+                if (bound_edge.edge.get_attribute_name()) |n| {
                     if (std.mem.eql(u8, n, self.identifier)) {
                         const target = bound_edge.edge.get_target() orelse {
                             return visitor.VisitResult(graph.BoundNodeReference){ .CONTINUE = {} };

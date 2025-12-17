@@ -17,10 +17,10 @@ pub const EdgeCreationAttributes = struct {
     dynamic: graph.DynamicAttributes,
 
     pub fn apply_to(self: *const @This(), edge: EdgeReference) void {
-        edge.attributes.edge_type = self.edge_type;
-        edge.attributes.directional = self.directional;
-        edge.attributes.name = self.name;
-        self.dynamic.copy_into(&edge.attributes.dynamic);
+        edge.set_attribute_edge_type(self.edge_type);
+        edge.set_attribute_directional(self.directional);
+        edge.set_attribute_name(self.name);
+        edge.copy_dynamic_attributes_into(&self.dynamic);
     }
 
     pub fn create_edge(self: *const @This(), source: NodeReference, target: NodeReference) EdgeReference {

@@ -40,7 +40,6 @@ from atopile.cli import (
 )
 from atopile.cli.logging_ import handler, logger
 from atopile.errors import UserException, UserNoProjectException
-from atopile.version import check_for_update
 from faebryk.libs.exceptions import (
     UserResourceException,
     iter_leaf_exceptions,
@@ -139,7 +138,7 @@ def cli(
         env[SAFE_MODE_OPTION.name] = "N"
 
         result = subprocess.run(args, env=env)
-        if result.returncode > 1:
+        if result.returncode not in (0, 1):
             from faebryk.libs.util import run_gdb
 
             run_gdb()
