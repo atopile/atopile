@@ -3324,17 +3324,12 @@ def test_operand_order(expr_type: type[ExpressionNodes]):
 def test_expr_makechild():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
+    from faebryk.library.Units import Dimensionless
 
     class App(fabll.Node):
-        op0 = F.Parameters.NumericParameter.MakeChild(
-            unit=F.Units.Dimensionless.MakeChild()
-        )
-        op1 = F.Parameters.NumericParameter.MakeChild(
-            unit=F.Units.Dimensionless.MakeChild()
-        )
-        op2 = F.Parameters.NumericParameter.MakeChild(
-            unit=F.Units.Dimensionless.MakeChild()
-        )
+        op0 = F.Parameters.NumericParameter.MakeChild(unit=Dimensionless)
+        op1 = F.Parameters.NumericParameter.MakeChild(unit=Dimensionless)
+        op2 = F.Parameters.NumericParameter.MakeChild(unit=Dimensionless)
         expr = Subtract.MakeChild([op0], [op1], [op2])
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)

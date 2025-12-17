@@ -13,20 +13,14 @@ class Diode(fabll.Node):
     anode = F.Electrical.MakeChild()
     cathode = F.Electrical.MakeChild()
 
-    forward_voltage = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Volt.MakeChild()
-    )
-    current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere.MakeChild())
+    forward_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
     """Current at which the design is functional"""
-    reverse_working_voltage = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Volt.MakeChild()
-    )
+    reverse_working_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
     reverse_leakage_current = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Ampere.MakeChild()
+        unit=F.Units.Ampere
     )
-    max_current = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Ampere.MakeChild()
-    )
+    max_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
     """Current at which the design may be damaged"""
 
     # ----------------------------------------

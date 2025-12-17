@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from enum import StrEnum
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -17,10 +16,8 @@ class CapacitorPolarized(fabll.Node):
     anode = F.Electrical.MakeChild()
     cathode = F.Electrical.MakeChild()
 
-    capacitance = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Farad.MakeChild()
-    )
-    max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt.MakeChild())
+    capacitance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Farad)
+    max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
 
     # ----------------------------------------
     #                 traits

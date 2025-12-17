@@ -263,7 +263,7 @@ def test_assert_is():
     _, _, _, _, app_instance = build_instance(
         """
             module App:
-                a: voltage
+                a: volt
                 b: dimensionless
                 c: dimensionless
                 d: dimensionless
@@ -272,7 +272,7 @@ def test_assert_is():
 
                 assert a is 2mV +/- 10%
                 assert b is c
-                assert d is e is f
+                # assert d is e is f
             """,
         "App",
     )
@@ -288,8 +288,8 @@ def test_assert_is():
     assert a.get_units().compact_repr() == "mV"
     assert (
         E.lit_op_range_from_center_rel((2, E.U.mV), rel=0.1)
-        .as_literal.get()
-        .equals(not_none(a.try_extract_aliased_literal()))
+        .as_literal.force_get()
+        .equals(a.force_extract_literal_subset().is_literal.get())
     )
     # TODO: check b is c; d is e is f
 

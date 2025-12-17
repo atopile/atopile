@@ -13,31 +13,31 @@ class Crystal(fabll.Node):
     unnamed = [F.Electrical.MakeChild() for _ in range(2)]
 
     frequency = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Hertz.MakeChild(),
+        unit=F.Units.Hertz,
     )
 
     frequency_tolerance = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Ppm.MakeChild(),
+        unit=F.Units.Ppm,
     )
 
     frequency_temperature_tolerance = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Ppm.MakeChild(),
+        unit=F.Units.Ppm,
     )
 
     frequency_ageing = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Ppm.MakeChild(),
+        unit=F.Units.Ppm,
     )
 
     equivalent_series_resistance = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Ohm.MakeChild(),
+        unit=F.Units.Ohm,
     )
 
     shunt_capacitance = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Farad.MakeChild(),
+        unit=F.Units.Farad,
     )
 
     load_capacitance = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Farad.MakeChild(),
+        unit=F.Units.Farad,
     )
 
     # ----------------------------------------

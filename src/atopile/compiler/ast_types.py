@@ -1120,7 +1120,7 @@ class DeclarationStmt(fabll.Node):
 
     source = SourceChunk.MakeChild()
     field_ref = F.Collections.Pointer.MakeChild()
-    unit = Unit.MakeChild()
+    unit_symbol = Unit.MakeChild()
 
     def setup(  # type: ignore[invalid-method-override]
         self,
@@ -1132,7 +1132,7 @@ class DeclarationStmt(fabll.Node):
         self.source.get().setup(source_info=source_info)
         self.field_ref.get().point(field_ref)
         _add_anon_child(self, field_ref)
-        self.unit.get().setup(source_info=unit_source_info, symbol=unit_symbol)
+        self.unit_symbol.get().setup(source_info=unit_source_info, symbol=unit_symbol)
         return self
 
     def get_field_ref(self) -> FieldRef:

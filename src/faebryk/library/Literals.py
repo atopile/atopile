@@ -2948,7 +2948,7 @@ class Numbers(fabll.Node):
         cls,
         min: float,
         max: float,
-        unit: fabll._ChildField,
+        unit: type[fabll.Node],
     ) -> fabll._ChildField[Self]:
         """
         Create a Numbers literal as a child field at type definition time.
@@ -2972,9 +2972,14 @@ class Numbers(fabll.Node):
                 [numeric_set],
             ),
         )
+
+        unit_child_field = unit.MakeChild()
+        out.add_dependant(unit_child_field)
         from faebryk.library.Units import has_unit
 
-        out.add_dependant(fabll.Traits.MakeEdge(has_unit.MakeChild(unit), [out]))
+        out.add_dependant(
+            fabll.Traits.MakeEdge(has_unit.MakeChild([unit_child_field]), [out])
+        )
 
         return out
 
@@ -2982,7 +2987,7 @@ class Numbers(fabll.Node):
     def MakeChild_SingleValue(
         cls,
         value: float,
-        unit: fabll._ChildField,
+        unit: type[fabll.Node],
     ) -> fabll._ChildField[Self]:
         return cls.MakeChild(min=value, max=value, unit=unit)
 
@@ -2992,7 +2997,7 @@ class Numbers(fabll.Node):
         param_ref: fabll.RefPath,
         min: float,
         max: float,
-        unit: fabll._ChildField,
+        unit: type[fabll.Node],
     ) -> fabll._ChildField["F.Expressions.IsSubset"]:
         from faebryk.library.Expressions import IsSubset
 
@@ -3007,7 +3012,7 @@ class Numbers(fabll.Node):
         param_ref: fabll.RefPath,
         min: float,
         max: float,
-        unit: fabll._ChildField,
+        unit: type[fabll.Node],
     ) -> fabll._ChildField["F.Expressions.Is"]:
         """
         Create a Numbers literal and constrain a parameter to it.
@@ -3034,7 +3039,7 @@ class Numbers(fabll.Node):
         cls,
         center: float,
         rel: float,
-        unit: fabll._ChildField,
+        unit: type[fabll.Node],
     ) -> fabll._ChildField[Self]:
         return cls.MakeChild(
             min=center - rel * center, max=center + rel * center, unit=unit
@@ -3045,7 +3050,7 @@ class Numbers(fabll.Node):
         cls,
         param_ref: fabll.RefPath,
         value: float,
-        unit: fabll._ChildField,
+        unit: type[fabll.Node],
     ) -> fabll._ChildField["F.Expressions.Is"]:
         """
         Create a singleton Numbers literal and constrain a parameter to it.
@@ -4391,7 +4396,7 @@ class TestNumbers:
         class App(fabll.Node):
             from faebryk.library.Units import Meter
 
-            quantity_set = Numbers.MakeChild(min=0.0, max=1.0, unit=Meter.MakeChild())
+            quantity_set = Numbers.MakeChild(min=0.0, max=1.0, unit=Meter)
 
         app = App.bind_typegraph(tg=tg).create_instance(g=g)
         numeric_set = app.quantity_set.get().get_numeric_set()
@@ -4406,9 +4411,7 @@ class TestNumbers:
         class App(fabll.Node):
             from faebryk.library.Units import Meter
 
-            quantity_set = Numbers.MakeChild_SingleValue(
-                value=1.0, unit=Meter.MakeChild()
-            )
+            quantity_set = Numbers.MakeChild_SingleValue(value=1.0, unit=Meter)
 
         app = App.bind_typegraph(tg=tg).create_instance(g=g)
         numeric_set = app.quantity_set.get().get_numeric_set()

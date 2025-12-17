@@ -25,16 +25,16 @@ class Comparator(fabll.Node):
     output = F.Electrical.MakeChild()
 
     input_bias_current = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Ampere.MakeChild(),
+        unit=F.Units.Ampere,
     )
     input_hysteresis_voltage = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Volt.MakeChild(),
+        unit=F.Units.Volt,
     )
     input_offset_voltage = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Volt.MakeChild(),
+        unit=F.Units.Volt,
     )
     propagation_delay = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Second.MakeChild(),
+        unit=F.Units.Second,
     )
     output_type = F.Parameters.EnumParameter.MakeChild(
         enum_t=OutputType,

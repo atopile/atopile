@@ -23,11 +23,9 @@ class ElectricPower(fabll.Node):
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
     voltage = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Volt.MakeChild(),
+        unit=F.Units.Volt,
     )
-    max_current = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Ampere.MakeChild(),
-    )
+    max_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
 
     can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeEdge(in_=[""], out_=[""]))
 

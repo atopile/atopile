@@ -12,9 +12,7 @@ class UART_Base(fabll.Node):
     rx = F.ElectricLogic.MakeChild()
     tx = F.ElectricLogic.MakeChild()
 
-    baud = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.BitsPerSecond.MakeChild()
-    )
+    baud = F.Parameters.NumericParameter.MakeChild(unit=F.Units.BitsPerSecond)
 
     # ----------------------------------------
     #                 traits

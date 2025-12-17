@@ -2061,9 +2061,7 @@ def test_mutator_basic_bootstrap():
 
     class App(fabll.Node):
         param_str = F.Parameters.StringParameter.MakeChild()
-        param_num = F.Parameters.NumericParameter.MakeChild(
-            unit=F.Units.Dimensionless.MakeChild()
-        )
+        param_num = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
         param_bool = F.Parameters.BooleanParameter.MakeChild()
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)

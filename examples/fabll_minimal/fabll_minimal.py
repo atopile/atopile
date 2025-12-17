@@ -44,10 +44,10 @@ class App(fabll.Node):
 
     constraints = [
         F.Literals.Numbers.MakeChild_ConstrainToSubsetLiteral(
-            [res1, F.Resistor.resistance], 200, 400, unit=F.Units.Ohm.MakeChild()
+            [res1, F.Resistor.resistance], 200, 400, unit=F.Units.Ohm
         ),
         F.Literals.Numbers.MakeChild_ConstrainToSubsetLiteral(
-            [res2, F.Resistor.resistance], 15, 40, unit=F.Units.Ohm.MakeChild()
+            [res2, F.Resistor.resistance], 15, 40, unit=F.Units.Ohm
         ),
     ]
 

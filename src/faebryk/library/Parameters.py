@@ -706,13 +706,18 @@ class NumericParameter(fabll.Node):
     @classmethod
     def MakeChild(  # type: ignore[invalid-method-override]
         cls,
-        unit: fabll._ChildField,
+        unit: type[fabll.Node],
         domain: "NumberDomain.Args | None" = None,
     ):
         from faebryk.library.Units import has_unit
 
         out = fabll._ChildField(cls)
-        out.add_dependant(fabll.Traits.MakeEdge(has_unit.MakeChild(unit), [out]))
+
+        unit_child_field = unit.MakeChild()
+        out.add_dependant(unit_child_field)
+        out.add_dependant(
+            fabll.Traits.MakeEdge(has_unit.MakeChild([unit_child_field]), [out])
+        )
 
         # TODO domain constraints
 

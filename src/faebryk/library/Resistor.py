@@ -11,9 +11,9 @@ class Resistor(fabll.Node):
     # ----------------------------------------
     unnamed = [F.Electrical.MakeChild() for _ in range(2)]
 
-    resistance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm.MakeChild())
-    max_power = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Watt.MakeChild())
-    max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt.MakeChild())
+    resistance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+    max_power = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Watt)
+    max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
 
     # ----------------------------------------
     #                 traits

@@ -14,11 +14,9 @@ class ResistorArray(fabll.Node):
     #     modules, interfaces, parameters
     # ----------------------------------------
     resistors_ = F.Collections.PointerSet.MakeChild()
-    resistance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm.MakeChild())
-    rated_power = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Watt.MakeChild())
-    rated_voltage = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Volt.MakeChild()
-    )
+    resistance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+    rated_power = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Watt)
+    rated_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
 
     # ----------------------------------------
     #                 traits

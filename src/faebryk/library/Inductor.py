@@ -12,18 +12,12 @@ class Inductor(fabll.Node):
     # ----------------------------------------
     unnamed = [F.Electrical.MakeChild() for _ in range(2)]
 
-    inductance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Henry.MakeChild())
-    max_current = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Ampere.MakeChild()
-    )
-    dc_resistance = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Ohm.MakeChild()
-    )
-    saturation_current = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Ampere.MakeChild()
-    )
+    inductance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Henry)
+    max_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+    dc_resistance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+    saturation_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
     self_resonant_frequency = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Hertz.MakeChild()
+        unit=F.Units.Hertz
     )
 
     # ----------------------------------------

@@ -18,7 +18,7 @@ class Crystal_Oscillator(fabll.Node):
     # https://blog.adafruit.com/2012/01/24/choosing-the-right-crystal-and-caps-for-your-design/
     # http://www.st.com/internet/com/TECHNICAL_RESOURCES/TECHNICAL_LITERATURE/APPLICATION_NOTE/CD00221665.pdf
     _STRAY_CAPACITANCE = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Farad.MakeChild(),
+        unit=F.Units.Farad,
     )
 
     # ----------------------------------------

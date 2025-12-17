@@ -30,17 +30,11 @@ class ResistorVoltageDivider(fabll.Node):
     r_top = F.Resistor.MakeChild()
 
     # Variables
-    v_in = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt.MakeChild())
-    v_out = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt.MakeChild())
-    max_current = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Ampere.MakeChild()
-    )
-    total_resistance = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Ohm.MakeChild()
-    )
-    ratio = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Dimensionless.MakeChild()
-    )
+    v_in = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    v_out = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    max_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+    total_resistance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+    ratio = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
 
     # _can_bridge = fabll.Traits.MakeEdge(
     #     F.can_bridge.MakeChild(in_=power.get().hv, out_=output.get().line)

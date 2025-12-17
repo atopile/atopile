@@ -19,15 +19,15 @@ logger = logging.getLogger(__name__)
 class Addressor(fabll.Node):
     is_abstract = fabll.Traits.MakeEdge(fabll.is_abstract.MakeChild()).put_on_type()
     address = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Bit.MakeChild(),
+        unit=F.Units.Bit,
         domain=F.NumberDomain.Args(negative=False, integer=True),
     )
     offset = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Bit.MakeChild(),
+        unit=F.Units.Bit,
         domain=F.NumberDomain.Args(negative=False, integer=True),
     )
     base = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Bit.MakeChild(),
+        unit=F.Units.Bit,
         domain=F.NumberDomain.Args(negative=False, integer=True),
     )
 
@@ -52,14 +52,14 @@ class Addressor(fabll.Node):
             F.Literals.Numbers.MakeChild_ConstrainToSingleton(
                 [out, addressor.base],
                 value=base,
-                unit=F.Units.Dimensionless.MakeChild(),
+                unit=F.Units.Dimensionless,
             )
         )
         out.add_dependant(
             F.Literals.Numbers.MakeChild_ConstrainToSingleton(
                 [out, addressor.offset],
                 value=offset,
-                unit=F.Units.Dimensionless.MakeChild(),
+                unit=F.Units.Dimensionless,
             )
         )
 

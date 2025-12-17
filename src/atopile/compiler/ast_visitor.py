@@ -871,7 +871,7 @@ class ASTVisitor:
                     ),
                     parent_reference=parent_reference,
                     parent_path=parent_path,
-                    child_field=F.Expressions.Is.MakeChild(
+                    child_field=F.Expressions.IsSubset.MakeChild(
                         target_path.to_ref_path(),
                         [constraint_spec.operand],
                         assert_=True,
@@ -991,23 +991,21 @@ class ASTVisitor:
         # TODO: is a plain assert legal?
         return NoOpAction()
 
+    def _get_unit_fabll_type(self, unit_symbol: str | None) -> type[fabll.Node]:
+        if unit_symbol is None:
+            # TODO: Dont allow to compile without unit symbol?
+            # raise DslException("Unit symbol is required for quantity")
+            return F.Units.Dimensionless
+        else:
+            return F.Units.decode_symbol(self._graph, self._type_graph, unit_symbol)
+
     def visit_Quantity(
         self, node: AST.Quantity
     ) -> "fabll._ChildField[F.Literals.Numbers]":
         # Make childfield and edge pointer to unit_ptr to unit node child field
-        unit_symbol = node.try_get_unit_symbol()
-        if unit_symbol is None:
-            # TODO: Dont allow to compile without unit symbol?
-            # raise DslException("Unit symbol is required for quantity")
-            unit_child_field = F.Units.Dimensionless.MakeChild()
-        else:
-            unit_child_field = F.Units.decode_symbol(
-                self._graph, self._type_graph, unit_symbol
-            )
+        unit_type = self._get_unit_fabll_type(node.try_get_unit_symbol())
 
-        return F.Literals.Numbers.MakeChild_SingleValue(
-            node.get_value(), unit_child_field
-        )
+        return F.Literals.Numbers.MakeChild_SingleValue(node.get_value(), unit_type)
 
     def visit_BoundedQuantity(
         self, node: AST.BoundedQuantity
@@ -1021,15 +1019,13 @@ class ASTVisitor:
             )
         if start_unit_symbol is None or end_unit_symbol is None:
             raise DslException("Unit symbol is required for bounded quantity")
-        else:
-            unit_child_field = F.Units.decode_symbol(
-                self._graph, self._type_graph, start_unit_symbol
-            )
+
+        unit_type = self._get_unit_fabll_type(start_unit_symbol)
 
         return F.Literals.Numbers.MakeChild(
             min=node.start.get().get_value(),
             max=node.end.get().get_value(),
-            unit=unit_child_field,
+            unit=unit_type,
         )
 
     def visit_BilateralQuantity(
@@ -1044,10 +1040,7 @@ class ASTVisitor:
         )
         if quantity_unit_symbol is None or tolerance_unit_symbol is None:
             raise DslException("Unit symbol is required for bilateralquantity")
-        else:
-            unit_child_field = F.Units.decode_symbol(
-                self._graph, self._type_graph, quantity_unit_symbol
-            )
+        unit_type = self._get_unit_fabll_type(quantity_unit_symbol)
 
         node_quantity_value = node.quantity.get().get_value()
         node_tolerance_value = node.tolerance.get().get_value()
@@ -1063,7 +1056,7 @@ class ASTVisitor:
         return F.Literals.Numbers.MakeChild(
             min=start_value,
             max=end_value,
-            unit=unit_child_field,
+            unit=unit_type,
         )
 
     def visit_NewExpression(self, node: AST.NewExpression):
@@ -1169,6 +1162,17 @@ class ASTVisitor:
         rhs_link_path: LinkPath = list(rhs_path.identifiers())
 
         return AddMakeLinkAction(lhs_path=lhs_link_path, rhs_path=rhs_link_path)
+
+    def visit_DeclarationStmt(self, node: AST.DeclarationStmt):
+        unit_symbol = node.unit_symbol.get().symbol.get().get_single()
+        unit_child_field = self._get_unit_fabll_type(unit_symbol)
+        target_path = self.visit_FieldRef(node.get_field_ref())
+        return AddMakeChildAction(
+            target_path=target_path,
+            parent_reference=None,
+            parent_path=None,
+            child_field=F.Parameters.NumericParameter.MakeChild(unit=unit_child_field),
+        )
 
     def visit_DirectedConnectStmt(self, node: AST.DirectedConnectStmt):
         """

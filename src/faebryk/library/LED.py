@@ -47,12 +47,8 @@ class LED(fabll.Node):
     # ----------------------------------------
     diode = F.Diode.MakeChild()
 
-    brightness = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Candela.MakeChild()
-    )
-    max_brightness = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Candela.MakeChild()
-    )
+    brightness = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Candela)
+    max_brightness = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Candela)
     color = F.Parameters.EnumParameter.MakeChild(enum_t=Color)
 
     # ----------------------------------------

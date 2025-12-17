@@ -22,7 +22,7 @@ class FilterElectricalLC(fabll.Node):
     capacitor = F.Capacitor.MakeChild()
     inductor = F.Inductor.MakeChild()
 
-    z0 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm.MakeChild())
+    z0 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
 
     filter = F.Filter.MakeChild()
 
