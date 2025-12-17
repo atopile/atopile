@@ -9,8 +9,8 @@ import git
 import pathvalidate
 import pytest
 
+from faebryk.libs.util import not_none, robustly_rm_dir, run_live
 from faebryk.libs.util import repo_root as _repo_root
-from faebryk.libs.util import robustly_rm_dir, run_live
 
 
 class CloneError(Exception):
@@ -26,6 +26,9 @@ class BuildError(Exception):
 
 
 ENABLE_PROFILING = False
+
+# Directories to skip when discovering packages in a multipackage repo
+SKIP_PACKAGE_DIRS = {"archive", "logos", ".git", "__pycache__"}
 
 
 def build_project(prj_path: Path, request: pytest.FixtureRequest):
@@ -78,6 +81,23 @@ def build_project(prj_path: Path, request: pytest.FixtureRequest):
         raise BuildError from ex
 
 
+def sync_project(path: Path):
+    """Run ato sync on a project."""
+    try:
+        ato_dir = path / ".ato"
+        if ato_dir.exists():
+            robustly_rm_dir(ato_dir)
+        run_live(
+            [sys.executable, "-m", "atopile", "-v", "sync"],
+            env={**os.environ, "NONINTERACTIVE": "1"},
+            cwd=path,
+            stdout=print,
+            stderr=print,
+        )
+    except CalledProcessError as ex:
+        raise InstallError from ex
+
+
 @dataclass
 class _TestRepo:
     repo_uri: str
@@ -95,30 +115,100 @@ class _TestRepo:
         return self
 
 
-REPOS = [
+# Single-project repos (not multipackage)
+SINGLE_REPOS = [
     _TestRepo("atopile/spin-servo-drive").xfail("Needs upgrading"),
-    _TestRepo("atopile/packages", multipackage="packages"),
 ]
+
+# Multipackage repo configuration
+PACKAGES_REPO = _TestRepo("atopile/packages", multipackage="packages")
+
+# Known failing packages with their xfail reasons
+# Add package names here with reasons to mark them as expected failures
+KNOWN_FAILING_PACKAGES: dict[str, str] = {
+    # Example: "package-name": "Reason for expected failure",
+}
+
+
+def _discover_packages(packages_path: Path) -> list[str]:
+    """Discover package names from a packages directory."""
+    if not packages_path.exists() or not packages_path.is_dir():
+        return []
+
+    packages = []
+    for subdir in sorted(packages_path.iterdir()):
+        if (
+            subdir.is_dir()
+            and subdir.name not in SKIP_PACKAGE_DIRS
+            and not subdir.name.endswith(".md")
+            and (subdir / "ato.yaml").exists()
+        ):
+            packages.append(subdir.name)
+
+    return packages
+
+
+@pytest.fixture(scope="session")
+def packages_repo_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """
+    Session-scoped fixture that provides the packages repo path.
+
+    Uses the local sibling packages repo if available (fastest),
+    otherwise clones fresh to a temp directory.
+    """
+    # Option 1: Use local packages repo if available (for local dev)
+    local_packages = _repo_root().parent / "packages"
+    if local_packages.exists() and (local_packages / ".git").exists():
+        return local_packages
+
+    # Option 2: Clone fresh to temp directory
+    tmp_dir = tmp_path_factory.mktemp("packages-repo")
+    repo_path = tmp_dir / "packages"
+
+    try:
+        run_live(
+            [
+                "gh",
+                "repo",
+                "clone",
+                PACKAGES_REPO.repo_uri,
+                str(repo_path),
+                "--",
+                "--depth",
+                "1",
+            ],
+            cwd=tmp_dir,
+            stdout=print,
+            stderr=print,
+        )
+    except CalledProcessError as ex:
+        raise CloneError(f"Failed to clone {PACKAGES_REPO.repo_uri}") from ex
+
+    return repo_path
+
+
+# ============================================================================
+# Single-project regression tests
+# ============================================================================
 
 
 @pytest.mark.slow
 @pytest.mark.regression
 @pytest.mark.parametrize(
     "test_cfg",
-    REPOS,
+    SINGLE_REPOS,
     ids=lambda x: x.repo_uri,
 )
-def test_projects(
+def test_single_projects(
     test_cfg: _TestRepo,
     tmp_path: Path,
     request: pytest.FixtureRequest,
 ):
+    """Test single-project repositories (not multipackage)."""
     repo_uri = test_cfg.repo_uri
     xfail_reason = test_cfg.xfail_reason
-    multipackage = test_cfg.multipackage
 
     # Clone the repository
-    # Using gh to use user credentials if run locally
     try:
         run_live(
             ["gh", "repo", "clone", repo_uri, "project", "--", "--depth", "1"],
@@ -131,33 +221,9 @@ def test_projects(
 
     prj_path = tmp_path / "project"
 
-    def run_project(path: Path):
-        # Generically "install" the project
-        try:
-            ato_dir = path / ".ato"
-            if ato_dir.exists():
-                robustly_rm_dir(ato_dir)
-            run_live(
-                [sys.executable, "-m", "atopile", "-v", "sync"],
-                env={**os.environ, "NONINTERACTIVE": "1"},
-                cwd=path,
-                stdout=print,
-                stderr=print,
-            )
-        except CalledProcessError as ex:
-            # Translate the error message to clearly distinguish from clone errors
-            raise InstallError from ex
-
-        build_project(path, request=request)
-
     try:
-        if multipackage:
-            subpath = prj_path / multipackage
-            for subdir in subpath.iterdir():
-                if subdir.is_dir():
-                    run_project(subdir)
-        else:
-            run_project(prj_path)
+        sync_project(prj_path)
+        build_project(prj_path, request=request)
     except (InstallError, BuildError):
         if xfail_reason:
             pytest.xfail(xfail_reason)
@@ -166,9 +232,88 @@ def test_projects(
 
     repo = git.Repo(prj_path)
     diff = repo.index.diff(None)
-    # Check if diff exists and if any item in the diff represents
-    # a change to a KiCad PCB file
     if diff and any(
         item.a_path is not None and item.a_path.endswith(".kicad_pcb") for item in diff
     ):
         pytest.xfail("can't build with --frozen yet")
+
+
+# ============================================================================
+# Multipackage (atopile/packages) regression tests
+# ============================================================================
+
+
+def pytest_generate_tests(metafunc: pytest.Metafunc):
+    """Generate test parameters for package tests at collection time."""
+    if "package_name" not in metafunc.fixturenames:
+        return
+
+    # For package tests, we need to discover packages
+    # This requires the repo to exist - use indirect parameterization
+    # The actual package list will be validated at test time
+    multipackage_subdir = not_none(PACKAGES_REPO.multipackage)
+    packages_path = _repo_root().parent / "packages" / multipackage_subdir
+
+    if packages_path.exists():
+        packages = _discover_packages(packages_path)
+    else:
+        # Fallback: no packages discovered, test will clone and discover
+        packages = []
+
+    if packages:
+        params = []
+        for pkg_name in packages:
+            xfail_reason = KNOWN_FAILING_PACKAGES.get(pkg_name)
+            marks = [pytest.mark.xfail(reason=xfail_reason)] if xfail_reason else []
+            params.append(
+                pytest.param(pkg_name, id=f"packages/{pkg_name}", marks=marks)
+            )
+        metafunc.parametrize("package_name", params)
+    else:
+        # No packages found - skip parameterization, test will handle it
+        metafunc.parametrize("package_name", [pytest.param(None, id="no-packages")])
+
+
+@pytest.mark.slow
+@pytest.mark.regression
+@pytest.mark.packages
+def test_package(
+    package_name: str | None,
+    packages_repo_path: Path,
+    tmp_path: Path,
+    request: pytest.FixtureRequest,
+):
+    """
+    Test a single package from the atopile/packages repo.
+    """
+    multipackage_subdir = not_none(PACKAGES_REPO.multipackage)
+
+    if package_name is None:
+        # No packages were discovered at collection time - discover now
+        packages = _discover_packages(packages_repo_path / multipackage_subdir)
+        if not packages:
+            pytest.skip("No packages found in repo")
+        # Just test the first one as a sanity check
+        package_name = packages[0]
+
+    source_package_path = packages_repo_path / multipackage_subdir / package_name
+    if not source_package_path.exists():
+        pytest.skip(f"Package {package_name} not found in cloned repo")
+
+    test_package_path = tmp_path / package_name
+    shutil.copytree(
+        source_package_path,
+        test_package_path,
+        ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc"),
+    )
+
+    xfail_reason = KNOWN_FAILING_PACKAGES.get(package_name)
+
+    try:
+        sync_project(test_package_path)
+        build_project(test_package_path, request=request)
+    except (InstallError, BuildError):
+        if xfail_reason:
+            pytest.xfail(xfail_reason)
+        else:
+            raise
