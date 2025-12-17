@@ -25,7 +25,8 @@ import faebryk.library._F as F
 from faebryk.core.node import TraitNotFound
 from faebryk.libs.geometry.basic import Geometry
 from faebryk.libs.kicad.fileformats import UUID, Property, kicad
-from faebryk.libs.nets import bind_fbrk_nets_to_kicad_nets
+from faebryk.libs.net_naming import attach_net_names
+from faebryk.libs.nets import bind_electricals_to_fbrk_nets, bind_fbrk_nets_to_kicad_nets
 from faebryk.libs.util import (
     FuncSet,
     groupby,
@@ -187,36 +188,64 @@ class PCB_Transformer:
 
     # Footprints -----------------------------------------------------------------------
     def attach(self):
-        """Bind footprints and nets from the PCB to the graph."""
+        """Create footprints/pads in graph and bind them to leads."""
         import faebryk.library._F as F
+        from faebryk.libs.part_lifecycle import PartLifecycle
 
-        # footprint attach to pads
-        # pad attach to leads
+        lifecycle = PartLifecycle.singleton()
+
+        # For all modules with footprints, create pad nodes and bind to leads
+        components_with_footprint = fabll.Traits.get_implementor_objects(
+            trait=F.Footprints.has_associated_footprint.bind_typegraph(self.tg)
+        )
+
+        for module in components_with_footprint:
+            g_fp = module.get_trait(F.Footprints.has_associated_footprint).get_footprint()
+            
+            # For atomic parts, create pads from library footprint if not already present
+            if module.has_trait(F.is_atomic_part) and not g_fp.get_pads():
+                # Get footprint identifier
+                atomic_part = module.get_trait(F.is_atomic_part)
+                k_lib_file_fp_t = atomic_part.get_kicad_library_footprint()
+                fp_id = k_lib_file_fp_t.kicad_identifier
+                
+                # Get library footprint to extract pad info
+                _, lib_fp = lifecycle.library.get_footprint_from_identifier(
+                    fp_id, module
+                )
+                
+                # Create pad nodes from library footprint
+                fp_node = fabll.Traits.bind(g_fp).get_obj_raw()
+                g = module.instance.g()
+                tg = module.tg
+                
+                for pad in lib_fp.footprint.pads:
+                    if any("Cu" in layer for layer in pad.layers):
+                        pad_node = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
+                        fabll.Traits.create_and_add_instance_to(
+                            node=pad_node, trait=F.Footprints.is_pad
+                        ).setup(pad_number=pad.name, pad_name=pad.name)
+                        fp_node.add_child(pad_node, identifier=f"pad_{pad.name}")
+                
+                # Match leads to pads
+                lead_nodes = module.get_children(
+                    direct_only=False, types=fabll.Node, required_trait=F.Lead.is_lead
+                )
+                leads_t = [n.get_trait(F.Lead.is_lead) for n in lead_nodes]
+                pads_t = g_fp.get_pads()
+                for lead_t in leads_t:
+                    if not lead_t.has_trait(F.Lead.has_associated_pads):
+                        try:
+                            lead_t.find_matching_pad(pads_t)
+                        except F.Lead.LeadPadMatchException:
+                            logger.warning(
+                                f"Could not match lead {lead_t.get_lead_name()} to pad"
+                            )
+        
+        # Also bind any existing PCB footprints to the graph (for subsequent builds)
         for node, fp in PCB_Transformer.map_footprints(self.tg, self.pcb).items():
             if node.has_trait(F.Footprints.has_associated_footprint):
                 self.bind_footprint(fp, node)
-            else:
-                _ = fabll.Traits.create_and_add_instance_to(
-                    node=node,
-                    trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint,
-                ).setup(fp, self)
-
-            fp_props = {
-                v.name: v.value
-                for v in fp.propertys
-                if re_in(
-                    v.name, PCB_Transformer.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB()
-                )
-            }
-            node_props = F.SerializableMetadata.get_properties(node)
-            unique_fp_props = dict(fp_props.items() - node_props.items())
-            for key, value in unique_fp_props.items():
-                F.SerializableMetadata.bind_typegraph(node.tg).create_instance(
-                    g=node.g
-                ).setup(
-                    key=key,
-                    value=value,
-                )
 
         # net attach
         bind_fbrk_nets_to_kicad_nets(self.tg, self.g, self)
@@ -281,10 +310,9 @@ class PCB_Transformer:
 
     def bind_footprint(self, pcb_fp: KiCadPCBFootprint, module: fabll.Node):
         """
-        Generates links between:
-        - fabll.Module and PCB Footprint
-        - F.Footprints.Footprint and PCB Footprint
-        - F.Footprints.GenericPad and PCB Pads
+        Binds KiCad PCB footprints and pads to existing graph footprints and pads.
+        NOTE: Pad nodes should already exist in the graph (created by attach()).
+        This only creates the link between graph pads and PCB pads.
         """
         import faebryk.core.faebrykpy as fbrk
         import faebryk.library._F as F
@@ -293,34 +321,7 @@ class PCB_Transformer:
         # get the fabll footprint (is_footprint trait)
         g_fp = module.get_trait(F.Footprints.has_associated_footprint).get_footprint()
 
-        # For atomic parts, create pads from PCB footprint if not already present
-        if module.has_trait(F.is_atomic_part) and not g_fp.get_pads():
-            fp_node = fabll.Traits.bind(g_fp).get_obj_raw()
-            g = module.instance.g()
-            tg = module.tg
-            # Extract pad info from PCB footprint (copper layer pads only)
-            for pad in pcb_fp.pads:
-                if any("Cu" in layer for layer in pad.layers):
-                    pad_node = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
-                    fabll.Traits.create_and_add_instance_to(
-                        node=pad_node, trait=F.Footprints.is_pad
-                    ).setup(pad_number=pad.name, pad_name=pad.name)
-                    fp_node.add_child(pad_node, identifier=f"pad_{pad.name}")
-            # Match leads to pads
-            lead_nodes = module.get_children(
-                direct_only=False, types=fabll.Node, required_trait=F.Lead.is_lead
-            )
-            leads_t = [n.get_trait(F.Lead.is_lead) for n in lead_nodes]
-            pads_t = g_fp.get_pads()
-            for lead_t in leads_t:
-                if not lead_t.has_trait(F.Lead.has_associated_pads):
-                    try:
-                        lead_t.find_matching_pad(pads_t)
-                    except F.Lead.LeadPadMatchException:
-                        logger.warning(
-                            f"Could not match lead {lead_t.get_lead_name()} to pad"
-                        )
-        # bind the kicad pcb footprint to the is_footprint trait
+        # Bind the kicad pcb footprint to the is_footprint trait
         fabll.Traits.create_and_add_instance_to(
             node=g_fp, trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint
         ).setup(pcb_fp, self)
@@ -1844,17 +1845,11 @@ class PCB_Transformer:
         ]
 
     def apply_design(self, logger: logging.Logger = logger):
-        """Apply the design to the pcb"""
+        """Write the graph design to the PCB file"""
         import faebryk.library._F as F
         from faebryk.libs.part_lifecycle import PartLifecycle
 
         lifecycle = PartLifecycle.singleton()
-
-        # Re-attach everything one more time
-        # Re-attach everything one more time
-        # We rely on this to reliably update the pcb
-
-        self.attach()
 
         gf = fabll.Node.bind_typegraph(self.tg)
 

@@ -80,7 +80,7 @@ class App(fabll.Node):
         fabll.MakeEdge([power_5v, "lv"], [gnd], edge=interface.build(shallow=False)),
         fabll.MakeEdge([power_3v3, "lv"], [gnd], edge=interface.build(shallow=False)),
         fabll.MakeEdge(
-            [diff_pair, "reference"], [gnd], edge=interface.build(shallow=False)
+            [diff_pair, "reference", "lv"], [gnd], edge=interface.build(shallow=False)
         ),
     ]
 
