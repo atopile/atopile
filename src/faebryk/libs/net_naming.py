@@ -11,7 +11,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserException
-from faebryk.libs.util import FuncDict, groupby, once
+from faebryk.libs.util import FuncDict, groupby
 
 logger = logging.getLogger(__name__)
 
@@ -100,10 +100,6 @@ def _name_shittiness(name: str | None) -> float:
     return 1
 
 
-@once
-def _get_stable_node_name(node: fabll.Node) -> str:
-    """Get a stable hierarchical name for a module interface."""
-    return ".".join([p_name for p, p_name in node.get_hierarchy() if p.get_parent()])
 
 
 def _get_net_stable_key(net: F.Net) -> tuple[str, ...]:
@@ -120,7 +116,7 @@ def _get_net_stable_key(net: F.Net) -> tuple[str, ...]:
         # fall back to an empty key which still sorts deterministically.
         return tuple()
 
-    stable_names = sorted(_get_stable_node_name(m) for m in mifs)
+    stable_names = sorted(m.get_full_name(include_uuid=False) for m in mifs)
     return tuple(stable_names)
 
 
@@ -134,7 +130,7 @@ def _collect_unnamed_nets(nets: Iterable[F.Net]) -> dict[F.Net, list[F.Electrica
     return dict(
         sorted(
             nets_with_interfaces.items(),
-            key=lambda it: [_get_stable_node_name(m) for m in it[1]],
+            key=lambda it: [m.get_full_name(include_uuid=False) for m in it[1]],
         )
     )
 

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import KeyErrorAmbiguous, once
+from faebryk.libs.util import KeyErrorAmbiguous
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ def bind_electricals_to_fbrk_nets(
     # collect buses in a sorted manner
     buses = sorted(
         fabll.is_interface.group_into_buses(electricals_filtered),
-        key=_get_stable_node_name,
+        key=lambda node: node.get_full_name(include_uuid=False),
     )
 
     # find or generate nets
@@ -144,12 +144,6 @@ def get_named_net(electrical: "F.Electrical") -> "F.Net | None":
         raise KeyErrorAmbiguous(
             list(named_nets_on_bus), "Multiple named nets interconnected"
         )
-
-
-@once
-def _get_stable_node_name(node: fabll.Node) -> str:
-    """Get a stable hierarchical name for a module interface."""
-    return ".".join([p_name for p, p_name in node.get_hierarchy() if p.get_parent()])
 
 
 def test_bind_nets_from_electricals():

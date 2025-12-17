@@ -43,15 +43,20 @@ def attach_random_designators(tg: fbrk.TypeGraph):
             fabll.Traits.create_and_add_instance_to(component, F.has_designator)
 
     # Step 2: Get all components that have has_designator trait
-    components_with_designator = fabll.Traits.get_implementor_objects(
+    all_components_with_designator = fabll.Traits.get_implementor_objects(
         F.has_designator.bind_typegraph(tg)
+    )
+    # Sort by name only (not by designator) for stable ordering
+    components_sorted = natsorted(
+        all_components_with_designator,
+        key=lambda c: c.get_full_name(include_uuid=False) or "",
     )
 
     # Step 3: Parse existing designators to track which numbers are used per prefix
     pattern = re.compile(r"([A-Z]+)([0-9]+)")
     assigned: dict[str, list[int]] = defaultdict(list)
 
-    for component in components_with_designator:
+    for component in components_sorted:
         designator_trait = component.get_trait(F.has_designator)
         existing = designator_trait.get_designator()
         if existing and (match := pattern.match(existing)):
@@ -60,16 +65,12 @@ def attach_random_designators(tg: fbrk.TypeGraph):
             assigned[prefix].append(number)
 
     # Step 4: Assign designators to components that don't have one yet
-    # Sort by name for deterministic ordering
-    components_sorted = natsorted(
-        components_with_designator, key=lambda c: c.get_full_name() or ""
-    )
-
     for component in components_sorted:
         designator_trait = component.get_trait(F.has_designator)
+        existing_designator = designator_trait.get_designator()
 
         # Skip if already has a designator
-        if designator_trait.get_designator() is not None:
+        if existing_designator is not None:
             continue
 
         # Get prefix from has_designator_prefix trait, or use class name as fallback
@@ -85,6 +86,11 @@ def attach_random_designators(tg: fbrk.TypeGraph):
         next_num = _get_first_available_number(assigned[prefix])
         designator = f"{prefix}{next_num}"
 
+        # Double-check that designator wasn't set between check and assignment
+        # (shouldn't happen, but defensive programming)
+        if designator_trait.get_designator() is not None:
+            continue
+
         logger.info(f"Setting designator {designator} for {component}")
         designator_trait.setup(designator)
         assigned[prefix].append(next_num)
@@ -92,7 +98,7 @@ def attach_random_designators(tg: fbrk.TypeGraph):
     # Step 5: Verify all designators are set and unique
     all_designators = [
         component.get_trait(F.has_designator).get_designator()
-        for component in components_with_designator
+        for component in all_components_with_designator
     ]
 
     logger.info(f"{len(all_designators)} designators assigned")
@@ -107,31 +113,35 @@ def attach_random_designators(tg: fbrk.TypeGraph):
 def load_kicad_pcb_designators(
     tg: fbrk.TypeGraph, attach: bool = False
 ) -> dict[fabll.Node, str]:
-    """
-    Load designators from kicad pcb footprints and attach them to the nodes.
-    """
+    """Load designators from kicad pcb footprints and attach them to the nodes."""
 
     def _get_reference(fp: kicad.pcb.Footprint):
         return Property.try_get_property(fp.propertys, "Reference")
 
-    def _get_pcb_designator(
-        fp_trait: F.KiCadFootprints.has_associated_kicad_pcb_footprint,
-    ):
-        fp = fp_trait.get_footprint()
-        if not fp.name:
-            return None
-        return _get_reference(fp)
-
     traits = fabll.Traits.get_implementors(
         F.KiCadFootprints.has_associated_kicad_pcb_footprint.bind_typegraph(tg)
     )
-    nodes_traits = {fabll.Traits(trait).get_obj_raw(): trait for trait in traits}
+    if not traits:
+        return {}
 
-    known_designators = {
-        node: ref
-        for node, trait in nodes_traits.items()
-        if (ref := _get_pcb_designator(trait)) is not None
-    }
+    # Use map_footprints to get module->footprint mapping, then iterate sorted
+    transformer = traits[0].get_transformer()
+    pcb = transformer.pcb
+    from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+
+    footprint_map = PCB_Transformer.map_footprints(tg, pcb)
+
+    # Sort modules by atopile_address / full_name for deterministic iteration
+    modules_sorted = natsorted(
+        footprint_map.keys(),
+        key=lambda m: m.get_full_name(include_uuid=False) or "",
+    )
+
+    known_designators: dict[fabll.Node, str] = {}
+    for module in modules_sorted:
+        fp = footprint_map[module]
+        if ref := _get_reference(fp):
+            known_designators[module] = ref
 
     if attach:
         if dups := duplicates(known_designators, lambda x: known_designators[x]):
@@ -141,9 +151,12 @@ def load_kicad_pcb_designators(
                 f"{md_list(dups_fmt, recursive=True)}"
             )
         for node, designator in known_designators.items():
-            fabll.Traits.create_and_add_instance_to(node, F.has_designator).setup(
-                designator
-            )
+            if node.has_trait(F.has_designator):
+                node.get_trait(F.has_designator).setup(designator)
+            else:
+                fabll.Traits.create_and_add_instance_to(node, F.has_designator).setup(
+                    designator
+                )
 
     return known_designators
 
