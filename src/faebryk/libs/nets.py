@@ -186,9 +186,12 @@ def test_bind_nets_from_electricals():
     nets = bind_electricals_to_fbrk_nets(tg, g)
     attach_net_names(nets)
 
-    assert len(nets) == 2
-    print(nets)
-    for i, net in enumerate(nets):
+    # sort nets by name to ensure deterministic ordering
+    nets_sorted = sorted(nets, key=lambda net: net.get_name())
+
+    assert len(nets_sorted) == 2
+    print(nets_sorted)
+    for i, net in enumerate(nets_sorted):
         assert net.get_name() == f"elec-{i}"
         assert len(net.get_connected_interfaces()) == 2 + i
         assert len(net.get_connected_pads()) == 2 + i
