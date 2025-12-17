@@ -194,8 +194,9 @@ pub const EdgeOperand = struct {
         };
 
         var finder = Finder{ .identifier = operand_identifier };
+        const op_set = get_operands_set_node(bound_expression_node) orelse return null;
         const result = EdgeOperand.visit_operand_edges(
-            bound_expression_node,
+            op_set,
             graph.BoundNodeReference,
             &finder,
             Finder.visit,

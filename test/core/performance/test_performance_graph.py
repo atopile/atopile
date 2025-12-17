@@ -9,7 +9,6 @@ import pytest
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
-import faebryk.library._F as F
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import indented_container
 
@@ -17,15 +16,20 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.usefixtures("setup_project_config")
-def test_performance_parameters(A: int = 1, B: int = 1, rs: int = 10):
-    from faebryk.core.solver.defaultsolver import DefaultSolver
-    from faebryk.libs.picker.picker import get_pick_tree, pick_topologically
-
+def test_performance_parameters(
+    A: int = 1, B: int = 1, rs: int = 100, pick: bool = False
+):
     timings = Times()
 
     assert B > 0
     assert A >= 0
     assert rs >= 0
+
+    with timings.context("import F"):
+        import faebryk.library._F as F
+
+    from faebryk.core.solver.defaultsolver import DefaultSolver
+    from faebryk.libs.picker.picker import get_pick_tree, pick_topologically
 
     def _build_recursive(depth: int) -> fabll._ChildField[F.Expressions.Add]:
         if depth == 1:
@@ -71,6 +75,21 @@ def test_performance_parameters(A: int = 1, B: int = 1, rs: int = 10):
         with timings.context(f"create_instance -- {tid}"):
             instances[tid] = n.create_instance(g=g)
     app = instances["App"]
+
+    with timings.context("constrain_resistors"):
+        for r in app.resistors:
+            F.Expressions.IsSubset.from_operands(
+                r.get().resistance.get().can_be_operand.get(),
+                F.Literals.Numbers.bind_typegraph(tg)
+                .create_instance(g=g)
+                .setup_from_center_rel(
+                    100 * 1000,
+                    0.1,
+                    F.Units.Ohm.bind_typegraph(tg).create_instance(g=g).is_unit.get(),
+                )
+                .can_be_operand.get(),
+                assert_=True,
+            )
     tg_overview = dict(
         sorted(tg.get_type_instance_overview(), key=lambda x: x[1], reverse=True)
     )
@@ -179,9 +198,10 @@ def test_performance_parameters(A: int = 1, B: int = 1, rs: int = 10):
     pick_tree = get_pick_tree(app)
     timings.add("pick tree")
 
-    solver = DefaultSolver()
-    pick_topologically(pick_tree, solver)
-    timings.add("pick")
+    if pick:
+        solver = DefaultSolver()
+        pick_topologically(pick_tree, solver)
+        timings.add("pick")
 
     logger.info(f"Exprs: {A * B}")
     logger.info(f"\n\n{timings!r}")
