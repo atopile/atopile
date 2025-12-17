@@ -15,14 +15,14 @@ def _get_component_node_count_params():
     # Component class -> expected unique node count
     # (each node counted once, even if reachable via multiple paths)
     component_counts: dict[type, int | None] = {
-        fabll.Node: 16,
-        F.Electrical: 453,
-        F.ElectricLogic: 1468,
-        F.ElectricSignal: 1382,
-        F.ElectricPower: 1154,
-        F.Resistor: 2592,
-        F.Capacitor: 2500,
-        F.I2C: 2468,
+        fabll.Node: 1,
+        F.Electrical: 5,
+        F.ElectricLogic: 375,
+        F.ElectricSignal: 366,
+        F.ElectricPower: 320,
+        F.Resistor: 776,
+        F.Capacitor: 698,
+        F.I2C: 1049,
     }
 
     return [
@@ -39,8 +39,10 @@ def test_component_instance_count(component_type: type, expected_count: int | No
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    _ = component_type.bind_typegraph(tg).create_instance(g)
-    count = g.get_node_count()
+    component_instance = component_type.bind_typegraph(tg).create_instance(g)
+    count = len(component_instance.get_children(
+        direct_only=False, types=fabll.Node, include_root=True))
+
     print(f"{component_type.__name__} node count: {count}")
     print(indented_container(tg.get_type_instance_overview()))
 
