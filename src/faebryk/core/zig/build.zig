@@ -126,6 +126,10 @@ fn addSexpExtension(
     sexp_ext.linkLibC();
 
     const builtin = @import("builtin");
+    if (builtin.os.tag == .macos) {
+        // Match main extension behavior: let the Python loader resolve symbols.
+        sexp_ext.linker_allow_shlib_undefined = true;
+    }
     const ext = if (builtin.os.tag == .windows) ".pyd" else ".so";
     const install_sexp_ext = b.addInstallArtifact(sexp_ext, .{
         .dest_dir = .{ .override = .{ .custom = "lib" } },
