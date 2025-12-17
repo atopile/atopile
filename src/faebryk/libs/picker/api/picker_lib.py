@@ -138,7 +138,7 @@ def _prepare_query(
 
         if pkg_t := module_node.try_get_trait(F.has_package_requirements):
             package_constraint = solver.inspect_get_known_supersets(
-                pkg_t.size_.get().is_parameter.get()
+                pkg_t.size.get().is_parameter.get()
             )
             package = (
                 F.Literals.EnumsFactory(BackendPackage)  # type: ignore[arg-type]
