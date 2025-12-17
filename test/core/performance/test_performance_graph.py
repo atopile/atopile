@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from itertools import product
 from typing import cast
 
 import pytest
@@ -17,102 +16,16 @@ from faebryk.libs.util import indented_container
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.parametrize(
-    "count_power, connected",
-    product(range(2, 5), [True, False]),
-    ids=lambda x: 10 * 2**x
-    if not isinstance(x, bool)
-    else "connected"
-    if x
-    else "simple",
-)
-def test_performance_graph_get_all(count_power: int, connected: bool, factor: int = 10):
-    count = factor * 2**count_power
+@pytest.mark.usefixtures("setup_project_config")
+def test_performance_parameters(A: int = 1, B: int = 1, rs: int = 10):
+    from faebryk.core.solver.defaultsolver import DefaultSolver
+    from faebryk.libs.picker.picker import get_pick_tree, pick_topologically
+
     timings = Times()
 
-    def _simple_resistors():
-        class App(fabll.Node):
-            resistors = [F.Resistor.MakeChild() for _ in range(count)]
-            _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
-            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
-
-        return App
-
-    with timings.context("setup"):
-        g = graph.GraphView.create()
-        tg = fbrk.TypeGraph.create(g=g)
-
-    with timings.context("fabll stage0"):
-        app_type = _simple_resistors().bind_typegraph(tg)
-        bound_resistor = F.Resistor.bind_typegraph(tg)
-
-    with timings.context("typegraph"):
-        bound_resistor.get_or_create_type()
-
-    with timings.context("create_instance"):
-        app = app_type.create_instance(g=g)
-
-    if connected:
-        with timings.context("connect_interfaces"):
-            interfaces = [r.get().unnamed[0].get() for r in app.resistors]
-            left = interfaces[0]
-            left._is_interface.get().connect_to(*interfaces[1:])
-
-    with timings.context("get_all_graph_nodes"):
-        g.get_nodes()
-
-    with timings.context("get_graph_trait(mif)"):
-        fabll.Traits.get_implementors(fabll.is_module.bind_typegraph(tg), g=g)
-
-    with timings.context("get_graph_trait(has_usage_example)"):
-        fabll.Traits.get_implementors(F.has_usage_example.bind_typegraph(tg), g=g)
-
-    for n in (app, app.resistors[0].get()):
-        name = type(n).__name__[0]
-        assert n.has_trait(fabll.is_module)
-
-        with timings.context(f"get_node_children_all {name}"):
-            n.get_children(direct_only=False, types=fabll.Node)
-
-        with timings.context(f"get_node_children_multitype {name}"):
-            n.get_children(direct_only=False, types=(F.Resistor, fabll.is_module))
-
-        with timings.context(f"get_node_children_direct {name}"):
-            n.get_children(direct_only=True, types=fabll.Node)
-
-        with timings.context(f"get_node_children_direct(mif) {name}"):
-            n.get_children(
-                direct_only=True, types=fabll.Node, required_trait=fabll.is_interface
-            )
-
-        with timings.context(f"get_node_children_trait(mif) {name}"):
-            c = n.get_children(
-                direct_only=False,
-                types=fabll.Node,
-                required_trait=fabll.is_interface,
-            )
-        with timings.context(f"get_node_children_trait(hue) {name}"):
-            n.get_children(
-                direct_only=False,
-                types=fabll.Node,
-                required_trait=F.has_usage_example,
-            )
-        print(f"c: {len(c)}")
-
-    logger.info(f"Resistors: {count}")
-    logger.info(f"\n\n{timings!r}")
-    per_resistor = timings.get("create_instance") / count
-    logger.info(f"----> Avg/resistor: {per_resistor * 1e3:.2f} ms")
-    logger.info(f"----> G: {g}")
-    tg_overview = dict(
-        sorted(tg.get_type_instance_overview(), key=lambda x: x[1], reverse=True)
-    )
-    print(indented_container(tg_overview))
-    print("Total typed nodes:", sum(tg_overview.values()))
-
-
-def test_performance_parameters(A: int = 1, B: int = 1, rs: int = 0):
-    timings = Times()
+    assert B > 0
+    assert A >= 0
+    assert rs >= 0
 
     def _build_recursive(depth: int) -> fabll._ChildField[F.Expressions.Add]:
         if depth == 1:
@@ -160,6 +73,11 @@ def test_performance_parameters(A: int = 1, B: int = 1, rs: int = 0):
         with timings.context(f"create_instance -- {tid}"):
             instances[tid] = n.create_instance(g=g)
     app = instances["App"]
+    tg_overview = dict(
+        sorted(tg.get_type_instance_overview(), key=lambda x: x[1], reverse=True)
+    )
+    print(indented_container(tg_overview))
+    print("Total typed nodes:", sum(tg_overview.values()))
 
     with timings.context("print_expr"):
         expr_str = app.expressions[0].get().is_expression.get().compact_repr()
@@ -207,8 +125,8 @@ def test_performance_parameters(A: int = 1, B: int = 1, rs: int = 0):
 
     for n in (
         app,
-        *[app.expressions[0].get() if A > 0 else []],
-        *[app.resistors[0].get() if rs > 0 else []],
+        *([app.expressions[0].get()] if A > 0 else []),
+        *([app.resistors[0].get()] if rs > 0 else []),
     ):
         n = cast(fabll.Node, n)
         name = n.get_type_name()
@@ -259,16 +177,19 @@ def test_performance_parameters(A: int = 1, B: int = 1, rs: int = 0):
             n.copy_into(g_new)
         print(f"g_new: {g_new}")
 
+    timings.add_seperator()
+    pick_tree = get_pick_tree(app)
+    timings.add("pick tree")
+
+    solver = DefaultSolver()
+    pick_topologically(pick_tree, solver)
+    timings.add("pick")
+
     logger.info(f"Exprs: {A * B}")
     logger.info(f"\n\n{timings!r}")
     per_expr = timings.get("create_instance (App)") / (A * B)
     logger.info(f"----> Avg/expr: {per_expr * 1e3:.2f} ms")
     logger.info(f"----> G: {g}")
-    tg_overview = dict(
-        sorted(tg.get_type_instance_overview(), key=lambda x: x[1], reverse=True)
-    )
-    print(indented_container(tg_overview))
-    print("Total typed nodes:", sum(tg_overview.values()))
 
 
 if __name__ == "__main__":
