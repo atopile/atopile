@@ -4,6 +4,7 @@
 import io
 import logging
 import os
+import re
 import sys
 
 import rich
@@ -28,6 +29,17 @@ def rich_print_robust(message: str, markdown: bool = False):
     except UnicodeEncodeError:
         message = message.encode("ascii", errors="ignore").decode("ascii")
         rich.print(Markdown(message) if markdown else message)
+    except Exception:
+        # Handle errors from Pygments plugin loading (e.g., old entry points)
+        # or other rendering issues - fall back to plain text
+        if markdown:
+            # Try to extract plain text from markdown code blocks
+            # Remove markdown code block syntax but keep content
+            plain_message = re.sub(r"```\w*\n", "", message)
+            plain_message = re.sub(r"```$", "", plain_message, flags=re.MULTILINE)
+            rich.print(plain_message)
+        else:
+            rich.print(message)
 
 
 def is_piped_to_file() -> bool:
