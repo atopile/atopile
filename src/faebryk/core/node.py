@@ -1516,6 +1516,12 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             type_node=not_none(self.get_type_node()), attributes={}
         )
 
+    def try_get_trait_of_type[TR: NodeT](self, trait: type[TR]) -> TR | None:
+        type_node = self.get_type_node()
+        if type_node is None:
+            return None
+        return TypeNodeBoundTG.try_get_trait_of_type(trait=trait, type_node=type_node)
+
 
 type NodeT = Node[Any]
 RefPath = list[str | _ChildField[Any] | type[NodeT]]
