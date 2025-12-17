@@ -4,6 +4,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.libs.util import indented_container
 
 
 def _get_component_node_count_params():
@@ -41,6 +42,7 @@ def test_component_instance_count(component_type: type, expected_count: int | No
     _ = component_type.bind_typegraph(tg).create_instance(g)
     count = g.get_node_count()
     print(f"{component_type.__name__} node count: {count}")
+    print(indented_container(tg.get_type_instance_overview()))
 
     if expected_count is not None:
         assert count == expected_count, (
