@@ -533,8 +533,25 @@ fn wrap_node_is_same() type {
     };
 }
 
+fn wrap_node_create() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "create",
+            .doc = "Create a new Node",
+            .args_def = struct {},
+            .static = true,
+        };
+
+        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const node_ref = graph.graph.NodeReference.init();
+            return makeNodePyObject(node_ref);
+        }
+    };
+}
+
 fn wrap_node(root: *py.PyObject) void {
     const extra_methods = [_]type{
+        wrap_node_create(),
         wrap_node_get_attr(),
         wrap_node_get_dynamic_attrs(),
         wrap_node_get_uuid(),
@@ -1005,6 +1022,36 @@ fn wrap_bfs_path_get_end_node() type {
     };
 }
 
+fn wrap_bfs_path_get_edges() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_edges",
+            .doc = "Get all edges in the path as a list",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("BFSPath", &bfs_path_type, BFSPathWrapper, self) orelse return null;
+            const path = wrapper.data;
+
+            const edges_list = py.PyList_New(@intCast(path.traversed_edges.items.len));
+            if (edges_list == null) return null;
+
+            for (path.traversed_edges.items, 0..) |traversed_edge, i| {
+                const py_edge = makeEdgePyObject(traversed_edge.edge);
+                if (py_edge == null or py.PyList_SetItem(edges_list, @intCast(i), py_edge) < 0) {
+                    if (py_edge != null) py.Py_DECREF(py_edge.?);
+                    py.Py_DECREF(edges_list.?);
+                    return null;
+                }
+            }
+
+            return edges_list;
+        }
+    };
+}
+
 fn bfs_path_dealloc(self: *py.PyObject) callconv(.C) void {
     const wrapper = @as(*BFSPathWrapper, @ptrCast(@alignCast(self)));
     const path = wrapper.data;
@@ -1027,6 +1074,7 @@ fn wrap_bfs_path(root: *py.PyObject) void {
         wrap_bfs_path_get_length(),
         wrap_bfs_path_get_start_node(),
         wrap_bfs_path_get_end_node(),
+        wrap_bfs_path_get_edges(),
     };
     bind.wrap_namespace_struct(root, graph.graph.BFSPath, extra_methods);
     bfs_path_type = type_registry.getRegisteredTypeObject("BFSPath");
