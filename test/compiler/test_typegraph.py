@@ -2335,32 +2335,6 @@ class TestModuleTemplating:
         ]
         assert len(address_lines) == 4
 
-    def test_module_templating_multicapacitor(self):
-        """MultiCapacitor module templating works correctly."""
-        from atopile.compiler.build import Linker
-
-        g, tg, stdlib, result = build_type(
-            """
-            #pragma experiment("MODULE_TEMPLATING")
-            import MultiCapacitor
-
-            module App:
-                caps = new MultiCapacitor<count=5>
-            """
-        )
-
-        linker = Linker(None, stdlib, tg)
-        linker.link_imports(g, result.state)
-
-        app_type = result.state.type_roots["App"]
-        make_children = [
-            (identifier, child)
-            for identifier, child in tg.collect_make_children(type_node=app_type)
-        ]
-        identifiers = [id for id, _ in make_children if id]
-
-        assert "caps" in identifiers
-
     def test_module_templating_array_with_template(self):
         """Module templating works with array instantiation."""
         _, tg, _, result = build_type(

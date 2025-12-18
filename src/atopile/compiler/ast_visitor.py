@@ -65,7 +65,6 @@ STDLIB_ALLOWLIST: set[type[fabll.Node]] = (
         F.JTAG,
         F.Ethernet,
         F.UART,
-        F.MultiCapacitor,
         F.CAN_TTL,
         F.Crystal,
         F.FilterElectricalRC,
