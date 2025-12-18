@@ -86,7 +86,7 @@ pub const EdgeTrait = struct {
     }
 
     pub fn init(owner: NodeReference, trait_instance: NodeReference) EdgeReference {
-        const edge = Edge.init(owner, trait_instance, tid);
+        const edge = EdgeReference.init(owner, trait_instance, tid);
 
         build().apply_to(edge);
         return edge;
@@ -102,31 +102,31 @@ pub const EdgeTrait = struct {
             .edge_type = tid,
             .directional = true,
             .name = null,
-            .dynamic = graph.DynamicAttributes.init(),
+            .dynamic = graph.DynamicAttributes.init_on_stack(),
         };
     }
 
     pub fn is_instance(E: EdgeReference) bool {
-        return Edge.is_instance(E, tid);
+        return E.is_instance(tid);
     }
 
     pub fn get_owner_node(E: EdgeReference) NodeReference {
-        return E.source;
+        return E.get_source_node();
     }
 
     pub fn get_trait_instance_node(E: EdgeReference) NodeReference {
-        return E.target;
+        return E.get_target_node();
     }
 
     pub fn get_trait_instance_of(edge: EdgeReference, node: NodeReference) ?NodeReference {
-        if (Node.is_same(edge.target, node)) {
+        if (edge.get_target_node().is_same(node)) {
             return null;
         }
         return get_trait_instance_node(edge);
     }
 
     pub fn get_owner_of(edge: EdgeReference, node: NodeReference) ?NodeReference {
-        if (Node.is_same(edge.source, node)) {
+        if (edge.get_source_node().is_same(node)) {
             return null;
         }
         return get_owner_node(edge);
@@ -159,11 +159,11 @@ pub const EdgeTrait = struct {
 
         var visit = Visit{ .target = bound_node, .cb_ctx = ctx, .cb = f };
         // directed = true: owner is source, trait_instance is target
-        return bound_node.visit_edges_of_type(tid, T, &visit, Visit.visit, true);
+        return bound_node.g.visit_edges_of_type(bound_node.node, tid, T, &visit, Visit.visit, true);
     }
 
     pub fn get_owner_edge(bound_node: graph.BoundNodeReference) ?graph.BoundEdgeReference {
-        return Edge.get_single_edge(bound_node, tid, true);
+        return bound_node.get_single_edge(tid, true);
     }
 
     pub fn get_owner_node_of(bound_node: graph.BoundNodeReference) ?graph.BoundNodeReference {
@@ -204,7 +204,7 @@ pub const EdgeTrait = struct {
 
         var visit = Visit{ .owner = owner, .trait_type = trait_type, .cb_ctx = ctx, .cb = f };
         // directed = true: owner is source, trait_instance is target
-        return owner.visit_edges_of_type(tid, T, &visit, Visit.visit, true);
+        return owner.g.visit_edges_of_type(owner.node, tid, T, &visit, Visit.visit, true);
     }
 
     pub fn try_get_trait_instance_of_type(bound_node: graph.BoundNodeReference, trait_type: graph.NodeReference) ?graph.BoundNodeReference {
@@ -262,13 +262,13 @@ test "basic" {
 
     _ = try Trait.add_trait_to(bn1, trait_type);
     const trait_instance_recall_1 = EdgeTrait.try_get_trait_instance_of_type(bn1, trait_type.node);
-    try std.testing.expect(Node.is_same(EdgeTrait.get_owner_node_of(trait_instance_recall_1.?).?.node, bn1.node));
+    try std.testing.expect(EdgeTrait.get_owner_node_of(trait_instance_recall_1.?).?.node.is_same(bn1.node));
 
     const trait_instance2 = try tg.instantiate_node(trait_type2);
     _ = try Trait.add_trait_instance_to(bn1, trait_instance2);
     const trait_instance_recall_2 = EdgeTrait.try_get_trait_instance_of_type(bn1, trait_type2.node);
-    try std.testing.expect(Node.is_same(EdgeTrait.get_owner_node_of(trait_instance_recall_2.?).?.node, bn1.node));
-    try std.testing.expect(Node.is_same(trait_instance_recall_2.?.node, trait_instance2.node));
+    try std.testing.expect(EdgeTrait.get_owner_node_of(trait_instance_recall_2.?).?.node.is_same(bn1.node));
+    try std.testing.expect(trait_instance_recall_2.?.node.is_same(trait_instance2.node));
 
     // has to be deleted firstb
     defer g.deinit();

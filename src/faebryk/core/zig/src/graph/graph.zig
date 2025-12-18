@@ -8,8 +8,9 @@ var arena_allocator = std.heap.ArenaAllocator.init(base_allocator);
 var global_graph_allocator: std.mem.Allocator = arena_allocator.allocator();
 
 // Static storage for edges and attributes (temporary - will be replaced with proper allocator)
-var Edges: [256 * 1024]Edge = undefined;
-var Attrs: [256 * 1024]DynamicAttributes = undefined;
+var Nodes: [1024 * 1024]Node = undefined;
+var Edges: [1024 * 1024]Edge = undefined;
+var Attrs: [1024 * 1024]DynamicAttributes = undefined;
 
 // =============================================================================
 // Data types
@@ -29,13 +30,15 @@ pub const Attribute = struct {
 
 pub const Node = struct {
     var counter: u32 = 0;
+
+    dynamic: DynamicAttributesReference = .{}, // 4b
 };
 
 pub const Edge = struct {
     var counter: u32 = 0;
 
     const Flags = packed struct {
-        edge_type: EdgeReference.EdgeType,
+        edge_type: Edge.EdgeType,
         directional: u1 = 0,
         order: u7 = 0,
         edge_specific: u16 = 0,
@@ -46,6 +49,25 @@ pub const Edge = struct {
     dynamic: DynamicAttributesReference = .{}, // 4b
     flags: Flags, // 4b
     // => 16b total
+
+    // --- Static methods (type-level, not instance) ---
+    pub const EdgeType = u8;
+
+    pub fn hash_edge_type(comptime tid: u64) EdgeType {
+        return @intCast(tid % 256);
+    }
+
+    // Track registrations without heap allocations to stay robust across dylib loads.
+    var type_registered: [256]bool = [_]bool{false} ** 256;
+
+    /// Register type and check for duplicates during runtime
+    /// Can't do during compile because python will do during runtime
+    pub fn register_type(edge_type: EdgeType) !void {
+        if (type_registered[edge_type]) {
+            return error.DuplicateType;
+        }
+        type_registered[edge_type] = true;
+    }
 };
 
 pub const DynamicAttributes = struct {
@@ -55,6 +77,36 @@ pub const DynamicAttributes = struct {
     // try to keep this low enough to fit in a 256b cache line
     // currently attribute is 40b, so max 6
     values: [6]Attribute = undefined,
+
+    /// Create a new empty DynamicAttributes on the stack (for building before copy)
+    pub fn init_on_stack() DynamicAttributes {
+        return .{ .in_use = 0 };
+    }
+
+    /// Put a value into this DynamicAttributes struct (used for building before copy)
+    pub fn put(self: *@This(), identifier: str, value: Literal) void {
+        if (self.in_use == self.values.len) {
+            @panic("Dynamic attributes are full");
+        }
+        self.values[self.in_use] = .{ .identifier = identifier, .value = value };
+        self.in_use += 1;
+    }
+
+    /// Copy all attributes from this struct into a reference
+    pub fn copy_into(self: *const @This(), dst_ref: DynamicAttributesReference) void {
+        if (self.in_use == 0) return;
+        if (dst_ref.is_null()) {
+            @panic("Cannot copy into null DynamicAttributesReference");
+        }
+        const dst = &Attrs[dst_ref.uuid];
+        for (self.values[0..self.in_use]) |value| {
+            if (dst.in_use == dst.values.len) {
+                @panic("Dynamic attributes are full");
+            }
+            dst.values[dst.in_use] = value;
+            dst.in_use += 1;
+        }
+    }
 };
 // =============================================================================
 // Reference types (each 4 bytes)
@@ -76,32 +128,34 @@ pub const NodeReference = struct {
     pub fn get_uuid(self: @This()) u32 {
         return self.uuid;
     }
+
+    pub fn put(self: @This(), identifier: str, value: Literal) void {
+        _ = Nodes[self.uuid].dynamic.ensure();
+        Nodes[self.uuid].dynamic.put(identifier, value);
+    }
+
+    pub fn get(self: @This(), identifier: str) ?Literal {
+        return Nodes[self.uuid].dynamic.get(identifier);
+    }
+
+    /// Copy dynamic attributes from a DynamicAttributes struct into this node's dynamic attributes
+    pub fn copy_dynamic_attributes_into(self: @This(), source: *const DynamicAttributes) void {
+        if (source.in_use == 0) return;
+        _ = Nodes[self.uuid].dynamic.ensure();
+        source.copy_into(Nodes[self.uuid].dynamic);
+    }
+
+    /// Visit all attributes on this node
+    pub fn visit_attributes(self: @This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
+        Nodes[self.uuid].dynamic.visit(ctx, f);
+    }
 };
 
 pub const EdgeReference = struct {
     uuid: u32,
 
-    // --- Static methods (type-level, not instance) ---
-    pub const EdgeType = u8;
-
-    pub fn hash_edge_type(comptime tid: u64) EdgeType {
-        return @intCast(tid % 256);
-    }
-
-    // Track registrations without heap allocations to stay robust across dylib loads.
-    var type_registered: [256]bool = [_]bool{false} ** 256;
-
-    /// Register type and check for duplicates during runtime
-    /// Can't do during compile because python will do during runtime
-    pub fn register_type(edge_type: EdgeType) !void {
-        if (type_registered[edge_type]) {
-            return error.DuplicateType;
-        }
-        type_registered[edge_type] = true;
-    }
-
     // --- Constructor ---
-    pub fn init(source: NodeReference, target: NodeReference, edge_type: EdgeType) EdgeReference {
+    pub fn init(source: NodeReference, target: NodeReference, edge_type: Edge.EdgeType) EdgeReference {
         Edge.counter += 1;
         const out: EdgeReference = .{
             .uuid = Edge.counter,
@@ -136,13 +190,22 @@ pub const EdgeReference = struct {
         return Edges[self.uuid].flags.directional == 1;
     }
 
-    pub fn get_attribute_edge_type(self: @This()) EdgeType {
+    pub fn get_attribute_edge_type(self: @This()) Edge.EdgeType {
         return Edges[self.uuid].flags.edge_type;
+    }
+
+    pub fn get(self: @This(), identifier: str) ?Literal {
+        return Edges[self.uuid].dynamic.get(identifier);
     }
 
     // --- Mutators (write to static storage) ---
     pub fn set_attribute_directional(self: @This(), directional: bool) void {
         Edges[self.uuid].flags.directional = if (directional) 1 else 0;
+    }
+
+    pub fn put(self: @This(), identifier: str, value: Literal) void {
+        _ = Edges[self.uuid].dynamic.ensure();
+        Edges[self.uuid].dynamic.put(identifier, value);
     }
 
     // --- Computed properties ---
@@ -157,7 +220,7 @@ pub const EdgeReference = struct {
         }
     }
 
-    pub fn is_instance(self: @This(), edge_type: EdgeType) bool {
+    pub fn is_instance(self: @This(), edge_type: Edge.EdgeType) bool {
         return self.get_attribute_edge_type() == edge_type;
     }
 
@@ -176,11 +239,40 @@ pub const EdgeReference = struct {
         }
         return null;
     }
+
+    pub fn set_attribute_edge_type(self: @This(), edge_type: Edge.EdgeType) void {
+        Edges[self.uuid].flags.edge_type = edge_type;
+    }
+
+    /// Name is stored in dynamic attributes under "name" key
+    pub fn set_attribute_name(self: @This(), name: ?str) void {
+        if (name) |n| {
+            _ = Edges[self.uuid].dynamic.ensure();
+            Edges[self.uuid].dynamic.put("name", .{ .String = n });
+        }
+    }
+
+    /// Get the name stored in dynamic attributes
+    pub fn get_attribute_name(self: @This()) ?str {
+        const val = Edges[self.uuid].dynamic.get("name");
+        if (val) |v| {
+            return v.String;
+        }
+        return null;
+    }
+
+    /// Copy dynamic attributes from a DynamicAttributes struct into this edge's dynamic attributes
+    pub fn copy_dynamic_attributes_into(self: @This(), source: *const DynamicAttributes) void {
+        if (source.in_use == 0) return;
+        _ = Edges[self.uuid].dynamic.ensure();
+        source.copy_into(Edges[self.uuid].dynamic);
+    }
 };
 
 pub const DynamicAttributesReference = struct {
     uuid: u32 = 0,
 
+    /// Create a new initialized DynamicAttributesReference
     pub fn init() DynamicAttributesReference {
         DynamicAttributes.counter += 1;
         Attrs[DynamicAttributes.counter] = .{};
@@ -189,12 +281,26 @@ pub const DynamicAttributesReference = struct {
         };
     }
 
+    /// Create a null reference (default state)
+    pub fn init_null() DynamicAttributesReference {
+        return .{ .uuid = 0 };
+    }
+
     pub fn is_null(self: @This()) bool {
         return self.uuid == 0;
     }
 
+    /// Ensure this reference is initialized, creating storage if null
+    /// Returns the (possibly newly initialized) reference
+    pub fn ensure(self: *@This()) DynamicAttributesReference {
+        if (self.is_null()) {
+            self.* = DynamicAttributesReference.init();
+        }
+        return self.*;
+    }
+
     pub fn visit(self: @This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
-        if (self.uuid == 0) return;
+        if (self.is_null()) return;
         const attrs = &Attrs[self.uuid];
         for (attrs.values[0..attrs.in_use]) |value| {
             f(ctx, value.identifier, value.value, true);
@@ -202,8 +308,8 @@ pub const DynamicAttributesReference = struct {
     }
 
     pub fn put(self: @This(), identifier: str, value: Literal) void {
-        if (self.uuid == 0) {
-            @panic("Cannot put on null DynamicAttributesReference");
+        if (self.is_null()) {
+            @panic("Cannot put on null DynamicAttributesReference - use ensure() first");
         }
         const attrs = &Attrs[self.uuid];
         if (attrs.in_use == attrs.values.len) {
@@ -214,7 +320,7 @@ pub const DynamicAttributesReference = struct {
     }
 
     pub fn get(self: @This(), identifier: str) ?Literal {
-        if (self.uuid == 0) return null;
+        if (self.is_null()) return null;
         const attrs = &Attrs[self.uuid];
         for (attrs.values[0..attrs.in_use]) |value| {
             if (std.mem.eql(u8, value.identifier, identifier)) {
@@ -224,9 +330,10 @@ pub const DynamicAttributesReference = struct {
         return null;
     }
 
+    /// Copy from one reference into another reference
     pub fn copy_into(self: @This(), other: DynamicAttributesReference) void {
-        if (self.uuid == 0) return;
-        if (other.uuid == 0) {
+        if (self.is_null()) return;
+        if (other.is_null()) {
             @panic("Cannot copy into null DynamicAttributesReference");
         }
         const src = &Attrs[self.uuid];
@@ -247,7 +354,7 @@ pub const BoundNodeReference = struct {
     g: *GraphView,
 
     /// No guarantee that there is only one
-    pub fn get_single_edge(self: @This(), edge_type: EdgeReference.EdgeType, is_target: ?bool) ?BoundEdgeReference {
+    pub fn get_single_edge(self: @This(), edge_type: Edge.EdgeType, is_target: ?bool) ?BoundEdgeReference {
         const Visit = struct {
             pub fn visit(ctx: *anyopaque, bound_edge: BoundEdgeReference) visitor.VisitResult(BoundEdgeReference) {
                 _ = ctx;
@@ -309,17 +416,17 @@ const EdgeRefMap = struct {
 };
 
 const EdgeTypeMap = struct {
-    pub fn eql(_: @This(), a: EdgeReference.EdgeType, b: EdgeReference.EdgeType) bool {
+    pub fn eql(_: @This(), a: Edge.EdgeType, b: Edge.EdgeType) bool {
         return a == b;
     }
 
-    pub fn hash(_: @This(), adapted_key: EdgeReference.EdgeType) u64 {
+    pub fn hash(_: @This(), adapted_key: Edge.EdgeType) u64 {
         var key = adapted_key;
         return std.hash.Wyhash.hash(0, std.mem.asBytes(&key));
     }
 
     pub fn T(V: type) type {
-        return std.HashMap(EdgeReference.EdgeType, V, EdgeTypeMap, std.hash_map.default_max_load_percentage);
+        return std.HashMap(Edge.EdgeType, V, EdgeTypeMap, std.hash_map.default_max_load_percentage);
     }
 };
 
@@ -573,12 +680,12 @@ pub const GraphView = struct {
         };
     }
 
-    pub fn get_edges_of_type(g: *@This(), node: NodeReference, T: EdgeReference.EdgeType) ?*const std.ArrayList(EdgeReference) {
+    pub fn get_edges_of_type(g: *@This(), node: NodeReference, T: Edge.EdgeType) ?*const std.ArrayList(EdgeReference) {
         const by_type = g.nodes.getPtr(node) orelse return null;
         return by_type.getPtr(T);
     }
 
-    pub fn visit_edges_of_type(g: *@This(), node: NodeReference, edge_type: EdgeReference.EdgeType, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T), directed: ?bool) visitor.VisitResult(T) {
+    pub fn visit_edges_of_type(g: *@This(), node: NodeReference, edge_type: Edge.EdgeType, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T), directed: ?bool) visitor.VisitResult(T) {
         const Result = visitor.VisitResult(T);
         const edges = g.get_edges_of_type(node, edge_type);
         if (edges == null) {
@@ -652,7 +759,7 @@ pub const GraphView = struct {
         comptime T: type,
         ctx: *anyopaque,
         f: fn (*anyopaque, *BFSPath) visitor.VisitResult(T),
-        edge_type_filter: ?[]EdgeReference.EdgeType,
+        edge_type_filter: ?[]Edge.EdgeType,
     ) visitor.VisitResult(T) {
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         const allocator = arena.allocator();
@@ -763,8 +870,8 @@ test "basic" {
     const a = std.testing.allocator;
     var g = GraphView.init(a);
     defer g.deinit();
-    const TestLinkType = EdgeReference.hash_edge_type(1759269396);
-    try EdgeReference.register_type(TestLinkType);
+    const TestLinkType = Edge.hash_edge_type(1759269396);
+    try Edge.register_type(TestLinkType);
 
     const bn1 = g.create_and_insert_node();
     const bn2 = g.create_and_insert_node();
@@ -781,8 +888,8 @@ test "BFSPath cloneAndExtend preserves start metadata" {
     var g = GraphView.init(a);
     defer g.deinit();
 
-    const TestEdgeType = EdgeReference.hash_edge_type(0xFBAF_0001);
-    EdgeReference.register_type(TestEdgeType) catch |err| switch (err) {
+    const TestEdgeType = Edge.hash_edge_type(0xFBAF_0001);
+    Edge.register_type(TestEdgeType) catch |err| switch (err) {
         error.DuplicateType => {},
         else => return err,
     };
@@ -842,8 +949,8 @@ test "get_subgraph_from_nodes" {
     var g = GraphView.init(a);
     defer g.deinit();
 
-    const TestEdgeTypeSubgraph = EdgeReference.hash_edge_type(0xFBAF_0002);
-    EdgeReference.register_type(TestEdgeTypeSubgraph) catch |err| switch (err) {
+    const TestEdgeTypeSubgraph = Edge.hash_edge_type(0xFBAF_0002);
+    Edge.register_type(TestEdgeTypeSubgraph) catch |err| switch (err) {
         error.DuplicateType => {},
         else => return err,
     };
@@ -880,8 +987,8 @@ test "duplicate edge insertion" {
     const bn1 = g.create_and_insert_node();
     const bn2 = g.create_and_insert_node();
 
-    const TestLinkType = EdgeReference.hash_edge_type(0xDEADBEEF);
-    EdgeReference.register_type(TestLinkType) catch |err| switch (err) {
+    const TestLinkType = Edge.hash_edge_type(0xDEADBEEF);
+    Edge.register_type(TestLinkType) catch |err| switch (err) {
         error.DuplicateType => {},
         else => return err,
     };

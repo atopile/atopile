@@ -31,13 +31,13 @@ pub const EdgePointer = struct {
     }
 
     pub fn init(from: NodeReference, to: NodeReference, identifier: ?str, order: ?u32) EdgeReference {
-        const edge = Edge.init(from, to, tid);
+        const edge = EdgeReference.init(from, to, tid);
         build(identifier, order).apply_to(edge);
         return edge;
     }
 
     pub fn build(identifier: ?str, order: ?u32) EdgeCreationAttributes {
-        var dynamic = graph.DynamicAttributes.init();
+        var dynamic = graph.DynamicAttributes.init_on_stack();
         if (order) |o| {
             dynamic.put("order", .{ .Int = o });
         }
@@ -63,11 +63,11 @@ pub const EdgePointer = struct {
     }
 
     pub fn get_referenced_node(edge: EdgeReference) ?NodeReference {
-        return edge.get_target();
+        return edge.get_directed_target();
     }
 
     pub fn is_instance(E: EdgeReference) bool {
-        return Edge.is_instance(E, tid);
+        return E.is_instance(tid);
     }
 
     pub fn point_to(bound_node: BoundNodeReference, target_node: NodeReference, identifier: ?str, order: ?u32) BoundEdgeReference {
@@ -94,7 +94,7 @@ pub const EdgePointer = struct {
 
         var visit = Visit{ .cb_ctx = ctx, .cb = f };
         // directed = true: from is source, to is target
-        return bound_node.visit_edges_of_type(tid, T, &visit, Visit.visit, true);
+        return bound_node.g.visit_edges_of_type(bound_node.node, tid, T, &visit, Visit.visit, true);
     }
 
     pub fn visit_pointed_edges_with_identifier(
@@ -185,7 +185,7 @@ test "basic" {
     _ = g.insert_edge(e12);
 
     try std.testing.expect(EdgePointer.is_instance(e12));
-    try std.testing.expect(Node.is_same(EdgePointer.get_referenced_node(e12).?, n2.node));
+    try std.testing.expect(EdgePointer.get_referenced_node(e12).?.is_same(n2.node));
 
     g.deinit();
 }

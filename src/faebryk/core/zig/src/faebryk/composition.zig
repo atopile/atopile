@@ -40,7 +40,7 @@ pub const EdgeComposition = struct {
     }
 
     pub fn init(parent: NodeReference, child: NodeReference, child_identifier: str) EdgeReference {
-        const edge = Edge.init(parent, child, tid);
+        const edge = EdgeReference.init(parent, child, tid);
 
         build(child_identifier).apply_to(edge);
         return edge;
@@ -56,31 +56,31 @@ pub const EdgeComposition = struct {
             .edge_type = tid,
             .directional = true,
             .name = child_identifier,
-            .dynamic = graph.DynamicAttributes.init(),
+            .dynamic = graph.DynamicAttributes.init_on_stack(),
         };
     }
 
     pub fn is_instance(E: EdgeReference) bool {
-        return Edge.is_instance(E, tid);
+        return E.is_instance(tid);
     }
 
     pub fn get_parent_node(E: EdgeReference) NodeReference {
-        return E.source;
+        return E.get_source_node();
     }
 
     pub fn get_child_node(E: EdgeReference) NodeReference {
-        return E.target;
+        return E.get_target_node();
     }
 
     pub fn get_child_of(edge: EdgeReference, node: NodeReference) ?NodeReference {
-        if (Node.is_same(edge.target, node)) {
+        if (edge.get_target_node().is_same(node)) {
             return null;
         }
         return get_child_node(edge);
     }
 
     pub fn get_parent_of(edge: EdgeReference, node: NodeReference) ?NodeReference {
-        if (Node.is_same(edge.source, node)) {
+        if (edge.get_source_node().is_same(node)) {
             return null;
         }
         return get_parent_node(edge);
@@ -113,11 +113,11 @@ pub const EdgeComposition = struct {
 
         var visit = Visit{ .target = bound_node, .cb_ctx = ctx, .cb = f };
         // directed = true: parent is source, child is target
-        return bound_node.visit_edges_of_type(tid, T, &visit, Visit.visit, true);
+        return bound_node.g.visit_edges_of_type(bound_node.node, tid, T, &visit, Visit.visit, true);
     }
 
     pub fn get_parent_edge(bound_node: graph.BoundNodeReference) ?graph.BoundEdgeReference {
-        return Edge.get_single_edge(bound_node, tid, true);
+        return bound_node.get_single_edge(tid, true);
     }
 
     pub fn get_parent_node_of(bound_node: graph.BoundNodeReference) ?graph.BoundNodeReference {
@@ -137,12 +137,34 @@ pub const EdgeComposition = struct {
             return error.InvalidEdgeType;
         }
 
-        return edge.get_attribute_name().?;
+        return edge.get_attribute_name() orelse "";
     }
 
     pub fn get_child_by_identifier(bound_parent_node: graph.BoundNodeReference, child_identifier: str) ?graph.BoundNodeReference {
-        const edge = bound_parent_node.g.get_edge_with_type_and_identifier(bound_parent_node.node, tid, child_identifier) orelse return null;
-        return bound_parent_node.g.bind(EdgeComposition.get_child_node(edge));
+        // Visit edges of type and find the one with matching name
+        const Finder = struct {
+            identifier: str,
+
+            pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(graph.BoundEdgeReference) {
+                const self: *@This() = @ptrCast(@alignCast(self_ptr));
+                if (bound_edge.edge.get_attribute_name()) |name| {
+                    if (std.mem.eql(u8, name, self.identifier)) {
+                        return visitor.VisitResult(graph.BoundEdgeReference){ .OK = bound_edge };
+                    }
+                }
+                return visitor.VisitResult(graph.BoundEdgeReference){ .CONTINUE = {} };
+            }
+        };
+
+        var finder = Finder{ .identifier = child_identifier };
+        const result = bound_parent_node.g.visit_edges_of_type(bound_parent_node.node, tid, graph.BoundEdgeReference, &finder, Finder.visit, true);
+        switch (result) {
+            .OK => |edge| return bound_parent_node.g.bind(EdgeComposition.get_child_node(edge.edge)),
+            .EXHAUSTED => return null,
+            .ERROR => return null,
+            .CONTINUE => unreachable,
+            .STOP => unreachable,
+        }
     }
 
     pub fn visit_children_of_type(
@@ -170,7 +192,7 @@ pub const EdgeComposition = struct {
 
         var visit = Visit{ .parent = parent, .child_type = child_type, .cb_ctx = ctx, .cb = f };
         // directed = true: parent is source, child is target
-        return parent.visit_edges_of_type(tid, T, &visit, Visit.visit, true);
+        return parent.g.visit_edges_of_type(parent.node, tid, T, &visit, Visit.visit, true);
     }
 
     pub fn try_get_single_child_of_type(bound_node: graph.BoundNodeReference, child_type: graph.NodeReference) ?graph.BoundNodeReference {
@@ -293,8 +315,8 @@ test "basic" {
 
     const parent_edge_bn2 = EdgeComposition.get_parent_edge(bn2);
     const parent_edge_bn3 = EdgeComposition.get_parent_edge(bn3);
-    try std.testing.expect(Node.is_same(EdgeComposition.get_parent_node(parent_edge_bn2.?.edge), bn1.node));
-    try std.testing.expect(Node.is_same(EdgeComposition.get_parent_node(parent_edge_bn3.?.edge), bn1.node));
+    try std.testing.expect(EdgeComposition.get_parent_node(parent_edge_bn2.?.edge).is_same(bn1.node));
+    try std.testing.expect(EdgeComposition.get_parent_node(parent_edge_bn3.?.edge).is_same(bn1.node));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(parent_edge_bn2.?.edge), "child1"));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(parent_edge_bn3.?.edge), "child2"));
 
@@ -316,13 +338,13 @@ test "basic" {
 
     try std.testing.expectEqual(result, visitor.VisitResult(void){ .EXHAUSTED = {} });
     try std.testing.expectEqual(visit.child_edges.items.len, 2);
-    try std.testing.expect(Node.is_same(EdgeComposition.get_child_node(visit.child_edges.items[0].edge), bn2.node));
-    try std.testing.expect(Node.is_same(EdgeComposition.get_child_node(visit.child_edges.items[1].edge), bn3.node));
+    try std.testing.expect(EdgeComposition.get_child_node(visit.child_edges.items[0].edge).is_same(bn2.node));
+    try std.testing.expect(EdgeComposition.get_child_node(visit.child_edges.items[1].edge).is_same(bn3.node));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(visit.child_edges.items[0].edge), "child1"));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(visit.child_edges.items[1].edge), "child2"));
 
     const bchild = EdgeComposition.get_child_by_identifier(bn1, "child1");
-    try std.testing.expect(Node.is_same(bchild.?.node, bn2.node));
+    try std.testing.expect(bchild.?.node.is_same(bn2.node));
 }
 
 test "add_child with null identifier" {
@@ -339,8 +361,8 @@ test "add_child with null identifier" {
     try std.testing.expect(EdgeComposition.is_instance(edge.edge));
 
     // Verify parent-child relationship
-    try std.testing.expect(Node.is_same(EdgeComposition.get_parent_node(edge.edge), parent.node));
-    try std.testing.expect(Node.is_same(EdgeComposition.get_child_node(edge.edge), child.node));
+    try std.testing.expect(EdgeComposition.get_parent_node(edge.edge).is_same(parent.node));
+    try std.testing.expect(EdgeComposition.get_child_node(edge.edge).is_same(child.node));
 
     // Verify name is empty string when null was passed
     const name = try EdgeComposition.get_name(edge.edge);
@@ -349,7 +371,7 @@ test "add_child with null identifier" {
     // Verify get_parent_edge works
     const parent_edge = EdgeComposition.get_parent_edge(child);
     try std.testing.expect(parent_edge != null);
-    try std.testing.expect(Edge.is_same(parent_edge.?.edge, edge.edge));
+    try std.testing.expect(parent_edge.?.edge.is_same(edge.edge));
 }
 
 test "get_children_query direct_only" {
@@ -384,8 +406,8 @@ test "get_children_query direct_only" {
     var found_child1 = false;
     var found_child2 = false;
     for (direct_children.items) |child| {
-        if (Node.is_same(child, child1.node)) found_child1 = true;
-        if (Node.is_same(child, child2.node)) found_child2 = true;
+        if (child.is_same(child1.node)) found_child1 = true;
+        if (child.is_same(child2.node)) found_child2 = true;
     }
     try std.testing.expect(found_child1);
     try std.testing.expect(found_child2);
@@ -423,9 +445,9 @@ test "get_children_query recursive" {
     var found_child2 = false;
     var found_grandchild1 = false;
     for (all_children.items) |child| {
-        if (Node.is_same(child, child1.node)) found_child1 = true;
-        if (Node.is_same(child, child2.node)) found_child2 = true;
-        if (Node.is_same(child, grandchild1.node)) found_grandchild1 = true;
+        if (child.is_same(child1.node)) found_child1 = true;
+        if (child.is_same(child2.node)) found_child2 = true;
+        if (child.is_same(grandchild1.node)) found_grandchild1 = true;
     }
     try std.testing.expect(found_child1);
     try std.testing.expect(found_child2);
@@ -458,8 +480,8 @@ test "get_children_query include_root" {
     var found_parent = false;
     var found_child1 = false;
     for (children_with_root.items) |child| {
-        if (Node.is_same(child, parent.node)) found_parent = true;
-        if (Node.is_same(child, child1.node)) found_child1 = true;
+        if (child.is_same(parent.node)) found_parent = true;
+        if (child.is_same(child1.node)) found_child1 = true;
     }
     try std.testing.expect(found_parent);
     try std.testing.expect(found_child1);
@@ -619,7 +641,7 @@ test "get_children_query sorted" {
 
     try std.testing.expectEqual(@as(usize, 3), children.items.len);
     // Should be a, b, c (child1, child2, child3)
-    try std.testing.expect(Node.is_same(children.items[0], child1.node));
-    try std.testing.expect(Node.is_same(children.items[1], child2.node));
-    try std.testing.expect(Node.is_same(children.items[2], child3.node));
+    try std.testing.expect(children.items[0].is_same(child1.node));
+    try std.testing.expect(children.items[1].is_same(child2.node));
+    try std.testing.expect(children.items[2].is_same(child3.node));
 }

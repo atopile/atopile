@@ -8,23 +8,27 @@ const EdgeReference = graph.EdgeReference;
 const GraphView = graph.GraphView;
 const NodeReference = graph.NodeReference;
 const BoundEdgeReference = graph.BoundEdgeReference;
+const DynamicAttributes = graph.DynamicAttributes;
+const DynamicAttributesReference = graph.DynamicAttributesReference;
 const str = graph.str;
 
 pub const EdgeCreationAttributes = struct {
     edge_type: Edge.EdgeType,
     directional: ?bool,
     name: ?str,
-    dynamic: graph.DynamicAttributes,
+    dynamic: DynamicAttributes,
 
     pub fn apply_to(self: *const @This(), edge: EdgeReference) void {
         edge.set_attribute_edge_type(self.edge_type);
-        edge.set_attribute_directional(self.directional);
+        if (self.directional) |d| {
+            edge.set_attribute_directional(d);
+        }
         edge.set_attribute_name(self.name);
         edge.copy_dynamic_attributes_into(&self.dynamic);
     }
 
     pub fn create_edge(self: *const @This(), source: NodeReference, target: NodeReference) EdgeReference {
-        const edge = Edge.init(source, target, self.edge_type);
+        const edge = EdgeReference.init(source, target, self.edge_type);
         self.apply_to(edge);
         return edge;
     }
@@ -36,9 +40,5 @@ pub const EdgeCreationAttributes = struct {
 
     pub fn get_tid(self: *const @This()) Edge.EdgeType {
         return self.edge_type;
-    }
-
-    pub fn deinit(self: *@This()) void {
-        self.dynamic.deinit();
     }
 };

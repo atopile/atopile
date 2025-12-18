@@ -536,7 +536,7 @@ GENERATE_HTML = os.getenv("FBRK_TEST_GENERATE_HTML", "1") == "1"
 GENERATE_PERIODIC_HTML = os.getenv("FBRK_TEST_PERIODIC_HTML", "1") == "1"
 
 # Global state
-test_queue = queue.Queue()
+test_queue = queue.Queue[str]()
 tests_total = 0
 workers: dict[int, subprocess.Popen[bytes]] = {}
 

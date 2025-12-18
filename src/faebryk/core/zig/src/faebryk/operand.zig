@@ -31,7 +31,7 @@ pub const EdgeOperand = struct {
         operand: NodeReference,
         operand_identifier: ?str,
     ) EdgeReference {
-        const edge = Edge.init(operands_set, operand, tid);
+        const edge = EdgeReference.init(operands_set, operand, tid);
 
         build(operand_identifier).apply_to(edge);
         return edge;
@@ -47,16 +47,16 @@ pub const EdgeOperand = struct {
             .edge_type = tid,
             .directional = true,
             .name = operand_identifier,
-            .dynamic = graph.DynamicAttributes.init(),
+            .dynamic = graph.DynamicAttributes.init_on_stack(),
         };
     }
 
     pub fn is_instance(E: EdgeReference) bool {
-        return Edge.is_instance(E, tid);
+        return E.is_instance(tid);
     }
 
     pub fn get_expression_node(E: graph.BoundEdgeReference) NodeReference {
-        return EdgeComposition.get_parent_node_of(E.g.bind(E.edge.source)).?.node;
+        return EdgeComposition.get_parent_node_of(E.g.bind(E.edge.get_source_node())).?.node;
     }
 
     pub fn get_operands_set_node(expression_bound_node: graph.BoundNodeReference) ?graph.BoundNodeReference {
@@ -64,18 +64,18 @@ pub const EdgeOperand = struct {
     }
 
     pub fn get_operand_node(E: EdgeReference) NodeReference {
-        return E.target;
+        return E.get_target_node();
     }
 
     pub fn get_operand_of(edge: EdgeReference, node: NodeReference) ?NodeReference {
-        if (Node.is_same(edge.target, node)) {
+        if (edge.get_target_node().is_same(node)) {
             return null;
         }
         return get_operand_node(edge);
     }
 
     pub fn get_expression_of(bedge: graph.BoundEdgeReference, node: NodeReference) ?NodeReference {
-        if (Node.is_same(bedge.edge.source, node)) {
+        if (bedge.edge.get_source_node().is_same(node)) {
             return null;
         }
         return get_expression_node(bedge);
@@ -108,7 +108,7 @@ pub const EdgeOperand = struct {
 
         var visit = Visit{ .target = operand_set_node, .cb_ctx = ctx, .cb = f };
         // directed = true: only edges where bound_node is the source (outgoing edges)
-        return operand_set_node.visit_edges_of_type(tid, T, &visit, Visit.visit, true);
+        return operand_set_node.g.visit_edges_of_type(operand_set_node.node, tid, T, &visit, Visit.visit, true);
     }
 
     pub fn visit_expression_edges(
@@ -139,12 +139,12 @@ pub const EdgeOperand = struct {
 
         var visit = Visit{ .target = bound_node, .cb_ctx = ctx, .cb = f };
         // directed = false: only edges where bound_node is the target (incoming edges)
-        return bound_node.visit_edges_of_type(tid, T, &visit, Visit.visit, false);
+        return bound_node.g.visit_edges_of_type(bound_node.node, tid, T, &visit, Visit.visit, false);
     }
 
     //TODO not sure we want to advertise this, only in aliases interesting
     pub fn get_expression_edge(bound_node: graph.BoundNodeReference) ?graph.BoundEdgeReference {
-        return Edge.get_single_edge(bound_node, tid, true);
+        return bound_node.get_single_edge(tid, true);
     }
 
     pub fn add_operand(
@@ -181,7 +181,7 @@ pub const EdgeOperand = struct {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
                 if (bound_edge.edge.get_attribute_name()) |n| {
                     if (std.mem.eql(u8, n, self.identifier)) {
-                        const target = bound_edge.edge.get_target() orelse {
+                        const target = bound_edge.edge.get_directed_target() orelse {
                             return visitor.VisitResult(graph.BoundNodeReference){ .CONTINUE = {} };
                         };
                         return visitor.VisitResult(graph.BoundNodeReference){
@@ -241,7 +241,7 @@ pub const EdgeOperand = struct {
             .cb = f,
         };
         // directed = true: operands_set is source, operand is target
-        return op_set.visit_edges_of_type(tid, T, &visit, Visit.visit, true);
+        return op_set.g.visit_edges_of_type(op_set.node, tid, T, &visit, Visit.visit, true);
     }
 
     pub fn visit_expression_edges_of_type(
@@ -274,7 +274,7 @@ pub const EdgeOperand = struct {
             .cb = f,
         };
         // directed = false: operand is target, expression is source
-        return operand.visit_edges_of_type(tid, T, &visit, Visit.visit, false);
+        return operand.g.visit_edges_of_type(operand.node, tid, T, &visit, Visit.visit, false);
     }
 };
 
@@ -301,18 +301,9 @@ test "edge operand basic" {
     const expression_edge_a = EdgeOperand.get_expression_edge(b_operand_a);
     const expression_edge_b = EdgeOperand.get_expression_edge(b_operand_b);
     const expression_edge_c = EdgeOperand.get_expression_edge(b_operand_c);
-    try std.testing.expect(Node.is_same(
-        EdgeOperand.get_expression_node(expression_edge_a.?),
-        expression,
-    ));
-    try std.testing.expect(Node.is_same(
-        EdgeOperand.get_expression_node(expression_edge_b.?),
-        expression,
-    ));
-    try std.testing.expect(Node.is_same(
-        EdgeOperand.get_expression_node(expression_edge_c.?),
-        expression,
-    ));
+    try std.testing.expect(EdgeOperand.get_expression_node(expression_edge_a.?).is_same(expression));
+    try std.testing.expect(EdgeOperand.get_expression_node(expression_edge_b.?).is_same(expression));
+    try std.testing.expect(EdgeOperand.get_expression_node(expression_edge_c.?).is_same(expression));
     try std.testing.expect(std.mem.eql(u8, (try EdgeOperand.get_name(expression_edge_a.?.edge)).?, "lhs"));
     try std.testing.expect(std.mem.eql(u8, (try EdgeOperand.get_name(expression_edge_b.?.edge)).?, "rhs"));
     try std.testing.expect((try EdgeOperand.get_name(expression_edge_c.?.edge)) == null);
@@ -321,8 +312,8 @@ test "edge operand basic" {
     const rhs_lookup = EdgeOperand.get_operand_by_identifier(b_expr, "rhs");
     try std.testing.expect(lhs_lookup != null);
     try std.testing.expect(rhs_lookup != null);
-    try std.testing.expect(Node.is_same(lhs_lookup.?.node, operand_a));
-    try std.testing.expect(Node.is_same(rhs_lookup.?.node, operand_b));
+    try std.testing.expect(lhs_lookup.?.node.is_same(operand_a));
+    try std.testing.expect(rhs_lookup.?.node.is_same(operand_b));
 
     const CollectOperands = struct {
         edges: std.ArrayList(graph.BoundEdgeReference),
@@ -342,7 +333,7 @@ test "edge operand basic" {
     const visit_result = EdgeOperand.visit_operand_edges(b_operands, void, &collector, CollectOperands.visit);
     try std.testing.expectEqual(visit_result, visitor.VisitResult(void){ .EXHAUSTED = {} });
     try std.testing.expectEqual(collector.edges.items.len, 3);
-    try std.testing.expect(Node.is_same(EdgeOperand.get_operand_node(collector.edges.items[0].edge), operand_a));
-    try std.testing.expect(Node.is_same(EdgeOperand.get_operand_node(collector.edges.items[1].edge), operand_b));
-    try std.testing.expect(Node.is_same(EdgeOperand.get_operand_node(collector.edges.items[2].edge), operand_c));
+    try std.testing.expect(EdgeOperand.get_operand_node(collector.edges.items[0].edge).is_same(operand_a));
+    try std.testing.expect(EdgeOperand.get_operand_node(collector.edges.items[1].edge).is_same(operand_b));
+    try std.testing.expect(EdgeOperand.get_operand_node(collector.edges.items[2].edge).is_same(operand_c));
 }
