@@ -652,7 +652,7 @@ pub const GraphView = struct {
         comptime T: type,
         ctx: *anyopaque,
         f: fn (*anyopaque, *BFSPath) visitor.VisitResult(T),
-        edge_type_filter: ?EdgeReference.EdgeType,
+        edge_type_filter: ?[]EdgeReference.EdgeType,
     ) visitor.VisitResult(T) {
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         const allocator = arena.allocator();
@@ -735,9 +735,11 @@ pub const GraphView = struct {
                 .open_path_queue = &open_path_queue,
             };
 
-            if (edge_type_filter) |et| {
-                const edge_visitor_result = g.visit_edges_of_type(path.get_last_node().node, et, void, &edge_visitor, EdgeVisitor.visit_fn, null);
-                if (edge_visitor_result == .ERROR) return edge_visitor_result;
+            if (edge_type_filter) |ets| {
+                for (ets) |et| {
+                    const edge_visitor_result = g.visit_edges_of_type(path.get_last_node().node, et, void, &edge_visitor, EdgeVisitor.visit_fn, null);
+                    if (edge_visitor_result == .ERROR) return edge_visitor_result;
+                }
             } else {
                 const node_edges = g.nodes.getPtr(path.get_last_node().node);
                 if (node_edges) |edges_by_type| {
