@@ -209,7 +209,12 @@ export async function runAtoCommandInTerminal(
  * Sets up ato alias in a newly created terminal
  */
 async function setupAtoAliasInTerminal(terminal: vscode.Terminal): Promise<void> {
-    let alias = await getAtoAlias();
+    const settings = await getWorkspaceSettings(await getProjectRoot());
+    if (settings.setupAlias === false) {
+        return;
+    }
+
+    let alias = await getAtoAlias(settings);
     if (alias === null) {
         return;
     }
@@ -234,7 +239,7 @@ export async function initAtoBin(context: ExtensionContext): Promise<void> {
             onDidChangeAtoBinInfoEvent.fire({ init: e.init });
         }),
         onDidChangeConfiguration(async (e: ConfigurationChangeEvent) => {
-            if (e.affectsConfiguration(`atopile.ato`) || e.affectsConfiguration('atopile.from')) {
+            if (e.affectsConfiguration(`atopile.ato`) || e.affectsConfiguration('atopile.from') || e.affectsConfiguration('atopile.setupAlias')) {
                 onDidChangeAtoBinInfoEvent.fire({ init: false });
             }
         }),
