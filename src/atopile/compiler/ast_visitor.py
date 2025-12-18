@@ -51,17 +51,36 @@ STDLIB_ALLOWLIST: set[type[fabll.Node]] = (
         F.DifferentialPair,
         F.Resistor,
         F.ResistorVoltageDivider,
+        F.Crystal_Oscillator,
         F.LED,
         F.Inductor,
         F.Diode,
         F.Addressor,
         F.I2C,
         F.SPI,
+        F.UART_Base,
+        F.PDM,
         F.I2S,
+        F.BJT,
         F.JTAG,
+        F.Ethernet,
         F.UART,
         F.MultiCapacitor,
-        # FIXME: separate list for internal types
+        F.CAN_TTL,
+        F.Crystal,
+        F.FilterElectricalRC,
+        F.Fuse,
+        F.HDMI,
+        F.MOSFET,
+        F.MultiSPI,
+        F.Net,
+        F.RS232,
+        F.SPIFlash,
+        F.SWD,
+        F.USB2_0,
+        F.USB2_0_IF,
+        F.USB3,
+        F.XtalIF,
     }
 ) | (
     # Traits
@@ -81,6 +100,7 @@ STDLIB_ALLOWLIST: set[type[fabll.Node]] = (
         F.can_bridge_by_name,
         F.has_part_removed,
         F.has_single_electric_reference,
+        F.is_auto_generated,
     }
 )
 
