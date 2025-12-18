@@ -14,6 +14,7 @@ from faebryk.library import Collections, Literals
 from faebryk.libs.util import (
     crosswise,
     groupby,
+    indented_container,
     not_none,
     zip_dicts_by_key,
 )
@@ -3290,6 +3291,79 @@ def test_compact_repr():
         or_.as_parameter_operatable.force_get().as_expression.force_get().compact_repr()
     )
     assert or_repr == "A ∨! B"
+
+
+@pytest.mark.slow
+def test_compact_repr_memory_leak():
+    import ctypes
+    import gc
+    import os
+
+    import psutil
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    p1 = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    p2 = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    or_ = Or.c(
+        p1.can_be_operand.get(),
+        p2.can_be_operand.get(),
+        assert_=True,
+    )
+    expr = or_.as_parameter_operatable.force_get().as_expression.force_get()
+    param = p1.is_parameter.get()
+
+    ctx = F.Parameters.ReprContext()
+
+    # Warm-up to settle caches and one-time allocations.
+    for _ in range(100):
+        expr.compact_repr(context=ctx)
+        param.compact_repr(context=ctx)
+
+    gc.collect()
+
+    process = psutil.Process()
+
+    def run(n: int):
+        print(f"Running with {n} iterations")
+        mem_base = process.memory_info().rss
+
+        for _ in range(n):
+            expr.compact_repr(context=ctx)
+            param.compact_repr(context=ctx)
+
+        gc.collect()
+
+        if os.name == "posix":
+            libc = ctypes.CDLL(None)
+            trimmer = getattr(libc, "malloc_trim", None)
+            assert trimmer is not None
+            trimmer.argtypes = [ctypes.c_size_t]
+            trimmer.restype = ctypes.c_int
+            trimmer(0)
+
+        mem_end = process.memory_info().rss
+        mem_leaked = mem_end - mem_base
+        return mem_leaked
+
+    FACTOR = 10000
+
+    mem_leaked = {i: run(i * FACTOR) for i in range(1, 5)}
+    print(
+        "mem leaked mb: ",
+        indented_container({k: v / 1024 / 1024 for k, v in mem_leaked.items()}),
+    )
+
+    per_n_leak = {i: leaked / (i * FACTOR) for i, leaked in mem_leaked.items()}
+    per_n_leak_average = sum(per_n_leak.values()) / len(per_n_leak)
+    print(
+        "per n leak: ",
+        indented_container({k: round(v) for k, v in per_n_leak.items()}),
+    )
+    print(f"Per n leak average: {per_n_leak_average} bytes")
+
+    assert per_n_leak_average < 16, f"Memory leaked: {per_n_leak_average} bytes"
 
 
 @pytest.mark.parametrize(
