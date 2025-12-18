@@ -1668,7 +1668,7 @@ class TestSignalsAndPins:
         )
 
         comp_type = result.state.type_roots["MyComp"]
-        pin_node = _get_make_child(tg, comp_type, "pin_1")
+        pin_node = _get_make_child(tg, comp_type, "1")
         assert pin_node is not None
 
     def test_pin_declaration_with_name(self):
@@ -1681,7 +1681,7 @@ class TestSignalsAndPins:
         )
 
         comp_type = result.state.type_roots["MyComp"]
-        pin_node = _get_make_child(tg, comp_type, "pin_vcc")
+        pin_node = _get_make_child(tg, comp_type, "vcc")
         assert pin_node is not None
 
     def test_pin_declaration_with_string(self):
@@ -1694,7 +1694,7 @@ class TestSignalsAndPins:
         )
 
         comp_type = result.state.type_roots["MyComp"]
-        pin_node = _get_make_child(tg, comp_type, "pin_GND")
+        pin_node = _get_make_child(tg, comp_type, "GND")
         assert pin_node is not None
 
     def test_signal_connect_to_field(self):
@@ -1758,14 +1758,14 @@ class TestSignalsAndPins:
         comp_type = result.state.type_roots["MyComp"]
 
         # Verify pin was created
-        pin_node = _get_make_child(tg, comp_type, "pin_1")
+        pin_node = _get_make_child(tg, comp_type, "1")
         assert pin_node is not None
 
         # Verify connection was made
         assert _check_make_links(
             tg=tg,
             type_node=comp_type,
-            expected=[(["e"], ["pin_1"])],
+            expected=[(["e"], ["1"])],
         )
 
     def test_signal_to_pin_connect(self):
@@ -1781,7 +1781,7 @@ class TestSignalsAndPins:
 
         # Verify both signal and pin were created
         sig_node = _get_make_child(tg, comp_type, "my_sig")
-        pin_node = _get_make_child(tg, comp_type, "pin_1")
+        pin_node = _get_make_child(tg, comp_type, "1")
         assert sig_node is not None
         assert pin_node is not None
 
@@ -1789,7 +1789,7 @@ class TestSignalsAndPins:
         assert _check_make_links(
             tg=tg,
             type_node=comp_type,
-            expected=[(["my_sig"], ["pin_1"])],
+            expected=[(["my_sig"], ["1"])],
         )
 
     def test_multiple_pins_different_types(self):
@@ -1806,9 +1806,9 @@ class TestSignalsAndPins:
         comp_type = result.state.type_roots["MyComp"]
 
         # Verify all pins were created
-        pin_1 = _get_make_child(tg, comp_type, "pin_1")
-        pin_vcc = _get_make_child(tg, comp_type, "pin_vcc")
-        pin_gnd = _get_make_child(tg, comp_type, "pin_GND")
+        pin_1 = _get_make_child(tg, comp_type, "1")
+        pin_vcc = _get_make_child(tg, comp_type, "vcc")
+        pin_gnd = _get_make_child(tg, comp_type, "GND")
 
         assert pin_1 is not None
         assert pin_vcc is not None
@@ -1855,8 +1855,8 @@ class TestSignalsAndPins:
         comp_type = result.state.type_roots["MyComp"]
 
         # Verify both pins were created
-        pin_1 = _get_make_child(tg, comp_type, "pin_1")
-        pin_2 = _get_make_child(tg, comp_type, "pin_2")
+        pin_1 = _get_make_child(tg, comp_type, "1")
+        pin_2 = _get_make_child(tg, comp_type, "2")
         assert pin_1 is not None
         assert pin_2 is not None
 
@@ -1865,8 +1865,8 @@ class TestSignalsAndPins:
         assert len(make_links) == 1
 
         _, lhs_path, rhs_path = make_links[0]
-        assert lhs_path == ["pin_1", "can_bridge", "out_"]
-        assert rhs_path == ["pin_2", "can_bridge", "in_"]
+        assert lhs_path == ["1", "can_bridge", "out_"]
+        assert rhs_path == ["2", "can_bridge", "in_"]
 
     def test_chained_directed_connect_with_inline_signal(self):
         """Chained directed connect with inline signal in the middle works.
