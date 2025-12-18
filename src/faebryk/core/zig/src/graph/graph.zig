@@ -610,14 +610,10 @@ pub const GraphView = struct {
     }
 
     pub fn insert_node(g: *@This(), node: NodeReference) BoundNodeReference {
-        if (g.contains_node(node)) {
-            return g.bind(node);
+        const gop = g.nodes.getOrPut(node) catch @panic("OOM");
+        if (!gop.found_existing) {
+            gop.value_ptr.* = EdgeTypeMap.T(std.ArrayList(EdgeReference)).init(g.allocator);
         }
-
-        g.nodes.put(node, EdgeTypeMap.T(std.ArrayList(EdgeReference)).init(g.allocator)) catch {
-            @panic("OOM");
-        };
-
         return g.bind(node);
     }
 
@@ -645,7 +641,9 @@ pub const GraphView = struct {
     }
 
     pub fn insert_edge(g: *@This(), edge: EdgeReference) BoundEdgeReference {
-        if (g.edges.contains(edge)) {
+        // Use getOrPut to check and insert in one operation
+        const edge_gop = g.edges.getOrPut(edge) catch @panic("OOM");
+        if (edge_gop.found_existing) {
             return BoundEdgeReference{
                 .edge = edge,
                 .g = g,
@@ -654,25 +652,25 @@ pub const GraphView = struct {
 
         const source = edge.get_source_node();
         const target = edge.get_target_node();
-        if (!g.contains_node(source) or !g.contains_node(target)) {
-            @panic("Edge source or target not found");
-        }
 
-        g.edges.put(edge, {}) catch @panic("OOM");
+        // Get node neighbors (must exist)
+        const from_neighbors = g.nodes.getPtr(source) orelse @panic("Edge source not found");
+        const to_neighbors = g.nodes.getPtr(target) orelse @panic("Edge target not found");
 
         const edge_type = edge.get_attribute_edge_type();
-        const from_neighbors = g.nodes.getPtr(source).?;
-        const to_neighbors = g.nodes.getPtr(target).?;
 
-        if (!from_neighbors.contains(edge_type)) {
-            from_neighbors.put(edge_type, std.ArrayList(EdgeReference).init(g.allocator)) catch @panic("OOM");
+        // Use getOrPut for edge type maps
+        const from_gop = from_neighbors.getOrPut(edge_type) catch @panic("OOM");
+        if (!from_gop.found_existing) {
+            from_gop.value_ptr.* = std.ArrayList(EdgeReference).init(g.allocator);
         }
-        if (!to_neighbors.contains(edge_type)) {
-            to_neighbors.put(edge_type, std.ArrayList(EdgeReference).init(g.allocator)) catch @panic("OOM");
-        }
+        from_gop.value_ptr.append(edge) catch @panic("OOM");
 
-        from_neighbors.getPtr(edge_type).?.append(edge) catch @panic("OOM");
-        to_neighbors.getPtr(edge_type).?.append(edge) catch @panic("OOM");
+        const to_gop = to_neighbors.getOrPut(edge_type) catch @panic("OOM");
+        if (!to_gop.found_existing) {
+            to_gop.value_ptr.* = std.ArrayList(EdgeReference).init(g.allocator);
+        }
+        to_gop.value_ptr.append(edge) catch @panic("OOM");
 
         return BoundEdgeReference{
             .edge = edge,
@@ -718,11 +716,22 @@ pub const GraphView = struct {
     pub fn get_subgraph_from_nodes(g: *@This(), nodes: std.ArrayList(NodeReference)) GraphView {
         var new_g = GraphView.init(g.base_allocator);
 
+        // Pre-allocate capacity for nodes
+        const node_count: u32 = @intCast(nodes.items.len);
+        new_g.nodes.ensureTotalCapacity(node_count) catch @panic("OOM");
+
+        // Insert nodes and build membership set in one pass
         for (nodes.items) |node| {
             _ = new_g.insert_node(node);
         }
+
+        // Estimate edge count and pre-allocate
+        new_g.edges.ensureTotalCapacity(node_count * 4) catch @panic("OOM");
+
+        // Insert edges where both endpoints are in the subgraph
         for (nodes.items) |node| {
-            var edge_by_type_it = g.nodes.getPtr(node).?.valueIterator();
+            const edge_map = g.nodes.getPtr(node) orelse continue;
+            var edge_by_type_it = edge_map.valueIterator();
             while (edge_by_type_it.next()) |edges_by_type_ptr| {
                 for (edges_by_type_ptr.items) |edge| {
                     if (!new_g.contains_node(edge.get_source_node()) or !new_g.contains_node(edge.get_target_node())) {

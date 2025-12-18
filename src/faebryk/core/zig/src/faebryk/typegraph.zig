@@ -1565,8 +1565,8 @@ pub const TypeGraph = struct {
             dont_visit: *graph.NodeRefMap.T(void),
 
             fn try_add(ctx: *@This(), node: NodeReference) bool {
-                if (!ctx.visited_set.contains(node)) {
-                    ctx.visited_set.put(node, {}) catch @panic("OOM");
+                const gop = ctx.visited_set.getOrPut(node) catch @panic("OOM");
+                if (!gop.found_existing) {
                     ctx.nodes.append(node) catch @panic("OOM");
                     return true;
                 }
