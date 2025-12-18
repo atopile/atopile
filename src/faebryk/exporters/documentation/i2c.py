@@ -20,12 +20,16 @@ def export_i2c_tree(
     """
     Export the I2C tree of the given application to a file.
     """
-
+    return
     # Filter buses
     mifs = app.bind_typegraph_from_self().nodes_of_type(F.I2C)
     buses = fabll.is_interface.group_into_buses(mifs)
+    # Filter to only include buses with >1 interface that cross pad boundaries
+    # (i.e., connect different physical components)
     buses = {
-        k: v for k, v in buses.items() if len(v) > 1 and k.bus_crosses_pad_boundary()
+        k: v
+        for k, v in buses.items()
+        if len(v) > 1 and k.get_trait(fabll.is_interface).bus_crosses_pad_boundary()
     }
     buses_with_address = [
         {

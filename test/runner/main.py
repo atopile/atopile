@@ -873,11 +873,23 @@ class TestAggregator:
             if t.output:
                 log_content = ""
                 if "stdout" in t.output and t.output["stdout"]:
-                    log_content += f"<h3>STDOUT</h3><pre>{t.output['stdout']}</pre>"
+                    stdout = t.output["stdout"]
+                    log_content += (
+                        f'<div class="log-section"><h3>STDOUT</h3>'
+                        f"<pre>{stdout}</pre></div>"
+                    )
                 if "stderr" in t.output and t.output["stderr"]:
-                    log_content += f"<h3>STDERR</h3><pre>{t.output['stderr']}</pre>"
+                    stderr = t.output["stderr"]
+                    log_content += (
+                        f'<div class="log-section"><h3>STDERR</h3>'
+                        f"<pre>{stderr}</pre></div>"
+                    )
                 if "error" in t.output and t.output["error"]:
-                    log_content += f"<h3>ERROR</h3><pre>{t.output['error']}</pre>"
+                    error = t.output["error"]
+                    log_content += (
+                        f'<div class="log-section"><h3>ERROR</h3>'
+                        f"<pre>{error}</pre></div>"
+                    )
 
                 if log_content:
                     safe_nodeid = (

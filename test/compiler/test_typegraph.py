@@ -1161,6 +1161,326 @@ def _filter_directed_connect_links(make_links):
     ]
 
 
+class TestCanBridgeByNameShim:
+    """Tests for can_bridge_by_name trait shim.
+
+    The can_bridge_by_name trait is a backwards-compatibility shim that translates
+    to a can_bridge trait with the correct pointer paths. This allows ato code like:
+        trait can_bridge_by_name<input_name="data_in", output_name="data_out">
+    to create a can_bridge trait pointing to the named children.
+    """
+
+    def test_can_bridge_by_name_creates_can_bridge_trait(self):
+        """Test that can_bridge_by_name creates a can_bridge trait."""
+        _, tg, _, result = build_type(
+            """
+            #pragma experiment("TRAITS")
+            #pragma experiment("BRIDGE_CONNECT")
+
+            import ElectricLogic
+            import can_bridge_by_name
+
+            module TestBridge:
+                data_in = new ElectricLogic
+                data_out = new ElectricLogic
+
+                trait can_bridge_by_name<input_name="data_in", output_name="data_out">
+            """,
+            link=True,
+        )
+
+        test_bridge = result.state.type_roots["TestBridge"]
+
+        # The can_bridge trait should have been created (named "can_bridge", not
+        # "can_bridge_by_name")
+        make_children = list(tg.collect_make_children(type_node=test_bridge))
+        trait_names = [name for name, _ in make_children if name is not None]
+
+        # Should have _trait_self_can_bridge (the shimmed trait)
+        assert any("can_bridge" in name for name in trait_names), (
+            f"Expected can_bridge trait, got: {trait_names}"
+        )
+
+    def test_can_bridge_by_name_with_default_names(self):
+        """Test can_bridge_by_name with default input/output names."""
+        _, tg, _, result = build_type(
+            """
+            #pragma experiment("TRAITS")
+            #pragma experiment("BRIDGE_CONNECT")
+
+            import ElectricLogic
+            import can_bridge_by_name
+
+            module TestBridge:
+                input = new ElectricLogic
+                output = new ElectricLogic
+
+                trait can_bridge_by_name
+            """,
+            link=True,
+        )
+
+        test_bridge = result.state.type_roots["TestBridge"]
+        make_children = list(tg.collect_make_children(type_node=test_bridge))
+        trait_names = [name for name, _ in make_children if name is not None]
+
+        # Should have can_bridge trait with default paths to "input" and "output"
+        assert any("can_bridge" in name for name in trait_names), (
+            f"Expected can_bridge trait, got: {trait_names}"
+        )
+
+    def test_can_bridge_by_name_enables_directed_connect(self):
+        """Test that can_bridge_by_name enables ~> syntax for custom modules."""
+        _, tg, _, result = build_type(
+            """
+            #pragma experiment("TRAITS")
+            #pragma experiment("BRIDGE_CONNECT")
+
+            import ElectricLogic
+            import can_bridge_by_name
+
+            module BridgeableModule:
+                data_in = new ElectricLogic
+                data_out = new ElectricLogic
+                trait can_bridge_by_name<input_name="data_in", output_name="data_out">
+
+            module App:
+                a = new ElectricLogic
+                b = new BridgeableModule
+                c = new ElectricLogic
+
+                a ~> b ~> c
+            """,
+            link=True,
+        )
+
+        app_type = result.state.type_roots["App"]
+
+        # Verify directed connections were made through can_bridge
+        make_links = _filter_directed_connect_links(_collect_make_links(tg, app_type))
+        assert len(make_links) == 2, f"Expected 2 directed links, got {len(make_links)}"
+
+        link_paths = {(tuple(lhs), tuple(rhs)) for _, lhs, rhs in make_links}
+
+        # a.can_bridge.out_ -> b.can_bridge.in_ (which points to b.data_in)
+        # b.can_bridge.out_ (which points to b.data_out) -> c.can_bridge.in_
+        expected = {
+            (("a", "can_bridge", "out_"), ("b", "can_bridge", "in_")),
+            (("b", "can_bridge", "out_"), ("c", "can_bridge", "in_")),
+        }
+        assert link_paths == expected, f"Expected {expected}, got {link_paths}"
+
+
+class TestHasDatasheetDefinedShim:
+    """Tests for has_datasheet_defined trait shim.
+
+    The has_datasheet_defined trait is a backwards-compatibility shim that translates
+    to a has_datasheet trait. This allows ato code like:
+        trait has_datasheet_defined<datasheet="https://example.com/ds.pdf">
+    to create a has_datasheet trait with the specified datasheet URL.
+    """
+
+    def test_has_datasheet_defined_creates_has_datasheet_trait(self):
+        """Test that has_datasheet_defined creates a has_datasheet trait."""
+        _, tg, _, result = build_type(
+            """
+            #pragma experiment("TRAITS")
+
+            import has_datasheet_defined
+
+            module TestPart:
+                trait has_datasheet_defined<datasheet="https://example.com/ds.pdf">
+            """,
+            link=True,
+        )
+
+        test_part = result.state.type_roots["TestPart"]
+
+        # The has_datasheet trait should have been created (named "has_datasheet",
+        # not "has_datasheet_defined")
+        make_children = list(tg.collect_make_children(type_node=test_part))
+        trait_names = [name for name, _ in make_children if name is not None]
+
+        # Should have _trait_self_has_datasheet (the shimmed trait)
+        assert any("has_datasheet" in name for name in trait_names), (
+            f"Expected has_datasheet trait, got: {trait_names}"
+        )
+
+    def test_has_datasheet_defined_requires_datasheet_arg(self):
+        """Test that has_datasheet_defined requires a datasheet argument."""
+        from atopile.compiler.ast_visitor import DslException
+
+        with pytest.raises(DslException, match="requires a 'datasheet'"):
+            build_type(
+                """
+                #pragma experiment("TRAITS")
+
+                import has_datasheet_defined
+
+                module TestPart:
+                    trait has_datasheet_defined
+                """,
+                link=True,
+            )
+
+
+class TestHasSingleElectricReferenceSharedShim:
+    """Tests for has_single_electric_reference_shared trait shim.
+
+    The has_single_electric_reference_shared trait is a backwards-compatibility shim
+    that translates to has_single_electric_reference. It also translates the
+    `gnd_only` parameter to `ground_only`.
+    """
+
+    def test_has_single_electric_reference_shared_creates_trait(self):
+        """Test that has_single_electric_reference_shared creates the correct trait."""
+        _, tg, _, result = build_type(
+            """
+            #pragma experiment("TRAITS")
+
+            import has_single_electric_reference_shared
+
+            module TestModule:
+                trait has_single_electric_reference_shared<gnd_only=True>
+            """,
+            link=True,
+        )
+
+        test_module = result.state.type_roots["TestModule"]
+
+        # The has_single_electric_reference trait should have been created
+        make_children = list(tg.collect_make_children(type_node=test_module))
+        trait_names = [name for name, _ in make_children if name is not None]
+
+        # Should have has_single_electric_reference (the shimmed trait)
+        assert any("has_single_electric_reference" in name for name in trait_names), (
+            f"Expected has_single_electric_reference trait, got: {trait_names}"
+        )
+
+    def test_has_single_electric_reference_shared_default_gnd_only(self):
+        """Test has_single_electric_reference_shared without gnd_only argument."""
+        _, tg, _, result = build_type(
+            """
+            #pragma experiment("TRAITS")
+
+            import has_single_electric_reference_shared
+
+            module TestModule:
+                trait has_single_electric_reference_shared
+            """,
+            link=True,
+        )
+
+        test_module = result.state.type_roots["TestModule"]
+        make_children = list(tg.collect_make_children(type_node=test_module))
+        trait_names = [name for name, _ in make_children if name is not None]
+
+        # Should have has_single_electric_reference
+        assert any("has_single_electric_reference" in name for name in trait_names), (
+            f"Expected has_single_electric_reference trait, got: {trait_names}"
+        )
+
+
+class TestConnectOverrides:
+    """Tests for ConnectOverrides path translation shim.
+
+    The ConnectOverrides class translates legacy path names in connect statements:
+    - `vcc` -> `hv` (high voltage rail on ElectricPower)
+    - `gnd` -> `lv` (low voltage rail on ElectricPower)
+    """
+
+    def test_vcc_translated_to_hv(self):
+        """Test that .vcc is translated to .hv in connect statements."""
+        _, tg, _, result = build_type(
+            """
+            import ElectricPower
+            import Electrical
+
+            module App:
+                power = new ElectricPower
+                e = new Electrical
+
+                # Using legacy vcc naming - should be translated to hv
+                e ~ power.vcc
+            """,
+            link=True,
+        )
+
+        app_type = result.state.type_roots["App"]
+        make_links = _collect_make_links(tg, app_type)
+
+        # Filter to the actual connect: e ~ power.hv (look for "power" in rhs)
+        connect_links = [
+            (lhs, rhs) for _, lhs, rhs in make_links if rhs and "power" in rhs
+        ]
+        assert len(connect_links) == 1
+
+        lhs_path, rhs_path = connect_links[0]
+        # The path should have "hv" not "vcc"
+        assert "hv" in rhs_path, f"Expected 'hv' in {rhs_path}"
+        assert "vcc" not in rhs_path, "vcc should have been translated to hv"
+
+    def test_gnd_translated_to_lv(self):
+        """Test that .gnd is translated to .lv in connect statements."""
+        _, tg, _, result = build_type(
+            """
+            import ElectricPower
+            import Electrical
+
+            module App:
+                power = new ElectricPower
+                e = new Electrical
+
+                # Using legacy gnd naming - should be translated to lv
+                e ~ power.gnd
+            """,
+            link=True,
+        )
+
+        app_type = result.state.type_roots["App"]
+        make_links = _collect_make_links(tg, app_type)
+
+        # Filter to the actual connect: e ~ power.lv (look for "power" in rhs)
+        connect_links = [
+            (lhs, rhs) for _, lhs, rhs in make_links if rhs and "power" in rhs
+        ]
+        assert len(connect_links) == 1
+
+        lhs_path, rhs_path = connect_links[0]
+        # The path should have "lv" not "gnd"
+        assert "lv" in rhs_path, f"Expected 'lv' in {rhs_path}"
+        assert "gnd" not in rhs_path, "gnd should have been translated to lv"
+
+    def test_non_legacy_paths_unchanged(self):
+        """Test that paths without legacy names are not modified."""
+        _, tg, _, result = build_type(
+            """
+            import ElectricPower
+            import Electrical
+
+            module App:
+                power = new ElectricPower
+                e = new Electrical
+
+                # Using current naming - should be unchanged
+                e ~ power.hv
+            """,
+            link=True,
+        )
+
+        app_type = result.state.type_roots["App"]
+        make_links = _collect_make_links(tg, app_type)
+
+        # Filter to the actual connect: e ~ power.hv (look for "power" in rhs)
+        connect_links = [
+            (lhs, rhs) for _, lhs, rhs in make_links if rhs and "power" in rhs
+        ]
+        assert len(connect_links) == 1
+
+        lhs_path, rhs_path = connect_links[0]
+        assert "hv" in rhs_path, f"Expected 'hv' in {rhs_path}"
+
+
 class TestDirectedConnectStmt:
     """Tests for visit_DirectedConnectStmt in the AST visitor.
 

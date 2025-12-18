@@ -23,7 +23,8 @@ from atopile.errors import (
 )
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom
-from faebryk.exporters.documentation.i2c import export_i2c_tree
+
+# from faebryk.exporters.documentation.i2c import export_i2c_tree
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
 from faebryk.exporters.pcb.kicad.artifacts import (
     KicadCliExportError,
@@ -681,18 +682,18 @@ def generate_variable_report(
     )
 
 
-@muster.register(
-    "i2c-tree",
-    dependencies=[build_design],
-    produces_artifact=True,
-)
-def generate_i2c_tree(
-    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
-) -> None:
-    """Generate a Mermaid diagram of the I2C bus tree."""
-    export_i2c_tree(
-        app, solver, config.build.paths.output_base.with_suffix(".i2c_tree.md")
-    )
+# @muster.register(
+#     "i2c-tree",
+#     dependencies=[build_design],
+#     produces_artifact=True,
+# )
+# def generate_i2c_tree(
+#     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+# ) -> None:
+#     """Generate a Mermaid diagram of the I2C bus tree."""
+#     export_i2c_tree(
+#         app, solver, config.build.paths.output_base.with_suffix(".i2c_tree.md")
+#     )
 
 
 @muster.register(
@@ -702,7 +703,7 @@ def generate_i2c_tree(
         generate_bom,
         generate_manifest,
         generate_variable_report,
-        generate_i2c_tree,
+        # generate_i2c_tree,
     ],
     virtual=True,
 )

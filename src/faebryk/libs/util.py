@@ -1725,9 +1725,31 @@ def run_live(
     reads = [process.stdout, process.stderr]
     stdout_lines = []
     stderr_lines = []
-    while reads and process.poll() is None:
-        # Wait for output on either stream
-        readable, _, _ = select.select(reads, [], [])
+
+    # Keep reading until both streams hit EOF (not just until process exits)
+    # This ensures we capture all buffered output even after process termination
+    while reads:
+        # Use a timeout so we can check for EOF after process exits
+        readable, _, _ = select.select(reads, [], [], 0.1)
+
+        if not readable:
+            # No data available - if process has exited, try one more read
+            # to drain any remaining buffered data
+            if process.poll() is not None:
+                for stream in list(reads):
+                    remaining = stream.read()
+                    if remaining:
+                        for line in remaining.splitlines(keepends=True):
+                            if stream == process.stdout:
+                                stdout_lines.append(line)
+                                if stdout:
+                                    stdout(line.rstrip())
+                            elif stream == process.stderr:
+                                stderr_lines.append(line)
+                                if stderr:
+                                    stderr(line.rstrip())
+                    reads.remove(stream)
+            continue
 
         for stream in readable:
             line = stream.readline()
