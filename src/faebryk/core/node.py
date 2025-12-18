@@ -701,6 +701,16 @@ class Path:
         ]
         return f"Path({', '.join(node_names)})"
 
+    def pretty_repr(self) -> str:
+        return " -> ".join(
+            re.sub(
+                r"[^|]*?\.ato::",
+                "",
+                node.get_full_name(types=True, include_uuid=False),
+            )
+            for node in self._get_nodes_in_order()
+        )
+
 
 # --------------------------------------------------------------------------------------
 

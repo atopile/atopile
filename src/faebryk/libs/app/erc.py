@@ -26,7 +26,7 @@ class ERCFaultShortedInterfaces(ERCFaultShort):
     """Short circuit between two Interfaces."""
 
     def __init__(self, msg: str, path: fabll.Path, *args: object) -> None:
-        super().__init__(msg, path, *args)
+        super().__init__(msg, path, *args, markdown=False)
         self.path = path
 
     @classmethod
@@ -35,7 +35,20 @@ class ERCFaultShortedInterfaces(ERCFaultShort):
         Given two shorted Interfaces, return an exception that describes the
         narrowest path for the fault.
         """
-        return cls(f"`{path!r}`", path)
+        import re
+
+        def _pretty_name(node: fabll.Node) -> str:
+            return re.sub(
+                r"[^|]*?\.ato::",
+                "",
+                node.get_full_name(types=True, include_uuid=False),
+            )
+
+        start = _pretty_name(path.get_start_node())
+        end = _pretty_name(path.get_end_node())
+        return cls(
+            f"Shorted:\t{start} -> {end}\nFull path:\t{path.pretty_repr()}", path
+        )
 
 
 class ERCFaultElectricPowerUndefinedVoltage(ERCFault):
