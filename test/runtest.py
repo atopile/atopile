@@ -25,6 +25,29 @@ class DiscoveryMode(str, Enum):
     pytest = "pytest"
 
 
+def create_method_wrapper(cls, method_name):
+    method = getattr(cls, method_name)
+
+    def wrapper(**kwargs):
+        instance = cls()
+        if hasattr(instance, "setup_method"):
+            instance.setup_method()
+        try:
+            getattr(instance, method_name)(**kwargs)
+        finally:
+            if hasattr(instance, "teardown_method"):
+                instance.teardown_method()
+
+    wrapper.__name__ = method_name
+    wrapper.__qualname__ = f"{cls.__name__}.{method_name}"
+    if hasattr(method, "pytestmark"):
+        wrapper.pytestmark = method.pytestmark
+    # Also copy dict for other attributes if needed
+    wrapper.__dict__.update(method.__dict__)
+
+    return wrapper
+
+
 def discover_tests(
     filepaths: list[Path], test_pattern: str
 ) -> list[tuple[Path, Callable]]:
@@ -53,9 +76,33 @@ def discover_tests(
         for v in vars(module).values():
             if not hasattr(v, "__name__"):
                 continue
-            if not re.match(test_pattern, v.__name__):
-                continue
-            matches.append((fp, v))
+
+            # Check if it's a class
+            if isinstance(v, type):
+                class_matches = re.search(test_pattern, v.__name__)
+
+                # Iterate over methods
+                for attr_name in dir(v):
+                    if not attr_name.startswith("test_"):
+                        continue
+
+                    attr = getattr(v, attr_name)
+                    if not callable(attr):
+                        continue
+
+                    # Check if method matches
+                    method_matches = re.search(test_pattern, attr_name)
+
+                    # Check if full name matches (Class::method)
+                    full_name = f"{v.__name__}::{attr_name}"
+                    full_name_matches = re.search(test_pattern, full_name)
+
+                    if class_matches or method_matches or full_name_matches:
+                        matches.append((fp, create_method_wrapper(v, attr_name)))
+
+            elif callable(v):
+                if re.search(test_pattern, v.__name__):
+                    matches.append((fp, v))
     return matches
 
 
