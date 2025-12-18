@@ -632,7 +632,7 @@ class Path:
         return self._bfs_path.get_end_node()
 
     @property
-    def edges(self) -> list[graph.BoundEdge]:
+    def edges(self) -> list[graph.Edge]:
         return self._bfs_path.get_edges()
 
     def get_start_node(self) -> "Node[Any]":
@@ -644,10 +644,9 @@ class Path:
     def _get_nodes_in_order(self) -> list["Node[Any]"]:
         nodes = [self.get_start_node()]
         current_bound = nodes[0].instance
+        g = current_bound.g()
 
-        for bound_edge in self.edges:
-            edge = bound_edge.edge()
-            graph_view = bound_edge.g()
+        for edge in self.edges:
             current_node = current_bound.node()
 
             if current_node.is_same(other=edge.source()):
@@ -657,7 +656,7 @@ class Path:
             else:
                 break
 
-            current_bound = graph_view.bind(node=next_node)
+            current_bound = g.bind(node=next_node)
             nodes.append(Node[Any].bind_instance(instance=current_bound))
 
         end_node = self.get_end_node()
