@@ -36,8 +36,8 @@ const HierarchyElement = struct {
         const opposite_directions = (self.traverse_direction == .up and other.traverse_direction == .down) or
             (self.traverse_direction == .down and other.traverse_direction == .up);
 
-        const parent_type_match = Node.is_same(self.parent_type_node, other.parent_type_node);
-        const child_type_match = Node.is_same(self.child_type_node, other.child_type_node);
+        const parent_type_match = self.parent_type_node.is_same(other.parent_type_node);
+        const child_type_match = self.child_type_node.is_same(other.child_type_node);
         const child_name_match = switch (self.traverse_direction) {
             .horizontal => true,
             .up, .down => std.mem.eql(u8, self.edge.get_attribute_name() orelse "", other.edge.get_attribute_name() orelse ""),
@@ -88,6 +88,7 @@ pub const PathFinder = struct {
             void,
             self,
             Self.visit_fn,
+            null,
         );
 
         switch (result) {
@@ -196,7 +197,7 @@ pub const PathFinder = struct {
         const start_node_type = EdgeType.get_type_node(start_type_edge.edge);
         const end_node_type = EdgeType.get_type_node(end_type_edge.edge);
 
-        if (!Node.is_same(start_node_type, end_node_type)) {
+        if (!start_node_type.is_same(end_node_type)) {
             path.invalid_path = true;
         }
 
@@ -217,7 +218,7 @@ pub const PathFinder = struct {
             }
         }
 
-        const edge_1_and_edge_2_share_parent = graph.Node.is_same(EdgeComposition.get_parent_node(last_edges[0]), EdgeComposition.get_parent_node(last_edges[1]));
+        const edge_1_and_edge_2_share_parent = EdgeComposition.get_parent_node(last_edges[0]).is_same(EdgeComposition.get_parent_node(last_edges[1]));
         if (edge_1_and_edge_2_share_parent) {
             path.invalid_path = true;
             path.stop_new_path_discovery = true;
@@ -252,10 +253,10 @@ pub const PathFinder = struct {
             if (EdgeComposition.is_instance(edge)) {
                 // determine traversal direction
                 var hierarchy_direction: HierarchyTraverseDirection = undefined;
-                if (Node.is_same(EdgeComposition.get_child_node(edge), start_node)) {
+                if (EdgeComposition.get_child_node(edge).is_same(start_node)) {
                     hierarchy_direction = .up;
                     depth += 1;
-                } else if (Node.is_same(EdgeComposition.get_parent_node(edge), start_node)) {
+                } else if (EdgeComposition.get_parent_node(edge).is_same(start_node)) {
                     hierarchy_direction = .down;
                     depth -= 1;
                 }
@@ -310,13 +311,13 @@ test "visit_paths_bfs" {
     const bn7 = g.create_and_insert_node();
     const tid1 = Edge.hash_edge_type(1759242069);
     const tid2 = Edge.hash_edge_type(1759242068);
-    const e1 = Edge.init(bn1.node, bn2.node, tid1);
-    const e2 = Edge.init(bn1.node, bn3.node, tid1);
-    const e3 = Edge.init(bn2.node, bn4.node, tid2);
-    const e4 = Edge.init(bn2.node, bn5.node, tid1);
-    const e5 = Edge.init(bn2.node, bn5.node, tid1);
-    const e6 = Edge.init(bn5.node, bn6.node, tid1);
-    const e7 = Edge.init(bn4.node, bn7.node, tid1);
+    const e1 = EdgeReference.init(bn1.node, bn2.node, tid1);
+    const e2 = EdgeReference.init(bn1.node, bn3.node, tid1);
+    const e3 = EdgeReference.init(bn2.node, bn4.node, tid2);
+    const e4 = EdgeReference.init(bn2.node, bn5.node, tid1);
+    const e5 = EdgeReference.init(bn2.node, bn5.node, tid1);
+    const e6 = EdgeReference.init(bn5.node, bn6.node, tid1);
+    const e7 = EdgeReference.init(bn4.node, bn7.node, tid1);
     defer g.deinit();
 
     _ = g.insert_edge(e1);
@@ -343,9 +344,9 @@ test "filter_hierarchy_stack" {
     const bn2 = g.create_and_insert_node();
     const bn3 = g.create_and_insert_node();
     const bn4 = g.create_and_insert_node();
-    const be1 = g.insert_edge(Edge.init(bn2.node, bn1.node, EdgeComposition.tid));
-    const be2 = g.insert_edge(Edge.init(bn3.node, bn4.node, EdgeComposition.tid));
-    const be3 = g.insert_edge(Edge.init(bn2.node, bn3.node, EdgeInterfaceConnection.tid));
+    const be1 = g.insert_edge(EdgeReference.init(bn2.node, bn1.node, EdgeComposition.tid));
+    const be2 = g.insert_edge(EdgeReference.init(bn3.node, bn4.node, EdgeComposition.tid));
+    const be3 = g.insert_edge(EdgeReference.init(bn2.node, bn3.node, EdgeInterfaceConnection.tid));
 
     var bfs_path = try BFSPath.init(bn1);
 
