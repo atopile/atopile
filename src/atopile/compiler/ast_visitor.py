@@ -105,7 +105,7 @@ STDLIB_ALLOWLIST: set[type[fabll.Node]] = (
 )
 
 TRAIT_ID_PREFIX = "_trait_"
-PIN_ID_PREFIX = "pin_"
+PIN_ID_PREFIX = ""
 
 # Aliases for legacy trait names that map to the actual trait types
 # This allows old ato code using deprecated names to still work
