@@ -229,6 +229,11 @@ def prepare_build(
 def post_design_checks(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
+    if True:
+        from faebryk.core.graph_render import GraphRenderer
+
+        print(GraphRenderer.render_interfaces(app.instance))
+
     check_design(
         app,
         stage=F.implements_design_check.CheckStage.POST_DESIGN,

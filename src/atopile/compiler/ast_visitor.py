@@ -1254,10 +1254,8 @@ class ASTVisitor:
             if (key := part.get_key()) is not None:
                 segments.append(FieldPath.Segment(identifier=str(key), is_index=True))
 
-        if node.get_pin() is not None:
-            raise NotImplementedError(
-                "Field references with pin suffixes are not supported yet"
-            )
+        if (pin := node.get_pin()) is not None:
+            segments.append(FieldPath.Segment(identifier=f"{PIN_ID_PREFIX}{pin}"))
 
         if not segments:
             raise DslException("Empty field reference encountered")

@@ -441,9 +441,13 @@ class ANTLRVisitor(AtoParserVisitor):
             self.visitField_reference_part(part_ctx)
             for part_ctx in ctx.field_reference_part()
         ]
-        return self._new(AST.FieldRef).setup(
+        field_ref = self._new(AST.FieldRef).setup(
             source_info=self._extract_source_info(ctx), parts=parts
         )
+        if (pin_end := ctx.pin_reference_end()) is not None:
+            pin_number = pin_end.number_hint_natural().getText()
+            field_ref.pin.get().setup_from_values(pin_number)
+        return field_ref
 
     def visitAssign_stmt(self, ctx: AtoParser.Assign_stmtContext) -> AST.Assignment:
         field_ref_ctx = ctx.field_reference_or_declaration().field_reference()

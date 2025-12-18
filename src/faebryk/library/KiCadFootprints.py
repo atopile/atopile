@@ -298,7 +298,9 @@ class has_associated_kicad_library_footprint(fabll.Node):
 
     @staticmethod
     def _create_kicad_identifier(
-        kicad_footprint_file: "kicad.footprint.FootprintFile", library_name: str | None
+        kicad_footprint_file: "kicad.footprint.FootprintFile",
+        library_name: str | None,
+        kicad_footprint_file_path: str | None = None,
     ) -> tuple[str, str]:
         if ":" in kicad_footprint_file.footprint.name:
             fp_lib_name = kicad_footprint_file.footprint.name.split(":")[0]
@@ -310,10 +312,13 @@ class has_associated_kicad_library_footprint(fabll.Node):
             library_name = fp_lib_name
         else:
             if library_name is None:
-                raise ValueError(
-                    "lib_name must be specified if fp has no lib prefix: "
-                    f"{kicad_footprint_file.footprint.name}"
-                )
+                if kicad_footprint_file_path is not None:
+                    library_name = Path(kicad_footprint_file_path).parent.name
+                else:
+                    raise ValueError(
+                        "lib_name must be specified if fp has no lib prefix: "
+                        f"{kicad_footprint_file.footprint.name}"
+                    )
         assert library_name is not None
         return (
             f"{library_name}:{kicad.fp_get_base_name(kicad_footprint_file.footprint)}",
@@ -335,7 +340,9 @@ class has_associated_kicad_library_footprint(fabll.Node):
 
         # Read file to extract pad names and create kicad_identifier
         fp_file = kicad.loads(kicad.footprint.FootprintFile, fp_path)
-        kicad_identifier, lib_name = cls._create_kicad_identifier(fp_file, library_name)
+        kicad_identifier, lib_name = cls._create_kicad_identifier(
+            fp_file, library_name, kicad_footprint_file_path
+        )
 
         out.add_dependant(
             F.Literals.Strings.MakeChild_ConstrainToLiteral(
@@ -369,7 +376,7 @@ class has_associated_kicad_library_footprint(fabll.Node):
         pad_names = self._extract_pad_names_from_kicad_footprint_file(fp_file)
         self.pad_names_.get().alias_to_literal(*pad_names)
         kicad_identifier, lib_name = self._create_kicad_identifier(
-            fp_file, library_name
+            fp_file, library_name, kicad_footprint_file_path
         )
         self.kicad_identifier_.get().alias_to_literal(kicad_identifier)
         self.library_name_.get().alias_to_literal(lib_name)
