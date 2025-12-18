@@ -190,8 +190,10 @@ def test_performance_parameters(
         print(f"recursive is_parameter: {len(c)}")
 
         g_new = graph.GraphView.create()
-        with timings.context(f"{name:<10} -- copy graph"):
-            n.copy_into(g_new)
+        with timings.context(f"{name:<10} -- copy {n.g} - get"):
+            g_sub = fbrk.TypeGraph.get_subgraph_of_node(start_node=n.instance)
+        with timings.context(f"{name:<10} -- copy {n.g} - insert"):
+            g_new.insert_subgraph(subgraph=g_sub)
         print(f"g_new: {g_new}")
 
     timings.add_seperator()
