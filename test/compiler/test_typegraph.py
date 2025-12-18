@@ -2747,6 +2747,131 @@ class TestAssignmentOverride:
         )
 
 
+class TestMultiImportShim:
+    """Tests for multi-import deprecation shim.
+
+    The multi-import syntax (e.g., `import A, B`) is deprecated.
+    These tests verify that:
+    - Multiple imports on one line are correctly parsed
+    - Each import is properly registered as a symbol
+    - A deprecation warning is emitted
+    """
+
+    def test_multi_import_stdlib(self):
+        """Test parsing multiple stdlib imports on one line."""
+        _, tg, _, result = build_type(
+            """
+            import Resistor, Capacitor
+
+            module App:
+                r = new Resistor
+                c = new Capacitor
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=app_type)
+        ]
+        identifiers = [id for id, _ in make_children if id]
+
+        # Both symbols should be available
+        assert "r" in identifiers
+        assert "c" in identifiers
+
+    def test_multi_import_from_file(self):
+        """Test parsing multiple imports from a file path."""
+        _, tg, _, result = build_type(
+            """
+            from "somepackage.ato" import ModuleA, ModuleB
+
+            module App:
+                pass
+            """
+        )
+
+        # The imports should have been registered (even if the file doesn't exist,
+        # the symbols are still registered for later linking)
+        assert result.state is not None
+
+    def test_multi_import_emits_deprecation_warning(self, caplog):
+        """Test that multi-import emits a deprecation warning."""
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            build_type(
+                """
+                import Resistor, Capacitor
+
+                module App:
+                    pass
+                """
+            )
+
+        # Check that deprecation warning was logged
+        warning_messages = [
+            record.message
+            for record in caplog.records
+            if record.levelno == logging.WARNING
+        ]
+        assert any(
+            "DEPRECATION" in msg and "Multiple imports" in msg
+            for msg in warning_messages
+        ), (
+            f"Expected deprecation warning about multiple imports. Got: {warning_messages}"  # noqa E501
+        )
+
+    def test_single_import_no_warning(self, caplog):
+        """Test that single import does not emit deprecation warning."""
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            build_type(
+                """
+                import Resistor
+
+                module App:
+                    r = new Resistor
+                """
+            )
+
+        # Check that no multi-import deprecation warning was logged
+        warning_messages = [
+            record.message
+            for record in caplog.records
+            if record.levelno == logging.WARNING
+        ]
+        assert not any(
+            "Multiple imports on one line" in msg for msg in warning_messages
+        ), f"Unexpected deprecation warning for single import. Got: {warning_messages}"
+
+    def test_multi_import_three_items(self):
+        """Test parsing three stdlib imports on one line."""
+        _, tg, _, result = build_type(
+            """
+            import Resistor, Capacitor, Inductor
+
+            module App:
+                r = new Resistor
+                c = new Capacitor
+                l = new Inductor
+            """
+        )
+
+        app_type = result.state.type_roots["App"]
+        make_children = [
+            (identifier, child)
+            for identifier, child in tg.collect_make_children(type_node=app_type)
+        ]
+        identifiers = [id for id, _ in make_children if id]
+
+        # All three symbols should be available
+        assert "r" in identifiers
+        assert "c" in identifiers
+        assert "l" in identifiers
+
+
 if __name__ == "__main__":
     import typer
 
