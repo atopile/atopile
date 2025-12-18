@@ -1332,6 +1332,23 @@ fn wrap_graphview_destroy() type {
     };
 }
 
+fn wrap_graphview_create_and_insert_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "create_and_insert_node",
+            .doc = "Create a new Node and insert it into the graph",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
+            const bound = wrapper.data.create_and_insert_node();
+            return makeBoundNodePyObject(bound);
+        }
+    };
+}
+
 fn graphview_repr(self: ?*py.PyObject) callconv(.C) ?*py.PyObject {
     const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
     const node_count = wrapper.data.get_node_count();
@@ -1357,6 +1374,7 @@ fn wrap_graphview(root: *py.PyObject) void {
         wrap_graphview_get_subgraph_from_nodes(),
         wrap_graphview_insert_subgraph(),
         wrap_graphview_destroy(),
+        wrap_graphview_create_and_insert_node(),
     };
     bind.wrap_namespace_struct(root, graph.graph.GraphView, extra_methods);
     graph_view_type = type_registry.getRegisteredTypeObject("GraphView");
