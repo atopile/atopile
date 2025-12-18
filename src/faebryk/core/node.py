@@ -1353,6 +1353,13 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             return f"{base}|{type_name}" if base else type_name
         return base
 
+    def pretty_repr(self) -> str:
+        return re.sub(
+            r"[^|]*?\.ato::",
+            "",
+            self.get_full_name(types=True, include_uuid=False),
+        )
+
     @property
     def no_include_parents_in_full_name(self) -> bool:
         return getattr(self, "_no_include_parents_in_full_name", False)

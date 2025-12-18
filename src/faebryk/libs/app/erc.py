@@ -35,17 +35,9 @@ class ERCFaultShortedInterfaces(ERCFaultShort):
         Given two shorted Interfaces, return an exception that describes the
         narrowest path for the fault.
         """
-        import re
 
-        def _pretty_name(node: fabll.Node) -> str:
-            return re.sub(
-                r"[^|]*?\.ato::",
-                "",
-                node.get_full_name(types=True, include_uuid=False),
-            )
-
-        start = _pretty_name(path.get_start_node())
-        end = _pretty_name(path.get_end_node())
+        start = path.get_start_node().pretty_repr()
+        end = path.get_end_node().pretty_repr()
         return cls(
             f"Shorted:\t{start} -> {end}\nFull path:\t{path.pretty_repr()}", path
         )
