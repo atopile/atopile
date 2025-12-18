@@ -7,9 +7,13 @@ from faebryk.core.zig.gen.graph.graph import (  # type: ignore[import-untyped]
     BFSPath,
     BoundEdge,
     BoundNode,
-    Edge,
     GraphView,
-    Node,
+)
+from faebryk.core.zig.gen.graph.graph import (  # type: ignore[import-untyped]
+    EdgeReference as Edge,
+)
+from faebryk.core.zig.gen.graph.graph import (  # type: ignore[import-untyped]
+    NodeReference as Node,
 )
 
 logger = logging.getLogger(__name__)
@@ -18,9 +22,9 @@ __all__ = [
     "BFSPath",
     "BoundEdge",
     "BoundNode",
-    "Edge",
     "GraphView",
     "Node",
+    "Edge",
 ]
 
 
