@@ -163,7 +163,8 @@ pub const EdgeTrait = struct {
     }
 
     pub fn get_owner_edge(bound_node: graph.BoundNodeReference) ?graph.BoundEdgeReference {
-        return bound_node.get_single_edge(tid, true);
+        // optimization: no need to check for target
+        return bound_node.get_single_edge(tid, null);
     }
 
     pub fn get_owner_node_of(bound_node: graph.BoundNodeReference) ?graph.BoundNodeReference {

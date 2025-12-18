@@ -425,6 +425,23 @@ pub const BoundNodeReference = struct {
 
     /// No guarantee that there is only one
     pub fn get_single_edge(self: @This(), edge_type: Edge.EdgeType, is_target: ?bool) ?BoundEdgeReference {
+        // is_target = null -> directed = null (any direction)
+        // is_target = true -> directed = false (node is target)
+        // is_target = false -> directed = true (node is source)
+
+        // optimization for speed, helps compiler a bit
+        if (is_target == null) {
+            const edges = self.g.nodes.getPtr(self.node) orelse return null;
+            const edges_for_type = edges.getPtr(edge_type) orelse return null;
+            if (edges_for_type.items.len > 0) {
+                return BoundEdgeReference{
+                    .edge = edges_for_type.items[0],
+                    .g = self.g,
+                };
+            }
+            return null;
+        }
+
         const Visit = struct {
             pub fn visit(ctx: *anyopaque, bound_edge: BoundEdgeReference) visitor.VisitResult(BoundEdgeReference) {
                 _ = ctx;
@@ -433,11 +450,7 @@ pub const BoundNodeReference = struct {
         };
 
         var visit = Visit{};
-        // Convert is_target to directed parameter:
-        // is_target = true -> directed = false (node is target)
-        // is_target = false -> directed = true (node is source)
-        // is_target = null -> directed = null (any direction)
-        const directed: ?bool = if (is_target) |d| !d else null;
+        const directed: bool = !is_target.?;
         const result = self.g.visit_edges_of_type(self.node, edge_type, BoundEdgeReference, &visit, Visit.visit, directed);
         switch (result) {
             .OK => return result.OK,

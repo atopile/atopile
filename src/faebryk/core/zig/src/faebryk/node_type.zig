@@ -56,7 +56,8 @@ pub const EdgeType = struct {
     }
 
     pub fn get_type_edge(bound_instance_node: graph.BoundNodeReference) ?graph.BoundEdgeReference {
-        return bound_instance_node.get_single_edge(tid, true);
+        // no need to check for target
+        return bound_instance_node.get_single_edge(tid, null);
     }
 
     pub fn is_node_instance_of(bound_node: graph.BoundNodeReference, node_type: NodeReference) bool {

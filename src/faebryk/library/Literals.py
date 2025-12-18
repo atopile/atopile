@@ -3083,16 +3083,15 @@ class Numbers(fabll.Node):
 
         from faebryk.library.Units import has_unit, is_unit
 
+        # TODO remove unit copy hack
+        if (
+            unit.g.get_self_node().node().get_uuid()
+            != g.get_self_node().node().get_uuid()
+        ):
+            unit = unit.copy_into(g=g)
+
         has_unit_instance = (
-            has_unit.bind_typegraph(tg=tg)
-            .create_instance(g=g)
-            # TODO remove unit copy hack
-            .setup(
-                is_unit=fabll.Traits(unit)
-                .get_obj_raw()
-                .copy_into(g=g)
-                .get_trait(is_unit)
-            )
+            has_unit.bind_typegraph(tg=tg).create_instance(g=g).setup(is_unit=unit)
         )
 
         _ = fbrk.EdgeTrait.add_trait_instance(
