@@ -108,6 +108,71 @@ pub const DynamicAttributes = struct {
         }
     }
 };
+
+// =============================================================================
+// UUIDBitSet - Fast O(1) membership testing for UUID-based references
+// Uses a simple boolean array indexed by UUID for maximum performance
+// =============================================================================
+pub const UUIDBitSet = struct {
+    // Use a simple slice of bools for direct indexing - faster than DynamicBitSet
+    // and avoids iterator issues with pyzig introspection
+    data: []bool,
+    capacity: u32,
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator) @This() {
+        return .{
+            .data = &[_]bool{},
+            .capacity = 0,
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *@This()) void {
+        if (self.capacity > 0) {
+            self.allocator.free(self.data);
+        }
+    }
+
+    /// Ensure capacity for the given uuid
+    fn ensureCapacity(self: *@This(), uuid: u32) void {
+        if (uuid < self.capacity) return;
+
+        // Grow to next power of 2, minimum 1024
+        const new_cap = @max(1024, std.math.ceilPowerOfTwo(u32, uuid + 1) catch uuid + 1);
+        const new_data = self.allocator.alloc(bool, new_cap) catch @panic("OOM");
+        @memset(new_data, false);
+
+        // Copy old data if any
+        if (self.capacity > 0) {
+            @memcpy(new_data[0..self.capacity], self.data);
+            self.allocator.free(self.data);
+        }
+
+        self.data = new_data;
+        self.capacity = new_cap;
+    }
+
+    /// Add a uuid to the set
+    pub fn add(self: *@This(), uuid: u32) void {
+        self.ensureCapacity(uuid);
+        self.data[uuid] = true;
+    }
+
+    /// Remove a uuid from the set
+    pub fn remove(self: *@This(), uuid: u32) void {
+        if (uuid < self.capacity) {
+            self.data[uuid] = false;
+        }
+    }
+
+    /// Check if uuid is in the set - O(1)
+    pub fn contains(self: *const @This(), uuid: u32) bool {
+        if (uuid >= self.capacity) return false;
+        return self.data[uuid];
+    }
+};
+
 // =============================================================================
 // Reference types (each 4 bytes)
 // =============================================================================
@@ -582,6 +647,10 @@ pub const GraphView = struct {
     // Edge Storage
     edges: EdgeRefMap.T(void),
 
+    // Fast O(1) membership bitsets
+    node_set: UUIDBitSet,
+    edge_set: UUIDBitSet,
+
     self_node: NodeReference,
 
     pub fn init(b_allocator: std.mem.Allocator) @This() {
@@ -594,6 +663,8 @@ pub const GraphView = struct {
             .allocator = allocator,
             .edges = EdgeRefMap.T(void).init(allocator),
             .nodes = NodeRefMap.T(EdgeTypeMap.T(std.ArrayList(EdgeReference))).init(allocator),
+            .node_set = UUIDBitSet.init(allocator),
+            .edge_set = UUIDBitSet.init(allocator),
             .self_node = NodeReference.init(),
         };
         _ = out.insert_node(out.self_node);
@@ -613,12 +684,14 @@ pub const GraphView = struct {
         const gop = g.nodes.getOrPut(node) catch @panic("OOM");
         if (!gop.found_existing) {
             gop.value_ptr.* = EdgeTypeMap.T(std.ArrayList(EdgeReference)).init(g.allocator);
+            g.node_set.add(node.uuid);
         }
         return g.bind(node);
     }
 
-    pub fn contains_node(g: *@This(), node: NodeReference) bool {
-        return g.nodes.contains(node);
+    /// O(1) node membership check using bitset
+    pub fn contains_node(g: *const @This(), node: NodeReference) bool {
+        return g.node_set.contains(node.uuid);
     }
 
     pub fn create_and_insert_node(g: *@This()) BoundNodeReference {
@@ -641,14 +714,17 @@ pub const GraphView = struct {
     }
 
     pub fn insert_edge(g: *@This(), edge: EdgeReference) BoundEdgeReference {
-        // Use getOrPut to check and insert in one operation
-        const edge_gop = g.edges.getOrPut(edge) catch @panic("OOM");
-        if (edge_gop.found_existing) {
+        // Fast check using bitset first
+        if (g.edge_set.contains(edge.uuid)) {
             return BoundEdgeReference{
                 .edge = edge,
                 .g = g,
             };
         }
+
+        // Add to edge set and hashmap
+        g.edge_set.add(edge.uuid);
+        g.edges.put(edge, {}) catch @panic("OOM");
 
         const source = edge.get_source_node();
         const target = edge.get_target_node();
@@ -676,6 +752,11 @@ pub const GraphView = struct {
             .edge = edge,
             .g = g,
         };
+    }
+
+    /// O(1) edge membership check using bitset
+    pub fn contains_edge(g: *const @This(), edge: EdgeReference) bool {
+        return g.edge_set.contains(edge.uuid);
     }
 
     pub fn get_edges_of_type(g: *@This(), node: NodeReference, T: Edge.EdgeType) ?*const std.ArrayList(EdgeReference) {
@@ -720,7 +801,7 @@ pub const GraphView = struct {
         const node_count: u32 = @intCast(nodes.items.len);
         new_g.nodes.ensureTotalCapacity(node_count) catch @panic("OOM");
 
-        // Insert nodes and build membership set in one pass
+        // Insert nodes (this also populates the node_set bitset)
         for (nodes.items) |node| {
             _ = new_g.insert_node(node);
         }
@@ -729,6 +810,7 @@ pub const GraphView = struct {
         new_g.edges.ensureTotalCapacity(node_count * 4) catch @panic("OOM");
 
         // Insert edges where both endpoints are in the subgraph
+        // new_g.contains_node is now O(1) using bitset
         for (nodes.items) |node| {
             const edge_map = g.nodes.getPtr(node) orelse continue;
             var edge_by_type_it = edge_map.valueIterator();
