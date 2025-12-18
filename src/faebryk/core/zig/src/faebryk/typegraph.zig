@@ -1346,7 +1346,7 @@ pub const TypeGraph = struct {
         // std.debug.print("NEW TG {any}\n", .{type_owner_tg_val.get_MakeChild().node});
 
         // 1) Create instance and connect it to its type
-        const new_instance = type_node.g.insert_node(Node.init());
+        const new_instance = type_node.g.create_and_insert_node();
         _ = EdgeType.add_instance(type_node, new_instance);
 
         // 2) Visit MakeChild nodes of type_node

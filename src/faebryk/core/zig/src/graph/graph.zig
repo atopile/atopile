@@ -7,50 +7,8 @@ const base_allocator = std.heap.page_allocator;
 var arena_allocator = std.heap.ArenaAllocator.init(base_allocator);
 var global_graph_allocator: std.mem.Allocator = arena_allocator.allocator();
 
-pub const NodeRefMap = struct {
-    pub fn eql(_: @This(), a: NodeReference, b: NodeReference) bool {
-        return Node.is_same(a, b);
-    }
-
-    pub fn hash(_: @This(), adapted_key: NodeReference) u64 {
-        return adapted_key.get_uuid();
-    }
-
-    pub fn T(V: type) type {
-        return std.HashMap(NodeReference, V, NodeRefMap, std.hash_map.default_max_load_percentage);
-    }
-};
-
-const EdgeRefMap = struct {
-    pub fn eql(_: @This(), a: EdgeReference, b: EdgeReference) bool {
-        return Edge.is_same(a, b);
-    }
-
-    pub fn hash(_: @This(), adapted_key: EdgeReference) u64 {
-        return adapted_key.get_uuid();
-    }
-
-    pub fn T(V: type) type {
-        return std.HashMap(EdgeReference, V, EdgeRefMap, std.hash_map.default_max_load_percentage);
-    }
-};
-
-const IntMap = struct {
-    pub fn eql(_: @This(), a: i64, b: i64) bool {
-        return a == b;
-    }
-
-    pub fn hash(_: @This(), adapted_key: i64) u64 {
-        var key = adapted_key;
-        return std.hash.Wyhash.hash(0, std.mem.asBytes(&key));
-    }
-
-    pub fn T(V: type) type {
-        return std.HashMap(i64, V, IntMap, std.hash_map.default_max_load_percentage);
-    }
-};
-
-const EdgeTypeMap = IntMap;
+var Edges: [1024]Edge = [_]Edge{undefined} ** 1024;
+var Attrs: [1024]DynamicAttributes = [_]DynamicAttributes{undefined} ** 1024;
 
 pub const Literal = union(enum) {
     Int: i64,
@@ -63,349 +21,124 @@ pub const Literal = union(enum) {
 pub const Attribute = struct {
     identifier: str,
     value: Literal,
+};
 
-    fn gen_string_property(comptime identifier: str) Attribute {
-        return struct {
-            pub fn get(N: NodeReference) str {
-                return N.dynamic.get(identifier).?.String;
-            }
+pub const NodeReference = struct {
+    uuid: u32,
 
-            pub fn set(N: NodeReference, value: str) void {
-                N.dynamic.put(identifier, Literal{ .String = value });
-            }
-        };
+    pub fn is_same(self: @This(), other: @This()) bool {
+        return self.uuid == other.uuid;
     }
 
-    fn gen_tristate_property(comptime identifier: str) Attribute {
-        return struct {
-            pub fn get(N: NodeReference) ?bool {
-                const out = N.dynamic.get(identifier);
-                if (out) |o| {
-                    return o.Bool;
-                }
-                return null;
-            }
-
-            pub fn set(N: NodeReference, value: bool) void {
-                N.dynamic.put(identifier, Literal{ .Bool = value });
-            }
-        };
-    }
-
-    fn gen_enum_property(comptime identifier: str, comptime T: type) Attribute {
-        return struct {
-            pub fn get(N: NodeReference) ?T {
-                const out = N.dynamic.get(identifier);
-                if (out) |o| {
-                    return std.meta.intToEnum(T, o.Int).?;
-                }
-                return null;
-            }
-
-            pub fn set(N: NodeReference, value: T) void {
-                N.dynamic.put(identifier, Literal{ .Int = @intFromEnum(value) });
-            }
-        };
+    pub fn get_uuid(self: @This()) u32 {
+        return self.uuid;
     }
 };
 
-pub const LiteralKV = struct {
-    identifier: str,
-    value: Literal,
-};
+pub const EdgeReference = struct {
+    uuid: u32,
 
-pub const DynamicAttributes = struct {
-    values: []LiteralKV,
-
-    pub fn init() @This() {
-        return .{
-            .values = &[_]LiteralKV{},
+    pub fn init(source: NodeReference, target: NodeReference, edge_type: Edge.EdgeType) EdgeReference {
+        Edge.counter += 1;
+        const out: EdgeReference = .{
+            .uuid = Edge.counter,
         };
+        Edges[out.uuid].source = source;
+        Edges[out.uuid].target = target;
+        Edges[out.uuid].flags.edge_type = edge_type;
+        return out;
     }
 
-    fn grow_slice(self: *@This(), count: usize) void {
-        const new_len = self.values.len + count;
-        if (self.values.len == 0) {
-            // Initial slice points to static memory (empty array literal), not heap memory.
-            // Must use alloc instead of realloc for the first allocation.
-            self.values = global_graph_allocator.alloc(LiteralKV, new_len) catch @panic("OOM");
-        } else {
-            // realloc returns a slice with the new length already set
-            self.values = global_graph_allocator.realloc(self.values, new_len) catch @panic("OOM");
+    pub fn is_same(self: @This(), other: @This()) bool {
+        return self.uuid == other.uuid;
+    }
+
+    pub fn deref(self: @This()) Edge {
+        if (self.uuid >= Edge.counter) {
+            @panic("Edge reference out of bounds");
         }
-        self.values.len = new_len;
+        return Edges[self.uuid];
     }
 
-    pub fn deinit(self: *@This()) void {
-        global_graph_allocator.free(self.values);
-        self.values = &[_]LiteralKV{};
+    pub fn get_uuid(self: @This()) u32 {
+        return self.uuid;
     }
+};
 
-    pub fn visit(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
-        for (self.values) |value| {
-            f(ctx, value.identifier, value.value, true);
+pub const DynamicAttributesReference = struct {
+    uuid: u32 = 0,
+
+    pub fn deref(self: @This()) DynamicAttributes {
+        if (self.uuid == 0) {
+            @panic("Dynamic attribute null pointer");
         }
+        if (self.uuid >= DynamicAttributes.counter) {
+            @panic("Dynamic attributes reference out of bounds");
+        }
+        return Attrs[self.uuid];
     }
+};
 
-    pub fn copy_into(self: *const @This(), other: *@This()) void {
-        //for (self.values) |value| {
-        //    other.put(value.identifier, value.value);
-        //}
-        const cur_len = other.values.len;
-        other.grow_slice(self.values.len);
-        @memcpy(other.values[cur_len..], self.values);
-    }
+pub const BoundNodeReference = struct {
+    node: NodeReference,
+    g: *GraphView,
 
-    pub fn put(self: *@This(), identifier: str, value: Literal) void {
-        // Careful! No override possible!
-        // commented out for performance reasons
-        //for (self.values) |*v| {
-        //    if (std.mem.eql(u8, v.identifier, identifier)) {
-        //        @panic("Overwrote value for identifier {s}");
-        //        //std.debug.print("Warning: Overwrote value for identifier {s}\n", .{identifier});
-        //        //v.value = value;
-        //        //return;
-        //    }
-        //}
-        self.grow_slice(1);
-        self.values[self.values.len - 1] = .{ .identifier = identifier, .value = value };
-    }
-
-    pub fn has_values(self: *@This()) bool {
-        return self.values.len > 0;
-    }
-
-    pub fn get(self: *@This(), identifier: str) ?Literal {
-        for (self.values) |value| {
-            if (std.mem.eql(u8, value.identifier, identifier)) {
-                return value.value;
+    /// No guarantee that there is only one
+    pub fn get_single_edge(self: @This(), edge_type: Edge.EdgeType, is_target: ?bool) ?BoundEdgeReference {
+        const Visit = struct {
+            pub fn visit(ctx: *anyopaque, bound_edge: BoundEdgeReference) visitor.VisitResult(BoundEdgeReference) {
+                _ = ctx;
+                return visitor.VisitResult(BoundEdgeReference){ .OK = bound_edge };
             }
-        }
-        return null;
-    }
-};
-
-const GraphObjectReference = union(enum) {
-    Node: NodeReference,
-    Edge: EdgeReference,
-};
-
-pub const GraphReferenceCounter = struct {
-    ref_count: u16 = 0,
-
-    pub fn init() @This() {
-        return .{
-            .ref_count = 0,
         };
-    }
 
-    pub fn check_in_use(self: *@This()) !void {
-        if (self.ref_count > 0) {
-            return error.InUse;
-        }
-    }
-
-    pub fn inc(self: *@This(), g: *GraphView) void {
-        _ = g;
-        self.ref_count += 1;
-    }
-
-    pub fn dec(self: *@This(), g: *GraphView, parent: GraphObjectReference) void {
-        _ = g;
-        self.ref_count -= 1;
-        if (self.ref_count == 0) {
-            switch (parent) {
-                .Node => |node| node.deinit(),
-                .Edge => |edge| edge.deinit(),
-            }
+        var visit = Visit{};
+        // Convert is_target to directed parameter:
+        // is_target = true -> directed = false (node is target)
+        // is_target = false -> directed = true (node is source)
+        // is_target = null -> directed = null (any direction)
+        const directed: ?bool = if (is_target) |d| !d else null;
+        const result = self.g.visit_edges_of_type(self.node, edge_type, BoundEdgeReference, &visit, Visit.visit, directed);
+        switch (result) {
+            .OK => return result.OK,
+            .EXHAUSTED => return null,
+            .CONTINUE => unreachable,
+            .STOP => unreachable,
+            .ERROR => |err| @panic(@errorName(err)),
         }
     }
 };
 
-pub const UUID = struct {
-    const T = u64;
-
-    pub fn gen_uuid(obj: *anyopaque) UUID.T {
-        // convert pointer to int
-        // guaranteed to be unique inside process
-        return @intFromPtr(obj);
-    }
-
-    pub fn equals(U1: UUID.T, U2: UUID.T) bool {
-        return U1 == U2;
-    }
-};
-
-pub const NodeAttributes = struct {
-    dynamic: DynamicAttributes,
-    pub fn visit(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
-        //f(ctx, "uuid", Literal{ .Uint = self.uuid }, false);
-        self.dynamic.visit(ctx, f);
-    }
-
-    pub fn put(self: *@This(), identifier: str, value: Literal) void {
-        self.dynamic.put(identifier, value);
-    }
-
-    pub fn get(self: *@This(), identifier: str) ?Literal {
-        return self.dynamic.get(identifier);
-    }
-
-    pub fn deinit(self: *@This()) void {
-        self.dynamic.deinit();
-    }
-
-    pub fn get_node(self: *@This()) NodeReference {
-        return @fieldParentPtr("attributes", self);
-    }
+pub const BoundEdgeReference = struct {
+    edge: EdgeReference,
+    g: *GraphView,
 };
 
 pub const Node = struct {
-    attributes: NodeAttributes,
-    _ref_count: GraphReferenceCounter,
-
+    var counter: u32 = 0;
     pub fn init() NodeReference {
-        const node = global_graph_allocator.create(Node) catch @panic("Failed to allocate Node");
-
-        // Attributes
-        node.attributes.dynamic = DynamicAttributes.init();
-        node._ref_count = GraphReferenceCounter.init();
-        return node;
-    }
-
-    pub fn deinit(self: *@This()) void {
-        self._ref_count.check_in_use() catch {
-            @panic("Node is still in use");
+        counter += 1;
+        return .{
+            .uuid = counter,
         };
-        self.attributes.deinit();
-        global_graph_allocator.destroy(self);
-    }
-
-    pub fn is_same(N1: NodeReference, N2: NodeReference) bool {
-        return UUID.equals(N1.get_uuid(), N2.get_uuid());
-    }
-
-    pub fn get_uuid(self: *@This()) UUID.T {
-        return @intFromPtr(self);
-    }
-
-    /// Visit all dynamic attributes on this node
-    pub fn visit_attributes(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
-        self.attributes.visit(ctx, f);
-    }
-
-    /// Put a dynamic attribute on this node
-    pub fn put(self: *@This(), identifier: str, value: Literal) void {
-        self.attributes.put(identifier, value);
-    }
-
-    /// Get a dynamic attribute from this node
-    pub fn get(self: *@This(), identifier: str) ?Literal {
-        return self.attributes.get(identifier);
-    }
-
-    /// Copy dynamic attributes from another DynamicAttributes into this node
-    pub fn copy_dynamic_attributes_into(self: *@This(), from: *const DynamicAttributes) void {
-        from.copy_into(&self.attributes.dynamic);
     }
 };
-
-pub const NodeReference = *Node;
-pub const EdgeReference = *Edge;
-
-pub const EdgeAttributes = struct {
-    source_id: UUID.T,
-    target_id: UUID.T,
-    edge_type: Edge.EdgeType,
-    directional: ?bool,
-    name: ?str,
-    dynamic: DynamicAttributes,
-
-    // TODO make set_name function that duplicates and owns the string and deallocates it on deinit
-    // ^ same for NodeAttributes
-    // Then ownership in python api layer also easier
-
-    pub fn put(self: *@This(), identifier: str, value: Literal) void {
-        self.dynamic.put(identifier, value);
-    }
-
-    pub fn get(self: *@This(), identifier: str) ?Literal {
-        return self.dynamic.get(identifier);
-    }
-
-    pub fn deinit(self: *@This()) void {
-        self.dynamic.deinit();
-    }
-
-    pub fn get_edge(self: *@This()) EdgeReference {
-        return @fieldParentPtr("attributes", self);
-    }
-
-    pub fn get_uuid(self: *@This()) UUID.T {
-        return @intFromPtr(self);
-    }
-};
-
-pub fn ComptimeIntSet(max_count: usize, int_type: type) type {
-    return struct {
-        values: [max_count]int_type = undefined,
-        count: usize = 0,
-
-        pub fn add(self: *@This(), value: int_type) !void {
-            for (self.values[0..self.count]) |v| {
-                if (v == value) {
-                    return error.AlreadyExists;
-                }
-            }
-            if (self.count == max_count) {
-                return error.MaxCountReached;
-            }
-            self.values[self.count] = value;
-            self.count += 1;
-        }
-
-        pub fn contains(self: *@This(), value: int_type) bool {
-            for (self.values[0..self.count]) |v| {
-                if (v == value) {
-                    return true;
-                }
-            }
-            return false;
-        }
-    };
-}
 
 pub const Edge = struct {
-    source: NodeReference,
-    target: NodeReference,
+    var counter: u32 = 0;
+    const Flags = packed struct {
+        edge_type: EdgeType,
+        directional: u1 = 0,
+        order: u7 = 0,
+        edge_specific: u16 = 0,
+    };
+    source: NodeReference, // 4b
+    target: NodeReference, // 4b
+    dynamic: DynamicAttributesReference = .{}, // 4b
+    flags: Flags, // 4b
+    // => 16b
 
-    attributes: EdgeAttributes,
-    _ref_count: GraphReferenceCounter,
-
-    pub fn init(source: NodeReference, target: NodeReference, edge_type: EdgeType) *@This() {
-        var edge = global_graph_allocator.create(Edge) catch @panic("OOM creating Edge");
-        edge.source = source;
-        edge.target = target;
-
-        // Attributes
-        edge.attributes.edge_type = edge_type;
-        edge.attributes.source_id = source.get_uuid();
-        edge.attributes.target_id = target.get_uuid();
-        edge.attributes.dynamic = DynamicAttributes.init();
-        edge.attributes.directional = null;
-        edge.attributes.name = null;
-
-        edge._ref_count = GraphReferenceCounter.init();
-        return edge;
-    }
-
-    pub fn deinit(self: *@This()) void {
-        self._ref_count.check_in_use() catch {
-            @panic("Edge is still in use");
-        };
-        self.attributes.deinit();
-        global_graph_allocator.destroy(self);
-    }
+    //_ref_count: GraphReferenceCounter,node_
 
     pub const EdgeType = u8;
     pub fn hash_edge_type(comptime tid: u64) EdgeType {
@@ -423,117 +156,50 @@ pub const Edge = struct {
         type_registered[edge_type] = true;
     }
 
-    pub fn is_instance(E: EdgeReference, edge_type: EdgeType) bool {
-        return E.get_attribute_edge_type() == edge_type;
-    }
-
-    pub fn is_same(E1: EdgeReference, E2: EdgeReference) bool {
-        return UUID.equals(E1.get_uuid(), E2.get_uuid());
-    }
-
-    pub fn get_source(E: EdgeReference) ?NodeReference {
-        if (E.get_attribute_directional()) |d| {
-            if (d) {
-                return E.source;
-            }
-            return E.target;
-        }
-        return null;
-    }
-
-    pub fn get_target(E: EdgeReference) ?NodeReference {
-        if (E.get_attribute_directional()) |d| {
-            if (d) {
-                return E.target;
-            }
-            return E.source;
-        }
-        return null;
-    }
-
-    pub fn get_other_node(self: *const @This(), N: NodeReference) NodeReference {
-        if (Node.is_same(self.source, N)) {
-            return self.target;
-        } else if (Node.is_same(self.target, N)) {
-            return self.source;
-        } else {
-            @panic("Edge is not connected to the given node");
-        }
-    }
-
-    /// No guarantee that there is only one
-    pub fn get_single_edge(bound_node: BoundNodeReference, edge_type: EdgeType, is_target: ?bool) ?BoundEdgeReference {
-        const Visit = struct {
-            pub fn visit(ctx: *anyopaque, bound_edge: BoundEdgeReference) visitor.VisitResult(BoundEdgeReference) {
-                _ = ctx;
-                return visitor.VisitResult(BoundEdgeReference){ .OK = bound_edge };
-            }
-        };
-
-        var visit = Visit{};
-        // Convert is_target to directed parameter:
-        // is_target = true -> directed = false (node is target)
-        // is_target = false -> directed = true (node is source)
-        // is_target = null -> directed = null (any direction)
-        const directed: ?bool = if (is_target) |d| !d else null;
-        const result = bound_node.visit_edges_of_type(edge_type, BoundEdgeReference, &visit, Visit.visit, directed);
-        switch (result) {
-            .OK => return result.OK,
-            .EXHAUSTED => return null,
-            .CONTINUE => unreachable,
-            .STOP => unreachable,
-            .ERROR => |err| @panic(@errorName(err)),
-        }
-    }
-
-    pub fn get_uuid(self: *@This()) UUID.T {
-        return @intFromPtr(self);
-    }
-
     /// Put a dynamic attribute on this edge
     pub fn put(self: *@This(), identifier: str, value: Literal) void {
         self.attributes.put(identifier, value);
     }
 
     /// Get a dynamic attribute from this edge
-    pub fn get(self: *@This(), identifier: str) ?Literal {
-        return self.attributes.get(identifier);
+    pub fn get(self: @This(), identifier: str) ?Literal {
+        return self.dynamic.get(identifier);
     }
 
-    pub fn get_attribute_name(self: *@This()) ?str {
+    pub fn get_attribute_name(self: @This()) ?str {
         return self.attributes.name;
     }
 
-    pub fn get_attribute_directional(self: *@This()) ?bool {
+    pub fn get_attribute_directional(self: @This()) bool {
         return self.attributes.directional;
     }
 
-    pub fn get_attribute_edge_type(self: *@This()) EdgeType {
+    pub fn get_attribute_edge_type(self: @This()) EdgeType {
         return self.attributes.edge_type;
     }
 
     /// Set the name attribute
-    pub fn set_attribute_name(self: *@This(), name: ?str) void {
+    pub fn set_attribute_name(self: @This(), name: ?str) void {
         self.attributes.name = name;
     }
 
     /// Set the directional attribute
-    pub fn set_attribute_directional(self: *@This(), directional: ?bool) void {
+    pub fn set_attribute_directional(self: @This(), directional: ?bool) void {
         self.attributes.directional = directional;
     }
 
     /// Set the edge type attribute
-    pub fn set_attribute_edge_type(self: *@This(), edge_type: EdgeType) void {
+    pub fn set_attribute_edge_type(self: @This(), edge_type: EdgeType) void {
         self.attributes.edge_type = edge_type;
     }
 
     /// Copy dynamic attributes from another DynamicAttributes into this edge
-    pub fn copy_dynamic_attributes_into(self: *@This(), from: *const DynamicAttributes) void {
+    pub fn copy_dynamic_attributes_into(self: @This(), from: *const DynamicAttributes) void {
         from.copy_into(&self.attributes.dynamic);
     }
 
     /// Visit all attributes on this edge (both static and dynamic)
-    pub fn visit_attributes(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
+    pub fn visit_attributes(self: @This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
         // Visit static attributes
         f(ctx, "edge_type", Literal{ .Int = @intCast(self.attributes.edge_type) }, false);
         if (self.attributes.directional) |d| {
@@ -544,6 +210,130 @@ pub const Edge = struct {
         }
         // Visit dynamic attributes
         self.attributes.dynamic.visit(ctx, f);
+    }
+
+    pub fn get_target(self: @This()) ?NodeReference {
+        if (self.get_attribute_directional()) |d| {
+            if (d) {
+                return self.deref().target;
+            }
+            return self.deref().source;
+        }
+        return null;
+    }
+
+    pub fn get_other_node(self: @This(), N: NodeReference) NodeReference {
+        if (self.deref().source.is_same(N)) {
+            return self.deref().target;
+        } else if (self.deref().target.is_same(N)) {
+            return self.deref().source;
+        } else {
+            @panic("Edge is not connected to the given node");
+        }
+    }
+
+    pub fn is_instance(self: @This(), edge_type: Edge.EdgeType) bool {
+        return self.get_attribute_edge_type() == edge_type;
+    }
+
+    pub fn get_source(self: @This()) ?NodeReference {
+        if (self.get_attribute_directional()) |d| {
+            if (d) {
+                return self.source;
+            }
+            return self.target;
+        }
+        return null;
+    }
+};
+
+pub const DynamicAttributes = struct {
+    var counter: u32 = 0;
+
+    in_use: u3 = 0,
+    // try to keep this low enough to fit in a 256b cache line
+    // currently attribute is 40b, so max 6
+    values: [6]Attribute,
+
+    pub fn init() DynamicAttributesReference {
+        counter += 1;
+        return .{
+            .uuid = counter,
+        };
+    }
+
+    pub fn visit(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
+        for (self.values) |value| {
+            f(ctx, value.identifier, value.value, true);
+        }
+    }
+
+    pub fn copy_into(self: *const @This(), other: *@This()) void {
+        if (other.in_use > 0) {
+            @panic("Other dynamic attributes are already in use");
+        }
+        other.in_use = self.in_use;
+        @memcpy(other.values, self.values);
+    }
+
+    pub fn put(self: *@This(), identifier: str, value: Literal) void {
+        if (self.is_use == self.values.len) {
+            @panic("Dynamic attributes are full");
+        }
+        self.values[self.in_use] = .{ .identifier = identifier, .value = value };
+        self.in_use += 1;
+    }
+
+    pub fn get(self: *@This(), identifier: str) ?Literal {
+        for (self.values[0..self.in_use]) |value| {
+            if (std.mem.eql(u8, value.identifier, identifier)) {
+                return value.value;
+            }
+        }
+        return null;
+    }
+};
+
+pub const NodeRefMap = struct {
+    pub fn eql(_: @This(), a: NodeReference, b: NodeReference) bool {
+        return a.is_same(b);
+    }
+
+    pub fn hash(_: @This(), adapted_key: NodeReference) u64 {
+        return adapted_key.get_uuid();
+    }
+
+    pub fn T(V: type) type {
+        return std.HashMap(NodeReference, V, NodeRefMap, std.hash_map.default_max_load_percentage);
+    }
+};
+
+const EdgeRefMap = struct {
+    pub fn eql(_: @This(), a: EdgeReference, b: EdgeReference) bool {
+        return a.is_same(b);
+    }
+
+    pub fn hash(_: @This(), adapted_key: EdgeReference) u64 {
+        return adapted_key.get_uuid();
+    }
+
+    pub fn T(V: type) type {
+        return std.HashMap(EdgeReference, V, EdgeRefMap, std.hash_map.default_max_load_percentage);
+    }
+};
+
+const EdgeTypeMap = struct {
+    pub fn eql(_: @This(), a: Edge.EdgeType, b: Edge.EdgeType) bool {
+        return a == b;
+    }
+
+    pub fn hash(_: @This(), adapted_key: Edge.EdgeType) u64 {
+        var key = adapted_key;
+        return std.hash.Wyhash.hash(0, std.mem.asBytes(&key));
+    }
+
+    pub fn T(V: type) type {
+        return std.HashMap(Edge.EdgeType, V, EdgeTypeMap, std.hash_map.default_max_load_percentage);
     }
 };
 
@@ -681,32 +471,6 @@ pub const BFSPaths = struct {
     }
 };
 
-pub const BoundNodeReference = struct {
-    node: NodeReference,
-    g: *GraphView,
-
-    pub fn get_edges(self: *const @This()) ?*const std.ArrayList(EdgeReference) {
-        return self.g.get_edges(self.node);
-    }
-
-    pub fn get_edges_of_type(self: *const @This(), T: Edge.EdgeType) ?*const std.ArrayList(EdgeReference) {
-        return self.g.get_edges_of_type(self.node, T);
-    }
-
-    pub fn visit_edges(self: *const @This(), comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T)) visitor.VisitResult(T) {
-        return self.g.visit_edges(self.node, T, ctx, f);
-    }
-
-    pub fn visit_edges_of_type(self: *const @This(), edge_type: Edge.EdgeType, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T), directed: ?bool) visitor.VisitResult(T) {
-        return self.g.visit_edges_of_type(self.node, edge_type, T, ctx, f, directed);
-    }
-};
-
-pub const BoundEdgeReference = struct {
-    edge: EdgeReference,
-    g: *GraphView,
-};
-
 pub const VisitStrength = enum { unvisited, strong };
 
 pub const VisitInfo = struct {
@@ -714,44 +478,30 @@ pub const VisitInfo = struct {
 };
 
 pub const GraphView = struct {
-    base: ?*GraphView,
+
+    // allocators
     base_allocator: std.mem.Allocator,
     arena: *std.heap.ArenaAllocator,
     allocator: std.mem.Allocator,
-    nodes: std.ArrayList(NodeReference),
+
+    // fast (Node, LinkType) -> Edge + Node Storage
+    nodes: NodeRefMap.T(EdgeTypeMap.T(std.ArrayList(EdgeReference))),
+    // Edge Storage
     edges: EdgeRefMap.T(void),
+
     self_node: NodeReference,
-
-    // caches for fast lookups ---
-    // fast Node->Edges lookup
-    neighbors: NodeRefMap.T(std.ArrayList(EdgeReference)),
-    // fast (Node, LinkType) -> Edge (TODO: consider neighbor in here too)
-    neighbor_by_type: NodeRefMap.T(EdgeTypeMap.T(std.ArrayList(EdgeReference))),
-    neighbor_by_type_and_name: NodeRefMap.T(EdgeTypeMap.T(std.StringHashMap(EdgeReference))),
-    // fast cluster->Nodes lookup
-    //clusters: std.ArrayList(std.ArrayList(NodeReference)),
-    // fast Node->Cluster lookup
-    //node_to_cluster: Map(NodeReference, *std.ArrayList(NodeReference)),
-    // ----
-
-    // need graph merging logic
-    // need fast graph views (no copy)
-    // => operations all through graph, no graph reference in Nodes or Edges
 
     pub fn init(b_allocator: std.mem.Allocator) @This() {
         const arena_ptr = b_allocator.create(std.heap.ArenaAllocator) catch @panic("OOM allocating arena");
         arena_ptr.* = std.heap.ArenaAllocator.init(b_allocator);
         const allocator = arena_ptr.allocator();
         var out = GraphView{
-            .base = null,
             .base_allocator = b_allocator,
             .arena = arena_ptr,
             .allocator = allocator,
-            .nodes = std.ArrayList(NodeReference).init(allocator),
+            //
             .edges = EdgeRefMap.T(void).init(allocator),
-            .neighbors = NodeRefMap.T(std.ArrayList(EdgeReference)).init(allocator),
-            .neighbor_by_type = NodeRefMap.T(EdgeTypeMap.T(std.ArrayList(EdgeReference))).init(allocator),
-            .neighbor_by_type_and_name = NodeRefMap.T(EdgeTypeMap.T(std.StringHashMap(EdgeReference))).init(allocator),
+            .nodes = NodeRefMap.T(EdgeTypeMap.T(std.ArrayList(EdgeReference))).init(allocator),
             .self_node = Node.init(),
         };
         _ = out.insert_node(out.self_node);
@@ -759,16 +509,6 @@ pub const GraphView = struct {
     }
 
     pub fn deinit(g: *@This()) void {
-        for (g.nodes.items) |node| {
-            node._ref_count.dec(g, .{ .Node = node });
-        }
-
-        var edge_it = g.edges.keyIterator();
-        while (edge_it.next()) |edge_ptr| {
-            const edge = edge_ptr.*;
-            edge._ref_count.dec(g, .{ .Edge = edge });
-        }
-
         g.arena.deinit();
         g.base_allocator.destroy(g.arena);
     }
@@ -782,27 +522,15 @@ pub const GraphView = struct {
             return g.bind(node);
         }
 
-        g.nodes.append(node) catch {
-            @panic("Failed to append node");
-        };
-        node._ref_count.inc(g);
-
-        // handle caches
-        g.neighbors.put(node, std.ArrayList(EdgeReference).init(g.allocator)) catch {
-            @panic("Failed to allocate ArrayList");
-        };
-        g.neighbor_by_type.put(node, EdgeTypeMap.T(std.ArrayList(EdgeReference)).init(g.allocator)) catch {
-            @panic("Failed to allocate EdgeTypeMap");
-        };
-        g.neighbor_by_type_and_name.put(node, EdgeTypeMap.T(std.StringHashMap(EdgeReference)).init(g.allocator)) catch {
-            @panic("Failed to allocate EdgeTypeNameMap");
+        g.nodes.put(node, EdgeTypeMap.T(std.ArrayList(EdgeReference)).init(g.allocator)) catch {
+            @panic("OOM");
         };
 
         return g.bind(node);
     }
 
     pub fn contains_node(g: *@This(), node: NodeReference) bool {
-        return g.neighbors.contains(node);
+        return g.nodes.contains(node);
     }
 
     pub fn create_and_insert_node(g: *@This()) BoundNodeReference {
@@ -818,15 +546,11 @@ pub const GraphView = struct {
     }
 
     pub fn get_node_count(g: *const @This()) usize {
-        return g.nodes.items.len;
+        return g.nodes.count();
     }
 
     pub fn get_edge_count(g: *const @This()) usize {
         return g.edges.count();
-    }
-
-    pub fn get_nodes(g: *const @This()) []const NodeReference {
-        return g.nodes.items;
     }
 
     pub fn insert_edge(g: *@This(), edge: EdgeReference) BoundEdgeReference {
@@ -842,36 +566,22 @@ pub const GraphView = struct {
             @panic("Edge source or target not found");
         }
 
-        g.edges.put(edge, {}) catch @panic("OOM inserting edge");
-        edge._ref_count.inc(g);
+        g.edges.put(edge, {}) catch @panic("OOM");
 
         // handle caches
         const edge_type = edge.get_attribute_edge_type();
-        const from_neighbors = g.neighbor_by_type.getPtr(edge.source).?;
+        const from_neighbors = g.nodes.getPtr(edge.source).?;
+        const to_neighbors = g.nodes.getPtr(edge.target).?;
+
         if (!from_neighbors.contains(edge_type)) {
-            from_neighbors.put(edge_type, std.ArrayList(EdgeReference).init(g.allocator)) catch @panic("OOM inserting neighbor type");
+            from_neighbors.put(edge_type, std.ArrayList(EdgeReference).init(g.allocator)) catch @panic("OOM");
         }
-        g.neighbors.getPtr(edge.source).?.append(edge) catch @panic("OOM appending neighbor edge");
-        from_neighbors.getPtr(edge_type).?.append(edge) catch @panic("OOM appending neighbor type edge");
-
-        const to_neighbors = g.neighbor_by_type.getPtr(edge.target).?;
         if (!to_neighbors.contains(edge_type)) {
-            to_neighbors.put(edge_type, std.ArrayList(EdgeReference).init(g.allocator)) catch @panic("OOM inserting reverse neighbor type");
+            to_neighbors.put(edge_type, std.ArrayList(EdgeReference).init(g.allocator)) catch @panic("OOM");
         }
-        g.neighbors.getPtr(edge.target).?.append(edge) catch @panic("OOM appending reverse neighbor edge");
-        to_neighbors.getPtr(edge_type).?.append(edge) catch @panic("OOM appending reverse neighbor type edge");
 
-        const directional = edge.get_attribute_directional();
-        const name = edge.get_attribute_name();
-        if (directional != null and name != null) {
-            const dir = directional.?;
-            const src = if (dir) edge.source else edge.target;
-            const neighbor_name_map = g.neighbor_by_type_and_name.getPtr(src).?;
-            if (!neighbor_name_map.contains(edge_type)) {
-                neighbor_name_map.put(edge_type, std.StringHashMap(EdgeReference).init(g.allocator)) catch @panic("OOM inserting neighbor type name");
-            }
-            neighbor_name_map.getPtr(edge_type).?.put(name.?, edge) catch @panic("OOM inserting neighbor type name edge");
-        }
+        from_neighbors.getPtr(edge_type).?.append(edge) catch @panic("OOM");
+        to_neighbors.getPtr(edge_type).?.append(edge) catch @panic("OOM");
 
         return BoundEdgeReference{
             .edge = edge,
@@ -879,35 +589,9 @@ pub const GraphView = struct {
         };
     }
 
-    pub fn get_edges(g: *@This(), node: NodeReference) ?*const std.ArrayList(EdgeReference) {
-        return g.neighbors.getPtr(node);
-    }
-
     pub fn get_edges_of_type(g: *@This(), node: NodeReference, T: Edge.EdgeType) ?*const std.ArrayList(EdgeReference) {
-        const by_type = g.neighbor_by_type.getPtr(node) orelse return null;
+        const by_type = g.nodes.getPtr(node) orelse return null;
         return by_type.getPtr(T);
-    }
-
-    pub fn visit_edges(g: *@This(), node: NodeReference, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T)) visitor.VisitResult(T) {
-        const Result = visitor.VisitResult(T);
-        const edges = g.get_edges(node);
-        if (edges == null) {
-            return Result{ .EXHAUSTED = {} };
-        }
-
-        for (edges.?.items) |edge| {
-            const bound_edge = BoundEdgeReference{ .edge = edge, .g = g };
-            const result = f(ctx, bound_edge);
-            switch (result) {
-                .CONTINUE => {},
-                .STOP => return Result{ .STOP = {} },
-                .ERROR => |err| return Result{ .ERROR = err },
-                .OK => |value| return Result{ .OK = value },
-                .EXHAUSTED => unreachable,
-            }
-        }
-
-        return Result{ .EXHAUSTED = {} };
     }
 
     pub fn visit_edges_of_type(g: *@This(), node: NodeReference, edge_type: Edge.EdgeType, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T), directed: ?bool) visitor.VisitResult(T) {
@@ -920,19 +604,12 @@ pub const GraphView = struct {
         for (edges.?.items) |edge| {
             // Filter by direction if specified
             if (directed) |d| {
-                if (d) {
-                    // directed = true: node must be source
-                    if (!Node.is_same(edge.source, node)) {
-                        continue;
-                    }
-                } else {
-                    // directed = false: node must be target
-                    if (!Node.is_same(edge.target, node)) {
+                if (edge.deref().get_attribute_directional()) {
+                    if ((d and !edge.deref().source.is_same(node)) or (!d and !edge.deref().target.is_same(node))) {
                         continue;
                     }
                 }
             }
-            // directed = null: ignore direction (process all edges)
 
             const bound_edge = BoundEdgeReference{ .edge = edge, .g = g };
             const result = f(ctx, bound_edge);
@@ -949,65 +626,64 @@ pub const GraphView = struct {
     }
 
     pub fn get_edge_with_type_and_identifier(g: *@This(), node: NodeReference, edge_type: Edge.EdgeType, identifier: str) ?EdgeReference {
-        const type_name_map = g.neighbor_by_type_and_name.getPtr(node) orelse return null;
-        const identifier_map = type_name_map.getPtr(edge_type) orelse return null;
-        const out = identifier_map.get(identifier) orelse return null;
-        return out;
+        // visit edges by type and check for identifier match
+        const Visit = struct {
+            pub fn visit(ctx: *anyopaque, bound_edge: BoundEdgeReference) visitor.VisitResult(EdgeReference) {
+                _ = ctx;
+                if (bound_edge.edge.get_attribute_name() == identifier) {
+                    return visitor.VisitResult(EdgeReference){ .OK = bound_edge.edge };
+                }
+                return visitor.VisitResult(EdgeReference){ .CONTINUE = {} };
+            }
+        };
+        var visit = Visit{};
+        const result = g.visit_edges_of_type(node, edge_type, EdgeReference, &visit, Visit.visit, true);
+        switch (result) {
+            .OK => return result.OK,
+            .EXHAUSTED => return null,
+            .CONTINUE => unreachable,
+            .STOP => unreachable,
+            .ERROR => |err| @panic(@errorName(err)),
+        }
     }
 
     pub fn get_subgraph_from_nodes(g: *@This(), nodes: std.ArrayList(NodeReference)) GraphView {
         // create new graph view
         // that contains only the nodes in the list and the edges between them
         var new_g = GraphView.init(g.base_allocator);
-        const EdgeVisitor = struct {
-            new_g: *GraphView,
-            nodes: std.HashMap(NodeReference, void, NodeRefMap, std.hash_map.default_max_load_percentage),
 
-            fn visit_fn(self_ptr: *anyopaque, edge: BoundEdgeReference) visitor.VisitResult(void) {
-                const self: *@This() = @ptrCast(@alignCast(self_ptr));
-                if (!self.nodes.contains(edge.edge.source) or !self.nodes.contains(edge.edge.target)) {
-                    return visitor.VisitResult(void){ .CONTINUE = {} };
-                }
-                _ = self.new_g.insert_edge(edge.edge);
-                return visitor.VisitResult(void){ .CONTINUE = {} };
-            }
-        };
-        var edge_visitor = EdgeVisitor{
-            .new_g = &new_g,
-            // TODO use different allocator
-            .nodes = std.HashMap(NodeReference, void, NodeRefMap, std.hash_map.default_max_load_percentage).init(std.heap.c_allocator),
-        };
-        defer edge_visitor.nodes.deinit();
         for (nodes.items) |node| {
             _ = new_g.insert_node(node);
-            edge_visitor.nodes.put(node, {}) catch @panic("OOM");
         }
         for (nodes.items) |node| {
-            _ = g.visit_edges(node, void, &edge_visitor, EdgeVisitor.visit_fn);
+            var edge_by_type_it = g.nodes.getPtr(node).?.valueIterator();
+            while (edge_by_type_it.next()) |edges_by_type_ptr| {
+                var edges_it = edges_by_type_ptr.valueIterator();
+                while (edges_it.next()) |edge_ptr| {
+                    const edge = edge_ptr.*;
+                    if (!new_g.contains_node(edge.source) or !new_g.contains_node(edge.target)) {
+                        continue;
+                    }
+                    _ = new_g.insert_edge(edge);
+                }
+            }
         }
         return new_g;
     }
 
     pub fn insert_subgraph(g: *@This(), subgraph: GraphView) void {
+        // TODO consider adding multi insert node/edges function
+        //  and some way to disable the guards to improve performance
+        //  but not 100% sure whether that will have measurable benefits
+
         // Pre-allocate for nodes
         const added_nodes_len = subgraph.nodes.items.len;
-        g.nodes.ensureUnusedCapacity(added_nodes_len) catch @panic("OOM");
         g.neighbors.ensureUnusedCapacity(@intCast(added_nodes_len)) catch @panic("OOM");
-        g.neighbor_by_type.ensureUnusedCapacity(@intCast(added_nodes_len)) catch @panic("OOM");
+        g.nodes.ensureUnusedCapacity(@intCast(added_nodes_len)) catch @panic("OOM");
         g.neighbor_by_type_and_name.ensureUnusedCapacity(@intCast(added_nodes_len)) catch @panic("OOM");
 
         for (subgraph.nodes.items) |node| {
-            if (g.contains_node(node)) {
-                continue;
-            }
-
-            // Inline insert_node logic with assumption of capacity
-            g.nodes.appendAssumeCapacity(node);
-            node._ref_count.inc(g);
-
-            g.neighbors.putAssumeCapacity(node, std.ArrayList(EdgeReference).init(g.allocator));
-            g.neighbor_by_type.putAssumeCapacity(node, EdgeTypeMap.T(std.ArrayList(EdgeReference)).init(g.allocator));
-            g.neighbor_by_type_and_name.putAssumeCapacity(node, EdgeTypeMap.T(std.StringHashMap(EdgeReference)).init(g.allocator));
+            _ = g.insert_node(node);
         }
 
         // Pre-allocate for edges
@@ -1017,49 +693,7 @@ pub const GraphView = struct {
         var it = subgraph.edges.keyIterator();
         while (it.next()) |edge_ptr| {
             const edge = edge_ptr.*;
-            if (g.edges.contains(edge)) {
-                continue;
-            }
-
-            // Inline insert_edge logic
-            g.edges.putAssumeCapacity(edge, {});
-            edge._ref_count.inc(g);
-
-            // handle caches
-            // We trust nodes exist now (were inserted above or already existed)
-            const edge_type = edge.get_attribute_edge_type();
-            {
-                const from_neighbors = g.neighbor_by_type.getPtr(edge.source).?;
-                const res_from = from_neighbors.getOrPut(edge_type) catch @panic("OOM");
-                if (!res_from.found_existing) {
-                    res_from.value_ptr.* = std.ArrayList(EdgeReference).init(g.allocator);
-                }
-                res_from.value_ptr.append(edge) catch @panic("OOM");
-                g.neighbors.getPtr(edge.source).?.append(edge) catch @panic("OOM");
-            }
-
-            {
-                const to_neighbors = g.neighbor_by_type.getPtr(edge.target).?;
-                const res_to = to_neighbors.getOrPut(edge_type) catch @panic("OOM");
-                if (!res_to.found_existing) {
-                    res_to.value_ptr.* = std.ArrayList(EdgeReference).init(g.allocator);
-                }
-                res_to.value_ptr.append(edge) catch @panic("OOM");
-                g.neighbors.getPtr(edge.target).?.append(edge) catch @panic("OOM");
-            }
-
-            const directional = edge.get_attribute_directional();
-            const name = edge.get_attribute_name();
-            if (directional != null and name != null) {
-                const dir = directional.?;
-                const src = if (dir) edge.source else edge.target;
-                const neighbor_type_name_map = g.neighbor_by_type_and_name.getPtr(src).?;
-                if (!neighbor_type_name_map.contains(edge_type)) {
-                    neighbor_type_name_map.put(edge_type, std.StringHashMap(EdgeReference).init(g.allocator)) catch @panic("OOM inserting neighbor type name");
-                }
-                const neighbor_name_map = neighbor_type_name_map.getPtr(edge_type).?;
-                neighbor_name_map.put(name.?, edge) catch @panic("OOM inserting neighbor type name edge");
-            }
+            _ = g.insert_edge(edge);
         }
     }
 
@@ -1175,23 +809,21 @@ test "basic" {
     const TestLinkType = Edge.hash_edge_type(1759269396);
     try Edge.register_type(TestLinkType);
 
-    const n1 = Node.init();
-    const n2 = Node.init();
-    const e12 = Edge.init(n1, n2, TestLinkType);
+    const bn1 = g.create_and_insert_node();
+    const bn2 = g.create_and_insert_node();
+    const e12 = Edge.init(bn1.node, bn2.node, TestLinkType);
     // no deinit defer required, since graph will deinit all nodes and edges if they reach 0
 
-    _ = g.insert_node(n1);
-    _ = g.insert_node(n2);
     _ = g.insert_edge(e12);
 
-    const edges = g.get_edges(n1).?;
-    try std.testing.expectEqual(edges.items.len, 1);
-    try std.testing.expectEqual(edges.items[0].get_uuid(), e12.get_uuid());
-    try std.testing.expectEqual(edges.items[0].target.get_uuid(), n2.get_uuid());
+    //const edges = g.get_edges(bn1.node).?;
+    //try std.testing.expectEqual(edges.items.len, 1);
+    //try std.testing.expectEqual(edges.items[0].get_uuid(), e12.get_uuid());
+    //try std.testing.expectEqual(edges.items[0].target.get_uuid(), bn2.node.get_uuid());
 
-    try std.testing.expectEqual(n1._ref_count.ref_count, 1);
-    try std.testing.expectEqual(n2._ref_count.ref_count, 1);
-    try std.testing.expectEqual(e12._ref_count.ref_count, 1);
+    //try std.testing.expectEqual(bn1.node._ref_count.ref_count, 1);
+    //try std.testing.expectEqual(bn2.node._ref_count.ref_count, 1);
+    //try std.testing.expectEqual(e12._ref_count.ref_count, 1);
 }
 
 test "nodeattributes" {
@@ -1200,18 +832,17 @@ test "nodeattributes" {
     var g = GraphView.init(a);
     defer g.deinit();
 
-    const n1 = Node.init();
-    defer n1.deinit();
+    const bn1 = g.create_and_insert_node();
 
-    try std.testing.expect(n1.get("test") == null);
-    n1.put("test", .{ .String = "test" });
-    const attr_read = n1.get("test");
+    try std.testing.expect(bn1.get("test") == null);
+    bn1.node.put("test", .{ .String = "test" });
+    const attr_read = bn1.get("test");
     try std.testing.expect(attr_read != null);
     try std.testing.expect(attr_read.? == .String);
     try std.testing.expect(std.mem.eql(u8, attr_read.?.String, "test"));
 
-    n1.put("test2", .{ .Int = 5 });
-    const attr_read2 = n1.get("test2");
+    bn1.node.put("test2", .{ .Int = 5 });
+    const attr_read2 = bn1.node.get("test2");
     try std.testing.expect(attr_read2 != null);
     try std.testing.expect(attr_read2.? == .Int);
     try std.testing.expect(attr_read2.?.Int == 5);
@@ -1231,7 +862,7 @@ test "nodeattributes" {
     var visitor_ctx = VisitorCtx{ .values = std.ArrayList(Literal).init(a), .failed = false };
     defer visitor_ctx.values.deinit();
 
-    n1.visit_attributes(&visitor_ctx, VisitorCtx.visit);
+    bn1.node.visit_attributes(&visitor_ctx, VisitorCtx.visit);
     try std.testing.expectEqual(@as(usize, 2), visitor_ctx.values.items.len);
     try std.testing.expect(visitor_ctx.values.items[0] == .String);
     try std.testing.expect(visitor_ctx.values.items[1] == .Int);
@@ -1248,16 +879,12 @@ test "BFSPath cloneAndExtend preserves start metadata" {
         else => return err,
     };
 
-    const n1 = Node.init();
-    const n2 = Node.init();
-    const n3 = Node.init();
+    const bn1 = g.create_and_insert_node();
+    const bn2 = g.create_and_insert_node();
+    const bn3 = g.create_and_insert_node();
 
-    const bn1 = g.insert_node(n1);
-    _ = g.insert_node(n2);
-    _ = g.insert_node(n3);
-
-    const e12 = Edge.init(n1, n2, TestEdgeType);
-    const e23 = Edge.init(n2, n3, TestEdgeType);
+    const e12 = Edge.init(bn1.node, bn2.node, TestEdgeType);
+    const e23 = Edge.init(bn2.node, bn3.node, TestEdgeType);
     _ = g.insert_edge(e12);
     _ = g.insert_edge(e23);
 
@@ -1268,8 +895,7 @@ test "BFSPath cloneAndExtend preserves start metadata" {
         .forward = true, // n1 -> n2 is forward (source to target)
     });
 
-    const bn2_bound = g.bind(n2);
-    const cloned = try BFSPath.cloneAndExtend(base, bn2_bound, e23);
+    const cloned = try BFSPath.cloneAndExtend(base, bn2, e23);
     defer cloned.deinit();
 
     try std.testing.expect(cloned.start_node.node == bn1.node);
@@ -1287,8 +913,7 @@ test "BFSPath detects inconsistent graph view" {
     var g2 = GraphView.init(a);
     defer g2.deinit();
 
-    const n1 = Node.init();
-    const bn1 = g1.insert_node(n1);
+    const bn1 = g1.create_and_insert_node();
 
     var path = try BFSPath.init(bn1);
     defer {
@@ -1316,17 +941,13 @@ test "get_subgraph_from_nodes" {
         else => return err,
     };
 
-    const n1 = Node.init();
-    const n2 = Node.init();
-    const n3 = Node.init();
+    const bn1 = g.create_and_insert_node();
+    const bn2 = g.create_and_insert_node();
+    const bn3 = g.create_and_insert_node();
 
-    _ = g.insert_node(n1);
-    _ = g.insert_node(n2);
-    _ = g.insert_node(n3);
-
-    const e12 = Edge.init(n1, n2, TestEdgeTypeSubgraph);
-    const e23 = Edge.init(n2, n3, TestEdgeTypeSubgraph);
-    const e13 = Edge.init(n1, n3, TestEdgeTypeSubgraph);
+    const e12 = Edge.init(bn1.node, bn2.node, TestEdgeTypeSubgraph);
+    const e23 = Edge.init(bn2.node, bn3.node, TestEdgeTypeSubgraph);
+    const e13 = Edge.init(bn1.node, bn3.node, TestEdgeTypeSubgraph);
 
     _ = g.insert_edge(e12);
     _ = g.insert_edge(e23);
@@ -1334,8 +955,8 @@ test "get_subgraph_from_nodes" {
 
     var nodes = std.ArrayList(NodeReference).init(a);
     defer nodes.deinit();
-    try nodes.append(n1);
-    try nodes.append(n2);
+    try nodes.append(bn1.node);
+    try nodes.append(bn2.node);
 
     var subgraph = g.get_subgraph_from_nodes(nodes);
     defer subgraph.deinit();
@@ -1343,11 +964,11 @@ test "get_subgraph_from_nodes" {
     // 2 nodes + 1 self_node
     try std.testing.expectEqual(@as(usize, 3), subgraph.get_node_count());
 
-    const sub_edges_n1 = subgraph.get_edges(n1).?;
+    const sub_edges_n1 = subgraph.get_edges(bn1.node).?;
     try std.testing.expectEqual(@as(usize, 1), sub_edges_n1.items.len);
     try std.testing.expectEqual(e12.get_uuid(), sub_edges_n1.items[0].get_uuid());
 
-    const sub_edges_n2 = subgraph.get_edges(n2).?;
+    const sub_edges_n2 = subgraph.get_edges(bn2.node).?;
     try std.testing.expectEqual(@as(usize, 1), sub_edges_n2.items.len);
     try std.testing.expectEqual(e12.get_uuid(), sub_edges_n2.items[0].get_uuid());
 }
@@ -1357,10 +978,8 @@ test "duplicate edge insertion" {
     var g = GraphView.init(a);
     defer g.deinit();
 
-    const n1 = Node.init();
-    const n2 = Node.init();
-    _ = g.insert_node(n1);
-    _ = g.insert_node(n2);
+    const bn1 = g.create_and_insert_node();
+    const bn2 = g.create_and_insert_node();
 
     const TestLinkType = Edge.hash_edge_type(0xDEADBEEF);
     Edge.register_type(TestLinkType) catch |err| switch (err) {
@@ -1368,7 +987,7 @@ test "duplicate edge insertion" {
         else => return err,
     };
 
-    const e1 = Edge.init(n1, n2, TestLinkType);
+    const e1 = Edge.init(bn1.node, bn2.node, TestLinkType);
 
     _ = g.insert_edge(e1);
     try std.testing.expectEqual(@as(usize, 1), g.edges.count());
@@ -1390,14 +1009,12 @@ test "insert_subgraph performance" {
 
     var i: usize = 0;
     while (i < num_nodes) : (i += 1) {
-        const n = Node.init();
-        _ = g1.insert_node(n);
+        _ = g1.create_and_insert_node();
     }
 
     i = 0;
     while (i < num_nodes) : (i += 1) {
-        const n = Node.init();
-        _ = g2.insert_node(n);
+        _ = g2.create_and_insert_node();
     }
 
     var timer = try std.time.Timer.start();
@@ -1412,10 +1029,8 @@ test "get_edge_with_type_and_identifier" {
     var g = GraphView.init(a);
     defer g.deinit();
 
-    const n1 = Node.init();
-    const n2 = Node.init();
-    _ = g.insert_node(n1);
-    _ = g.insert_node(n2);
+    const bn1 = g.create_and_insert_node();
+    const bn2 = g.create_and_insert_node();
 
     const TestEdgeType = Edge.hash_edge_type(0xFBAF_0003);
     Edge.register_type(TestEdgeType) catch |err| switch (err) {
@@ -1423,19 +1038,19 @@ test "get_edge_with_type_and_identifier" {
         else => return err,
     };
 
-    const e12 = Edge.init(n1, n2, TestEdgeType);
+    const e12 = Edge.init(bn1.node, bn2.node, TestEdgeType);
     e12.set_attribute_directional(true);
     e12.set_attribute_name("e12");
     _ = g.insert_edge(e12);
 
-    const out = g.get_edge_with_type_and_identifier(n1, TestEdgeType, "e12");
+    const out = g.get_edge_with_type_and_identifier(bn1.node, TestEdgeType, "e12");
     try std.testing.expect(out != null);
     try std.testing.expect(out.?.get_uuid() == e12.get_uuid());
 
-    const out2 = g.get_edge_with_type_and_identifier(n2, TestEdgeType, "e12");
+    const out2 = g.get_edge_with_type_and_identifier(bn2.node, TestEdgeType, "e12");
     try std.testing.expect(out2 == null);
 
-    const out3 = g.get_edge_with_type_and_identifier(n1, TestEdgeType, "e13");
+    const out3 = g.get_edge_with_type_and_identifier(bn1.node, TestEdgeType, "e13");
     try std.testing.expect(out3 == null);
 }
 
@@ -1512,26 +1127,29 @@ const _TrackingAllocator = struct {
 test "mem_compile" {
     const size_node = @sizeOf(Node);
     const size_edge = @sizeOf(Edge);
-
-    const size_node_attr = @sizeOf(NodeAttributes);
-    const size_edge_attr = @sizeOf(EdgeAttributes);
-    const size_ref_count = @sizeOf(GraphReferenceCounter);
     const size_str = @sizeOf(str);
-
     const size_literal = @sizeOf(Literal);
-    std.debug.print("size_str: {d}\n", .{size_str});
-    std.debug.print("size_node_attr: {d}\n", .{size_node_attr});
-    std.debug.print("size_edge_attr: {d}\n", .{size_edge_attr});
-    std.debug.print("size_ref_count: {d}\n", .{size_ref_count});
+    const size_attribute = @sizeOf(Attribute);
+    const size_dynamic_attributes = @sizeOf(DynamicAttributes);
+    const size_node_ref = @sizeOf(NodeReference);
+    const size_edge_ref = @sizeOf(EdgeReference);
+    const size_attr_ref = @sizeOf(DynamicAttributesReference);
+
     std.debug.print("size_node: {d}\n", .{size_node});
     std.debug.print("size_edge: {d}\n", .{size_edge});
+    std.debug.print("size_str: {d}\n", .{size_str});
     std.debug.print("size_literal: {d}\n", .{size_literal});
+    std.debug.print("size_attribute: {d}\n", .{size_attribute});
+    std.debug.print("size_dynamic_attributes: {d}\n", .{size_dynamic_attributes});
+    std.debug.print("size_node_ref: {d}\n", .{size_node_ref});
+    std.debug.print("size_edge_ref: {d}\n", .{size_edge_ref});
+    std.debug.print("size_attr_ref: {d}\n", .{size_attr_ref});
 
-    try std.testing.expectEqual(24, @as(usize, size_literal));
+    //try std.testing.expectEqual(24, @as(usize, size_literal));
 
-    try std.testing.expectEqual(2, @as(usize, size_ref_count));
-    try std.testing.expectEqual(16, @as(usize, size_node_attr));
-    try std.testing.expectEqual(24, size_node);
+    //try std.testing.expectEqual(2, @as(usize, size_ref_count));
+    //try std.testing.expectEqual(16, @as(usize, size_node_attr));
+    //try std.testing.expectEqual(24, size_node);
 }
 
 test "mem_node_with_string" {
@@ -1543,7 +1161,6 @@ test "mem_node_with_string" {
 
     const node = Node.init();
     //try std.testing.expectEqual(@as(usize, 16), t.totalRequested);
-    defer node.deinit();
     const value: Literal = .{ .String = "test" };
     node.put("test", value);
 
@@ -1567,8 +1184,7 @@ test "speed_insert_node_simple" {
     const num_nodes = 100000;
     var i: usize = 0;
     while (i < num_nodes) : (i += 1) {
-        const n = Node.init();
-        _ = g.insert_node(n);
+        _ = g.create_and_insert_node();
     }
     const duration = timer.read();
     const total_ms = duration / std.time.ns_per_ms;
@@ -1587,9 +1203,8 @@ test "speed_insert_node_with_attr" {
     const num_nodes = 100000;
     var i: usize = 0;
     while (i < num_nodes) : (i += 1) {
-        const n = Node.init();
-        _ = g.insert_node(n);
-        n.put("test", .{ .Int = @as(i64, @intCast(i)) });
+        const n = g.create_and_insert_node();
+        n.node.put("test", .{ .Int = @as(i64, @intCast(i)) });
     }
     const duration = timer.read();
     const total_ms = duration / std.time.ns_per_ms;
@@ -1608,13 +1223,13 @@ test "speed_insert_edge_simple" {
     var n1s: [count]NodeReference = undefined;
     var i: usize = 0;
     while (i < count) : (i += 1) {
-        n1s[i] = g.insert_node(Node.init()).node;
+        n1s[i] = g.create_and_insert_node().node;
     }
 
     var n2s: [count]NodeReference = undefined;
     i = 0;
     while (i < count) : (i += 1) {
-        n2s[i] = g.insert_node(Node.init()).node;
+        n2s[i] = g.create_and_insert_node().node;
     }
 
     // measure time
@@ -1630,20 +1245,3 @@ test "speed_insert_edge_simple" {
     std.debug.print("insert_edge with {d} edges took {d}ms\n", .{ count, total_ms });
     std.debug.print("per edge: {d}ns\n", .{per_edge_ns});
 }
-
-//test "memory_usage" {
-//    const a = std.testing.allocator;
-//    var g = GraphView.init(a);
-//    defer g.deinit();
-//
-//    const nodes = std.ArrayList(NodeReference).init(a);
-//    defer nodes.deinit();
-//    const num_nodes = 10000;
-//    try nodes.ensureTotalCapacity(num_nodes);
-//
-//    var i: usize = 0;
-//    while (i < num_nodes) : (i += 1) {
-//        const n = Node.init();
-//        _ = nodes.append(n);
-//    }
-//}

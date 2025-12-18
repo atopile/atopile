@@ -283,17 +283,15 @@ test "edge operand basic" {
     var g = graph.GraphView.init(std.testing.allocator);
     defer g.deinit();
 
-    const expression = Node.init();
-    const operands = Node.init();
-    const operand_a = Node.init();
-    const operand_b = Node.init();
-    const operand_c = Node.init();
-
-    const b_expr = g.insert_node(expression);
-    const b_operands = g.insert_node(operands);
-    const b_operand_a = g.insert_node(operand_a);
-    const b_operand_b = g.insert_node(operand_b);
-    const b_operand_c = g.insert_node(operand_c);
+    const b_expr = g.create_and_insert_node();
+    const expression = b_expr.node;
+    const b_operands = g.create_and_insert_node();
+    const b_operand_a = g.create_and_insert_node();
+    const operand_a = b_operand_a.node;
+    const b_operand_b = g.create_and_insert_node();
+    const operand_b = b_operand_b.node;
+    const b_operand_c = g.create_and_insert_node();
+    const operand_c = b_operand_c.node;
 
     _ = EdgeComposition.add_child(b_expr, b_operands.node, "operands");
     _ = EdgeOperand.add_operand(b_expr, operand_a, "lhs");

@@ -55,7 +55,7 @@ def test_graph_garbage_collection(
     g = GraphView.create()
 
     for _ in range(n):
-        g.insert_node(node=Node.create())
+        g.create_and_insert_node()
 
     mem_create = _get_mem_diff()
 
