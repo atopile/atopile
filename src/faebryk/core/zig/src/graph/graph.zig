@@ -8,9 +8,9 @@ var arena_allocator = std.heap.ArenaAllocator.init(base_allocator);
 var global_graph_allocator: std.mem.Allocator = arena_allocator.allocator();
 
 // Static storage for edges and attributes (temporary - will be replaced with proper allocator)
-var Nodes: [1024 * 1024]Node = undefined;
-var Edges: [1024 * 1024]Edge = undefined;
-var Attrs: [1024 * 1024]DynamicAttributes = undefined;
+var Nodes: [8 * 1024 * 1024]Node = undefined;
+var Edges: [8 * 1024 * 1024]Edge = undefined;
+var Attrs: [2 * 1024 * 1024]DynamicAttributes = undefined;
 
 // =============================================================================
 // Data types
@@ -388,7 +388,12 @@ pub const DynamicAttributesReference = struct {
         if (self.is_null()) return null;
         const attrs = &Attrs[self.uuid];
         for (attrs.values[0..attrs.in_use]) |value| {
-            if (std.mem.eql(u8, value.identifier, identifier)) {
+            // Fast path: pointer + length comparison (works for string literals which share memory)
+            // Fall back to byte comparison only if lengths match but pointers differ
+            if (value.identifier.len == identifier.len and
+                (value.identifier.ptr == identifier.ptr or
+                    std.mem.eql(u8, value.identifier, identifier)))
+            {
                 return value.value;
             }
         }
