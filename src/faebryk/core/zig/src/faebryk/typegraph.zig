@@ -1551,22 +1551,22 @@ pub const TypeGraph = struct {
         var collected_nodes = std.ArrayList(NodeReference).init(allocator);
         defer collected_nodes.deinit();
 
-        // Use a set to track visited nodes
-        var visited = graph.NodeRefMap.T(void).init(allocator);
+        // Use UUIDBitSet for O(1) membership testing instead of HashMap
+        var visited = graph.UUIDBitSet.init(allocator);
         defer visited.deinit();
 
-        var dont_visit = graph.NodeRefMap.T(void).init(allocator);
+        var dont_visit = graph.UUIDBitSet.init(allocator);
         defer dont_visit.deinit();
 
         // Helper struct with functions to collect nodes
         const Collector = struct {
             nodes: *std.ArrayList(NodeReference),
-            visited_set: *graph.NodeRefMap.T(void),
-            dont_visit: *graph.NodeRefMap.T(void),
+            visited_set: *graph.UUIDBitSet,
+            dont_visit: *graph.UUIDBitSet,
 
             fn try_add(ctx: *@This(), node: NodeReference) bool {
-                const gop = ctx.visited_set.getOrPut(node) catch @panic("OOM");
-                if (!gop.found_existing) {
+                if (!ctx.visited_set.contains(node.uuid)) {
+                    ctx.visited_set.add(node.uuid);
                     ctx.nodes.append(node) catch @panic("OOM");
                     return true;
                 }
@@ -1574,7 +1574,7 @@ pub const TypeGraph = struct {
             }
 
             fn skip_visit(ctx: *@This(), node: NodeReference) void {
-                ctx.dont_visit.put(node, {}) catch @panic("OOM");
+                ctx.dont_visit.add(node.uuid);
             }
 
             // Visitor for EdgeComposition children
@@ -1624,7 +1624,7 @@ pub const TypeGraph = struct {
         var i: usize = 0;
         while (i < collected_nodes.items.len) : (i += 1) {
             const current = collected_nodes.items[i];
-            if (collector.dont_visit.contains(current)) {
+            if (collector.dont_visit.contains(current.uuid)) {
                 continue;
             }
             const bound_current = g.bind(current);
