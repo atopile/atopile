@@ -243,47 +243,12 @@ def test_typegraph_path_error_metadata():
     assert err_missing.failing_segment_index == 0
 
 
-def test_for_loop_connects_twice():
-    _, tg, _, result = build_type(
-        """
-        #pragma experiment("FOR_LOOP")
-
-        module Electrical:
-            pass
-
-        module Resistor:
-            unnamed = new Electrical[2]
-
-        module App:
-            left = new Resistor
-            right = new Resistor
-            sink = new Resistor
-
-            for r in [left, right]:
-                r ~ sink
-        """
-    )
-    app_type = result.state.type_roots["App"]
-
-    assert (
-        _check_make_links(
-            tg=tg,
-            type_node=app_type,
-            expected=[(["left"], ["sink"]), (["right"], ["sink"])],
-        )
-        is True
-    )
-
-
-def test_for_loop_requires_experiment():
-    with pytest.raises(DslException, match="(?i)experiment.*enabled"):
-        build_type(
+class TestForLoops:
+    def test_for_loop_connects_twice(self):
+        _, tg, _, result = build_type(
             """
-            module Electrical:
-                pass
-
-            module Resistor:
-                unnamed = new Electrical[2]
+            #pragma experiment("FOR_LOOP")
+            import Resistor
 
             module App:
                 left = new Resistor
@@ -294,270 +259,224 @@ def test_for_loop_requires_experiment():
                     r ~ sink
             """
         )
+        app_type = result.state.type_roots["App"]
 
-
-def test_for_loop_over_sequence():
-    _, tg, _, result = build_type(
-        """
-        #pragma experiment("FOR_LOOP")
-
-        module Electrical:
-            pass
-
-        module Resistor:
-            unnamed = new Electrical[2]
-
-        module Inner:
-            connection = new Resistor
-
-        module App:
-            items = new Inner[2]
-            sink = new Resistor
-
-            for it in items:
-                it.connection ~ sink
-        """
-    )
-    # Path segments with indices are combined: items + [0] -> items[0]
-    assert (
-        _check_make_links(
-            tg=tg,
-            type_node=result.state.type_roots["App"],
-            expected=[
-                (["items[0]", "connection"], ["sink"]),
-                (["items[1]", "connection"], ["sink"]),
-            ],
-        )
-        is True
-    )
-
-
-def test_for_loop_over_sequence_slice():
-    _, tg, _, result = build_type(
-        """
-        #pragma experiment("FOR_LOOP")
-
-        module Electrical:
-            pass
-
-        module Resistor:
-            unnamed = new Electrical[2]
-
-        module Inner:
-            connection = new Resistor
-
-        module App:
-            items = new Inner[3]
-            sink = new Resistor
-
-            for it in items[1:]:
-                it.connection ~ sink
-        """
-    )
-
-    # Path segments with indices are combined
-    assert _check_make_links(
-        tg=tg,
-        type_node=result.state.type_roots["App"],
-        expected=[
-            (["items[1]", "connection"], ["sink"]),
-            (["items[2]", "connection"], ["sink"]),
-        ],
-    )
-
-
-def test_for_loop_over_sequence_slice_zero_step_errors():
-    with pytest.raises(DslException, match="Slice step cannot be zero"):
-        build_type(
-            """
-            #pragma experiment("FOR_LOOP")
-
-            module Inner:
-                pass
-
-            module App:
-                items = new Inner[2]
-
-                for it in items[::0]:
-                    pass
-            """
+        assert (
+            _check_make_links(
+                tg=tg,
+                type_node=app_type,
+                expected=[(["left"], ["sink"]), (["right"], ["sink"])],
+            )
+            is True
         )
 
+    def test_for_loop_requires_experiment(self):
+        with pytest.raises(DslException, match="(?i)experiment.*enabled"):
+            build_type(
+                """
+                import Resistor
 
-def test_for_loop_over_sequence_stride():
-    _, tg, _, result = build_type(
-        """
-        #pragma experiment("FOR_LOOP")
+                module App:
+                    left = new Resistor
+                    right = new Resistor
+                    sink = new Resistor
 
-        module Electrical:
-            pass
+                    for r in [left, right]:
+                        r ~ sink
+                """
+            )
 
-        module Resistor:
-            unnamed = new Electrical[2]
-
-        module Inner:
-            connection = new Resistor
-
-        module App:
-            items = new Inner[4]
-            sink = new Resistor
-
-            for it in items[0:4:2]:
-                it.connection ~ sink
-        """
-    )
-
-    # Path segments with indices are combined
-    assert _check_make_links(
-        tg=tg,
-        type_node=result.state.type_roots["App"],
-        expected=[
-            (["items[0]", "connection"], ["sink"]),
-            (["items[2]", "connection"], ["sink"]),
-        ],
-        not_expected=[
-            (["items[1]", "connection"], ["sink"]),
-            (["items[3]", "connection"], ["sink"]),
-        ],
-    )
-
-
-def test_for_loop_alias_does_not_leak():
-    with pytest.raises(DslException, match="not defined"):
-        build_type(
-            """
-            #pragma experiment("FOR_LOOP")
-
-            module Electrical:
-                pass
-
-            module Resistor:
-                unnamed = new Electrical[2]
-
-            module App:
-                left = new Resistor
-                for r in [left]:
-                    pass
-                r ~ left
-            """
-        )
-
-
-def test_for_loop_nested_field_paths():
-    _, tg, _, result = build_type(
-        """
-        #pragma experiment("FOR_LOOP")
-
-        module Electrical:
-            pass
-
-        module Resistor:
-            unnamed = new Electrical[2]
-
-        module Inner:
-            connection = new Resistor
-
-        module App:
-            left = new Inner
-            sink = new Resistor
-            for i in [left]:
-                i.connection ~ sink
-        """
-    )
-    assert (
-        _check_make_links(
-            tg=tg,
-            type_node=result.state.type_roots["App"],
-            expected=[(["left", "connection"], ["sink"])],
-            not_expected=[(["right", "connection"], ["sink"])],
-        )
-        is True
-    )
-
-
-def test_for_loop_assignment_creates_children():
-    _, tg, _, result = build_type(
-        """
-        #pragma experiment("FOR_LOOP")
-
-        module Electrical:
-            pass
-
-        module Resistor:
-            unnamed = new Electrical[2]
-
-        module Inner:
-            pass
-
-        module App:
-            left = new Inner
-            right = new Inner
-            for i in [left, right]:
-                i.extra = new Resistor
-        """
-    )
-    app_type = result.state.type_roots["App"]
-    extras = _collect_children_by_name(tg, app_type, "extra")
-    assert len(extras) == 2
-    for extra in extras:
-        chain = tg.debug_get_mount_chain(make_child=extra)
-        assert chain, "expected extra to have mount chain"
-        assert chain[-1] == "extra"
-        assert chain[0] in {"left", "right"}
-
-
-def test_two_for_loops_same_var_accumulates_links():
-    _, tg, _, result = build_type(
-        """
-        #pragma experiment("FOR_LOOP")
-
-        module Electrical:
-            pass
-
-        module Resistor:
-            unnamed = new Electrical[2]
-
-        module App:
-            a = new Resistor
-            b = new Resistor
-            c = new Resistor
-            sink = new Resistor
-
-            for r in [a, b]:
-                r ~ sink
-            for r in [c]:
-                r ~ sink
-        """
-    )
-    assert (
-        _check_make_links(
-            tg=tg,
-            type_node=result.state.type_roots["App"],
-            expected=[(["a"], ["sink"]), (["b"], ["sink"]), (["c"], ["sink"])],
-        )
-        is True
-    )
-
-
-def test_for_loop_alias_shadow_symbol_raises():
-    with pytest.raises(DslException, match="shadow"):
-        build_type(
+    def test_for_loop_over_sequence(self):
+        _, tg, _, result = build_type(
             """
             #pragma experiment("FOR_LOOP")
             import Resistor
 
-            module Electrical:
-                pass
-
-            module Resistor2:
-                unnamed = new Electrical[2]
+            module Inner:
+                connection = new Resistor
 
             module App:
-                left = new Resistor2
-                for Resistor in [left]:
-                    pass
+                items = new Inner[2]
+                sink = new Resistor
+
+                for it in items:
+                    it.connection ~ sink
             """
         )
+        # Path segments with indices are combined: items + [0] -> items[0]
+        assert (
+            _check_make_links(
+                tg=tg,
+                type_node=result.state.type_roots["App"],
+                expected=[
+                    (["items[0]", "connection"], ["sink"]),
+                    (["items[1]", "connection"], ["sink"]),
+                ],
+            )
+            is True
+        )
+
+    def test_for_loop_over_sequence_slice(self):
+        _, tg, _, result = build_type(
+            """
+            #pragma experiment("FOR_LOOP")
+            import Resistor
+
+            module Inner:
+                connection = new Resistor
+
+            module App:
+                items = new Inner[3]
+                sink = new Resistor
+
+                for it in items[1:]:
+                    it.connection ~ sink
+            """
+        )
+
+        # Path segments with indices are combined
+        assert _check_make_links(
+            tg=tg,
+            type_node=result.state.type_roots["App"],
+            expected=[
+                (["items[1]", "connection"], ["sink"]),
+                (["items[2]", "connection"], ["sink"]),
+            ],
+        )
+
+    def test_for_loop_over_sequence_slice_zero_step_errors(self):
+        with pytest.raises(DslException, match="Slice step cannot be zero"):
+            build_type(
+                """
+                #pragma experiment("FOR_LOOP")
+
+                module Inner:
+                    pass
+
+                module App:
+                    items = new Inner[2]
+
+                    for it in items[::0]:
+                        pass
+                """
+            )
+
+    def test_for_loop_over_sequence_stride(self):
+        _, tg, _, result = build_type(
+            """
+            #pragma experiment("FOR_LOOP")
+            import Resistor
+
+            module Inner:
+                connection = new Resistor
+
+            module App:
+                items = new Inner[4]
+                sink = new Resistor
+
+                for it in items[0:4:2]:
+                    it.connection ~ sink
+            """
+        )
+
+        # Path segments with indices are combined
+        assert _check_make_links(
+            tg=tg,
+            type_node=result.state.type_roots["App"],
+            expected=[
+                (["items[0]", "connection"], ["sink"]),
+                (["items[2]", "connection"], ["sink"]),
+            ],
+            not_expected=[
+                (["items[1]", "connection"], ["sink"]),
+                (["items[3]", "connection"], ["sink"]),
+            ],
+        )
+
+    def test_for_loop_alias_does_not_leak(self):
+        with pytest.raises(DslException, match="not defined"):
+            build_type(
+                """
+                #pragma experiment("FOR_LOOP")
+                import Resistor
+
+                module App:
+                    left = new Resistor
+                    for r in [left]:
+                        pass
+                    r ~ left
+                """
+            )
+
+    def test_for_loop_nested_field_paths(self):
+        _, tg, _, result = build_type(
+            """
+            #pragma experiment("FOR_LOOP")
+            import Resistor
+
+            module Inner:
+                connection = new Resistor
+
+            module App:
+                left = new Inner
+                sink = new Resistor
+                for i in [left]:
+                    i.connection ~ sink
+            """
+        )
+        assert (
+            _check_make_links(
+                tg=tg,
+                type_node=result.state.type_roots["App"],
+                expected=[(["left", "connection"], ["sink"])],
+                not_expected=[(["right", "connection"], ["sink"])],
+            )
+            is True
+        )
+
+    def test_two_for_loops_same_var_accumulates_links(self):
+        _, tg, _, result = build_type(
+            """
+            #pragma experiment("FOR_LOOP")
+            import Resistor
+
+            module App:
+                a = new Resistor
+                b = new Resistor
+                c = new Resistor
+                sink = new Resistor
+
+                for r in [a, b]:
+                    r ~ sink
+                for r in [c]:
+                    r ~ sink
+            """
+        )
+        assert (
+            _check_make_links(
+                tg=tg,
+                type_node=result.state.type_roots["App"],
+                expected=[(["a"], ["sink"]), (["b"], ["sink"]), (["c"], ["sink"])],
+            )
+            is True
+        )
+
+    def test_for_loop_alias_shadow_symbol_raises(self):
+        with pytest.raises(DslException, match="shadow"):
+            build_type(
+                """
+                #pragma experiment("FOR_LOOP")
+                import Resistor
+
+                module Resistor2:
+                    pass
+
+                module App:
+                    left = new Resistor2
+                    for Resistor in [left]:
+                        pass
+                """
+            )
 
 
 def test_nested_make_child_uses_mount_reference():

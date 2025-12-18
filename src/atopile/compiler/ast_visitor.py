@@ -229,6 +229,11 @@ class _ScopeStack:
                 f"Alias `{name}` would shadow an existing symbol in scope"
             )
 
+        if self.has_field(FieldPath(segments=(FieldPath.Segment(identifier=name),))):
+            raise DslException(
+                f"Loop variable `{name}` conflicts with an existing field in scope"
+            )
+
         state = self.current
         had_existing = name in state.aliases
         previous = state.aliases.get(name)
@@ -1275,7 +1280,7 @@ class ASTVisitor:
         new_spec: NewChildSpec,
         parent_reference: graph.BoundNode | None,
         parent_path: FieldPath | None,
-    ) -> list[AddMakeChildAction] | AddMakeChildAction:
+    ) -> list[AddMakeChildAction | AddMakeLinkAction] | AddMakeChildAction:
         self._scope_stack.add_field(target_path)
 
         # Check if module type is in stdlib and supports templating
@@ -1339,6 +1344,7 @@ class ASTVisitor:
         )
 
         element_actions: list[AddMakeChildAction] = []
+        link_actions: list[AddMakeLinkAction] = []
         for idx in range(new_spec.count):
             element_path = FieldPath(
                 segments=(
@@ -1371,7 +1377,18 @@ class ASTVisitor:
                     import_ref=new_spec.symbol.import_ref if new_spec.symbol else None,
                 )
             )
-        return [pointer_action, *element_actions]
+
+            link_actions.append(
+                AddMakeLinkAction(
+                    lhs_path=list(target_path.identifiers()),
+                    rhs_path=list(element_path.identifiers()),
+                    edge=fbrk.EdgePointer.build(identifier="e", order=idx),
+                )
+            )
+
+            self._scope_stack.add_field(element_path)
+
+        return [pointer_action, *element_actions, *link_actions]
 
     def visit_Assignment(self, node: AST.Assignment):
         # TODO: broaden assignable support and handle keyed/pin field references
@@ -1826,32 +1843,25 @@ class ASTVisitor:
 
     def _pointer_member_paths(self, container_path: FieldPath) -> list[FieldPath]:
         type_node, _ = self._type_stack.current()
-        try:
-            pointer_members = self._type_graph.collect_pointer_members(
-                type_node=type_node,
-                container_path=list(container_path.identifiers()),
-            )
-        except fbrk.TypeGraphPathError as exc:
-            raise DslException(
-                self._type_stack._format_path_error(container_path, exc)
-            ) from exc
 
-        return [
+        members = self._type_graph.collect_pointer_members(
+            type_node=type_node,
+            container_path=list(container_path.identifiers()),
+        )
+
+        element_paths = [
             FieldPath(
                 segments=(
                     *container_path.segments,
-                    FieldPath.Segment(
-                        identifier=identifier,
-                        is_index=identifier.isdigit(),
-                    ),
+                    FieldPath.Segment(identifier=identifier, is_index=True),
                 )
             )
-            for identifier in [
-                identifier
-                for identifier, _ in pointer_members
-                if identifier is not None
-            ]
+            for identifier, _ in members
+            if identifier is not None
         ]
+
+        element_paths.sort(key=lambda p: int(p.leaf.identifier))
+        return element_paths
 
     def visit_ForStmt(self, node: AST.ForStmt):
         def validate_stmt(stmt: fabll.Node) -> None:
@@ -1866,6 +1876,7 @@ class ASTVisitor:
                 AST.PinDeclaration,
                 AST.SignaldefStmt,
                 AST.TraitStmt,
+                AST.ForStmt,
             ):
                 if stmt.isinstance(illegal_type):
                     assert isinstance(stmt, illegal_type)
