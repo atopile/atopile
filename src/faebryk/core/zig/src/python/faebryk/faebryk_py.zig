@@ -3465,47 +3465,6 @@ fn wrap_typegraph_get_make_child_type_reference_by_identifier() type {
     };
 }
 
-fn wrap_typegraph_resolve_child_path() type {
-    return struct {
-        pub const descr = method_descr{
-            .name = "resolve_child_path",
-            .doc = "Walk a child path, resolving each type, return the final type node",
-            .args_def = struct {
-                start_type: *graph.BoundNodeReference,
-                path: *py.PyObject,
-
-                pub const fields_meta = .{
-                    .start_type = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
-                };
-            },
-            .static = false,
-        };
-
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
-
-            var path_list = std.ArrayList([]const u8).init(std.heap.c_allocator);
-            defer path_list.deinit();
-
-            _copy_string_sequence(kwarg_obj.path, &path_list) catch |err| {
-                switch (err) {
-                    error.MemoryError => py.PyErr_SetString(py.PyExc_MemoryError, "failed to build path"),
-                    error.TypeError => py.PyErr_SetString(py.PyExc_TypeError, "path must be a sequence of strings"),
-                }
-                return null;
-            };
-
-            const resolved = wrapper.data.resolve_child_path(
-                kwarg_obj.start_type.*,
-                path_list.items,
-            ) orelse return bind.wrap_none();
-
-            return graph_py.makeBoundNodePyObject(resolved);
-        }
-    };
-}
-
 fn _unwrap_literal(value_obj: *py.PyObject) !graph.Literal {
     if (value_obj == py.Py_None()) {
         return error.UnsupportedValue;
@@ -4491,7 +4450,6 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_add_make_child_deferred(),
         wrap_typegraph_get_make_child_type_reference(),
         wrap_typegraph_get_make_child_type_reference_by_identifier(),
-        wrap_typegraph_resolve_child_path(),
         wrap_typegraph_add_make_link(),
         wrap_typegraph_collect_make_children(),
         wrap_typegraph_collect_make_links(),
@@ -5872,16 +5830,19 @@ fn wrap_typegraph_collect_pointer_members() type {
                 return null;
             }
 
+            var failure: ?faebryk.typegraph.TypeGraph.PathResolutionFailure = null;
+
             const allocator = std.heap.c_allocator;
             const members = faebryk.typegraph.TypeGraph.collect_pointer_members(
                 wrapper.data,
                 allocator,
                 kwarg_obj.type_node.*,
                 segments.items,
+                &failure,
             ) catch |err| {
                 raise_typegraph_path_exception(
                     err,
-                    null,
+                    failure,
                     segments.items,
                     .{
                         .fallback = "pointer sequence member not found",
@@ -5901,35 +5862,33 @@ fn wrap_typegraph_collect_pointer_members() type {
             while (idx < members.len) : (idx += 1) {
                 const info = members[idx];
 
-                // Return order as integer (sequence elements always have order)
-                const order_obj = if (info.order) |order| blk: {
-                    const value = py.PyLong_FromLong(@as(c_long, @intCast(order)));
-                    if (value == null) {
+                const identifier_obj = if (info.identifier) |id_slice| blk: {
+                    const py_str = _make_py_string(id_slice) orelse {
                         py.Py_DECREF(list_obj.?);
                         return null;
-                    }
-                    break :blk value;
+                    };
+                    break :blk py_str;
                 } else blk: {
                     py.Py_INCREF(py.Py_None());
                     break :blk py.Py_None();
                 };
 
                 const make_child_obj = graph_py.makeBoundNodePyObject(info.make_child) orelse {
-                    py.Py_DECREF(order_obj.?);
+                    py.Py_DECREF(identifier_obj);
                     py.Py_DECREF(list_obj.?);
                     return null;
                 };
 
                 const tuple_obj = py.PyTuple_New(2);
                 if (tuple_obj == null) {
-                    py.Py_DECREF(order_obj.?);
+                    py.Py_DECREF(identifier_obj);
                     py.Py_DECREF(make_child_obj);
                     py.Py_DECREF(list_obj.?);
                     return null;
                 }
 
-                if (py.PyTuple_SetItem(tuple_obj, 0, order_obj) != 0) {
-                    py.Py_DECREF(order_obj.?);
+                if (py.PyTuple_SetItem(tuple_obj, 0, identifier_obj) != 0) {
+                    py.Py_DECREF(identifier_obj);
                     py.Py_DECREF(make_child_obj);
                     py.Py_DECREF(tuple_obj.?);
                     py.Py_DECREF(list_obj.?);

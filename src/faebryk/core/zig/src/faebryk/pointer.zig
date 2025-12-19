@@ -22,7 +22,6 @@ const TypeGraph = typegraph_mod.TypeGraph;
 
 pub const EdgePointer = struct {
     pub const tid: Edge.EdgeType = graph.Edge.hash_edge_type(1759771470);
-    pub const order_attr: str = "order";
     pub var registered: bool = false;
 
     /// Create an EdgeTraversal for dereferencing the current Pointer node.
@@ -40,7 +39,7 @@ pub const EdgePointer = struct {
     pub fn build(identifier: ?str, order: ?u32) EdgeCreationAttributes {
         var dynamic = graph.DynamicAttributes.init();
         if (order) |o| {
-            dynamic.put(order_attr, .{ .Int = o });
+            dynamic.put("order", .{ .Int = o });
         }
         if (!registered) {
             @branchHint(.unlikely);
@@ -56,11 +55,8 @@ pub const EdgePointer = struct {
     }
 
     pub fn get_order(edge: EdgeReference) ?u32 {
-        return get_order_from_attrs(&edge.attributes.dynamic);
-    }
-
-    pub fn get_order_from_attrs(dynamic: *graph.DynamicAttributes) ?u32 {
-        if (dynamic.get(order_attr)) |o| {
+        const order = edge.get("order");
+        if (order) |o| {
             return @intCast(o.Int);
         }
         return null;

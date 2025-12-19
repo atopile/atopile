@@ -61,7 +61,6 @@ pub const TypeGraph = struct {
     pub const MakeChildInfo = struct {
         identifier: ?[]const u8,
         make_child: BoundNodeReference,
-        order: ?u32 = null,
     };
 
     pub const MakeLinkInfo = struct {
@@ -699,34 +698,6 @@ pub const TypeGraph = struct {
         return MakeChildNode.get_type_reference(make_child);
     }
 
-    /// Walk a path of child identifiers through the type graph, resolving each
-    /// type reference via the Linker. Returns the resolved type node for the
-    /// final segment, or null if any step fails to resolve.
-    ///
-    /// For path ["inner"] starting at App:
-    ///   1. Find "inner" child on App, get its type reference
-    ///   2. Resolve type reference to Inner type node via Linker
-    ///   3. Return Inner type node
-    ///
-    /// Returns null if path is empty, any child not found, or any type fails to resolve.
-    pub fn resolve_child_path(
-        self: *@This(),
-        start_type: BoundNodeReference,
-        path: []const []const u8,
-    ) ?BoundNodeReference {
-        if (path.len == 0) return start_type;
-
-        var current_type = start_type;
-
-        for (path) |segment| {
-            const type_ref = self.get_make_child_type_reference_by_identifier(current_type, segment) orelse return null;
-            const resolved = Linker.try_get_resolved_type(type_ref) orelse return null;
-            current_type = resolved;
-        }
-
-        return current_type;
-    }
-
     fn reference_matches_path(
         self: *@This(),
         reference: BoundNodeReference,
@@ -1216,9 +1187,6 @@ pub const TypeGraph = struct {
         return list.toOwnedSlice() catch @panic("OOM");
     }
 
-    /// Visit pointer-sequence elements by scanning EdgePointer links from the container.
-    /// For each MakeLink where lhs_path matches container_path, yields the element's
-    /// MakeChildInfo with its integer index as the identifier.
     pub fn visit_pointer_members(
         self: *@This(),
         type_node: BoundNodeReference,
@@ -1226,6 +1194,7 @@ pub const TypeGraph = struct {
         comptime T: type,
         ctx: *anyopaque,
         f: *const fn (*anyopaque, MakeChildInfo) visitor.VisitResult(T),
+        failure: ?*?PathResolutionFailure,
     ) error{ UnresolvedTypeReference, ChildNotFound }!visitor.VisitResult(T) {
         // Convert string path to EdgeTraversals (all Composition edges)
         // TODO get base allocator passed
@@ -1240,6 +1209,7 @@ pub const TypeGraph = struct {
         var local_failure: ?PathResolutionFailure = null;
         _ = self.resolve_path_segments(type_node, traversals.items, &local_failure) catch |err| switch (err) {
             error.ChildNotFound => {
+                if (failure) |f_ptr| f_ptr.* = local_failure;
                 return err;
             },
             error.UnresolvedTypeReference => {},
@@ -1248,68 +1218,40 @@ pub const TypeGraph = struct {
 
         const Visit = struct {
             type_graph: *TypeGraph,
-            type_node_: BoundNodeReference,
             container_path_: []const []const u8,
             ctx: *anyopaque,
             cb: *const fn (*anyopaque, MakeChildInfo) visitor.VisitResult(T),
 
-            pub fn visit(self_ptr: *anyopaque, info: MakeLinkInfo) visitor.VisitResult(T) {
+            pub fn visit(self_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(T) {
                 const visitor_: *@This() = @ptrCast(@alignCast(self_ptr));
+                const make_child = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
 
-                // Check if lhs_path matches container_path
-                if (info.lhs_path.len != visitor_.container_path_.len) {
+                const identifier = MakeChildNode.Attributes.of(make_child).get_child_identifier() orelse {
                     return visitor.VisitResult(T){ .CONTINUE = {} };
-                }
-                for (info.lhs_path, visitor_.container_path_) |lhs_seg, container_seg| {
-                    if (!std.mem.eql(u8, lhs_seg, container_seg)) {
+                };
+
+                if (MakeChildNode.get_mount_reference(make_child)) |mount_reference| {
+                    if (!visitor_.type_graph.reference_matches_path(mount_reference, visitor_.container_path_)) {
                         return visitor.VisitResult(T){ .CONTINUE = {} };
                     }
+
+                    return visitor_.cb(visitor_.ctx, MakeChildInfo{
+                        .identifier = identifier,
+                        .make_child = make_child,
+                    });
                 }
 
-                // Get order from EdgePointer link
-                var attrs = MakeLinkNode.Attributes.of(info.make_link).get_edge_attributes();
-                defer attrs.dynamic.deinit();
-                const order = EdgePointer.get_order_from_attrs(&attrs.dynamic) orelse {
-                    return visitor.VisitResult(T){ .CONTINUE = {} };
-                };
-
-                // Element identifier is in rhs_path (e.g., "items[0]")
-                if (info.rhs_path.len != 1) {
-                    return visitor.VisitResult(T){ .CONTINUE = {} };
-                }
-                const element_id = info.rhs_path[0];
-
-                const make_child = visitor_.type_graph.find_make_child_node(
-                    visitor_.type_node_,
-                    element_id,
-                ) catch {
-                    return visitor.VisitResult(T){ .CONTINUE = {} };
-                };
-
-                return visitor_.cb(visitor_.ctx, MakeChildInfo{
-                    .identifier = element_id,
-                    .make_child = make_child,
-                    .order = order,
-                });
+                return visitor.VisitResult(T){ .CONTINUE = {} };
             }
         };
 
         var visitor_ = Visit{
             .type_graph = self,
-            .type_node_ = type_node,
             .container_path_ = container_path,
             .ctx = ctx,
             .cb = f,
         };
-
-        const result = self.visit_make_links(type_node, self.self_node.g.allocator, T, &visitor_, Visit.visit);
-        switch (result) {
-            .ERROR => |err| switch (err) {
-                error.InvalidReference => return error.ChildNotFound,
-                else => return error.ChildNotFound,
-            },
-            else => return result,
-        }
+        return EdgeComposition.visit_children_of_type(type_node, self.get_MakeChild().node, T, &visitor_, Visit.visit);
     }
 
     /// Enumerate pointer-sequence elements mounted under `container_path`. This
@@ -1320,6 +1262,7 @@ pub const TypeGraph = struct {
         allocator: std.mem.Allocator,
         type_node: BoundNodeReference,
         container_path: []const []const u8,
+        failure: ?*?PathResolutionFailure,
     ) error{ UnresolvedTypeReference, ChildNotFound }![]MakeChildInfo {
         var list = std.ArrayList(MakeChildInfo).init(allocator);
 
@@ -1334,7 +1277,7 @@ pub const TypeGraph = struct {
         };
 
         var collector = Collector{ .list_ptr = &list };
-        const visit_result = try self.visit_pointer_members(type_node, container_path, void, &collector, Collector.collect);
+        const visit_result = try self.visit_pointer_members(type_node, container_path, void, &collector, Collector.collect, failure);
 
         switch (visit_result) {
             .ERROR => |err| switch (err) {
@@ -1970,7 +1913,7 @@ test "typegraph iterators and mount chains" {
     try std.testing.expect(std.mem.eql(u8, chain_extra[0], "base"));
     try std.testing.expect(std.mem.eql(u8, chain_extra[1], "extra"));
 
-    const pointer_members = try tg.collect_pointer_members(a, top, &.{"members"});
+    const pointer_members = try tg.collect_pointer_members(a, top, &.{"members"}, null);
     defer a.free(pointer_members);
     try std.testing.expectEqual(@as(usize, 2), pointer_members.len);
     try std.testing.expect(pointer_members[0].identifier != null);
