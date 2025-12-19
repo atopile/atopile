@@ -1047,8 +1047,12 @@ class MutationMap:
 
         all_gs = {stage.G_out for stage in self.mutation_stages}
         gs = groupby(all_gs, lambda g: g.get_self_node().node().get_uuid())
-        del gs[self.G_in.get_self_node().node().get_uuid()]
-        del gs[self.G_out.get_self_node().node().get_uuid()]
+        g_in_out_uuids = {
+            self.G_in.get_self_node().node().get_uuid(): self.G_in,
+            self.G_out.get_self_node().node().get_uuid(): self.G_out,
+        }
+        for uuid in g_in_out_uuids:
+            del gs[uuid]
 
         for g in gs.values():
             g_to_destroy = next(iter(g))
