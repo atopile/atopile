@@ -235,6 +235,14 @@ class DefaultSolver(Solver):
         # TODO consider not getting full graph of node gs, but scope to only relevant
 
         if self.reusable_state is None:
+            # TODO: strip graph from all unnecessary nodes
+            # strip = copy only stuff over we are interested in (po and is_lit)
+            # be careful: mutator map resolution is using the original object
+            # if you copy it into the stripped graph its going to be missing
+            # check what is easier:
+            # 1. handle that detail
+            # 2. add the stripping to the canonicalization algorithm, where the mutator will take care of the rest
+
             return DefaultSolver.SolverState(
                 data=DefaultSolver.IterationData(
                     mutation_map=MutationMap.bootstrap(

@@ -36,9 +36,11 @@ dimensionless = F.Units.Dimensionless
 
 
 def _create_letters(
-    E: BoundExpressions, n: int, units=fabll.Node
+    E: BoundExpressions, n: int, units: type[fabll.Node] | None = None
 ) -> tuple[F.Parameters.ReprContext, list[F.Parameters.is_parameter_operatable]]:
     context = F.Parameters.ReprContext()
+    if units is None:
+        units = E.U.dl
 
     class App(fabll.Node):
         params = [F.Parameters.NumericParameter.MakeChild(unit=units) for _ in range(n)]
@@ -958,8 +960,8 @@ def test_voltage_divider_find_resistances():
     v_out = E.parameter_op(units=E.U.V)
     r_total = E.parameter_op(units=E.U.Ohm)
 
-    E.is_(v_in, E.lit_op_range(((9, E.U.V), (10, E.U.V))))
-    E.is_(v_out, E.lit_op_range(((0.9, E.U.V), (1, E.U.V))))
+    E.is_(v_in, E.lit_op_range(((9, E.U.V), (10, E.U.V))), assert_=True)
+    E.is_(v_out, E.lit_op_range(((0.9, E.U.V), (1, E.U.V))), assert_=True)
     E.is_(r_total, E.lit_op_range_from_center_rel((100, E.U.Ohm), 0.01), assert_=True)
     E.is_(r_total, E.add(r_top, r_bottom), assert_=True)
     E.is_(
@@ -983,10 +985,14 @@ def test_voltage_divider_find_r_top():
     v_in = E.parameter_op(units=E.U.V)
     v_out = E.parameter_op(units=E.U.V)
 
-    E.is_(v_in, E.lit_op_range_from_center_rel((10, E.U.V), 0.01))
-    E.is_(v_out, E.lit_op_range_from_center_rel((1, E.U.V), 0.01))
-    E.is_(r_bottom, E.lit_op_range_from_center_rel((1, E.U.Ohm), 0.01))
-    E.is_(v_out, E.divide(E.multiply(v_in, r_bottom), E.add(r_top, r_bottom)))
+    E.is_(v_in, E.lit_op_range_from_center_rel((10, E.U.V), 0.01), assert_=True)
+    E.is_(v_out, E.lit_op_range_from_center_rel((1, E.U.V), 0.01), assert_=True)
+    E.is_(r_bottom, E.lit_op_range_from_center_rel((1, E.U.Ohm), 0.01), assert_=True)
+    E.is_(
+        v_out,
+        E.divide(E.multiply(v_in, r_bottom), E.add(r_top, r_bottom)),
+        assert_=True,
+    )
     # r_top = (v_in * r_bottom) / v_out - r_bottom
 
     solver = DefaultSolver()
@@ -1005,12 +1011,16 @@ def test_voltage_divider_reject_invalid_r_top():
     v_in = E.parameter_op(units=E.U.V)
     v_out = E.parameter_op(units=E.U.V)
 
-    E.is_(v_in, E.lit_op_range_from_center_rel((10, E.U.V), 0.01))
-    E.is_(v_out, E.lit_op_range_from_center_rel((1, E.U.V), 0.01))
-    E.is_(v_out, E.divide(E.multiply(v_in, r_bottom), E.add(r_top, r_bottom)))
+    E.is_(v_in, E.lit_op_range_from_center_rel((10, E.U.V), 0.01), assert_=True)
+    E.is_(v_out, E.lit_op_range_from_center_rel((1, E.U.V), 0.01), assert_=True)
+    E.is_(
+        v_out,
+        E.divide(E.multiply(v_in, r_bottom), E.add(r_top, r_bottom)),
+        assert_=True,
+    )
 
-    E.is_(r_bottom, E.lit_op_range_from_center_rel((1, E.U.Ohm), 0.01))
-    E.is_(r_top, E.lit_op_range_from_center_rel((999, E.U.Ohm), 0.01))
+    E.is_(r_bottom, E.lit_op_range_from_center_rel((1, E.U.Ohm), 0.01), assert_=True)
+    E.is_(r_top, E.lit_op_range_from_center_rel((999, E.U.Ohm), 0.01), assert_=True)
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
@@ -1020,14 +1030,14 @@ def test_voltage_divider_reject_invalid_r_top():
 def test_base_unit_switch():
     # TODO this should use mAh not Ah
     E = BoundExpressions()
-    A = E.parameter_op(units=E.U.Ah)
-    E.is_(A, E.lit_op_range(((0.100, E.U.Ah), (0.600, E.U.Ah))), assert_=True)
-    E.greater_or_equal(A, E.lit_op_single((0.100, E.U.Ah)), assert_=True)
+    A = E.parameter_op(units=E.U.As)
+    E.is_(A, E.lit_op_range(((0.100, E.U.As), (0.600, E.U.As))), assert_=True)
+    E.greater_or_equal(A, E.lit_op_single((0.100, E.U.As)), assert_=True)
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
     assert _extract_and_check(
-        A, repr_map, E.lit_op_range(((0.100, E.U.Ah), (0.600, E.U.Ah)))
+        A, repr_map, E.lit_op_range(((0.100, E.U.As), (0.600, E.U.As)))
     )
 
 

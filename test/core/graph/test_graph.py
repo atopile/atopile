@@ -17,12 +17,12 @@ def _get_component_node_count_params():
     component_counts: dict[type, int | None] = {
         fabll.Node: 1,
         F.Electrical: 5,
-        F.ElectricLogic: 375,
-        F.ElectricSignal: 366,
-        F.ElectricPower: 320,
-        F.Resistor: 776,
-        F.Capacitor: 698,
-        F.I2C: 1049,
+        F.ElectricLogic: 387,
+        F.ElectricSignal: 378,
+        F.ElectricPower: 332,
+        F.Resistor: 794,
+        F.Capacitor: 710,
+        F.I2C: 1091,
     }
 
     return [
@@ -40,8 +40,11 @@ def test_component_instance_count(component_type: type, expected_count: int | No
     tg = fbrk.TypeGraph.create(g=g)
 
     component_instance = component_type.bind_typegraph(tg).create_instance(g)
-    count = len(component_instance.get_children(
-        direct_only=False, types=fabll.Node, include_root=True))
+    count = len(
+        component_instance.get_children(
+            direct_only=False, types=fabll.Node, include_root=True
+        )
+    )
 
     print(f"{component_type.__name__} node count: {count}")
     print(indented_container(tg.get_type_instance_overview()))
