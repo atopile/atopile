@@ -106,6 +106,8 @@ def setup_basic_logging():
 
         plog.setLevel(logging.DEBUG)
 
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
 
 class NodeHighlighter(RegexHighlighter):
     """

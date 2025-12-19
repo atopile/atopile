@@ -8,15 +8,19 @@ import pytest
 from rich.console import Console
 
 from faebryk.libs.test.times import Times
-from faebryk.libs.util import indented_container
 
 logger = logging.getLogger(__name__)
 
 
 @pytest.mark.usefixtures("setup_project_config")
-def test_performance_parameters(
-    A: int = 1, B: int = 1, rs: int = 100, pick: bool = False
-):
+@pytest.mark.parametrize(
+    "A,B,rs,pick",
+    [
+        (10, 7, 1000, False),
+        (1, 1, 1, True),
+    ],
+)
+def test_performance_parameters(A: int = 1, B: int = 1, rs: int = 1, pick: bool = True):
     timings = Times()
 
     assert B > 0
@@ -144,7 +148,7 @@ def test_performance_parameters(
         tg_overview = dict(
             sorted(tg.get_type_instance_overview(), key=lambda x: x[1], reverse=True)
         )
-    print(indented_container(tg_overview))
+    # print(indented_container(tg_overview))
     print("Total typed nodes:", sum(tg_overview.values()))
 
     with timings.context("print_expr"):
