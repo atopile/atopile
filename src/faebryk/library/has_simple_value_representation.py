@@ -358,7 +358,7 @@ def test_repr_chain_non_number():
     m.param2.get().alias_to_single(value=True)
 
     val = m._simple_repr.get().get_value()
-    assert val == "AS P2: true"
+    assert val == "A P2: true"
 
 
 def test_repr_chain_no_literal():

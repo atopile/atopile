@@ -141,7 +141,6 @@
 			(psnegative no)
 			(psa4output no)
 			(plot_black_and_white yes)
-			(plotinvisibletext no)
 			(sketchpadsonfab no)
 			(plotpadnumbers no)
 			(hidednponfab no)
@@ -886,6 +885,18 @@
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "6c1f90bf-93b5-4352-a67b-7632a09d3444")
+			(effects
+				(font
+					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "atopile_address" "component"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "2751892e-d2ce-4954-92ff-23086d73a669")
 			(effects
 				(font
 					(size 1.27 1.27)
