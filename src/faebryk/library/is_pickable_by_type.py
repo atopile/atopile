@@ -48,7 +48,7 @@ class is_pickable_by_type(fabll.Node):
             bound_param_tuple = F.Collections.PointerTuple.bind_instance(
                 param_tuple.instance
             )
-            (p_name, _) = bound_param_tuple.get_literals_as_list()
+            p_name = bound_param_tuple.get_literals_as_list()[0]
             if p_name == param_name:
                 return bound_param_tuple.deref_pointer().get_trait(
                     F.Parameters.is_parameter

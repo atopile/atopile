@@ -2073,8 +2073,7 @@ class TestTraitStatements:
             for identifier, child in tg.collect_make_children(type_node=comp_type)
         ]
         identifiers = [id for id, _ in make_children if id]
-
-        assert "_trait_is_atomic_part" in identifiers
+        assert "_trait_self_is_atomic_part" in identifiers
         constraint_ids = [id for id in identifiers if id.startswith("constrain_")]
         assert len(constraint_ids) == 4
 
@@ -2094,7 +2093,7 @@ class TestTraitStatements:
         make_children = list(tg.collect_make_children(type_node=comp_type))
         identifiers = [id for id, _ in make_children if id]
 
-        assert "_trait_is_atomic_part" in identifiers
+        assert "_trait_self_is_atomic_part" in identifiers
         constraint_ids = [id for id in identifiers if id.startswith("constrain_")]
         assert len(constraint_ids) == 5
 
@@ -2114,7 +2113,7 @@ class TestTraitStatements:
         make_children = list(tg.collect_make_children(type_node=comp_type))
         identifiers = [id for id, _ in make_children if id]
 
-        assert "_trait_is_atomic_part" in identifiers
+        assert "_trait_self_is_atomic_part" in identifiers
         constraint_ids = [id for id in identifiers if id.startswith("constrain_")]
         assert len(constraint_ids) == 4
 

@@ -4369,7 +4369,7 @@ class Numbers(fabll.Node):
             numeric_set=numeric_set, unit=unit.to_base_units(g=g, tg=tg)
         )
 
-    def pretty_str(self, show_tolerance: bool = False) -> str:
+    def pretty_str(self, show_tolerance: bool = True) -> str:
         """Format number with units and tolerance for display."""
         numeric_set = self.get_numeric_set()
         if self.is_empty():

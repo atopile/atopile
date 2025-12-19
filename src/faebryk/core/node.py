@@ -2730,7 +2730,10 @@ def test_resistor_instantiation():
     assert leads[0].get_lead_name() == "unnamed[0]"
     assert leads[1].get_lead_name() == "unnamed[1]"
     assert (
-        res_inst._is_pickable.get().get_param("resistance").get_name() == "resistance"
+        Traits(res_inst._is_pickable.get().get_param("resistance"))
+        .get_obj_raw()
+        .get_name()
+        == "resistance"
     )
     assert (
         res_inst.get_trait(F.has_designator_prefix).get_prefix()
