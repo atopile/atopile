@@ -4,10 +4,13 @@
 
 import logging
 from enum import Enum, auto
-from typing import Any, Callable, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
+
+if TYPE_CHECKING:
+    from faebryk.core.solver.solver import Solver
 
 logger = logging.getLogger(__name__)
 
@@ -115,11 +118,44 @@ class implements_design_check(fabll.Node):
 
         return owner_instance, owner_class
 
+    def get_solver(self) -> "Solver":
+        """
+        Get the solver instance from the graph.
+
+        The solver is attached as a has_solver trait to the root app node during
+        the prepare_build step. This method finds that unique trait instance and
+        returns its solver.
+
+        Returns:
+            The Solver instance for this build.
+
+        Raises:
+            RuntimeError: If no has_solver trait is found in the graph.
+        """
+        import faebryk.library._F as F
+
+        # Find all has_solver trait instances in the graph
+        solver_traits = list(
+            fabll.Traits.get_implementors(
+                F.has_solver.bind_typegraph(self.tg), g=self.g
+            )
+        )
+
+        if not solver_traits:
+            raise RuntimeError(
+                "No solver found in graph. Ensure has_solver trait is attached "
+                "to the app during prepare_build."
+            )
+
+        # There should be exactly one solver in the graph
+        return solver_traits[0].get_solver()
+
     def check_post_design(self):
         owner_instance, owner_class = self._get_owner_with_type()
         if not hasattr(owner_class, "__check_post_design__"):
             return False
-        logger.info(f"Running {self.CheckStage.POST_DESIGN.name} {self.get_parent_force()[0].get_type_name()}")
+        type_name = self.get_parent_force()[0].get_type_name()
+        logger.info(f"Running {self.CheckStage.POST_DESIGN.name} {type_name}")
         owner_class.__check_post_design__(owner_instance)  # type: ignore[attr-defined]
         return True
 
@@ -127,7 +163,8 @@ class implements_design_check(fabll.Node):
         owner_instance, owner_class = self._get_owner_with_type()
         if not hasattr(owner_class, "__check_post_solve__"):
             return False
-        logger.info(f"Running {self.CheckStage.POST_SOLVE.name} {self.get_parent_force()[0].get_type_name()}")
+        type_name = self.get_parent_force()[0].get_type_name()
+        logger.info(f"Running {self.CheckStage.POST_SOLVE.name} {type_name}")
         owner_class.__check_post_solve__(owner_instance)  # type: ignore[attr-defined]
         return True
 
@@ -135,7 +172,8 @@ class implements_design_check(fabll.Node):
         owner_instance, owner_class = self._get_owner_with_type()
         if not hasattr(owner_class, "__check_post_pcb__"):
             return False
-        logger.info(f"Running {self.CheckStage.POST_PCB.name} {self.get_parent_force()[0].get_type_name()}")
+        type_name = self.get_parent_force()[0].get_type_name()
+        logger.info(f"Running {self.CheckStage.POST_PCB.name} {type_name}")
         owner_class.__check_post_pcb__(owner_instance)  # type: ignore[attr-defined]
         return True
 

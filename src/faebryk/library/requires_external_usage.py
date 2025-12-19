@@ -14,25 +14,27 @@ class requires_external_usage(fabll.Node):
     @property
     def fulfilled(self) -> bool:
         obj = fabll.Traits(self).get_obj_raw()
-        iface = obj.get_trait(fabll.is_interface)
-        connected_to = {
-            node for node, path in iface.get_connected().items() if path.length == 1
-        }
         parent = obj.get_parent()
-        # no shared parent possible
         if parent is None:
             return True
-        # TODO: disables checks for floating modules
-        if parent[0].get_parent() is None:
-            return True
-        # no connections
-        if not connected_to:
-            return False
-        parent, _ = parent
 
-        for c in connected_to:
-            if parent not in {p for p, _ in c.get_hierarchy()}:
-                return True
+        parent_node, _ = parent
+        # TODO: disables checks for floating modules
+        if parent_node.get_parent() is None:
+            return True
+
+        for node in obj.get_children(
+            direct_only=False,
+            types=fabll.Node,
+            include_root=True,
+            required_trait=fabll.is_interface,
+        ):
+            iface = node.get_trait(fabll.is_interface)
+            for c, path in iface.get_connected().items():
+                if path.length == 1 and not any(
+                    parent_node.is_same(p) for p, _ in c.get_hierarchy()
+                ):
+                    return True
 
         return False
 

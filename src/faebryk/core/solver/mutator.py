@@ -722,6 +722,7 @@ class MutationMap:
         if not stages:
             raise ValueError("needs at least one stage")
         self.mutation_stages: list[MutationStage] = list(stages)
+        self._graphs_destroyed = False
 
     @property
     @once
@@ -1040,6 +1041,8 @@ class MutationMap:
         return self.last_stage.tg_out
 
     def destroy(self) -> None:
+        if self._graphs_destroyed:
+            return
         from faebryk.libs.util import groupby
 
         all_gs = {stage.G_out for stage in self.mutation_stages}
@@ -1059,6 +1062,7 @@ class MutationMap:
                 hex(g_to_destroy.get_self_node().node().get_uuid()),
             )
             g_to_destroy.destroy()
+        self._graphs_destroyed = True
 
 
 @dataclass
@@ -1946,10 +1950,12 @@ class Mutator:
         # TODO remove hack
         # copies tg core nodes over
         # fabll.Node.bind_instance(
-        #    fabll.ImplementsType.bind_typegraph(self.tg_in).get_or_create_type()
+        #    fabll.TypeNodeBoundTG.get_or_create_type_in_tg(self.tg_in, ImplementsType)
         # ).copy_into(self.G_out)
 
-        self.G_out.insert_subgraph(subgraph=self.tg_in.get_type_subgraph())
+        type_subgraph = self.tg_in.get_type_subgraph()
+        self.G_out.insert_subgraph(subgraph=type_subgraph)
+        type_subgraph.destroy()
         return tg_out
 
     @property
@@ -2019,6 +2025,8 @@ class Mutator:
     def close(self) -> AlgoResult:
         # optimization: if no mutations, return identity stage
         if not self.algo.force_copy and not self.transformations.dirty:
+            self.G_transient.destroy()
+            self.G_out.destroy()
             return AlgoResult(
                 mutation_stage=MutationStage.identity(
                     self.tg_in,
@@ -2043,6 +2051,7 @@ class Mutator:
             print_context=self.output_print_context,
         )
 
+        self.G_transient.destroy()
         # Check if original graphs ended up in result
         # allowed if no copy was needed for graph
         # TODO

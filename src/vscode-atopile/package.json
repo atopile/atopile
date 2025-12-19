@@ -3,7 +3,7 @@
     "displayName": "atopile",
     "icon": "ato_logo_256x256.png",
     "description": "IDE support for atopile.",
-    "version": "0.6.0",
+    "version": "0.14.0",
     "preview": false,
     "publisher": "atopile",
     "license": "MIT",
@@ -87,6 +87,12 @@
                 },
                 "atopile.autoInstall": {
                     "description": "Automatically install atopile when not found (recommended)",
+                    "scope": "resource",
+                    "type": "boolean",
+                    "default": true
+                },
+                "atopile.setupAlias": {
+                    "description": "Automatically set up 'ato' alias in the terminal (recommended)",
                     "scope": "resource",
                     "type": "boolean",
                     "default": true

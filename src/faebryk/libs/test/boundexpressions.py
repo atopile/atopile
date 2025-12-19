@@ -586,7 +586,7 @@ class BoundExpressions:
 
     def lit_op_enum(self, *values: Enum) -> F.Parameters.can_be_operand:
         concrete_enum = F.Literals.EnumsFactory(type(values[0]))
-        _ = concrete_enum.bind_typegraph(tg=self.tg).get_or_create_type()
+        _ = fabll.TypeNodeBoundTG.get_or_create_type_in_tg(tg=self.tg, t=concrete_enum)
         return (
             concrete_enum.bind_typegraph(tg=self.tg)
             .create_instance(

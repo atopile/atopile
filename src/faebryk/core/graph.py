@@ -7,9 +7,13 @@ from faebryk.core.zig.gen.graph.graph import (  # type: ignore[import-untyped]
     BFSPath,
     BoundEdge,
     BoundNode,
-    Edge,
     GraphView,
-    Node,
+)
+from faebryk.core.zig.gen.graph.graph import (  # type: ignore[import-untyped]
+    EdgeReference as Edge,
+)
+from faebryk.core.zig.gen.graph.graph import (  # type: ignore[import-untyped]
+    NodeReference as Node,
 )
 
 logger = logging.getLogger(__name__)
@@ -18,9 +22,9 @@ __all__ = [
     "BFSPath",
     "BoundEdge",
     "BoundNode",
-    "Edge",
     "GraphView",
     "Node",
+    "Edge",
 ]
 
 
@@ -55,7 +59,7 @@ def test_graph_garbage_collection(
     g = GraphView.create()
 
     for _ in range(n):
-        g.insert_node(node=Node.create())
+        g.create_and_insert_node()
 
     mem_create = _get_mem_diff()
 

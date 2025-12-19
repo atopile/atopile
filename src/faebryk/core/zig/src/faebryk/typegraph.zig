@@ -142,7 +142,7 @@ pub const TypeGraph = struct {
             }
 
             pub fn load_node_attributes(self: @This(), node: NodeReference) void {
-                var dynamic = graph.DynamicAttributes.init();
+                var dynamic = graph.DynamicAttributes.init_on_stack();
 
                 const AttrVisitor = struct {
                     dynamic: *graph.DynamicAttributes,
@@ -165,7 +165,7 @@ pub const TypeGraph = struct {
         };
 
         pub fn build(value: ?str) NodeCreationAttributes {
-            var dynamic = graph.DynamicAttributes.init();
+            var dynamic = graph.DynamicAttributes.init_on_stack();
 
             if (value) |v| {
                 dynamic.put("value", .{ .String = v });
@@ -234,7 +234,7 @@ pub const TypeGraph = struct {
         }
 
         pub fn build(value: ?str) NodeCreationAttributes {
-            var dynamic = graph.DynamicAttributes.init();
+            var dynamic = graph.DynamicAttributes.init_on_stack();
             if (value) |v| {
                 dynamic.put("value", .{ .String = v });
             }
@@ -439,7 +439,7 @@ pub const TypeGraph = struct {
                 const directional = self.node.node.get("directional");
                 const name = self.node.node.get("name");
                 const edge_type: Edge.EdgeType = @intCast(self.node.node.get("edge_type").?.Int);
-                var dynamic = graph.DynamicAttributes.init();
+                var dynamic = graph.DynamicAttributes.init_on_stack();
 
                 const AttrVisitor = struct {
                     dynamic: *graph.DynamicAttributes,
@@ -454,8 +454,10 @@ pub const TypeGraph = struct {
                 self.node.node.visit_attributes(&visit, AttrVisitor.visit);
 
                 // Use the appropriate edge creation function based on link_type
-                const link_edge = Edge.init(source, target, edge_type);
-                link_edge.set_attribute_directional(if (directional) |d| d.Bool else null);
+                const link_edge = EdgeReference.init(source, target, edge_type);
+                if (directional) |d| {
+                    link_edge.set_attribute_directional(d.Bool);
+                }
                 link_edge.set_attribute_name(if (name) |n| n.String else null);
                 // TODO different API
                 link_edge.copy_dynamic_attributes_into(&dynamic);
@@ -644,7 +646,6 @@ pub const TypeGraph = struct {
         MakeChildNode.Attributes.of(make_child).set_child_identifier(identifier);
         if (node_attributes) |_node_attributes| {
             MakeChildNode.Attributes.of(make_child).store_node_attributes(_node_attributes.*);
-            _node_attributes.deinit();
         }
 
         const type_reference = try TypeReferenceNode.create_and_insert(self, child_type_identifier);
@@ -665,13 +666,10 @@ pub const TypeGraph = struct {
         rhs_reference: BoundNodeReference,
         edge_attributes: EdgeCreationAttributes,
     ) !BoundNodeReference {
-        var attrs = edge_attributes;
+        const attrs = edge_attributes;
 
         const make_link = try self.instantiate_node(self.get_MakeLink());
         MakeLinkNode.Attributes.of(make_link).store_edge_attributes(attrs);
-
-        // Cleanup dynamic attributes after copying (like add_make_child does)
-        attrs.deinit();
 
         _ = EdgeComposition.add_child(make_link, lhs_reference.node, "lhs");
         _ = EdgeComposition.add_child(make_link, rhs_reference.node, "rhs");
@@ -1346,7 +1344,7 @@ pub const TypeGraph = struct {
         // std.debug.print("NEW TG {any}\n", .{type_owner_tg_val.get_MakeChild().node});
 
         // 1) Create instance and connect it to its type
-        const new_instance = type_node.g.insert_node(Node.init());
+        const new_instance = type_node.g.create_and_insert_node();
         _ = EdgeType.add_instance(type_node, new_instance);
 
         // 2) Visit MakeChild nodes of type_node
@@ -1553,22 +1551,22 @@ pub const TypeGraph = struct {
         var collected_nodes = std.ArrayList(NodeReference).init(allocator);
         defer collected_nodes.deinit();
 
-        // Use a set to track visited nodes
-        var visited = graph.NodeRefMap.T(void).init(allocator);
+        // Use UUIDBitSet for O(1) membership testing instead of HashMap
+        var visited = graph.UUIDBitSet.init(allocator);
         defer visited.deinit();
 
-        var dont_visit = graph.NodeRefMap.T(void).init(allocator);
+        var dont_visit = graph.UUIDBitSet.init(allocator);
         defer dont_visit.deinit();
 
         // Helper struct with functions to collect nodes
         const Collector = struct {
             nodes: *std.ArrayList(NodeReference),
-            visited_set: *graph.NodeRefMap.T(void),
-            dont_visit: *graph.NodeRefMap.T(void),
+            visited_set: *graph.UUIDBitSet,
+            dont_visit: *graph.UUIDBitSet,
 
             fn try_add(ctx: *@This(), node: NodeReference) bool {
-                if (!ctx.visited_set.contains(node)) {
-                    ctx.visited_set.put(node, {}) catch @panic("OOM");
+                if (!ctx.visited_set.contains(node.uuid)) {
+                    ctx.visited_set.add(node.uuid);
                     ctx.nodes.append(node) catch @panic("OOM");
                     return true;
                 }
@@ -1576,7 +1574,7 @@ pub const TypeGraph = struct {
             }
 
             fn skip_visit(ctx: *@This(), node: NodeReference) void {
-                ctx.dont_visit.put(node, {}) catch @panic("OOM");
+                ctx.dont_visit.add(node.uuid);
             }
 
             // Visitor for EdgeComposition children
@@ -1607,7 +1605,7 @@ pub const TypeGraph = struct {
             // Visitor for EdgeOperand references
             fn visit_operand(ctx_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
-                const target = bound_edge.edge.target;
+                const target = bound_edge.edge.get_target_node();
                 _ = ctx.try_add(target);
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
@@ -1626,7 +1624,7 @@ pub const TypeGraph = struct {
         var i: usize = 0;
         while (i < collected_nodes.items.len) : (i += 1) {
             const current = collected_nodes.items[i];
-            if (collector.dont_visit.contains(current)) {
+            if (collector.dont_visit.contains(current.uuid)) {
                 continue;
             }
             const bound_current = g.bind(current);
@@ -1782,7 +1780,7 @@ test "basic instantiation" {
 
     // test: resolve_instance_reference
     const cap1p1_reference_resolved = TypeGraph.ChildReferenceNode.resolve(cap1p1_reference, resistor).?;
-    try std.testing.expect(Node.is_same(cap1p1_reference_resolved.node, cap1p1.node));
+    try std.testing.expect(cap1p1_reference_resolved.node.is_same(cap1p1.node));
 
     // Build make link
     // TODO: use interface link
@@ -1790,7 +1788,7 @@ test "basic instantiation" {
         .edge_type = EdgePointer.tid,
         .directional = true,
         .name = null,
-        .dynamic = graph.DynamicAttributes.init(),
+        .dynamic = graph.DynamicAttributes.init_on_stack(),
     });
 
     const instantiated_resistor = try tg.instantiate("Resistor");
@@ -1813,7 +1811,7 @@ test "basic instantiation" {
             const self: *@This() = @ptrCast(@alignCast(self_ptr));
             std.testing.expect(EdgePointer.is_instance(bound_edge.edge)) catch return visitor.VisitResult(void){ .ERROR = error.InvalidArgument };
             if (EdgePointer.get_referenced_node(bound_edge.edge)) |referenced_node| {
-                if (Node.is_same(referenced_node, self.seek.node)) {
+                if (referenced_node.is_same(self.seek.node)) {
                     return visitor.VisitResult(void){ .OK = {} };
                 }
             }
@@ -1821,7 +1819,7 @@ test "basic instantiation" {
         }
     };
     var _visit = _EdgeVisitor{ .seek = instantiated_cap_p2 };
-    const result = instantiated_cap_p1.visit_edges_of_type(EdgePointer.tid, void, &_visit, _EdgeVisitor.visit, null);
+    const result = instantiated_cap_p1.g.visit_edges_of_type(instantiated_cap_p1.node, EdgePointer.tid, void, &_visit, _EdgeVisitor.visit, null);
     try std.testing.expect(result == .OK);
 }
 
@@ -1847,7 +1845,7 @@ test "typegraph iterators and mount chains" {
         .edge_type = EdgePointer.tid,
         .directional = true,
         .name = null,
-        .dynamic = graph.DynamicAttributes.init(),
+        .dynamic = graph.DynamicAttributes.init_on_stack(),
     };
     _ = try tg.add_make_link(top, base_reference, extra_reference, link_attrs);
 
@@ -1890,8 +1888,8 @@ test "typegraph iterators and mount chains" {
 
     const lhs = EdgeComposition.get_child_by_identifier(detailed_links[0].make_link, "lhs").?;
     const rhs = EdgeComposition.get_child_by_identifier(detailed_links[0].make_link, "rhs").?;
-    try std.testing.expect(Node.is_same(lhs.node, base_reference.node));
-    try std.testing.expect(Node.is_same(rhs.node, extra_reference.node));
+    try std.testing.expect(lhs.node.is_same(base_reference.node));
+    try std.testing.expect(rhs.node.is_same(extra_reference.node));
 
     const lhs_path = try tg.get_reference_path(a, lhs);
     defer a.free(lhs_path);
@@ -2108,7 +2106,7 @@ test "resolve path through trait and pointer edges" {
     std.debug.print("Resolved node: {d}\n", .{resolved.?.node.get_uuid()});
 
     // 7. Verify we resolved to p1_instance
-    try std.testing.expect(Node.is_same(resolved.?.node, p1_instance.node));
+    try std.testing.expect(resolved.?.node.is_same(p1_instance.node));
 
     // 8. Test the out_ path as well
     const ET = TypeGraph.ChildReferenceNode.EdgeTraversal;
@@ -2120,7 +2118,7 @@ test "resolve path through trait and pointer edges" {
     const reference_out = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &path_out);
     const resolved_out = TypeGraph.ChildReferenceNode.resolve(reference_out, resistor_instance);
     try std.testing.expect(resolved_out != null);
-    try std.testing.expect(Node.is_same(resolved_out.?.node, p2_instance.node));
+    try std.testing.expect(resolved_out.?.node.is_same(p2_instance.node));
 
     std.debug.print("EdgeTraversal test passed: resolved can_bridge->in_ to p1, can_bridge->out_ to p2\n", .{});
 
@@ -2168,7 +2166,7 @@ test "resolve path through trait and pointer edges" {
 
     try std.testing.expect(mixed_resolved != null);
     std.debug.print("Mixed path resolved to: {d}\n", .{mixed_resolved.?.node.get_uuid()});
-    try std.testing.expect(Node.is_same(mixed_resolved.?.node, child_p1.node));
+    try std.testing.expect(mixed_resolved.?.node.is_same(child_p1.node));
 
     // 10. Test composition-only path
     const comp_path = [_]ET{ EdgeComposition.traverse("resistor"), EdgeComposition.traverse("p1") };
@@ -2177,7 +2175,7 @@ test "resolve path through trait and pointer edges" {
 
     try std.testing.expect(comp_resolved != null);
     std.debug.print("Composition path 'resistor.p1' resolved to: {d}\n", .{comp_resolved.?.node.get_uuid()});
-    try std.testing.expect(Node.is_same(comp_resolved.?.node, child_p1.node));
+    try std.testing.expect(comp_resolved.?.node.is_same(child_p1.node));
 
     std.debug.print("All EdgeTraversal tests passed!\n", .{});
     std.debug.print("  - Trait->Composition->Pointer path works\n", .{});

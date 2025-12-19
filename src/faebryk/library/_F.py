@@ -22,9 +22,9 @@ from faebryk.library.is_source import is_source
 from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.Signal import Signal
+from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.is_pickable import is_pickable
 from faebryk.library.is_app_root import is_app_root
-from faebryk.library.has_part_removed import has_part_removed
 import faebryk.library.Literals as Literals
 from faebryk.library.can_bridge import can_bridge
 import faebryk.library.Parameters as Parameters
@@ -75,7 +75,6 @@ from faebryk.library.TestPoint import TestPoint
 from faebryk.library.Battery import Battery
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.ElectricSignal import ElectricSignal
-from faebryk.library.MultiCapacitor import MultiCapacitor
 from faebryk.library.LED import LED
 from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
 from faebryk.library.ResistorArray import ResistorArray
@@ -119,9 +118,9 @@ __all__ = [
     "Logic",
     "Mechanical",
     "Signal",
+    "has_part_removed",
     "is_pickable",
     "is_app_root",
-    "has_part_removed",
     "Literals",
     "can_bridge",
     "Parameters",
@@ -172,7 +171,6 @@ __all__ = [
     "Battery",
     "ElectricLogic",
     "ElectricSignal",
-    "MultiCapacitor",
     "LED",
     "Crystal_Oscillator",
     "ResistorArray",

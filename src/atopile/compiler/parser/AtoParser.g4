@@ -66,7 +66,9 @@ block
     ;
 
 import_stmt
-    : (FROM string)? IMPORT type_reference
+    : (FROM string)? IMPORT type_reference (
+        COMMA type_reference
+    )*
     ;
 
 declaration_stmt

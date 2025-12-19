@@ -627,7 +627,7 @@ def test_defaultsolver_super_basic():
     # ):
     #    if not isinstance(E, type) or not issubclass(E, fabll.Node):
     #        continue
-    #    E.bind_typegraph(tg=tg).get_or_create_type()
+    #    fabll.TypeNodeBoundTG.get_or_create_type_in_tg(tg=tg, E)
 
     P = FT.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
     P.alias_to_single(True)
@@ -654,7 +654,7 @@ def test_defaultsolver_basic():
     # ):
     #    if not isinstance(E, type) or not issubclass(E, fabll.Node):
     #        continue
-    #    E.bind_typegraph(tg=tg).get_or_create_type()
+    #    fabll.TypeNodeBoundTG.get_or_create_type_in_tg(tg=tg, E)
 
     class App(fabll.Node):
         A = FT.Parameters.BooleanParameter.MakeChild()

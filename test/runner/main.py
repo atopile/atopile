@@ -536,7 +536,7 @@ GENERATE_HTML = os.getenv("FBRK_TEST_GENERATE_HTML", "1") == "1"
 GENERATE_PERIODIC_HTML = os.getenv("FBRK_TEST_PERIODIC_HTML", "1") == "1"
 
 # Global state
-test_queue = queue.Queue()
+test_queue = queue.Queue[str]()
 tests_total = 0
 workers: dict[int, subprocess.Popen[bytes]] = {}
 
@@ -627,7 +627,11 @@ class TestAggregator:
             prev = self._claimed_by_pid.get(pid)
             if prev and prev != nodeid:
                 prev_state = self._tests.get(prev)
-                if prev_state and prev_state.outcome is None and prev_state.start_time is None:
+                if (
+                    prev_state
+                    and prev_state.outcome is None
+                    and prev_state.start_time is None
+                ):
                     prev_state.pid = None
                     prev_state.requeues += 1
                     test_queue.put(prev)
@@ -1431,7 +1435,8 @@ def collect_tests(pytest_args: list[str]) -> tuple[list[str], dict[str, str]]:
 
     # Capture output
     result = subprocess.run(cmd, capture_output=True, text=True)
-    stdout, summary = result.stdout.split("\n\n", maxsplit=1)
+    split = result.stdout.split("\n\n", maxsplit=1)
+    stdout, summary = split if len(split) == 2 else (split[0], "")
     errors_clean = dict[str, str]()
     if result.returncode != 0:
         _print("Error collecting tests:")

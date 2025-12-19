@@ -11,6 +11,7 @@ export interface ISettings {
     ato: string | undefined;
     from: string | undefined;
     telemetry: boolean | undefined;
+    setupAlias: boolean | undefined;
 }
 
 export function getExtensionSettings(): Promise<ISettings[]> {
@@ -27,6 +28,7 @@ export async function getWorkspaceSettings(workspace: WorkspaceFolder): Promise<
         ato: ato_config ? resolvePath(ato_config, workspace) : undefined,
         from: config.get<string>(`from`),
         telemetry: config.get<boolean>(`telemetry`),
+        setupAlias: config.get<boolean>(`setupAlias`),
     };
     return workspaceSetting;
 }

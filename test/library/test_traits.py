@@ -33,9 +33,11 @@ def test_trait_equality():
     assert trait1_a.has_same_type_as(trait1_b)
     assert not trait1_a.has_same_type_as(trait2)
 
-    trait1_type = Trait1.bind_typegraph(tg=tg).get_or_create_type()
-    trait2_type = Trait2.bind_typegraph(tg=tg).get_or_create_type()
-    assert trait1_type == Trait1.bind_typegraph(tg=tg).get_or_create_type()
+    trait1_type = fabll.TypeNodeBoundTG.get_or_create_type_in_tg(tg=tg, t=Trait1)
+    trait2_type = fabll.TypeNodeBoundTG.get_or_create_type_in_tg(tg=tg, t=Trait2)
+    assert trait1_type == fabll.TypeNodeBoundTG.get_or_create_type_in_tg(
+        tg=tg, t=Trait1
+    )
     assert trait1_type != trait2_type
 
 

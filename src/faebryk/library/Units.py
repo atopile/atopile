@@ -2272,7 +2272,7 @@ def register_all_units(
     for registry, symbols in _UNIT_SYMBOLS.items():
         unit_type = globals()[registry.name]
         assert isinstance(unit_type, type) and issubclass(unit_type, fabll.Node)
-        unit_type.bind_typegraph(tg=tg).get_or_create_type()
+        fabll.TypeNodeBoundTG.get_or_create_type_in_tg(tg=tg, t=unit_type)
         for symbol in symbols:
             symbol_map[symbol] = unit_type
 

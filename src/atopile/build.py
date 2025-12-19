@@ -86,6 +86,7 @@ def _init_ato_app(
         path=config.build.entry_file_path,
     )
     linker.link_imports(g, result.state)
+    result.visitor.execute_pending()
     app_type = result.state.type_roots[config.build.entry_section]
     app_root = tg.instantiate_node(type_node=app_type, attributes={})
     return fabll.Node.bind_instance(app_root)

@@ -95,7 +95,9 @@ def convert_to_canonical_operations(mutator: Mutator):
         Cardinality: None,
     }
     _UnsupportedOperations = {
-        k.bind_typegraph(mutator.tg_in).get_or_create_type().node().get_uuid(): v
+        fabll.TypeNodeBoundTG.get_or_create_type_in_tg(mutator.tg_in, k)
+        .node()
+        .get_uuid(): v
         for k, v in UnsupportedOperations.items()
     }
 

@@ -102,12 +102,11 @@ class UserDesignCheckException(UserException):
 
     @classmethod
     def from_nodes(cls, message: str, nodes: Sequence["fabll.Node"]) -> Self:
-        nodes = sorted(nodes, key=lambda n: str(n))
-        msg = message
+        nodes = sorted(nodes, key=lambda n: n.get_full_name())
         if nodes:
-            nodes_fmt = md_list(f"`{node}`" for node in nodes)
-            msg += f"{msg}\n\nFor nodes: \n{nodes_fmt}"
-        return cls(msg)
+            nodes_fmt = md_list(f"`{node.pretty_repr()}`" for node in nodes)
+            message = f"{message}\n\nFor nodes: \n{nodes_fmt}"
+        return cls(message)
 
 
 class Pacman[T: Exception](contextlib.suppress, ABC):

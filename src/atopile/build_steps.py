@@ -23,6 +23,7 @@ from atopile.errors import (
 )
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom
+from faebryk.exporters.documentation.datasheets import export_datasheets
 
 # from faebryk.exporters.documentation.i2c import export_i2c_tree
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
@@ -229,6 +230,11 @@ def prepare_build(
 def post_design_checks(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
+    if False:
+        from faebryk.core.graph_render import GraphRenderer
+
+        print(GraphRenderer.render_interfaces(app.instance))
+
     check_design(
         app,
         stage=F.implements_design_check.CheckStage.POST_DESIGN,
@@ -680,6 +686,17 @@ def generate_variable_report(
     export_parameters_to_file(
         app, solver, config.build.paths.output_base.with_suffix(".variables.md")
     )
+
+
+@muster.register(
+    "datasheets",
+    dependencies=[build_design],
+    produces_artifact=True,
+)
+def generate_datasheets(
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+) -> None:
+    export_datasheets(app, config.build.paths.documentation / "datasheets")
 
 
 # @muster.register(

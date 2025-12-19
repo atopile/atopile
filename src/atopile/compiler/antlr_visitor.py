@@ -1,4 +1,5 @@
 import itertools
+import logging
 from collections.abc import Iterable, Sequence
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -14,6 +15,8 @@ import faebryk.core.node as fabll
 from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
+
+logger = logging.getLogger(__name__)
 
 
 class ANTLRVisitor(AtoParserVisitor):
@@ -149,7 +152,9 @@ class ANTLRVisitor(AtoParserVisitor):
             )
         )
 
-    def visitSimple_stmt(self, ctx: AtoParser.Simple_stmtContext) -> AST.is_statement:
+    def visitSimple_stmt(
+        self, ctx: AtoParser.Simple_stmtContext
+    ) -> AST.is_statement | list[AST.is_statement]:
         (stmt_ctx,) = [
             stmt_ctx
             for stmt_ctx in [
@@ -170,6 +175,9 @@ class ANTLRVisitor(AtoParserVisitor):
         ]
 
         stmt = self.visit(stmt_ctx)
+        # Handle multi-import statements which return a list of ImportStmt
+        if isinstance(stmt, list):
+            return [s._is_statement.get() for s in stmt]
         return stmt._is_statement.get()
 
     def visitCompound_stmt(
@@ -192,15 +200,39 @@ class ANTLRVisitor(AtoParserVisitor):
         )
         return pragma_stmt._is_statement.get()
 
-    def visitImport_stmt(self, ctx: AtoParser.Import_stmtContext) -> AST.ImportStmt:
-        type_ref_name, type_ref_source_info = self.visitType_reference(
-            ctx.type_reference()
-        )
+    def visitImport_stmt(
+        self, ctx: AtoParser.Import_stmtContext
+    ) -> AST.ImportStmt | list[AST.ImportStmt]:
+        type_refs = ctx.type_reference()
+        path_info = self.visitString(ctx.string()) if ctx.string() else None
+        source_info = self._extract_source_info(ctx)
+
+        # Handle multiple imports on one line (deprecated syntax)
+        if len(type_refs) > 1:
+            logger.warning(
+                "DEPRECATION: Multiple imports on one line is deprecated. "
+                "Please use separate import statements for each module. "
+                f"Found: {ctx.getText()}"
+            )
+            return [
+                self._new(AST.ImportStmt).setup(
+                    source_info=source_info,
+                    type_ref_name=name,
+                    type_ref_source_info=ref_source_info,
+                    path_info=path_info,
+                )
+                for name, ref_source_info in (
+                    self.visitType_reference(ref) for ref in type_refs
+                )
+            ]
+
+        # Single import (normal case)
+        type_ref_name, type_ref_source_info = self.visitType_reference(type_refs[0])
         return self._new(AST.ImportStmt).setup(
-            source_info=self._extract_source_info(ctx),
+            source_info=source_info,
             type_ref_name=type_ref_name,
             type_ref_source_info=type_ref_source_info,
-            path_info=self.visitString(ctx.string()) if ctx.string() else None,
+            path_info=path_info,
         )
 
     def visitRetype_stmt(self, ctx: AtoParser.Retype_stmtContext) -> AST.RetypeStmt:
@@ -409,9 +441,13 @@ class ANTLRVisitor(AtoParserVisitor):
             self.visitField_reference_part(part_ctx)
             for part_ctx in ctx.field_reference_part()
         ]
-        return self._new(AST.FieldRef).setup(
+        field_ref = self._new(AST.FieldRef).setup(
             source_info=self._extract_source_info(ctx), parts=parts
         )
+        if (pin_end := ctx.pin_reference_end()) is not None:
+            pin_number = pin_end.number_hint_natural().getText()
+            field_ref.pin.get().setup_from_values(pin_number)
+        return field_ref
 
     def visitAssign_stmt(self, ctx: AtoParser.Assign_stmtContext) -> AST.Assignment:
         field_ref_ctx = ctx.field_reference_or_declaration().field_reference()

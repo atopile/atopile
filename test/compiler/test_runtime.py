@@ -191,50 +191,236 @@ def test_requires():
     assert fabll.Node.bind_instance(a).has_trait(F.requires_external_usage)
 
 
-def test_for_loop_basic():
-    """Test for loop creates correct connections."""
-    _, _, _, _, app_instance = build_instance(
-        """
+class TestForLoopsRuntime:
+    def test_for_loop_basic(self):
+        """Test for loop creates correct connections."""
+        _, _, _, _, app_instance = build_instance(
+            """
+                #pragma experiment("FOR_LOOP")
+                import Resistor
+
+                module App:
+                    resistors = new Resistor[5]
+                    for r in resistors:
+                        r.unnamed[0] ~ r.unnamed[1]
+                        assert r.resistance is 100kohm +/- 10%
+                """,
+            "App",
+        )
+
+        resistors = F.Collections.PointerSequence.bind_instance(
+            _get_child(app_instance, "resistors")
+        )
+        for r_node in resistors.as_list():
+            r = r_node.cast(F.Resistor)
+            assert _check_connected(r.unnamed[0].get(), r.unnamed[1].get())
+            # TODO: check resistance is 100kohm +/- 10%
+
+    def test_for_loop_empty_list(self):
+        """Test empty for loop doesn't execute body."""
+        _, _, _, _, app_instance = build_instance(
+            """
+                #pragma experiment("FOR_LOOP")
+                import Resistor
+                import Electrical
+
+                module App:
+                    resistors = new Resistor[0]
+                    test_pins = new Electrical[2]
+                    for r in resistors:
+                        test_pins[0] ~ test_pins[1]
+                """,
+            "App",
+        )
+        test_pin_0 = _get_child(app_instance, "test_pins[0]")
+        test_pin_1 = _get_child(app_instance, "test_pins[1]")
+        assert test_pin_0 is not None
+        assert test_pin_1 is not None
+        assert not _check_connected(test_pin_0, test_pin_1)
+
+    def test_for_loop_no_pragma(self):
+        with pytest.raises(DslException, match="is not enabled"):
+            build_instance(
+                """
+                import Resistor
+
+                module App:
+                    resistors = new Resistor[5]
+                    for r in resistors:
+                        r.unnamed[0] ~ r.unnamed[1]
+                """,
+                "App",
+            )
+
+    def test_for_loop_nested_error(self):
+        with pytest.raises(DslException, match="Invalid statement in for loop"):
+            build_instance(
+                """
+                #pragma experiment("FOR_LOOP")
+                import Resistor
+
+                module App:
+                    resistors = new Resistor[5]
+                    resistors2 = new Resistor[5]
+                    for r in resistors:
+                        # nested for loops are not allowed
+                        for r2 in resistors2:
+                            r.unnamed[0] ~ r2.unnamed[0]
+                """,
+                "App",
+            )
+
+    def test_for_loop_variable_conflict(self):
+        with pytest.raises(DslException, match="conflicts with an existing"):
+            build_instance(
+                """
+                #pragma experiment("FOR_LOOP")
+                import Resistor
+
+                module App:
+                    r = new Resistor
+                    resistors = new Resistor[3]
+                    for r in resistors:
+                        pass
+                """,
+                "App",
+            )
+
+    def test_for_loop_iterate_non_list(self):
+        with pytest.raises(DslException, match="expected a sequence"):
+            build_instance(
+                """
+                #pragma experiment("FOR_LOOP")
+                import Resistor
+
+                module App:
+                    r_single = new Resistor
+                    for r in r_single:
+                        pass
+                """,
+                "App",
+            )
+
+    def test_for_loop_syntax_error(self):
+        from atopile.compiler.parse import parse_text_as_file
+
+        with pytest.raises(UserSyntaxError, match="missing INDENT"):
+            parse_text_as_file(
+                textwrap.dedent(
+                    """
+                    #pragma experiment("FOR_LOOP")
+                    import Resistor
+
+                    module App:
+                        resistors = new Resistor[5]
+                        for r in resistors:
+                        resistors[0].unnamed[0] ~ resistors[1].unnamed[0]
+                    """
+                )
+            )
+
+    def test_for_loop_stale_ref(self):
+        with pytest.raises(DslException):
+            build_instance(
+                """
+                #pragma experiment("FOR_LOOP")
+                import Resistor
+
+                module App:
+                    resistors = new Resistor[5]
+                    for r in resistors:
+                        assert r.resistance is 100kohm
+                    r.unnamed[0] ~ r.unnamed[1]
+                """,
+                "App",
+            )
+
+    @pytest.mark.parametrize(
+        "stmt",
+        [
+            "import Resistor",
+            "pin 1",
+            "signal a",
+            "trait test_trait",
+        ],
+    )
+    def test_for_loop_illegal_statements(self, stmt: str):
+        template = textwrap.dedent(
+            """
             #pragma experiment("FOR_LOOP")
+            #pragma experiment("TRAITS")
+
             import Resistor
 
             module App:
-                resistors = new Resistor[5]
-                for r in resistors:
-                    r.unnamed[0] ~ r.unnamed[1]
-                    assert r.resistance is 100kohm +/- 10%
-            """,
-        "App",
+                nodes = new Resistor[10]
+                for x in nodes:
+                    {stmt}
+            """
+        )
+
+        text = template.format(stmt=stmt)
+        with pytest.raises(DslException, match="Invalid statement"):
+            build_instance(text, "App")
+
+
+def test_for_loop_over_imported_sequence(tmp_path: Path):
+    """Test iterating over a sequence defined in an imported module."""
+    child_path = tmp_path / "child.ato"
+    child_path.write_text(
+        textwrap.dedent(
+            """
+            import Electrical
+
+            module Widget:
+                items = new Electrical[3]
+            """
+        ),
+        encoding="utf-8",
     )
 
-    resistors = _get_child(app_instance, "resistors")
-    assert isinstance(resistors, list)
-    for r_node in resistors:
-        r = F.Resistor.bind_instance(cast_assert(BoundNode, r_node))
-        assert _check_connected(r.unnamed[0].get(), r.unnamed[1].get())
-        # TODO: check resistance is 100kohm +/- 10%
-
-
-def test_for_loop_empty_list():
-    """Test empty for loop doesn't execute body."""
-    _, _, _, _, app_instance = build_instance(
-        """
+    main_path = tmp_path / "main.ato"
+    main_path.write_text(
+        textwrap.dedent(
+            """
             #pragma experiment("FOR_LOOP")
-            import Resistor
+
+            from "child.ato" import Widget
             import Electrical
 
             module App:
-                resistors = new Resistor[0]
-                test_pins = new Electrical[2]
-                for r in resistors:
-                    test_pins[0] ~ test_pins[1]
-            """,
-        "App",
+                widget = new Widget
+                sink = new Electrical
+
+                for item in widget.items:
+                    item ~ sink
+            """
+        ),
+        encoding="utf-8",
     )
-    test_pins = _get_child(app_instance, "test_pins")
-    assert isinstance(test_pins, list)
-    assert len(test_pins) == 2
-    assert not _check_connected(test_pins[0], test_pins[1])
+
+    g = GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    stdlib = StdlibRegistry(tg)
+
+    result = build_file(g=g, tg=tg, import_path="main.ato", path=main_path)
+
+    linker = Linker(tmp_path, stdlib, tg)
+    linker.link_imports(g, result.state)
+
+    if result.visitor is not None:
+        result.visitor.execute_pending()
+
+    # Verify the for-loop created the expected connections
+    app_type = result.state.type_roots["App"]
+    make_links = tg.collect_make_links(type_node=app_type)
+
+    # Find connections from widget.items elements to sink
+    connections = [
+        (lhs, rhs) for _, lhs, rhs in make_links if lhs[0] == "widget" and "sink" in rhs
+    ]
+
+    assert len(connections) == 3, f"Expected 3 connections, got {len(connections)}"
 
 
 def test_assign_to_enum_param():
@@ -932,137 +1118,6 @@ def test_pragma_feature_multiple_args():
             """,
             "App",
         )
-
-
-def test_for_loop_no_pragma():
-    with pytest.raises(DslException, match="Experimental feature not enabled"):
-        build_instance(
-            """
-            import Resistor
-
-            module App:
-                resistors = new Resistor[5]
-                for r in resistors:
-                    r.unnamed[0] ~ r.unnamed[1]
-            """,
-            "App",
-        )
-
-
-def test_for_loop_nested_error():
-    with pytest.raises(DslException, match="[Nn]ested"):
-        build_instance(
-            """
-            #pragma experiment("FOR_LOOP")
-            import Resistor
-
-            module App:
-                resistors = new Resistor[5]
-                resistors2 = new Resistor[5]
-                for r in resistors:
-                    # nested for loops are not allowed
-                    for r2 in resistors2:
-                        r.unnamed[0] ~ r2.unnamed[0]
-            """,
-            "App",
-        )
-
-
-def test_for_loop_variable_conflict():
-    with pytest.raises(DslException, match="conflicts with an existing"):
-        build_instance(
-            """
-            #pragma experiment("FOR_LOOP")
-            module App:
-                r = new Resistor
-                resistors = new Resistor[3]
-                for r in resistors:
-                    pass
-            """,
-            "App",
-        )
-
-
-def test_for_loop_iterate_non_list():
-    with pytest.raises(DslException, match="Cannot iterate over type"):
-        build_instance(
-            """
-            #pragma experiment("FOR_LOOP")
-            import Resistor
-
-            module App:
-                r_single = new Resistor
-                for r in r_single:
-                    pass
-            """,
-            "App",
-        )
-
-
-def test_for_loop_syntax_error():
-    from atopile.compiler.parse import parse_text_as_file
-
-    with pytest.raises(UserSyntaxError, match="missing INDENT"):
-        parse_text_as_file(
-            textwrap.dedent(
-                """
-                #pragma experiment("FOR_LOOP")
-                import Resistor
-
-                module App:
-                    resistors = new Resistor[5]
-                    for r in resistors:
-                    resistors[0].unnamed[0] ~ resistors[1].unnamed[0]
-                """
-            )
-        )
-
-
-def test_for_loop_stale_ref():
-    with pytest.raises(DslException):
-        build_instance(
-            """
-            #pragma experiment("FOR_LOOP")
-            import Resistor
-
-            module App:
-                resistors = new Resistor[5]
-                for r in resistors:
-                    assert r.resistance is 100kohm
-                r.unnamed[0] ~ r.unnamed[1]
-            """,
-            "App",
-        )
-
-
-@pytest.mark.parametrize(
-    "stmt",
-    [
-        "import Resistor",
-        "pin 1",
-        "signal a",
-        "trait test_trait",
-        "r = new Resistor",
-    ],
-)
-def test_for_loop_illegal_statements(stmt: str):
-    template = textwrap.dedent(
-        """
-        #pragma experiment("FOR_LOOP")
-        #pragma experiment("TRAITS")
-
-        import Resistor
-
-        module App:
-            nodes = new Resistor[10]
-            for x in nodes:
-                {stmt}
-        """
-    )
-
-    text = template.format(stmt=stmt)
-    with pytest.raises(DslException, match="Invalid statement"):
-        build_instance(text, "App")
 
 
 def test_list_literal_basic():

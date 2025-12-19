@@ -325,7 +325,6 @@ pub fn wrap_str(value: ?[]const u8) ?*py.PyObject {
     if (out == null) {
         return null;
     }
-    py.Py_INCREF(out.?);
     return out.?;
 }
 
@@ -353,7 +352,6 @@ pub fn wrap_int(value: anytype) ?*py.PyObject {
     if (out == null) {
         return null;
     }
-    py.Py_INCREF(out.?);
     return out.?;
 }
 

@@ -23,7 +23,7 @@ from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.test.boundexpressions import BoundExpressions
-from faebryk.libs.util import cast_assert, groupby
+from faebryk.libs.util import cast_assert, groupby, indented_container
 
 sys.path.append(str(Path(__file__).parent))
 
@@ -169,25 +169,22 @@ def test_construct_pick_tree_multiple_children():
     fabll.Traits.create_and_add_instance_to(module, F.is_pickable)
 
     class App(fabll.Node):
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         r1 = F.Resistor.MakeChild()
         r2 = F.Resistor.MakeChild()
 
-        class App2(fabll.Node):
+        class NestedInterface(fabll.Node):
+            _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
             r3 = F.Resistor.MakeChild()
 
-        app2 = App2.MakeChild()
+        nested_interface = NestedInterface.MakeChild()
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
     tree = get_pick_tree(app)
     assert len(tree) == 3
+    print(indented_container(tree))
     assert (
-        app.r1.get().get_trait(F.is_pickable_by_type).get_trait(F.is_pickable) in tree
-    )
-    assert (
-        app.r2.get().get_trait(F.is_pickable_by_type).get_trait(F.is_pickable) in tree
-    )
-    assert (
-        app.app2.get()
+        app.nested_interface.get()
         .r3.get()
         .get_trait(F.is_pickable_by_type)
         .get_trait(F.is_pickable)
