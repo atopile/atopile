@@ -303,6 +303,9 @@ class BuildTargetPaths(BaseConfigModel):
     kicad_project: Path
     """Build-target KiCAD project file"""
 
+    documentation: Path
+    """Build-target documentation directory"""
+
     def __init__(self, name: str, project_paths: ProjectPaths, **data: Any):
         if layout_data := data.get("layout"):
             data["layout"] = BuildTargetPaths.find_layout(Path(layout_data))
@@ -313,8 +316,12 @@ class BuildTargetPaths(BaseConfigModel):
 
         if output_base_data := data.get("output_base"):
             data["output_base"] = Path(output_base_data)
+            data.setdefault("documentation", data["output_base"] / "documentation")
         else:
             data["output_base"] = project_paths.build / "builds" / name / name
+            data.setdefault(
+                "documentation", project_paths.build / "builds" / name / "documentation"
+            )
 
         data.setdefault("netlist", data["output_base"] / f"{name}.net")
         data.setdefault("fp_lib_table", data["layout"].parent / "fp-lib-table")
