@@ -417,7 +417,9 @@ def test_for_loop_over_imported_sequence(tmp_path: Path):
 
     # Find connections from widget.items elements to sink
     connections = [
-        (lhs, rhs) for _, lhs, rhs in make_links if lhs[0] == "widget" and "sink" in rhs
+        (lhs, rhs)
+        for _, lhs, rhs in make_links
+        if lhs and lhs[0] == "widget" and "sink" in rhs
     ]
 
     assert len(connections) == 3, f"Expected 3 connections, got {len(connections)}"
@@ -1528,29 +1530,31 @@ def test_slice_for_loop():
     )
     assert "App" in result.state.type_roots
 
-    resistors = _get_child(app_instance, "resistors")
-    assert isinstance(resistors, list)
-    resistors2 = _get_child(app_instance, "resistors2")
-    assert isinstance(resistors2, list)
+    resistors = F.Collections.PointerSequence.bind_instance(
+        _get_child(app_instance, "resistors")
+    )
+    resistors2 = F.Collections.PointerSequence.bind_instance(
+        _get_child(app_instance, "resistors2")
+    )
 
-    for r_node in resistors[0:3]:
-        r = F.Resistor.bind_instance(r_node)
+    for r_node in resistors.as_list()[0:3]:
+        r = r_node.cast(F.Resistor)
         assert (
             E.lit_op_single((100, E.U.kohm))
             .as_literal.force_get()
             .equals(r.resistance.get().force_extract_literal())
         )
 
-    for r_node in resistors[-3:-1]:
-        r = F.Resistor.bind_instance(r_node)
+    for r_node in resistors.as_list()[-3:-1]:
+        r = r_node.cast(F.Resistor)
         assert (
             E.lit_op_single((200, E.U.kohm))
             .as_literal.force_get()
             .equals(r.resistance.get().force_extract_literal())
         )
 
-    for r_node in resistors[3:6:2]:
-        r = F.Resistor.bind_instance(r_node)
+    for r_node in resistors.as_list()[3:6:2]:
+        r = r_node.cast(F.Resistor)
         assert (
             E.lit_op_single((150, E.U.kohm))
             .as_literal.force_get()
@@ -1558,12 +1562,12 @@ def test_slice_for_loop():
         )
 
     # Check that other resistors weren't assigned a value in the loop
-    for r_node in resistors[6:-3]:
-        r = F.Resistor.bind_instance(r_node)
+    for r_node in resistors.as_list()[6:-3]:
+        r = r_node.cast(F.Resistor)
         assert r.resistance.get().try_extract_aliased_literal() is None
 
-    for r_node in resistors2[:]:
-        r = F.Resistor.bind_instance(r_node)
+    for r_node in resistors2.as_list()[:]:
+        r = r_node.cast(F.Resistor)
         assert (
             E.lit_op_single((250, E.U.kohm))
             .as_literal.force_get()
