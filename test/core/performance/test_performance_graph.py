@@ -81,14 +81,26 @@ def test_performance_parameters(A: int = 1, B: int = 1, rs: int = 1, pick: bool 
             instances[tid] = n.create_instance(g=g)
     app = instances["App"]
 
+    g_copy = graph.GraphView.create()
+    g_copy2 = graph.GraphView.create()
     with timings.context("create_dimless"):
         dimless = F.Units.Dimensionless.bind_typegraph(tg)
     with timings.context("get_or_create_dimless"):
         dimless.get_or_create_type()
     with timings.context("create_instance_dimless"):
         dimless_instance = dimless.create_instance(g=g)
-    with timings.context("dimless_copy"):
-        fbrk.TypeGraph.get_subgraph_of_node(start_node=dimless_instance.instance)
+    with timings.context("dimless_copy1"):
+        dimless_instance.copy_into(g=g_copy)
+    with timings.context("dimless_copy2"):
+        dimless_instance.copy_into(g=g_copy)
+    with timings.context("create_number_literal"):
+        number_literal_instance = bound_numbers.create_instance(g=g).setup_from_min_max(
+            min=0, max=1, unit=dimless_instance.is_unit.get()
+        )
+    with timings.context("number_literal_copy1"):
+        number_literal_instance.copy_into(g=g_copy2)
+    with timings.context("number_literal_copy2"):
+        number_literal_instance.copy_into(g=g_copy2)
 
     with timings.context("create_numbers"):
         numbers = [bound_numbers.create_instance(g=g) for _ in range(rs)]
