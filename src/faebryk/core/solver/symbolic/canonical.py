@@ -264,13 +264,12 @@ def convert_to_canonical_operations(mutator: Mutator):
 
     # Canonicalize parameters
     for param in mutator.get_parameters_of_type(F.Parameters.NumericParameter):
-        # TODO @nkrstevski: check that unit of parameter is not scaled/offset
-        # assert param.get_units()._extract_multiplier() == 1.0, (
-        #     "Parameter units must not use scalar multiplier"
-        # )
-        # assert param.get_units()._extract_offset() == 0.0, (
-        #     "Parameter units must noty use offset"
-        # )
+        assert param.get_units()._extract_multiplier() == 1.0, (
+            "Parameter units must not use scalar multiplier"
+        )
+        assert param.get_units()._extract_offset() == 0.0, (
+            "Parameter units must noty use offset"
+        )
         # VA allowed, W allowed, mW not allowed
         mutator.mutate_parameter(
             param.is_parameter.get(),

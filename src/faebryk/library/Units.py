@@ -519,7 +519,12 @@ class is_unit(fabll.Node):
         """
         all_is_units = fabll.Traits.get_implementors(is_unit.bind_typegraph(tg=tg), g)
         for _is_unit in all_is_units:
-            if _is_unit._extract_basis_vector() == self._extract_basis_vector():
+            # Must match basis vector AND have base unit multiplier/offset
+            if (
+                _is_unit._extract_basis_vector() == self._extract_basis_vector()
+                and _is_unit._extract_multiplier() == 1.0
+                and _is_unit._extract_offset() == 0.0
+            ):
                 return _is_unit
 
         return self.new(
@@ -1185,17 +1190,16 @@ def UnitExpressionFactory(
     assert len(symbols) >= 1, "Unit Expression must have at least one symbol"
 
     # Derive the basis/multiplier/offset tuple for this expression.
-    # new op_power for resolving that takes in a unit type and exponent and rerutnes a new is_unit
-    # Then apply a op_multiply to all the is_units and return a new is_unit
-    # add field
+    # Resolve the unit vector to get the composed basis vector, multiplier, and offset
+    # from any nested UnitExpressions. Then combine with the user-provided values.
+    basis_vector, inner_multiplier, inner_offset = resolve_unit_vector(unit_vector)
+    total_multiplier = multiplier * inner_multiplier
+    total_offset = offset + inner_offset
 
-    # op_power returns a basis vector a nultiplier and an offset, same with op_multiply
-    # pass this informjation into the makechild for is_unit that will go on the concrete unit expression type
-    basis_vector, _, _ = resolve_unit_vector(unit_vector)
     ConcreteUnitExpr._add_field(
         "is_unit",
         fabll.Traits.MakeEdge(
-            is_unit.MakeChild(symbols, basis_vector, multiplier, offset)
+            is_unit.MakeChild(symbols, basis_vector, total_multiplier, total_offset)
         ),
     )
 
@@ -1350,12 +1354,23 @@ def resolve_unit_vector(
 
 
 def extract_unit_info(unit_type: type[fabll.Node]) -> UnitInfoT:
-    basis_vector: BasisVector | None = None
+    # Handle UnitExpression types (have _unit_vector_arg with underscore prefix)
+    # These need to be recursively resolved since they compose other units
+    if hasattr(unit_type, "_unit_vector_arg"):
+        unit_vector = getattr(unit_type, "_unit_vector_arg")
+        multiplier = getattr(unit_type, "_multiplier_arg")
+        offset = getattr(unit_type, "_offset_arg")
+        # Recursively resolve the unit vector to get the basis vector
+        basis_vector, inner_multiplier, inner_offset = resolve_unit_vector(unit_vector)
+        # Combine multipliers (the inner multiplier is already factored into basis)
+        return (basis_vector, multiplier * inner_multiplier, offset + inner_offset)
+
+    # Handle base units (have unit_vector_arg without underscore)
     basis_vector = getattr(
-        unit_type, "unit_vector_arg"
+        unit_type, "unit_vector_arg", None
     )  # TODO change string to protocol
     assert isinstance(basis_vector, BasisVector), (
-        f"Expected BasisVector, got {type(basis_vector)}"
+        f"Expected BasisVector, got {type(basis_vector)} for {unit_type}"
     )
     multiplier = getattr(unit_type, "multiplier_arg")
     offset = getattr(unit_type, "offset_arg")
@@ -2224,9 +2239,9 @@ class BitsPerSecond(fabll.Node):
     offset_arg: ClassVar[float] = 0.0
 
     is_unit_type = fabll.Traits.MakeEdge(
-        is_unit_type.MakeChild([], unit_vector_arg)
+        is_unit_type.MakeChild((), unit_vector_arg)
     ).put_on_type()
-    is_unit = fabll.Traits.MakeEdge(is_unit.MakeChild([], unit_vector_arg))
+    is_unit = fabll.Traits.MakeEdge(is_unit.MakeChild((), unit_vector_arg))
     can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
     is_si_prefixed = fabll.Traits.MakeEdge(is_si_prefixed_unit.MakeChild())
     is_binary_prefixed = fabll.Traits.MakeEdge(is_binary_prefixed_unit.MakeChild())
@@ -2238,7 +2253,7 @@ class AmpereHour(fabll.Node):
     offset_arg: ClassVar[float] = 0.0
 
     is_unit_type = fabll.Traits.MakeEdge(
-        is_unit_type.MakeChild([], unit_vector_arg, multiplier=3600.0)
+        is_unit_type.MakeChild((), unit_vector_arg, multiplier=3600.0)
     ).put_on_type()
     is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild((), unit_vector_arg, multiplier=3600.0)
@@ -2907,25 +2922,18 @@ class TestUnitExpressions(_TestWithContext):
     def test_affine_unit_in_expression_raises(self, ctx: BoundUnitsContext):
         """
         Test that affine units (non-zero offset) raise error in compound expressions.
+        Error is raised during UnitExpressionFactory creation (early detection).
         """
         celsius = ctx.DegreeCelsius.is_unit.get()
         assert celsius.is_affine
 
-        CelsiusExpr = UnitExpressionFactory(["degC"], ((DegreeCelsius, 1),))
-
-        class App(fabll.Node):
-            celsius_expr = CelsiusExpr.MakeChild()
-
-        app = App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
-
+        # Error should be raised during factory creation, not at runtime
         with pytest.raises(UnitExpressionError):
-            resolve_unit_expression(
-                tg=ctx.tg, g=ctx.g, expr=app.celsius_expr.get().instance
-            )
+            UnitExpressionFactory(("degC",), ((DegreeCelsius, 1),))
 
     def test_resolve_basic_unit(self, ctx: BoundUnitsContext):
         """Test that a simple unit expression (Meter^1) resolves correctly."""
-        MeterExpr = UnitExpressionFactory(["m", "meter"], ((Meter, 1),))
+        MeterExpr = UnitExpressionFactory(("m", "meter"), ((Meter, 1),))
 
         class App(fabll.Node):
             meter_expr = MeterExpr.MakeChild()
@@ -2941,7 +2949,7 @@ class TestUnitExpressions(_TestWithContext):
 
     def test_resolve_derived_unit(self, ctx: BoundUnitsContext):
         """Test that derived units (Meter * Second^-1) resolve correctly."""
-        VelocityExpr = UnitExpressionFactory(["m/s"], ((Meter, 1), (Second, -1)))
+        VelocityExpr = UnitExpressionFactory(("m/s",), ((Meter, 1), (Second, -1)))
 
         class App(fabll.Node):
             velocity_expr = VelocityExpr.MakeChild()
@@ -2957,7 +2965,7 @@ class TestUnitExpressions(_TestWithContext):
 
     def test_resolve_scaled_unit(self, ctx: BoundUnitsContext):
         """Test that expressions with scaled units resolve with correct multiplier."""
-        KilometerExpr = UnitExpressionFactory(["km"], ((Meter, 1),), multiplier=1000.0)
+        KilometerExpr = UnitExpressionFactory(("km",), ((Meter, 1),), multiplier=1000.0)
 
         class App(fabll.Node):
             km_expr = KilometerExpr.MakeChild()
@@ -2973,9 +2981,9 @@ class TestUnitExpressions(_TestWithContext):
 
     def test_resolve_compound_prefixed_unit(self, ctx: BoundUnitsContext):
         """Test expressions mixing prefixed and base units (km/h)."""
-        KilometerExpr = UnitExpressionFactory(["km"], ((Meter, 1),), multiplier=1000.0)
+        KilometerExpr = UnitExpressionFactory(("km",), ((Meter, 1),), multiplier=1000.0)
         KilometersPerHourExpr = UnitExpressionFactory(
-            ["km/h", "kph"], ((KilometerExpr, 1), (Hour, -1))
+            ("km/h", "kph"), ((KilometerExpr, 1), (Hour, -1))
         )
 
         class App(fabll.Node):
@@ -3029,7 +3037,7 @@ class TestUnitExpressions(_TestWithContext):
     def test_unit_expression_multiplier(self, ctx: BoundUnitsContext):
         """Test that multiplier on UnitExpression is correctly applied."""
         ScaledMeterExpr = UnitExpressionFactory(
-            ["km"], ((Meter, 1),), multiplier=1000.0
+            ("km",), ((Meter, 1),), multiplier=1000.0
         )
 
         class App(fabll.Node):
@@ -3044,7 +3052,7 @@ class TestUnitExpressions(_TestWithContext):
 
     def test_resolve_unit_expression_with_offset_raises(self, ctx: BoundUnitsContext):
         """Test that UnitExpression with non-zero offset raises error."""
-        OffsetExpr = UnitExpressionFactory(["m", "meter"], ((Meter, 1),), offset=10.0)
+        OffsetExpr = UnitExpressionFactory(("m", "meter"), ((Meter, 1),), offset=10.0)
 
         class App(fabll.Node):
             offset_expr = OffsetExpr.MakeChild()
@@ -3080,7 +3088,7 @@ class TestUnitExpressions(_TestWithContext):
 
     def test_resolve_dimensionless_expression(self, ctx: BoundUnitsContext):
         """Test that dimensionless results (e.g., Meter / Meter) are handled."""
-        MeterOverMeterExpr = UnitExpressionFactory(["m/m"], ((Meter, 1), (Meter, -1)))
+        MeterOverMeterExpr = UnitExpressionFactory(("m/m",), ((Meter, 1), (Meter, -1)))
 
         class App(fabll.Node):
             dimensionless_expr = MeterOverMeterExpr.MakeChild()
