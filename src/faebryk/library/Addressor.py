@@ -9,7 +9,6 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core import graph, graph_render
-from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.exceptions import UserDesignCheckException
 
@@ -393,6 +392,8 @@ class ConfigurableI2CClient(fabll.Node):
 
 
 def test_addressor():
+    from faebryk.core.solver.defaultsolver import DefaultSolver
+
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     app = ConfigurableI2CClient.bind_typegraph(tg).create_instance(g=g).setup(g, tg)
@@ -475,6 +476,8 @@ class I2CBusTopology(fabll.Node):
 
 
 def test_i2c_unique_addresses():
+    from faebryk.core.solver.defaultsolver import DefaultSolver
+
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     app = I2CBusTopology.bind_typegraph(tg).create_instance(g=g).setup()
@@ -490,6 +493,8 @@ def test_i2c_unique_addresses():
 
 
 def test_i2c_duplicate_addresses():
+    from faebryk.core.solver.defaultsolver import DefaultSolver
+
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     app = I2CBusTopology.bind_typegraph(tg).create_instance(g=g).setup()
@@ -510,6 +515,8 @@ def test_i2c_duplicate_addresses():
 
 
 def test_i2c_duplicate_addresses_isolated():
+    from faebryk.core.solver.defaultsolver import DefaultSolver
+
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     app = I2CBusTopology.bind_typegraph(tg).create_instance(g=g).setup(isolated=True)

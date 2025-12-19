@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import re
-from dataclasses import MISSING, dataclass, field, fields
+from dataclasses import dataclass, field, fields
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -818,7 +818,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     # TODO do we need this?
     # _fields_bound_tg: dict[fbrk.TypeGraph, list[InstanceChildBoundType]] = {}
     # tg.self_node -> type_node cache
-    _type_cache: dict[int, graph.BoundNode] = {}
+    _type_cache: dict[tuple[int, int], graph.BoundNode] = {}
 
     def __init__(self, instance: graph.BoundNode) -> None:
         self.instance = instance
@@ -1624,13 +1624,21 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         self.tg = tg
         self.t = t
 
+    @staticmethod
+    def _get_tg_hash(tg: fbrk.TypeGraph) -> tuple[int, int]:
+        tg_bnode = tg.get_self_node()
+        return (
+            tg_bnode.node().get_uuid(),
+            tg_bnode.g().get_self_node().node().get_uuid(),
+        )
+
     # node type methods ----------------------------------------------------------------
     @staticmethod
     def get_or_create_type_in_tg(tg: fbrk.TypeGraph, t: type[NodeT]) -> graph.BoundNode:
         # this is some optimization to avoid binding
         # you would think bind is fast, but python works in mysterious ways
-        tg_uuid = tg.get_self_node().node().get_uuid()
-        if typenode := t._type_cache.get(tg_uuid):
+
+        if typenode := t._type_cache.get(TypeNodeBoundTG._get_tg_hash(tg)):
             return typenode
         return t.bind_typegraph(tg).get_or_create_type()
 
@@ -1639,15 +1647,15 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         Builds Type node and returns it
         """
         tg = self.tg
-        tg_uuid = tg.get_self_node().node().get_uuid()
-        if typenode := self.t._type_cache.get(tg_uuid):
+        tg_hash = TypeNodeBoundTG._get_tg_hash(tg)
+        if typenode := self.t._type_cache.get(tg_hash):
             return typenode
         typenode = tg.get_type_by_name(type_identifier=self.t._type_identifier())
         if typenode is not None:
-            self.t._type_cache[tg_uuid] = typenode
+            self.t._type_cache[tg_hash] = typenode
             return typenode
         typenode = tg.add_type(identifier=self.t._type_identifier())
-        self.t._type_cache[tg_uuid] = typenode
+        self.t._type_cache[tg_hash] = typenode
         TypeNodeBoundTG.__TYPE_NODE_MAP__[typenode] = self
         self.t._create_type(self)
         return typenode
