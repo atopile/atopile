@@ -1682,8 +1682,8 @@ pub const TypeGraph = struct {
         // Mirror get_subgraph_of_node GraphView init inserting its self node.
         _ = dst.create_and_insert_node();
 
-        var collected_nodes = std.ArrayList(NodeReference).init(allocator);
-        defer collected_nodes.deinit();
+        var queue = std.ArrayList(NodeReference).init(allocator);
+        defer queue.deinit();
 
         var visited = graph.UUIDBitSet.init(allocator);
         defer visited.deinit();
@@ -1693,20 +1693,30 @@ pub const TypeGraph = struct {
 
         // Helper struct with functions to collect nodes
         const Collector = struct {
-            nodes: *std.ArrayList(NodeReference),
+            queue: *std.ArrayList(NodeReference),
             visited_set: *graph.UUIDBitSet,
             dont_visit: *graph.UUIDBitSet,
+            dst: *GraphView,
 
-            fn try_add(ctx: *@This(), node: NodeReference) bool {
-                if (!ctx.visited_set.contains(node.uuid)) {
-                    ctx.visited_set.add(node.uuid);
-                    ctx.nodes.append(node) catch @panic("OOM");
-                    return true;
+            fn add_node(ctx: *@This(), node: NodeReference) void {
+                if (ctx.visited_set.contains(node.uuid)) {
+                    return;
                 }
-                return false;
+                ctx.visited_set.add(node.uuid);
+                if (!ctx.dst.contains_node(node)) {
+                    _ = ctx.dst.insert_node(node);
+                }
+                ctx.queue.append(node) catch @panic("OOM");
             }
 
-            fn skip_visit(ctx: *@This(), node: NodeReference) void {
+            fn add_node_skip_visit(ctx: *@This(), node: NodeReference) void {
+                if (ctx.visited_set.contains(node.uuid)) {
+                    return;
+                }
+                ctx.visited_set.add(node.uuid);
+                if (!ctx.dst.contains_node(node)) {
+                    _ = ctx.dst.insert_node(node);
+                }
                 ctx.dont_visit.add(node.uuid);
             }
 
@@ -1714,7 +1724,7 @@ pub const TypeGraph = struct {
             fn visit_composition(ctx_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
                 const child = EdgeComposition.get_child_node(bound_edge.edge);
-                _ = ctx.try_add(child);
+                ctx.add_node(child);
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
 
@@ -1722,7 +1732,7 @@ pub const TypeGraph = struct {
             fn visit_pointer(ctx_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
                 if (EdgePointer.get_referenced_node(bound_edge.edge)) |target| {
-                    _ = ctx.try_add(target);
+                    ctx.add_node(target);
                 }
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
@@ -1731,7 +1741,7 @@ pub const TypeGraph = struct {
             fn visit_trait(ctx_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
                 const trait_instance = EdgeTrait.get_trait_instance_node(bound_edge.edge);
-                _ = ctx.try_add(trait_instance);
+                ctx.add_node(trait_instance);
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
 
@@ -1739,22 +1749,23 @@ pub const TypeGraph = struct {
             fn visit_operand(ctx_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
                 const target = bound_edge.edge.get_target_node();
-                _ = ctx.try_add(target);
+                ctx.add_node(target);
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
         };
 
         var collector = Collector{
-            .nodes = &collected_nodes,
+            .queue = &queue,
             .visited_set = &visited,
             .dont_visit = &dont_visit,
+            .dst = dst,
         };
 
-        _ = collector.try_add(start_node.node);
+        collector.add_node(start_node.node);
 
         var i: usize = 0;
-        while (i < collected_nodes.items.len) : (i += 1) {
-            const current = collected_nodes.items[i];
+        while (i < queue.items.len) : (i += 1) {
+            const current = queue.items[i];
             if (collector.dont_visit.contains(current.uuid)) {
                 continue;
             }
@@ -1762,19 +1773,16 @@ pub const TypeGraph = struct {
 
             if (EdgeType.get_type_edge(bound_current)) |type_edge| {
                 const type_node = EdgeType.get_type_node(type_edge.edge);
-                if (collector.try_add(type_node)) {
-                    if (dst.contains_node(type_node)) {
-                        collector.skip_visit(type_node);
-                    } else {
-                        const tg = TypeGraph.of_type(g.bind(type_node)).?;
-                        if (collector.try_add(tg.self_node.node)) {
-                            collector.skip_visit(tg.self_node.node);
-                            const tg_bootstrap_nodes = tg._get_bootstrapped_nodes(allocator);
-                            defer tg_bootstrap_nodes.deinit();
-                            for (tg_bootstrap_nodes.items) |node| {
-                                _ = collector.try_add(node);
-                            }
-                        }
+                if (dst.contains_node(type_node)) {
+                    collector.add_node_skip_visit(type_node);
+                } else {
+                    collector.add_node(type_node);
+                    const tg = TypeGraph.of_type(g.bind(type_node)).?;
+                    collector.add_node_skip_visit(tg.self_node.node);
+                    const tg_bootstrap_nodes = tg._get_bootstrapped_nodes(allocator);
+                    defer tg_bootstrap_nodes.deinit();
+                    for (tg_bootstrap_nodes.items) |node| {
+                        collector.add_node(node);
                     }
                 }
             }
@@ -1783,27 +1791,19 @@ pub const TypeGraph = struct {
             _ = EdgePointer.visit_pointed_edges(bound_current, void, &collector, Collector.visit_pointer);
 
             if (EdgeNext.get_next_node_from_node(bound_current)) |next_node| {
-                _ = collector.try_add(next_node);
+                collector.add_node(next_node);
             }
 
             _ = EdgeTrait.visit_trait_instance_edges(bound_current, void, &collector, Collector.visit_trait);
 
             if (EdgeTrait.get_owner_edge(bound_current)) |owner_edge| {
                 const owner = EdgeTrait.get_owner_node(owner_edge.edge);
-                _ = collector.try_add(owner);
+                collector.add_node(owner);
             }
 
             _ = EdgeOperand.visit_operand_edges(bound_current, void, &collector, Collector.visit_operand);
-        }
 
-        dst.nodes.ensureUnusedCapacity(@intCast(collected_nodes.items.len)) catch @panic("OOM");
-        for (collected_nodes.items) |node| {
-            _ = dst.insert_node(node);
-        }
-
-        dst.edges.ensureUnusedCapacity(@intCast(collected_nodes.items.len * 4)) catch @panic("OOM");
-        for (collected_nodes.items) |node| {
-            const edge_map = g.nodes.getPtr(node) orelse continue;
+            const edge_map = g.nodes.getPtr(current) orelse continue;
             var edge_by_type_it = edge_map.valueIterator();
             while (edge_by_type_it.next()) |edges_by_type_ptr| {
                 for (edges_by_type_ptr.items) |edge| {
