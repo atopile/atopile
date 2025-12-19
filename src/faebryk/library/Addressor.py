@@ -1,17 +1,21 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import logging
-from typing import ClassVar, Self, cast
+from typing import TYPE_CHECKING, ClassVar, Self, cast
 
 import pytest
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core import graph, graph_render
+from faebryk.core import graph
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.exceptions import UserDesignCheckException
+from faebryk.libs.util import not_none
+
+if TYPE_CHECKING:
+    from faebryk.core.solver.solver import Solver
 
 logger = logging.getLogger(__name__)
 
@@ -37,15 +41,15 @@ class Addressor(fabll.Node):
 
     is_abstract = fabll.Traits.MakeEdge(fabll.is_abstract.MakeChild()).put_on_type()
     address = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Bit,
+        unit=F.Units.Dimensionless,
         domain=F.NumberDomain.Args(negative=False, integer=True),
     )
     offset = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Bit,
+        unit=F.Units.Dimensionless,
         domain=F.NumberDomain.Args(negative=False, integer=True),
     )
     base = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Bit,
+        unit=F.Units.Dimensionless,
         domain=F.NumberDomain.Args(negative=False, integer=True),
     )
 
@@ -65,89 +69,57 @@ class Addressor(fabll.Node):
 
         def __init__(self, addressor: "Addressor"):
             super().__init__(
-                "Addressor offset must be constrained to a single value. "
-                "Use 'assert addressor.offset is <value>' to constrain it.",
+                "Addressor offset must be constrained to a single value.",
                 nodes=[addressor],
             )
 
     @F.implements_design_check.register_post_solve_check
-    def __check_post_solve__(self):
-        """
-        Set address lines high/low based on the solved offset value.
+    def __check_post_solve__(self, _solver: "Solver | None" = None):
+        """Set address lines based on the solved offset value."""
 
-        Called during POST_SOLVE stage after the solver has resolved parameter values.
-        For each bit in the offset value, the corresponding address line is connected
-        to either hv (bit=1) or lv (bit=0) of its reference power.
-        """
-        solver = self.design_check.get().get_solver()
+        # Try direct constraint first (returns Numbers)
+        numbers = self.offset.get().try_extract_aliased_literal()
+        if numbers is not None and numbers.is_literal.get().is_singleton():
+            offset = int(numbers.get_single())
+        else:
+            # Use solver to deduce from address = base + offset
+            solver = self.design_check.get().get_solver()
+            offset_param = self.offset.get().is_parameter.get()
+            solver.update_superset_cache(offset_param)
+            lit = solver.inspect_get_known_supersets(offset_param)
+            if lit is None or not lit.is_singleton():
+                raise Addressor.OffsetNotResolvedError(self)
+            offset = int(not_none(lit.try_cast(F.Literals.Numbers)).get_single())
 
-        # Get the resolved offset value
-        offset_lit = solver.inspect_get_known_supersets(
-            self.offset.get().is_parameter.get()
-        )
+        max_offset = (1 << len(self.address_lines)) - 1
+        if not 0 <= offset <= max_offset:
+            raise ValueError(f"Offset {offset} out of range [0, {max_offset}]")
 
-        # Verify offset is resolved to a singleton
-        if not offset_lit.is_singleton():
-            raise Addressor.OffsetNotResolvedError(self)
-
-        # Cast to Numbers and extract the single value
-        # We know this is a Numbers literal since offset is a NumericParameter
-        offset_numbers = fabll.Traits(offset_lit).get_obj_raw().cast(F.Literals.Numbers)
-        offset_value = int(offset_numbers.get_single())
-
-        # Set each address line based on corresponding bit in offset
-        for i, line_field in enumerate(self.address_lines):
-            bit_set = bool((offset_value >> i) & 1)
-            line_field.get().set(bit_set)
-
-        logger.debug(
-            f"Addressor: Set address lines for offset={offset_value} "
-            f"(binary: {bin(offset_value)})"
-        )
+        for i, line in enumerate(self.address_lines):
+            line.get().set(bool((offset >> i) & 1))
 
     @classmethod
-    def MakeChild(
-        cls, address_bits: int, offset: int = 0, base: int = 0
-    ) -> fabll._ChildField[Self]:
+    def MakeChild(cls, address_bits: int) -> fabll._ChildField[Self]:
         if address_bits <= 0:
             raise ValueError("At least one address bit is required")
+
+        logger.info(f"Addressor.MakeChild called: address_bits={address_bits}")
         addressor = Addressor.factory(address_bits=address_bits)
 
         out = fabll._ChildField(addressor)
 
-        # Constrain base parameter to the provided value
-        out.add_dependant(
-            F.Literals.Numbers.MakeChild_ConstrainToSingleton(
-                [out, addressor.base],
-                value=base,
-                unit=F.Units.Bit,
-            )
-        )
-
-        # Constrain offset parameter to the provided value
-        out.add_dependant(
-            F.Literals.Numbers.MakeChild_ConstrainToSingleton(
-                [out, addressor.offset],
-                value=offset,
-                unit=F.Units.Bit,
-            )
-        )
-
-        # Create expression constraint: address = base + offset
-        # First create the Add expression for base + offset
+        # Setup constraint: address is (base + offset)
         add_expr = F.Expressions.Add.MakeChild(
             [out, addressor.base],
             [out, addressor.offset],
         )
-        out.add_dependant(add_expr)
-
-        # Then create the Is constraint that equates address to the sum
-        is_constraint = F.Expressions.Is.MakeChild(
+        is_addr_constraint = F.Expressions.Is.MakeChild(
             [out, addressor.address],
             [add_expr],
             assert_=True,
         )
-        out.add_dependant(is_constraint)
+        out.add_dependant(add_expr)
+        out.add_dependant(is_addr_constraint)
 
         # Add offset constraint: offset must be in valid range [0, 2^address_bits - 1]
         # This is expressed as: max_offset >= offset (i.e., offset <= max_offset)
@@ -155,7 +127,7 @@ class Addressor(fabll.Node):
         max_offset_lit = F.Literals.Numbers.MakeChild(
             min=max_offset_value,
             max=max_offset_value,
-            unit=F.Units.Bit,
+            unit=F.Units.Dimensionless,
         )
         # Note: RefPaths must include "can_be_operand" trait reference for GreaterOrEqual #noqa: E501
         offset_bound_constraint = F.Expressions.GreaterOrEqual.MakeChild(
@@ -212,15 +184,7 @@ def test_addressor_x_bit(address_bits: int):
 
     addressor_type = Addressor.factory(address_bits=address_bits)
     addressor = addressor_type.bind_typegraph(tg=tg).create_instance(g=g)
-    # TODO: remove this
-    print(
-        graph_render.GraphRenderer.render(
-            addressor.instance,
-            show_traits=True,
-            show_pointers=True,
-            show_connections=True,
-        )
-    )
+
     address_lines = [al.get() for al in addressor.address_lines]
     assert len(address_lines) == address_bits
     for line in address_lines:
@@ -228,13 +192,19 @@ def test_addressor_x_bit(address_bits: int):
 
 
 def test_addressor_make_child():
+    """Test basic Addressor instantiation via MakeChild."""
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
     class App(fabll.Node):
-        addressor = Addressor.MakeChild(address_bits=3, offset=1, base=0x48)
+        addressor = Addressor.MakeChild(address_bits=3)
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # Set offset and base (MakeChild only sets address_bits)
+    app.addressor.get().offset.get().alias_to_literal(g, 1.0)
+    app.addressor.get().base.get().alias_to_literal(g, float(0x48))
+
     assert app.addressor.get().offset.get().force_extract_literal().get_single() == 1
     assert (
         int(app.addressor.get().base.get().force_extract_literal().get_single()) == 0x48
@@ -311,7 +281,7 @@ def test_addressor_sets_address_lines(
 
 
 def test_addressor_unresolved_offset_raises():
-    """Test that an error is raised if offset is not constrained to singleton."""
+    """Test that an error is raised when offset cannot be determined."""
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
@@ -332,24 +302,12 @@ def test_addressor_unresolved_offset_raises():
     for line_field in addressor.address_lines:
         line_field.get().reference.get()._is_interface.get().connect_to(app.power.get())
 
-    # Give offset a range constraint instead of a singleton
-    # This simulates user doing: assert addressor.offset within 0 to 3
-    addressor.offset.get().alias_to_literal(
-        g,
-        F.Literals.Numbers.bind_typegraph(tg)
-        .create_instance(g)
-        .setup_from_min_max(
-            min=0.0,
-            max=3.0,
-            unit=F.Units.Bit.bind_typegraph(tg).create_instance(g).is_unit.get(),
-        ),
-    )
+    # Don't constrain offset, base, or address - solver won't be able to deduce offset
 
     solver = DefaultSolver()
-    solver.simplify(g, tg)
     fabll.Traits.create_and_add_instance_to(app, F.has_solver).setup(solver)
 
-    # Should raise because offset is not constrained to singleton (it's a range)
+    # Should raise because offset is neither directly constrained nor deducible
     with pytest.raises(UserDesignCheckException, match="offset must be constrained"):
         check_design(app, stage=F.implements_design_check.CheckStage.POST_SOLVE)
 
@@ -539,4 +497,72 @@ def test_i2c_duplicate_addresses_isolated():
         check_design(app, stage=F.implements_design_check.CheckStage.POST_SOLVE)
     assert e.group_contains(
         UserDesignCheckException, match="Duplicate I2C addresses found on the bus:"
+    )
+
+
+def test_addressor_expression_propagation():
+    """
+    Test that the solver can deduce offset from address and base.
+
+    Given: address = base + offset
+    When: base=24 (0x18), address=25 (0x19)
+    Then: offset should be deduced as 1
+    """
+    from faebryk.core.solver.defaultsolver import DefaultSolver
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class App(fabll.Node):
+        addressor = Addressor.MakeChild(address_bits=1)
+
+    app = App.bind_typegraph(tg).create_instance(g=g)
+    addressor = app.addressor.get()
+
+    # Set base = 24 (0x18) and address = 25 (0x19)
+    # The Is constraint `address is Add(base, offset)` should allow solver to deduce offset=1 # noqa: E501
+    addressor.base.get().alias_to_literal(g, 24.0)
+    addressor.address.get().alias_to_literal(g, 25.0)
+
+    # Debug: Check what expressions exist before solving
+    print("\n=== Before solver ===")
+    offset_po = addressor.offset.get().is_parameter_operatable.get()
+    base_po = addressor.base.get().is_parameter_operatable.get()
+    address_po = addressor.address.get().is_parameter_operatable.get()
+    print(f"offset operations: {offset_po.get_operations()}")
+    print(f"base operations: {base_po.get_operations()}")
+    print(f"address operations: {address_po.get_operations()}")
+
+    # Check the Is expression that links address to Add
+    is_exprs = [op for op in address_po.get_operations() if "Is" in str(op)]
+    print(f"address Is expressions: {is_exprs}")
+    for is_expr in is_exprs:
+        is_e = F.Expressions.Is.bind_instance(is_expr.instance)
+        print(f"  {is_expr}: operands={is_e.is_expression.get().get_operands()}")
+
+    # Run the solver using the same pattern as test_literal_folding.py
+    solver = DefaultSolver()
+    offset_param = addressor.offset.get().is_parameter.get()
+
+    # This runs the solver and caches supersets
+    solver.update_superset_cache(offset_param)
+
+    # Get the result - this is in the solver's transient graph
+    solver_result = solver.inspect_get_known_supersets(offset_param)
+    print(f"\nsolver_result for offset: {solver_result}")
+
+    # The solver CAN compute the result
+    assert solver_result is not None, "solver should return a result for offset"
+
+    solver_result_num = (
+        fabll.Traits(solver_result).get_obj_raw().try_cast(F.Literals.Numbers)
+    )
+    assert solver_result_num is not None, "solver result should be Numbers"
+
+    print(f"solver_result_num: {solver_result_num.pretty_str()}")
+
+    # Verify the computed value is correct
+    assert solver_result_num.is_singleton(), "offset should be a singleton"
+    assert solver_result_num.get_single() == 1.0, (
+        f"offset should be 1, got {solver_result_num.get_single()}"
     )
