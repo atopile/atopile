@@ -1129,8 +1129,13 @@ class Mutator:
 
         if p := param_obj.try_cast(F.Parameters.NumericParameter):
             if units is None:
-                old_g_unit_node = fabll.Traits(p.get_units()).get_obj_raw()
-                units = old_g_unit_node.copy_into(self.G_out).get_trait(F.Units.is_unit)
+                # can assume dimensionless since we canonicalize
+                # create instance is faster than copy_into
+                units = (
+                    F.Units.Dimensionless.bind_typegraph(self.tg_out)
+                    .create_instance(self.G_out)
+                    .is_unit.get()
+                )
 
             new_param = (
                 F.Parameters.NumericParameter.bind_typegraph(self.tg_out)
@@ -1478,12 +1483,7 @@ class Mutator:
         if obj_po := obj.as_parameter_operatable.try_get():
             return self.get_copy_po(obj_po, accept_soft).as_operand.get()
         if obj_lit := obj.as_literal.try_get():
-            return (
-                fabll.Traits(obj_lit)
-                .get_obj_raw()
-                .copy_into(g=self.G_out)
-                .get_trait(F.Parameters.can_be_operand)
-            )
+            return obj_lit.fast_copy_into(self.G_out, self.tg_out).as_operand.get()
         if obj.try_get_sibling_trait(F.Units.is_unit_expression):
             raise ValueError(
                 "Should not have any unit expressions after canonicalization"

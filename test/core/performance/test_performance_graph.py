@@ -5,10 +5,8 @@ import logging
 from typing import cast
 
 import pytest
+from rich.console import Console
 
-import faebryk.core.faebrykpy as fbrk
-import faebryk.core.graph as graph
-import faebryk.core.node as fabll
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import indented_container
 
@@ -16,14 +14,17 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.usefixtures("setup_project_config")
-def test_performance_parameters(
-    A: int = 1, B: int = 1, rs: int = 100, pick: bool = False
-):
+def test_performance_parameters(A: int = 1, B: int = 1, rs: int = 1, pick: bool = True):
     timings = Times()
 
     assert B > 0
     assert A >= 0
     assert rs >= 0
+
+    with timings.context("import faebryk"):
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.core.graph as graph
+        import faebryk.core.node as fabll
 
     with timings.context("import F"):
         import faebryk.library._F as F
@@ -79,6 +80,15 @@ def test_performance_parameters(
         with timings.context(f"create_instance -- {tid}"):
             instances[tid] = n.create_instance(g=g)
     app = instances["App"]
+
+    with timings.context("create_dimless"):
+        dimless = F.Units.Dimensionless.bind_typegraph(tg)
+    with timings.context("get_or_create_dimless"):
+        dimless.get_or_create_type()
+    with timings.context("create_instance_dimless"):
+        dimless_instance = dimless.create_instance(g=g)
+    with timings.context("dimless_copy"):
+        fbrk.TypeGraph.get_subgraph_of_node(start_node=dimless_instance.instance)
 
     with timings.context("create_numbers"):
         numbers = [bound_numbers.create_instance(g=g) for _ in range(rs)]
@@ -215,11 +225,12 @@ def test_performance_parameters(
 
     if pick:
         solver = DefaultSolver()
-        pick_topologically(pick_tree, solver)
-        timings.add("pick")
+        with timings.context("pick"):
+            pick_topologically(pick_tree, solver)
 
     logger.info(f"Exprs: {A * B}")
-    logger.info(f"\n\n{timings!r}")
+    console = Console()
+    console.print(timings.to_table())
     per_expr = timings.get("create_instance (App)") / (A * B)
     logger.info(f"----> Avg/expr: {per_expr * 1e3:.2f} ms")
     logger.info(f"----> G: {g}")

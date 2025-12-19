@@ -132,6 +132,9 @@ class Times:
         return self.get(name)
 
     def to_str(self):
+        return rich_to_string(self.to_table())
+
+    def to_table(self):
         has_multisamples = any(len(vs) > 1 for vs in self.times.values())
         strats = self.strat.strats
         if not has_multisamples:
@@ -151,7 +154,9 @@ class Times:
             table.add_column("Unit", style="yellow")
 
         rows = []
-        raw_rows: list[list[float | None]] = []  # same shape as rows; raw seconds for numeric cells
+        raw_rows: list[
+            list[float | None]
+        ] = []  # same shape as rows; raw seconds for numeric cells
         seps = []
         for k, vs in self.times.items():
             if k.startswith("_separator"):
@@ -181,7 +186,7 @@ class Times:
 
         # color gradient
         if not rows:
-            return rich_to_string(table)
+            return table
 
         for col_i in range(len(rows[0])):
             col_raw = [r[col_i] for r in raw_rows]
@@ -227,10 +232,13 @@ class Times:
                 table.add_section()
             table.add_row(*row)
 
-        return rich_to_string(table)
+        return table
 
     def __repr__(self):
         return self.to_str()
+
+    def __rich_repr__(self):
+        yield self.to_table()
 
     @contextmanager
     def context(self, name: str, unit: str | None = None):

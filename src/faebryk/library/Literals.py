@@ -341,6 +341,16 @@ class is_literal(fabll.Node):
                 f"Cannot deserialize literal with type '{literal_type}'"
             )
 
+    def fast_copy_into(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "is_literal":
+        """
+        Node.copy_into is slow since it needs to do a bunch typegraph stuff
+        This is a faster alternative that reconstructs the literal from scratch.
+        """
+        # TODO implement this
+        # lit = self.switch_cast()
+
+        return self.copy_into(g)
+
 
 # --------------------------------------------------------------------------------------
 LiteralValues = float | bool | Enum | str
