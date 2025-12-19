@@ -54,7 +54,6 @@ from faebryk.library.PCB import PCB
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Filter import Filter
 import faebryk.library.Lead as Lead
-from faebryk.library.Symbol import Symbol
 from faebryk.library.XtalIF import XtalIF
 from faebryk.library.has_explicit_part import has_explicit_part
 from faebryk.library.has_net_name_affix import has_net_name_affix
@@ -150,7 +149,6 @@ __all__ = [
     "ElectricPower",
     "Filter",
     "Lead",
-    "Symbol",
     "XtalIF",
     "has_explicit_part",
     "has_net_name_affix",

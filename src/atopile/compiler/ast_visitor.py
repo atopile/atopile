@@ -397,7 +397,8 @@ class _TypeContextStack:
 class AnyAtoBlock(fabll.Node):
     _definition_identifier: ClassVar[str] = "definition"
     # FIXME: this should likely be removed or updated to use the new MakeChild
-    # For now, we'll pass an empty string as source_dir since this seems to be a base type
+    # For now, we'll pass an empty string as source_dir since this seems to be
+    # a base type
     is_ato_block = fabll.Traits.MakeEdge(is_ato_block.MakeChild(source_dir=""))
 
 
@@ -758,8 +759,9 @@ class ASTVisitor:
         self._state.type_bound_tgs[module_name] = type_node_bound_tg
 
         # Process the class fields (traits) we just defined
-        # Since we manually added the type node above, get_or_create_type inside TypeNodeBoundTG
-        # will find it and skip _create_type, so we must call it manually.
+        # Since we manually added the type node above, get_or_create_type inside
+        # TypeNodeBoundTG will find it and skip _create_type, so we must call
+        # it manually.
         _Block._create_type(type_node_bound_tg)
 
         with self._scope_stack.enter():
@@ -1649,6 +1651,9 @@ class ASTVisitor:
                 trait_fabll_type = self._stdlib_allowlist[trait_type_name]
             except KeyError:
                 raise DslException(f"External trait `{trait_type_name}` not supported")
+
+            # FIXME: check if the node has the fabll.Traits.is_trait trait
+            # raise DslException(f"Trait `{trait_type_name}` is not a valid trait")
 
             return ActionsFactory.trait_from_field(
                 self._create_trait_field(trait_fabll_type, template_args),

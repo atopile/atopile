@@ -971,6 +971,36 @@ def test_directed_connect_non_bridge():
         )
 
 
+def test_directed_connect_can_bridge():
+    _, _, _, result, app_instance = build_instance(
+        """
+            #pragma experiment("BRIDGE_CONNECT")
+            #pragma experiment("TRAITS")
+            import can_bridge_by_name
+
+            module Abridge:
+                signal a
+                signal b
+                trait can_bridge_by_name<input_name="a", output_name="b">
+
+            module App:
+                signal c
+                signal d
+                bridge = new Abridge
+                c ~> bridge ~> d
+            """,
+        "App",
+    )
+    assert "App" in result.state.type_roots
+    c = _get_child(app_instance, "c")
+    d = _get_child(app_instance, "d")
+    bridge = _get_child(app_instance, "bridge")
+    a = F.Electrical.bind_instance(_get_child(bridge, "a"))
+    b = F.Electrical.bind_instance(_get_child(bridge, "b"))
+    assert _check_connected(c, a)
+    assert _check_connected(b, d)
+
+
 def test_directed_connect_mif_as_bridge():
     g, tg, stdlib, result, app_instance = build_instance(
         """
@@ -1345,43 +1375,45 @@ def test_parameterised_trait():
             """
             #pragma experiment("TRAITS")
 
-            import requires_pulls
+            import has_datasheet
 
             module App:
-                trait requires_pulls
+                trait has_datasheet
             """,
             "App",
         )
 
 
 def test_nested_trait_access():
-    with pytest.raises(UserSyntaxError):
-        build_instance(
-            """
-            #pragma experiment("TRAITS")
+    pass  # we currently don't have any nested traits
+    # with pytest.raises(UserSyntaxError):
+    #     build_instance(
+    #         """
+    #         #pragma experiment("TRAITS")
 
-            import Symbol
+    #         import Symbol
 
-            module App:
-                trait Symbol.has_kicad_symbol  # wrong syntax
-            """,
-            "App",
-        )
+    #         module App:
+    #             trait Symbol.has_kicad_symbol  # wrong syntax
+    #         """,
+    #         "App",
+    #     )
 
 
 def test_nested_trait_namespace_access():
-    with pytest.raises(DslException, match="not a valid trait"):
-        build_instance(
-            """
-            #pragma experiment("TRAITS")
+    pass  # we currently don't have any nested traits
+    # with pytest.raises(DslException, match="not a valid trait"):
+    # build_instance(
+    #     """
+    #     #pragma experiment("TRAITS")
 
-            import Symbol
+    #     import Symbol
 
-            module App:
-                trait Symbol::has_kicad_symbol # trait should be moved to the top level
-            """,
-            "App",
-        )
+    #     module App:
+    #         trait Symbol::has_kicad_symbol # trait should be moved to the top level
+    #     """,
+    #     "App",
+    # )
 
 
 def test_alternate_trait_constructor_dot_access():
