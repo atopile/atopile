@@ -257,7 +257,7 @@ def test_performance_parameters(A: int = 1, B: int = 1, rs: int = 1, pick: bool 
 
     if pick:
         solver = DefaultSolver()
-        with timings.context("pick"):
+        with timings.as_global("pick", context=True):
             pick_topologically(pick_tree, solver)
 
     logger.info(f"Exprs: {A * B}")

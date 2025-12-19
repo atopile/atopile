@@ -73,9 +73,12 @@ class Times:
         if unit is not None:
             self._units[name] = self._select_unit(unit)
         if Times._in_measurement:
-            if self is Times._in_measurement[0]:
+            # Don't propagate if self is already in the measurement stack
+            # to avoid infinite recursion
+            if self in Times._in_measurement:
                 return
-            parent = Times._in_measurement[-2]
+            # Propagate timing to the current active Times (last in stack)
+            parent = Times._in_measurement[-1]
             parent._add(
                 f"{self.name or hex(id(self))[:4]}:{name}",
                 val,
