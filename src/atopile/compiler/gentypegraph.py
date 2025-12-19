@@ -4,6 +4,7 @@ Shared data structures and helpers for the TypeGraph-generation IR.
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -137,6 +138,40 @@ class ConstraintSpec:
         | fabll._ChildField[F.Literals.Booleans]
         | fabll._ChildField[F.Literals.Numbers]
     )
+
+
+class ActionsFactory:
+    TRAIT_ID_PREFIX: ClassVar[str] = "_trait_"
+
+    @staticmethod
+    def trait_from_field(
+        field: fabll._ChildField, target_path: LinkPath
+    ) -> "list[AddMakeChildAction | AddMakeLinkAction]":
+        """Create actions to attach a trait to a target node."""
+        trait_class = field.nodetype
+        trait_class_name = (
+            trait_class.__name__ if isinstance(trait_class, type) else trait_class
+        )
+
+        target_suffix = "_".join(str(p) for p in target_path) if target_path else "self"
+        trait_identifier = (
+            f"{ActionsFactory.TRAIT_ID_PREFIX}{target_suffix}_{trait_class_name}"
+        )
+        field._set_locator(trait_identifier)
+
+        return [
+            AddMakeChildAction(
+                target_path=[trait_identifier],
+                parent_reference=None,
+                parent_path=None,
+                child_field=field,
+            ),
+            AddMakeLinkAction(
+                lhs_path=target_path,
+                rhs_path=[trait_identifier],
+                edge=fbrk.EdgeTrait.build(),
+            ),
+        ]
 
 
 @dataclass(frozen=True)

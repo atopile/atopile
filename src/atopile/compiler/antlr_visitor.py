@@ -15,6 +15,7 @@ import faebryk.core.node as fabll
 from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
+from faebryk.libs.exceptions import DeprecatedException, downgrade
 
 logger = logging.getLogger(__name__)
 
@@ -209,11 +210,12 @@ class ANTLRVisitor(AtoParserVisitor):
 
         # Handle multiple imports on one line (deprecated syntax)
         if len(type_refs) > 1:
-            logger.warning(
-                "DEPRECATION: Multiple imports on one line is deprecated. "
-                "Please use separate import statements for each module. "
-                f"Found: {ctx.getText()}"
-            )
+            with downgrade(DeprecatedException):
+                raise DeprecatedException(
+                    "Multiple imports on one line is deprecated. "
+                    "Please use separate import statements for each module. "
+                    f"Found: {ctx.getText()}"
+                )
             return [
                 self._new(AST.ImportStmt).setup(
                     source_info=source_info,

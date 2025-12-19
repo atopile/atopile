@@ -12,7 +12,9 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from atopile.compiler import CompilerException, DslException
 from atopile.compiler.gentypegraph import (
+    ActionsFactory,
     AddMakeChildAction,
     AddMakeLinkAction,
     ConstraintSpec,
@@ -25,6 +27,7 @@ from atopile.compiler.gentypegraph import (
     ScopeState,
     Symbol,
 )
+from atopile.compiler.overrides import ConnectOverrideRegistry, TraitOverrideRegistry
 from faebryk.core.faebrykpy import (
     EdgeComposition,
     EdgePointer,
@@ -33,12 +36,12 @@ from faebryk.core.faebrykpy import (
 )
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.Lead import can_attach_to_pad_by_name, is_lead
-from faebryk.libs.smd import SMDSize
 from faebryk.libs.util import cast_assert, groupby, not_none
 
 _Quantity = tuple[float, fabll._ChildField]
 
 logger = logging.getLogger(__name__)
+
 
 # FIXME: needs expanding
 # Allowlist for user-importable types — everything here should be documented and
@@ -47,75 +50,69 @@ AllowListT = set[type[fabll.Node]]
 STDLIB_ALLOWLIST: AllowListT = (
     # Modules
     {
-        F.Capacitor,
-        F.Electrical,
-        F.ElectricPower,
-        F.ElectricLogic,
-        F.ElectricSignal,
-        F.DifferentialPair,
-        F.Resistor,
-        F.ResistorVoltageDivider,
-        F.Crystal_Oscillator,
-        F.LED,
-        F.Inductor,
-        F.Diode,
         F.Addressor,
-        F.I2C,
-        F.SPI,
-        F.UART_Base,
-        F.PDM,
-        F.I2S,
         F.BJT,
-        F.JTAG,
-        F.Ethernet,
-        F.UART,
         F.CAN_TTL,
+        F.Capacitor,
+        F.Crystal_Oscillator,
         F.Crystal,
+        F.DifferentialPair,
+        F.Diode,
+        F.Electrical,
+        F.ElectricLogic,
+        F.ElectricPower,
+        F.ElectricSignal,
+        F.Ethernet,
         F.FilterElectricalRC,
         F.Fuse,
         F.HDMI,
+        F.I2C,
+        F.I2S,
+        F.Inductor,
+        F.JTAG,
+        F.LED,
         F.MOSFET,
         F.MultiSPI,
         F.Net,
+        F.PDM,
+        F.Resistor,
+        F.ResistorVoltageDivider,
         F.RS232,
+        F.SPI,
         F.SPIFlash,
         F.SWD,
-        F.USB2_0,
+        F.UART_Base,
+        F.UART,
         F.USB2_0_IF,
+        F.USB2_0,
         F.USB3,
         F.XtalIF,
     }
 ) | (
     # Traits
     {
-        F.has_explicit_part,
-        F.has_designator_prefix,
-        F.has_part_picked,
-        F.has_datasheet,
-        F.is_auto_generated,
-        F.has_net_name_suggestion,
-        F.has_net_name_affix,
-        F.has_package_requirements,
-        F.is_pickable,
-        F.is_atomic_part,
-        F.requires_external_usage,
-        F.can_bridge,
         F.can_bridge_by_name,
+        F.can_bridge,
+        F.has_datasheet,
+        F.has_designator_prefix,
+        F.has_explicit_part,
+        F.has_net_name_affix,
+        F.has_net_name_suggestion,
+        F.has_package_requirements,
+        F.has_part_picked,
         F.has_part_removed,
         F.has_single_electric_reference,
+        F.is_atomic_part,
         F.is_auto_generated,
+        F.is_auto_generated,
+        F.is_pickable,
+        F.requires_external_usage,
     }
 )
 
-TRAIT_ID_PREFIX = "_trait_"
-PIN_ID_PREFIX = ""
 
-# Aliases for legacy trait names that map to the actual trait types
-# This allows old ato code using deprecated names to still work
-TRAIT_ALIASES: dict[str, type[fabll.Node]] = {
-    "has_datasheet_defined": F.has_datasheet,
-    "has_single_electric_reference_shared": F.has_single_electric_reference,
-}
+# TODO: restore prefix, fix matching so packages still build
+PIN_ID_PREFIX = ""
 
 
 @dataclass
@@ -126,18 +123,6 @@ class BuildState:
     import_path: str | None
     pending_execution: list[DeferredForLoop] = field(default_factory=list)
     type_bound_tgs: dict[str, fabll.TypeNodeBoundTG] = field(default_factory=dict)
-
-
-class DslException(Exception):
-    """
-    Exceptions arising from user's DSL code.
-    """
-
-
-class CompilerException(Exception):
-    """
-    Exceptions arising from internal compiler failures.
-    """
 
 
 class is_ato_block(fabll.Node):
@@ -409,496 +394,6 @@ class _TypeContextStack:
         )
 
 
-def _create_trait_actions(
-    trait_name: str,
-    trait_field: fabll._ChildField,
-    target_path: LinkPath,
-) -> list[AddMakeChildAction | AddMakeLinkAction]:
-    target_suffix = "_".join(str(p) for p in target_path) if target_path else "self"
-    trait_identifier = f"{TRAIT_ID_PREFIX}{target_suffix}_{trait_name}"
-    trait_field._set_locator(trait_identifier)
-
-    actions: list[AddMakeChildAction | AddMakeLinkAction] = [
-        AddMakeChildAction(
-            target_path=[trait_identifier],
-            parent_reference=None,
-            parent_path=None,
-            child_field=trait_field,
-        ),
-        AddMakeLinkAction(
-            lhs_path=target_path,
-            rhs_path=[trait_identifier],
-            edge=fbrk.EdgeTrait.build(),
-        ),
-    ]
-    return actions
-
-
-def _parse_smd_size(value: str) -> SMDSize:
-    """
-    Parse package string to SMDSize enum.
-
-    Handles:
-    - Prefixes like R0402, C0603, L0805 (strips prefix)
-    - Imperial format like 0402 (adds I prefix)
-    - Direct enum names like I0402
-    """
-    # Strip R/C/L prefix for resistors/capacitors/inductors
-    value = re.sub(r"^[RCL]", "I", value)
-
-    # Assume imperial if just digits
-    if re.match(r"^[0-9]+$", value):
-        value = f"I{value}"
-
-    # Validate against SMDSize enum
-    valid_names = {s.name for s in SMDSize}
-    if value not in valid_names:
-        from faebryk.libs.util import md_list
-
-        raise DslException(
-            f"Invalid package: `{value}`. Valid packages are:\n"
-            f"{md_list(s.name for s in SMDSize)}"
-        )
-
-    return SMDSize[value]
-
-
-class AssignmentOverrides:
-    """
-    Registry of assignment overrides that convert assignments to trait operations.
-
-    Handles legacy sugar syntax like:
-    - `power.required = True` -> attaches requires_external_usage trait
-    - `cap.package = "0402"` -> attaches has_package_requirements trait
-    - `node.lcsc_id = "C12345"` -> attaches has_explicit_part trait
-    - `node.datasheet_url = "https://..."` -> attaches has_datasheet trait
-    - `node.designator_prefix = "U"` -> attaches has_designator_prefix trait
-    - `net.override_net_name = "VCC"` -> attaches has_net_name_suggestion (EXPECTED)
-    - `net.suggest_net_name = "VCC"` -> attaches has_net_name_suggestion (SUGGESTED)
-    """
-
-    @staticmethod
-    def handle_required(
-        target_path: FieldPath,
-        value: bool,
-    ) -> list[AddMakeChildAction | AddMakeLinkAction] | None:
-        """Handle `node.required = True/False`."""
-        if not isinstance(value, bool):
-            raise DslException(
-                f"Invalid value for `required`: expected bool, "
-                f"got {type(value).__name__}"
-            )
-
-        if not value:
-            return [NoOpAction()]  # type: ignore[list-item]
-
-        if not target_path.parent_segments:
-            raise DslException("`required` must be set on a field, not at top level")
-
-        parent_path: LinkPath = list(
-            FieldPath(segments=tuple(target_path.parent_segments)).identifiers()
-        )
-        trait_field = F.requires_external_usage.MakeChild()
-        return _create_trait_actions(
-            "requires_external_usage", trait_field, parent_path
-        )
-
-    @staticmethod
-    def handle_package(
-        target_path: FieldPath,
-        value: str,
-    ) -> list[AddMakeChildAction | AddMakeLinkAction] | None:
-        """Handle `node.package = "0402"`."""
-        if not isinstance(value, str):
-            raise DslException(
-                f"Invalid value for `package`: expected str, got {type(value).__name__}"
-            )
-
-        if not target_path.parent_segments:
-            raise DslException("`package` must be set on a field, not at top level")
-
-        parent_path: LinkPath = list(
-            FieldPath(segments=tuple(target_path.parent_segments)).identifiers()
-        )
-        size = _parse_smd_size(value)
-        trait_field = F.has_package_requirements.MakeChild(size=size)
-        return _create_trait_actions(
-            "has_package_requirements", trait_field, parent_path
-        )
-
-    @staticmethod
-    def handle_lcsc_id(
-        target_path: FieldPath,
-        value: str,
-    ) -> list[AddMakeChildAction | AddMakeLinkAction] | None:
-        """Handle `node.lcsc_id = "C12345"`."""
-        if not isinstance(value, str):
-            raise DslException(
-                f"Invalid value for `lcsc_id`: expected str, got {type(value).__name__}"
-            )
-
-        if not target_path.parent_segments:
-            raise DslException("`lcsc_id` must be set on a field, not at top level")
-
-        parent_path: LinkPath = list(
-            FieldPath(segments=tuple(target_path.parent_segments)).identifiers()
-        )
-        trait_field = F.has_explicit_part.MakeChild(
-            mfr=None,
-            partno=None,
-            supplier_id="lcsc",
-            supplier_partno=value,
-            pinmap=None,
-            override_footprint=None,
-        )
-        return _create_trait_actions("has_explicit_part", trait_field, parent_path)
-
-    @staticmethod
-    def handle_datasheet_url(
-        target_path: FieldPath,
-        value: str,
-    ) -> list[AddMakeChildAction | AddMakeLinkAction] | None:
-        """Handle `node.datasheet_url = "https://..."`."""
-        if not isinstance(value, str):
-            raise DslException(
-                f"Invalid value for `datasheet_url`: expected str, "
-                f"got {type(value).__name__}"
-            )
-
-        if not target_path.parent_segments:
-            raise DslException(
-                "`datasheet_url` must be set on a field, not at top level"
-            )
-
-        parent_path: LinkPath = list(
-            FieldPath(segments=tuple(target_path.parent_segments)).identifiers()
-        )
-        trait_field = F.has_datasheet.MakeChild(datasheet=value)
-        return _create_trait_actions("has_datasheet", trait_field, parent_path)
-
-    @staticmethod
-    def handle_designator_prefix(
-        target_path: FieldPath,
-        value: str,
-    ) -> list[AddMakeChildAction | AddMakeLinkAction] | None:
-        """Handle `node.designator_prefix = "U"`."""
-        if not isinstance(value, str):
-            raise DslException(
-                f"Invalid value for `designator_prefix`: expected str, "
-                f"got {type(value).__name__}"
-            )
-
-        if not target_path.parent_segments:
-            raise DslException(
-                "`designator_prefix` must be set on a field, not at top level"
-            )
-
-        parent_path: LinkPath = list(
-            FieldPath(segments=tuple(target_path.parent_segments)).identifiers()
-        )
-        trait_field = F.has_designator_prefix.MakeChild(prefix=value)
-        return _create_trait_actions("has_designator_prefix", trait_field, parent_path)
-
-    @staticmethod
-    def handle_override_net_name(
-        target_path: FieldPath,
-        value: str,
-    ) -> list[AddMakeChildAction | AddMakeLinkAction] | None:
-        """Handle `node.override_net_name = "VCC"`."""
-        if not isinstance(value, str):
-            raise DslException(
-                f"Invalid value for `override_net_name`: expected str, "
-                f"got {type(value).__name__}"
-            )
-
-        if not target_path.parent_segments:
-            raise DslException(
-                "`override_net_name` must be set on a field, not at top level"
-            )
-
-        parent_path: LinkPath = list(
-            FieldPath(segments=tuple(target_path.parent_segments)).identifiers()
-        )
-        trait_field = F.has_net_name_suggestion.MakeChild(
-            name=value, level=F.has_net_name_suggestion.Level.EXPECTED
-        )
-        return _create_trait_actions(
-            "has_net_name_suggestion", trait_field, parent_path
-        )
-
-    @staticmethod
-    def handle_suggest_net_name(
-        target_path: FieldPath,
-        value: str,
-    ) -> list[AddMakeChildAction | AddMakeLinkAction] | None:
-        """Handle `node.suggest_net_name = "VCC"`."""
-        if not isinstance(value, str):
-            raise DslException(
-                f"Invalid value for `suggest_net_name`: expected str, "
-                f"got {type(value).__name__}"
-            )
-
-        if not target_path.parent_segments:
-            raise DslException(
-                "`suggest_net_name` must be set on a field, not at top level"
-            )
-
-        parent_path: LinkPath = list(
-            FieldPath(segments=tuple(target_path.parent_segments)).identifiers()
-        )
-        trait_field = F.has_net_name_suggestion.MakeChild(
-            name=value, level=F.has_net_name_suggestion.Level.SUGGESTED
-        )
-        return _create_trait_actions(
-            "has_net_name_suggestion", trait_field, parent_path
-        )
-
-    # Mapping of field names to handler functions
-    HANDLERS: ClassVar[dict[str, Callable[[FieldPath, Any], list | None]]] = {
-        "required": handle_required.__func__,  # type: ignore[attr-defined]
-        "package": handle_package.__func__,  # type: ignore[attr-defined]
-        "lcsc_id": handle_lcsc_id.__func__,  # type: ignore[attr-defined]
-        "datasheet_url": handle_datasheet_url.__func__,  # type: ignore[attr-defined]
-        "designator_prefix": handle_designator_prefix.__func__,  # type: ignore[attr-defined]
-        "override_net_name": handle_override_net_name.__func__,  # type: ignore[attr-defined]
-        "suggest_net_name": handle_suggest_net_name.__func__,  # type: ignore[attr-defined]
-    }
-
-    @classmethod
-    def try_handle(
-        cls,
-        target_path: FieldPath,
-        assignable_node: AST.Assignable,
-    ) -> list[AddMakeChildAction | AddMakeLinkAction] | None:
-        """
-        Check if this assignment is an override and handle it.
-
-        Returns:
-            List of actions if this is an override, None otherwise.
-        """
-        leaf_name = target_path.leaf.identifier
-        handler = cls.HANDLERS.get(leaf_name)
-
-        if handler is None:
-            return None
-
-        value_node = assignable_node.get_value().switch_cast()
-
-        value: str | bool
-        if value_node.isinstance(AST.AstString):
-            value = value_node.cast(t=AST.AstString).get_text()
-        elif value_node.isinstance(AST.Boolean):
-            value = value_node.cast(t=AST.Boolean).get_value()
-        else:
-            return None
-
-        return handler(target_path, value)
-
-
-class TraitOverrides:
-    """
-    Registry of trait overrides that translate legacy/aliased trait names to their
-    actual implementations.
-
-    Handles:
-    - `trait can_bridge_by_name<input_name="x", output_name="y">` -> can_bridge
-    - `trait has_datasheet_defined<datasheet="url">` -> has_datasheet
-    """
-
-    @staticmethod
-    def handle_can_bridge_by_name(
-        target_path_list: LinkPath,
-        template_args: dict[str, Any] | None,
-    ) -> list[AddMakeChildAction | AddMakeLinkAction]:
-        """
-        Translate can_bridge_by_name to can_bridge with RefPaths.
-
-        This allows ato code like:
-            trait can_bridge_by_name<input_name="data_in", output_name="data_out">
-        to work by creating a can_bridge trait with the correct pointer paths.
-        """
-        input_name = (
-            template_args.get("input_name", "input") if template_args else "input"
-        )
-        output_name = (
-            template_args.get("output_name", "output") if template_args else "output"
-        )
-        if not isinstance(input_name, str) or not isinstance(output_name, str):
-            raise DslException(
-                "can_bridge_by_name requires string values for input_name and "
-                "output_name"
-            )
-        # Create can_bridge.MakeEdge with paths to the named children
-        trait_field = F.can_bridge.MakeEdge([input_name], [output_name])
-        return _create_trait_actions("can_bridge", trait_field, target_path_list)
-
-    @staticmethod
-    def handle_has_datasheet_defined(
-        target_path_list: LinkPath,
-        template_args: dict[str, Any] | None,
-    ) -> list[AddMakeChildAction | AddMakeLinkAction]:
-        """
-        Translate has_datasheet_defined to has_datasheet.
-
-        This allows ato code like:
-            trait has_datasheet_defined<datasheet="https://...">
-        to work by creating a has_datasheet trait.
-        """
-        if not template_args or "datasheet" not in template_args:
-            raise DslException(
-                "has_datasheet_defined requires a 'datasheet' template argument"
-            )
-        datasheet = template_args["datasheet"]
-        if not isinstance(datasheet, str):
-            raise DslException(
-                f"has_datasheet_defined requires a string value for 'datasheet', "
-                f"got {type(datasheet).__name__}"
-            )
-        trait_field = F.has_datasheet.MakeChild(datasheet=datasheet)
-        return _create_trait_actions("has_datasheet", trait_field, target_path_list)
-
-    @staticmethod
-    def handle_has_single_electric_reference_shared(
-        target_path_list: LinkPath,
-        template_args: dict[str, Any] | None,
-    ) -> list[AddMakeChildAction | AddMakeLinkAction]:
-        """
-        Translate has_single_electric_reference_shared to has_single_electric_reference.
-
-        This allows ato code like:
-            trait has_single_electric_reference_shared<gnd_only=True>
-        to work by creating a has_single_electric_reference trait with ground_only.
-        """
-        # Translate gnd_only -> ground_only
-        ground_only = False
-        if template_args and "gnd_only" in template_args:
-            gnd_only_value = template_args["gnd_only"]
-            if not isinstance(gnd_only_value, bool):
-                raise DslException(
-                    "has_single_electric_reference_shared requires a bool for "
-                    "'gnd_only'"
-                )
-            ground_only = gnd_only_value
-
-        trait_field = F.has_single_electric_reference.MakeChild(ground_only=ground_only)
-        return _create_trait_actions(
-            "has_single_electric_reference", trait_field, target_path_list
-        )
-
-    # Mapping of trait names to handler functions
-    HANDLERS: ClassVar[dict[str, Callable[[LinkPath, dict[str, Any] | None], list]]] = {
-        "can_bridge_by_name": handle_can_bridge_by_name.__func__,  # type: ignore
-        "has_datasheet_defined": handle_has_datasheet_defined.__func__,  # type: ignore
-        "has_single_electric_reference_shared": (
-            handle_has_single_electric_reference_shared.__func__  # type: ignore
-        ),
-    }
-
-    # Deprecation messages for legacy trait names
-    DEPRECATION_MESSAGES: ClassVar[dict[str, str]] = {
-        "can_bridge_by_name": (
-            "DEPRECATION: 'can_bridge_by_name' is deprecated. "
-            "Use 'can_bridge' with pointer paths instead."
-        ),
-        "has_datasheet_defined": (
-            "DEPRECATION: 'has_datasheet_defined' is deprecated. "
-            "Use 'has_datasheet' instead."
-        ),
-        "has_single_electric_reference_shared": (
-            "DEPRECATION: 'has_single_electric_reference_shared' is deprecated. "
-            "Use 'has_single_electric_reference' with 'ground_only' parameter instead."
-        ),
-    }
-
-    @classmethod
-    def try_handle(
-        cls,
-        trait_type_name: str,
-        target_path_list: LinkPath,
-        template_args: dict[str, Any] | None,
-    ) -> list[AddMakeChildAction | AddMakeLinkAction] | None:
-        """
-        Check if this trait needs special handling and process it.
-
-        Returns:
-            List of actions if this is an override, None otherwise.
-        """
-        handler = cls.HANDLERS.get(trait_type_name)
-        if handler is None:
-            return None
-
-        # Log deprecation warning
-        if trait_type_name in cls.DEPRECATION_MESSAGES:
-            logger.warning(cls.DEPRECATION_MESSAGES[trait_type_name])
-
-        return handler(target_path_list, template_args)
-
-
-class ConnectOverrides:
-    """
-    Registry of path translations for connect statements.
-
-    Handles legacy path names that need to be translated to their current equivalents:
-    - `vcc` -> `hv` (high voltage rail on ElectricPower)
-    - `gnd` -> `lv` (low voltage rail on ElectricPower)
-
-    This provides backwards compatibility for older ato code that used the legacy
-    naming conventions for power interfaces.
-    """
-
-    # Mapping of legacy path segment names to their current equivalents
-    PATH_TRANSLATIONS: ClassVar[dict[str, str]] = {
-        "vcc": "hv",
-        "gnd": "lv",
-    }
-
-    # Deprecation messages for legacy path names
-    DEPRECATION_MESSAGES: ClassVar[dict[str, str]] = {
-        "vcc": "DEPRECATION: '.vcc' is deprecated. Use '.hv' instead.",
-        "gnd": "DEPRECATION: '.gnd' is deprecated. Use '.lv' instead.",
-    }
-
-    # Track which deprecation warnings have been emitted to avoid spam
-    _warned_segments: ClassVar[set[str]] = set()
-
-    @classmethod
-    def translate_segment(cls, segment: str) -> str:
-        """Translate a single path segment if it's a legacy name."""
-        if segment in cls.PATH_TRANSLATIONS:
-            # Emit deprecation warning (only once per segment type)
-            if segment not in cls._warned_segments:
-                logger.warning(cls.DEPRECATION_MESSAGES[segment])
-                cls._warned_segments.add(segment)
-            return cls.PATH_TRANSLATIONS[segment]
-        return segment
-
-    @classmethod
-    def translate_identifiers(cls, identifiers: list[str]) -> list[str]:
-        """Translate a list of string identifiers."""
-        return [cls.translate_segment(s) for s in identifiers]
-
-    @classmethod
-    def translate_path(cls, path: LinkPath) -> LinkPath:
-        """
-        Translate any legacy path segments to their current equivalents.
-
-        Only string segments are translated; EdgeTraversal objects are left unchanged.
-
-        Args:
-            path: A list of path segment identifiers (strings or EdgeTraversal)
-
-        Returns:
-            A new list with any legacy string names translated
-        """
-        result: LinkPath = []
-        for segment in path:
-            if isinstance(segment, str):
-                result.append(cls.translate_segment(segment))
-            else:
-                result.append(segment)
-        return result
-
-
 class AnyAtoBlock(fabll.Node):
     _definition_identifier: ClassVar[str] = "definition"
     # FIXME: this should likely be removed or updated to use the new MakeChild
@@ -912,7 +407,9 @@ class ASTVisitor:
 
     Error handling strategy:
     - Fail early (TODO: revisit — return list of errors and let caller decide impact)
-    - Use DslException for errors arising from code contents
+    - Use DslException for errors arising from code contents (i.e. user errors)
+    - Use CompilerException for errors arising from compiler internals (i.e.
+      implementation errors)
 
     Responsibilities & boundaries:
     - Translate parsed AST nodes into high-level TypeGraph actions (e.g.
@@ -975,10 +472,6 @@ class ASTVisitor:
             type_._type_identifier(): type_
             for type_ in stdlib_allowlist or STDLIB_ALLOWLIST.copy()
         }
-        # Add trait aliases (legacy names -> actual types)
-        self._stdlib_allowlist.update(
-            {alias: type_ for alias, type_ in TRAIT_ALIASES.items()}
-        )
 
     @staticmethod
     def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]]:
@@ -1206,14 +699,6 @@ class ASTVisitor:
         if path is None and type_ref_name not in self._stdlib_allowlist:
             raise DslException(f"Standard library import not found: {type_ref_name}")
 
-        # Warn about deprecated trait aliases
-        if type_ref_name in TRAIT_ALIASES:
-            actual_type = TRAIT_ALIASES[type_ref_name]
-            logger.warning(
-                f"DEPRECATION: '{type_ref_name}' is deprecated. "
-                f"Use '{actual_type.__name__}' instead."
-            )
-
         self._scope_stack.add_symbol(Symbol(name=type_ref_name, import_ref=import_ref))
 
     def visit_BlockDefinition(self, node: AST.BlockDefinition):
@@ -1333,8 +818,6 @@ class ASTVisitor:
         Create a pin as an Electrical with is_lead trait attached.
         Pins are Electrical interfaces that also act as leads for footprint pads.
         """
-        import re
-
         regex = f"^{re.escape(str(pin_label))}$"
 
         # Create Electrical with explicit identifier
@@ -1528,12 +1011,12 @@ class ASTVisitor:
         # TODO: broaden assignable support and handle keyed/pin field references
 
         target_path = self.visit_FieldRef(node.get_target())
-
-        # Check for assignment overrides (legacy sugar like .required, .package)
         assignable_node = node.assignable.get()
-        override_actions = AssignmentOverrides.try_handle(target_path, assignable_node)
-        if override_actions:
-            return override_actions
+
+        if TraitOverrideRegistry.matches_assignment_override(
+            target_path.leaf.identifier
+        ):
+            return TraitOverrideRegistry.handle_assignment(target_path, assignable_node)
 
         assignable = self.visit_Assignable(assignable_node)
         if assignable is None:
@@ -1873,11 +1356,11 @@ class ASTVisitor:
 
         # Convert FieldPath to LinkPath (list of string identifiers)
         # Apply legacy path translations (e.g., vcc -> hv, gnd -> lv)
-        lhs_link_path: LinkPath = ConnectOverrides.translate_identifiers(
-            list(lhs_path.identifiers())
+        lhs_link_path = LinkPath(
+            ConnectOverrideRegistry.translate_identifiers(list(lhs_path.identifiers()))
         )
-        rhs_link_path: LinkPath = ConnectOverrides.translate_identifiers(
-            list(rhs_path.identifiers())
+        rhs_link_path = LinkPath(
+            ConnectOverrideRegistry.translate_identifiers(list(rhs_path.identifiers()))
         )
 
         return AddMakeLinkAction(lhs_path=lhs_link_path, rhs_path=rhs_link_path)
@@ -1950,7 +1433,9 @@ class ASTVisitor:
         """
         base_identifiers = list(base_path.identifiers())
         # Apply legacy path translations (e.g., vcc -> hv, gnd -> lv)
-        base_identifiers = ConnectOverrides.translate_identifiers(base_identifiers)
+        base_identifiers = ConnectOverrideRegistry.translate_identifiers(
+            base_identifiers
+        )
         path: LinkPath = [
             *base_identifiers,
             EdgeTrait.traverse(trait_type=can_bridge),
@@ -2133,7 +1618,7 @@ class ASTVisitor:
 
     def visit_TraitStmt(
         self, node: AST.TraitStmt
-    ) -> list[AddMakeChildAction | AddMakeLinkAction]:
+    ) -> list[AddMakeChildAction | AddMakeLinkAction] | NoOpAction:
         """
         Visit a trait statement and return a list of actions to create the trait.
 
@@ -2157,16 +1642,17 @@ class ASTVisitor:
 
         template_args = self._extract_template_args(node.template.get())
 
-        # Check if this trait needs special handling (legacy aliases/shims)
-        override_result = TraitOverrides.try_handle(
-            trait_type_name, target_path_list, template_args
-        )
-        if override_result is not None:
-            return override_result
+        if TraitOverrideRegistry.matches_trait_override(trait_type_name):
+            return TraitOverrideRegistry.handle_trait(
+                trait_type_name, target_path_list, template_args
+            )
+        else:
+            try:
+                trait_fabll_type = self._stdlib_allowlist[trait_type_name]
+            except KeyError:
+                raise DslException(f"External trait `{trait_type_name}` not supported")
 
-        trait_fabll_type = self._stdlib_allowlist.get(trait_type_name)
-        if trait_fabll_type is None:
-            raise DslException(f"External trait `{trait_type_name}` not supported")
-
-        trait_field = self._create_trait_field(trait_fabll_type, template_args)
-        return _create_trait_actions(trait_type_name, trait_field, target_path_list)
+            return ActionsFactory.trait_from_field(
+                self._create_trait_field(trait_fabll_type, template_args),
+                target_path_list,
+            )
