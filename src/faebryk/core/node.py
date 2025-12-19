@@ -1322,6 +1322,11 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         """
         Copy all nodes in hierarchy and edges between them and their types
         """
+        if (
+            self.g.get_self_node().node().get_uuid()
+            == g.get_self_node().node().get_uuid()
+        ):
+            return self
         g_sub = fbrk.TypeGraph.get_subgraph_of_node(start_node=self.instance)
         g.insert_subgraph(subgraph=g_sub)
         return self.bind_instance(instance=g.bind(node=self.instance.node()))

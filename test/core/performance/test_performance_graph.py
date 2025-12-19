@@ -63,11 +63,15 @@ def test_performance_parameters(
         bound_expression = F.Expressions.Add.bind_typegraph(tg)
         bound_parameter = F.Parameters.NumericParameter.bind_typegraph(tg)
         bound_resistor = F.Resistor.bind_typegraph(tg)
+        bound_numbers = F.Literals.Numbers.bind_typegraph(tg)
+        bound_ohm = F.Units.Ohm.bind_typegraph(tg)
 
     with timings.context("fabll stage1 (create typegraph)"):
         bound_expression.get_or_create_type()
         bound_parameter.get_or_create_type()
         bound_resistor.get_or_create_type()
+        bound_numbers.get_or_create_type()
+        bound_ohm.get_or_create_type()
 
     instances = {}
     for n in [app_type, bound_expression, bound_parameter, bound_resistor]:
@@ -76,23 +80,32 @@ def test_performance_parameters(
             instances[tid] = n.create_instance(g=g)
     app = instances["App"]
 
+    with timings.context("create_numbers"):
+        numbers = [bound_numbers.create_instance(g=g) for _ in range(rs)]
+    with timings.context("create_ohm"):
+        ohms = [bound_ohm.create_instance(g=g) for _ in range(rs)]
+    with timings.context("ohm_as_op"):
+        ohm_as_op = [o.is_unit.get() for o in ohms]
+    with timings.context("setup_numbers"):
+        for n, o in zip(numbers, ohm_as_op):
+            n.setup_from_center_rel(100 * 1000, 0.1, o)
+    with timings.context("as_op"):
+        resistors_as_op = [
+            r.get().resistance.get().can_be_operand.get() for r in app.resistors
+        ]
+        numbers_as_op = [n.can_be_operand.get() for n in numbers]
     with timings.context("constrain_resistors"):
-        for r in app.resistors:
+        for r, n in zip(resistors_as_op, numbers_as_op):
             F.Expressions.IsSubset.from_operands(
-                r.get().resistance.get().can_be_operand.get(),
-                F.Literals.Numbers.bind_typegraph(tg)
-                .create_instance(g=g)
-                .setup_from_center_rel(
-                    100 * 1000,
-                    0.1,
-                    F.Units.Ohm.bind_typegraph(tg).create_instance(g=g).is_unit.get(),
-                )
-                .can_be_operand.get(),
+                r,
+                n,
                 assert_=True,
             )
-    tg_overview = dict(
-        sorted(tg.get_type_instance_overview(), key=lambda x: x[1], reverse=True)
-    )
+
+    with timings.context("print_tg_overview"):
+        tg_overview = dict(
+            sorted(tg.get_type_instance_overview(), key=lambda x: x[1], reverse=True)
+        )
     print(indented_container(tg_overview))
     print("Total typed nodes:", sum(tg_overview.values()))
 

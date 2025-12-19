@@ -3081,14 +3081,10 @@ class Numbers(fabll.Node):
         tg = self.tg
         self.numeric_set_ptr.get().point(numeric_set)
 
-        from faebryk.library.Units import has_unit, is_unit
+        from faebryk.library.Units import has_unit
 
         # TODO remove unit copy hack
-        if (
-            unit.g.get_self_node().node().get_uuid()
-            != g.get_self_node().node().get_uuid()
-        ):
-            unit = unit.copy_into(g=g)
+        unit = unit.copy_into(g=g)
 
         has_unit_instance = (
             has_unit.bind_typegraph(tg=tg).create_instance(g=g).setup(is_unit=unit)
