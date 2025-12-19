@@ -41,7 +41,10 @@ _Quantity = tuple[float, fabll._ChildField]
 logger = logging.getLogger(__name__)
 
 # FIXME: needs expanding
-STDLIB_ALLOWLIST: set[type[fabll.Node]] = (
+# Allowlist for user-importable types — everything here should be documented and
+# supported
+AllowListT = set[type[fabll.Node]]
+STDLIB_ALLOWLIST: AllowListT = (
     # Modules
     {
         F.Capacitor,

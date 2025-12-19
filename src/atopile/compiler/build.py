@@ -10,10 +10,14 @@ from typing import Iterable
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
-import faebryk.core.node as fabll
 from atopile.compiler import ast_types as AST
 from atopile.compiler.antlr_visitor import ANTLRVisitor
-from atopile.compiler.ast_visitor import STDLIB_ALLOWLIST, ASTVisitor, BuildState
+from atopile.compiler.ast_visitor import (
+    STDLIB_ALLOWLIST,
+    AllowListT,
+    ASTVisitor,
+    BuildState,
+)
 from atopile.compiler.gentypegraph import ImportRef
 from atopile.compiler.parse import parse_file, parse_text_as_file
 from atopile.compiler.parser.AtoParser import AtoParser
@@ -31,9 +35,7 @@ class BuildFileResult:
 class StdlibRegistry:
     """Lazy loader for stdlib types."""
 
-    def __init__(
-        self, tg: fbrk.TypeGraph, allowlist: set[type[fabll.Node]] | None = None
-    ) -> None:
+    def __init__(self, tg: fbrk.TypeGraph, allowlist: AllowListT | None = None) -> None:
         self._tg = tg
         self._cache: dict[str, graph.BoundNode] = {}
         self._allowlist = {
@@ -357,7 +359,7 @@ def _build_from_ctx(
     import_path: str | None,
     root_ctx: AtoParser.File_inputContext,
     file_path: Path | None,
-    stdlib_allowlist: set[type[fabll.Node]] | None = None,
+    stdlib_allowlist: AllowListT | None = None,
 ) -> BuildFileResult:
     ast_root = ANTLRVisitor(g, tg, file_path).visit(root_ctx)
     assert isinstance(ast_root, AST.File)
@@ -371,7 +373,7 @@ def build_file(
     tg: fbrk.TypeGraph,
     import_path: str,
     path: Path,
-    stdlib_allowlist: dict[str, type[fabll.Node]] | None = None,
+    stdlib_allowlist: AllowListT | None = None,
 ) -> BuildFileResult:
     return _build_from_ctx(
         g=g,
@@ -389,7 +391,7 @@ def build_source(
     tg: fbrk.TypeGraph,
     source: str,
     import_path: str | None = None,
-    stdlib_allowlist: set[type[fabll.Node]] | None = None,
+    stdlib_allowlist: AllowListT | None = None,
 ) -> BuildFileResult:
     import uuid
 
