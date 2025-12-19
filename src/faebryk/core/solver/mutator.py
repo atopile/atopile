@@ -1130,12 +1130,14 @@ class Mutator:
         if p := param_obj.try_cast(F.Parameters.NumericParameter):
             if units is None:
                 # can assume dimensionless since we canonicalize
-                # create instance is faster than copy_into
-                units = (
-                    F.Units.Dimensionless.bind_typegraph(self.tg_out)
-                    .create_instance(self.G_out)
-                    .is_unit.get()
-                )
+                # create instance is slightly faster than copy_into for dimless,
+                # but needs more memory
+                # units = (
+                #     F.Units.Dimensionless.bind_typegraph(self.tg_out)
+                #     .create_instance(self.G_out)
+                #     .is_unit.get()
+                # )
+                units = p.get_units().copy_into(self.G_out)
 
             new_param = (
                 F.Parameters.NumericParameter.bind_typegraph(self.tg_out)

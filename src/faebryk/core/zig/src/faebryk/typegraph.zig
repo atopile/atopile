@@ -1672,6 +1672,149 @@ pub const TypeGraph = struct {
 
         return g.get_subgraph_from_nodes(collected_nodes);
     }
+
+    pub fn copy_node_into(start_node: BoundNodeReference, dst: *GraphView) void {
+        const g = start_node.g;
+        var arena = std.heap.ArenaAllocator.init(dst.base_allocator);
+        const allocator = arena.allocator();
+        defer arena.deinit();
+
+        // Mirror get_subgraph_of_node GraphView init inserting its self node.
+        _ = dst.create_and_insert_node();
+
+        var collected_nodes = std.ArrayList(NodeReference).init(allocator);
+        defer collected_nodes.deinit();
+
+        var visited = graph.UUIDBitSet.init(allocator);
+        defer visited.deinit();
+
+        var dont_visit = graph.UUIDBitSet.init(allocator);
+        defer dont_visit.deinit();
+
+        // Helper struct with functions to collect nodes
+        const Collector = struct {
+            nodes: *std.ArrayList(NodeReference),
+            visited_set: *graph.UUIDBitSet,
+            dont_visit: *graph.UUIDBitSet,
+
+            fn try_add(ctx: *@This(), node: NodeReference) bool {
+                if (!ctx.visited_set.contains(node.uuid)) {
+                    ctx.visited_set.add(node.uuid);
+                    ctx.nodes.append(node) catch @panic("OOM");
+                    return true;
+                }
+                return false;
+            }
+
+            fn skip_visit(ctx: *@This(), node: NodeReference) void {
+                ctx.dont_visit.add(node.uuid);
+            }
+
+            // Visitor for EdgeComposition children
+            fn visit_composition(ctx_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
+                const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                const child = EdgeComposition.get_child_node(bound_edge.edge);
+                _ = ctx.try_add(child);
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+
+            // Visitor for EdgePointer references
+            fn visit_pointer(ctx_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
+                const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                if (EdgePointer.get_referenced_node(bound_edge.edge)) |target| {
+                    _ = ctx.try_add(target);
+                }
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+
+            // Visitor for EdgeTrait instances
+            fn visit_trait(ctx_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
+                const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                const trait_instance = EdgeTrait.get_trait_instance_node(bound_edge.edge);
+                _ = ctx.try_add(trait_instance);
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+
+            // Visitor for EdgeOperand references
+            fn visit_operand(ctx_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
+                const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                const target = bound_edge.edge.get_target_node();
+                _ = ctx.try_add(target);
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+        };
+
+        var collector = Collector{
+            .nodes = &collected_nodes,
+            .visited_set = &visited,
+            .dont_visit = &dont_visit,
+        };
+
+        _ = collector.try_add(start_node.node);
+
+        var i: usize = 0;
+        while (i < collected_nodes.items.len) : (i += 1) {
+            const current = collected_nodes.items[i];
+            if (collector.dont_visit.contains(current.uuid)) {
+                continue;
+            }
+            const bound_current = g.bind(current);
+
+            if (EdgeType.get_type_edge(bound_current)) |type_edge| {
+                const type_node = EdgeType.get_type_node(type_edge.edge);
+                if (collector.try_add(type_node)) {
+                    if (dst.contains_node(type_node)) {
+                        collector.skip_visit(type_node);
+                    } else {
+                        const tg = TypeGraph.of_type(g.bind(type_node)).?;
+                        if (collector.try_add(tg.self_node.node)) {
+                            collector.skip_visit(tg.self_node.node);
+                            const tg_bootstrap_nodes = tg._get_bootstrapped_nodes(allocator);
+                            defer tg_bootstrap_nodes.deinit();
+                            for (tg_bootstrap_nodes.items) |node| {
+                                _ = collector.try_add(node);
+                            }
+                        }
+                    }
+                }
+            }
+
+            _ = EdgeComposition.visit_children_edges(bound_current, void, &collector, Collector.visit_composition);
+            _ = EdgePointer.visit_pointed_edges(bound_current, void, &collector, Collector.visit_pointer);
+
+            if (EdgeNext.get_next_node_from_node(bound_current)) |next_node| {
+                _ = collector.try_add(next_node);
+            }
+
+            _ = EdgeTrait.visit_trait_instance_edges(bound_current, void, &collector, Collector.visit_trait);
+
+            if (EdgeTrait.get_owner_edge(bound_current)) |owner_edge| {
+                const owner = EdgeTrait.get_owner_node(owner_edge.edge);
+                _ = collector.try_add(owner);
+            }
+
+            _ = EdgeOperand.visit_operand_edges(bound_current, void, &collector, Collector.visit_operand);
+        }
+
+        dst.nodes.ensureUnusedCapacity(@intCast(collected_nodes.items.len)) catch @panic("OOM");
+        for (collected_nodes.items) |node| {
+            _ = dst.insert_node(node);
+        }
+
+        dst.edges.ensureUnusedCapacity(@intCast(collected_nodes.items.len * 4)) catch @panic("OOM");
+        for (collected_nodes.items) |node| {
+            const edge_map = g.nodes.getPtr(node) orelse continue;
+            var edge_by_type_it = edge_map.valueIterator();
+            while (edge_by_type_it.next()) |edges_by_type_ptr| {
+                for (edges_by_type_ptr.items) |edge| {
+                    if (!visited.contains(edge.get_source_node().uuid) or !visited.contains(edge.get_target_node().uuid)) {
+                        continue;
+                    }
+                    _ = dst.insert_edge(edge);
+                }
+            }
+        }
+    }
 };
 
 test "basic typegraph" {

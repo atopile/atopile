@@ -1354,8 +1354,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             == g.get_self_node().node().get_uuid()
         ):
             return self
-        g_sub = fbrk.TypeGraph.get_subgraph_of_node(start_node=self.instance)
-        g.insert_subgraph(subgraph=g_sub)
+        fbrk.TypeGraph.copy_node_into(start_node=self.instance, target_graph=g)
         return self.bind_instance(instance=g.bind(node=self.instance.node()))
 
     def get_full_name(self, types: bool = False, include_uuid: bool = True) -> str:

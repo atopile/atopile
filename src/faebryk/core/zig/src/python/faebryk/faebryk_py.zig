@@ -4413,6 +4413,31 @@ fn wrap_typegraph_get_subgraph_of_node() type {
     };
 }
 
+fn wrap_typegraph_copy_node_into() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "copy_node_into",
+            .doc = "Copy a node's reachable subgraph into the target GraphView",
+            .args_def = struct {
+                start_node: *graph.BoundNodeReference,
+                target_graph: *graph.GraphView,
+
+                pub const fields_meta = .{
+                    .start_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .target_graph = bind.ARG{ .Wrapper = graph_py.GraphViewWrapper, .storage = &graph_py.graph_view_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            faebryk.typegraph.TypeGraph.copy_node_into(kwarg_obj.start_node.*, kwarg_obj.target_graph);
+            return bind.wrap_none();
+        }
+    };
+}
+
 fn wrap_typegraph_make_child_node(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_typegraph_make_child_node_build(),
@@ -4470,6 +4495,7 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_get_type_subgraph(),
         wrap_typegraph_get_type_instance_overview(),
         wrap_typegraph_get_subgraph_of_node(),
+        wrap_typegraph_copy_node_into(),
     };
     bind.wrap_namespace_struct(root, faebryk.typegraph.TypeGraph, extra_methods);
     wrap_typegraph_make_child_node(root);
