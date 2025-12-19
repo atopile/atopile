@@ -1044,8 +1044,12 @@ class MutationMap:
 
         all_gs = {stage.G_out for stage in self.mutation_stages}
         gs = groupby(all_gs, lambda g: g.get_self_node().node().get_uuid())
-        del gs[self.G_in.get_self_node().node().get_uuid()]
-        del gs[self.G_out.get_self_node().node().get_uuid()]
+        g_in_uuid = self.G_in.get_self_node().node().get_uuid()
+        g_out_uuid = self.G_out.get_self_node().node().get_uuid()
+        if g_in_uuid in gs:
+            del gs[g_in_uuid]
+        if g_out_uuid in gs:
+            del gs[g_out_uuid]
 
         for g in gs.values():
             g_to_destroy = next(iter(g))
@@ -1476,6 +1480,10 @@ class Mutator:
                 .copy_into(g=self.G_out)
                 .get_trait(F.Parameters.can_be_operand)
             )
+        if obj.try_get_sibling_trait(F.Units.is_unit_expression):
+            raise ValueError(
+                "Should not have any unit expressions after canonicalization"
+            )
         return obj
 
     def get_copy_po(
@@ -1571,14 +1579,20 @@ class Mutator:
 
         return expr.get_trait(F.Expressions.is_expression)
 
-    def remove(self, *po: F.Parameters.is_parameter_operatable):
+    def remove(
+        self, *po: F.Parameters.is_parameter_operatable, no_check_roots: bool = False
+    ):
+        """
+        force: Disables check for root objects
+        """
         assert not any(p in self.transformations.mutated for p in po), (
             "Object already in repr_map"
         )
-        root_pos = [
-            p for p in po if fabll.Traits(p).get_obj_raw().get_parent() is not None
-        ]
-        assert not root_pos, f"should never remove root parameters: {root_pos}"
+        if not no_check_roots:
+            root_pos = [
+                p for p in po if fabll.Traits(p).get_obj_raw().get_parent() is not None
+            ]
+            assert not root_pos, f"should never remove root parameters: {root_pos}"
         self.transformations.removed.update(po)
 
     def register_created_parameter(
@@ -2068,8 +2082,6 @@ def test_mutator_basic_bootstrap():
     param_num_op = app.param_num.get().can_be_operand.get()
     param_bool_op = app.param_bool.get().can_be_operand.get()
 
-    print(repr(param_bool_op))
-
     app.param_str.get().alias_to_literal("a", "b", "c")
     app.param_bool.get().alias_to_single(True)
     app.param_num.get().alias_to_literal(
@@ -2138,11 +2150,6 @@ def test_mutator_basic_bootstrap():
         terminal=True,
     )
     result = mutator.run()
-    print(mutator0)
-    print(mutator)
-    print(result)
-    print(result.mutation_stage.is_identity)
-
     # TODO next: check that params/exprs copied
 
 

@@ -36,9 +36,11 @@ dimensionless = F.Units.Dimensionless
 
 
 def _create_letters(
-    E: BoundExpressions, n: int, units=fabll.Node
+    E: BoundExpressions, n: int, units: type[fabll.Node] | None = None
 ) -> tuple[F.Parameters.ReprContext, list[F.Parameters.is_parameter_operatable]]:
     context = F.Parameters.ReprContext()
+    if units is None:
+        units = E.U.dl
 
     class App(fabll.Node):
         params = [F.Parameters.NumericParameter.MakeChild(unit=units) for _ in range(n)]
@@ -1020,14 +1022,14 @@ def test_voltage_divider_reject_invalid_r_top():
 def test_base_unit_switch():
     # TODO this should use mAh not Ah
     E = BoundExpressions()
-    A = E.parameter_op(units=E.U.Ah)
-    E.is_(A, E.lit_op_range(((0.100, E.U.Ah), (0.600, E.U.Ah))), assert_=True)
-    E.greater_or_equal(A, E.lit_op_single((0.100, E.U.Ah)), assert_=True)
+    A = E.parameter_op(units=E.U.As)
+    E.is_(A, E.lit_op_range(((0.100, E.U.As), (0.600, E.U.As))), assert_=True)
+    E.greater_or_equal(A, E.lit_op_single((0.100, E.U.As)), assert_=True)
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
     assert _extract_and_check(
-        A, repr_map, E.lit_op_range(((0.100, E.U.Ah), (0.600, E.U.Ah)))
+        A, repr_map, E.lit_op_range(((0.100, E.U.As), (0.600, E.U.As)))
     )
 
 
@@ -2533,6 +2535,23 @@ def test_solve_voltage_divider_complex():
     # # check solver knowing result
     # assert solver_v_out == res_v_out
     # assert solver_total_current == res_total_current
+
+
+def test_canonicalization():
+    E = BoundExpressions()
+    A = E.parameter_op(units=E.U.As)
+    from faebryk.core.graph_render import GraphRenderer
+
+    # E.is_(A, E.lit_op_range(((0.100, E.U.As), (0.600, E.U.As))), assert_=True)
+    # E.is_(B, E.lit_op_range(((0.100, E.U.As), (0.600, E.U.As))), assert_=True)
+    # E.is_(C, E.lit_op_range(((0.100, E.U.As), (0.600, E.U.As))), assert_=True)
+
+    solver = DefaultSolver()
+    print(GraphRenderer.render(E.tg.get_self_node()))
+    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+    # assert _extract_and_check(
+    #     A, repr_map, E.lit_op_range(((0.100, E.U.As), (0.600, E.U.As)))
+    # )
 
 
 if __name__ == "__main__":

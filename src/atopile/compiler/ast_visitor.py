@@ -1460,7 +1460,6 @@ class ASTVisitor:
                 | AST.BilateralQuantity()
                 | AST.BoundedQuantity() as quantity
             ):
-                return None  # TODO: handle quantities
                 lit = self.visit(quantity)
                 assert isinstance(lit, fabll._ChildField)
                 return ConstraintSpec(operand=lit)

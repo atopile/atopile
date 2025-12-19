@@ -14,19 +14,19 @@ class App(fabll.Node):
         [resistor, F.Resistor.resistance],
         min=1000.0,
         max=1000.0,
-        unit=F.Units.Ohm.MakeChild(),
+        unit=F.Units.Ohm,
     )
     diode_forward_voltage_constraint = F.Literals.Numbers.MakeChild_ConstrainToLiteral(
         [diode, F.Diode.forward_voltage],
         min=0.5,
         max=0.8,
-        unit=F.Units.Volt.MakeChild(),
+        unit=F.Units.Volt,
     )
     capacitor_capacitance_constraint = F.Literals.Numbers.MakeChild_ConstrainToLiteral(
         [capacitor, F.Capacitor.capacitance],
         min=100.0,
         max=100.0,
-        unit=F.Units.Farad.MakeChild(),
+        unit=F.Units.Farad,
     )
     capacitor_temperature_coefficient_constraint = (
         F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
@@ -56,7 +56,7 @@ class App(fabll.Node):
         [resistor, F.Resistor.resistance],
         min=1000.0,
         max=1000.0,
-        unit=F.Units.Ohm.MakeChild(),
+        unit=F.Units.Ohm,
     )
 
 

@@ -94,94 +94,117 @@ class BoundExpressions:
 
         # Compound units
         Ah = F.Units.AmpereHour
+        As = F.Units.AmpereSecond
         Vps = F.Units.VoltsPerSecond
 
         # Prefixed units for test convenience
         mA = UnitExpressionFactory(
+            ("mA",),
             ((F.Units.Ampere, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["m"],
         )
         uA = UnitExpressionFactory(
+            ("uA",),
             ((F.Units.Ampere, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["u"],
         )
         mV = UnitExpressionFactory(
+            ("mV",),
             ((F.Units.Volt, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["m"],
         )
         kOhm = UnitExpressionFactory(
+            ("kΩ",),
             ((F.Units.Ohm, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["k"],
         )
         MOhm = UnitExpressionFactory(
+            ("MΩ",),
             ((F.Units.Ohm, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["M"],
         )
         pF = UnitExpressionFactory(
+            ("pF",),
             ((F.Units.Farad, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["p"],
         )
         nF = UnitExpressionFactory(
+            ("nF",),
             ((F.Units.Farad, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["n"],
         )
         uF = UnitExpressionFactory(
+            ("uF",),
             ((F.Units.Farad, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["u"],
         )
         mF = UnitExpressionFactory(
+            ("mF",),
             ((F.Units.Farad, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["m"],
         )
         GF = UnitExpressionFactory(
+            ("GF",),
             ((F.Units.Farad, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["G"],
         )
         uH = UnitExpressionFactory(
+            ("uH",),
             ((F.Units.Henry, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["u"],
         )
         mH = UnitExpressionFactory(
+            ("mH",),
             ((F.Units.Henry, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["m"],
         )
         kHz = UnitExpressionFactory(
+            ("kHz",),
             ((F.Units.Hertz, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["k"],
         )
         MHz = UnitExpressionFactory(
+            ("MHz",),
             ((F.Units.Hertz, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["M"],
         )
         GHz = UnitExpressionFactory(
+            ("GHz",),
             ((F.Units.Hertz, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["G"],
         )
         mW = UnitExpressionFactory(
+            ("mW",),
             ((F.Units.Watt, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["m"],
         )
         kW = UnitExpressionFactory(
+            ("kW",),
             ((F.Units.Watt, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["k"],
         )
         mm = UnitExpressionFactory(
+            ("mm",),
             ((F.Units.Meter, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["m"],
         )
         cm = UnitExpressionFactory(
+            ("cm",),
             ((F.Units.Meter, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["c"],
         )
         km = UnitExpressionFactory(
+            ("km",),
             ((F.Units.Meter, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["k"],
         )
         nH = UnitExpressionFactory(
+            ("nH",),
             ((F.Units.Henry, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["n"],
         )
         kohm = UnitExpressionFactory(
+            ("kΩ",),
             ((F.Units.Ohm, 1),),
             multiplier=F.Units.is_si_prefixed_unit.SI_PREFIXES["k"],
         )
@@ -240,6 +263,7 @@ class BoundExpressions:
         is_unit_node = (
             self._resolve_unit(units) if units else self._resolve_unit(self.U.dl)
         )
+        print(f"is_unit_node: {is_unit_node}")
         out = (
             F.Parameters.NumericParameter.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)

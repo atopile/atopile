@@ -1012,6 +1012,12 @@ class Multiply(fabll.Node):
         return out
 
     def setup(self, *operands: "F.Parameters.can_be_operand") -> Self:
+        for operand in operands:
+            if (
+                self.g.get_self_node().node().get_uuid()
+                != operand.g.get_self_node().node().get_uuid()
+            ):
+                raise Exception("operand graph mismatch")
         self.operands.get().append(*operands)
         return self
 
@@ -1196,6 +1202,16 @@ class Power(fabll.Node):
         base: "F.Parameters.can_be_operand",
         exponent: "F.Parameters.can_be_operand",
     ) -> Self:
+        if (
+            self.g.get_self_node().node().get_uuid()
+            != base.g.get_self_node().node().get_uuid()
+        ):
+            raise Exception("Base graph mismatch")
+        if (
+            self.g.get_self_node().node().get_uuid()
+            != exponent.g.get_self_node().node().get_uuid()
+        ):
+            raise Exception("exponent graph mismatch")
         self.base.get().point(base)
         self.exponent.get().point(exponent)
         return self
@@ -3106,7 +3122,7 @@ class Is(fabll.Node):
             )
         for operand in operands:
             out.add_dependant(
-                OperandSet.MakeEdge([out, cls.operands], [*operand, "can_be_operand"]),
+                OperandSet.MakeEdge([out, cls.operands], get_operand_path(operand)),
             )
         return out
 

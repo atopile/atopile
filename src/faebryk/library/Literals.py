@@ -216,14 +216,14 @@ class is_literal(fabll.Node):
         return super().__eq__(other)
 
     def switch_cast(self) -> "LiteralNodes":
-        # FIXME Enums check won't work like this
+        if enum := AbstractEnums.try_cast_to_enum(self):
+            return enum
+
         types = [Strings, Numbers, Booleans, Counts]
         obj = fabll.Traits(self).get_obj_raw()
         for t in types:
             if obj.isinstance(t):
                 return obj.cast(t)
-        if enum := AbstractEnums.try_cast_to_enum(self):
-            return enum
 
         raise ValueError(f"Cannot cast literal {self} of type {obj} to any of {types}")
 
@@ -467,9 +467,12 @@ class Strings(fabll.Node):
         MAX_LENGTH = 20
         values = self.get_values()
         if len(values) == 1:
+            val = values[0]
+            if not isinstance(val, str):
+                return str(val)
             return (
-                f"'{values[0][:MAX_LENGTH].replace('\n', '\\n')}"
-                f"{'...' if len(values[0]) > MAX_LENGTH else ''}'"
+                f"'{val[:MAX_LENGTH].replace('\n', '\\n')}"
+                f"{'...' if len(val) > MAX_LENGTH else ''}'"
             )
         return str(values)
 

@@ -262,6 +262,14 @@ def convert_to_canonical_operations(mutator: Mutator):
 
     # Canonicalize parameters
     for param in mutator.get_parameters_of_type(F.Parameters.NumericParameter):
+        # TODO @nkrstevski: check that unit of parameter is not scaled/offset
+        # assert param.get_units()._extract_multiplier() == 1.0, (
+        #     "Parameter units must not use scalar multiplier"
+        # )
+        # assert param.get_units()._extract_offset() == 0.0, (
+        #     "Parameter units must noty use offset"
+        # )
+        # VA allowed, W allowed, mW not allowed
         mutator.mutate_parameter(
             param.is_parameter.get(),
             # make units dimensionless
@@ -269,10 +277,26 @@ def convert_to_canonical_operations(mutator: Mutator):
         )
 
     exprs = mutator.get_expressions(sort_by_depth=True)
+
+    # filter expressions with unit operands
+    unit_exprs_leaves = {
+        e for e in exprs if e.get_operands_with_trait(F.Units.has_unit)
+    }
+    unit_exprs_all = {
+        parent.get_trait(F.Expressions.is_expression)
+        for e in unit_exprs_leaves
+        for parent in e.as_operand.get().get_operations(recursive=True)
+    } | unit_exprs_leaves
+    exprs = set(exprs) - unit_exprs_all
+    for u_expr in unit_exprs_all:
+        # can disable root check because we never want to repr_map unit expressions
+        mutator.remove(u_expr.as_parameter_operatable.get(), no_check_roots=True)
+
     for e in exprs:
         e_type = not_none(fabll.Traits(e).get_obj_raw().get_type_node()).node()
         e_type_uuid = e_type.get_uuid()
         e_po = e.as_parameter_operatable.get()
+
         if e_type_uuid in _UnsupportedOperations:
             replacement = _UnsupportedOperations[e_type_uuid]
             rep = e.compact_repr(mutator.output_print_context)
