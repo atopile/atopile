@@ -90,11 +90,11 @@ def test_performance_parameters(
         dimless = F.Units.Dimensionless.bind_typegraph(tg)
     with timings.context("get_or_create_dimless"):
         dimless.get_or_create_type()
+    dimless_instance = dimless.create_instance(g=g)
     with timings.context("create_instance_dimless"):
-        dimless_instance = dimless.create_instance(g=g)
-    dimless_instance2 = F.Units.Dimensionless.bind_typegraph(tg).create_instance(
-        g=g_copy
-    )
+        dimless_instance2 = F.Units.Dimensionless.bind_typegraph(tg).create_instance(
+            g=g_copy
+        )
     with timings.context("copy -- fresh -- dimless"):
         dimless_instance.copy_into(g=g_copy)
     with timings.context("copy -- type dup -- dimless"):
@@ -103,11 +103,13 @@ def test_performance_parameters(
         dimless_instance.copy_into(g=g_copy)
     timings.add_seperator()
 
+    number_literal_instance = bound_numbers.create_instance(g=g).setup_from_min_max(
+        min=0, max=1, unit=dimless_instance.is_unit.get()
+    )
     with timings.context("create_number_literal"):
-        number_literal_instance = bound_numbers.create_instance(g=g).setup_from_min_max(
-            min=0, max=1, unit=dimless_instance.is_unit.get()
-        )
-    number_literal_instance2 = bound_numbers.create_instance(g=g_copy2)
+        number_literal_instance2 = bound_numbers.create_instance(
+            g=g_copy2
+        ).setup_from_min_max(min=0, max=1, unit=dimless_instance.is_unit.get())
     with timings.context("copy -- fresh -- number_literal"):
         number_literal_instance.copy_into(g=g_copy2)
     with timings.context("copy -- type dup -- number_literal"):
