@@ -121,9 +121,13 @@ class _PytestArgDef:
     id_fn: Callable[[Any], str] | None
 
     def __post_init__(self):
+        if len(self.names) == 1:
+            self.values = [(vs,) for vs in self.values]
         for vs in self.values:
             if len(vs) != len(self.names):
-                raise ValueError(f"Expected {len(self.names)} values, got {len(vs)}")
+                raise ValueError(
+                    f"Expected {len(self.names)} values, got {len(vs)}: in {self}"
+                )
 
 
 def run_tests(matches: list[tuple[Path, Callable]]) -> None:
