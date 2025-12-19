@@ -538,7 +538,9 @@ class EnumParameter(fabll.Node):
 
     def setup(self, enum: type[Enum]) -> Self:  # type: ignore[invalid-method-override]
         atype = F.Literals.EnumsFactory(enum)
-        enum_type_node = atype.bind_typegraph(tg=self.tg).get_or_create_type()
+        enum_type_node = fabll.TypeNodeBoundTG.get_or_create_type_in_tg(
+            tg=self.tg, t=atype
+        )
         self.enum_domain_pointer.get().point(
             fabll.Node.bind_instance(instance=enum_type_node)
         )
@@ -551,7 +553,9 @@ class EnumParameter(fabll.Node):
         from faebryk.library.Literals import EnumsFactory
 
         enum_type = EnumsFactory(type(enum_members[0]))
-        enum_type_node = enum_type.bind_typegraph(tg=self.tg).get_or_create_type()
+        enum_type_node = fabll.TypeNodeBoundTG.get_or_create_type_in_tg(
+            tg=self.tg, t=enum_type
+        )
         self.enum_domain_pointer.get().point(
             fabll.Node.bind_instance(instance=enum_type_node)
         )
@@ -881,7 +885,7 @@ def test_enum_param():
     # Enum Literal Type Node
     atype = EnumsFactory(ExampleNode.MyEnum)
     cls_n = cast(type[fabll.NodeT], atype)
-    _ = cls_n.bind_typegraph(tg=tg).get_or_create_type()
+    _ = fabll.TypeNodeBoundTG.get_or_create_type_in_tg(tg=tg, t=cls_n)
 
     # Enum Parameter from TG
     enum_param = example_node.enum_p_tg.get()

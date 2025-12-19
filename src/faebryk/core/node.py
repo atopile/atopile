@@ -817,6 +817,8 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     __fields: dict[str, Field] = {}
     # TODO do we need this?
     # _fields_bound_tg: dict[fbrk.TypeGraph, list[InstanceChildBoundType]] = {}
+    # tg.self_node -> type_node cache
+    _type_cache: dict[int, graph.BoundNode] = {}
 
     def __init__(self, instance: graph.BoundNode) -> None:
         self.instance = instance
@@ -878,6 +880,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                 f"more than one level deep (found: {cls.__mro__})"
             )
         super().__init_subclass__()
+        cls._type_cache = {}
         cls.__fields = {}
 
         # Scan through class fields and add handle ChildFields
@@ -1036,7 +1039,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
         child_node = nodetype.bind_typegraph(tg).create_instance(g=tg.get_graph_view())
         fbrk.EdgeComposition.add_child(
-            bound_node=cls.bind_typegraph(tg).get_or_create_type(),
+            bound_node=fabll.TypeNodeBoundTG.get_or_create_type_in_tg(tg, cls),
             child=child_node.instance.node(),
             child_identifier=identifier,
         )
@@ -1054,7 +1057,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def bind_typegraph[N: NodeT](
         cls: type[N], tg: fbrk.TypeGraph
     ) -> "TypeNodeBoundTG[N, T]":
-        return TypeNodeBoundTG[N, T](tg=tg, t=cls)
+        return TypeNodeBoundTG(tg=tg, t=cls)
 
     @classmethod
     def bind_typegraph_from_instance[N: NodeT](
@@ -1224,14 +1227,16 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             zig_types: list[graph.Node] | None = None
         else:
             zig_types = [
-                t.bind_typegraph(tg).get_or_create_type().node() for t in type_tuple
+                TypeNodeBoundTG.get_or_create_type_in_tg(tg, t).node()
+                for t in type_tuple
             ]
 
         # Convert Python trait types to Zig trait type nodes
         zig_traits: list[graph.Node] | None = None
         if trait_tuple:
             zig_traits = [
-                t.bind_typegraph(tg=tg).get_or_create_type().node() for t in trait_tuple
+                TypeNodeBoundTG.get_or_create_type_in_tg(tg, t).node()
+                for t in trait_tuple
             ]
 
         # Call Zig get_children_query
@@ -1430,7 +1435,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def try_get_trait[TR: NodeT](self, trait: type[TR]) -> TR | None:
         impl = fbrk.Trait.try_get_trait(
             target=self.instance,
-            trait_type=trait.bind_typegraph(self.tg).get_or_create_type(),
+            trait_type=TypeNodeBoundTG.get_or_create_type_in_tg(self.tg, trait),
         )
         if impl is None:
             return None
@@ -1444,6 +1449,36 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
     def has_trait(self, trait: type["NodeT"]) -> bool:
         return self.try_get_trait(trait) is not None
+
+    def try_get_traits(
+        self, *traits: type["NodeT"]
+    ) -> dict[type["NodeT"], "Node | None"]:
+        """
+        Batch lookup of multiple traits on this node.
+        Returns a dict mapping each trait type to its instance (or None if not found).
+        More efficient than calling try_get_trait multiple times due to reduced
+        Python-Zig boundary crossings.
+        """
+        if not traits:
+            return {}
+
+        # Prepare trait type nodes for batch lookup
+        trait_type_nodes = [
+            TypeNodeBoundTG.get_or_create_type_in_tg(tg=self.tg, t=trait)
+            for trait in traits
+        ]
+
+        # Batch call to Zig
+        results = fbrk.Trait.try_get_traits(
+            target=self.instance,
+            trait_types=trait_type_nodes,
+        )
+
+        # Convert results to dict with proper binding
+        return {
+            trait: (trait.bind_instance(instance=impl) if impl is not None else None)
+            for trait, impl in zip(traits, results)
+        }
 
     def zip_children_by_name_with[N: Node](
         self, other: "Node", sub_type: type[N]
@@ -1590,15 +1625,29 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         self.t = t
 
     # node type methods ----------------------------------------------------------------
+    @staticmethod
+    def get_or_create_type_in_tg(tg: fbrk.TypeGraph, t: type[NodeT]) -> graph.BoundNode:
+        # this is some optimization to avoid binding
+        # you would think bind is fast, but python works in mysterious ways
+        tg_uuid = tg.get_self_node().node().get_uuid()
+        if typenode := t._type_cache.get(tg_uuid):
+            return typenode
+        return t.bind_typegraph(tg).get_or_create_type()
+
     def get_or_create_type(self) -> graph.BoundNode:
         """
         Builds Type node and returns it
         """
         tg = self.tg
+        tg_uuid = tg.get_self_node().node().get_uuid()
+        if typenode := self.t._type_cache.get(tg_uuid):
+            return typenode
         typenode = tg.get_type_by_name(type_identifier=self.t._type_identifier())
         if typenode is not None:
+            self.t._type_cache[tg_uuid] = typenode
             return typenode
         typenode = tg.add_type(identifier=self.t._type_identifier())
+        self.t._type_cache[tg_uuid] = typenode
         TypeNodeBoundTG.__TYPE_NODE_MAP__[typenode] = self
         self.t._create_type(self)
         return typenode
@@ -1729,7 +1778,7 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         children = Node.bind_instance(instance=self.get_or_create_type()).get_children(
             direct_only=True, types=MakeChild, tg=self.tg
         )
-        bound_trait = trait.bind_typegraph(self.tg).get_or_create_type()
+        bound_trait = TypeNodeBoundTG.get_or_create_type_in_tg(self.tg, trait)
         for child in children:
             child_type = child.get_child_type()
             if child_type.node().is_same(other=bound_trait.node()):
@@ -1759,7 +1808,7 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
     def try_get_trait[TR: NodeT](self, trait: type[TR]) -> TR | None:
         impl = fbrk.Trait.try_get_trait(
             target=self.get_or_create_type(),
-            trait_type=trait.bind_typegraph(self.tg).get_or_create_type(),
+            trait_type=TypeNodeBoundTG.get_or_create_type_in_tg(self.tg, trait),
         )
         if impl is None:
             return None
@@ -3044,7 +3093,7 @@ def test_type_name_collision_raises_error():
         pass
 
     # First registration should succeed
-    MyType.bind_typegraph(tg).get_or_create_type()
+    TypeNodeBoundTG.get_or_create_type_in_tg(tg, MyType)
 
     # Define a different class with the same __name__
     class MyType(Node):  # noqa: F811
@@ -3052,7 +3101,7 @@ def test_type_name_collision_raises_error():
 
     # Second registration with same name but different class should raise
     with pytest.raises(FabLLException, match="Type name collision"):
-        MyType.bind_typegraph(tg).get_or_create_type()
+        TypeNodeBoundTG.get_or_create_type_in_tg(tg, MyType)
 
 
 def test_same_class_multiple_get_or_create_type_succeeds():

@@ -15,6 +15,7 @@ from faebryk.libs.util import FuncDict, groupby
 
 logger = logging.getLogger(__name__)
 
+
 # FIXME: this belongs at most in the KiCAD netlist generator
 # and should likely just return the properties rather than mutating the graph
 @dataclass
@@ -100,8 +101,6 @@ def _name_shittiness(name: str | None) -> float:
     return 1
 
 
-
-
 def _get_net_stable_key(net: F.Net) -> tuple[str, ...]:
     """Return a deterministic key for a net based on connected interface paths.
 
@@ -141,9 +140,7 @@ def _register_named_nets(
     """Register nets that already have overridden names."""
     for net in nets:
         if net.has_trait(F.has_net_name):
-            names[net] = _NetName(
-                base_name=net.get_trait(F.has_net_name).get_name()
-            )
+            names[net] = _NetName(base_name=net.get_trait(F.has_net_name).get_name())
 
 
 def _get_hierarchy_depth(owner_node: fabll.Node) -> int:
@@ -178,8 +175,8 @@ def _extract_net_name_info(
     # Collect all has_net_name_suggestion trait instances to handle cases where
     # both library-defined (type-level) and user-defined (instance-level) traits
     # exist. Prioritize EXPECTED over SUGGESTED.
-    trait_type = (
-        F.has_net_name_suggestion.bind_typegraph(electrical.tg).get_or_create_type()
+    trait_type = fabll.TypeNodeBoundTG.get_or_create_type_in_tg(
+        electrical.tg, F.has_net_name_suggestion
     )
 
     class TraitCollector:

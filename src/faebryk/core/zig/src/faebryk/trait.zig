@@ -39,6 +39,21 @@ pub const Trait = struct {
         return EdgeTrait.try_get_trait_instance_of_type(target, trait_type.node);
     }
 
+    /// Batch lookup of multiple traits on a target node.
+    /// Returns a slice of optional BoundNodeReferences, one for each input trait type.
+    /// Caller must free the returned slice.
+    pub fn try_get_traits(
+        allocator: std.mem.Allocator,
+        target: BoundNodeReference,
+        trait_types: []const graph.NodeReference,
+    ) []?BoundNodeReference {
+        const results = allocator.alloc(?BoundNodeReference, trait_types.len) catch @panic("OOM");
+        for (trait_types, 0..) |trait_type, i| {
+            results[i] = EdgeTrait.try_get_trait_instance_of_type(target, trait_type);
+        }
+        return results;
+    }
+
     pub fn visit_implementers(trait_type: BoundNodeReference, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundNodeReference) visitor.VisitResult(T)) visitor.VisitResult(T) {
         const Visit = struct {
             cb_ctx: *anyopaque,

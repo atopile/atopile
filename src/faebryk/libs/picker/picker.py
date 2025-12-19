@@ -130,37 +130,41 @@ def get_pick_tree(module: fabll.Node) -> Tree[F.is_pickable]:
     tree = Tree()
     merge_tree = tree
 
-    if module.has_trait(F.has_part_picked):
+    traits = module.try_get_traits(
+        F.has_part_picked,
+        F.has_part_removed,
+        F.is_pickable_by_type,
+        F.is_pickable_by_supplier_id,
+        F.is_pickable_by_part_number,
+    )
+
+    if traits.get(F.has_part_picked):
         return tree
 
     # Handle has_part_removed: create a has_part_picked trait with the removed marker
-    if module.has_trait(F.has_part_removed):
+    if traits.get(F.has_part_removed):
         picked_trait = fabll.Traits.create_and_add_instance_to(
             module, F.has_part_picked
         )
         fabll.Traits.create_and_add_instance_to(picked_trait, F.has_part_removed)
         return tree
 
-    if module.has_trait(F.is_pickable_by_type):
+    if pbt := traits.get(F.is_pickable_by_type):
         merge_tree = Tree()
-        pickable_trait = module.get_trait(F.is_pickable_by_type).get_trait(
-            F.is_pickable
-        )
+        pickable_trait = pbt.get_trait(F.is_pickable)
         tree[pickable_trait] = merge_tree
-    elif module.has_trait(F.is_pickable_by_supplier_id):
+    elif pbsi := traits.get(F.is_pickable_by_supplier_id):
         merge_tree = Tree()
-        pickable_trait = module.get_trait(F.is_pickable_by_supplier_id).get_trait(
-            F.is_pickable
-        )
+        pickable_trait = pbsi.get_trait(F.is_pickable)
         tree[pickable_trait] = merge_tree
-    elif module.has_trait(F.is_pickable_by_part_number):
+    elif pbpn := traits.get(F.is_pickable_by_part_number):
         merge_tree = Tree()
-        pickable_trait = module.get_trait(F.is_pickable_by_part_number).get_trait(
-            F.is_pickable
-        )
+        pickable_trait = pbpn.get_trait(F.is_pickable)
         tree[pickable_trait] = merge_tree
 
-    for child in module.get_children(direct_only=True, types=fabll.Node):
+    for child in module.get_children(
+        direct_only=True, types=fabll.Node, required_trait=fabll.is_module
+    ):
         child_tree = get_pick_tree(child)
         merge_tree.update(child_tree)
 

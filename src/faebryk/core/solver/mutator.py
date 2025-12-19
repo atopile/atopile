@@ -1932,7 +1932,7 @@ class Mutator:
         # TODO remove hack
         # copies tg core nodes over
         # fabll.Node.bind_instance(
-        #    fabll.ImplementsType.bind_typegraph(self.tg_in).get_or_create_type()
+        #    fabll.TypeNodeBoundTG.get_or_create_type_in_tg(self.tg_in, ImplementsType)
         # ).copy_into(self.G_out)
 
         self.G_out.insert_subgraph(subgraph=self.tg_in.get_type_subgraph())

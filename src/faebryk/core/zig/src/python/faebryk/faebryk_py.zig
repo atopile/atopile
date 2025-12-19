@@ -4739,6 +4739,92 @@ fn wrap_trait_try_get_trait() type {
     };
 }
 
+fn wrap_trait_try_get_traits() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "try_get_traits",
+            .doc = "Batch lookup of multiple traits on a target node. Returns a list of trait instances (or None for each missing trait).",
+            .args_def = struct {
+                target: *graph.BoundNodeReference,
+                trait_types: *py.PyObject, // List of BoundNode
+
+                pub const fields_meta = .{
+                    .target = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            // Validate trait_types is a list
+            if (py.PyList_Check(kwarg_obj.trait_types) == 0) {
+                py.PyErr_SetString(py.PyExc_TypeError, "trait_types must be a list");
+                return null;
+            }
+
+            const list_size = py.PyList_Size(kwarg_obj.trait_types);
+            if (list_size < 0) {
+                return null;
+            }
+
+            // Extract NodeReferences from Python list
+            var trait_type_nodes = std.ArrayList(graph.NodeReference).init(std.heap.c_allocator);
+            defer trait_type_nodes.deinit();
+
+            var i: isize = 0;
+            while (i < list_size) : (i += 1) {
+                const item = py.PyList_GetItem(kwarg_obj.trait_types, i);
+                if (item == null) {
+                    py.PyErr_SetString(py.PyExc_ValueError, "Failed to get list item");
+                    return null;
+                }
+                // Extract BoundNodeReference and get the node
+                const bound_node_wrapper = bind.castWrapper("BoundNodeReference", &graph_py.bound_node_type, BoundNodeWrapper, item) orelse {
+                    py.PyErr_SetString(py.PyExc_TypeError, "trait_types must contain BoundNode objects");
+                    return null;
+                };
+                trait_type_nodes.append(bound_node_wrapper.data.node) catch {
+                    py.PyErr_SetString(py.PyExc_MemoryError, "Failed to append to list");
+                    return null;
+                };
+            }
+
+            // Call the batch lookup
+            const results = faebryk.trait.Trait.try_get_traits(
+                std.heap.c_allocator,
+                kwarg_obj.target.*,
+                trait_type_nodes.items,
+            );
+            defer std.heap.c_allocator.free(results);
+
+            // Convert results to Python list
+            const py_list = py.PyList_New(list_size) orelse {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Failed to create result list");
+                return null;
+            };
+
+            var j: isize = 0;
+            while (j < list_size) : (j += 1) {
+                const idx: usize = @intCast(j);
+                if (results[idx]) |trait_instance| {
+                    const py_node = graph_py.makeBoundNodePyObject(trait_instance) orelse {
+                        py.Py_DECREF(py_list);
+                        return null;
+                    };
+                    _ = py.PyList_SetItem(py_list, j, py_node); // Steals reference
+                } else {
+                    py.Py_INCREF(py.Py_None());
+                    _ = py.PyList_SetItem(py_list, j, py.Py_None()); // Steals reference
+                }
+            }
+
+            return py_list;
+        }
+    };
+}
+
 fn wrap_trait_visit_implementers() type {
     return struct {
         pub const descr = method_descr{
@@ -4842,6 +4928,7 @@ fn wrap_trait(root: *py.PyObject) void {
         wrap_trait_add_trait_instance_to(),
         wrap_trait_mark_as_trait(),
         wrap_trait_try_get_trait(),
+        wrap_trait_try_get_traits(),
         wrap_trait_visit_implementers(),
     };
     bind.wrap_namespace_struct(root, faebryk.trait.Trait, extra_methods);

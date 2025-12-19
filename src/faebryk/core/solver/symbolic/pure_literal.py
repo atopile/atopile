@@ -87,7 +87,9 @@ def _exec_pure_literal_operands(
 ) -> F.Literals.is_literal | None:
     operands = list(operands)
     _map = {
-        k.bind_typegraph(expr_type.tg).get_or_create_type().node().get_uuid(): v
+        fabll.TypeNodeBoundTG.get_or_create_type_in_tg(expr_type.tg, k)
+        .node()
+        .get_uuid(): v
         for k, v in _CanonicalExpressions.items()
     }
     expr_type_node = fabll.Traits(expr_type).get_obj_raw().instance.node()
