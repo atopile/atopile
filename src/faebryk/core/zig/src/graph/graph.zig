@@ -834,7 +834,12 @@ pub const GraphView = struct {
             var edge_by_type_it = edge_map.valueIterator();
             while (edge_by_type_it.next()) |edges_by_type_ptr| {
                 for (edges_by_type_ptr.items) |edge| {
-                    if (!new_g.contains_node(edge.get_source_node()) or !new_g.contains_node(edge.get_target_node())) {
+                    const other = edge.get_other_node(node);
+                    //if (other.get_uuid() < node_uuid) {
+                    //    // optimization, for some reason this is slower
+                    //    continue;
+                    //}
+                    if (!new_g.contains_node(other)) {
                         continue;
                     }
                     _ = new_g.insert_edge(edge);
