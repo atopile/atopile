@@ -163,7 +163,13 @@ def get_pick_tree(module: fabll.Node) -> Tree[F.is_pickable]:
         tree[pickable_trait] = merge_tree
 
     for child in module.get_children(
-        direct_only=True, types=fabll.Node, required_trait=fabll.is_module
+        direct_only=True,
+        types=fabll.Node,
+        required_trait=fabll.is_module,
+    ) + module.get_children(
+        direct_only=True,
+        types=fabll.Node,
+        required_trait=fabll.is_interface,
     ):
         child_tree = get_pick_tree(child)
         merge_tree.update(child_tree)

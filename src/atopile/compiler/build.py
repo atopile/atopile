@@ -48,7 +48,7 @@ class StdlibRegistry:
             if name not in self._allowlist:
                 raise KeyError(f"Unknown stdlib type: {name}")
             obj = self._allowlist[name]
-            type_node = TypeNodeBoundTG.get_or_create_type_in_tg(self._tg, obj)
+            type_node = fabll.TypeNodeBoundTG.get_or_create_type_in_tg(self._tg, obj)
             self._cache[name] = type_node
         return self._cache[name]
 
