@@ -60,7 +60,7 @@ def export_datasheets(
 
     # Second pass: download each unique URL with combined module names as filename
     for url, module_names in url_to_modules.items():
-        base_name = "_".join(module_names)
+        base_name = "_".join(sorted(module_names))
         if len(base_name) > MAX_FILE_NAME_CHARACTERS:
             base_name = base_name[: MAX_FILE_NAME_CHARACTERS - 2] + "__"
         filename = base_name + ".pdf"

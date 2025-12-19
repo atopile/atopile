@@ -696,7 +696,7 @@ def generate_variable_report(
 def generate_datasheets(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
-    export_datasheets(app, config.build.paths.documentation)
+    export_datasheets(app, config.build.paths.documentation / "datasheets")
 
 
 # @muster.register(
