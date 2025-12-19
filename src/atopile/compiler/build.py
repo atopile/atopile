@@ -10,6 +10,7 @@ from typing import Iterable
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
+import faebryk.core.node as fabll
 from atopile.compiler import ast_types as AST
 from atopile.compiler.antlr_visitor import ANTLRVisitor
 from atopile.compiler.ast_visitor import (
