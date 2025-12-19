@@ -1485,7 +1485,7 @@ class Mutator:
         if obj_po := obj.as_parameter_operatable.try_get():
             return self.get_copy_po(obj_po, accept_soft).as_operand.get()
         if obj_lit := obj.as_literal.try_get():
-            return obj_lit.fast_copy_into(self.G_out, self.tg_out).as_operand.get()
+            return obj_lit.copy_into(self.G_out).as_operand.get()
         if obj.try_get_sibling_trait(F.Units.is_unit_expression):
             raise ValueError(
                 "Should not have any unit expressions after canonicalization"
