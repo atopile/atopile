@@ -263,7 +263,6 @@ class BoundExpressions:
         is_unit_node = (
             self._resolve_unit(units) if units else self._resolve_unit(self.U.dl)
         )
-        print(f"is_unit_node: {is_unit_node}")
         out = (
             F.Parameters.NumericParameter.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)

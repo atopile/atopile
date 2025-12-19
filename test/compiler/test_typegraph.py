@@ -2183,7 +2183,7 @@ def test_literal_assignment():
         module App:
             r1 = new Resistor
             r1.max_power = 3 mW
-            r1.resistance = 100kohm +/- 10% 
+            r1.resistance = 100kohm +/- 10%
             assert r1.max_voltage within 25 volt to 100 volt
 
             r2 = new Resistor
@@ -2243,9 +2243,6 @@ def test_literal_assignment():
         .get_is_unit()
         ._extract_multiplier()
         == 1000
-    )
-    print(
-        r1.resistance.get().get_units().get_sibling_trait(F.Parameters.can_be_operand)
     )
 
     # atomic_party_bnode = fbrk.EdgeComposition.get_child_by_identifier(
