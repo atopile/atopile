@@ -497,42 +497,42 @@ def test_numeric_literals():
     a = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "a"))
     assert (
         E.lit_op_single(1)
-        .as_literal.get()
+        .as_literal.force_get()
         .equals(not_none(a.try_extract_aliased_literal()))
     )
 
     b = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "b"))
     assert (
         E.lit_op_single((1, E.U.V))
-        .as_literal.get()
+        .as_literal.force_get()
         .equals(not_none(b.try_extract_aliased_literal()))
     )
 
     c = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "c"))
     assert (
         E.lit_op_single((5, E.U.V))
-        .as_literal.get()
+        .as_literal.force_get()
         .equals(not_none(c.try_extract_aliased_literal()))
     )
 
     d = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "d"))
     assert (
         E.lit_op_ranges(((5, E.U.V), (8, E.U.V)))
-        .as_literal.get()
+        .as_literal.force_get()
         .equals(not_none(d.try_extract_aliased_literal()))
     )
 
     e = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "e"))
     assert (
         E.lit_op_range_from_center_rel((100, E.U.mV), rel=0.1)
-        .as_literal.get()
+        .as_literal.force_get()
         .equals(not_none(e.try_extract_aliased_literal()))
     )
 
     f = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "f"))
     assert (
         E.lit_op_range_from_center_rel((3.3, E.U.V), rel=0.05)
-        .as_literal.get()
+        .as_literal.force_get()
         .equals(not_none(f.try_extract_aliased_literal()))
     )
 
@@ -555,12 +555,12 @@ def test_basic_arithmetic():
 
     assert (
         E.lit_op_range((1, 6))
-        .as_literal.get()
+        .as_literal.force_get()
         .equals(not_none(a.try_extract_aliased_literal()))
     )
     assert (
         E.lit_op_range((5, 10))
-        .as_literal.get()
+        .as_literal.force_get()
         .equals(not_none(b.try_extract_aliased_literal()))
     )
 
@@ -625,7 +625,7 @@ def test_simple_module_build():
     a = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "a"))
     assert (
         E.lit_op_single(1)
-        .as_literal.get()
+        .as_literal.force_get()
         .equals(not_none(a.try_extract_aliased_literal()))
     )
 
@@ -673,7 +673,7 @@ def test_multiple_new():
         if i == 0:
             assert (
                 r.get_trait(F.has_package_requirements)
-                .size_.get()
+                .size.get()
                 .force_extract_literal()
                 .get_single_value_typed(SMDSize)
                 == SMDSize.I0402
@@ -814,7 +814,7 @@ def test_reserved_attrs(import_stmt: str, class_name: str, pkg_str: str, pkg: SM
     assert (
         fabll.Node.bind_instance(a)
         .get_trait(F.has_package_requirements)
-        .size_.get()
+        .size.get()
         .force_extract_literal()
         == pkg
     )
@@ -869,7 +869,7 @@ def test_import_ato(tmp_path: Path):
     assert (
         fabll.Node.bind_instance(r1_node)
         .get_trait(F.has_package_requirements)
-        .size_.get()
+        .size.get()
         .force_extract_literal()
         == SMDSize.I0805
     )
@@ -1095,7 +1095,7 @@ def test_pragma_feature_existing():
 
 
 def test_pragma_feature_nonexisting():
-    with pytest.raises(DslException, match="[Uu]nknown experiment"):
+    with pytest.raises(DslException, match="Experiment not recognized: `BLAB`"):
         build_instance(
             """
             #pragma experiment("BLAB")
@@ -1142,7 +1142,7 @@ def test_list_literal_basic():
     r1 = F.Resistor.bind_instance(r1_node)
     assert (
         E.lit_op_single((100, E.U.kohm))
-        .as_literal.get()
+        .as_literal.force_get()
         .equals(not_none(r1.resistance.get().try_extract_aliased_literal()))
     )
 
@@ -1156,7 +1156,7 @@ def test_list_literal_basic():
     r3 = F.Resistor.bind_instance(r3_node)
     assert (
         E.lit_op_single((100, E.U.kohm))
-        .as_literal.get()
+        .as_literal.force_get()
         .equals(not_none(r3.resistance.get().try_extract_aliased_literal()))
     )
 
@@ -1185,7 +1185,7 @@ def test_list_literal_nested():
     r1 = F.Resistor.bind_instance(_get_child(nested_node, "r1"))
     assert (
         E.lit_op_single((100, E.U.kohm))
-        .as_literal.get()
+        .as_literal.force_get()
         .equals(not_none(r1.resistance.get().try_extract_aliased_literal()))
     )
 
@@ -1195,7 +1195,7 @@ def test_list_literal_nested():
     r3 = F.Resistor.bind_instance(_get_child(nested_node, "r3"))
     assert (
         E.lit_op_single((100, E.U.kohm))
-        .as_literal.get()
+        .as_literal.force_get()
         .equals(not_none(r3.resistance.get().try_extract_aliased_literal()))
     )
 
@@ -1223,7 +1223,7 @@ def test_list_literal_long():
     r1 = F.Resistor.bind_instance(_get_child(app_instance, "r1"))
     assert (
         E.lit_op_single((100, E.U.kohm))
-        .as_literal.get()
+        .as_literal.force_get()
         .equals(not_none(r1.resistance.get().try_extract_aliased_literal()))
     )
     r2 = F.Resistor.bind_instance(_get_child(app_instance, "r2"))
@@ -1231,7 +1231,7 @@ def test_list_literal_long():
     r3 = F.Resistor.bind_instance(_get_child(app_instance, "r3"))
     assert (
         E.lit_op_single((100, E.U.kohm))
-        .as_literal.get()
+        .as_literal.force_get()
         .equals(not_none(r3.resistance.get().try_extract_aliased_literal()))
     )
 
@@ -1300,7 +1300,9 @@ def test_unimported_trait():
             fabll.ImplementsTrait.MakeChild().put_on_type()
         )
 
-    with pytest.raises(DslException, match="[Nn]o such trait"):
+    with pytest.raises(
+        DslException, match="Trait `test_trait` must be imported before use"
+    ):
         build_instance(
             """
             #pragma experiment("TRAITS")
@@ -1314,7 +1316,10 @@ def test_unimported_trait():
 
 
 def test_nonexistent_trait():
-    with pytest.raises(DslException, match="[Nn]o such trait"):
+    with pytest.raises(
+        DslException,
+        match="Trait `this_trait_does_not_exist` must be imported before use",
+    ):
         build_instance(
             """
             #pragma experiment("TRAITS")
@@ -1473,21 +1478,23 @@ def test_parameterised_trait_with_params():
 
 
 def test_trait_alternate_constructor_precedence():
-    assert False  # FIXME: find / make a trait to test this with
     _, _, _, result, app_instance = build_instance(
         """
         #pragma experiment("TRAITS")
 
-        import has_net_name
+        import has_part_picked
 
         module App:
-            trait has_net_name::expected<name="example">
+            trait has_part_picked::by_supplier<supplier_id="1234", supplier_partno="2345", manufacturer="good_company", partno="amazing_part">
         """,
         "App",
     )
     assert "App" in result.state.type_roots
-    # TODO: check trait.name == "example"
-    # TODO: check trait.level == F.has_net_name.Level.EXPECTED
+    trait = fabll.Node.bind_instance(app_instance).get_trait(F.has_part_picked)
+    assert trait.supplier_id == "1234"
+    assert trait.supplier_partno == "2345"
+    assert trait.manufacturer == "good_company"
+    assert trait.partno == "amazing_part"
 
 
 def test_parameterised_trait_no_params():
@@ -1539,7 +1546,7 @@ def test_slice_for_loop():
         r = F.Resistor.bind_instance(r_node)
         assert (
             E.lit_op_single((100, E.U.kohm))
-            .as_literal.get()
+            .as_literal.force_get()
             .equals(r.resistance.get().force_extract_literal())
         )
 
@@ -1547,7 +1554,7 @@ def test_slice_for_loop():
         r = F.Resistor.bind_instance(r_node)
         assert (
             E.lit_op_single((200, E.U.kohm))
-            .as_literal.get()
+            .as_literal.force_get()
             .equals(r.resistance.get().force_extract_literal())
         )
 
@@ -1555,7 +1562,7 @@ def test_slice_for_loop():
         r = F.Resistor.bind_instance(r_node)
         assert (
             E.lit_op_single((150, E.U.kohm))
-            .as_literal.get()
+            .as_literal.force_get()
             .equals(r.resistance.get().force_extract_literal())
         )
 
@@ -1568,7 +1575,7 @@ def test_slice_for_loop():
         r = F.Resistor.bind_instance(r_node)
         assert (
             E.lit_op_single((250, E.U.kohm))
-            .as_literal.get()
+            .as_literal.force_get()
             .equals(r.resistance.get().force_extract_literal())
         )
 
@@ -1625,7 +1632,7 @@ def test_slice_bigger_start_than_end():
         r = F.Resistor.bind_instance(r_node)
         assert (
             E.lit_op_single((100, E.U.kohm))
-            .as_literal.get()
+            .as_literal.force_get()
             .equals(r.resistance.get().force_extract_literal())
         )
 
@@ -1794,7 +1801,7 @@ def test_trait_template_enum():
     r = F.Resistor.bind_instance(r)
     assert (
         r.get_trait(F.has_package_requirements)
-        .size_.get()
+        .size.get()
         .force_extract_literal()
         .get_single()
         == SMDSize.I0805
@@ -1982,4 +1989,6 @@ def test_literals(value: str, literal: F.Parameters.can_be_operand):
         "App",
     )
     a = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "a"))
-    assert literal.as_literal.get().equals(not_none(a.try_extract_aliased_literal()))
+    assert literal.as_literal.force_get().equals(
+        not_none(a.try_extract_aliased_literal())
+    )
