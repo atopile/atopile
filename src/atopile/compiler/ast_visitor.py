@@ -964,8 +964,6 @@ class ASTVisitor:
                 )
             )
 
-            self._scope_stack.add_field(element_path)
-
             # Use templated MakeChild for array elements if applicable
             if new_spec.template_args and module_fabll_type is not None:
                 element_child_field = self._create_module_child_field(
