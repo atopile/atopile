@@ -970,35 +970,26 @@ def test_directed_connect_non_bridge():
 
 
 def test_directed_connect_mif_as_bridge():
-    with pytest.raises(DslException, match="not a `Module`"):
-        build_instance(
-            """
-            #pragma experiment("BRIDGE_CONNECT")
+    g, tg, stdlib, result, app_instance = build_instance(
+        """
+        #pragma experiment("BRIDGE_CONNECT")
 
-            module App:
-                signal a
-                signal b
-                signal c
+        module App:
+            signal a
+            signal b
+            signal c
 
-                a ~> b ~> c
-            """,
-            "App",
-        )
-
-
-def test_shim_power():
-    # FIXME: either delete and break compatiblity or re-implement shim
-    assert False
-    # from atopile.attributes import Power
-
-    # a = Power()
-    # b = F.ElectricPower()
-
-    # bob._connect(a, b, None)
-
-    # assert a.lv.is_connected_to(b.lv)
-    # assert a.hv.is_connected_to(b.hv)
-    # assert not a.lv.is_connected_to(b.hv)
+            a ~> b ~> c
+        """,
+        "App",
+    )
+    a = _get_child(app_instance, "a")
+    b = _get_child(app_instance, "b")
+    c = _get_child(app_instance, "c")
+    # All three should be connected in a chain via their can_bridge trait
+    assert _check_connected(a, b)
+    assert _check_connected(b, c)
+    assert _check_connected(a, c)
 
 
 def test_key():
@@ -1486,7 +1477,7 @@ def test_trait_alternate_constructor_precedence():
 
         module App:
             trait has_part_picked::by_supplier<supplier_id="1234", supplier_partno="2345", manufacturer="good_company", partno="amazing_part">
-        """,
+        """,  # noqa: E501
         "App",
     )
     assert "App" in result.state.type_roots
