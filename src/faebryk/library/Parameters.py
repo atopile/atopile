@@ -17,6 +17,24 @@ if TYPE_CHECKING:
     from faebryk.library.NumberDomain import NumberDomain
 
 
+# Cached alphabet/subscript data for compact_repr to avoid per-call allocations.
+_REPR_ALPHABET: tuple[str, ...] = tuple(
+    [chr(ord("A") + i) for i in range(26)]
+    + [chr(ord("a") + i) for i in range(26)]
+    + [chr(ord("α") + i) for i in range(25)]
+)
+_SUBSCRIPT_TRANSLATION = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+
+
+def _param_id_to_human_str(param_id: int) -> str:
+    assert isinstance(param_id, int)
+    letter = _REPR_ALPHABET[param_id % len(_REPR_ALPHABET)]
+    suffix = param_id // len(_REPR_ALPHABET)
+    if suffix == 0:
+        return letter
+    return letter + str(suffix).translate(_SUBSCRIPT_TRANSLATION)
+
+
 class ContradictingLiterals(Exception):
     def __init__(self, literals: list["Literals.is_literal"], *args: object) -> None:
         super().__init__(*args)
@@ -345,25 +363,6 @@ class is_parameter(fabll.Node):
         ```
         """
 
-        def param_id_to_human_str(param_id: int) -> str:
-            assert isinstance(param_id, int)
-            alphabets = [("A", 26), ("a", 26), ("α", 25)]
-            alphabet = [
-                chr(ord(start_char) + i)
-                for start_char, char_cnt in alphabets
-                for i in range(char_cnt)
-            ]
-
-            def int_to_subscript(i: int) -> str:
-                if i == 0:
-                    return ""
-                _str = str(i)
-                return "".join(chr(ord("₀") + ord(c) - ord("0")) for c in _str)
-
-            return alphabet[param_id % len(alphabet)] + int_to_subscript(
-                param_id // len(alphabet)
-            )
-
         obj = fabll.Traits(self).get_obj_raw()
         if use_name and obj.get_parent() is not None:
             letter = obj.get_full_name()
@@ -374,7 +373,7 @@ class is_parameter(fabll.Node):
                 next_id = context.variable_mapping.next_id
                 context.variable_mapping.mapping[self] = next_id
                 context.variable_mapping.next_id += 1
-            letter = param_id_to_human_str(context.variable_mapping.mapping[self])
+            letter = _param_id_to_human_str(context.variable_mapping.mapping[self])
 
         # TODO
         # unitstr = f" {self.units}" if self.units != dimensionless else ""

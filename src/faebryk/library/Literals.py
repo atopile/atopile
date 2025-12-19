@@ -296,12 +296,12 @@ class is_literal(fabll.Node):
 LiteralValues = float | bool | Enum | str
 
 
-@dataclass(frozen=True)
+@dataclass
 class LiteralsAttributes(fabll.NodeAttributes):
     value: LiteralValues
 
 
-@dataclass(frozen=True)
+@dataclass
 class StringAttributes(fabll.NodeAttributes):
     value: str
 
@@ -523,7 +523,7 @@ class Strings(fabll.Node):
         return cls.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(*values)
 
 
-@dataclass(frozen=True)
+@dataclass
 class NumericAttributes(fabll.NodeAttributes):
     value: float
 
@@ -5725,7 +5725,7 @@ class TestNumbers:
         assert deserialized_numbers.get_numeric_set().get_max_value() == 8.0
 
 
-@dataclass(frozen=True)
+@dataclass
 class CountAttributes(fabll.NodeAttributes):
     value: int
 
@@ -6316,7 +6316,7 @@ class TestCounts:
             Counts.deserialize(data, g=g, tg=tg)
 
 
-@dataclass(frozen=True)
+@dataclass
 class BooleanAttributes(fabll.NodeAttributes):
     value: bool
 

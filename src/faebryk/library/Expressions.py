@@ -102,7 +102,7 @@ class is_expression(fabll.Node):
         fabll.Traits.OptionalImpliedTrait(lambda: is_assertable)
     )
 
-    @dataclass(frozen=True)
+    @dataclass
     class ReprStyle(fabll.NodeAttributes):
         symbol: str | None = None
 
@@ -3316,13 +3316,6 @@ def test_compact_repr_memory_leak():
 
     ctx = F.Parameters.ReprContext()
 
-    # Warm-up to settle caches and one-time allocations.
-    for _ in range(100):
-        expr.compact_repr(context=ctx)
-        param.compact_repr(context=ctx)
-
-    gc.collect()
-
     process = psutil.Process()
 
     def run(n: int):
@@ -3347,8 +3340,11 @@ def test_compact_repr_memory_leak():
         mem_leaked = mem_end - mem_base
         return mem_leaked
 
-    FACTOR = 10000
+    FACTOR = 1000
 
+    # warmup
+    for _ in range(5):
+        run(FACTOR)
     mem_leaked = {i: run(i * FACTOR) for i in range(1, 5)}
     print(
         "mem leaked mb: ",

@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import re
-from dataclasses import dataclass
+from dataclasses import MISSING, dataclass, field, fields
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -20,7 +20,6 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 from faebryk.libs.util import (
     KeyErrorNotFound,
-    dataclass_as_kwargs,
     indented_container,
     not_none,
     once,
@@ -732,11 +731,18 @@ class NodeMeta(type):
         return super().__setattr__(name, value)
 
 
-@dataclass(frozen=True)
+_ATTR_UNSET = object()
+
+
+@dataclass(kw_only=True)
 class NodeAttributes:
+    _loaded_from: "graph.Node | None" = field(
+        default=None, repr=False, compare=False, hash=False
+    )
+
     def __init_subclass__(cls) -> None:
         # TODO collect all fields (like dataclasses)
-        # TODO check Attributes is dataclass and frozen
+        # TODO check Attributes is dataclass and not frozen
         # TODO check all values are literals
         pass
 
@@ -744,10 +750,25 @@ class NodeAttributes:
     def of(cls: type[Self], node: "graph.BoundNode | NodeT") -> Self:
         if isinstance(node, Node):
             node = node.instance
-        return cls(**node.node().get_dynamic_attrs())
+        return cls(
+            _loaded_from=node.node(),
+            **{f.name: _ATTR_UNSET for f in fields(cls) if f.name != "_loaded_from"},
+        )
+
+    def __getattribute__(self, name: str) -> Any:
+        out = super().__getattribute__(name)
+        if out is _ATTR_UNSET and self._loaded_from is not None:
+            resolved = self._loaded_from.get_attr(key=name)
+            setattr(self, name, resolved)
+            return resolved
+        return out
 
     def to_dict(self) -> dict[str, Literal]:
-        return dataclass_as_kwargs(self)
+        return {
+            f.name: getattr(self, f.name)
+            for f in fields(type(self))
+            if f.name != "_loaded_from"
+        }
 
     def to_node_attributes(self) -> fbrk.NodeCreationAttributes | None:
         attrs = self.to_dict()
@@ -1060,6 +1081,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     #        self.add(value, identifier=name)
     #    return super().__setattr__(name, value)
 
+    @once
     def attributes(self) -> T:
         Attributes = cast(type[T], type(self).Attributes)
         return Attributes.of(self.instance)
@@ -1603,7 +1625,12 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         typenode = self.get_or_create_type()
         attrs = attributes.to_dict() if attributes else {}
         instance = self.tg.instantiate_node(type_node=typenode, attributes=attrs)
-        return self.t.bind_instance(instance=instance)
+        out = self.t.bind_instance(instance=instance)
+        # little optimization, only useful for heavy read after creation
+        # pretty useless for creation heavy
+        # if attributes is not None:
+        #    out.attributes = lambda: attributes
+        return out
 
     def isinstance(self, instance: NodeT) -> bool:
         return fbrk.EdgeType.is_node_instance_of(
@@ -2356,7 +2383,7 @@ def _make_graph_and_typegraph():
 
 
 def test_fabll_basic():
-    @dataclass(frozen=True)
+    @dataclass
     class FileLocationAttributes(NodeAttributes):
         start_line: int
         start_column: int
@@ -2369,7 +2396,7 @@ def test_fabll_basic():
     class TestNodeWithoutAttr(Node):
         pass
 
-    @dataclass(frozen=True)
+    @dataclass
     class SliceAttributes(NodeAttributes):
         start: int
         end: int
@@ -2401,6 +2428,8 @@ def test_fabll_basic():
 
     print("fileloc.start_column:", fileloc.attributes().start_column)
     print("fileloc:", fileloc.attributes())
+    fileloc_from_graph = FileLocation.bind_instance(fileloc.instance)
+    print("fileloc_from_graph:", fileloc_from_graph.attributes())
 
     tnwa = TestNodeWithoutAttr.bind_typegraph(tg).create_instance(g=g)
     print("tnwa:", tnwa.instance.node().get_dynamic_attrs())
