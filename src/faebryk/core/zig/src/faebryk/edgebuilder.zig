@@ -16,6 +16,7 @@ pub const EdgeCreationAttributes = struct {
     edge_type: Edge.EdgeType,
     directional: ?bool,
     name: ?str,
+    order: u7 = 0,
     dynamic: DynamicAttributes,
 
     pub fn apply_to(self: *const @This(), edge: EdgeReference) void {
@@ -24,6 +25,7 @@ pub const EdgeCreationAttributes = struct {
             edge.set_attribute_directional(d);
         }
         edge.set_attribute_name(self.name);
+        edge.set_order(self.order);
         edge.copy_dynamic_attributes_into(&self.dynamic);
     }
 

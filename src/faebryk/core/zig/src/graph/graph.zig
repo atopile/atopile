@@ -309,6 +309,14 @@ pub const EdgeReference = struct {
         Edges[self.uuid].flags.edge_type = edge_type;
     }
 
+    pub fn get_order(self: @This()) u7 {
+        return Edges[self.uuid].flags.order;
+    }
+
+    pub fn set_order(self: @This(), order: u7) void {
+        Edges[self.uuid].flags.order = order;
+    }
+
     /// Name is stored in dynamic attributes under "name" key
     pub fn set_attribute_name(self: @This(), name: ?str) void {
         if (name) |n| {

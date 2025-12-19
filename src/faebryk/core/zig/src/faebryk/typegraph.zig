@@ -61,6 +61,7 @@ pub const TypeGraph = struct {
     pub const MakeChildInfo = struct {
         identifier: ?[]const u8,
         make_child: BoundNodeReference,
+        order: u7 = 0,
     };
 
     pub const MakeLinkInfo = struct {
@@ -431,14 +432,27 @@ pub const TypeGraph = struct {
                 if (attributes.name) |n| {
                     self.node.node.put("name", .{ .String = n });
                 }
+                self.node.node.put("order", .{ .Int = attributes.order });
                 // TODO different API
                 self.node.node.copy_dynamic_attributes_into(&attributes.dynamic);
+            }
+
+            pub fn get_order(self: @This()) u7 {
+                if (self.node.node.get("order")) |o| {
+                    return @intCast(o.Int);
+                }
+                return 0;
+            }
+
+            pub fn get_edge_type(self: @This()) Edge.EdgeType {
+                return @intCast(self.node.node.get("edge_type").?.Int);
             }
 
             pub fn load_edge_attributes(self: @This(), source: NodeReference, target: NodeReference) EdgeReference {
                 const directional = self.node.node.get("directional");
                 const name = self.node.node.get("name");
                 const edge_type: Edge.EdgeType = @intCast(self.node.node.get("edge_type").?.Int);
+                const order = self.get_order();
                 var dynamic = graph.DynamicAttributes.init_on_stack();
 
                 const AttrVisitor = struct {
@@ -459,6 +473,7 @@ pub const TypeGraph = struct {
                     link_edge.set_attribute_directional(d.Bool);
                 }
                 link_edge.set_attribute_name(if (name) |n| n.String else null);
+                link_edge.set_order(order);
                 // TODO different API
                 link_edge.copy_dynamic_attributes_into(&dynamic);
 
@@ -694,6 +709,34 @@ pub const TypeGraph = struct {
     ) ?BoundNodeReference {
         const make_child = self.find_make_child_node(type_node, identifier) catch return null;
         return MakeChildNode.get_type_reference(make_child);
+    }
+
+    /// Walk a path of child identifiers through the type graph, resolving each
+    /// type reference via the Linker. Returns the resolved type node for the
+    /// final segment, or null if any step fails to resolve.
+    ///
+    /// For path ["inner"] starting at App:
+    ///   1. Find "inner" child on App, get its type reference
+    ///   2. Resolve type reference to Inner type node via Linker
+    ///   3. Return Inner type node
+    ///
+    /// Returns null if path is empty, any child not found, or any type fails to resolve.
+    pub fn resolve_child_path(
+        self: *@This(),
+        start_type: BoundNodeReference,
+        path: []const []const u8,
+    ) ?BoundNodeReference {
+        if (path.len == 0) return start_type;
+
+        var current_type = start_type;
+
+        for (path) |segment| {
+            const type_ref = self.get_make_child_type_reference_by_identifier(current_type, segment) orelse return null;
+            const resolved = Linker.try_get_resolved_type(type_ref) orelse return null;
+            current_type = resolved;
+        }
+
+        return current_type;
     }
 
     fn reference_matches_path(
@@ -1185,6 +1228,9 @@ pub const TypeGraph = struct {
         return list.toOwnedSlice() catch @panic("OOM");
     }
 
+    /// Visit pointer-sequence elements by scanning MakeLink nodes from the type.
+    /// For each MakeLink where lhs_path matches container_path and edge type is
+    /// EdgePointer, yields the element's MakeChildInfo with its order.
     pub fn visit_pointer_members(
         self: *@This(),
         type_node: BoundNodeReference,
@@ -1194,10 +1240,10 @@ pub const TypeGraph = struct {
         f: *const fn (*anyopaque, MakeChildInfo) visitor.VisitResult(T),
         failure: ?*?PathResolutionFailure,
     ) error{ UnresolvedTypeReference, ChildNotFound }!visitor.VisitResult(T) {
-        // Convert string path to EdgeTraversals (all Composition edges)
         // TODO get base allocator passed
         const allocator = std.heap.c_allocator;
 
+        // Convert string path to EdgeTraversals (all Composition edges)
         var traversals = std.ArrayList(ChildReferenceNode.EdgeTraversal).init(allocator);
         defer traversals.deinit();
         for (container_path) |segment| {
@@ -1216,40 +1262,68 @@ pub const TypeGraph = struct {
 
         const Visit = struct {
             type_graph: *TypeGraph,
+            type_node_: BoundNodeReference,
             container_path_: []const []const u8,
             ctx: *anyopaque,
             cb: *const fn (*anyopaque, MakeChildInfo) visitor.VisitResult(T),
 
-            pub fn visit(self_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(T) {
+            pub fn visit(self_ptr: *anyopaque, info: MakeLinkInfo) visitor.VisitResult(T) {
                 const visitor_: *@This() = @ptrCast(@alignCast(self_ptr));
-                const make_child = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
 
-                const identifier = MakeChildNode.Attributes.of(make_child).get_child_identifier() orelse {
+                // Check if lhs_path matches container_path
+                if (info.lhs_path.len != visitor_.container_path_.len) {
+                    return visitor.VisitResult(T){ .CONTINUE = {} };
+                }
+                for (info.lhs_path, visitor_.container_path_) |lhs_seg, container_seg| {
+                    if (!std.mem.eql(u8, lhs_seg, container_seg)) {
+                        return visitor.VisitResult(T){ .CONTINUE = {} };
+                    }
+                }
+
+                // Check if this is an EdgePointer link
+                const attrs = MakeLinkNode.Attributes.of(info.make_link);
+                const edge_type = attrs.get_edge_type();
+                if (edge_type != EdgePointer.tid) {
+                    return visitor.VisitResult(T){ .CONTINUE = {} };
+                }
+
+                // Element identifier is in rhs_path (e.g., "items[0]" -> single element)
+                if (info.rhs_path.len != 1) {
+                    return visitor.VisitResult(T){ .CONTINUE = {} };
+                }
+                const element_id = info.rhs_path[0];
+
+                const make_child = visitor_.type_graph.find_make_child_node(
+                    visitor_.type_node_,
+                    element_id,
+                ) catch {
                     return visitor.VisitResult(T){ .CONTINUE = {} };
                 };
 
-                if (MakeChildNode.get_mount_reference(make_child)) |mount_reference| {
-                    if (!visitor_.type_graph.reference_matches_path(mount_reference, visitor_.container_path_)) {
-                        return visitor.VisitResult(T){ .CONTINUE = {} };
-                    }
-
-                    return visitor_.cb(visitor_.ctx, MakeChildInfo{
-                        .identifier = identifier,
-                        .make_child = make_child,
-                    });
-                }
-
-                return visitor.VisitResult(T){ .CONTINUE = {} };
+                return visitor_.cb(visitor_.ctx, MakeChildInfo{
+                    .identifier = element_id,
+                    .make_child = make_child,
+                    .order = attrs.get_order(),
+                });
             }
         };
 
         var visitor_ = Visit{
             .type_graph = self,
+            .type_node_ = type_node,
             .container_path_ = container_path,
             .ctx = ctx,
             .cb = f,
         };
-        return EdgeComposition.visit_children_of_type(type_node, self.get_MakeChild().node, T, &visitor_, Visit.visit);
+
+        const result = self.visit_make_links(type_node, allocator, T, &visitor_, Visit.visit);
+        switch (result) {
+            .ERROR => |err| switch (err) {
+                error.InvalidReference => return error.ChildNotFound,
+                else => return error.ChildNotFound,
+            },
+            else => return result,
+        }
     }
 
     /// Enumerate pointer-sequence elements mounted under `container_path`. This
@@ -2230,8 +2304,8 @@ test "resolve path through trait and pointer edges" {
     _ = EdgeComposition.add_child(can_bridge_instance, out_ptr.node, "out_");
 
     // Point the Pointer nodes to p1 and p2
-    _ = EdgePointer.point_to(in_ptr, p1_instance.node, null, null);
-    _ = EdgePointer.point_to(out_ptr, p2_instance.node, null, null);
+    _ = EdgePointer.point_to(in_ptr, p1_instance.node, null);
+    _ = EdgePointer.point_to(out_ptr, p2_instance.node, null);
 
     // 5. Create reference path using EdgeTraversal:
     //    can_bridge (Trait edge) -> in_ (Composition) -> dereference (Pointer)
@@ -2288,8 +2362,8 @@ test "resolve path through trait and pointer edges" {
     const child_out_ptr = try tg.instantiate_node(PointerType);
     _ = EdgeComposition.add_child(child_can_bridge, child_in_ptr.node, "in_");
     _ = EdgeComposition.add_child(child_can_bridge, child_out_ptr.node, "out_");
-    _ = EdgePointer.point_to(child_in_ptr, child_p1.node, null, null);
-    _ = EdgePointer.point_to(child_out_ptr, child_p2.node, null, null);
+    _ = EdgePointer.point_to(child_in_ptr, child_p1.node, null);
+    _ = EdgePointer.point_to(child_out_ptr, child_p2.node, null);
 
     std.debug.print("\nMixed path test:\n", .{});
     std.debug.print("TopModule instance: {d}\n", .{top_instance.node.get_uuid()});
