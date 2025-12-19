@@ -59,6 +59,21 @@ class TypeGraph:
     def get_make_child_type_reference_by_identifier(
         self, *, type_node: BoundNode, identifier: str
     ) -> BoundNode | None: ...
+    def resolve_child_path(
+        self, *, start_type: BoundNode, path: list[str]
+    ) -> BoundNode | None:
+        """
+        Walk a child path, resolving each type, return the final type node.
+
+        For path ["inner"] starting at App:
+          1. Find "inner" child on App, get its type reference
+          2. Resolve type reference to Inner type node via Linker
+          3. Return Inner type node
+
+        Returns None if path is empty, any child is not found, or any type fails to
+        resolve.
+        """
+        ...
 
     class MakeChildNode:
         @staticmethod
@@ -109,7 +124,7 @@ class TypeGraph:
         *,
         type_node: BoundNode,
         container_path: list[str],
-    ) -> list[tuple[str | None, BoundNode]]: ...
+    ) -> list[tuple[int | None, BoundNode]]: ...
     def collect_make_children(
         self,
         *,

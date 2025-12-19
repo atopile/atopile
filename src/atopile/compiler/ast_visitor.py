@@ -2,7 +2,7 @@ import logging
 import re
 from collections.abc import Generator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Callable, ClassVar
@@ -16,6 +16,7 @@ from atopile.compiler.gentypegraph import (
     AddMakeChildAction,
     AddMakeLinkAction,
     ConstraintSpec,
+    DeferredForLoop,
     FieldPath,
     ImportRef,
     LinkPath,
@@ -33,7 +34,7 @@ from faebryk.core.faebrykpy import (
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.Lead import can_attach_to_pad_by_name, is_lead
 from faebryk.libs.smd import SMDSize
-from faebryk.libs.util import cast_assert, not_none
+from faebryk.libs.util import cast_assert, groupby, not_none
 
 _Quantity = tuple[float, fabll._ChildField]
 
@@ -120,6 +121,8 @@ class BuildState:
     external_type_refs: list[tuple[graph.BoundNode, ImportRef | None]]
     file_path: Path | None
     import_path: str | None
+    pending_execution: list[DeferredForLoop] = field(default_factory=list)
+    type_bound_tgs: dict[str, fabll.TypeNodeBoundTG] = field(default_factory=dict)
 
 
 class DslException(Exception):
@@ -279,28 +282,33 @@ class _TypeContextStack:
     def __init__(
         self, *, g: graph.GraphView, tg: fbrk.TypeGraph, state: BuildState
     ) -> None:
-        self._stack: list[tuple[graph.BoundNode, fabll.TypeNodeBoundTG]] = []
+        self._stack: list[tuple[graph.BoundNode, fabll.TypeNodeBoundTG, str]] = []
         self._g = g
         self._tg = tg
         self._state = state
 
     @contextmanager
     def enter(
-        self, type_node: graph.BoundNode, bound_tg: fabll.TypeNodeBoundTG
+        self,
+        type_node: graph.BoundNode,
+        bound_tg: fabll.TypeNodeBoundTG,
+        type_identifier: str | None = None,
     ) -> Generator[None, None, None]:
-        self._stack.append((type_node, bound_tg))
+        identifier = type_identifier or bound_tg.t._type_identifier()
+        self._stack.append((type_node, bound_tg, identifier))
         try:
             yield
         finally:
             self._stack.pop()
 
-    def current(self) -> tuple[graph.BoundNode, fabll.TypeNodeBoundTG]:
+    def current(self) -> tuple[graph.BoundNode, fabll.TypeNodeBoundTG, str]:
         if not self._stack:
             raise DslException("Type context is not available")
-        return self._stack[-1]
+        type_node, bound_tg, identifier = self._stack[-1]
+        return type_node, bound_tg, identifier
 
     def apply_action(self, action) -> None:
-        type_node, bound_tg = self.current()
+        type_node, bound_tg, _ = self.current()
 
         match action:
             case AddMakeChildAction() as action:
@@ -319,7 +327,7 @@ class _TypeContextStack:
     def resolve_reference(
         self, path: FieldPath, validate: bool = True
     ) -> graph.BoundNode:
-        type_node, _ = self.current()
+        type_node, _, _ = self.current()
         return self._ensure_field_path(
             type_node=type_node, field_path=path, validate=validate
         )
@@ -938,12 +946,13 @@ class ASTVisitor:
     ) -> None:
         self._ast_root = ast_root
         self._graph = graph
-        self._type_graph = type_graph
+        self._type_graph: fbrk.TypeGraph = type_graph
         self._state = BuildState(
             type_roots={},
             external_type_refs=[],
             file_path=file_path,
             import_path=import_path,
+            pending_execution=[],
         )
 
         self._pointer_sequence_type = F.Collections.PointerSequence.bind_typegraph(
@@ -1023,6 +1032,121 @@ class ASTVisitor:
         assert self._ast_root.isinstance(AST.File)
         self.visit(self._ast_root)
         return self._state
+
+    def execute_pending(self) -> None:
+        """
+        Execute deferred statements (phase 2).
+
+        Call this after linking is complete and all type references are resolved.
+        At this point containers are fully constructed and their elements can be
+        queried from the TypeGraph.
+        """
+        for type_id, loops in groupby(
+            self._state.pending_execution, key=lambda lp: lp.type_identifier
+        ).items():
+            if (type_node := self._state.type_roots.get(type_id)) is None:
+                raise CompilerException(f"Type `{type_id}` not found")
+
+            for loop in sorted(loops, key=lambda lp: lp.source_order):
+                self._execute_deferred_for_loop(type_node, type_id, loop)
+
+    def _execute_loop_body(
+        self, loop_var: str, element_paths: list[FieldPath], stmts: list[fabll.Node]
+    ) -> None:
+        """Execute loop body statements for each element path."""
+        for element_path in element_paths:
+            with self._scope_stack.temporary_alias(loop_var, element_path):
+                for stmt in stmts:
+                    self._type_stack.apply_action(self.visit(stmt))
+
+    def _collect_sequence_element_paths(
+        self, type_node: graph.BoundNode, loop: DeferredForLoop
+    ) -> list[FieldPath]:
+        """
+        Collect element paths for a sequence container, sorted by index.
+        Returns paths like (container, 0), (container, 1), etc.
+        """
+        (*parent_path, container_id) = loop.container_path
+
+        owning_type = (
+            self._type_graph.resolve_child_path(
+                start_type=type_node, path=list(parent_path)
+            )
+            if parent_path
+            else type_node
+        )
+
+        resolved_node = fbrk.Linker.get_resolved_type(
+            type_reference=not_none(
+                self._type_graph.get_make_child_type_reference_by_identifier(
+                    type_node=not_none(owning_type), identifier=container_id
+                )
+            )
+        )
+
+        if owning_type is None:
+            raise CompilerException(f"Cannot resolve type for path {parent_path}")
+
+        if resolved_node is None:
+            # Incomplete linking
+            raise CompilerException(
+                f"Cannot resolve type for path {loop.container_path}"
+            )
+
+        if (
+            not (type_name := fbrk.TypeGraph.get_type_name(type_node=resolved_node))
+            == F.Collections.PointerSequence._type_identifier()
+        ):
+            raise DslException(
+                f"Cannot iterate over `{'.'.join(loop.container_path)}`: "
+                f"expected a sequence, got `{type_name}`"
+            )
+
+        return sorted(
+            [
+                FieldPath(
+                    segments=(
+                        *[
+                            FieldPath.Segment(identifier=seg)
+                            for seg in loop.container_path
+                        ],
+                        FieldPath.Segment(str(order), is_index=True),
+                    )
+                )
+                for order, _ in self._type_graph.collect_pointer_members(
+                    type_node=owning_type, container_path=[container_id]
+                )
+                if order is not None
+            ],
+            key=lambda p: int(p.leaf.identifier),
+        )
+
+    def _execute_deferred_for_loop(
+        self, type_node: graph.BoundNode, type_identifier: str, loop: DeferredForLoop
+    ) -> None:
+        """Execute a single deferred for-loop."""
+        element_paths = self._collect_sequence_element_paths(type_node, loop)
+
+        start, stop, step = loop.slice_spec
+        if start is not None or stop is not None or step is not None:
+            element_paths = element_paths[slice(start, stop, step)]
+
+        bound_tg = not_none(self._state.type_bound_tgs.get(type_identifier))
+        with self._type_stack.enter(type_node, bound_tg, type_identifier):
+            with self._scope_stack.enter():
+                for identifier, _ in self._type_graph.collect_make_children(
+                    type_node=type_node
+                ):
+                    self._scope_stack.add_field(
+                        FieldPath(
+                            segments=(
+                                FieldPath.Segment(identifier=not_none(identifier)),
+                            )
+                        )
+                    )
+                self._execute_loop_body(
+                    loop.variable_name, element_paths, loop.body.stmts.get().as_list()
+                )
 
     def visit(self, node: fabll.Node):
         # TODO: less magic dispatch
@@ -1143,6 +1267,7 @@ class ASTVisitor:
 
         type_node = self._type_graph.add_type(identifier=type_identifier)
         type_node_bound_tg = fabll.TypeNodeBoundTG(tg=self._type_graph, t=_Block)
+        self._state.type_bound_tgs[module_name] = type_node_bound_tg
 
         # Process the class fields (traits) we just defined
         # Since we manually added the type node above, get_or_create_type inside TypeNodeBoundTG
@@ -1150,7 +1275,7 @@ class ASTVisitor:
         _Block._create_type(type_node_bound_tg)
 
         with self._scope_stack.enter():
-            with self._type_stack.enter(type_node, type_node_bound_tg):
+            with self._type_stack.enter(type_node, type_node_bound_tg, module_name):
                 for stmt in node.scope.get().stmts.get().as_list():
                     self._type_stack.apply_action(self.visit(stmt))
 
@@ -1294,7 +1419,7 @@ class ASTVisitor:
             # TODO: review
             if target_path.leaf.is_index and parent_path is not None:
                 try:
-                    type_node, _ = self._type_stack.current()
+                    type_node, _, _ = self._type_stack.current()
                     pointer_members = self._type_graph.collect_pointer_members(
                         type_node=type_node,
                         container_path=list(parent_path.identifiers()),
@@ -1389,6 +1514,12 @@ class ASTVisitor:
             self._scope_stack.add_field(element_path)
 
         return [pointer_action, *element_actions, *link_actions]
+
+    def visit_Slice(self, node: AST.Slice) -> tuple[int | None, int | None, int | None]:
+        start, stop, step = node.get_values()
+        if step == 0:
+            raise DslException("Slice step cannot be zero")
+        return start, stop, step
 
     def visit_Assignment(self, node: AST.Assignment):
         # TODO: broaden assignable support and handle keyed/pin field references
@@ -1841,85 +1972,81 @@ class ASTVisitor:
             else sequence_elements[slice(start_idx, stop_idx, step_idx)]
         )
 
-    def _pointer_member_paths(self, container_path: FieldPath) -> list[FieldPath]:
-        type_node, _ = self._type_stack.current()
-
-        members = self._type_graph.collect_pointer_members(
-            type_node=type_node,
-            container_path=list(container_path.identifiers()),
-        )
-
-        element_paths = [
-            FieldPath(
-                segments=(
-                    *container_path.segments,
-                    FieldPath.Segment(identifier=identifier, is_index=True),
-                )
-            )
-            for identifier, _ in members
-            if identifier is not None
-        ]
-
-        element_paths.sort(key=lambda p: int(p.leaf.identifier))
-        return element_paths
-
     def visit_ForStmt(self, node: AST.ForStmt):
-        def validate_stmt(stmt: fabll.Node) -> None:
-            def error(node: fabll.Node) -> str:
-                # TODO: make this less fragile
-                source_text = stmt.source.get().get_text()  # type: ignore
+        def validate_stmts(stmts: list[fabll.Node]) -> None:
+            def error(node: fabll.Node) -> None:
+                # FiXME: make this less fragile
+                source_node = AST.SourceChunk.bind_instance(
+                    not_none(
+                        fbrk.EdgeComposition.get_child_by_identifier(
+                            bound_node=node.instance, child_identifier="source"
+                        )
+                    )
+                )
+                source_text = source_node.get_text()
                 stmt_str = source_text.split(" ")[0]
                 raise DslException(f"Invalid statement in for loop: {stmt_str}")
 
-            for illegal_type in (
-                AST.ImportStmt,
-                AST.PinDeclaration,
-                AST.SignaldefStmt,
-                AST.TraitStmt,
-                AST.ForStmt,
-            ):
-                if stmt.isinstance(illegal_type):
-                    assert isinstance(stmt, illegal_type)
-                    error(stmt)
+            for stmt in stmts:
+                for illegal_type in (
+                    AST.ImportStmt,
+                    AST.PinDeclaration,
+                    AST.SignaldefStmt,
+                    AST.TraitStmt,
+                    AST.ForStmt,
+                ):
+                    if stmt.isinstance(illegal_type):
+                        error(stmt)
 
-            if stmt.isinstance(AST.Assignment):
-                assignment = stmt.cast(t=AST.Assignment)
-                assignable_value = assignment.assignable.get().get_value().switch_cast()
-                if assignable_value.isinstance(AST.NewExpression):
-                    error(stmt)
+                if stmt.isinstance(AST.Assignment):
+                    assignment = stmt.cast(t=AST.Assignment)
+                    assignable_value = (
+                        assignment.assignable.get().get_value().switch_cast()
+                    )
+                    if assignable_value.isinstance(AST.NewExpression):
+                        error(stmt)
 
         self.ensure_experiment(ASTVisitor._Experiment.FOR_LOOP)
 
+        loop_var = node.target.get().get_single()
         iterable_node = node.iterable.get().deref()
-        item_paths: list[FieldPath]
 
+        stmts = node.scope.get().stmts.get().as_list()
+        validate_stmts(stmts)
+
+        # List literals [a, b, c] — execute immediately, paths are known
         if iterable_node.isinstance(AST.FieldRefList):
-            list_node = iterable_node.cast(t=AST.FieldRefList)
-            items = list_node.items.get().as_list()
-            item_paths = [
-                self.visit_FieldRef(item_ref.cast(t=AST.FieldRef)) for item_ref in items
-            ]
+            self._execute_loop_body(
+                loop_var,
+                element_paths=[
+                    self.visit_FieldRef(item_ref.cast(t=AST.FieldRef))
+                    for item_ref in iterable_node.cast(t=AST.FieldRefList)
+                    .items.get()
+                    .as_list()
+                ],
+                stmts=stmts,
+            )
 
+        # Sequence iteration (items or items[1:]) — defer to phase 2
         elif iterable_node.isinstance(AST.IterableFieldRef):
             iterable_field = iterable_node.cast(t=AST.IterableFieldRef)
             container_path = self.visit_FieldRef(iterable_field.get_field())
-            member_paths = self._pointer_member_paths(container_path)
+            slice_spec = self.visit_Slice(iterable_field.slice.get())
+            _, _, type_identifier = self._type_stack.current()
 
-            selected = self._select_elements(iterable_field, member_paths)
-            item_paths = list(selected)
+            self._state.pending_execution.append(
+                DeferredForLoop(
+                    type_identifier=type_identifier,
+                    container_path=container_path.identifiers(),
+                    variable_name=loop_var,
+                    slice_spec=slice_spec,
+                    body=node.scope.get(),
+                    source_order=len(self._state.pending_execution),
+                )
+            )
+
         else:
-            raise DslException("Unexpected iterable type")
-
-        (loop_var,) = node.target.get().get_values()
-        stmts = node.scope.get().stmts.get().as_list()
-
-        for stmt in stmts:
-            validate_stmt(stmt)
-
-        for item_path in item_paths:
-            with self._scope_stack.temporary_alias(loop_var, item_path):
-                for stmt in stmts:
-                    self._type_stack.apply_action(self.visit(stmt))
+            raise CompilerException("Unexpected iterable type")
 
         return NoOpAction()
 

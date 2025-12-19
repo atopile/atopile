@@ -301,7 +301,8 @@ class TestForLoops:
 
                 for it in items:
                     it.connection ~ sink
-            """
+            """,
+            link=True,
         )
         # Path segments with indices are combined: items + [0] -> items[0]
         assert (
@@ -331,7 +332,8 @@ class TestForLoops:
 
                 for it in items[1:]:
                     it.connection ~ sink
-            """
+            """,
+            link=True,
         )
 
         # Path segments with indices are combined
@@ -376,7 +378,8 @@ class TestForLoops:
 
                 for it in items[0:4:2]:
                     it.connection ~ sink
-            """
+            """,
+            link=True,
         )
 
         # Path segments with indices are combined
@@ -459,6 +462,68 @@ class TestForLoops:
                 expected=[(["a"], ["sink"]), (["b"], ["sink"]), (["c"], ["sink"])],
             )
             is True
+        )
+
+    def test_for_loop_over_nested_sequence(self):
+        """Test iterating over a sequence that is a child of a child (nested path)."""
+        _, tg, _, result = build_type(
+            """
+            #pragma experiment("FOR_LOOP")
+            import Resistor
+
+            module Inner:
+                items = new Resistor[2]
+
+            module App:
+                inner = new Inner
+                sink = new Resistor
+
+                for item in inner.items:
+                    item ~ sink
+            """,
+            link=True,
+        )
+
+        assert _check_make_links(
+            tg=tg,
+            type_node=result.state.type_roots["App"],
+            expected=[
+                (["inner", "items[0]"], ["sink"]),
+                (["inner", "items[1]"], ["sink"]),
+            ],
+        )
+
+    def test_for_loop_over_nested_sequence_with_slice(self):
+        """Test slicing a sequence that is a child of a child."""
+        _, tg, _, result = build_type(
+            """
+            #pragma experiment("FOR_LOOP")
+            import Resistor
+
+            module Inner:
+                items = new Resistor[4]
+
+            module App:
+                inner = new Inner
+                sink = new Resistor
+
+                for item in inner.items[1:3]:
+                    item ~ sink
+            """,
+            link=True,
+        )
+
+        assert _check_make_links(
+            tg=tg,
+            type_node=result.state.type_roots["App"],
+            expected=[
+                (["inner", "items[1]"], ["sink"]),
+                (["inner", "items[2]"], ["sink"]),
+            ],
+            not_expected=[
+                (["inner", "items[0]"], ["sink"]),
+                (["inner", "items[3]"], ["sink"]),
+            ],
         )
 
     def test_for_loop_alias_shadow_symbol_raises(self):

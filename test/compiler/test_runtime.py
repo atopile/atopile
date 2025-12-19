@@ -208,10 +208,11 @@ class TestForLoopsRuntime:
             "App",
         )
 
-        resistors = _get_child(app_instance, "resistors")
-        assert isinstance(resistors, list)
-        for r_node in resistors:
-            r = F.Resistor.bind_instance(cast_assert(BoundNode, r_node))
+        resistors = F.Collections.PointerSequence.bind_instance(
+            _get_child(app_instance, "resistors")
+        )
+        for r_node in resistors.as_list():
+            r = r_node.cast(F.Resistor)
             assert _check_connected(r.unnamed[0].get(), r.unnamed[1].get())
             # TODO: check resistance is 100kohm +/- 10%
 
@@ -252,7 +253,7 @@ class TestForLoopsRuntime:
             )
 
     def test_for_loop_nested_error(self):
-        with pytest.raises(DslException, match="[Nn]ested"):
+        with pytest.raises(DslException, match="Invalid statement in for loop"):
             build_instance(
                 """
                 #pragma experiment("FOR_LOOP")
@@ -286,7 +287,7 @@ class TestForLoopsRuntime:
             )
 
     def test_for_loop_iterate_non_list(self):
-        with pytest.raises(DslException, match="Cannot iterate over type"):
+        with pytest.raises(DslException, match="expected a sequence"):
             build_instance(
                 """
                 #pragma experiment("FOR_LOOP")
@@ -361,6 +362,65 @@ class TestForLoopsRuntime:
         text = template.format(stmt=stmt)
         with pytest.raises(DslException, match="Invalid statement"):
             build_instance(text, "App")
+
+
+def test_for_loop_over_imported_sequence(tmp_path: Path):
+    """Test iterating over a sequence defined in an imported module."""
+    child_path = tmp_path / "child.ato"
+    child_path.write_text(
+        textwrap.dedent(
+            """
+            import Electrical
+
+            module Widget:
+                items = new Electrical[3]
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    main_path = tmp_path / "main.ato"
+    main_path.write_text(
+        textwrap.dedent(
+            """
+            #pragma experiment("FOR_LOOP")
+
+            from "child.ato" import Widget
+            import Electrical
+
+            module App:
+                widget = new Widget
+                sink = new Electrical
+
+                for item in widget.items:
+                    item ~ sink
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    g = GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    stdlib = StdlibRegistry(tg)
+
+    result = build_file(g=g, tg=tg, import_path="main.ato", path=main_path)
+
+    linker = Linker(tmp_path, stdlib, tg)
+    linker.link_imports(g, result.state)
+
+    if result.visitor is not None:
+        result.visitor.execute_pending()
+
+    # Verify the for-loop created the expected connections
+    app_type = result.state.type_roots["App"]
+    make_links = tg.collect_make_links(type_node=app_type)
+
+    # Find connections from widget.items elements to sink
+    connections = [
+        (lhs, rhs) for _, lhs, rhs in make_links if lhs[0] == "widget" and "sink" in rhs
+    ]
+
+    assert len(connections) == 3, f"Expected 3 connections, got {len(connections)}"
 
 
 def test_assign_to_enum_param():

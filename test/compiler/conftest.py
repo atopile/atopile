@@ -7,6 +7,14 @@ from faebryk.core.faebrykpy import TypeGraph
 from faebryk.core.graph import BoundNode, GraphView
 
 
+def _link(
+    g: GraphView, stdlib: StdlibRegistry, tg: TypeGraph, result: BuildFileResult
+) -> None:
+    linker = Linker(None, stdlib, tg)
+    linker.link_imports(g, result.state)
+    result.visitor.execute_pending()
+
+
 def build_type(
     source: str, import_path: str | None = None, link: bool = False
 ) -> tuple[GraphView, TypeGraph, StdlibRegistry, BuildFileResult]:
@@ -18,8 +26,7 @@ def build_type(
     )
 
     if link:
-        linker = Linker(None, stdlib, tg)
-        linker.link_imports(g, result.state)
+        _link(g, stdlib, tg, result)
 
     return g, tg, stdlib, result
 
@@ -43,8 +50,7 @@ def build_instance(
         stdlib_allowlist=stdlib_allowlist,
     )
 
-    linker = Linker(None, stdlib, tg)
-    linker.link_imports(g, result.state)
+    _link(g, stdlib, tg, result)
 
     return (
         g,

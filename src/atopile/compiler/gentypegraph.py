@@ -9,6 +9,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from atopile.compiler import ast_types as AST
 from faebryk.core.faebrykpy import EdgeTraversal
 
 LinkPath = list[str | EdgeTraversal]
@@ -97,6 +98,14 @@ class FieldPath:
                 parts.append(segment.identifier)
         return tuple(parts)
 
+    @property
+    def leaf_identifier(self) -> str:
+        leaf_segment = self.leaf
+        if leaf_segment.is_index:
+            return f"{leaf_segment.identifier}[{leaf_segment.identifier}]"
+        else:
+            return leaf_segment.identifier
+
     def to_ref_path(self) -> fabll.RefPath:
         return [*self.identifiers()]
 
@@ -181,3 +190,15 @@ class ScopeState:
     # field path during `for` iteration. Only used within the current
     # lexical scope and intended to be short-lived.
     aliases: dict[str, FieldPath] = field(default_factory=dict)
+
+
+@dataclass
+class DeferredForLoop:
+    """A for-loop recorded for execution in a later compiler phase."""
+
+    type_identifier: str
+    container_path: tuple[str, ...]
+    variable_name: str
+    slice_spec: tuple[int | None, int | None, int | None]
+    body: AST.Scope
+    source_order: int

@@ -25,6 +25,7 @@ from faebryk.libs.util import once, unique
 class BuildFileResult:
     ast_root: AST.File
     state: BuildState
+    visitor: ASTVisitor
 
 
 class StdlibRegistry:
@@ -360,15 +361,8 @@ def _build_from_ctx(
 ) -> BuildFileResult:
     ast_root = ANTLRVisitor(g, tg, file_path).visit(root_ctx)
     assert isinstance(ast_root, AST.File)
-    build_state = ASTVisitor(
-        ast_root,
-        g,
-        tg,
-        import_path,
-        file_path,
-        stdlib_allowlist,
-    ).build()
-    return BuildFileResult(ast_root=ast_root, state=build_state)
+    visitor = ASTVisitor(ast_root, g, tg, import_path, file_path, stdlib_allowlist)
+    return BuildFileResult(ast_root=ast_root, state=visitor.build(), visitor=visitor)
 
 
 def build_file(
