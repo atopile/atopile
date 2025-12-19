@@ -3,6 +3,10 @@
 
 from enum import StrEnum
 
+import pytest
+
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 import faebryk.library.can_be_pulled as can_be_pulled
@@ -85,4 +89,91 @@ class ElectricLogic(fabll.Node):
         """,
             language=F.has_usage_example.Language.ato,
         ).put_on_type()
+    )
+
+
+# -----------------------------------------------------------------------------
+#                                 Tests
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("on", [True, False])
+def test_electric_logic_set(on: bool):
+    """Test that set() correctly connects line to hv (on=True) or lv (on=False)."""
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class App(fabll.Node):
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        power = F.ElectricPower.MakeChild()
+        logic = ElectricLogic.MakeChild()
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # Connect the logic reference to the power rail
+    app.logic.get().reference.get()._is_interface.get().connect_to(app.power.get())
+
+    # Call set() to connect line to hv or lv
+    app.logic.get().set(on)
+
+    # Verify the connection
+    logic = app.logic.get()
+    power = app.power.get()
+
+    if on:
+        # line should be connected to hv
+        assert logic.line.get()._is_interface.get().is_connected_to(power.hv.get()), (
+            "set(True) should connect line to hv"
+        )
+        assert (
+            not logic.line.get()._is_interface.get().is_connected_to(power.lv.get())
+        ), "set(True) should NOT connect line to lv"
+    else:
+        # line should be connected to lv
+        assert logic.line.get()._is_interface.get().is_connected_to(power.lv.get()), (
+            "set(False) should connect line to lv"
+        )
+        assert (
+            not logic.line.get()._is_interface.get().is_connected_to(power.hv.get())
+        ), "set(False) should NOT connect line to hv"
+
+
+def test_electric_logic_set_via_reference_child():
+    """Test that set() works when reference is connected to a power interface."""
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class App(fabll.Node):
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        power = F.ElectricPower.MakeChild()
+        logic = ElectricLogic.MakeChild()
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # Connect the logic reference to the power rail
+    app.logic.get().reference.get()._is_interface.get().connect_to(app.power.get())
+
+    # Set high, then set low to verify both work
+    app.logic.get().set(True)
+    assert (
+        app.logic.get()
+        .line.get()
+        ._is_interface.get()
+        .is_connected_to(app.power.get().hv.get())
+    )
+
+    # Create a second logic to test set(False)
+    class App2(fabll.Node):
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        power = F.ElectricPower.MakeChild()
+        logic = ElectricLogic.MakeChild()
+
+    app2 = App2.bind_typegraph(tg=tg).create_instance(g=g)
+    app2.logic.get().reference.get()._is_interface.get().connect_to(app2.power.get())
+    app2.logic.get().set(False)
+    assert (
+        app2.logic.get()
+        .line.get()
+        ._is_interface.get()
+        .is_connected_to(app2.power.get().lv.get())
     )
