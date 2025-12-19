@@ -27,10 +27,60 @@ EPSILON_ABS = 10**-ABS_DIGITS
 
 
 class UnitsNotCommensurableError(Exception):
+    """
+    Raised when operations are attempted on values with incompatible units.
+
+    The error message includes details about which units are incompatible
+    and which parameters/literals they belong to.
+    """
+
     def __init__(self, message: str, incommensurable_items: list["is_unit"]):
-        super().__init__(message)
         self.message = message
         self.incommensurable_items = incommensurable_items
+        super().__init__(self._format_message())
+
+    def _format_message(self) -> str:
+        """Format a detailed error message with unit and source information."""
+        lines = [self.message]
+
+        if len(self.incommensurable_items) >= 2:
+            lines.append("\nIncompatible units:")
+            for i, unit in enumerate(self.incommensurable_items):
+                unit_info = self._get_unit_info(unit)
+                lines.append(f"  [{i + 1}] {unit_info}")
+
+        return "\n".join(lines)
+
+    def _get_unit_info(self, unit: "is_unit") -> str:
+        """Get a human-readable description of a unit and its source."""
+        try:
+            # Get unit symbols (e.g., ["V", "volt"])
+            symbols = unit._extract_symbols()
+            symbol_str = symbols[0] if symbols else "unknown"
+
+            # The str representation of is_unit includes the path and type info
+            # e.g., "<is_unit '0x1B7.param.is_unit' on <Node[Volt] '0x1B7.param'>>"
+            unit_str = str(unit)
+
+            # Extract the node type info if available (e.g., "Volt" from "Node[Volt]")
+            unit_type = self._extract_unit_type(unit_str)
+            if unit_type:
+                return f"{symbol_str!r} ({unit_type})"
+            else:
+                return f"{symbol_str!r}"
+        except Exception:
+            # Fallback if we can't extract info
+            return f"unit at {unit.instance}"
+
+    def _extract_unit_type(self, unit_str: str) -> str | None:
+        """Extract the unit type name from the string representation."""
+        # Look for pattern like "Node[TypeName]"
+        import re
+
+        match = re.search(r"Node\[(\w+)\]", unit_str)
+        if match:
+            return match.group(1)
+        return None
 
 
 class NotSingletonError(Exception):
@@ -3231,7 +3281,7 @@ class Numbers(fabll.Node):
         """
         if not self.get_is_unit().is_commensurable_with(target.get_is_unit()):
             raise UnitsNotCommensurableError(
-                "incompatible units",
+                "Cannot find closest element: units are not commensurable",
                 incommensurable_items=[self.get_is_unit(), target.get_is_unit()],
             )
         if not target.get_numeric_set().is_singleton():
@@ -3293,7 +3343,7 @@ class Numbers(fabll.Node):
         tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise UnitsNotCommensurableError(
-                "incompatible units",
+                "Cannot intersect quantity sets: units are not commensurable",
                 incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
             )
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
@@ -3340,7 +3390,7 @@ class Numbers(fabll.Node):
         tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise UnitsNotCommensurableError(
-                "incompatible units",
+                "Cannot compute union of quantity sets: units are not commensurable",
                 incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
             )
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
@@ -3388,7 +3438,7 @@ class Numbers(fabll.Node):
         tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise UnitsNotCommensurableError(
-                "incompatible units",
+                "Cannot compute difference of quantity sets: units are not commensurable",  # noqa: E501
                 incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
             )
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
@@ -3575,7 +3625,7 @@ class Numbers(fabll.Node):
         for subtrahend in subtrahends:
             if not self.get_is_unit().is_commensurable_with(subtrahend.get_is_unit()):
                 raise UnitsNotCommensurableError(
-                    "incompatible units",
+                    "Cannot subtract quantities: units are not commensurable",
                     incommensurable_items=[
                         self.get_is_unit(),
                         subtrahend.get_is_unit(),
@@ -3853,7 +3903,7 @@ class Numbers(fabll.Node):
         tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise UnitsNotCommensurableError(
-                "incompatible units",
+                "Cannot compute symmetric difference: units are not commensurable",
                 incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
             )
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
@@ -3992,7 +4042,7 @@ class Numbers(fabll.Node):
         tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise UnitsNotCommensurableError(
-                "incompatible units",
+                "Cannot compare (>=): units are not commensurable",
                 incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
             )
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
@@ -4019,7 +4069,7 @@ class Numbers(fabll.Node):
         tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise UnitsNotCommensurableError(
-                "incompatible units",
+                "Cannot compare (>): units are not commensurable",
                 incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
             )
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
@@ -4046,7 +4096,7 @@ class Numbers(fabll.Node):
         tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise UnitsNotCommensurableError(
-                "incompatible units",
+                "Cannot compare (<=): units are not commensurable",
                 incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
             )
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
@@ -4073,7 +4123,7 @@ class Numbers(fabll.Node):
         tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise UnitsNotCommensurableError(
-                "incompatible units",
+                "Cannot compare (<): units are not commensurable",
                 incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
             )
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
