@@ -14,7 +14,9 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.usefixtures("setup_project_config")
-def test_performance_parameters(A: int = 1, B: int = 1, rs: int = 1, pick: bool = True):
+def test_performance_parameters(
+    A: int = 1, B: int = 1, rs: int = 100, pick: bool = False
+):
     timings = Times()
 
     assert B > 0
@@ -83,24 +85,36 @@ def test_performance_parameters(A: int = 1, B: int = 1, rs: int = 1, pick: bool 
 
     g_copy = graph.GraphView.create()
     g_copy2 = graph.GraphView.create()
-    with timings.context("create_dimless"):
+    timings.add_seperator()
+    with timings.context("bind dimless"):
         dimless = F.Units.Dimensionless.bind_typegraph(tg)
     with timings.context("get_or_create_dimless"):
         dimless.get_or_create_type()
     with timings.context("create_instance_dimless"):
         dimless_instance = dimless.create_instance(g=g)
-    with timings.context("dimless_copy1"):
+    dimless_instance2 = F.Units.Dimensionless.bind_typegraph(tg).create_instance(
+        g=g_copy
+    )
+    with timings.context("copy -- fresh -- dimless"):
         dimless_instance.copy_into(g=g_copy)
-    with timings.context("dimless_copy2"):
+    with timings.context("copy -- type dup -- dimless"):
+        dimless_instance2.copy_into(g=g_copy)
+    with timings.context("copy -- instance dup -- dimless"):
         dimless_instance.copy_into(g=g_copy)
+    timings.add_seperator()
+
     with timings.context("create_number_literal"):
         number_literal_instance = bound_numbers.create_instance(g=g).setup_from_min_max(
             min=0, max=1, unit=dimless_instance.is_unit.get()
         )
-    with timings.context("number_literal_copy1"):
+    number_literal_instance2 = bound_numbers.create_instance(g=g_copy2)
+    with timings.context("copy -- fresh -- number_literal"):
         number_literal_instance.copy_into(g=g_copy2)
-    with timings.context("number_literal_copy2"):
+    with timings.context("copy -- type dup -- number_literal"):
+        number_literal_instance2.copy_into(g=g_copy2)
+    with timings.context("copy -- instance dup -- number_literal"):
         number_literal_instance.copy_into(g=g_copy2)
+    timings.add_seperator()
 
     with timings.context("create_numbers"):
         numbers = [bound_numbers.create_instance(g=g) for _ in range(rs)]
