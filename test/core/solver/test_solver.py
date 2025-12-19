@@ -960,8 +960,8 @@ def test_voltage_divider_find_resistances():
     v_out = E.parameter_op(units=E.U.V)
     r_total = E.parameter_op(units=E.U.Ohm)
 
-    E.is_(v_in, E.lit_op_range(((9, E.U.V), (10, E.U.V))))
-    E.is_(v_out, E.lit_op_range(((0.9, E.U.V), (1, E.U.V))))
+    E.is_(v_in, E.lit_op_range(((9, E.U.V), (10, E.U.V))), assert_=True)
+    E.is_(v_out, E.lit_op_range(((0.9, E.U.V), (1, E.U.V))), assert_=True)
     E.is_(r_total, E.lit_op_range_from_center_rel((100, E.U.Ohm), 0.01), assert_=True)
     E.is_(r_total, E.add(r_top, r_bottom), assert_=True)
     E.is_(
@@ -985,10 +985,14 @@ def test_voltage_divider_find_r_top():
     v_in = E.parameter_op(units=E.U.V)
     v_out = E.parameter_op(units=E.U.V)
 
-    E.is_(v_in, E.lit_op_range_from_center_rel((10, E.U.V), 0.01))
-    E.is_(v_out, E.lit_op_range_from_center_rel((1, E.U.V), 0.01))
-    E.is_(r_bottom, E.lit_op_range_from_center_rel((1, E.U.Ohm), 0.01))
-    E.is_(v_out, E.divide(E.multiply(v_in, r_bottom), E.add(r_top, r_bottom)))
+    E.is_(v_in, E.lit_op_range_from_center_rel((10, E.U.V), 0.01), assert_=True)
+    E.is_(v_out, E.lit_op_range_from_center_rel((1, E.U.V), 0.01), assert_=True)
+    E.is_(r_bottom, E.lit_op_range_from_center_rel((1, E.U.Ohm), 0.01), assert_=True)
+    E.is_(
+        v_out,
+        E.divide(E.multiply(v_in, r_bottom), E.add(r_top, r_bottom)),
+        assert_=True,
+    )
     # r_top = (v_in * r_bottom) / v_out - r_bottom
 
     solver = DefaultSolver()
@@ -1007,12 +1011,16 @@ def test_voltage_divider_reject_invalid_r_top():
     v_in = E.parameter_op(units=E.U.V)
     v_out = E.parameter_op(units=E.U.V)
 
-    E.is_(v_in, E.lit_op_range_from_center_rel((10, E.U.V), 0.01))
-    E.is_(v_out, E.lit_op_range_from_center_rel((1, E.U.V), 0.01))
-    E.is_(v_out, E.divide(E.multiply(v_in, r_bottom), E.add(r_top, r_bottom)))
+    E.is_(v_in, E.lit_op_range_from_center_rel((10, E.U.V), 0.01), assert_=True)
+    E.is_(v_out, E.lit_op_range_from_center_rel((1, E.U.V), 0.01), assert_=True)
+    E.is_(
+        v_out,
+        E.divide(E.multiply(v_in, r_bottom), E.add(r_top, r_bottom)),
+        assert_=True,
+    )
 
-    E.is_(r_bottom, E.lit_op_range_from_center_rel((1, E.U.Ohm), 0.01))
-    E.is_(r_top, E.lit_op_range_from_center_rel((999, E.U.Ohm), 0.01))
+    E.is_(r_bottom, E.lit_op_range_from_center_rel((1, E.U.Ohm), 0.01), assert_=True)
+    E.is_(r_top, E.lit_op_range_from_center_rel((999, E.U.Ohm), 0.01), assert_=True)
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
@@ -2535,23 +2543,6 @@ def test_solve_voltage_divider_complex():
     # # check solver knowing result
     # assert solver_v_out == res_v_out
     # assert solver_total_current == res_total_current
-
-
-def test_canonicalization():
-    E = BoundExpressions()
-    A = E.parameter_op(units=E.U.As)
-    from faebryk.core.graph_render import GraphRenderer
-
-    # E.is_(A, E.lit_op_range(((0.100, E.U.As), (0.600, E.U.As))), assert_=True)
-    # E.is_(B, E.lit_op_range(((0.100, E.U.As), (0.600, E.U.As))), assert_=True)
-    # E.is_(C, E.lit_op_range(((0.100, E.U.As), (0.600, E.U.As))), assert_=True)
-
-    solver = DefaultSolver()
-    print(GraphRenderer.render(E.tg.get_self_node()))
-    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
-    # assert _extract_and_check(
-    #     A, repr_map, E.lit_op_range(((0.100, E.U.As), (0.600, E.U.As)))
-    # )
 
 
 if __name__ == "__main__":

@@ -83,10 +83,10 @@ def convert_to_canonical_operations(mutator: Mutator):
     ```
 
     Canonicalize literals in expressions and parameters:
-    - remove units for NumberLike
-    - NumberLike -> Quantity_Interval_Disjoint
+    - remove units for Numbers
     - bool -> BoolSet
     - Enum -> P_Set[Enum]
+    - remove unit expressions
     """
 
     UnsupportedOperations: dict[type[fabll.NodeT], type[fabll.NodeT] | None] = {
@@ -278,19 +278,34 @@ def convert_to_canonical_operations(mutator: Mutator):
 
     exprs = mutator.get_expressions(sort_by_depth=True)
 
-    # filter expressions with unit operands
-    unit_exprs_leaves = {
-        e for e in exprs if e.get_operands_with_trait(F.Units.has_unit)
+    # Filter expressions that compute ON unit types themselves (e.g. Second^1, Ampere*Second). #noqa: E501
+    # These have is_unit trait as operands (the unit type IS the operand).
+    # NOT expressions like `A is {0.1..0.6}As` where operands HAVE units - those
+    # should pass through and have their units stripped by _strip_units().
+    unit_computation_leaves = {
+        e for e in exprs if e.get_operands_with_trait(F.Units.is_unit)
     }
     unit_exprs_all = {
         parent.get_trait(F.Expressions.is_expression)
-        for e in unit_exprs_leaves
+        for e in unit_computation_leaves
         for parent in e.as_operand.get().get_operations(recursive=True)
-    } | unit_exprs_leaves
-    exprs = set(exprs) - unit_exprs_all
+    } | unit_computation_leaves
+    # Preserve depth-sorted order (important: operands must be processed before parents)
+    exprs = [e for e in exprs if e not in unit_exprs_all]
     for u_expr in unit_exprs_all:
         # can disable root check because we never want to repr_map unit expressions
         mutator.remove(u_expr.as_parameter_operatable.get(), no_check_roots=True)
+
+    # Also remove UnitExpression nodes (like As = Ampere*Second).
+    # These have is_parameter_operatable trait but aren't expressions or parameters,
+    # so they would cause errors during _copy_unmutated.
+    for unit_expr in fabll.Traits.get_implementors(
+        F.Units.is_unit_expression.bind_typegraph(mutator.tg_in), mutator.G_in
+    ):
+        mutator.remove(
+            unit_expr.get_sibling_trait(F.Parameters.is_parameter_operatable),
+            no_check_roots=True,
+        )
 
     for e in exprs:
         e_type = not_none(fabll.Traits(e).get_obj_raw().get_type_node()).node()
