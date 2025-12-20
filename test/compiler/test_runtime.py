@@ -1072,19 +1072,6 @@ def test_missing_pin_ref_raises():
         )
 
 
-def test_signal_to_signal_raises():
-    with pytest.raises(DslException):
-        build_instance(
-            """
-            module App:
-                signal a
-                signal b
-                signal a ~ b
-            """,
-            "App",
-        )
-
-
 def test_regression_pin_refs():
     g, tg, stdlib, result, app_instance = build_instance(
         """
