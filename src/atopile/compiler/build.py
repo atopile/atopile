@@ -23,7 +23,7 @@ from atopile.compiler.gentypegraph import ImportRef
 from atopile.compiler.parse import parse_file, parse_text_as_file
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.config import find_project_dir
-from faebryk.libs.util import once, unique
+from faebryk.libs.util import import_from_path, once, unique
 
 
 @dataclass
@@ -250,9 +250,33 @@ class Linker:
         )
 
         if source_path in self._linked_modules:
-            return self._linked_modules[source_path][import_ref.name]
+            if import_ref.name in self._linked_modules[source_path]:
+                return self._linked_modules[source_path][import_ref.name]
+            if source_path.suffix != ".py":
+                raise UndefinedSymbolError(
+                    f"Symbol `{import_ref.name}` not found in `{source_path}`"
+                )
 
         assert source_path.exists()
+
+        if source_path.suffix == ".py":
+            try:
+                obj = import_from_path(source_path, import_ref.name)
+            except (AttributeError, ImportError) as e:
+                raise UndefinedSymbolError(
+                    f"Symbol `{import_ref.name}` not found in `{source_path}`"
+                ) from e
+
+            if not isinstance(obj, type) or not issubclass(obj, fabll.Node):
+                raise UndefinedSymbolError(
+                    f"Symbol `{import_ref.name}` in `{source_path}` is not a fabll.Node"
+                )
+
+            type_node = obj.bind_typegraph(self._tg).get_or_create_type()
+            if source_path not in self._linked_modules:
+                self._linked_modules[source_path] = {}
+            self._linked_modules[source_path][import_ref.name] = type_node
+            return type_node
 
         child_result = build_file(
             g=graph,

@@ -36,7 +36,7 @@ from faebryk.core.faebrykpy import (
 )
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.Lead import can_attach_to_pad_by_name, is_lead
-from faebryk.libs.util import cast_assert, groupby, not_none
+from faebryk.libs.util import cast_assert, groupby, import_from_path, not_none
 
 _Quantity = tuple[float, fabll._ChildField]
 
@@ -896,12 +896,29 @@ class ASTVisitor:
     ) -> list[AddMakeChildAction | AddMakeLinkAction] | AddMakeChildAction:
         self._scope_stack.add_field(target_path)
 
-        # Check if module type is in stdlib and supports templating
+        # Check if module type is in stdlib or an imported python module
         module_fabll_type = (
             self._stdlib_allowlist.get(new_spec.type_identifier)
             if new_spec.type_identifier is not None
             else None
         )
+        if (
+            module_fabll_type is None
+            and new_spec.symbol is not None
+            and new_spec.symbol.import_ref is not None
+            and new_spec.symbol.import_ref.path is not None
+        ):
+            raw_path = Path(new_spec.symbol.import_ref.path)
+            if not raw_path.is_absolute() and self._state.file_path is not None:
+                raw_path = (self._state.file_path.parent / raw_path).resolve()
+            if raw_path.suffix == ".py" and raw_path.exists():
+                obj = import_from_path(raw_path, new_spec.symbol.import_ref.name)
+                if not isinstance(obj, type) or not issubclass(obj, fabll.Node):
+                    raise DslException(
+                        f"Symbol `{new_spec.symbol.import_ref.name}` in `{raw_path}` "
+                        "is not a fabll.Node"
+                    )
+                module_fabll_type = obj
 
         if new_spec.count is None:
             # TODO: review
