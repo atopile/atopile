@@ -232,7 +232,12 @@ class TraitOverrideRegistry:
         )
 
     @classmethod
-    def matches_assignment_override(cls, name: str) -> bool:
+    def matches_assignment_override(
+        cls, name: str, assignable_node: AST.Assignable
+    ) -> bool:
+        if assignable_node.get_value().switch_cast().isinstance(AST.NewExpression):
+            return False
+
         return name in _ASSIGNMENT_OVERRIDES
 
     @classmethod

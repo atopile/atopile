@@ -1106,12 +1106,11 @@ class ASTVisitor:
         assignable_node = node.assignable.get()
 
         if TraitOverrideRegistry.matches_assignment_override(
-            target_path.leaf.identifier
+            target_path.leaf.identifier, assignable_node
         ):
             return TraitOverrideRegistry.handle_assignment(target_path, assignable_node)
 
-        assignable = self.visit_Assignable(assignable_node)
-        if assignable is None:
+        if (assignable := self.visit_Assignable(assignable_node)) is None:
             return NoOpAction()
 
         parent_path: FieldPath | None = None
