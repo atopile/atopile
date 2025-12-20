@@ -243,6 +243,70 @@ def exception_to_diagnostic(
     )
 
 
+def _find_diagnostics_for_exception(
+    exc: Exception,
+    g: graph.GraphView,
+    tg: fbrk.TypeGraph,
+    message: str,
+) -> list[lsp.Diagnostic]:
+    """
+    Try to find source locations from the graph for an exception.
+
+    For errors like "No handler for node type: BinaryExpression", this searches
+    the graph for all instances of that AST node type and returns diagnostics
+    for each one.
+    """
+    import re
+
+    diagnostics: list[lsp.Diagnostic] = []
+
+    # Try to extract AST node type from error messages like:
+    # "No handler for node type: BinaryExpression"
+    match = re.search(r"No handler for node type: (\w+)", str(exc))
+    if not match:
+        return diagnostics
+
+    node_type_name = match.group(1)
+
+    # Try to get the AST type class
+    try:
+        ast_type_cls = getattr(AST, node_type_name)
+    except AttributeError:
+        return diagnostics
+
+    # Search the graph for all instances of this type
+    try:
+        bound_type = ast_type_cls.bind_typegraph(tg)
+        for inst in bound_type.get_instances(g):
+            try:
+                typed_node = inst.cast(ast_type_cls)
+                loc = typed_node.source.get().loc.get()
+
+                diagnostics.append(
+                    lsp.Diagnostic(
+                        range=lsp.Range(
+                            start=lsp.Position(
+                                line=max(loc.get_start_line() - 1, 0),
+                                character=loc.get_start_col(),
+                            ),
+                            end=lsp.Position(
+                                line=max(loc.get_end_line() - 1, 0),
+                                character=loc.get_end_col(),
+                            ),
+                        ),
+                        message=message,
+                        severity=lsp.DiagnosticSeverity.Error,
+                        source=TOOL_DISPLAY,
+                    )
+                )
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    return diagnostics
+
+
 # -----------------------------------------------------------------------------
 # AST Indexing for Hover/Go-to-Definition
 # -----------------------------------------------------------------------------
@@ -466,17 +530,25 @@ def build_document(uri: str, source: str) -> DocumentState:
             for exc in iter_leaf_exceptions(exc_group):
                 state.last_error = exc
                 logger.exception(f"Build error for {uri}: {exc}")
-                diagnostics.append(
-                    lsp.Diagnostic(
-                        range=lsp.Range(
-                            start=lsp.Position(line=0, character=0),
-                            end=lsp.Position(line=0, character=0),
-                        ),
-                        message=f"Build error: {exc}",
-                        severity=lsp.DiagnosticSeverity.Error,
-                        source=TOOL_DISPLAY,
+
+                # Try to find source locations from the graph for unhandled node types
+                node_diagnostics = _find_diagnostics_for_exception(exc, g, tg, str(exc))
+
+                if node_diagnostics:
+                    diagnostics.extend(node_diagnostics)
+                else:
+                    # Fallback to line 0 if we can't find locations
+                    diagnostics.append(
+                        lsp.Diagnostic(
+                            range=lsp.Range(
+                                start=lsp.Position(line=0, character=0),
+                                end=lsp.Position(line=0, character=0),
+                            ),
+                            message=f"Build error: {exc}",
+                            severity=lsp.DiagnosticSeverity.Error,
+                            source=TOOL_DISPLAY,
+                        )
                     )
-                )
 
         # Add warning diagnostics from collector
         for error, severity_level in collector:
