@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from dataclasses import asdict, dataclass, field, make_dataclass
+from dataclasses import dataclass, field, make_dataclass
 from typing import Any
 
 from dataclasses_json import config as dataclass_json_config
@@ -47,7 +47,12 @@ def _pretty_params_helper(params) -> str:
         else:
             return str(v)
 
-    return md_list(f"`{k}`: {_map(v)}" for k, v in asdict(params).items())
+    # Avoid asdict() as it uses deepcopy which fails on BoundNodeReference
+    from dataclasses import fields as dataclass_fields
+
+    return md_list(
+        f"`{f.name}`: {_map(getattr(params, f.name))}" for f in dataclass_fields(params)
+    )
 
 
 @dataclass_json
@@ -185,7 +190,7 @@ class Component:
 
         return unit_price * qty + handling_fee
 
-    #TODO FIXME this used to be a cached property
+    # TODO FIXME this used to be a cached property
     def attribute_literals(
         self,
         *,
@@ -247,16 +252,17 @@ class Component:
                     missing_attrs.append(name)
                     continue
 
+                # Skip None literals - they mean the attribute is unconstrained
+                if literal is None:
+                    continue
+
                 # Get the parameter traits
                 assert param_node.has_trait(F.Parameters.is_parameter)
-                param_op = param_node.get_trait(F.Parameters.is_parameter_operatable)
                 param_operand = param_node.get_trait(F.Parameters.can_be_operand)
-
-                if literal is None:
-                    literal = param_op.domain.unbounded(param_op)
 
                 # Create Is expression to alias parameter to the literal value
                 from faebryk.library.Expressions import Is
+
                 Is.bind_typegraph(tg=module.tg).create_instance(g=module.g).setup(
                     param_operand,
                     literal.as_operand.get(),

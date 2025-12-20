@@ -149,7 +149,7 @@ def _prepare_query(
                         BackendPackage.from_smd_size(SMDSize[s], trait.pick_type)  # type: ignore[attr-defined]
                         for s in F.Literals.AbstractEnums(
                             package_constraint.switch_cast().instance
-                        ).get_values()
+                        ).get_names()
                     ]
                 )
             )

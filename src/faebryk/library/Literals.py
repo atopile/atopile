@@ -4203,11 +4203,12 @@ class Numbers(fabll.Node):
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         return self.get_numeric_set().contains(other_converted.get_single())
 
-    def serialize(self) -> dict:
+    def serialize(self) -> dict | None:
         """
         Serialize this quantity set to the API format.
 
-        Returns a dict matching the component API format:
+        Returns None if the set is fully unbounded (unconstrained).
+        Otherwise returns a dict matching the component API format:
         {
             "type": "Quantity_Set_Discrete" | "Quantity_Interval_Disjoint",
             "data": {
@@ -4219,23 +4220,30 @@ class Numbers(fabll.Node):
                         ]
                     }
                 },
-                "unit": "kiloohm"  # string unit name
+                "unit": "henry"  # base SI unit name
             }
         }
 
         Uses "Quantity_Set_Discrete" when all values are discrete (singletons),
         otherwise uses "Quantity_Interval_Disjoint" for ranges.
 
-        Values are in base SI units (e.g., ohms for resistance).
-        Unit string indicates the display/original unit (e.g., "kiloohm").
+        Values are in base SI units (e.g., 7e-8 for 70nH).
+        Unit string is also the base SI unit (e.g., "henry" not "nanohenry").
         """
+        # If fully unbounded (min=-inf, max=inf), return None for API
+        numeric_set = self.get_numeric_set()
+        if (
+            numeric_set.get_min_value() == -math.inf
+            and numeric_set.get_max_value() == math.inf
+        ):
+            return None
+
+        base_unit = self.get_is_unit().to_base_units(g=self.g, tg=self.tg)
         as_base_units = self.convert_to_unit(
             g=self.g,
             tg=self.tg,
-            unit=self.get_is_unit().to_base_units(g=self.g, tg=self.tg),
+            unit=base_unit,
         )
-        # Use Quantity_Set_Discrete for discrete sets (all intervals are singletons),
-        # otherwise use Quantity_Interval_Disjoint for ranges
         numeric_set = as_base_units.get_numeric_set()
         type_name = (
             "Quantity_Set_Discrete"
@@ -4245,9 +4253,9 @@ class Numbers(fabll.Node):
         return {
             "type": type_name,
             "data": {
-                # note base unit for values only
+                # Both values and unit string are in base SI
                 "intervals": numeric_set.serialize(),
-                "unit": self.get_is_unit().serialize(),
+                "unit": base_unit.serialize(),
             },
         }
 

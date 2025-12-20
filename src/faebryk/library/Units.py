@@ -1773,7 +1773,7 @@ class Henry(fabll.Node):
     )
     can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
     is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
-    _is_si_prefixed = fabll.Traits.MakeEdge(is_si_prefixed_unit.MakeChild())
+    is_si_prefixed = fabll.Traits.MakeEdge(is_si_prefixed_unit.MakeChild())
 
 
 class DegreeCelsius(fabll.Node):
