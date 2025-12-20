@@ -531,40 +531,6 @@ class ASTVisitor:
             return f"{self._state.import_path}::{name}"
         return name
 
-    def _validate_block_has_traits(
-        self,
-        type_node: graph.BoundNode,
-        block_identifier: str,
-        block_name: str,
-        required_traits: list[str],
-    ) -> None:
-        """
-        Validate that a block has all required traits.
-
-        Traits added via `trait` statement get identifiers like
-        `_trait_self_{trait_name}` in the type's make_children.
-        """
-        # Collect all child identifiers from the type node
-        child_identifiers = frozenset(
-            id
-            for id, _ in self._type_graph.collect_make_children(type_node=type_node)
-            if id is not None
-        )
-
-        missing_traits: list[str] = []
-        for trait_name in required_traits:
-            # Traits on self have identifier `_trait_self_{trait_name}`
-            trait_identifier = f"{ActionsFactory.TRAIT_ID_PREFIX}self_{trait_name}"
-            if trait_identifier not in child_identifiers:
-                missing_traits.append(trait_name)
-
-        if missing_traits:
-            traits_list = ", ".join(f"`{t}`" for t in missing_traits)
-            raise DslException(
-                f"{block_identifier} `{block_name}` is missing required trait: "
-                f"{traits_list}."
-            )
-
     def build(self) -> BuildState:
         assert self._ast_root.isinstance(AST.File)
         self.visit(self._ast_root)
@@ -889,24 +855,6 @@ class ASTVisitor:
             with self._type_stack.enter(type_node, type_node_bound_tg, module_name):
                 for stmt in stmts:
                     self._type_stack.apply_action(self.visit(stmt))
-
-        # Validate component blocks have required traits for part picking.
-        # Only validate components without a super type - components that inherit
-        # will get traits from their parent (resolved during linking).
-        if (
-            node.get_block_type() == AST.BlockDefinition.BlockType.COMPONENT
-            and node.get_super_type_ref_name() is None
-        ):
-            self._validate_block_has_traits(
-                type_node=type_node,
-                block_name=module_name,
-                block_identifier="Component",
-                required_traits=[
-                    "is_atomic_part",
-                    "has_designator_prefix",
-                    "has_part_picked",
-                ],
-            )
 
         self._state.type_roots[module_name] = type_node
         self._scope_stack.add_symbol(Symbol(name=module_name, type_node=type_node))
