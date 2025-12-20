@@ -65,6 +65,11 @@ class FieldPath:
         return head
 
     @property
+    def root(self) -> "FieldPath.Segment":
+        (head, *_) = self.segments
+        return head
+
+    @property
     def leaf(self) -> "FieldPath.Segment":
         *_, tail = self.segments
         return tail
