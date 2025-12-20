@@ -713,17 +713,21 @@ def test_invalid_multiple_new_count_float():
 
 
 def test_invalid_multiple_new_count_hex():
-    with pytest.raises(DslException):
-        build_instance(
-            """
+    _, _, _, result, app_instance = build_instance(
+        """
             module Inner:
                 pass
 
             module A:
                 resistors = new Inner[0x10]
             """,
-            "A",
-        )
+        "A",
+    )
+    assert "A" in result.state.type_roots
+    resistors = F.Collections.PointerSequence.bind_instance(
+        _get_child(app_instance, "resistors")
+    )
+    assert len(resistors.as_list()) == 16
 
 
 def test_nested_nodes():

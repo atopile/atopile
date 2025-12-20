@@ -12,6 +12,7 @@ import atopile.compiler.ast_types as AST
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
+from atopile.compiler import DslException
 from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
@@ -943,12 +944,20 @@ class ANTLRVisitor(AtoParserVisitor):
     def visitNumber_hint_natural(
         self, ctx: AtoParser.Number_hint_naturalContext
     ) -> int:
-        return self._parse_int(ctx.getText())
+        try:
+            return self._parse_int(ctx.getText())
+        except ValueError:
+            raise DslException(
+                f"Expected a natural number (positive integer), got `{ctx.getText()}`"
+            )
 
     def visitNumber_hint_integer(
         self, ctx: AtoParser.Number_hint_integerContext
     ) -> int:
-        return self._parse_int(ctx.getText())
+        try:
+            return self._parse_int(ctx.getText())
+        except ValueError:
+            raise DslException(f"Expected an integer, got `{ctx.getText()}`")
 
     def visitMif(self, ctx: AtoParser.MifContext) -> AST.is_connectable:
         return self.visitConnectable(ctx.connectable())
