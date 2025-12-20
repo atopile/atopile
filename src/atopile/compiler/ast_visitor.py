@@ -1197,8 +1197,9 @@ class ASTVisitor:
         if target_path.parent_segments:
             parent_path = FieldPath(segments=tuple(target_path.parent_segments))
 
-            # Nested paths are validated later by the typegraph
-            self._scope_stack.ensure_defined(target_path.root)
+            # Nested paths are validated later by the typegraph.
+            # Wrap the root segment in a FieldPath (ensure_defined expects FieldPath).
+            self._scope_stack.ensure_defined(FieldPath(segments=(target_path.root,)))
 
             parent_reference = self._type_stack.resolve_reference(
                 parent_path,
@@ -1845,8 +1846,9 @@ class ASTVisitor:
         target_path_list: LinkPath = []
         if (target_field_ref := node.get_target()) is not None:
             target_path = self.visit_FieldRef(target_field_ref)
-            # Nested paths are validated later by the typegraph
-            self._scope_stack.ensure_defined(target_path.root)
+            # Nested paths are validated later by the typegraph.
+            # Wrap the root segment in a FieldPath (ensure_defined expects FieldPath).
+            self._scope_stack.ensure_defined(FieldPath(segments=(target_path.root,)))
             target_path_list = list(target_path.identifiers())
 
         template_args = self._extract_template_args(node.template.get())
