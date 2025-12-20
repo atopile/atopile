@@ -19,8 +19,7 @@ from faebryk.libs.picker.api.picker_lib import (
     check_and_attach_candidates,
     get_candidates,
 )
-from faebryk.libs.picker.lcsc import PickedPartLCSC
-from faebryk.libs.picker.picker import PickError, pick_part_recursively
+from faebryk.libs.picker.picker import PickedPart, PickError, pick_part_recursively
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.test.boundexpressions import BoundExpressions
 from faebryk.libs.util import cast_assert, groupby, indented_container
@@ -80,7 +79,7 @@ def test_pick_module(case: "ComponentTestCase"):
 
     # Check LCSC & MFR
     if case.lcsc_id:
-        assert cast_assert(PickedPartLCSC, part).lcsc_id == case.lcsc_id
+        assert cast_assert(PickedPart, part).supplier_partno == case.lcsc_id
     elif case.mfr_mpn:
         assert part.manufacturer == case.mfr_mpn[0]
         assert part.partno == case.mfr_mpn[1]
@@ -284,6 +283,11 @@ def test_pick_resistor_by_params():
 
     class App(fabll.Node):
         r1 = F.Resistor.MakeChild()
+        r1.add_dependant(
+            fabll.Traits.MakeEdge(
+                F.has_package_requirements.MakeChild(size=SMDSize.I0805), [r1]
+            )
+        )
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
 
@@ -295,7 +299,6 @@ def test_pick_resistor_by_params():
 
     # Constrain package
     fabll.Traits.create_and_add_instance_to(app.r1.get(), F.has_package_requirements)
-    app.r1.get().get_trait(F.has_package_requirements).setup(SMDSize.I0805)
 
     tree = get_pick_tree(app)
     pick_topologically(tree, solver)
@@ -390,9 +393,9 @@ def test_pick_led_by_colour():
 
     assert led.has_trait(F.has_part_picked)
     solver.update_superset_cache(led)
-    assert solver.inspect_get_known_supersets(led.color).is_subset_of(
-        EnumSet.from_value(color)
-    )
+    assert solver.inspect_get_known_supersets(
+        led.color.get().is_parameter.get()
+    ).is_subset_of(E.lit_op_enum(color).as_literal.get())
 
 
 @pytest.mark.usefixtures("setup_project_config")
@@ -584,12 +587,14 @@ def test_null_solver():
 
     class App(fabll.Node):
         cap = F.Capacitor.MakeChild()
+        cap.add_dependant(
+            fabll.Traits.MakeEdge(
+                F.has_package_requirements.MakeChild(size=SMDSize.I0805), [cap]
+            )
+        )
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
 
-    fabll.Traits.create_and_add_instance_to(
-        app.cap.get(), F.has_package_requirements
-    ).setup(SMDSize.I0805)
     E.is_(
         app.cap.get().capacitance.get().can_be_operand.get(),
         capacitance,
