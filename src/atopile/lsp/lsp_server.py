@@ -15,6 +15,7 @@ This LSP server provides:
 
 from __future__ import annotations
 
+import inspect
 import logging
 import re
 import textwrap
@@ -407,6 +408,7 @@ def build_document(uri: str, source: str) -> DocumentState:
     diagnostics: list[lsp.Diagnostic] = []
 
     build_succeeded = False
+    linking_succeeded = False
     with DowngradedExceptionCollector(UserException) as collector:
         try:
             # Build the source
@@ -438,6 +440,7 @@ def build_document(uri: str, source: str) -> DocumentState:
                     tg=tg,
                 )
                 linker.link_imports(g, result.state)
+                linking_succeeded = True
             except Exception as link_error:
                 # Linking failures are warnings, not errors
                 diagnostics.append(
@@ -484,6 +487,15 @@ def build_document(uri: str, source: str) -> DocumentState:
                 if exc_path is None or exc_path.resolve() == document_path:
                     diagnostics.append(diag)
 
+    # If build AND linking succeeded, validate field references against typegraph
+    # Only validate when linking succeeded - otherwise external types aren't resolved
+    # and we'd get false positives for valid references to imported types
+    if build_succeeded and linking_succeeded and state.build_result is not None:
+        field_ref_diagnostics = _validate_field_references(
+            g=g, tg=tg, build_result=state.build_result, uri=uri
+        )
+        diagnostics.extend(field_ref_diagnostics)
+
     # If the build succeeded, commit the new graph and discard the old one
     if build_succeeded:
         # Destroy old graph if it exists
@@ -506,6 +518,128 @@ def build_document(uri: str, source: str) -> DocumentState:
 
     state.diagnostics = diagnostics
     return state
+
+
+def _validate_field_references(
+    g: graph.GraphView,
+    tg: fbrk.TypeGraph,
+    build_result,
+    uri: str,
+) -> list[lsp.Diagnostic]:
+    """
+    Validate all field references in the document against the linked typegraph.
+
+    This catches references to non-existent members like `micro.power_big` where
+    `power_big` doesn't exist on the `micro` type.
+
+    Returns a list of diagnostics for invalid field references.
+    """
+    diagnostics: list[lsp.Diagnostic] = []
+
+    try:
+        # Get all FieldRef instances from the graph
+        field_ref_type = AST.FieldRef.bind_typegraph(tg)
+
+        for inst in field_ref_type.get_instances(g):
+            try:
+                fr = inst.cast(AST.FieldRef)
+
+                # Get the parts of the field reference
+                parts = list(fr.parts.get().as_list())
+                if len(parts) < 2:
+                    # Single-part references are just local names, skip
+                    continue
+
+                path_parts: list[str] = []
+                for p in parts:
+                    part = p.cast(AST.FieldRefPart)
+                    name = part.name.get().get_single()
+                    path_parts.append(name)
+
+                # Find the containing module type to validate the path
+                # The first part should be a child of one of the type_roots
+                root_name = path_parts[0]
+                parent_type = None
+
+                for type_name, type_node in build_result.state.type_roots.items():
+                    try:
+                        # Check if root_name is a child of this type
+                        children = tg.collect_make_children(type_node=type_node)
+                        for child_name, _ in children:
+                            if child_name == root_name:
+                                parent_type = type_node
+                                break
+                    except Exception:
+                        continue
+                    if parent_type is not None:
+                        break
+
+                if parent_type is None:
+                    # Couldn't find containing type, skip validation
+                    continue
+
+                # Use ensure_child_reference with validate=True to check the path
+                # This properly traverses through type references (mounts)
+                try:
+                    # Cast to expected type (strings are valid path segments)
+                    path_for_validation: list[str | fbrk.EdgeTraversal] = list(
+                        path_parts
+                    )
+                    tg.ensure_child_reference(
+                        type_node=parent_type,
+                        path=path_for_validation,
+                        validate=True,
+                    )
+                except fbrk.TypeGraphPathError as exc:
+                    # Path doesn't exist - create diagnostic
+                    loc = fr.source.get().loc.get()
+                    line = loc.get_start_line() - 1
+                    col = loc.get_start_col()
+                    full_path = ".".join(path_parts)
+
+                    # Format error message based on error kind
+                    if exc.kind == "missing_parent":
+                        failing_segment = exc.failing_segment or "unknown"
+                        parent_path = ".".join(
+                            exc.path[: exc.failing_segment_index]
+                            if exc.path
+                            else path_parts[:-1]
+                        )
+                        message = (
+                            f"Field `{failing_segment}` does not exist "
+                            f"on `{parent_path or path_parts[0]}`"
+                        )
+                    elif exc.kind == "invalid_index":
+                        index_val = exc.index_value or exc.failing_segment
+                        container = ".".join(
+                            exc.path[: exc.failing_segment_index] if exc.path else []
+                        )
+                        message = f"Index `{index_val}` out of range on `{container}`"
+                    else:
+                        message = f"Field `{full_path}` is not defined"
+
+                    diagnostics.append(
+                        lsp.Diagnostic(
+                            range=lsp.Range(
+                                start=lsp.Position(line=line, character=col),
+                                end=lsp.Position(
+                                    line=line, character=col + len(full_path)
+                                ),
+                            ),
+                            message=message,
+                            severity=lsp.DiagnosticSeverity.Error,
+                            source=TOOL_DISPLAY,
+                        )
+                    )
+
+            except Exception as e:
+                logger.debug(f"Error processing FieldRef for validation: {e}")
+                continue
+
+    except Exception as e:
+        logger.debug(f"Error in field reference validation: {e}")
+
+    return diagnostics
 
 
 # -----------------------------------------------------------------------------
@@ -1404,13 +1538,27 @@ def on_document_definition(
         # Fallback: Extract field reference or word under cursor
         document = LSP_SERVER.workspace.get_text_document(uri)
 
-        # Try field reference first (for instances like ldo_3V3)
+        # Try field reference first (for instances like ldo_3V3 or some_obj.member)
         field_ref_info = _get_field_reference_at_position(
             document.source, params.position
         )
         if field_ref_info:
-            full_path, _clicked_word = field_ref_info
-            # Try instance definition first
+            full_path, clicked_word = field_ref_info
+
+            # Check if we clicked on a child member (not the root)
+            # e.g., clicking on "some_power" in "some_other_module.some_power"
+            first_part = full_path.split(".")[0].split("[")[0]
+            clicked_word_stripped = _strip_array_indices(clicked_word)
+
+            if clicked_word_stripped != first_part:
+                # Clicked on a child member - try to find its definition
+                child_location = _find_child_member_definition(
+                    full_path, clicked_word_stripped, state, uri
+                )
+                if child_location:
+                    return child_location
+
+            # Try instance definition (for root instances like ldo_3V3)
             instance_location = _find_instance_definition(full_path, state, uri)
             if instance_location:
                 return instance_location
@@ -1468,6 +1616,68 @@ def on_document_type_definition(
     return None
 
 
+def _get_instance_type_name(field_path: str, state: DocumentState) -> str | None:
+    """
+    Get the type name of an instance from its field path.
+
+    For example, if `ldo_3V3 = new TLV75901_driver`, returns "TLV75901_driver".
+    """
+    if state.type_graph is None or state.graph_view is None:
+        return None
+
+    try:
+        g = state.graph_view
+        tg = state.type_graph
+
+        # Strip array indices for lookup (e.g., "gpios[0]" -> "gpios")
+        stripped_path = _strip_array_indices(field_path)
+        paths_to_try = [field_path]
+        if stripped_path != field_path:
+            paths_to_try.append(stripped_path)
+
+        # Search through all Assignment nodes to find the one that defines this field
+        assignment_type = AST.Assignment.bind_typegraph(tg)
+        for search_path in paths_to_try:
+            for inst in assignment_type.get_instances(g):
+                try:
+                    assignment = inst.cast(AST.Assignment)
+
+                    # Get the target field ref from the assignment
+                    target = assignment.target.get().deref()
+                    target_fr = target.cast(AST.FieldRef)
+
+                    # Build the target path
+                    parts = list(target_fr.parts.get().as_list())
+                    target_parts = []
+                    for p in parts:
+                        part = p.cast(AST.FieldRefPart)
+                        name = part.name.get().get_single()
+                        target_parts.append(name)
+                    target_path = ".".join(target_parts)
+
+                    # Check if this assignment defines the field we're looking for
+                    if target_path == search_path:
+                        # Get the assignable value and cast to NewExpression
+                        assignable = assignment.assignable.get()
+                        value_node = assignable.value.get().deref()
+
+                        # Try to cast to NewExpression
+                        try:
+                            new_expr = value_node.cast(AST.NewExpression)
+                            return new_expr.get_type_ref_name()
+                        except Exception:
+                            pass
+
+                except Exception as e:
+                    logger.debug(f"Error checking assignment for type: {e}")
+                    continue
+
+    except Exception as e:
+        logger.debug(f"Instance type lookup error: {e}")
+
+    return None
+
+
 def _find_instance_type_definition(
     field_path: str, state: DocumentState, uri: str
 ) -> lsp.Location | None:
@@ -1478,6 +1688,88 @@ def _find_instance_type_definition(
     and selecting "Go to Type Definition" should take you to where
     TLV75901_driver is defined.
     """
+    type_name = _get_instance_type_name(field_path, state)
+    if type_name:
+        return _find_type_definition(type_name, state, uri)
+    return None
+
+
+def _find_child_member_definition(
+    full_path: str, clicked_member: str, state: DocumentState, uri: str
+) -> lsp.Location | None:
+    """
+    Find the definition of a child member within a parent type.
+
+    For example, clicking on `.some_power` in `some_other_module.some_power`:
+    - full_path = "some_other_module.some_power"
+    - clicked_member = "some_power"
+    This will find where `some_power` is defined within `OtherModule`.
+    """
+    # Split the path to get the parent
+    parts = full_path.split(".")
+
+    # Find the index of the clicked member in the path
+    # It should be the last part that matches clicked_member
+    member_index = -1
+    for i in range(len(parts) - 1, -1, -1):
+        # Strip array indices for comparison
+        part_name = _strip_array_indices(parts[i])
+        if part_name == clicked_member:
+            member_index = i
+            break
+
+    if member_index <= 0:
+        # Clicked on the root - no parent to look into
+        return None
+
+    # Get the parent path (everything before the clicked member)
+    parent_path = ".".join(parts[:member_index])
+
+    # Find the type of the parent
+    parent_type_name = _get_instance_type_name(parent_path, state)
+    if not parent_type_name:
+        return None
+
+    logger.debug(f"Looking for '{clicked_member}' in type '{parent_type_name}'")
+
+    # Now find where clicked_member is defined within parent_type_name
+    # This could be in a local type definition or in a stdlib/external type
+
+    # First, check local type definitions
+    if state.build_result is not None:
+        type_roots = state.build_result.state.type_roots
+
+        if parent_type_name in type_roots:
+            # Search for the child member definition within this type's block
+            for node_loc in state.ast_nodes:
+                if isinstance(node_loc.node, AST.BlockDefinition):
+                    try:
+                        if node_loc.node.get_type_ref_name() == parent_type_name:
+                            # Found the parent type definition, now search within it
+                            # for the child member assignment
+                            return _find_member_in_block(
+                                clicked_member, node_loc, state, uri
+                            )
+                    except Exception:
+                        continue
+
+    # Check stdlib types
+    stdlib_type = _find_stdlib_type(parent_type_name)
+    if stdlib_type is not None:
+        # For stdlib types, we can try to find the member in the source
+        return _find_member_in_stdlib_type(clicked_member, stdlib_type)
+
+    # Check external types
+    return _find_member_in_external_type(clicked_member, parent_type_name, state, uri)
+
+
+def _find_member_in_block(
+    member_name: str,
+    block_node_loc: ASTNodeLocation,
+    state: DocumentState,
+    uri: str,
+) -> lsp.Location | None:
+    """Find a member definition within a block definition."""
     if state.type_graph is None or state.graph_view is None:
         return None
 
@@ -1485,46 +1777,175 @@ def _find_instance_type_definition(
         g = state.graph_view
         tg = state.type_graph
 
-        # Search through all Assignment nodes to find the one that defines this field
+        # Get the block's source location range to filter nodes
+        block_start = block_node_loc.start_line
+        block_end = block_node_loc.end_line
+
+        # Search through all Assignment nodes
         assignment_type = AST.Assignment.bind_typegraph(tg)
         for inst in assignment_type.get_instances(g):
             try:
                 assignment = inst.cast(AST.Assignment)
+                loc = assignment.source.get().loc.get()
 
-                # Get the target field ref from the assignment
+                # Check if this assignment is within the block
+                if not (block_start <= loc.get_start_line() <= block_end):
+                    continue
+
+                # Get the target name
                 target = assignment.target.get().deref()
                 target_fr = target.cast(AST.FieldRef)
-
-                # Build the target path
                 parts = list(target_fr.parts.get().as_list())
-                target_parts = []
-                for p in parts:
-                    part = p.cast(AST.FieldRefPart)
+
+                # We want single-part assignments (direct children)
+                if len(parts) == 1:
+                    part = parts[0].cast(AST.FieldRefPart)
                     name = part.name.get().get_single()
-                    target_parts.append(name)
-                target_path = ".".join(target_parts)
-
-                # Check if this assignment defines the field we're looking for
-                if target_path == field_path:
-                    # Get the assignable value and cast to NewExpression
-                    assignable = assignment.assignable.get()
-                    value_node = assignable.value.get().deref()
-
-                    # Try to cast to NewExpression
-                    try:
-                        new_expr = value_node.cast(AST.NewExpression)
-                        type_name = new_expr.get_type_ref_name()
-                        return _find_type_definition(type_name, state, uri)
-                    except Exception:
-                        # Not a NewExpression, could be a literal or other value
-                        pass
-
-            except Exception as e:
-                logger.debug(f"Error checking assignment for type: {e}")
+                    if name == member_name:
+                        return lsp.Location(
+                            uri=uri,
+                            range=lsp.Range(
+                                start=lsp.Position(
+                                    line=loc.get_start_line() - 1,
+                                    character=loc.get_start_col(),
+                                ),
+                                end=lsp.Position(
+                                    line=loc.get_end_line() - 1,
+                                    character=loc.get_end_col(),
+                                ),
+                            ),
+                        )
+            except Exception:
                 continue
 
     except Exception as e:
-        logger.debug(f"Instance type definition search error: {e}")
+        logger.debug(f"Error finding member in block: {e}")
+
+    return None
+
+
+def _find_member_in_stdlib_type(
+    member_name: str, stdlib_type: type
+) -> lsp.Location | None:
+    """Find a member definition within a stdlib type."""
+    try:
+        # Get the source file for the stdlib type
+        source_file = inspect.getfile(stdlib_type)
+
+        # Read the source and find the member
+        source = Path(source_file).read_text()
+        lines = source.splitlines()
+
+        # Look for patterns like:
+        # - "member_name = " (assignment)
+        # - "member_name:" (declaration)
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if (
+                stripped.startswith(f"{member_name} =")
+                or stripped.startswith(f"{member_name}=")
+                or stripped.startswith(f"{member_name}:")
+            ):
+                col = line.index(member_name)
+                return lsp.Location(
+                    uri=f"file://{source_file}",
+                    range=lsp.Range(
+                        start=lsp.Position(line=i, character=col),
+                        end=lsp.Position(line=i, character=col + len(member_name)),
+                    ),
+                )
+
+    except Exception as e:
+        logger.debug(f"Error finding member in stdlib type: {e}")
+
+    return None
+
+
+def _find_member_in_external_type(
+    member_name: str, type_name: str, state: DocumentState, uri: str
+) -> lsp.Location | None:
+    """Find a member definition within an externally imported type."""
+    if state.build_result is None:
+        return None
+
+    try:
+        # First find the external type's file
+        external_refs = state.build_result.state.external_type_refs
+        for _node_ref, import_ref in external_refs:
+            if import_ref.name != type_name:
+                continue
+
+            if not hasattr(import_ref, "path") or not import_ref.path:
+                continue
+
+            # Resolve the path
+            current_file_path = get_file_path(uri)
+            current_dir = current_file_path.parent
+            project_dir = find_project_dir(current_file_path)
+
+            target_file = None
+
+            # Try relative to current file
+            relative_to_current = current_dir / import_ref.path
+            if relative_to_current.exists():
+                target_file = relative_to_current
+
+            # Try .ato/modules/
+            if target_file is None and project_dir:
+                modules_path = project_dir / ".ato" / "modules" / import_ref.path
+                if modules_path.exists():
+                    target_file = modules_path
+
+            if target_file is None:
+                continue
+
+            # Read the file and find the member within the type
+            source = target_file.read_text()
+            lines = source.splitlines()
+
+            # First find the type definition
+            in_type_block = False
+            indent_level = 0
+            type_pattern = re.compile(
+                rf"^\s*(module|interface|component)\s+{re.escape(type_name)}\s*"
+            )
+
+            for i, line in enumerate(lines):
+                if type_pattern.match(line):
+                    in_type_block = True
+                    # Determine the indent level of the block content
+                    indent_level = (
+                        len(line) - len(line.lstrip()) + 4
+                    )  # Assume 4-space indent
+                    continue
+
+                if in_type_block:
+                    # Check if we've exited the block
+                    if line.strip() and not line.startswith(" " * indent_level):
+                        # Check if it's a new top-level definition
+                        if re.match(r"^\s*(module|interface|component)\s+", line):
+                            break
+
+                    # Look for the member definition
+                    stripped = line.strip()
+                    if (
+                        stripped.startswith(f"{member_name} =")
+                        or stripped.startswith(f"{member_name}=")
+                        or stripped.startswith(f"{member_name}:")
+                    ):
+                        col = line.index(member_name)
+                        return lsp.Location(
+                            uri=f"file://{target_file.resolve()}",
+                            range=lsp.Range(
+                                start=lsp.Position(line=i, character=col),
+                                end=lsp.Position(
+                                    line=i, character=col + len(member_name)
+                                ),
+                            ),
+                        )
+
+    except Exception as e:
+        logger.debug(f"Error finding member in external type: {e}")
 
     return None
 
@@ -2256,6 +2677,386 @@ def _find_references_in_workspace(word: str) -> list[lsp.Location]:
                 references.extend(doc_refs)
     except Exception as e:
         logger.debug(f"Workspace reference search error: {e}")
+
+    return references
+
+
+# -----------------------------------------------------------------------------
+# Rename Symbol
+# -----------------------------------------------------------------------------
+
+
+@LSP_SERVER.feature(lsp.TEXT_DOCUMENT_PREPARE_RENAME)
+def on_prepare_rename(
+    params: lsp.PrepareRenameParams,
+) -> lsp.PrepareRenameResult | None:
+    """
+    Validate that a rename is possible at the cursor position.
+
+    Returns the range of the symbol to be renamed, or None if rename
+    is not possible at this position.
+    """
+    try:
+        uri = params.text_document.uri
+        document = LSP_SERVER.workspace.get_text_document(uri)
+        source = document.source
+        position = params.position
+
+        # Get the symbol at the cursor position
+        symbol_info = _get_renameable_symbol_at_position(source, position)
+        if symbol_info is None:
+            return None
+
+        symbol_name, symbol_range = symbol_info
+        return lsp.PrepareRenamePlaceholder(
+            range=symbol_range,
+            placeholder=symbol_name,
+        )
+
+    except Exception as e:
+        logger.debug(f"Prepare rename error: {e}")
+        return None
+
+
+@LSP_SERVER.feature(lsp.TEXT_DOCUMENT_RENAME)
+def on_rename(params: lsp.RenameParams) -> lsp.WorkspaceEdit | None:
+    """
+    Rename a symbol across the document.
+
+    Finds all references to the symbol and returns a WorkspaceEdit
+    containing the text edits to rename all occurrences.
+    """
+    try:
+        uri = params.text_document.uri
+        document = LSP_SERVER.workspace.get_text_document(uri)
+        source = document.source
+        position = params.position
+        new_name = params.new_name
+
+        # Validate the new name is a valid identifier
+        if not _is_valid_identifier(new_name):
+            logger.debug(f"Invalid new name: {new_name}")
+            return None
+
+        # Get the symbol at the cursor position
+        symbol_info = _get_renameable_symbol_at_position(source, position)
+        if symbol_info is None:
+            return None
+
+        old_name, _ = symbol_info
+
+        # Get document state for graph-based search
+        state = get_document_state(uri)
+
+        # Find all references using the graph
+        # We need to find all occurrences of the symbol name
+        text_edits = _find_rename_edits(old_name, new_name, state, uri, source)
+
+        if not text_edits:
+            return None
+
+        return lsp.WorkspaceEdit(
+            changes={uri: text_edits},
+        )
+
+    except Exception as e:
+        logger.debug(f"Rename error: {e}")
+        return None
+
+
+def _get_renameable_symbol_at_position(
+    source: str, position: lsp.Position
+) -> tuple[str, lsp.Range] | None:
+    """
+    Get the renameable symbol at the cursor position.
+
+    Returns (symbol_name, range) for simple identifiers only.
+    Field paths like "a.b.c" are handled by identifying which part
+    the cursor is on.
+    """
+    lines = source.splitlines()
+    if position.line >= len(lines):
+        return None
+
+    line = lines[position.line]
+    col = position.character
+
+    if col >= len(line):
+        return None
+
+    # Check if cursor is on an identifier character
+    char_at_cursor = line[col] if col < len(line) else ""
+    if not (char_at_cursor.isalnum() or char_at_cursor == "_"):
+        return None
+
+    # Expand left to find start of identifier
+    start = col
+    while start > 0 and (line[start - 1].isalnum() or line[start - 1] == "_"):
+        start -= 1
+
+    # Expand right to find end of identifier
+    end = col
+    while end < len(line) and (line[end].isalnum() or line[end] == "_"):
+        end += 1
+
+    symbol = line[start:end]
+
+    # Don't allow renaming keywords
+    keywords = {
+        "import",
+        "from",
+        "new",
+        "module",
+        "component",
+        "interface",
+        "signal",
+        "pin",
+        "assert",
+        "within",
+        "is",
+        "to",
+        "trait",
+        "for",
+        "in",
+        "pass",
+        "True",
+        "False",
+    }
+    if symbol in keywords:
+        return None
+
+    symbol_range = lsp.Range(
+        start=lsp.Position(line=position.line, character=start),
+        end=lsp.Position(line=position.line, character=end),
+    )
+
+    return (symbol, symbol_range)
+
+
+def _is_valid_identifier(name: str) -> bool:
+    """Check if a name is a valid ato identifier."""
+    if not name:
+        return False
+    # Must start with letter or underscore
+    if not (name[0].isalpha() or name[0] == "_"):
+        return False
+    # Rest must be alphanumeric or underscore
+    return all(c.isalnum() or c == "_" for c in name)
+
+
+def _find_rename_edits(
+    old_name: str, new_name: str, state: DocumentState, uri: str, source: str
+) -> list[lsp.TextEdit]:
+    """
+    Find all text edits needed to rename a symbol.
+
+    Uses the graph to find all semantic references - no text-based fallback
+    to ensure we only rename actual code references, not comments or strings.
+    """
+    edits = []
+    seen_ranges: set[tuple[int, int, int, int]] = set()
+
+    if state.build_result is None or state.type_graph is None:
+        logger.debug("No build result for rename - cannot proceed")
+        return edits
+
+    graph_refs = _find_symbol_references_for_rename(old_name, state, uri)
+    for ref in graph_refs:
+        range_key = (
+            ref.range.start.line,
+            ref.range.start.character,
+            ref.range.end.line,
+            ref.range.end.character,
+        )
+        if range_key not in seen_ranges:
+            seen_ranges.add(range_key)
+            edits.append(lsp.TextEdit(range=ref.range, new_text=new_name))
+
+    return edits
+
+
+def _find_symbol_references_for_rename(
+    symbol_name: str, state: DocumentState, uri: str
+) -> list[lsp.Location]:
+    """
+    Find all references to a symbol name for renaming purposes.
+
+    Uses the typegraph to understand the symbol's semantic context, then
+    finds all source locations where it appears.
+
+    Strategy:
+    1. Check if symbol is a type name (in type_roots) -> search TypeRef instances
+    2. Check if symbol is a member of any type (via collect_make_children) ->
+       search FieldRef instances
+    3. Also check SignaldefStmt and ForLoop for signal/iterator names
+    """
+    references = []
+
+    if state.build_result is None or state.type_graph is None:
+        return references
+
+    try:
+        g = state.graph_view
+        tg = state.type_graph
+        type_roots = state.build_result.state.type_roots
+
+        # Determine what kind of symbol this is using the typegraph
+        is_type_name = symbol_name in type_roots
+        is_member_name = False
+        member_parent_types: list[str] = []
+
+        # Check if symbol is a member of any type using typegraph
+        for type_name, type_node in type_roots.items():
+            try:
+                children = tg.collect_make_children(type_node=type_node)
+                for child_name, _ in children:
+                    if child_name == symbol_name:
+                        is_member_name = True
+                        member_parent_types.append(type_name)
+            except Exception as e:
+                logger.debug(f"Error checking children of {type_name}: {e}")
+
+        logger.debug(
+            f"Rename '{symbol_name}': is_type={is_type_name}, "
+            f"is_member={is_member_name}, parents={member_parent_types}"
+        )
+
+        # 1. Search TypeRef instances if it's a type name
+        if is_type_name:
+            type_ref_type = AST.TypeRef.bind_typegraph(tg)
+            for inst in type_ref_type.get_instances(g):
+                try:
+                    tr = inst.cast(AST.TypeRef)
+                    type_name = tr.name.get().get_single()
+
+                    if type_name == symbol_name:
+                        loc = tr.source.get().loc.get()
+                        line = loc.get_start_line() - 1
+                        col = loc.get_start_col()
+                        end_col = col + len(symbol_name)
+
+                        references.append(
+                            lsp.Location(
+                                uri=uri,
+                                range=lsp.Range(
+                                    start=lsp.Position(line=line, character=col),
+                                    end=lsp.Position(line=line, character=end_col),
+                                ),
+                            )
+                        )
+                except Exception as e:
+                    logger.debug(f"Error processing TypeRef for rename: {e}")
+                    continue
+
+        # 2. If it's a member name, search FieldRef instances
+        if is_member_name:
+            field_ref_type = AST.FieldRef.bind_typegraph(tg)
+            for inst in field_ref_type.get_instances(g):
+                try:
+                    fr = inst.cast(AST.FieldRef)
+                    parts = list(fr.parts.get().as_list())
+
+                    for part_node in parts:
+                        part = part_node.cast(AST.FieldRefPart)
+                        name = part.name.get().get_single()
+
+                        if name == symbol_name:
+                            try:
+                                part_loc = part.source.get().loc.get()
+                                line = part_loc.get_start_line() - 1
+                                col = part_loc.get_start_col()
+                                end_col = col + len(symbol_name)
+
+                                references.append(
+                                    lsp.Location(
+                                        uri=uri,
+                                        range=lsp.Range(
+                                            start=lsp.Position(
+                                                line=line, character=col
+                                            ),
+                                            end=lsp.Position(
+                                                line=line, character=end_col
+                                            ),
+                                        ),
+                                    )
+                                )
+                            except Exception:
+                                loc = fr.source.get().loc.get()
+                                line = loc.get_start_line() - 1
+                                col = loc.get_start_col()
+
+                                references.append(
+                                    lsp.Location(
+                                        uri=uri,
+                                        range=lsp.Range(
+                                            start=lsp.Position(
+                                                line=line, character=col
+                                            ),
+                                            end=lsp.Position(
+                                                line=line,
+                                                character=col + len(symbol_name),
+                                            ),
+                                        ),
+                                    )
+                                )
+                except Exception as e:
+                    logger.debug(f"Error processing FieldRef for rename: {e}")
+                    continue
+
+        # 3. Search SignaldefStmt (signal definitions)
+        signal_def_type = AST.SignaldefStmt.bind_typegraph(tg)
+        for inst in signal_def_type.get_instances(g):
+            try:
+                sig = inst.cast(AST.SignaldefStmt)
+                sig_name = sig.name.get().get_single()
+
+                if sig_name == symbol_name:
+                    loc = sig.source.get().loc.get()
+                    line = loc.get_start_line() - 1
+                    col = loc.get_start_col() + len("signal ")
+                    end_col = col + len(symbol_name)
+
+                    references.append(
+                        lsp.Location(
+                            uri=uri,
+                            range=lsp.Range(
+                                start=lsp.Position(line=line, character=col),
+                                end=lsp.Position(line=line, character=end_col),
+                            ),
+                        )
+                    )
+            except Exception as e:
+                logger.debug(f"Error processing SignaldefStmt for rename: {e}")
+                continue
+
+        # 4. Search ForLoop iterators
+        for_loop_type = AST.ForLoop.bind_typegraph(tg)
+        for inst in for_loop_type.get_instances(g):
+            try:
+                loop = inst.cast(AST.ForLoop)
+                iter_name = loop.iterator_name.get().get_single()
+
+                if iter_name == symbol_name:
+                    loc = loop.source.get().loc.get()
+                    line = loc.get_start_line() - 1
+                    col = loc.get_start_col() + len("for ")
+                    end_col = col + len(symbol_name)
+
+                    references.append(
+                        lsp.Location(
+                            uri=uri,
+                            range=lsp.Range(
+                                start=lsp.Position(line=line, character=col),
+                                end=lsp.Position(line=line, character=end_col),
+                            ),
+                        )
+                    )
+            except Exception as e:
+                logger.debug(f"Error processing ForLoop for rename: {e}")
+                continue
+
+    except Exception as e:
+        logger.debug(f"Symbol reference search error for rename: {e}")
 
     return references
 

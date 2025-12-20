@@ -22,6 +22,7 @@ from atopile.lsp.lsp_server import (
     DOCUMENT_STATES,
     _build_stdlib_type_hover,
     _create_auto_import_action,
+    _find_child_member_definition,
     _find_import_insert_line,
     _find_references_in_document,
     _find_stdlib_type,
@@ -499,6 +500,87 @@ module App:
         assert isinstance(result, lsp.Location)
         # Should point to Resistor's definition
         assert "Resistor" in result.uri
+
+        # Cleanup
+        if test_uri in DOCUMENT_STATES:
+            DOCUMENT_STATES[test_uri].reset_graph()
+            del DOCUMENT_STATES[test_uri]
+
+    def test_find_child_member_definition(self):
+        """
+        Test go-to-definition on a child member takes you to the member definition.
+        """
+        ato_content = """\
+import ElectricPower
+
+module OtherModule:
+    some_power = new ElectricPower
+    some_logic = new ElectricPower
+
+module ESP32_MINIMAL:
+    power_3v3 = new ElectricPower
+    some_other_module = new OtherModule
+    some_other_module.some_power ~ power_3v3
+"""
+        test_uri = "file:///test_child_member_def.ato"
+
+        if test_uri in DOCUMENT_STATES:
+            del DOCUMENT_STATES[test_uri]
+
+        state = build_document(test_uri, ato_content)
+
+        # Test clicking on 'some_power' in 'some_other_module.some_power'
+        # This should take us to line 3 where 'some_power = new ElectricPower'
+        #  is defined
+        result = _find_child_member_definition(
+            "some_other_module.some_power", "some_power", state, test_uri
+        )
+
+        assert result is not None
+        assert isinstance(result, lsp.Location)
+        # Line 3 (0-indexed) is where some_power is defined
+        assert result.range.start.line == 3, (
+            f"Expected line 3, got {result.range.start.line}"
+        )
+        # Column should be 4 (indented)
+        assert result.range.start.character == 4
+
+        # Cleanup
+        if test_uri in DOCUMENT_STATES:
+            DOCUMENT_STATES[test_uri].reset_graph()
+            del DOCUMENT_STATES[test_uri]
+
+    def test_find_child_member_definition_nested(self):
+        """Test go-to-definition on nested child members."""
+        ato_content = """\
+import ElectricPower
+
+module InnerModule:
+    inner_power = new ElectricPower
+
+module OuterModule:
+    inner = new InnerModule
+
+module App:
+    outer = new OuterModule
+    outer.inner.inner_power ~ outer.inner.inner_power
+"""
+        test_uri = "file:///test_nested_child_def.ato"
+
+        if test_uri in DOCUMENT_STATES:
+            del DOCUMENT_STATES[test_uri]
+
+        state = build_document(test_uri, ato_content)
+
+        # Test clicking on 'inner' in 'outer.inner'
+        result = _find_child_member_definition("outer.inner", "inner", state, test_uri)
+
+        assert result is not None
+        assert isinstance(result, lsp.Location)
+        # Line 6 (0-indexed) is where 'inner = new InnerModule' is defined
+        assert result.range.start.line == 6, (
+            f"Expected line 6, got {result.range.start.line}"
+        )
 
         # Cleanup
         if test_uri in DOCUMENT_STATES:
@@ -1052,6 +1134,306 @@ module App:
         assert result is not None
         assert len(result) == 1  # Single edit replacing the whole document
         assert "    r1 = new Resistor" in result[0].new_text
+
+
+# -----------------------------------------------------------------------------
+# Rename Symbol Tests
+# -----------------------------------------------------------------------------
+
+
+class TestRenameSymbol:
+    """Tests for rename symbol functionality"""
+
+    def test_get_renameable_symbol_simple(self):
+        """Test extracting a simple symbol at cursor position"""
+        from atopile.lsp.lsp_server import _get_renameable_symbol_at_position
+
+        source = "r1 = new Resistor"
+        position = lsp.Position(line=0, character=0)  # On 'r1'
+
+        result = _get_renameable_symbol_at_position(source, position)
+        assert result is not None
+        symbol, range_ = result
+        assert symbol == "r1"
+        assert range_.start.character == 0
+        assert range_.end.character == 2
+
+    def test_get_renameable_symbol_in_path(self):
+        """Test extracting a symbol from a field path"""
+        from atopile.lsp.lsp_server import _get_renameable_symbol_at_position
+
+        source = "r1.resistance = 10kohm"
+        # Cursor on 'resistance' (starts at column 3)
+        position = lsp.Position(line=0, character=5)
+
+        result = _get_renameable_symbol_at_position(source, position)
+        assert result is not None
+        symbol, range_ = result
+        assert symbol == "resistance"
+        assert range_.start.character == 3
+        assert range_.end.character == 13
+
+    def test_get_renameable_symbol_keyword_rejected(self):
+        """Test that keywords cannot be renamed"""
+        from atopile.lsp.lsp_server import _get_renameable_symbol_at_position
+
+        source = "import Resistor"
+        position = lsp.Position(line=0, character=0)  # On 'import'
+
+        result = _get_renameable_symbol_at_position(source, position)
+        assert result is None
+
+    def test_get_renameable_symbol_module_keyword_rejected(self):
+        """Test that 'module' keyword cannot be renamed"""
+        from atopile.lsp.lsp_server import _get_renameable_symbol_at_position
+
+        source = "module MyModule:"
+        position = lsp.Position(line=0, character=0)  # On 'module'
+
+        result = _get_renameable_symbol_at_position(source, position)
+        assert result is None
+
+    def test_is_valid_identifier(self):
+        """Test identifier validation"""
+        from atopile.lsp.lsp_server import _is_valid_identifier
+
+        assert _is_valid_identifier("r1") is True
+        assert _is_valid_identifier("my_resistor") is True
+        assert _is_valid_identifier("_private") is True
+        assert _is_valid_identifier("Resistor123") is True
+
+        assert _is_valid_identifier("") is False
+        assert _is_valid_identifier("123abc") is False
+        assert _is_valid_identifier("my-resistor") is False
+        assert _is_valid_identifier("my resistor") is False
+
+    def test_find_rename_edits_simple(self):
+        """Test finding rename edits for a simple symbol using typegraph"""
+        from atopile.lsp.lsp_server import (
+            DOCUMENT_STATES,
+            _find_rename_edits,
+            build_document,
+        )
+
+        test_uri = "file:///test_rename_edits.ato"
+        source = """import Resistor
+
+module App:
+    r1 = new Resistor
+    r1.resistance = 10kohm +/- 5%
+"""
+        # Cleanup any existing state
+        if test_uri in DOCUMENT_STATES:
+            DOCUMENT_STATES[test_uri].reset_graph()
+            del DOCUMENT_STATES[test_uri]
+
+        state = build_document(test_uri, source)
+
+        edits = _find_rename_edits("r1", "resistor1", state, test_uri, source)
+
+        # Should find 2 occurrences of 'r1' (definition + usage)
+        assert len(edits) == 2
+
+        # All edits should replace with the new name
+        for edit in edits:
+            assert edit.new_text == "resistor1"
+
+        # Cleanup
+        if test_uri in DOCUMENT_STATES:
+            DOCUMENT_STATES[test_uri].reset_graph()
+            del DOCUMENT_STATES[test_uri]
+
+    def test_prepare_rename_valid_position(self):
+        """Test prepare rename at a valid position"""
+        from atopile.lsp.lsp_server import on_prepare_rename
+
+        ato_content = "r1 = new Resistor"
+        test_uri = "file:///test_rename.ato"
+
+        mock_params = Mock()
+        mock_params.text_document.uri = test_uri
+        mock_params.position = lsp.Position(line=0, character=0)
+
+        with patch("atopile.lsp.lsp_server.LSP_SERVER") as mock_server:
+            mock_document = Mock()
+            mock_document.source = ato_content
+            mock_server.workspace.get_text_document.return_value = mock_document
+
+            result = on_prepare_rename(mock_params)
+
+        assert result is not None
+        assert result.placeholder == "r1"
+        assert result.range.start.character == 0
+        assert result.range.end.character == 2
+
+    def test_prepare_rename_invalid_position(self):
+        """Test prepare rename at an invalid position (keyword)"""
+        from atopile.lsp.lsp_server import on_prepare_rename
+
+        ato_content = "import Resistor"
+        test_uri = "file:///test_rename.ato"
+
+        mock_params = Mock()
+        mock_params.text_document.uri = test_uri
+        mock_params.position = lsp.Position(line=0, character=0)  # On 'import'
+
+        with patch("atopile.lsp.lsp_server.LSP_SERVER") as mock_server:
+            mock_document = Mock()
+            mock_document.source = ato_content
+            mock_server.workspace.get_text_document.return_value = mock_document
+
+            result = on_prepare_rename(mock_params)
+
+        assert result is None
+
+    def test_rename_symbol_end_to_end(self):
+        """End-to-end test for rename symbol using typegraph"""
+        from atopile.lsp.lsp_server import DOCUMENT_STATES, build_document, on_rename
+
+        ato_content = """import Resistor
+
+module App:
+    r1 = new Resistor
+    r1.resistance = 10kohm +/- 5%
+"""
+        test_uri = "file:///test_rename_e2e.ato"
+
+        # Cleanup any existing state
+        if test_uri in DOCUMENT_STATES:
+            DOCUMENT_STATES[test_uri].reset_graph()
+            del DOCUMENT_STATES[test_uri]
+
+        # Build document to populate typegraph
+        build_document(test_uri, ato_content)
+
+        mock_params = Mock()
+        mock_params.text_document.uri = test_uri
+        mock_params.position = lsp.Position(line=3, character=4)  # On 'r1'
+        mock_params.new_name = "my_resistor"
+
+        with patch("atopile.lsp.lsp_server.LSP_SERVER") as mock_server:
+            mock_document = Mock()
+            mock_document.source = ato_content
+            mock_server.workspace.get_text_document.return_value = mock_document
+
+            result = on_rename(mock_params)
+
+        assert result is not None
+        assert test_uri in result.changes
+        edits = result.changes[test_uri]
+
+        # Should find 2 occurrences of 'r1' (definition + usage)
+        assert len(edits) == 2
+
+        # All should be replaced with new name
+        for edit in edits:
+            assert edit.new_text == "my_resistor"
+
+        # Cleanup
+        if test_uri in DOCUMENT_STATES:
+            DOCUMENT_STATES[test_uri].reset_graph()
+            del DOCUMENT_STATES[test_uri]
+
+    def test_rename_invalid_new_name(self):
+        """Test that invalid new names are rejected"""
+        from atopile.lsp.lsp_server import on_rename
+
+        ato_content = "r1 = new Resistor"
+        test_uri = "file:///test_rename_invalid.ato"
+
+        mock_params = Mock()
+        mock_params.text_document.uri = test_uri
+        mock_params.position = lsp.Position(line=0, character=0)
+        mock_params.new_name = "123invalid"  # Invalid identifier
+
+        with patch("atopile.lsp.lsp_server.LSP_SERVER") as mock_server:
+            mock_document = Mock()
+            mock_document.source = ato_content
+            mock_server.workspace.get_text_document.return_value = mock_document
+
+            result = on_rename(mock_params)
+
+        assert result is None
+
+
+class TestFieldReferenceValidation:
+    """Tests for field reference validation (detecting non-existent fields)"""
+
+    def test_validate_nonexistent_field(self):
+        """Test that referencing a non-existent field creates a diagnostic"""
+        from textwrap import dedent
+
+        from atopile.lsp.lsp_server import DOCUMENT_STATES, build_document
+
+        test_uri = "file:///test_field_validation.ato"
+        ato_content = dedent("""
+            import Resistor
+
+            module App:
+                r1 = new Resistor
+                r1.nonexistent_field = 10kohm
+        """).strip()
+
+        # Cleanup any existing state
+        if test_uri in DOCUMENT_STATES:
+            DOCUMENT_STATES[test_uri].reset_graph()
+            del DOCUMENT_STATES[test_uri]
+
+        state = build_document(test_uri, ato_content)
+
+        # Should have a diagnostic for nonexistent_field
+        error_messages = [d.message for d in state.diagnostics]
+
+        # Check that we have a diagnostic about the nonexistent field
+        found_error = any(
+            "nonexistent_field" in msg
+            and ("does not exist" in msg or "not defined" in msg)
+            for msg in error_messages
+        )
+        assert found_error, (
+            f"Expected error for nonexistent_field, got: {error_messages}"
+        )
+
+        # Cleanup
+        if test_uri in DOCUMENT_STATES:
+            DOCUMENT_STATES[test_uri].reset_graph()
+            del DOCUMENT_STATES[test_uri]
+
+    def test_validate_valid_field(self):
+        """Test that valid field references don't create diagnostics"""
+        from textwrap import dedent
+
+        from atopile.lsp.lsp_server import DOCUMENT_STATES, build_document
+
+        test_uri = "file:///test_field_validation_valid.ato"
+        ato_content = dedent("""
+            import Resistor
+
+            module App:
+                r1 = new Resistor
+                r1.resistance = 10kohm +/- 5%
+        """).strip()
+
+        # Cleanup any existing state
+        if test_uri in DOCUMENT_STATES:
+            DOCUMENT_STATES[test_uri].reset_graph()
+            del DOCUMENT_STATES[test_uri]
+
+        state = build_document(test_uri, ato_content)
+
+        # Should NOT have diagnostics about non-existent fields
+        # (may have other diagnostics like missing imports)
+        nonexistent_errors = [
+            d.message
+            for d in state.diagnostics
+            if "does not exist" in d.message or "not defined" in d.message
+        ]
+        assert len(nonexistent_errors) == 0, f"Unexpected errors: {nonexistent_errors}"
+
+        # Cleanup
+        if test_uri in DOCUMENT_STATES:
+            DOCUMENT_STATES[test_uri].reset_graph()
+            del DOCUMENT_STATES[test_uri]
 
 
 if __name__ == "__main__":
