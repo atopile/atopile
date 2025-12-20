@@ -544,21 +544,28 @@ def _validate_field_references(
             try:
                 fr = inst.cast(AST.FieldRef)
 
-                # Get the parts of the field reference
+                # Get the parts of the field reference including array indices
                 parts = list(fr.parts.get().as_list())
                 if len(parts) < 2:
                     # Single-part references are just local names, skip
                     continue
 
+                # Build path including array indices (e.g., ["r1", "unnamed[0]"])
                 path_parts: list[str] = []
                 for p in parts:
                     part = p.cast(AST.FieldRefPart)
                     name = part.name.get().get_single()
-                    path_parts.append(name)
+                    key = part.get_key()
+                    if key is not None:
+                        # Include array index in the path segment
+                        path_parts.append(f"{name}[{key}]")
+                    else:
+                        path_parts.append(name)
 
                 # Find the containing module type to validate the path
                 # The first part should be a child of one of the type_roots
-                root_name = path_parts[0]
+                # Strip index from first part for lookup
+                root_name = path_parts[0].split("[")[0]
                 parent_type = None
 
                 for type_name, type_node in build_result.state.type_roots.items():
@@ -578,10 +585,10 @@ def _validate_field_references(
                     # Couldn't find containing type, skip validation
                     continue
 
-                # Use ensure_child_reference with validate=True to check the path
-                # This properly traverses through type references (mounts)
+                # Use ensure_child_reference with validate=True to check the path.
+                # The path includes array indices like "unnamed[0]" which the
+                # typegraph can resolve through type mounts.
                 try:
-                    # Cast to expected type (strings are valid path segments)
                     path_for_validation: list[str | fbrk.EdgeTraversal] = list(
                         path_parts
                     )
@@ -590,29 +597,49 @@ def _validate_field_references(
                         path=path_for_validation,
                         validate=True,
                     )
+                    # Path resolved successfully - no error
                 except fbrk.TypeGraphPathError as exc:
                     # Path doesn't exist - create diagnostic
                     loc = fr.source.get().loc.get()
                     line = loc.get_start_line() - 1
                     col = loc.get_start_col()
-                    full_path = ".".join(path_parts)
+                    # Use path without indices for display
+                    display_parts = [p.split("[")[0] for p in path_parts]
+                    full_path = ".".join(display_parts)
 
                     # Format error message based on error kind
                     if exc.kind == "missing_parent":
                         failing_segment = exc.failing_segment or "unknown"
+                        # Strip index from failing segment for display
+                        failing_segment = failing_segment.split("[")[0]
                         parent_path = ".".join(
-                            exc.path[: exc.failing_segment_index]
-                            if exc.path
-                            else path_parts[:-1]
+                            [p.split("[")[0] for p in path_parts[:-1]]
                         )
                         message = (
                             f"Field `{failing_segment}` does not exist "
-                            f"on `{parent_path or path_parts[0]}`"
+                            f"on `{parent_path or path_parts[0].split('[')[0]}`"
+                        )
+                    elif exc.kind == "missing_child":
+                        # missing_child means the field doesn't exist on the type
+                        failing_segment = exc.failing_segment or "unknown"
+                        failing_segment = failing_segment.split("[")[0]
+                        idx = exc.failing_segment_index or 1
+                        parent_path = ".".join(
+                            [p.split("[")[0] for p in path_parts[:idx]]
+                        )
+                        message = (
+                            f"Field `{failing_segment}` does not exist "
+                            f"on `{parent_path}`"
                         )
                     elif exc.kind == "invalid_index":
                         index_val = exc.index_value or exc.failing_segment
                         container = ".".join(
-                            exc.path[: exc.failing_segment_index] if exc.path else []
+                            [
+                                p.split("[")[0]
+                                for p in path_parts[: exc.failing_segment_index]
+                            ]
+                            if exc.path
+                            else []
                         )
                         message = f"Index `{index_val}` out of range on `{container}`"
                     else:
