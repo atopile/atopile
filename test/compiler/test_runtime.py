@@ -581,22 +581,95 @@ def test_empty_module_build():
     assert app.has_trait(is_ato_module)
 
 
-def test_empty_component_build():
+def test_empty_component_build_raises_missing_traits():
+    """
+    Test that an empty component block raises DslException listing missing traits.
+
+    Components require the user to define: is_atomic_part, has_designator_prefix,
+    and has_part_picked traits.
+    """
+    with pytest.raises(DslException) as exc_info:
+        build_instance(
+            """
+            component A:
+                pass
+            """,
+            "A",
+        )
+
+    # Verify the exception message lists all missing traits
+    error_message = str(exc_info.value)
+    assert "is_atomic_part" in error_message
+    assert "has_designator_prefix" in error_message
+    assert "has_part_picked" in error_message
+    assert "Component `A` is missing required trait" in error_message
+
+
+def test_component_build_with_traits():
     g, tg, _, result, app_instance = build_instance(
         """
+        #pragma experiment("TRAITS")
+        import has_designator_prefix
+        import has_part_picked
+        import is_atomic_part
+        import is_auto_generated
+
         component A:
-            pass
-        """,
+            trait is_atomic_part<manufacturer="UNI-ROYAL", partnumber="0603WAF1000T5E", footprint="R0603.kicad_mod", symbol="0603WAF1000T5E.kicad_sym", model="R0603.STEP">
+            trait has_designator_prefix<prefix="R">
+            trait has_part_picked::by_supplier<supplier_id="lcsc", supplier_partno="C22775", manufacturer="UNI-ROYAL", partno="0603WAF1000T5E">
+            """,  # noqa: E501
         "A",
     )
     assert "A" in result.state.type_roots
     app = fabll.Node.bind_instance(app_instance)
-    assert not app.has_trait(is_ato_module)
+    assert not app.has_trait(fabll.is_module)
     assert app.has_trait(is_ato_component)
-    # TODO: should have the following traits (user defined):
     assert app.has_trait(F.is_atomic_part)
     assert app.has_trait(F.has_designator_prefix)
     assert app.has_trait(F.has_part_picked)
+    assert (
+        app.get_trait(F.is_atomic_part)
+        .manufacturer.get()
+        .force_extract_literal()
+        .get_values()[0]
+        == "UNI-ROYAL"
+    )
+    assert (
+        app.get_trait(F.is_atomic_part)
+        .partnumber.get()
+        .force_extract_literal()
+        .get_values()[0]
+        == "0603WAF1000T5E"
+    )
+    assert (
+        app.get_trait(F.is_atomic_part)
+        .footprint.get()
+        .force_extract_literal()
+        .get_values()[0]
+        == "R0603.kicad_mod"
+    )
+    assert (
+        app.get_trait(F.is_atomic_part)
+        .symbol.get()
+        .force_extract_literal()
+        .get_values()[0]
+        == "0603WAF1000T5E.kicad_sym"
+    )
+    assert (
+        app.get_trait(F.is_atomic_part)
+        .model.get()
+        .force_extract_literal()
+        .get_values()[0]
+        == "R0603.STEP"
+    )
+    assert (
+        app.get_trait(F.has_designator_prefix)
+        .prefix.get()
+        .force_extract_literal()
+        .get_values()[0]
+        == "R"
+    )
 
 
 def test_empty_interface_build():
@@ -639,19 +712,19 @@ def test_simple_module_build():
 def test_simple_new():
     g, tg, _, result, app_instance = build_instance(
         """
-        component SomeComponent:
+        module SomeModule:
             signal a
 
         module A:
-            child = new SomeComponent
+            child = new SomeModule
         """,
         "A",
     )
     assert "A" in result.state.type_roots
-    assert "SomeComponent" in result.state.type_roots
+    assert "SomeModule" in result.state.type_roots
     child = _get_child(app_instance, "child")
 
-    assert _get_type_name(child).endswith("SomeComponent")
+    assert _get_type_name(child).endswith("SomeModule")
     a = _get_child(child, "a")
     assert fabll.Node.bind_instance(a).isinstance(F.Electrical)
 
@@ -737,11 +810,19 @@ def test_invalid_multiple_new_count_hex():
 def test_nested_nodes():
     _, tg, _, result, app_instance = build_instance(
         """
+        #pragma experiment("TRAITS")
+        import is_atomic_part
+        import has_designator_prefix
+        import has_part_picked
+
         interface SomeInterface:
             signal d
             signal e
 
         component SomeComponent:
+            trait is_atomic_part<manufacturer="UNI-ROYAL", partnumber="0603WAF1000T5E", footprint="R0603.kicad_mod", symbol="0603WAF1000T5E.kicad_sym", model="R0603.STEP">
+            trait has_designator_prefix<prefix="R">
+            trait has_part_picked::by_supplier<supplier_id="lcsc", supplier_partno="C22775", manufacturer="UNI-ROYAL", partno="0603WAF1000T5E">
             pin A1
             signal a
             a ~ A1
@@ -759,7 +840,7 @@ def test_nested_nodes():
             child = new ChildModule
             intf = new SomeInterface
             intf ~ child.intf
-        """,
+        """,  # noqa: E501
         "A",
     )
     assert "A" in result.state.type_roots
@@ -1079,9 +1160,16 @@ def test_missing_pin_ref_raises():
 def test_regression_pin_refs():
     g, tg, stdlib, result, app_instance = build_instance(
         """
+        #pragma experiment("TRAITS")
         import ElectricPower
+        import is_atomic_part
+        import has_designator_prefix
+        import has_part_picked
 
         component App:
+            trait is_atomic_part<manufacturer="UNI-ROYAL", partnumber="0603WAF1000T5E", footprint="R0603.kicad_mod", symbol="0603WAF1000T5E.kicad_sym", model="R0603.STEP">
+            trait has_designator_prefix<prefix="R">
+            trait has_part_picked::by_supplier<supplier_id="lcsc", supplier_partno="C22775", manufacturer="UNI-ROYAL", partno="0603WAF1000T5E">
             signal CNT ~ pin 3
             signal NP ~ pin 5
             signal VIN_ ~ pin 2
@@ -1096,7 +1184,7 @@ def test_regression_pin_refs():
             power_in.lv ~ pin 2
             power_out.hv ~ pin 6
             power_out.lv ~ pin 4
-        """,
+        """,  # noqa: E501
         "App",
     )
     assert "App" in result.state.type_roots

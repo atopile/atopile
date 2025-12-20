@@ -75,12 +75,10 @@ def _collect_children_by_name(
 
 
 def test_block_definitions_recorded():
+    """Test that module and interface block definitions are recorded in type_roots."""
     _, _, _, result = build_type(
         """
         module Root:
-            pass
-
-        component SomeComponent:
             pass
 
         interface SomeInterface:
@@ -90,9 +88,24 @@ def test_block_definitions_recorded():
 
     assert set(result.state.type_roots.keys()) == {
         "Root",
-        "SomeComponent",
         "SomeInterface",
     }
+
+
+def test_component_block_requires_traits():
+    """Test that component blocks require is_atomic_part, has_designator_prefix, etc."""
+    with pytest.raises(DslException) as exc_info:
+        build_type(
+            """
+            component SomeComponent:
+                pass
+            """
+        )
+
+    error_message = str(exc_info.value)
+    assert "is_atomic_part" in error_message
+    assert "has_designator_prefix" in error_message
+    assert "has_part_picked" in error_message
 
 
 def test_make_child_and_linking():
