@@ -275,6 +275,7 @@ def convert_to_canonical_operations(mutator: Mutator):
             param.is_parameter.get(),
             # make units dimensionless
             units=mutator.utils.dimensionless(),
+            # strip domain
         )
 
     exprs = mutator.get_expressions(sort_by_depth=True)

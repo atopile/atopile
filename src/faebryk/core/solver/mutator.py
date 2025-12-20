@@ -1114,61 +1114,27 @@ class Mutator:
         param: F.Parameters.is_parameter,
         units: F.Units.is_unit | None = None,
     ) -> F.Parameters.is_parameter:
-        if param.as_parameter_operatable.get() in self.transformations.mutated:
-            out = self.get_mutated(param.as_parameter_operatable.get())
-            p = out.as_parameter.force_get()
-            if (
-                np := fabll.Traits(p)
-                .get_obj_raw()
-                .try_cast(F.Parameters.NumericParameter)
-            ):
-                assert np.get_units() == units
-            return p
+        if p_mutated := self.transformations.mutated.get(
+            param.as_parameter_operatable.get(), None
+        ):
+            return p_mutated.as_parameter.force_get()
 
         param_obj = fabll.Traits(param).get_obj_raw()
 
-        if p := param_obj.try_cast(F.Parameters.NumericParameter):
-            if units is None:
-                # can assume dimensionless since we canonicalize
-                # create instance is slightly faster than copy_into for dimless,
-                # but needs more memory
-                # units = (
-                #     F.Units.Dimensionless.bind_typegraph(self.tg_out)
-                #     .create_instance(self.G_out)
-                #     .is_unit.get()
-                # )
-                units = p.get_units().copy_into(self.G_out)
-
+        if units and param_obj.try_cast(F.Parameters.NumericParameter):
             new_param = (
                 F.Parameters.NumericParameter.bind_typegraph(self.tg_out)
                 .create_instance(self.G_out)
                 .setup(is_unit=units, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
             )
-        # else:
-        #    new_param = param_obj.copy_into(self.G_out)
-        elif p := param_obj.try_cast(F.Parameters.BooleanParameter):
-            new_param = (
-                F.Parameters.BooleanParameter.bind_typegraph(self.tg_out)
-                .create_instance(self.G_out)
-                .setup()
-            )
-        elif p := param_obj.try_cast(F.Parameters.StringParameter):
-            new_param = (
-                F.Parameters.StringParameter.bind_typegraph(self.tg_out)
-                .create_instance(self.G_out)
-                .setup()
-            )
-
-        elif p := param_obj.try_cast(F.Parameters.EnumParameter):
-            new_param = F.Parameters.EnumParameter.bind_typegraph(
-                self.tg_out
-            ).create_instance(self.G_out)
         else:
-            assert False, "Unknown parameter type"
+            # trigger tg copy
+            self.tg_out
+            new_param = param_obj.copy_into(self.G_out)
 
         return self._mutate(
             param.as_parameter_operatable.get(),
-            new_param.is_parameter_operatable.get(),
+            new_param.get_trait(F.Parameters.is_parameter_operatable),
         ).as_parameter.force_get()
 
     def _create_expression[T: fabll.NodeT](

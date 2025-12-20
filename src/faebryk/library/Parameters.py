@@ -774,6 +774,8 @@ class NumericParameter(fabll.Node):
         )
 
 
+ParameterNodes = StringParameter | BooleanParameter | EnumParameter | NumericParameter
+
 # Binding context ----------------------------------------------------------------------
 
 
@@ -1529,12 +1531,6 @@ def test_is_discrete_set():
         .setup_from_min_max(min=0, max=10, unit=dl_is_unit)
     )
     assert not continuous_set.get_numeric_set().is_discrete_set()
-
-
-if __name__ == "__main__":
-    from faebryk.library.Parameters import test_enum_param
-
-    test_enum_param()
 
 
 if __name__ == "__main__":
