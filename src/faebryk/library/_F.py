@@ -34,7 +34,6 @@ import faebryk.library.Footprints as Footprints
 from faebryk.library.SerializableMetadata import SerializableMetadata
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator_prefix import has_designator_prefix
-from faebryk.library.has_doc_string import has_doc_string
 from faebryk.library.has_net_name import has_net_name
 from faebryk.library.has_net_name_suggestion import has_net_name_suggestion
 from faebryk.library.has_package_requirements import has_package_requirements
@@ -130,7 +129,6 @@ __all__ = [
     "SerializableMetadata",
     "has_datasheet",
     "has_designator_prefix",
-    "has_doc_string",
     "has_net_name",
     "has_net_name_suggestion",
     "has_package_requirements",
