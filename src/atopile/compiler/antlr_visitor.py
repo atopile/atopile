@@ -945,7 +945,10 @@ class ANTLRVisitor(AtoParserVisitor):
         self, ctx: AtoParser.Number_hint_naturalContext
     ) -> int:
         try:
-            return self._parse_int(ctx.getText())
+            v = self._parse_int(ctx.getText())
+            if v < 0:
+                raise ValueError("Natural numbers must be non-negative")
+            return v
         except ValueError:
             raise DslException(
                 f"Expected a natural number (positive integer), got `{ctx.getText()}`"
