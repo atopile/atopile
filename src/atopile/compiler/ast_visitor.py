@@ -811,18 +811,36 @@ class ASTVisitor:
         _Block.__name__ = type_identifier
         _Block.__qualname__ = type_identifier
 
-        type_node = self._type_graph.add_type(identifier=type_identifier)
         type_node_bound_tg = fabll.TypeNodeBoundTG(tg=self._type_graph, t=_Block)
         type_node = type_node_bound_tg.get_or_create_type()
         self._state.type_bound_tgs[module_name] = type_node_bound_tg
 
-        # Process the class fields (traits) we just defined
-        # Since we manually added the type node above, get_or_create_type inside
-        # TypeNodeBoundTG will find and skip _create_type, so we must call it manually.
-        _Block._create_type(type_node_bound_tg)
+        # Capture compiler-internal identifiers before we process statements
+        auto_generated_ids = frozenset(
+            id
+            for id, _ in self._type_graph.collect_make_children(type_node=type_node)
+            if id is not None
+        )
+
+        # Capture inheritance relationship for deferred resolution
+        if (super_type_name := node.get_super_type_ref_name()) is not None:
+            super_symbol = self._scope_stack.try_resolve_symbol(super_type_name)
+
+            self._state.pending_inheritance.append(
+                PendingInheritance(
+                    derived_type=type_node,
+                    derived_name=module_name,
+                    parent_ref=(
+                        super_symbol.import_ref
+                        if super_symbol and super_symbol.import_ref
+                        else super_type_name
+                    ),
+                    source_order=len(self._state.pending_inheritance),
+                    auto_generated_ids=auto_generated_ids,
+                )
+            )
 
         # Link type node back to AST definition
-        # (needed by visit_StringStmt for docstrings)
         fbrk.EdgePointer.point_to(
             bound_node=type_node,
             target_node=node.instance.node(),
