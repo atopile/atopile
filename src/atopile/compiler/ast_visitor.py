@@ -95,6 +95,7 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.can_bridge,
         F.has_datasheet,
         F.has_designator_prefix,
+        F.has_doc_string,
         F.has_explicit_part,
         F.has_net_name_affix,
         F.has_net_name_suggestion,
@@ -399,6 +400,8 @@ class AnyAtoBlock(fabll.Node):
     # FIXME: this should likely be removed or updated to use the new MakeChild
     # For now, we'll pass an empty string as source_dir since this seems to be
     # a base type
+    # For now, we'll pass an empty string as source_dir since this seems to be
+    #  a base type
     is_ato_block = fabll.Traits.MakeEdge(is_ato_block.MakeChild(source_dir=""))
 
 
@@ -754,19 +757,34 @@ class ASTVisitor:
         _Block.__name__ = type_identifier
         _Block.__qualname__ = type_identifier
 
+        # Check for docstring: if first statement is a StringStmt, attach has_doc_string
+        # trait to the type. Docstrings must be the first statement in a block.
+        stmts = node.scope.get().stmts.get().as_list()
+        if stmts and stmts[0].isinstance(AST.StringStmt):
+            doc_string_stmt = stmts[0].cast(t=AST.StringStmt)
+            doc_string_text = doc_string_stmt.string.get().get_text()
+            # Dynamically add has_doc_string trait to the block class (attached to type)
+            setattr(
+                _Block,
+                "_has_doc_string",
+                fabll.Traits.MakeEdge(
+                    F.has_doc_string.MakeChild(doc_string=doc_string_text).put_on_type()
+                ),
+            )
+
         type_node = self._type_graph.add_type(identifier=type_identifier)
         type_node_bound_tg = fabll.TypeNodeBoundTG(tg=self._type_graph, t=_Block)
         self._state.type_bound_tgs[module_name] = type_node_bound_tg
 
         # Process the class fields (traits) we just defined
-        # Since we manually added the type node above, get_or_create_type inside
-        # TypeNodeBoundTG will find it and skip _create_type, so we must call
-        # it manually.
+        # TypeNodeBoundTG. Since we manually added the type node above,
+        # get_or_create_type inside
+        # will find it and skip _create_type, so we must call it manually.
         _Block._create_type(type_node_bound_tg)
 
         with self._scope_stack.enter():
             with self._type_stack.enter(type_node, type_node_bound_tg, module_name):
-                for stmt in node.scope.get().stmts.get().as_list():
+                for stmt in stmts:
                     self._type_stack.apply_action(self.visit(stmt))
 
         # link back to AST node

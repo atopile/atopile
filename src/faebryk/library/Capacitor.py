@@ -81,19 +81,21 @@ class Capacitor(fabll.Node):
         F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.C)
     )
 
-    usage_example = F.has_usage_example.MakeChild(
-        """
-            import Capacitor
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
+                import Capacitor
 
-            capacitor = new Capacitor
-            capacitor.capacitance = 100nF +/- 10%
-            assert capacitor.max_voltage within 25V to 50V
-            capacitor.package = "0603"
+                capacitor = new Capacitor
+                capacitor.capacitance = 100nF +/- 10%
+                assert capacitor.max_voltage within 25V to 50V
+                capacitor.package = "0603"
 
-            electrical1 ~ capacitor.unnamed[0]
-            electrical2 ~ capacitor.unnamed[1]
-            # OR
-            electrical1 ~> capacitor ~> electrical2
-        """,
-        F.has_usage_example.Language.ato,
-    ).put_on_type()
+                electrical1 ~ capacitor.unnamed[0]
+                electrical2 ~ capacitor.unnamed[1]
+                # OR
+                electrical1 ~> capacitor ~> electrical2
+            """,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )
