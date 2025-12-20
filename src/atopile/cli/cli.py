@@ -174,7 +174,7 @@ def cli(
     # if ctx.invoked_subcommand:
     #    check_for_update()
 
-    configure.setup()
+    # configure.setup()
 
 
 app.command()(build.build)

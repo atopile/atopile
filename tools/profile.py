@@ -13,6 +13,7 @@ import typer
 
 logger = logging.getLogger(__name__)
 app = typer.Typer()
+artifact_dir = Path(__file__).parent.parent / "artifacts" / "perf"
 
 
 def is_running_in_vscode_terminal() -> bool:
@@ -130,13 +131,66 @@ def viztracer(ctx: typer.Context):
 @app.command(
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
 )
-def pyinstrument(ctx: typer.Context):
-    """Profile a Python program using Pyinstrument."""
+def pyspy(ctx: typer.Context, suffix: str = ""):
+    """Profile a Python program using pyspy."""
     if not ctx.args:
         typer.echo("No command provided to profile", err=True)
         raise typer.Exit(1)
 
-    subprocess.run(["pyinstrument", "-r", "text", *ctx.args], check=True)
+    json_file = artifact_dir / f"pyspy{suffix}.speedscope.json"
+
+    subprocess.run(
+        [
+            "py-spy",
+            "record",
+            *["-r", "500"],
+            *["-f", "speedscope"],
+            "-o",
+            str(json_file),
+            "--",
+            *ctx.args,
+        ],
+        check=False,
+    )
+
+
+@app.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
+)
+def austin(ctx: typer.Context, suffix: str = ""):
+    """Profile a Python program using austin (and speedscope)."""
+    if not ctx.args:
+        typer.echo("No command provided to profile", err=True)
+        raise typer.Exit(1)
+
+    mojo = artifact_dir / "austin.mojo"
+    austin = artifact_dir / "austin.austin"
+    speedscope_file = artifact_dir / f"austin{suffix}.speedscope.json"
+    subprocess.run(
+        [
+            "austin",
+            # "--full",
+            *["-o", str(mojo)],
+            *ctx.args,
+        ],
+        check=False,
+    )
+    subprocess.run(
+        [
+            "mojo2austin",
+            str(mojo),
+            str(austin),
+        ],
+        check=True,
+    )
+    subprocess.run(
+        [
+            "austin2speedscope",
+            str(austin),
+            str(speedscope_file),
+        ],
+        check=True,
+    )
 
 
 @app.command(
@@ -222,7 +276,6 @@ def perf(
 ):
     """Profile a Python program using perf."""
 
-    artifact_dir = Path(__file__).parent.parent / "artifacts" / "perf"
     artifact_dir.mkdir(parents=True, exist_ok=True)
     perf_data_file = artifact_dir / "perf.data"
     fg_svg_file = artifact_dir / "fg.svg"

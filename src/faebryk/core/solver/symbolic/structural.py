@@ -4,7 +4,10 @@
 import logging
 import math
 from itertools import combinations
+from typing import cast
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 import faebryk.library.Expressions as Expressions
@@ -139,22 +142,14 @@ def remove_unconstrained(mutator: Mutator):
         mutator.remove(obj_po)
 
 
-@algorithm("Remove congruent expressions", terminal=False)
-def remove_congruent_expressions(mutator: Mutator):
-    """
-    Remove expressions that are congruent to other expressions
-
-    ```
-    X1 := A + B, X2 := A + B -> [{X1, X2}, {A}, {B}]
-    ```
-    """
-    # X1 = A + B, X2 = A + B -> X1 is X2
-    # No (Invalid): X1 = A + [0, 10], X2 = A + [0, 10]
-    # No (Automatic): X1 = A + C, X2 = A + B, C ~ B -> X1 ~ X2
-
-    all_exprs = mutator.get_expressions(sort_by_depth=True)
+# TODO move mutator util
+def _get_congruent_expressions(
+    exprs: list[F.Expressions.is_expression],
+    g_transient: graph.GraphView,
+    tg_in: fbrk.TypeGraph,
+):
     # optimization: can't be congruent if they have uncorrelated literals
-    all_exprs = [e for e in all_exprs if not e.get_uncorrelatable_literals()]
+    all_exprs = [e for e in exprs if not e.get_uncorrelatable_literals()]
     # TODO is this fully correct?
     # optimization: Is, IsSubset already handled
     all_exprs = [
@@ -185,9 +180,32 @@ def remove_congruent_expressions(mutator: Mutator):
         for e1, e2 in combinations(exprs, 2):
             # no need for recursive, since subexpr already merged if congruent
             if not full_eq.is_eq(e1, e2) and e1.is_congruent_to(
-                e2, recursive=False, g=mutator.G_transient, tg=mutator.tg_in
+                e2, recursive=False, g=g_transient, tg=tg_in
             ):
                 full_eq.add_eq(e1, e2)
+
+    return full_eq
+
+
+@algorithm("Remove congruent expressions", terminal=False)
+def remove_congruent_expressions(mutator: Mutator):
+    """
+    Remove expressions that are congruent to other expressions
+
+    ```
+    X1 := A + B, X2 := A + B -> [{X1, X2}, {A}, {B}]
+    ```
+    """
+    # X1 = A + B, X2 = A + B -> X1 is X2
+    # No (Invalid): X1 = A + [0, 10], X2 = A + [0, 10]
+    # No (Automatic): X1 = A + C, X2 = A + B, C ~ B -> X1 ~ X2
+
+    all_exprs = mutator.get_expressions(sort_by_depth=True)
+    full_eq = _get_congruent_expressions(
+        cast(list[F.Expressions.is_expression], all_exprs),
+        mutator.G_transient,
+        mutator.tg_in,
+    )
 
     repres = {}
     for expr in all_exprs:

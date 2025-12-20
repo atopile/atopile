@@ -85,7 +85,6 @@ dev = [
     "mkdocs>=1.6.1",
     "nanobind>=2.2,<3.0",
     "pre-commit>=2.20,<4.0",
-    "pyinstrument~=4.7.1",
     "fastapi>=0.110.0",
     "uvicorn>=0.29.0",
     "viztracer>=1.0.0,<2.0.0",
@@ -97,6 +96,8 @@ dev = [
     "atopile-mkdocs-plugin",
     "ziglang==0.14.1",
     "graphviz>=0.21",
+    "austin-dist>=4.0.0",
+    "austin-python>=2.1.2",
 ]
 
 

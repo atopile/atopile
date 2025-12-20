@@ -174,7 +174,7 @@ class is_expression(fabll.Node):
             direct_only=True,
             types=(OperandPointer, OperandSequence, OperandSet),  # type: ignore
         )
-        assert pointers
+        assert pointers, f"No operand pointers for {node}"
 
         for pointer in pointers:
             li = pointer.as_list()
@@ -282,7 +282,7 @@ class is_expression(fabll.Node):
             from faebryk.core.solver.mutator import is_terminated
 
             if self.try_get_sibling_trait(is_terminated):
-                symbol_suffix += "!"
+                symbol_suffix += "$"
         symbol += symbol_suffix
         lit_suffix = (
             self.as_parameter_operatable.get()._get_lit_suffix()

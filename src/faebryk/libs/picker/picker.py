@@ -7,8 +7,11 @@ from dataclasses import dataclass
 from textwrap import indent
 from typing import TYPE_CHECKING, Iterable
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import Contradiction
 from faebryk.libs.test.times import Times
@@ -18,6 +21,7 @@ from faebryk.libs.util import (
     EquivalenceClasses,
     Tree,
     debug_perf,
+    groupby,
     indented_container,
     not_none,
     partition,
@@ -270,6 +274,10 @@ def check_missing_picks(module: fabll.Node):
             )
 
 
+def _list_to_hack_tree(modules: Iterable[F.is_pickable]) -> Tree[F.is_pickable]:
+    return Tree({m: Tree() for m in modules})
+
+
 def find_independent_groups(
     modules: Iterable[F.is_pickable], solver: Solver
 ) -> list[set[F.is_pickable]]:
@@ -277,9 +285,6 @@ def find_independent_groups(
     Find groups of modules that are independent of each other.
     """
     unique_modules: set[F.is_pickable] = set(modules)
-
-    # TODO: reconsider
-    solver.update_superset_cache()
 
     # partition params into cliques by expression involvement
     param_eqs = EquivalenceClasses[F.Parameters.is_parameter_operatable]()
@@ -310,8 +315,13 @@ def find_independent_groups(
     return out
 
 
-def _list_to_hack_tree(modules: Iterable[F.is_pickable]) -> Tree[F.is_pickable]:
-    return Tree({m: Tree() for m in modules})
+def _get_graph(*nodes: fabll.Node) -> tuple[graph.GraphView, fbrk.TypeGraph]:
+    gs = groupby(nodes, key=lambda m: m.g.get_self_node().node().get_uuid())
+    assert len(gs) == 1
+    m = next(iter(gs.values()))[0]
+    g = m.g
+    tg = m.tg
+    return g, tg
 
 
 def pick_topologically(
@@ -331,15 +341,19 @@ def pick_topologically(
             if progress:
                 progress.advance()
 
+    timings = Times(name="pick")
+
     def _get_candidates(
         _tree: Tree[F.is_pickable],
     ) -> dict[F.is_pickable, list["Component"]]:
+        g, tg = _get_graph(*_tree.keys())
         # with timings.as_global("pre-solve"):
-        #    solver.simplify(*get_graphs(tree.keys()))
+        #    solver.simplify(g, tg)
+
         try:
-            with timings.as_global("new estimates"):
+            with timings.as_global("solve"):
                 # Rerun solver for new system
-                solver.update_superset_cache(*_tree)
+                solver.simplify(g, tg, terminal=True)
         except Contradiction as e:
             raise PickError(str(e), *_tree.keys())
         with timings.as_global("get candidates"):
@@ -350,8 +364,6 @@ def pick_topologically(
                 f"{'\n\t'.join(f'{m}: {len(p)}' for m, p in candidates.items())}"
             )
         return candidates
-
-    timings = Times(name="pick")
 
     tree_backup = set(tree.keys())
     _pick_count = len(tree)
@@ -374,6 +386,7 @@ def pick_topologically(
     with timings.as_global("parallel slow-pick", context=True):
         if tree:
             logger.info(f"Picking {len(tree)} modules in parallel")
+
         while tree:
             try:
                 candidates = _get_candidates(tree)
@@ -412,7 +425,11 @@ def pick_topologically(
     logger.info(f"Picked complete: picked {_pick_count} parts")
     logger.info("Verify design")
     try:
-        solver.update_superset_cache(*tree_backup)
+        # hack
+        n = next(iter(tree_backup))
+        g = n.g
+        tg = n.tg
+        solver.simplify(g, tg, terminal=True)
     except Contradiction as e:
         raise PickVerificationError(str(e), *tree_backup) from e
 

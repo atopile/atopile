@@ -34,6 +34,7 @@ from faebryk.libs.util import (
     invert_dict,
     not_none,
     once,
+    try_avoid_endless_recursion,
     unique_ref,
 )
 
@@ -1983,19 +1984,123 @@ class Mutator:
         # need to handle this
 
         touched = self.transformations.mutated.keys() | self.transformations.removed
-        # TODO might not need to sort
-        other_param_op = F.Expressions.is_expression.sort_by_depth(
-            (
-                fabll.Traits(p).get_obj_raw()
-                for p in (
-                    set(self.get_parameter_operatables(include_terminated=True))
-                    - touched
-                )
-            ),
-            ascending=True,
+
+        dirtied = {
+            e.get_trait(F.Parameters.is_parameter_operatable)
+            for m in self.transformations.mutated.keys()
+            # TODO build get_operations in zig for recursive case to be blazing
+            for e in m.get_operations(recursive=True)
+        } - touched
+
+        all_ops = cast(
+            set[F.Parameters.is_parameter_operatable],
+            self.get_parameter_operatables(include_terminated=True),
         )
-        for p in other_param_op:
-            self.get_copy_po(p.get_trait(F.Parameters.is_parameter_operatable))
+        exprs = cast(
+            set[F.Expressions.is_expression],
+            self.get_expressions(include_terminated=True),
+        )
+
+        clean = all_ops - dirtied - touched
+        clean_exprs = clean & exprs
+        from faebryk.core.solver.symbolic.structural import _get_congruent_expressions
+
+        # TODO consider doing this also for dirty ones
+        full_eq = _get_congruent_expressions(
+            cast(list[F.Expressions.is_expression], clean_exprs),
+            self.G_transient,
+            self.tg_in,
+        )
+        congruencies = {
+            k.get_trait(F.Parameters.is_parameter_operatable): v
+            for k, v in full_eq.classes.items()
+            if len(v) > 1
+        }
+        clean_no_congruent = clean - set(congruencies.keys())
+
+        logger.info(f"Terminated {len(self.transformations.terminated)}")
+
+        for p in clean_no_congruent:
+            p_copy = p.copy_into(self.G_out)
+            if (
+                pred := p.try_get_sibling_trait(F.Expressions.is_predicate)
+            ) and pred in self.transformations.terminated:
+                self.predicate_terminate(
+                    p_copy.get_sibling_trait(F.Expressions.is_predicate)
+                )
+            self.transformations.mutated[p] = p_copy
+
+        for p in dirtied - touched | set(congruencies.keys()):
+            self.get_copy_po(p)
+
+        # logger.info(f"Touched {len(touched)}")
+        # logger.info(f"Dirtied {len(dirtied)}")
+        # logger.info(f"All ops {len(all_ops)}")
+        # logger.info(f"Clean {len(clean)}")
+        # logger.info(f"Congruencies {len(congruencies)}")
+
+        # logger.info("Touched")
+        # logger.info(
+        #     indented_container(
+        #         [
+        #             p.compact_repr(self.input_print_context, no_lit_suffix=True)
+        #             for p in touched
+        #         ]
+        #     )
+        # )
+        # logger.info("Dirtied")
+        # logger.info(
+        #     indented_container(
+        #         [
+        #             p.compact_repr(self.input_print_context, no_lit_suffix=True)
+        #             for p in dirtied
+        #         ]
+        #     )
+        # )
+        # logger.info("All ops")
+        # logger.info(
+        #     indented_container(
+        #         [
+        #             p.compact_repr(self.input_print_context, no_lit_suffix=True)
+        #             for p in all_ops
+        #         ]
+        #     )
+        # )
+        # logger.info("Clean")
+        # logger.info(
+        #     indented_container(
+        #         [
+        #             p.compact_repr(self.input_print_context, no_lit_suffix=True)
+        #             for p in clean
+        #         ]
+        #     )
+        # )
+
+        # TODO might not need to sort
+        # to_copy = F.Expressions.is_expression.sort_by_depth(
+        #     (
+        #         fabll.Traits(p).get_obj_raw()
+        #         for p in (
+        #             set(self.get_parameter_operatables(include_terminated=True))
+        #             - touched
+        #         )
+        #     ),
+        #     ascending=True,
+        # )
+        # for p in to_copy:
+        #     self.get_copy_po(p.get_trait(F.Parameters.is_parameter_operatable))
+
+        # logger.info("To copy")
+        # logger.info(
+        #    indented_container(
+        #        [
+        #            p.get_trait(F.Parameters.is_parameter_operatable).compact_repr(
+        #                self.input_print_context, no_lit_suffix=True
+        #            )
+        #            for p in to_copy
+        #        ]
+        #    )
+        # )
 
         # TODO optimization: if just new_ops, no need to copy
         # just pass through untouched graphs
@@ -2164,7 +2269,38 @@ def test_mutator_basic_bootstrap():
     # TODO next: check that params/exprs copied
 
 
+def test_mutate_copy_terminated_predicate():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    params = [
+        F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g).setup()
+        for _ in range(2)
+    ]
+    pred = (
+        F.Expressions.Is.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(*[p.can_be_operand.get() for p in params])
+    ).is_parameter_operatable.get()
+
+    g2 = graph.GraphView.create()
+    pred2 = pred.copy_into(g2)
+
+    assert pred2.get_sibling_trait(F.Expressions.is_assertable)
+    assert not pred2.try_get_sibling_trait(is_terminated)
+
+    fabll.Traits.create_and_add_instance_to(
+        fabll.Traits(pred2).get_obj_raw(), is_terminated
+    )
+    assert pred2.try_get_sibling_trait(is_terminated)
+
+    g3 = graph.GraphView.create()
+    pred3 = pred.copy_into(g3)
+    assert pred3.get_sibling_trait(F.Expressions.is_assertable)
+    assert pred3.try_get_sibling_trait(is_terminated)
+
+
 if __name__ == "__main__":
     import typer
 
-    typer.run(test_mutator_basic_bootstrap)
+    typer.run(test_mutate_copy_terminated_predicate)

@@ -30,10 +30,6 @@ class NullSolver(Solver):
         return True
 
     @override
-    def update_superset_cache(self, *nodes: fabll.Node):
-        pass
-
-    @override
     def inspect_get_known_supersets(
         self, value: F.Parameters.is_parameter
     ) -> F.Literals.is_literal:
@@ -43,5 +39,5 @@ class NullSolver(Solver):
         return lit
 
     @override
-    def simplify(self, g: graph.GraphView, tg: fbrk.TypeGraph):
+    def simplify(self, g: graph.GraphView, tg: fbrk.TypeGraph, terminal: bool = False):
         pass

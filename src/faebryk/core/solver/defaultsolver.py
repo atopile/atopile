@@ -374,6 +374,7 @@ class DefaultSolver(Solver):
         - terminal: if True, result of simplication can't be reused, but simplification
             is more powerful
         """
+        print(f"Simplifying {g} {tg}")
         timings = Times(name="simplify")
 
         now = time.time()
@@ -528,8 +529,8 @@ class DefaultSolver(Solver):
         return True
 
     @override
-    def simplify(self, g: graph.GraphView, tg: fbrk.TypeGraph):
-        self.simplify_symbolically(tg, g, terminal=False)
+    def simplify(self, g: graph.GraphView, tg: fbrk.TypeGraph, terminal: bool = False):
+        self.simplify_symbolically(tg, g, terminal=terminal)
 
     def update_superset_cache(self, *nodes: fabll.Node):
         if not nodes:
