@@ -1460,6 +1460,28 @@ class ASTVisitor:
         lhs_node = fabll.Traits(lhs).get_obj_raw()
         rhs_node = fabll.Traits(rhs).get_obj_raw()
 
+        # Check for signal ~ pin connections
+        if lhs_node.isinstance(AST.SignaldefStmt):
+            if not (
+                rhs_node.isinstance(AST.PinDeclaration)
+                or (
+                    rhs_node.isinstance(AST.FieldRef)
+                    and rhs_node.cast(AST.FieldRef).get_pin() is not None
+                )
+            ):
+                signal_name = lhs_node.cast(AST.SignaldefStmt).name.get().get_single()
+                raise DslException(f"Signal `{signal_name}` must be connected to a pin")
+        if rhs_node.isinstance(AST.SignaldefStmt):
+            if not (
+                lhs_node.isinstance(AST.PinDeclaration)
+                or (
+                    lhs_node.isinstance(AST.FieldRef)
+                    and lhs_node.cast(AST.FieldRef).get_pin() is not None
+                )
+            ):
+                signal_name = rhs_node.cast(AST.SignaldefStmt).name.get().get_single()
+                raise DslException(f"Signal `{signal_name}` must be connected to a pin")
+
         _, lhs_path = self._resolve_connectable_with_path(lhs_node)
         _, rhs_path = self._resolve_connectable_with_path(rhs_node)
 
