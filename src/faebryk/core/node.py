@@ -3069,6 +3069,8 @@ def test_copy_into_basic():
     assert fbrk.EdgePointer.get_referenced_node_from_node(node=m.instance) == n.instance
 
     n2 = n.copy_into(g=g_new)
+    n.debug_print_tree()
+    n2.debug_print_tree()
 
     tg_new = fbrk.TypeGraph.of_instance(instance_node=n2.instance)
     assert tg_new is not None
@@ -3094,18 +3096,25 @@ def test_copy_into_basic():
             sorted(ns, key=lambda x: repr(x)), compress_large=1000
         )
 
-    g_nodes = {Node.bind_instance(instance=n) for n in g.get_nodes()}
-    g_new_nodes = {Node.bind_instance(instance=n) for n in g_new.get_nodes()}
-    g_diff_new = g_new_nodes - g_nodes
+    g_nodes = {
+        n.node().get_uuid(): Node.bind_instance(instance=n) for n in g.get_nodes()
+    }
+    g_new_nodes = {
+        n.node().get_uuid(): Node.bind_instance(instance=n) for n in g_new.get_nodes()
+    }
+    g_diff_new = {v for k, v in g_new_nodes.items() if k not in g_nodes}
+    g_diff_old = {v for k, v in g_nodes.items() if k not in g_new_nodes}
     # tg.self & g_new.self
-    assert len(g_diff_new) == 2, f"g_diff_new: {_container(g_diff_new)}"
 
-    print("g", _container(g_nodes))
-    print("g_new", _container(g_new_nodes))
-    print("g_diff", _container(g_nodes - g_new_nodes))
+    print("g", _container(g_nodes.values()))
+    print("g_new", _container(g_new_nodes.values()))
+    print("g_diff", _container(g_diff_old))
     print("g_diff_new", _container(g_diff_new))
 
-    assert n2.is_same(n)
+    # only new graph self node
+    assert len(g_diff_new) == 1, f"g_diff_new: {_container(g_diff_new)}"
+
+    assert n2.is_same(n, allow_different_graph=True)
     assert n2 is not n
     assert n2.g != n.g
 
@@ -3121,7 +3130,7 @@ def test_copy_into_basic():
     assert not any(m.instance.node().is_same(other=node.node()) for node in g_new_nodes)
 
     inner2 = n2.inner.get()
-    assert inner2.is_same(n.inner.get())
+    assert inner2.is_same(n.inner.get(), allow_different_graph=True)
 
     assert n2.isinstance(N)
     assert inner2.isinstance(Inner)

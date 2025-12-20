@@ -2503,12 +2503,8 @@ fn wrap_edge_pointer_get_referenced_node() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            if (faebryk.pointer.EdgePointer.get_referenced_node(kwarg_obj.edge.*)) |node_ref| {
-                return graph_py.makeNodePyObject(node_ref);
-            }
-
-            py.Py_INCREF(py.Py_None());
-            return py.Py_None();
+            const node_ref = faebryk.pointer.EdgePointer.get_referenced_node(kwarg_obj.edge.*);
+            return graph_py.makeNodePyObject(node_ref);
         }
     };
 }
@@ -4395,41 +4391,6 @@ fn wrap_typegraph_get_or_create_type() type {
     };
 }
 
-fn wrap_typegraph_get_type_subgraph() type {
-    return struct {
-        pub const descr = method_descr{
-            .name = "get_type_subgraph",
-            .doc = "Return a subgraph containing only the type nodes and their edges",
-            .args_def = struct {},
-            .static = false,
-        };
-
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            if (!bind.check_no_positional_args(self, args)) return null;
-            _ = kwargs;
-
-            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
-
-            // Allocate memory for the result GraphView
-            const allocator = std.heap.c_allocator;
-            const result_ptr = allocator.create(graph.GraphView) catch {
-                py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate GraphView");
-                return null;
-            };
-
-            result_ptr.* = faebryk.typegraph.TypeGraph.get_type_subgraph(wrapper.data);
-
-            const pyobj = bind.wrap_obj("GraphView", &graph_py.graph_view_type, graph_py.GraphViewWrapper, result_ptr);
-            if (pyobj == null) {
-                result_ptr.deinit();
-                allocator.destroy(result_ptr);
-            }
-
-            return pyobj;
-        }
-    };
-}
-
 fn wrap_typegraph_get_type_instance_overview() type {
     return struct {
         pub const descr = method_descr{
@@ -4505,44 +4466,6 @@ fn wrap_typegraph_get_type_instance_overview() type {
             }
 
             return py_list;
-        }
-    };
-}
-
-fn wrap_typegraph_get_subgraph_of_node() type {
-    return struct {
-        pub const descr = method_descr{
-            .name = "get_subgraph_of_node",
-            .doc = "Return a subgraph containing the node and all its descendants (children, traits, pointers, etc.)",
-            .args_def = struct {
-                start_node: *graph.BoundNodeReference,
-
-                pub const fields_meta = .{
-                    .start_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
-                };
-            },
-            .static = true,
-        };
-
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
-
-            // Allocate memory for the result GraphView
-            const allocator = std.heap.c_allocator;
-            const result_ptr = allocator.create(graph.GraphView) catch {
-                py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate GraphView");
-                return null;
-            };
-
-            result_ptr.* = faebryk.typegraph.TypeGraph.get_subgraph_of_node(allocator, kwarg_obj.start_node.*);
-
-            const pyobj = bind.wrap_obj("GraphView", &graph_py.graph_view_type, graph_py.GraphViewWrapper, result_ptr);
-            if (pyobj == null) {
-                result_ptr.deinit();
-                allocator.destroy(result_ptr);
-            }
-
-            return pyobj;
         }
     };
 }
@@ -4644,9 +4567,7 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_get_or_create_type(),
         wrap_typegraph_get_graph_view(),
         wrap_typegraph_get_self_node(),
-        wrap_typegraph_get_type_subgraph(),
         wrap_typegraph_get_type_instance_overview(),
-        wrap_typegraph_get_subgraph_of_node(),
         wrap_typegraph_copy_node_into(),
     };
     bind.wrap_namespace_struct(root, faebryk.typegraph.TypeGraph, extra_methods);

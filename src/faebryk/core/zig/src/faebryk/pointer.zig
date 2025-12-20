@@ -55,8 +55,8 @@ pub const EdgePointer = struct {
         return edge.get_order();
     }
 
-    pub fn get_referenced_node(edge: EdgeReference) ?NodeReference {
-        return edge.get_directed_target();
+    pub fn get_referenced_node(edge: EdgeReference) NodeReference {
+        return edge.get_directed_target().?;
     }
 
     pub fn is_instance(E: EdgeReference) bool {
@@ -128,10 +128,8 @@ pub const EdgePointer = struct {
             pub fn visit(self_ptr: *anyopaque, bound_edge: BoundEdgeReference) visitor.VisitResult(BoundNodeReference) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
                 _ = self;
-                if (EdgePointer.get_referenced_node(bound_edge.edge)) |target| {
-                    return visitor.VisitResult(BoundNodeReference){ .OK = bound_edge.g.bind(target) };
-                }
-                return visitor.VisitResult(BoundNodeReference){ .CONTINUE = {} };
+                const target = EdgePointer.get_referenced_node(bound_edge.edge);
+                return visitor.VisitResult(BoundNodeReference){ .OK = bound_edge.g.bind(target) };
             }
         };
 
@@ -153,10 +151,8 @@ pub const EdgePointer = struct {
         const result = EdgePointer.visit_pointed_edges(bound_reference_node, BoundEdgeReference, &ctx, return_first(BoundEdgeReference).visit);
         return switch (result) {
             .OK => |edge| blk: {
-                if (EdgePointer.get_referenced_node(edge.edge)) |target| {
-                    break :blk edge.g.bind(target);
-                }
-                break :blk null;
+                const target = EdgePointer.get_referenced_node(edge.edge);
+                break :blk edge.g.bind(target);
             },
             .EXHAUSTED => null,
             .ERROR => null,
@@ -178,7 +174,7 @@ test "basic" {
     _ = g.insert_edge(e12);
 
     try std.testing.expect(EdgePointer.is_instance(e12));
-    try std.testing.expect(EdgePointer.get_referenced_node(e12).?.is_same(n2.node));
+    try std.testing.expect(EdgePointer.get_referenced_node(e12).is_same(n2.node));
 
     g.deinit();
 }

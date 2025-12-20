@@ -20,8 +20,6 @@ def _get_pointer_references(
         if identifier is not None and edge_name != identifier:
             return
         target = fbrk.EdgePointer.get_referenced_node(edge=bound_edge.edge())
-        if target is None:
-            return
         edge_order = fbrk.EdgePointer.get_order(edge=bound_edge.edge())
         node = bound_edge.g().bind(node=target)
         ctx.append((edge_order, node))

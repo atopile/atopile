@@ -9,7 +9,6 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core import graph
-from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.exceptions import UserDesignCheckException
 from faebryk.libs.util import not_none
@@ -231,6 +230,8 @@ def test_addressor_make_child():
 def test_addressor_sets_address_lines(
     address_bits: int, offset: int, expected_bits: list[bool]
 ):
+    from faebryk.core.solver.defaultsolver import DefaultSolver
+
     """Test that address lines are set correctly based on offset bits."""
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -254,6 +255,7 @@ def test_addressor_sets_address_lines(
     addressor.offset.get().alias_to_literal(g, float(offset))
 
     # Run solver and attach has_solver trait
+
     solver = DefaultSolver()
     solver.simplify(g, tg)
     fabll.Traits.create_and_add_instance_to(app, F.has_solver).setup(solver)
@@ -282,6 +284,8 @@ def test_addressor_sets_address_lines(
 
 def test_addressor_unresolved_offset_raises():
     """Test that an error is raised when offset cannot be determined."""
+    from faebryk.core.solver.defaultsolver import DefaultSolver
+
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 

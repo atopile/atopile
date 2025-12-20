@@ -119,6 +119,7 @@ pub const UUIDBitSet = struct {
     data: []bool,
     capacity: u32,
     allocator: std.mem.Allocator,
+    count: u32 = 0,
 
     pub fn init(allocator: std.mem.Allocator) @This() {
         return .{
@@ -153,10 +154,10 @@ pub const UUIDBitSet = struct {
         self.capacity = new_cap;
     }
 
-    /// Add a uuid to the set
     pub fn add(self: *@This(), uuid: u32) void {
         self.ensureCapacity(uuid);
         self.data[uuid] = true;
+        self.count += 1;
     }
 
     /// Remove a uuid from the set
@@ -170,6 +171,20 @@ pub const UUIDBitSet = struct {
     pub fn contains(self: *const @This(), uuid: u32) bool {
         if (uuid >= self.capacity) return false;
         return self.data[uuid];
+    }
+
+    pub fn get_or_set(self: *@This(), uuid: u32) bool {
+        self.ensureCapacity(uuid);
+        if (self.data[uuid]) {
+            return true;
+        }
+        self.data[uuid] = true;
+        self.count += 1;
+        return false;
+    }
+
+    pub fn get_count(self: *const @This()) u32 {
+        return self.count;
     }
 };
 
@@ -496,7 +511,7 @@ pub const NodeRefMap = struct {
     }
 };
 
-const EdgeRefMap = struct {
+pub const EdgeRefMap = struct {
     pub fn eql(_: @This(), a: EdgeReference, b: EdgeReference) bool {
         return a.is_same(b);
     }
@@ -510,7 +525,7 @@ const EdgeRefMap = struct {
     }
 };
 
-const EdgeTypeMap = struct {
+pub const EdgeTypeMap = struct {
     pub fn eql(_: @This(), a: Edge.EdgeType, b: Edge.EdgeType) bool {
         return a == b;
     }
@@ -674,8 +689,6 @@ pub const GraphView = struct {
 
     // fast (Node, LinkType) -> Edge + Node Storage
     nodes: NodeRefMap.T(EdgeTypeMap.T(std.ArrayList(EdgeReference))),
-    // Edge Storage
-    edges: EdgeRefMap.T(void),
 
     // Fast O(1) membership bitsets
     node_set: UUIDBitSet,
@@ -691,7 +704,6 @@ pub const GraphView = struct {
             .base_allocator = b_allocator,
             .arena = arena_ptr,
             .allocator = allocator,
-            .edges = EdgeRefMap.T(void).init(allocator),
             .nodes = NodeRefMap.T(EdgeTypeMap.T(std.ArrayList(EdgeReference))).init(allocator),
             .node_set = UUIDBitSet.init(allocator),
             .edge_set = UUIDBitSet.init(allocator),
@@ -711,6 +723,9 @@ pub const GraphView = struct {
     }
 
     pub fn insert_node(g: *@This(), node: NodeReference) BoundNodeReference {
+        if (g.contains_node(node)) {
+            return g.bind(node);
+        }
         const gop = g.nodes.getOrPut(node) catch @panic("OOM");
         if (!gop.found_existing) {
             gop.value_ptr.* = EdgeTypeMap.T(std.ArrayList(EdgeReference)).init(g.allocator);
@@ -740,7 +755,39 @@ pub const GraphView = struct {
     }
 
     pub fn get_edge_count(g: *const @This()) usize {
-        return g.edges.count();
+        return g.edge_set.get_count();
+    }
+
+    pub fn insert_edge_unchecked(g: *@This(), edge: EdgeReference) void {
+        // special function for typegraph.copy_node_into
+        // assumes edge already in edge_set
+        // assumes both nodes in graph
+
+        const source = edge.get_source_node();
+        const target = edge.get_target_node();
+
+        // Get node neighbors (must exist)
+        const from_neighbors = g.nodes.getPtr(source).?;
+        const to_neighbors = g.nodes.getPtr(target).?;
+
+        const edge_type = edge.get_attribute_edge_type();
+
+        // Use getOrPut for edge type maps
+        const from_gop = from_neighbors.getOrPut(edge_type) catch @panic("OOM");
+        if (!from_gop.found_existing) {
+            from_gop.value_ptr.* = std.ArrayList(EdgeReference).initCapacity(g.allocator, 1) catch @panic("OOM");
+            from_gop.value_ptr.appendAssumeCapacity(edge);
+        } else {
+            from_gop.value_ptr.append(edge) catch @panic("OOM");
+        }
+
+        const to_gop = to_neighbors.getOrPut(edge_type) catch @panic("OOM");
+        if (!to_gop.found_existing) {
+            to_gop.value_ptr.* = std.ArrayList(EdgeReference).initCapacity(g.allocator, 1) catch @panic("OOM");
+            to_gop.value_ptr.appendAssumeCapacity(edge);
+        } else {
+            to_gop.value_ptr.append(edge) catch @panic("OOM");
+        }
     }
 
     pub fn insert_edge(g: *@This(), edge: EdgeReference) BoundEdgeReference {
@@ -754,7 +801,6 @@ pub const GraphView = struct {
 
         // Add to edge set and hashmap
         g.edge_set.add(edge.uuid);
-        g.edges.put(edge, {}) catch @panic("OOM");
 
         const source = edge.get_source_node();
         const target = edge.get_target_node();
@@ -768,15 +814,19 @@ pub const GraphView = struct {
         // Use getOrPut for edge type maps
         const from_gop = from_neighbors.getOrPut(edge_type) catch @panic("OOM");
         if (!from_gop.found_existing) {
-            from_gop.value_ptr.* = std.ArrayList(EdgeReference).init(g.allocator);
+            from_gop.value_ptr.* = std.ArrayList(EdgeReference).initCapacity(g.allocator, 1) catch @panic("OOM");
+            from_gop.value_ptr.appendAssumeCapacity(edge);
+        } else {
+            from_gop.value_ptr.append(edge) catch @panic("OOM");
         }
-        from_gop.value_ptr.append(edge) catch @panic("OOM");
 
         const to_gop = to_neighbors.getOrPut(edge_type) catch @panic("OOM");
         if (!to_gop.found_existing) {
-            to_gop.value_ptr.* = std.ArrayList(EdgeReference).init(g.allocator);
+            to_gop.value_ptr.* = std.ArrayList(EdgeReference).initCapacity(g.allocator, 1) catch @panic("OOM");
+            to_gop.value_ptr.appendAssumeCapacity(edge);
+        } else {
+            to_gop.value_ptr.append(edge) catch @panic("OOM");
         }
-        to_gop.value_ptr.append(edge) catch @panic("OOM");
 
         return BoundEdgeReference{
             .edge = edge,
@@ -836,9 +886,6 @@ pub const GraphView = struct {
             _ = new_g.insert_node(node);
         }
 
-        // Estimate edge count and pre-allocate
-        new_g.edges.ensureTotalCapacity(node_count * 4) catch @panic("OOM");
-
         // Insert edges where both endpoints are in the subgraph
         // new_g.contains_node is now O(1) using bitset
         for (nodes.items) |node| {
@@ -869,14 +916,12 @@ pub const GraphView = struct {
         while (node_it.next()) |node_ptr| {
             _ = g.insert_node(node_ptr.*);
         }
+        // FIXME
 
-        const added_edges_len = subgraph.edges.count();
-        g.edges.ensureUnusedCapacity(@intCast(added_edges_len)) catch @panic("OOM");
-
-        var edge_it = subgraph.edges.keyIterator();
-        while (edge_it.next()) |edge_ptr| {
-            _ = g.insert_edge(edge_ptr.*);
-        }
+        //var edge_it = subgraph.edges.keyIterator();
+        //while (edge_it.next()) |edge_ptr| {
+        //    _ = g.insert_edge(edge_ptr.*);
+        //}
     }
 
     pub fn visit_paths_bfs(
