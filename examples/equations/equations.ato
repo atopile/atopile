@@ -22,12 +22,12 @@ module VoltageDivider:
     r_top = new Resistor
 
     # Variables
-    v_in: voltage
-    v_out: voltage
-    max_current: current
-    total_resistance: resistance
+    v_in: V
+    v_out: V
+    max_current: A
+    total_resistance: Ω
     ratio: dimensionless
-    r_total: resistance
+    r_total: Ω
 
     # Connections
     power.hv ~ r_top.p1; r_top.p2 ~ output.line
