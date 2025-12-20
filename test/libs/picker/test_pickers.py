@@ -432,7 +432,7 @@ def test_reject_diode_for_led():
     candidates = get_candidates(diode_tree, solver)
     with pytest.raises(NotCompatibleException):
         check_and_attach_candidates(
-            [(led, c) for c in candidates[diode_pickable]], solver
+            [(diode_pickable, c) for c in candidates[diode_pickable]], solver
         )
 
 

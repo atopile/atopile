@@ -17,10 +17,10 @@ class is_pickable_by_part_number(fabll.Node):
     _is_pickable = fabll.Traits.MakeEdge(F.is_pickable.MakeChild())
 
     def get_manufacturer(self) -> str:
-        return str(self.manufacturer_.get().force_extract_literal())
+        return self.manufacturer_.get().force_extract_literal().get_values()[0]
 
     def get_partno(self) -> str:
-        return str(self.partno_.get().force_extract_literal())
+        return self.partno_.get().force_extract_literal().get_values()[0]
 
     def setup(self, manufacturer: str, partno: str) -> Self:
         self.manufacturer_.get().alias_to_literal(manufacturer)

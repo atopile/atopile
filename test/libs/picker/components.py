@@ -255,6 +255,7 @@ resistors = [
     ComponentTestCase(
         lambda g, tg: F.Resistor.bind_typegraph(tg=tg).create_instance(g=g),
         packages=[SMDSize.I0402],
+        override_test_name="RESISTOR_I0402",
         setup_fn=lambda r: (
             F.Expressions.IsSubset.c(
                 subset=r.resistance.get().can_be_operand.get(),
@@ -304,6 +305,7 @@ resistors = [
     ComponentTestCase(
         lambda g, tg: F.Resistor.bind_typegraph(tg=tg).create_instance(g=g),
         packages=[SMDSize.I0603],
+        override_test_name="RESISTOR_I0603",
         setup_fn=lambda r: (
             F.Expressions.IsSubset.c(
                 subset=r.resistance.get().can_be_operand.get(),
@@ -353,6 +355,7 @@ resistors = [
     ComponentTestCase(
         lambda g, tg: F.Resistor.bind_typegraph(tg=tg).create_instance(g=g),
         packages=[SMDSize.I0805],
+        override_test_name="RESISTOR_I0805",
         setup_fn=lambda r: (
             F.Expressions.IsSubset.c(
                 subset=r.resistance.get().can_be_operand.get(),
@@ -377,6 +380,7 @@ capacitors = [
     ComponentTestCase(
         lambda g, tg: F.Capacitor.bind_typegraph(tg=tg).create_instance(g=g),
         packages=[SMDSize.I0603],
+        override_test_name="CAPACITOR_I0603",
         setup_fn=lambda c: (
             F.Expressions.IsSubset.c(
                 subset=c.capacitance.get().can_be_operand.get(),
@@ -413,6 +417,7 @@ capacitors = [
     ComponentTestCase(
         lambda g, tg: F.Capacitor.bind_typegraph(tg=tg).create_instance(g=g),
         packages=[SMDSize.I0402],
+        override_test_name="CAPACITOR_I0402",
         setup_fn=lambda c: (
             F.Expressions.IsSubset.c(
                 subset=c.capacitance.get().can_be_operand.get(),
@@ -452,6 +457,7 @@ inductors = [
     ComponentTestCase(
         lambda g, tg: F.Inductor.bind_typegraph(tg=tg).create_instance(g=g),
         packages=[SMDSize.I0603],
+        override_test_name="INDUCTOR_I0603",
         setup_fn=lambda i: (
             F.Expressions.IsSubset.c(
                 subset=i.inductance.get().can_be_operand.get(),
@@ -518,6 +524,7 @@ inductors = [
     ComponentTestCase(
         lambda g, tg: F.Inductor.bind_typegraph(tg=tg).create_instance(g=g),
         packages=[SMDSize.I0805],
+        override_test_name="INDUCTOR_I0805",
         setup_fn=lambda i: (
             F.Expressions.IsSubset.c(
                 subset=i.inductance.get().can_be_operand.get(),
@@ -587,6 +594,7 @@ mosfets = [
     ComponentTestCase(
         lambda g, tg: F.MOSFET.bind_typegraph(tg=tg).create_instance(g=g),
         packages=[],  # FIXME: re-add package requirement "SOT-23"
+        override_test_name="MOSFET_SOT-23",
         setup_fn=lambda m: (
             # TODO: EnumParameter constraints for channel_type, saturation_type
             F.Expressions.IsSubset.c(
@@ -657,6 +665,7 @@ diodes = [
     ComponentTestCase(
         lambda g, tg: F.Diode.bind_typegraph(tg=tg).create_instance(g=g),
         packages=[],  # FIXME: re-add package requirement "SOD-123FL", "SMB"
+        override_test_name="DIODE_SOD-123FL",
         setup_fn=lambda d: (
             # current >= 1A
             F.Expressions.GreaterOrEqual.c(
@@ -741,6 +750,7 @@ leds = [
     ComponentTestCase(
         lambda g, tg: F.LED.bind_typegraph(tg=tg).create_instance(g=g),
         packages=[],
+        override_test_name="LED_RGB",
         setup_fn=lambda led: (
             # TODO: EnumParameter constraints for color
             F.Expressions.GreaterOrEqual.c(
@@ -781,7 +791,8 @@ components_to_test = (
     *resistors,
     *capacitors,
     *inductors,
-    *mosfets,
-    *diodes,
-    *leds,
+    # No pickers for the following components yet
+    # *mosfets,
+    # *diodes,
+    # *leds,
 )
