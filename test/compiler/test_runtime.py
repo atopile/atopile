@@ -2023,3 +2023,156 @@ def test_literals(value: str, literal: F.Parameters.can_be_operand):
     assert literal.as_literal.force_get().equals(
         not_none(a.try_extract_aliased_literal())
     )
+
+
+class TestInheritanceRuntime:
+    """Runtime tests for block inheritance."""
+
+    def test_inherited_children_exist(self):
+        """Inherited children exist on instantiated derived type."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Electrical
+
+            module Base:
+                a = new Electrical
+
+            module Derived from Base:
+                b = new Electrical
+
+            module App:
+                derived = new Derived
+            """,
+            "App",
+        )
+
+        derived = _get_child(app_instance, "derived")
+        a = _get_child(derived, "a")
+        b = _get_child(derived, "b")
+
+        assert a is not None, "Inherited field 'a' should exist on instance"
+        assert b is not None, "Own field 'b' should exist on instance"
+
+    def test_inherited_connections_work(self):
+        """Connections defined in parent work on derived instances."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Electrical
+
+            module Base:
+                a = new Electrical
+                b = new Electrical
+                a ~ b
+
+            module Derived from Base:
+                c = new Electrical
+
+            module App:
+                derived = new Derived
+            """,
+            "App",
+        )
+
+        derived = _get_child(app_instance, "derived")
+        a = _get_child(derived, "a")
+        b = _get_child(derived, "b")
+        c = _get_child(derived, "c")
+
+        assert _check_connected(a, b), (
+            "a and b should be connected (inherited from Base)"
+        )
+        assert not _check_connected(a, c), "a and c should not be connected"
+
+    def test_multi_level_inheritance_runtime(self):
+        """Multi-level inheritance produces correct instance structure."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Electrical
+
+            module Level1:
+                x = new Electrical
+
+            module Level2 from Level1:
+                y = new Electrical
+
+            module Level3 from Level2:
+                z = new Electrical
+
+            module App:
+                level3 = new Level3
+            """,
+            "App",
+        )
+
+        level3 = _get_child(app_instance, "level3")
+        x = _get_child(level3, "x")
+        y = _get_child(level3, "y")
+        z = _get_child(level3, "z")
+
+        assert x is not None, "Field 'x' from Level1 should exist"
+        assert y is not None, "Field 'y' from Level2 should exist"
+        assert z is not None, "Own field 'z' should exist"
+
+    def test_inherited_type_correct(self):
+        """Inherited children have correct types."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Resistor
+            import Capacitor
+
+            module Base:
+                r = new Resistor
+
+            module Derived from Base:
+                c = new Capacitor
+
+            module App:
+                derived = new Derived
+            """,
+            "App",
+        )
+
+        derived = _get_child(app_instance, "derived")
+        r = _get_child(derived, "r")
+        c = _get_child(derived, "c")
+
+        assert _get_type_name(r) == "Resistor", (
+            f"r should be Resistor, got {_get_type_name(r)}"
+        )
+        assert _get_type_name(c) == "Capacitor", (
+            f"c should be Capacitor, got {_get_type_name(c)}"
+        )
+
+    def test_derived_override_field(self):
+        """Derived module can add its own field with the same name as parent."""
+        # The derived module's own field takes precedence (parent's is skipped)
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Resistor
+            import Capacitor
+
+            module Base:
+                x = new Resistor
+
+            module Derived from Base:
+                y = new Capacitor
+
+            module App:
+                base = new Base
+                derived = new Derived
+            """,
+            "App",
+        )
+
+        base = _get_child(app_instance, "base")
+        derived = _get_child(app_instance, "derived")
+
+        # Base has 'x'
+        base_x = _get_child(base, "x")
+        assert _get_type_name(base_x) == "Resistor"
+
+        # Derived has both 'x' (inherited) and 'y' (own)
+        derived_x = _get_child(derived, "x")
+        derived_y = _get_child(derived, "y")
+        assert _get_type_name(derived_x) == "Resistor"
+        assert _get_type_name(derived_y) == "Capacitor"

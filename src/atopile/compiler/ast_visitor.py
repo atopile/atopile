@@ -24,6 +24,7 @@ from atopile.compiler.gentypegraph import (
     LinkPath,
     NewChildSpec,
     NoOpAction,
+    PendingInheritance,
     ScopeState,
     Symbol,
 )
@@ -123,6 +124,7 @@ class BuildState:
     file_path: Path | None
     import_path: str | None
     pending_execution: list[DeferredForLoop] = field(default_factory=list)
+    pending_inheritance: list[PendingInheritance] = field(default_factory=list)
     type_bound_tgs: dict[str, fabll.TypeNodeBoundTG] = field(default_factory=dict)
 
 
@@ -538,9 +540,61 @@ class ASTVisitor:
         Execute deferred statements (phase 2).
 
         Call this after linking is complete and all type references are resolved.
-        At this point containers are fully constructed and their elements can be
-        queried from the TypeGraph.
+
+        Order:
+        1. Resolve inheritance (copy parent structure into derived types)
+        2. Execute for-loops (containers now have inherited fields)
         """
+        self._resolve_inheritance()
+        self._execute_deferred_for_loops()
+
+    def _resolve_inheritance(self) -> None:
+        """
+        Resolve inheritance by copying parent structure into derived types. Processes
+        base types before derived types.
+        """
+
+        def _get_parent_name(parent_ref: ImportRef | str) -> str:
+            return parent_ref.name if isinstance(parent_ref, ImportRef) else parent_ref
+
+        from faebryk.libs.util import DAG
+
+        if not self._state.pending_inheritance:
+            return
+
+        dag: DAG[str] = DAG()
+        pending_by_name: dict[str, PendingInheritance] = {}
+
+        for item in self._state.pending_inheritance:
+            parent_name = _get_parent_name(item.parent_ref)
+            dag.add_edge(parent=parent_name, child=item.derived_name)
+            pending_by_name[item.derived_name] = item
+
+        try:
+            sorted_types = dag.topologically_sorted()
+        except ValueError as e:
+            raise DslException("Circular inheritance detected") from e
+
+        for type_name in sorted_types:
+            if type_name not in pending_by_name:
+                continue  # Base type without parent in this file
+
+            item = pending_by_name[type_name]
+            parent_name = _get_parent_name(item.parent_ref)
+
+            if (parent_type := self._state.type_roots.get(parent_name)) is None:
+                raise DslException(
+                    f"Parent type `{parent_name}` not found for `{item.derived_name}`"
+                )
+
+            # Applies inheritance
+            self._type_graph.copy_type_structure(
+                target=item.derived_type,
+                source=parent_type,
+                skip_identifiers=list(item.auto_generated_ids),
+            )
+
+    def _execute_deferred_for_loops(self) -> None:
         for type_id, loops in groupby(
             self._state.pending_execution, key=lambda lp: lp.type_identifier
         ).items():
@@ -772,15 +826,34 @@ class ASTVisitor:
                 ),
             )
 
-        type_node = self._type_graph.add_type(identifier=type_identifier)
         type_node_bound_tg = fabll.TypeNodeBoundTG(tg=self._type_graph, t=_Block)
+        type_node = type_node_bound_tg.get_or_create_type()
         self._state.type_bound_tgs[module_name] = type_node_bound_tg
 
-        # Process the class fields (traits) we just defined
-        # TypeNodeBoundTG. Since we manually added the type node above,
-        # get_or_create_type inside
-        # will find it and skip _create_type, so we must call it manually.
-        _Block._create_type(type_node_bound_tg)
+        # Capture compiler-internal identifiers before we process statements
+        auto_generated_ids = frozenset(
+            id
+            for id, _ in self._type_graph.collect_make_children(type_node=type_node)
+            if id is not None
+        )
+
+        # Capture inheritance relationship for deferred resolution
+        if (super_type_name := node.get_super_type_ref_name()) is not None:
+            super_symbol = self._scope_stack.try_resolve_symbol(super_type_name)
+
+            self._state.pending_inheritance.append(
+                PendingInheritance(
+                    derived_type=type_node,
+                    derived_name=module_name,
+                    parent_ref=(
+                        super_symbol.import_ref
+                        if super_symbol and super_symbol.import_ref
+                        else super_type_name
+                    ),
+                    source_order=len(self._state.pending_inheritance),
+                    auto_generated_ids=auto_generated_ids,
+                )
+            )
 
         with self._scope_stack.enter():
             with self._type_stack.enter(type_node, type_node_bound_tg, module_name):

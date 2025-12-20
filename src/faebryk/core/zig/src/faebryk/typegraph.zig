@@ -693,6 +693,92 @@ pub const TypeGraph = struct {
         return make_link;
     }
 
+    pub const CopyTypeError = error{ChildAlreadyExists};
+
+    /// Copy MakeChild and MakeLink nodes from source_type into target_type.
+    /// Returns error if a child from source already exists on target (unless in skip_identifiers).
+    /// Used for inheritance: flattens parent structure into derived type.
+    pub fn copy_type_structure(
+        self: *@This(),
+        target_type: BoundNodeReference,
+        source_type: BoundNodeReference,
+        skip_identifiers: []const []const u8,
+    ) CopyTypeError!void {
+        const allocator = self.self_node.g.allocator;
+
+        // Collect existing identifiers on target
+        var existing = std.StringHashMap(void).init(allocator);
+        defer existing.deinit();
+
+        const target_children = self.collect_make_children(allocator, target_type);
+        defer allocator.free(target_children);
+        for (target_children) |info| {
+            if (info.identifier) |id| {
+                existing.put(id, {}) catch @panic("OOM");
+            }
+        }
+
+        // Copy MakeChild nodes from source
+        const source_children = self.collect_make_children(allocator, source_type);
+        defer allocator.free(source_children);
+
+        for (source_children) |info| {
+            if (info.identifier) |id| {
+                if (existing.contains(id)) {
+                    var should_skip = false;
+                    for (skip_identifiers) |skip_id| {
+                        if (std.mem.eql(u8, id, skip_id)) {
+                            should_skip = true;
+                            break;
+                        }
+                    }
+                    if (should_skip) continue;
+                    return error.ChildAlreadyExists;
+                }
+            }
+            const child_type = MakeChildNode.get_child_type(info.make_child) orelse continue;
+            _ = self.add_make_child(target_type, child_type, info.identifier, null, null) catch continue;
+        }
+
+        // Copy MakeLink nodes from source
+        const source_links = self.collect_make_links(allocator, source_type) catch return;
+        defer {
+            for (source_links) |link_info| {
+                allocator.free(link_info.lhs_path);
+                allocator.free(link_info.rhs_path);
+            }
+            allocator.free(source_links);
+        }
+
+        for (source_links) |link_info| {
+            var lhs_traversals = std.ArrayList(ChildReferenceNode.EdgeTraversal).init(allocator);
+            defer lhs_traversals.deinit();
+            for (link_info.lhs_path) |ident| {
+                lhs_traversals.append(EdgeComposition.traverse(ident)) catch continue;
+            }
+
+            var rhs_traversals = std.ArrayList(ChildReferenceNode.EdgeTraversal).init(allocator);
+            defer rhs_traversals.deinit();
+            for (link_info.rhs_path) |ident| {
+                rhs_traversals.append(EdgeComposition.traverse(ident)) catch continue;
+            }
+
+            const lhs_ref = ChildReferenceNode.create_and_insert(self, lhs_traversals.items) catch continue;
+            const rhs_ref = ChildReferenceNode.create_and_insert(self, rhs_traversals.items) catch continue;
+
+            const attrs = MakeLinkNode.Attributes.of(link_info.make_link);
+            const edge_attrs = EdgeCreationAttributes{
+                .edge_type = attrs.get_edge_type(),
+                .directional = if (link_info.make_link.node.get("directional")) |d| d.Bool else null,
+                .name = if (link_info.make_link.node.get("name")) |n| n.String else null,
+                .order = attrs.get_order(),
+                .dynamic = graph.DynamicAttributes.init_on_stack(),
+            };
+
+            _ = self.add_make_link(target_type, lhs_ref, rhs_ref, edge_attrs) catch continue;
+        }
+    }
+
     fn find_make_child_node(
         self: *@This(),
         type_node: BoundNodeReference,

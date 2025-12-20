@@ -2829,10 +2829,156 @@ class TestMultiImportShim:
         assert "l" in identifiers
 
 
-if __name__ == "__main__":
-    import typer
+class TestBlockInheritance:
+    """Tests for block inheritance (module Derived from Base)."""
 
-    from faebryk.libs.logging import setup_basic_logging
+    def test_basic_inheritance(self):
+        """Child type has access to parent's children."""
+        g, tg, stdlib, result = build_type(
+            """
+            import Resistor
+            import Capacitor
 
-    setup_basic_logging()
-    typer.run(test_literal_assignment)
+            module Base:
+                r = new Resistor
+
+            module Derived from Base:
+                c = new Capacitor
+            """,
+            link=True,
+        )
+
+        derived_type = result.state.type_roots["Derived"]
+
+        # Derived should have both 'r' (inherited) and 'c' (own)
+        identifiers = {
+            identifier
+            for identifier, _ in tg.collect_make_children(type_node=derived_type)
+            if identifier is not None
+        }
+        assert "r" in identifiers, "Inherited field 'r' should exist on Derived"
+        assert "c" in identifiers, "Own field 'c' should exist on Derived"
+
+    def test_multi_level_inheritance(self):
+        """Inheritance chains flatten correctly."""
+        g, tg, stdlib, result = build_type(
+            """
+            import Electrical
+
+            module Level1:
+                a = new Electrical
+
+            module Level2 from Level1:
+                b = new Electrical
+
+            module Level3 from Level2:
+                c = new Electrical
+            """,
+            link=True,
+        )
+
+        level3_type = result.state.type_roots["Level3"]
+
+        # Level3 should have a, b, and c
+        identifiers = {
+            identifier
+            for identifier, _ in tg.collect_make_children(type_node=level3_type)
+            if identifier is not None
+        }
+        assert "a" in identifiers, "Field 'a' from Level1 should be inherited"
+        assert "b" in identifiers, "Field 'b' from Level2 should be inherited"
+        assert "c" in identifiers, "Own field 'c' should exist on Level3"
+
+    def test_inheritance_no_user_conflict_with_traits(self):
+        """Trait children (like is_ato_module) don't cause conflicts."""
+        g, tg, stdlib, result = build_type(
+            """
+            import Electrical
+
+            module Base:
+                x = new Electrical
+
+            module Derived from Base:
+                y = new Electrical
+            """,
+            link=True,
+        )
+
+        derived_type = result.state.type_roots["Derived"]
+        identifiers = {
+            identifier
+            for identifier, _ in tg.collect_make_children(type_node=derived_type)
+            if identifier is not None
+        }
+        assert "x" in identifiers
+        assert "y" in identifiers
+
+    def test_inheritance_with_connections(self):
+        """Connections defined in parent are inherited."""
+        g, tg, stdlib, result = build_type(
+            """
+            import Electrical
+
+            module Base:
+                a = new Electrical
+                b = new Electrical
+                a ~ b
+
+            module Derived from Base:
+                c = new Electrical
+            """,
+            link=True,
+        )
+
+        derived_type = result.state.type_roots["Derived"]
+
+        # Check that the connection from Base is inherited
+        links = _collect_make_links(tg, derived_type)
+        link_paths = {
+            (tuple(lhs_path), tuple(rhs_path)) for _, lhs_path, rhs_path in links
+        }
+
+        assert (("a",), ("b",)) in link_paths or (("b",), ("a",)) in link_paths, (
+            "Connection a ~ b from Base should be inherited"
+        )
+
+    def test_interface_inheritance(self):
+        """Interface inheritance works correctly."""
+        g, tg, stdlib, result = build_type(
+            """
+            import Electrical
+
+            interface BaseInterface:
+                a = new Electrical
+
+            interface DerivedInterface from BaseInterface:
+                b = new Electrical
+            """,
+            link=True,
+        )
+
+        derived_type = result.state.type_roots["DerivedInterface"]
+
+        identifiers = {
+            identifier
+            for identifier, _ in tg.collect_make_children(type_node=derived_type)
+            if identifier is not None
+        }
+        assert "a" in identifiers, "Inherited field 'a' should exist"
+        assert "b" in identifiers, "Own field 'b' should exist"
+
+    def test_redefinition_errors(self):
+        """Redefining a parent field in derived type raises an error."""
+        with pytest.raises(ValueError, match="Child already exists"):
+            build_type(
+                """
+                import Electrical
+
+                module Base:
+                    x = new Electrical
+
+                module Derived from Base:
+                    x = new Electrical
+                """,
+                link=True,
+            )

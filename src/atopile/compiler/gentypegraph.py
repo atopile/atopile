@@ -217,6 +217,19 @@ class NoOpAction:
     pass
 
 
+@dataclass(frozen=True)
+class PendingInheritance:
+    """Records an inheritance relationship to be resolved after linking."""
+
+    derived_type: graph.BoundNode
+    derived_name: str
+    parent_ref: "ImportRef | str"  # ImportRef for external, str for local
+    source_order: int
+    # Identifiers that existed before DSL statements (auto-generated traits).
+    # These are skipped during inheritance to avoid redefinition errors.
+    auto_generated_ids: frozenset[str]
+
+
 @dataclass
 class ScopeState:
     symbols: dict[str, Symbol] = field(default_factory=dict)

@@ -130,6 +130,24 @@ class TypeGraph:
         *,
         type_node: BoundNode,
     ) -> list[tuple[str | None, BoundNode]]: ...
+    def copy_type_structure(
+        self,
+        *,
+        target: BoundNode,
+        source: BoundNode,
+        skip_identifiers: list[str] | None = None,
+    ) -> None:
+        """Copy MakeChild/MakeLink nodes from source into target (for inheritance).
+
+        Args:
+            target: The derived type to copy into.
+            source: The parent type to copy from.
+            skip_identifiers: Identifiers to skip (e.g., auto-generated traits).
+
+        Raises:
+            ValueError: If a non-skipped child already exists on target.
+        """
+        ...
     def collect_make_links(
         self,
         *,
