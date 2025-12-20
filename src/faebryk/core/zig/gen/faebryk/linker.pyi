@@ -17,6 +17,13 @@ class Linker:
         target_type_node: BoundNode,
     ) -> None: ...
     @staticmethod
+    def update_type_reference(
+        *,
+        g: GraphView,
+        type_reference: BoundNode,
+        target_type_node: BoundNode,
+    ) -> None: ...
+    @staticmethod
     def get_resolved_type(*, type_reference: BoundNode) -> BoundNode | None: ...
     @staticmethod
     def collect_unresolved_type_references(
