@@ -555,9 +555,7 @@ class BlockDefinition(fabll.Node):
         INTERFACE = "interface"
 
     source = SourceChunk.MakeChild()
-    block_type = F.Literals.EnumsFactory(BlockType).MakeChild(
-        *BlockType.__members__.values()
-    )
+    block_type = F.Parameters.EnumParameter.MakeChild(enum_t=BlockType)
     type_ref = TypeRef.MakeChild()
     super_type_ref = TypeRef.MakeChild()
     scope = Scope.MakeChild()
@@ -573,7 +571,7 @@ class BlockDefinition(fabll.Node):
     ) -> Self:
         block_type_ = self.BlockType(block_type)
         self.source.get().setup(source_info=source_info)
-        self.block_type.get().setup(block_type_)
+        self.block_type.get().alias_to_literal(block_type_)
 
         self.type_ref.get().setup(name=type_ref_name, source_info=type_ref_source_info)
 
@@ -587,7 +585,7 @@ class BlockDefinition(fabll.Node):
         return self
 
     def get_block_type(self) -> BlockType:
-        block_type = self.block_type.get().get_single_value()
+        block_type = self.block_type.get().force_extract_literal().get_single_value()
         return self.BlockType(block_type)
 
     def get_type_ref_name(self) -> str:
@@ -1053,7 +1051,7 @@ class PinDeclaration(fabll.Node):
     _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
 
     source = SourceChunk.MakeChild()
-    kind = F.Literals.EnumsFactory(Kind).MakeChild(*Kind.__members__.values())
+    kind = F.Parameters.EnumParameter.MakeChild(enum_t=Kind)
     label = F.Collections.Pointer.MakeChild()
 
     def setup(  # type: ignore[invalid-method-override]
@@ -1063,7 +1061,7 @@ class PinDeclaration(fabll.Node):
         label_value: "LiteralT | None" = None,
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.kind.get().setup(kind)
+        self.kind.get().alias_to_literal(kind)
 
         if label_value is not None:
             lit = F.Literals.make_simple_lit_singleton(

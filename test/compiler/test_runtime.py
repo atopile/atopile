@@ -591,9 +591,12 @@ def test_empty_component_build():
     )
     assert "A" in result.state.type_roots
     app = fabll.Node.bind_instance(app_instance)
-    assert not app.has_trait(fabll.is_module)  # TODO: is this correct?
     assert not app.has_trait(is_ato_module)
     assert app.has_trait(is_ato_component)
+    # TODO: should have the following traits (user defined):
+    assert app.has_trait(F.is_atomic_part)
+    assert app.has_trait(F.has_designator_prefix)
+    assert app.has_trait(F.has_part_picked)
 
 
 def test_empty_interface_build():
@@ -607,6 +610,7 @@ def test_empty_interface_build():
     assert "A" in result.state.type_roots
     app = fabll.Node.bind_instance(app_instance)
     assert not app.has_trait(fabll.is_module)
+    assert app.has_trait(fabll.is_interface)
     assert not app.has_trait(is_ato_module)
     assert app.has_trait(is_ato_interface)
     # TODO: assert mif compatibility trait?

@@ -161,6 +161,7 @@ class is_ato_component(fabll.Node):
 class is_ato_interface(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     as_ato_block = fabll.Traits.ImpliedTrait(is_ato_block)
+    as_interface = fabll.Traits.ImpliedTrait(fabll.is_interface)
 
 
 class _ScopeStack:
@@ -804,6 +805,7 @@ class ASTVisitor:
                     is_ato_interface = fabll.Traits.MakeEdge(
                         is_ato_interface.MakeChild()
                     )
+                    is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
                 _Block = _Interface
 
