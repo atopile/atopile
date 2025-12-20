@@ -20,8 +20,9 @@ def check_for_recompile():
     THIS_DIR = Path(__file__).parent
     parser_files = THIS_DIR.rglob("Ato*")
     uncommitted_changes = has_uncommitted_changes(parser_files)
-    # if can't check git, we need to assume changes in editable mode
-    if uncommitted_changes is not None and not uncommitted_changes:
+    # If we can't check git (e.g., not in a repo) or there are no uncommitted changes,
+    # skip recompilation. Only recompile when we confirm there ARE uncommitted changes.
+    if uncommitted_changes is None or not uncommitted_changes:
         return
 
     # binary provided by antlr4-tools python package
