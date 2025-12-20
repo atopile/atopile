@@ -182,7 +182,7 @@ class GraphRenderer:
                 if edge_name:
                     self.node_names[key] = edge_name
                     return edge_name
-            fallback_name = f"<node@{key}>"
+            fallback_name = f"<node@0x{key:x}>"
             self.node_names[key] = fallback_name
             return fallback_name
 
@@ -195,7 +195,11 @@ class GraphRenderer:
                 parts.append(type_name)
             if isinstance(name := bound_node.node().get_attr(key="name"), str):
                 parts.append(f'"{name}"' if parts else name)
-            label = " ".join(parts) if parts else f"<node@{id(bound_node.node())}>"
+            label = (
+                " ".join(parts)
+                if parts
+                else f"<node@0x{bound_node.node().get_uuid():x}>"
+            )
             self.labels[key] = label
             return label
 
@@ -235,7 +239,7 @@ class GraphRenderer:
             connector = "└──" if is_last else "├──"
             print(
                 f"{prefix}{connector} [{edge_type_name}] {display_name}: "
-                f"{node_label} {child_key:x} {suffix}",
+                f"{node_label} 0x{child_key:x} {suffix}",
                 file=self.stream,
             )
 
@@ -312,6 +316,7 @@ class GraphRenderer:
     @staticmethod
     def render(
         root: graph.BoundNode,
+        show_composition: bool = True,
         show_traits: bool = True,
         show_pointers: bool = False,
         show_connections: bool = True,
@@ -325,16 +330,17 @@ class GraphRenderer:
 
         def get_children(bound_node: graph.BoundNode) -> list:
             children = []
-            for edge in GraphRenderer._collect_children(bound_node):
-                target_bound = edge.g().bind(node=edge.edge().target())
-                children.append(
-                    (
-                        fbrk.EdgeComposition.get_name(edge=edge.edge()),
-                        r.get_edge_type_name(edge.edge()),
-                        r.get_type_name(target_bound) or "",
-                        target_bound,
+            if show_composition:
+                for edge in GraphRenderer._collect_children(bound_node):
+                    target_bound = edge.g().bind(node=edge.edge().target())
+                    children.append(
+                        (
+                            fbrk.EdgeComposition.get_name(edge=edge.edge()),
+                            r.get_edge_type_name(edge.edge()),
+                            r.get_type_name(target_bound) or "",
+                            target_bound,
+                        )
                     )
-                )
 
             if show_traits:
                 for edge in GraphRenderer._collect_trait_edges(bound_node):

@@ -16,7 +16,6 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-import faebryk.library.Expressions as Expressions
 from faebryk.core.solver.algorithm import SolverAlgorithm
 from faebryk.core.solver.utils import (
     S_LOG,
@@ -546,7 +545,7 @@ class MutationStage:
                     continue
                 alias_type = (
                     "alias"
-                    if fabll.Traits(op).get_obj_raw().isinstance(Expressions.Is)
+                    if fabll.Traits(op).get_obj_raw().isinstance(F.Expressions.Is)
                     else "subset"
                 )
                 key = f"new_{alias_type}\n{lit.pretty_str()}"
@@ -2018,8 +2017,6 @@ class Mutator:
         }
         clean_no_congruent = clean - set(congruencies.keys())
 
-        logger.info(f"Terminated {len(self.transformations.terminated)}")
-
         for p in clean_no_congruent:
             p_copy = p.copy_into(self.G_out)
             if (
@@ -2033,6 +2030,7 @@ class Mutator:
         for p in dirtied - touched | set(congruencies.keys()):
             self.get_copy_po(p)
 
+        # logger.info(f"Terminated {len(self.transformations.terminated)}")
         # logger.info(f"Touched {len(touched)}")
         # logger.info(f"Dirtied {len(dirtied)}")
         # logger.info(f"All ops {len(all_ops)}")
@@ -2270,6 +2268,7 @@ def test_mutator_basic_bootstrap():
 
 
 def test_mutate_copy_terminated_predicate():
+    # TODO move most of this into node.py
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
@@ -2283,19 +2282,50 @@ def test_mutate_copy_terminated_predicate():
         .setup(*[p.can_be_operand.get() for p in params])
     ).is_parameter_operatable.get()
 
+    p_obj = fabll.Traits(pred).get_obj_raw()
+
     g2 = graph.GraphView.create()
     pred2 = pred.copy_into(g2)
+
+    pred_type = pred.get_type_node()
+    pred2_type = pred2.get_type_node()
+    assert pred_type is not None
+    assert pred2_type is not None
+    assert pred_type.node().is_same(other=pred2_type.node())
+    assert not fabll.Node.nodes_match(pred_type, pred2_type)
+
+    tg2 = pred2.tg
+    assert fabll.Node.graphs_match(tg2.get_self_node().g(), g2)
+    assert tg2.get_self_node().node().is_same(other=tg.get_self_node().node())
+
+    pred2_type_built = (
+        F.Parameters.is_parameter_operatable.bind_typegraph_from_instance(
+            pred2.instance
+        ).get_or_create_type()
+    )
+    assert fabll.Node.nodes_match(pred2_type, pred2_type_built)
 
     assert pred2.get_sibling_trait(F.Expressions.is_assertable)
     assert not pred2.try_get_sibling_trait(is_terminated)
 
-    fabll.Traits.create_and_add_instance_to(
-        fabll.Traits(pred2).get_obj_raw(), is_terminated
-    )
+    p2_obj = fabll.Traits(pred2).get_obj_raw()
+    assert p2_obj.instance.node().is_same(other=p_obj.instance.node())
+
+    fabll.Traits.create_and_add_instance_to(p2_obj, is_terminated)
     assert pred2.try_get_sibling_trait(is_terminated)
 
     g3 = graph.GraphView.create()
-    pred3 = pred.copy_into(g3)
+    pred3 = pred2.copy_into(g3)
+    p3_obj = fabll.Traits(pred3).get_obj_raw()
+    tg3 = pred3.tg
+    p2_obj.debug_print_tree(
+        show_pointers=False, show_operands=False, show_composition=False
+    )
+    p3_obj.debug_print_tree(
+        show_pointers=False, show_operands=False, show_composition=False
+    )
+
+    assert fabll.Node.graphs_match(tg3.get_self_node().g(), g3)
     assert pred3.get_sibling_trait(F.Expressions.is_assertable)
     assert pred3.try_get_sibling_trait(is_terminated)
 

@@ -1345,6 +1345,22 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         hierarchy.reverse()
         return hierarchy
 
+    def is_in_graph(self, g: graph.GraphView) -> bool:
+        return Node.graphs_match(self.g, g)
+
+    def is_in_typegraph(self, tg: fbrk.TypeGraph) -> bool:
+        return self.nodes_match(self.tg.get_self_node(), tg.get_self_node())
+
+    @staticmethod
+    def nodes_match(*ns: graph.BoundNode) -> bool:
+        return len(set(n.node().get_uuid() for n in ns)) == 1 and Node.graphs_match(
+            *[n.g() for n in ns]
+        )
+
+    @staticmethod
+    def graphs_match(*gs: graph.GraphView) -> bool:
+        return len(set(g.get_self_node().node().get_uuid() for g in gs)) == 1
+
     def copy_into(self, g: graph.GraphView) -> Self:
         """
         Copy all nodes in hierarchy and edges between them and their types
@@ -1571,6 +1587,28 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         """
         edge_attrs.insert_edge(
             g=self.instance.g(), source=self.instance.node(), target=to.instance.node()
+        )
+
+    # debug ----------------------------------------------------------------------------
+    def debug_print_tree(
+        self,
+        show_composition: bool = True,
+        show_traits: bool = True,
+        show_connections: bool = True,
+        show_operands: bool = True,
+        show_pointers: bool = True,
+    ) -> None:
+        from faebryk.core.graph_render import GraphRenderer
+
+        print(
+            GraphRenderer().render(
+                self.instance,
+                show_composition=show_composition,
+                show_pointers=show_pointers,
+                show_operands=show_operands,
+                show_traits=show_traits,
+                show_connections=show_connections,
+            )
         )
 
     # traits ---------------------------------------------------------------------------

@@ -1839,9 +1839,6 @@ pub const TypeGraph = struct {
         const allocator = arena.allocator();
         defer arena.deinit();
 
-        // Mirror get_subgraph_of_node GraphView init inserting its self node.
-        _ = dst.create_and_insert_node();
-
         var queue = std.ArrayList(NodeReference).init(allocator);
         defer queue.deinit();
 

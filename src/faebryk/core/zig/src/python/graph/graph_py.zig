@@ -875,6 +875,21 @@ fn bound_node_hash(self: *py.PyObject) callconv(.C) isize {
     return @intCast(uuid);
 }
 
+fn bound_node_repr(self: *py.PyObject) callconv(.C) ?*py.PyObject {
+    const wrapper = @as(*BoundNodeWrapper, @ptrCast(@alignCast(self)));
+    const bound_node = wrapper.data;
+
+    var buf: [128]u8 = undefined;
+    const str = std.fmt.bufPrintZ(&buf, "BoundNode(node=0x{x}, graph=0x{x})", .{
+        bound_node.node.get_uuid(),
+        bound_node.g.get_self_node().node.get_uuid(),
+    }) catch {
+        return null;
+    };
+
+    return py.PyUnicode_FromString(str);
+}
+
 fn bound_node_richcompare(self: *py.PyObject, other: *py.PyObject, op: c_int) callconv(.C) ?*py.PyObject {
     // Only support equality (op == Py_EQ = 2) and inequality (op == Py_NE = 3)
     if (op != 2 and op != 3) {
@@ -914,6 +929,7 @@ fn wrap_bound_node(root: *py.PyObject) void {
         typ.tp_hash = @ptrCast(@constCast(&bound_node_hash));
         typ.tp_richcompare = @ptrCast(@constCast(&bound_node_richcompare));
         typ.tp_dealloc = @ptrCast(&bound_node_dealloc);
+        typ.tp_repr = @ptrCast(&bound_node_repr);
 
         typ.ob_base.ob_base.ob_refcnt += 1;
         if (py.PyModule_AddObject(root, "BoundNode", @ptrCast(typ)) < 0) {
@@ -954,6 +970,22 @@ fn wrap_bound_edge_get_graph() type {
     };
 }
 
+fn bound_edge_repr(self: *py.PyObject) callconv(.C) ?*py.PyObject {
+    const wrapper = @as(*BoundEdgeWrapper, @ptrCast(@alignCast(self)));
+    const bound_edge = wrapper.data;
+
+    var buf: [128]u8 = undefined;
+    const str = std.fmt.bufPrintZ(&buf, "BoundEdge(src=0x{x}, tgt=0x{x}, graph=0x{x})", .{
+        bound_edge.edge.get_source_node().get_uuid(),
+        bound_edge.edge.get_target_node().get_uuid(),
+        bound_edge.g.get_self_node().node.get_uuid(),
+    }) catch {
+        return null;
+    };
+
+    return py.PyUnicode_FromString(str);
+}
+
 fn wrap_bound_edge(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_bound_edge_get_edge(),
@@ -964,6 +996,7 @@ fn wrap_bound_edge(root: *py.PyObject) void {
 
     if (bound_edge_type) |typ| {
         typ.tp_dealloc = @ptrCast(&bound_edge_dealloc);
+        typ.tp_repr = @ptrCast(&bound_edge_repr);
         typ.ob_base.ob_base.ob_refcnt += 1;
         if (py.PyModule_AddObject(root, "BoundEdge", @ptrCast(typ)) < 0) {
             typ.ob_base.ob_base.ob_refcnt -= 1;
@@ -1403,7 +1436,11 @@ fn graphview_repr(self: ?*py.PyObject) callconv(.C) ?*py.PyObject {
     const edge_count = wrapper.data.get_edge_count();
 
     var buf: [64]u8 = undefined;
-    const str = std.fmt.bufPrintZ(&buf, "GraphView(|V|={d}, |E|={d})", .{ node_count, edge_count }) catch {
+    const str = std.fmt.bufPrintZ(&buf, "GraphView(id=0x{x}, |V|={d}, |E|={d})", .{
+        wrapper.data.get_self_node().node.get_uuid(),
+        node_count,
+        edge_count,
+    }) catch {
         return null;
     };
 

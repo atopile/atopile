@@ -151,30 +151,10 @@ pub const EdgeTrait = struct {
         bound_node: graph.BoundNodeReference,
         comptime T: type,
         ctx: *anyopaque,
-        f: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(T),
+        f: fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(T),
     ) visitor.VisitResult(T) {
-        const Visit = struct {
-            target: graph.BoundNodeReference,
-            cb_ctx: *anyopaque,
-            cb: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(T),
-
-            pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(T) {
-                const self: *@This() = @ptrCast(@alignCast(self_ptr));
-                const trait_instance = EdgeTrait.get_trait_instance_of(bound_edge.edge, self.target.node);
-                if (trait_instance) |_| {
-                    const trait_instance_result = self.cb(self.cb_ctx, bound_edge);
-                    switch (trait_instance_result) {
-                        .CONTINUE => {},
-                        else => return trait_instance_result,
-                    }
-                }
-                return visitor.VisitResult(T){ .CONTINUE = {} };
-            }
-        };
-
-        var visit = Visit{ .target = bound_node, .cb_ctx = ctx, .cb = f };
         // directed = true: owner is source, trait_instance is target
-        return bound_node.g.visit_edges_of_type(bound_node.node, tid, T, &visit, Visit.visit, true);
+        return bound_node.g.visit_edges_of_type(bound_node.node, tid, T, ctx, f, true);
     }
 
     pub fn get_owner_edge(bound_node: graph.BoundNodeReference) ?graph.BoundEdgeReference {

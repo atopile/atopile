@@ -174,7 +174,8 @@ def cli(
     # if ctx.invoked_subcommand:
     #    check_for_update()
 
-    configure.setup()
+    # FIXME reactivate
+    # configure.setup()
 
 
 app.command()(build.build)

@@ -4598,6 +4598,21 @@ fn typegraph_dealloc(self: *py.PyObject) callconv(.C) void {
     py._Py_Dealloc(self);
 }
 
+fn typegraph_repr(self: *py.PyObject) callconv(.C) ?*py.PyObject {
+    const wrapper = @as(*TypeGraphWrapper, @ptrCast(@alignCast(self)));
+    const tg = wrapper.data;
+
+    var buf: [128]u8 = undefined;
+    const str = std.fmt.bufPrintZ(&buf, "TypeGraph(id=0x{x}, g=0x{x})", .{
+        tg.self_node.node.get_uuid(),
+        tg.self_node.g.get_self_node().node.get_uuid(),
+    }) catch {
+        return null;
+    };
+
+    return py.PyUnicode_FromString(str);
+}
+
 fn wrap_typegraph(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_typegraph_init(),
@@ -4641,6 +4656,7 @@ fn wrap_typegraph(root: *py.PyObject) void {
     type_graph_type = type_registry.getRegisteredTypeObject("TypeGraph");
     if (type_graph_type) |tg_type| {
         tg_type.tp_dealloc = @ptrCast(&typegraph_dealloc);
+        tg_type.tp_repr = @ptrCast(&typegraph_repr);
         if (make_child_node_type == null) {
             make_child_node_type = type_registry.getRegisteredTypeObject("MakeChildNode");
         }
