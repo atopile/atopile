@@ -25,6 +25,7 @@ from atopile.compiler.gentypegraph import (
     NewChildSpec,
     NoOpAction,
     PendingInheritance,
+    PendingRetype,
     ScopeState,
     Symbol,
 )
@@ -125,6 +126,7 @@ class BuildState:
     import_path: str | None
     pending_execution: list[DeferredForLoop] = field(default_factory=list)
     pending_inheritance: list[PendingInheritance] = field(default_factory=list)
+    pending_retypes: list[PendingRetype] = field(default_factory=list)
     type_bound_tgs: dict[str, fabll.TypeNodeBoundTG] = field(default_factory=dict)
 
 
@@ -453,7 +455,7 @@ class ASTVisitor:
     ) -> None:
         self._ast_root = ast_root
         self._graph = graph
-        self._type_graph: fbrk.TypeGraph = type_graph
+        self._tg: fbrk.TypeGraph = type_graph
         self._state = BuildState(
             type_roots={},
             external_type_refs=[],
@@ -463,16 +465,16 @@ class ASTVisitor:
         )
 
         self._pointer_sequence_type = F.Collections.PointerSequence.bind_typegraph(
-            self._type_graph
+            self._tg
         ).get_or_create_type()
         self._electrical_type = F.Electrical.bind_typegraph(
-            self._type_graph
+            self._tg
         ).get_or_create_type()
         self._experiments: set[ASTVisitor._Experiment] = set()
         self._scope_stack = _ScopeStack()
         self._type_stack = _TypeContextStack(
             g=self._graph,
-            tg=self._type_graph,
+            tg=self._tg,
             state=self._state,
         )
         self._stdlib_allowlist = {
@@ -544,9 +546,11 @@ class ASTVisitor:
 
         Order:
         1. Resolve inheritance (copy parent structure into derived types)
-        2. Execute for-loops (containers now have inherited fields)
+        2. Apply retypes (replace type references)
+        3. Execute for-loops (containers now have inherited/retyped fields)
         """
         self._resolve_inheritance()
+        self._execute_pending_retypes()
         self._execute_deferred_for_loops()
 
     def _resolve_inheritance(self) -> None:
@@ -589,10 +593,66 @@ class ASTVisitor:
                 )
 
             # Applies inheritance
-            self._type_graph.copy_type_structure(
+            self._tg.copy_type_structure(
                 target=item.derived_type,
                 source=parent_type,
                 skip_identifiers=list(item.auto_generated_ids),
+            )
+
+    def _execute_pending_retypes(self) -> None:
+        """
+        Apply retype operations after all types are linked.
+
+        For each retype `target -> NewType`:
+        1. Resolve the target path to find owning type
+        2. Get the MakeChild's type reference for the leaf field
+        3. Update the type reference to point to the new type
+        """
+        for retype in sorted(self._state.pending_retypes, key=lambda r: r.source_order):
+            target_path = retype.target_path
+            path_ids = target_path.identifiers()
+
+            if target_path.is_singleton():
+                parent_path = None
+                (leaf_id,) = path_ids
+            else:
+                *parent_path, leaf_id = path_ids
+
+            if parent_path is not None:
+                if (
+                    owning_type := self._tg.resolve_child_path(
+                        start_type=retype.containing_type, path=parent_path
+                    )
+                ) is None:
+                    raise DslException(
+                        f"Cannot resolve path `{'.'.join(parent_path)}` for retyping"
+                    )
+            else:
+                owning_type = retype.containing_type
+
+            if (
+                type_ref := self._tg.get_make_child_type_reference_by_identifier(
+                    type_node=owning_type, identifier=leaf_id
+                )
+            ) is None:
+                raise DslException(
+                    f"Cannot retype `{target_path}`: field does not exist"
+                )
+
+            # linker should by now have resolved the type reference
+            if (
+                new_type := fbrk.Linker.get_resolved_type(
+                    type_reference=retype.new_type_ref
+                )
+            ) is None:
+                type_id = fbrk.TypeGraph.get_type_reference_identifier(
+                    type_reference=retype.new_type_ref
+                )
+                raise DslException(f"Cannot retype to `{type_id}`: type not linked")
+
+            # apply retype
+            fbrk.Linker.update_type_reference(
+                g=self._graph, type_reference=type_ref, target_type_node=new_type
             )
 
     def _execute_deferred_for_loops(self) -> None:
@@ -624,16 +684,14 @@ class ASTVisitor:
         (*parent_path, container_id) = loop.container_path
 
         owning_type = (
-            self._type_graph.resolve_child_path(
-                start_type=type_node, path=list(parent_path)
-            )
+            self._tg.resolve_child_path(start_type=type_node, path=list(parent_path))
             if parent_path
             else type_node
         )
 
         resolved_node = fbrk.Linker.get_resolved_type(
             type_reference=not_none(
-                self._type_graph.get_make_child_type_reference_by_identifier(
+                self._tg.get_make_child_type_reference_by_identifier(
                     type_node=not_none(owning_type), identifier=container_id
                 )
             )
@@ -668,7 +726,7 @@ class ASTVisitor:
                         FieldPath.Segment(str(order), is_index=True),
                     )
                 )
-                for order, _ in self._type_graph.collect_pointer_members(
+                for order, _ in self._tg.collect_pointer_members(
                     type_node=owning_type, container_path=[container_id]
                 )
                 if order is not None
@@ -689,7 +747,7 @@ class ASTVisitor:
         bound_tg = not_none(self._state.type_bound_tgs.get(type_identifier))
         with self._type_stack.enter(type_node, bound_tg, type_identifier):
             with self._scope_stack.enter():
-                for identifier, _ in self._type_graph.collect_make_children(
+                for identifier, _ in self._tg.collect_make_children(
                     type_node=type_node
                 ):
                     self._scope_stack.add_field(
@@ -813,14 +871,14 @@ class ASTVisitor:
         _Block.__name__ = type_identifier
         _Block.__qualname__ = type_identifier
 
-        type_node_bound_tg = fabll.TypeNodeBoundTG(tg=self._type_graph, t=_Block)
+        type_node_bound_tg = fabll.TypeNodeBoundTG(tg=self._tg, t=_Block)
         type_node = type_node_bound_tg.get_or_create_type()
         self._state.type_bound_tgs[module_name] = type_node_bound_tg
 
         # Capture compiler-internal identifiers before we process statements
         auto_generated_ids = frozenset(
             id
-            for id, _ in self._type_graph.collect_make_children(type_node=type_node)
+            for id, _ in self._tg.collect_make_children(type_node=type_node)
             if id is not None
         )
 
@@ -1020,7 +1078,7 @@ class ASTVisitor:
             if target_path.leaf.is_index and parent_path is not None:
                 try:
                     type_node, _, _ = self._type_stack.current()
-                    pointer_members = self._type_graph.collect_pointer_members(
+                    pointer_members = self._tg.collect_pointer_members(
                         type_node=type_node,
                         container_path=list(parent_path.identifiers()),
                     )
@@ -1305,7 +1363,7 @@ class ASTVisitor:
             # raise DslException("Unit symbol is required for quantity")
             return F.Units.Dimensionless
         else:
-            return F.Units.decode_symbol(self._graph, self._type_graph, unit_symbol)
+            return F.Units.decode_symbol(self._graph, self._tg, unit_symbol)
 
     def visit_Quantity(
         self, node: AST.Quantity
@@ -1475,6 +1533,41 @@ class ASTVisitor:
         )
 
         return AddMakeLinkAction(lhs_path=lhs_link_path, rhs_path=rhs_link_path)
+
+    def visit_RetypeStmt(self, node: AST.RetypeStmt):
+        """
+        Handle retype: `target.path -> NewType`
+
+        Replaces an existing field's type reference with a new type.
+        Field existence is validated after inheritance in deferred execution stage.
+        """
+        target_path = self.visit_FieldRef(node.get_target())
+        new_type_name = node.get_new_type_name()
+
+        # Validate new type is importable/defined
+        symbol = self._scope_stack.try_resolve_symbol(new_type_name)
+        if symbol is None:
+            raise DslException(
+                f"Type `{new_type_name}` must be imported or defined before use"
+            )
+
+        type_node, _, _ = self._type_stack.current()
+
+        # Create a type reference for the new type (linker will resolve it)
+        new_type_ref = self._tg.add_type_reference(type_identifier=new_type_name)
+        import_ref = symbol.import_ref if symbol else None
+        self._state.external_type_refs.append((new_type_ref, import_ref))
+
+        self._state.pending_retypes.append(
+            PendingRetype(
+                containing_type=type_node,
+                target_path=target_path,
+                new_type_ref=new_type_ref,
+                source_order=len(self._state.pending_retypes),
+            )
+        )
+
+        return NoOpAction()
 
     def visit_DeclarationStmt(self, node: AST.DeclarationStmt):
         unit_symbol = node.unit_symbol.get().symbol.get().get_single()

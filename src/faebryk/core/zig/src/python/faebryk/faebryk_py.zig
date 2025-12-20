@@ -3403,6 +3403,36 @@ fn wrap_typegraph_add_make_child_deferred() type {
     };
 }
 
+fn wrap_typegraph_add_type_reference() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "add_type_reference",
+            .doc = "Create a standalone TypeReference node with a type identifier to be linked later",
+            .args_def = struct {
+                type_identifier: *py.PyObject,
+            },
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const type_id_slice = bind.unwrap_str(kwarg_obj.type_identifier) orelse return null;
+
+            const bnode = faebryk.typegraph.TypeGraph.TypeReferenceNode.create_and_insert(
+                wrapper.data,
+                type_id_slice,
+            ) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "add_type_reference failed");
+                return null;
+            };
+
+            return graph_py.makeBoundNodePyObject(bnode);
+        }
+    };
+}
+
 fn wrap_typegraph_get_make_child_type_reference() type {
     return struct {
         pub const descr = method_descr{
@@ -4577,6 +4607,7 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_add_type(),
         wrap_typegraph_add_make_child(),
         wrap_typegraph_add_make_child_deferred(),
+        wrap_typegraph_add_type_reference(),
         wrap_typegraph_get_make_child_type_reference(),
         wrap_typegraph_get_make_child_type_reference_by_identifier(),
         wrap_typegraph_resolve_child_path(),
@@ -4753,9 +4784,49 @@ fn wrap_linker_link_type_reference() type {
     };
 }
 
+fn wrap_linker_update_type_reference() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "update_type_reference",
+            .doc = "Update an existing type reference to point to a new target type",
+            .args_def = struct {
+                g: *graph.GraphView,
+                type_reference: *graph.BoundNodeReference,
+                target_type_node: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .g = bind.ARG{ .Wrapper = graph_py.GraphViewWrapper, .storage = &graph_py.graph_view_type },
+                    .type_reference = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .target_type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            faebryk.linker.Linker.update_type_reference(
+                kwarg_obj.g,
+                kwarg_obj.type_reference.*,
+                kwarg_obj.target_type_node.*,
+            ) catch |err| {
+                py.PyErr_SetString(py.PyExc_ValueError, switch (err) {
+                    faebryk.linker.Linker.Error.TypeReferenceNotInGraph => "Type reference does not belong to provided GraphView",
+                    faebryk.linker.Linker.Error.TargetTypeNotInGraph => "Target type does not belong to provided GraphView",
+                });
+                return null;
+            };
+
+            return bind.wrap_none();
+        }
+    };
+}
+
 fn wrap_linker(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_linker_link_type_reference(),
+        wrap_linker_update_type_reference(),
         wrap_linker_get_resolved_type(),
         wrap_linker_collect_unresolved_type_references(),
     };

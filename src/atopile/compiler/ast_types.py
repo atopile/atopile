@@ -1021,6 +1021,7 @@ class RetypeStmt(fabll.Node):
     source = SourceChunk.MakeChild()
     target = F.Collections.Pointer.MakeChild()
     new_type_ref = TypeRef.MakeChild()
+    _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
 
     def setup(  # type: ignore[invalid-method-override]
         self,
@@ -1036,6 +1037,9 @@ class RetypeStmt(fabll.Node):
             name=new_type_name, source_info=new_type_source_info
         )
         return self
+
+    def get_new_type_name(self) -> str:
+        return self.new_type_ref.get().name.get().get_single()
 
     def get_target(self) -> FieldRef:
         return self.target.get().deref().cast(t=FieldRef)

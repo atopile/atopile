@@ -35,6 +35,44 @@ pub const Linker = struct {
         return EdgePointer.get_pointed_node_by_identifier(type_reference, resolved_identifier);
     }
 
+    /// Update an existing type reference to point to a new target type.
+    /// If no existing "resolved" edge exists, creates one (same as link_type_reference).
+    pub fn update_type_reference(g: *GraphView, type_reference: BoundNodeReference, target_type: BoundNodeReference) Error!void {
+        if (type_reference.g != g) {
+            return Error.TypeReferenceNotInGraph;
+        }
+        if (target_type.g != g) {
+            return Error.TargetTypeNotInGraph;
+        }
+
+        if (get_existing_resolved_edge(type_reference)) |existing_edge| {
+            existing_edge.edge.set_target_node(target_type.node);
+        } else {
+            _ = EdgePointer.point_to(type_reference, target_type.node, resolved_identifier, null);
+        }
+    }
+
+    fn get_existing_resolved_edge(type_reference: BoundNodeReference) ?graph.BoundEdgeReference {
+        const Finder = struct {
+            pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(graph.BoundEdgeReference) {
+                _ = self_ptr;
+                return visitor.VisitResult(graph.BoundEdgeReference){ .OK = bound_edge };
+            }
+        };
+        var finder = Finder{};
+        const result = EdgePointer.visit_pointed_edges_with_identifier(
+            type_reference,
+            resolved_identifier,
+            graph.BoundEdgeReference,
+            &finder,
+            Finder.visit,
+        );
+        return switch (result) {
+            .OK => result.OK,
+            else => null,
+        };
+    }
+
     pub const UnresolvedTypeReference = struct {
         type_node: BoundNodeReference,
         type_reference: BoundNodeReference,

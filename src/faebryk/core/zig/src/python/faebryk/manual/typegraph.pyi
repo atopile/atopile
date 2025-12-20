@@ -47,6 +47,14 @@ class TypeGraph:
         node_attributes: NodeCreationAttributes | None = ...,
         mount_reference: BoundNode | None = ...,
     ) -> BoundNode: ...
+    def add_type_reference(self, *, type_identifier: str) -> BoundNode:
+        """Create a standalone TypeReference node to be linked later.
+
+        Use this when you need a type reference (e.g., for retype operations)
+        that isn't part of a MakeChild. The type reference must be linked
+        via Linker.link_type_reference before use.
+        """
+        ...
     def get_make_child_type_reference(self, *, make_child: BoundNode) -> BoundNode: ...
     def get_make_child_type_reference_by_identifier(
         self, *, type_node: BoundNode, identifier: str

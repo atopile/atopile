@@ -2180,3 +2180,77 @@ class TestInheritanceRuntime:
         derived_y = _get_child(derived, "y")
         assert _get_type_name(derived_x) == "Resistor"
         assert _get_type_name(derived_y) == "Capacitor"
+
+
+class TestRetypeRuntime:
+    """Runtime tests for retype operator."""
+
+    def test_basic_retype_instance(self):
+        """Retyped field has the new type at runtime."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Resistor
+            import Capacitor
+
+            module App:
+                cmp = new Resistor
+                cmp -> Capacitor
+            """,
+            "App",
+        )
+
+        cmp = _get_child(app_instance, "cmp")
+        assert _get_type_name(cmp) == "Capacitor", (
+            f"cmp should be Capacitor, got {_get_type_name(cmp)}"
+        )
+
+    def test_retype_in_derived_instance(self):
+        """Retype in derived module produces correct instance type."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Resistor
+            import Capacitor
+
+            module Base:
+                cmp = new Resistor
+
+            module Derived from Base:
+                cmp -> Capacitor
+
+            module App:
+                derived = new Derived
+            """,
+            "App",
+        )
+
+        derived = _get_child(app_instance, "derived")
+        cmp = _get_child(derived, "cmp")
+        assert _get_type_name(cmp) == "Capacitor", (
+            f"cmp should be Capacitor after retype, got {_get_type_name(cmp)}"
+        )
+
+    def test_retype_to_local_type_instance(self):
+        """Retype to a locally defined type produces correct instance."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            import Electrical
+
+            module Base:
+                x = new Electrical
+
+            module Specialized:
+                y = new Electrical
+
+            module App:
+                inner = new Base
+                inner -> Specialized
+            """,
+            "App",
+        )
+
+        inner = _get_child(app_instance, "inner")
+        # The inner should now be of type Specialized
+        inner_type = _get_type_name(inner)
+        assert "Specialized" in inner_type, (
+            f"inner should be Specialized, got {inner_type}"
+        )

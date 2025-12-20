@@ -3155,3 +3155,110 @@ class TestBlockInheritance:
                 """,
                 link=True,
             )
+
+
+class TestRetypeOperator:
+    """Tests for retype operator (target -> NewType)."""
+
+    def test_basic_retype(self):
+        """Retype changes the type reference of a field."""
+        g, tg, stdlib, result = build_type(
+            """
+            import Resistor
+            import Capacitor
+
+            module App:
+                part = new Resistor
+                part -> Capacitor
+            """,
+            link=True,
+        )
+
+        app_type = result.state.type_roots["App"]
+        type_ref = tg.get_make_child_type_reference_by_identifier(
+            type_node=app_type, identifier="part"
+        )
+        resolved = fbrk.Linker.get_resolved_type(type_reference=type_ref)
+        resolved_name = fbrk.TypeGraph.get_type_name(type_node=resolved)
+
+        assert resolved_name == "Capacitor"
+
+    def test_retype_to_local_type(self):
+        """Retype to a locally defined type."""
+        g, tg, stdlib, result = build_type(
+            """
+            import Electrical
+
+            module Base:
+                x = new Electrical
+
+            module Specialized:
+                y = new Electrical
+
+            module App:
+                inner = new Base
+                inner -> Specialized
+            """,
+            link=True,
+        )
+
+        app_type = result.state.type_roots["App"]
+        type_ref = tg.get_make_child_type_reference_by_identifier(
+            type_node=app_type, identifier="inner"
+        )
+        resolved = fbrk.Linker.get_resolved_type(type_reference=type_ref)
+        resolved_name = fbrk.TypeGraph.get_type_name(type_node=resolved)
+
+        assert "Specialized" in resolved_name
+
+    def test_retype_in_derived_module(self):
+        """Retype in derived module changes inherited field's type."""
+        g, tg, stdlib, result = build_type(
+            """
+            import Resistor
+            import Capacitor
+
+            module Base:
+                part = new Resistor
+
+            module Derived from Base:
+                part -> Capacitor
+            """,
+            link=True,
+        )
+
+        derived_type = result.state.type_roots["Derived"]
+        type_ref = tg.get_make_child_type_reference_by_identifier(
+            type_node=derived_type, identifier="part"
+        )
+        resolved = fbrk.Linker.get_resolved_type(type_reference=type_ref)
+        resolved_name = fbrk.TypeGraph.get_type_name(type_node=resolved)
+
+        assert resolved_name == "Capacitor"
+
+    def test_retype_nonexistent_field_errors(self):
+        """Retype on a field that doesn't exist raises an error."""
+        with pytest.raises(DslException, match="does not exist"):
+            build_type(
+                """
+                import Resistor
+
+                module App:
+                    missing -> Resistor
+                """,
+                link=True,
+            )
+
+    def test_retype_to_unknown_type_errors(self):
+        """Retype to an unknown type raises an error."""
+        with pytest.raises(DslException, match="must be imported or defined"):
+            build_type(
+                """
+                import Resistor
+
+                module App:
+                    part = new Resistor
+                    part -> UnknownType
+                """,
+                link=True,
+            )

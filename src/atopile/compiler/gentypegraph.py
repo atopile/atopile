@@ -230,6 +230,16 @@ class PendingInheritance:
     auto_generated_ids: frozenset[str]
 
 
+@dataclass(frozen=True)
+class PendingRetype:
+    """Records a retype operation to be resolved after linking."""
+
+    containing_type: graph.BoundNode  # Type where retype is declared
+    target_path: FieldPath  # Path to resolve (e.g., button.button)
+    new_type_ref: graph.BoundNode  # Type reference node (linker resolves this)
+    source_order: int  # Preserve declaration order
+
+
 @dataclass
 class ScopeState:
     symbols: dict[str, Symbol] = field(default_factory=dict)

@@ -251,6 +251,10 @@ pub const EdgeReference = struct {
         return Edges[self.uuid].target;
     }
 
+    pub fn set_target_node(self: @This(), target: NodeReference) void {
+        Edges[self.uuid].target = target;
+    }
+
     pub fn get_attribute_directional(self: @This()) bool {
         return Edges[self.uuid].flags.directional == 1;
     }
