@@ -1945,20 +1945,7 @@ class Mutator:
     @property
     @once
     def tg_out(self) -> fbrk.TypeGraph:
-        tg_out = fbrk.TypeGraph.of(
-            node=self.G_out.bind(node=self.tg_in.get_self_node().node())
-        )
-
-        # TODO remove hack
-        # copies tg core nodes over
-        # fabll.Node.bind_instance(
-        #    fabll.TypeNodeBoundTG.get_or_create_type_in_tg(self.tg_in, ImplementsType)
-        # ).copy_into(self.G_out)
-
-        type_subgraph = self.tg_in.get_type_subgraph()
-        self.G_out.insert_subgraph(subgraph=type_subgraph)
-        type_subgraph.destroy()
-        return tg_out
+        return self.tg_in.copy_into(target_graph=self.G_out, minimal=False)
 
     @property
     @once

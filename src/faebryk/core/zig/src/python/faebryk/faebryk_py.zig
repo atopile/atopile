@@ -4489,8 +4489,46 @@ fn wrap_typegraph_copy_node_into() type {
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
             faebryk.typegraph.TypeGraph.copy_node_into(kwarg_obj.start_node.*, kwarg_obj.target_graph);
             return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_typegraph_copy_into() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "copy_into",
+            .doc = "Copy the TypeGraph into the target GraphView and return a new TypeGraph for the destination",
+            .args_def = struct {
+                target_graph: *graph.GraphView,
+                minimal: *py.PyObject,
+
+                pub const fields_meta = .{
+                    .target_graph = bind.ARG{ .Wrapper = graph_py.GraphViewWrapper, .storage = &graph_py.graph_view_type },
+                };
+            },
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+            const minimal = py.PyObject_IsTrue(kwarg_obj.minimal) == 1;
+            const tg_value = faebryk.typegraph.TypeGraph.copy_into(wrapper.data, kwarg_obj.target_graph, minimal);
+
+            const allocator = std.heap.c_allocator;
+            const ptr = allocator.create(faebryk.typegraph.TypeGraph) catch {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                return null;
+            };
+            ptr.* = tg_value;
+
+            const obj = bind.wrap_obj("TypeGraph", &type_graph_type, TypeGraphWrapper, ptr);
+            if (obj == null) {
+                allocator.destroy(ptr);
+            }
+            return obj;
         }
     };
 }
@@ -4568,6 +4606,7 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_get_graph_view(),
         wrap_typegraph_get_self_node(),
         wrap_typegraph_get_type_instance_overview(),
+        wrap_typegraph_copy_into(),
         wrap_typegraph_copy_node_into(),
     };
     bind.wrap_namespace_struct(root, faebryk.typegraph.TypeGraph, extra_methods);

@@ -749,7 +749,7 @@ def test_discover_literal_folding_local(expr: F.Parameters.can_be_operand):
     solver = DefaultSolver()
 
     test_g = graph.GraphView.create()
-    test_g.insert_subgraph(subgraph=global_tg.get_type_subgraph())
+    global_tg.copy_into(target_graph=test_g, minimal=False)
 
     app_copy = app.copy_into(test_g)
 
@@ -833,7 +833,7 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
     """
     solver = DefaultSolver()
     test_g = graph.GraphView.create()
-    test_g.insert_subgraph(subgraph=global_tg.get_type_subgraph())
+    global_tg.copy_into(target_graph=test_g, minimal=False)
     test_expr = expr.copy_into(test_g)
     test_tg = test_expr.tg
     expr_ctx = BoundExpressions(g=test_g, tg=test_tg)
@@ -1054,7 +1054,7 @@ def test_regression_literal_folding(
         solver = DefaultSolver()
 
         test_g = graph.GraphView.create()
-        test_g.insert_subgraph(subgraph=global_tg.get_type_subgraph())
+        global_tg.copy_into(target_graph=test_g, minimal=False)
 
         app_copy = app.copy_into(test_g)
 
@@ -1215,7 +1215,7 @@ def test_folding_statistics(expr: F.Expressions.is_expression):
     """
     stats = Stats.get()
     test_g = graph.GraphView.create()
-    test_g.insert_subgraph(subgraph=global_tg.get_type_subgraph())
+    global_tg.copy_into(target_graph=test_g, minimal=False)
     test_expr = expr.copy_into(test_g)
     test_tg = test_expr.tg
     stats.event("generate", test_expr, terminal=False)

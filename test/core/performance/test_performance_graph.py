@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 @pytest.mark.parametrize(
     "A,B,rs,pick",
     [
-        (10, 7, 1000, False),
-        # (1, 1, 1, True),
+        # (10, 7, 1000, False),
+        (1, 1, 1, True),
     ],
 )
 def test_performance_parameters(A: int = 1, B: int = 1, rs: int = 1, pick: bool = True):

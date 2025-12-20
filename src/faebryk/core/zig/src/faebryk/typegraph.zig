@@ -1698,10 +1698,12 @@ pub const TypeGraph = struct {
         return out;
     }
 
-    pub fn copy_into(self: *@This(), dst: *GraphView, minimal: bool) void {
+    pub fn copy_into(self: *@This(), dst: *GraphView, minimal: bool) @This() {
         // minimal = tg node + bootstrap nodes only
         const start_node = if (minimal) self.get_MakeChild() else self.self_node;
-        self.copy_node_into(start_node, dst);
+        copy_node_into(start_node, dst);
+        // Return a TypeGraph wrapping the copied self_node in the destination graph
+        return TypeGraph.of(dst.bind(self.self_node.node));
     }
 
     pub fn copy_node_into(start_node: BoundNodeReference, dst: *GraphView) void {
