@@ -619,6 +619,68 @@ class TestHover:
             DOCUMENT_STATES[test_uri].reset_graph()
             del DOCUMENT_STATES[test_uri]
 
+    def test_hover_local_type_with_docstring(self):
+        """Test hover info for local type includes docstring"""
+        test_uri = "file:///test_hover_local_doc.ato"
+        if test_uri in DOCUMENT_STATES:
+            del DOCUMENT_STATES[test_uri]
+
+        ato_content = '''
+import Resistor
+
+module MyModule:
+    """
+    This is a helpful docstring for MyModule.
+    It explains what this module does.
+    """
+    r = new Resistor
+
+module App:
+    m = new MyModule
+'''
+        state = build_document(test_uri, dedent(ato_content))
+        hover = _get_type_hover_info("MyModule", state)
+
+        assert hover is not None
+        assert "MyModule" in hover
+        assert "module" in hover.lower()
+        # Should include the docstring
+        assert "helpful docstring" in hover
+        assert "explains what this module does" in hover
+
+        # Cleanup
+        if test_uri in DOCUMENT_STATES:
+            DOCUMENT_STATES[test_uri].reset_graph()
+            del DOCUMENT_STATES[test_uri]
+
+    def test_hover_local_type_without_docstring(self):
+        """Test hover info for local type without docstring"""
+        test_uri = "file:///test_hover_local_no_doc.ato"
+        if test_uri in DOCUMENT_STATES:
+            del DOCUMENT_STATES[test_uri]
+
+        ato_content = """
+import Resistor
+
+module SimpleModule:
+    r = new Resistor
+
+module App:
+    m = new SimpleModule
+"""
+        state = build_document(test_uri, dedent(ato_content))
+        hover = _get_type_hover_info("SimpleModule", state)
+
+        assert hover is not None
+        assert "SimpleModule" in hover
+        assert "module" in hover.lower()
+        # Should not crash without docstring
+
+        # Cleanup
+        if test_uri in DOCUMENT_STATES:
+            DOCUMENT_STATES[test_uri].reset_graph()
+            del DOCUMENT_STATES[test_uri]
+
     def test_hover_end_to_end(self):
         """End-to-end test for hover on type name"""
         ato_content = """

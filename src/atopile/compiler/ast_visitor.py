@@ -811,62 +811,30 @@ class ASTVisitor:
         _Block.__name__ = type_identifier
         _Block.__qualname__ = type_identifier
 
-        # Check for docstring: if first statement is a StringStmt, attach has_doc_string
-        # trait to the type. Docstrings must be the first statement in a block.
-        stmts = node.scope.get().stmts.get().as_list()
-        if stmts and stmts[0].isinstance(AST.StringStmt):
-            doc_string_stmt = stmts[0].cast(t=AST.StringStmt)
-            doc_string_text = doc_string_stmt.string.get().get_text()
-            # Dynamically add has_doc_string trait to the block class (attached to type)
-            setattr(
-                _Block,
-                "_has_doc_string",
-                fabll.Traits.MakeEdge(
-                    F.has_doc_string.MakeChild(doc_string=doc_string_text).put_on_type()
-                ),
-            )
-
+        type_node = self._type_graph.add_type(identifier=type_identifier)
         type_node_bound_tg = fabll.TypeNodeBoundTG(tg=self._type_graph, t=_Block)
         type_node = type_node_bound_tg.get_or_create_type()
         self._state.type_bound_tgs[module_name] = type_node_bound_tg
 
-        # Capture compiler-internal identifiers before we process statements
-        auto_generated_ids = frozenset(
-            id
-            for id, _ in self._type_graph.collect_make_children(type_node=type_node)
-            if id is not None
-        )
+        # Process the class fields (traits) we just defined
+        # Since we manually added the type node above, get_or_create_type inside
+        # TypeNodeBoundTG will find and skip _create_type, so we must call it manually.
+        _Block._create_type(type_node_bound_tg)
 
-        # Capture inheritance relationship for deferred resolution
-        if (super_type_name := node.get_super_type_ref_name()) is not None:
-            super_symbol = self._scope_stack.try_resolve_symbol(super_type_name)
-
-            self._state.pending_inheritance.append(
-                PendingInheritance(
-                    derived_type=type_node,
-                    derived_name=module_name,
-                    parent_ref=(
-                        super_symbol.import_ref
-                        if super_symbol and super_symbol.import_ref
-                        else super_type_name
-                    ),
-                    source_order=len(self._state.pending_inheritance),
-                    auto_generated_ids=auto_generated_ids,
-                )
-            )
-
-        with self._scope_stack.enter():
-            with self._type_stack.enter(type_node, type_node_bound_tg, module_name):
-                for stmt in stmts:
-                    self._type_stack.apply_action(self.visit(stmt))
-
-        # link back to AST node
+        # Link type node back to AST definition
+        # (needed by visit_StringStmt for docstrings)
         fbrk.EdgePointer.point_to(
             bound_node=type_node,
             target_node=node.instance.node(),
             identifier=AnyAtoBlock._definition_identifier,
             order=None,
         )
+
+        stmts = node.scope.get().stmts.get().as_list()
+        with self._scope_stack.enter():
+            with self._type_stack.enter(type_node, type_node_bound_tg, module_name):
+                for stmt in stmts:
+                    self._type_stack.apply_action(self.visit(stmt))
 
         self._state.type_roots[module_name] = type_node
         self._scope_stack.add_symbol(Symbol(name=module_name, type_node=type_node))
@@ -885,7 +853,23 @@ class ASTVisitor:
         return F.Literals.Strings.MakeChild(node.get_text())
 
     def visit_StringStmt(self, node: AST.StringStmt):
-        # TODO: add docstring trait to preceding node
+        """If first statement in block, attach as docstring trait to the type."""
+        type_node, bound_tg, _ = self._type_stack.current()
+        block_node = fbrk.EdgePointer.get_pointed_node_by_identifier(
+            bound_node=type_node, identifier=AnyAtoBlock._definition_identifier
+        )
+        if block_node is None:
+            return NoOpAction()
+
+        stmts = AST.BlockDefinition.bind_instance(block_node).scope.get().stmts.get()
+        if stmts.as_list() and stmts.as_list()[0].instance.node().is_same(
+            other=node.instance.node()
+        ):
+            field = fabll.Traits.MakeEdge(
+                F.has_doc_string.MakeChild(node.string.get().get_text()).put_on_type()
+            )
+            field._set_locator("_has_doc_string")
+            fabll.Node._exec_field(t=bound_tg, field=field, type_field=True)
         return NoOpAction()
 
     def visit_SignaldefStmt(self, node: AST.SignaldefStmt):

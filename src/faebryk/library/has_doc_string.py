@@ -34,7 +34,7 @@ class has_doc_string(fabll.Node):
         return str(self.doc_string_.get().force_extract_literal().get_values()[0])
 
     @classmethod
-    def MakeChild(cls, doc_string: str) -> fabll._ChildField[Any]:
+    def MakeChild(cls, doc_string: str) -> fabll._ChildField[Any]:  # type: ignore[override]
         """Create a has_doc_string trait with the given docstring text."""
         out = fabll._ChildField(cls)
         out.add_dependant(

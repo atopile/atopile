@@ -2829,6 +2829,179 @@ class TestMultiImportShim:
         assert "l" in identifiers
 
 
+class TestDocStrings:
+    """Tests for docstring handling in module/component/interface definitions.
+
+    When a block definition starts with a string statement (docstring),
+    the has_doc_string trait should be attached to the type.
+    """
+
+    def test_module_docstring_attaches_trait(self):
+        """Test that a module docstring creates a has_doc_string trait on the type."""
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.library._F as F
+
+        g, tg, stdlib, result = build_type(
+            '''
+            module MyModule:
+                """
+                This is the docstring for MyModule.
+                It can span multiple lines.
+                """
+                pass
+            ''',
+            link=True,
+        )
+
+        my_module_type = result.state.type_roots["MyModule"]
+
+        # Check that has_doc_string trait was attached to the type node
+        # Type-level traits are instance children, not MakeChild nodes
+        has_doc_string_type = F.has_doc_string.bind_typegraph(tg).get_or_create_type()
+        trait_impl = fbrk.Trait.try_get_trait(
+            target=my_module_type, trait_type=has_doc_string_type
+        )
+        assert trait_impl is not None, "Expected has_doc_string trait on type"
+
+    def test_component_docstring_attaches_trait(self):
+        """Test that a component docstring creates a has_doc_string trait."""
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.library._F as F
+
+        g, tg, stdlib, result = build_type(
+            '''
+            component MyComponent:
+                """Component docstring."""
+                pin 1
+            ''',
+            link=True,
+        )
+
+        comp_type = result.state.type_roots["MyComponent"]
+        has_doc_string_type = F.has_doc_string.bind_typegraph(tg).get_or_create_type()
+        trait_impl = fbrk.Trait.try_get_trait(
+            target=comp_type, trait_type=has_doc_string_type
+        )
+        assert trait_impl is not None, "Expected has_doc_string trait on component"
+
+    def test_interface_docstring_attaches_trait(self):
+        """Test that an interface docstring creates a has_doc_string trait."""
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.library._F as F
+
+        g, tg, stdlib, result = build_type(
+            '''
+            interface MyInterface:
+                """Interface docstring."""
+                signal io
+            ''',
+            link=True,
+        )
+
+        interface_type = result.state.type_roots["MyInterface"]
+        has_doc_string_type = F.has_doc_string.bind_typegraph(tg).get_or_create_type()
+        trait_impl = fbrk.Trait.try_get_trait(
+            target=interface_type, trait_type=has_doc_string_type
+        )
+        assert trait_impl is not None, "Expected has_doc_string trait on interface"
+
+    def test_no_docstring_no_trait(self):
+        """Test that a module without docstring has no has_doc_string trait."""
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.library._F as F
+
+        g, tg, stdlib, result = build_type(
+            """
+            module NoDocModule:
+                pass
+            """,
+            link=True,
+        )
+
+        module_type = result.state.type_roots["NoDocModule"]
+        has_doc_string_type = F.has_doc_string.bind_typegraph(tg).get_or_create_type()
+        trait_impl = fbrk.Trait.try_get_trait(
+            target=module_type, trait_type=has_doc_string_type
+        )
+        assert trait_impl is None, "Expected no has_doc_string trait"
+
+    def test_string_not_first_is_not_docstring(self):
+        """
+        Test that a string statement not first in block is not treated as docstring.
+        """
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.library._F as F
+
+        g, tg, stdlib, result = build_type(
+            '''
+            module MyModule:
+                pass
+                """This is NOT a docstring - it comes after pass."""
+            ''',
+            link=True,
+        )
+
+        module_type = result.state.type_roots["MyModule"]
+        has_doc_string_type = F.has_doc_string.bind_typegraph(tg).get_or_create_type()
+        trait_impl = fbrk.Trait.try_get_trait(
+            target=module_type, trait_type=has_doc_string_type
+        )
+        assert trait_impl is None, "Expected no has_doc_string trait"
+
+    def test_single_quoted_docstring(self):
+        """Test that single-quoted strings work as docstrings."""
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.library._F as F
+
+        g, tg, stdlib, result = build_type(
+            """
+            module MyModule:
+                'Single quoted docstring.'
+                pass
+            """,
+            link=True,
+        )
+
+        module_type = result.state.type_roots["MyModule"]
+        has_doc_string_type = F.has_doc_string.bind_typegraph(tg).get_or_create_type()
+        trait_impl = fbrk.Trait.try_get_trait(
+            target=module_type, trait_type=has_doc_string_type
+        )
+        assert trait_impl is not None, "Expected has_doc_string trait"
+
+    def test_docstring_with_code(self):
+        """Test that docstring works with actual code in the module."""
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.library._F as F
+
+        g, tg, stdlib, result = build_type(
+            '''
+            import Resistor
+
+            module MyModule:
+                """
+                This module has a resistor.
+                """
+                r = new Resistor
+            ''',
+            link=True,
+        )
+
+        module_type = result.state.type_roots["MyModule"]
+
+        # Check trait exists
+        has_doc_string_type = F.has_doc_string.bind_typegraph(tg).get_or_create_type()
+        trait_impl = fbrk.Trait.try_get_trait(
+            target=module_type, trait_type=has_doc_string_type
+        )
+        assert trait_impl is not None, "Expected has_doc_string trait"
+
+        # Check resistor also exists (docstring handling doesn't break normal code)
+        make_children = list(tg.collect_make_children(type_node=module_type))
+        identifiers = [id for id, _ in make_children if id]
+        assert "r" in identifiers
+
+
 class TestBlockInheritance:
     """Tests for block inheritance (module Derived from Base)."""
 

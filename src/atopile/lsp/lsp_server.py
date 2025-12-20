@@ -1057,9 +1057,133 @@ def _get_type_hover_info(type_name: str, state: DocumentState) -> str | None:
     # Check for local type
     if state.build_result is not None:
         if type_name in state.build_result.state.type_roots:
-            return f"**module** `{type_name}` (local)"
+            return _build_local_type_hover(type_name, state)
 
     return None
+
+
+def _build_local_type_hover(type_name: str, state: DocumentState) -> str:
+    """Build hover text for a local .ato type with docstring and members."""
+    lines = []
+    lines.append(f"**module** `{type_name}`")
+
+    # Try to extract docstring from has_doc_string trait
+    doc_string = _get_local_type_docstring(type_name, state)
+    if doc_string:
+        lines.append(f"\n---\n\n{doc_string}")
+
+    # Try to get member info from the type
+    members = _get_local_type_members(type_name, state)
+    if members:
+        lines.append("\n---\n\n**Members:**")
+        for member_name, member_type in members[:10]:
+            lines.append(f"\n- `{member_name}`: {member_type}")
+        if len(members) > 10:
+            lines.append(f"\n- *... and {len(members) - 10} more*")
+
+    return "\n".join(lines)
+
+
+def _get_local_type_docstring(type_name: str, state: DocumentState) -> str | None:
+    """Extract docstring from a local type's has_doc_string trait."""
+    if state.type_graph is None or state.graph_view is None:
+        return None
+
+    if state.build_result is None:
+        return None
+
+    try:
+        g = state.graph_view
+        tg = state.type_graph
+
+        # Look for has_doc_string trait instances and match by parent type name
+        doc_string_type = F.has_doc_string.bind_typegraph(tg)
+        for inst in doc_string_type.get_instances(g):
+            try:
+                doc_trait = inst.cast(F.has_doc_string)
+
+                # Get the parent node (the type that has this trait)
+                parent = inst.get_parent()
+                if parent and isinstance(parent, tuple) and len(parent) >= 1:
+                    parent_node = parent[0]
+                    # Get the full name which contains the type name
+                    # Format: "0x2./test.ato::MyModule"
+                    full_name = parent_node.get_full_name()
+
+                    # Extract type name from full name
+                    if "::" in full_name:
+                        extracted_type_name = full_name.split("::")[-1]
+                        if extracted_type_name == type_name:
+                            # Dedent to remove leading whitespace from multiline strings
+                            return textwrap.dedent(doc_trait.doc_string).strip()
+            except Exception:
+                continue
+
+    except Exception as e:
+        logger.debug(f"Error getting local type docstring: {e}")
+
+    return None
+
+
+def _get_local_type_members(
+    type_name: str, state: DocumentState
+) -> list[tuple[str, str]]:
+    """Get member list for a local type from the AST."""
+    members: list[tuple[str, str]] = []
+
+    if state.type_graph is None or state.graph_view is None:
+        return members
+
+    if state.build_result is None:
+        return members
+
+    try:
+        g = state.graph_view
+        tg = state.type_graph
+
+        # Check if this type exists
+        if type_name not in state.build_result.state.type_roots:
+            return members
+
+        # Look through assignments in the type to find members
+        assignment_type = AST.Assignment.bind_typegraph(tg)
+        for inst in assignment_type.get_instances(g):
+            try:
+                assignment = inst.cast(AST.Assignment)
+
+                # Check if this assignment belongs to our type by checking parent scope
+                # This is a simplification - we check if the assignment's scope matches
+                parent = assignment.source.get()
+                scope = parent.scope.get()
+
+                # Get the block name from scope if available
+                if hasattr(scope, "name"):
+                    scope_name = scope.name.get().get_single()
+                    if scope_name == type_name:
+                        # Get target name
+                        target = assignment.target.get().deref()
+                        target_fr = target.cast(AST.FieldRef)
+                        parts = list(target_fr.parts.get().as_list())
+                        if parts:
+                            first_part = parts[0].cast(AST.FieldRefPart)
+                            member_name = first_part.name.get().get_single()
+
+                            # Get value type info
+                            value = assignment.value.get().deref()
+                            if hasattr(value, "__class__"):
+                                if value.__class__.__name__ == "NewExpression":
+                                    new_expr = value.cast(AST.NewExpression)
+                                    type_ref_name = new_expr.get_type_ref_name()
+                                    members.append((member_name, type_ref_name))
+                                else:
+                                    members.append((member_name, "field"))
+            except Exception:
+                continue
+
+    except Exception as e:
+        logger.debug(f"Error getting local type members: {e}")
+
+    return members
 
 
 def _build_stdlib_type_hover(
