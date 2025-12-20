@@ -1845,8 +1845,7 @@ class ASTVisitor:
         target_path_list: LinkPath = []
         if (target_field_ref := node.get_target()) is not None:
             target_path = self.visit_FieldRef(target_field_ref)
-            # Nested paths are validated later by the typegraph.
-            # Wrap the root segment in a FieldPath (ensure_defined expects FieldPath).
+            # Nested paths are validated later by the typegraph
             self._scope_stack.ensure_defined(FieldPath(segments=(target_path.root,)))
             target_path_list = list(target_path.identifiers())
 
