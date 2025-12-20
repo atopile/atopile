@@ -30,10 +30,13 @@ class has_part_picked(fabll.Node):
         from faebryk.libs.picker.picker import PickedPart, PickSupplier
 
         class DummyPickSupplier(PickSupplier):
-            if supplier_id := self.supplier_id.get().try_extract_constrained_literal():
-                supplier_id = supplier_id.get_values()[0]
+            if (
+                supplier_id_literal
+                := self.supplier_id.get().try_extract_constrained_literal()
+            ):
+                supplier_id = supplier_id_literal.get_values()[0]
             else:
-                supplier_id = None
+                supplier_id = ""
 
             def attach(self, *args, **kwargs):
                 return None
@@ -48,7 +51,10 @@ class has_part_picked(fabll.Node):
         else:
             return None
 
-        if supplier_partno := self.supplier_partno.get().try_extract_constrained_literal():
+        if (
+            supplier_partno
+            := self.supplier_partno.get().try_extract_constrained_literal()
+        ):
             supplier_partno = supplier_partno.get_values()[0]
         else:
             return None

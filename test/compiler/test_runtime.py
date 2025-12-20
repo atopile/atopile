@@ -1524,10 +1524,13 @@ def test_trait_alternate_constructor_precedence():
     )
     assert "App" in result.state.type_roots
     trait = fabll.Node.bind_instance(app_instance).get_trait(F.has_part_picked)
-    assert trait.supplier_id == "1234"
-    assert trait.supplier_partno == "2345"
-    assert trait.manufacturer == "good_company"
-    assert trait.partno == "amazing_part"
+    assert trait.supplier_id.get().force_extract_literal().get_values()[0] == "1234"
+    assert trait.supplier_partno.get().force_extract_literal().get_values()[0] == "2345"
+    assert (
+        trait.manufacturer.get().force_extract_literal().get_values()[0]
+        == "good_company"
+    )
+    assert trait.partno.get().force_extract_literal().get_values()[0] == "amazing_part"
 
 
 def test_parameterised_trait_no_params():
@@ -1865,7 +1868,7 @@ def test_trait_template_enum_invalid():
 
 def test_module_template_enum():
     class Module(fabll.Node):
-        size_ = F.Parameters.EnumParameter.MakeChild(enum_t=SMDSize)
+        size = F.Parameters.EnumParameter.MakeChild(enum_t=SMDSize)
 
     _, _, _, result, app_instance = build_instance(
         """
@@ -1883,7 +1886,7 @@ def test_module_template_enum():
     assert "App" in result.state.type_roots
     r = _get_child(app_instance, "r")
     r = Module.bind_instance(r)
-    assert r.size_.get().force_extract_literal().get_single() == SMDSize.I0805
+    assert r.size.get().force_extract_literal().get_single() == SMDSize.I0805
 
 
 def test_module_template_enum_invalid():
