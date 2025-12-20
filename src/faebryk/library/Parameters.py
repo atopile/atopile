@@ -1533,6 +1533,98 @@ def test_is_discrete_set():
     assert not continuous_set.get_numeric_set().is_discrete_set()
 
 
+def test_copy_into_enum_parameter():
+    """
+    Test copying an enum parameter to another graph preserves the enum type.
+
+    The issue: When we copy just the parameter, the `Is` expression that constrains
+    it doesn't get copied because:
+    - `Is` expression has operand edges pointing TO the parameter (not from)
+    - copy_into traverses forward from the node being copied
+
+    This test demonstrates that copying the Is expression (which contains the
+    constraint) works, while copying just the parameter loses the constraint.
+    """
+    # TODO WIP, written by llm
+    # supposed to debug param copying in mutator.mutate_parameter
+
+    from enum import Enum
+
+    g1 = fabll.graph.GraphView.create()
+    tg1 = fbrk.TypeGraph.create(g=g1)
+
+    class MyEnum(Enum):
+        A = "a"
+        B = "b"
+        C = "c"
+
+    # Create enum parameter and set up with the enum type
+    enum_param = EnumParameter.bind_typegraph(tg=tg1).create_instance(g=g1)
+    enum_param.setup(enum=MyEnum)
+
+    # Alias to a specific value - this creates an Is expression
+    enum_param.alias_to_literal(MyEnum.A, MyEnum.B, g=g1)
+
+    # Verify original works
+    original_lit = enum_param.force_extract_literal()
+    original_values = original_lit.get_values()
+    assert sorted(original_values) == ["a", "b"]
+
+    # Get the Is expression that constrains the parameter
+    original_ops = enum_param.is_parameter_operatable.get().get_operations()
+    assert len(original_ops) == 1, f"Expected 1 operation, got {len(original_ops)}"
+    is_expr = list(original_ops)[0]
+    print(f"\nOriginal Is expression: {is_expr}")
+
+    # Create new graph and copy the TypeGraph first
+    g2 = graph.GraphView.create()
+    tg2 = tg1.copy_into(target_graph=g2, minimal=False)
+
+    # Copy the Is expression (not just the parameter)
+    # This should copy both operands (parameter and literal) along with it
+    copied_is = is_expr.copy_into(g=g2)
+    print(f"Copied Is expression in g2: {copied_is}")
+
+    # The copied parameter should now be accessible via the copied Is expression's operands
+    # Get operands using the is_expression trait API
+    from faebryk.library.Expressions import is_expression
+
+    copied_is_expr_trait = copied_is.get_trait(is_expression)
+    copied_operands = copied_is_expr_trait.get_operands()
+    print(f"Copied operands: {copied_operands}")
+
+    # Find the copied enum parameter
+    copied_param = None
+    for operand in copied_operands:
+        po = operand.as_parameter_operatable.try_get()
+        if po:
+            param_trait = po.as_parameter.try_get()
+            if param_trait:
+                copied_param = fabll.Traits(param_trait).get_obj(EnumParameter)
+                break
+
+    assert copied_param is not None, "Could not find copied enum parameter"
+    print(f"Copied enum parameter: {copied_param}")
+
+    # Verify the copied parameter has same constrained literal
+    copied_ops = copied_param.is_parameter_operatable.get().get_operations()
+    print(f"Copied parameter has {len(copied_ops)} operations")
+    assert len(copied_ops) == 1, f"Expected 1 operation, got {len(copied_ops)}"
+
+    copied_lit = copied_param.force_extract_literal()
+    copied_values = copied_lit.get_values()
+    assert sorted(copied_values) == ["a", "b"], (
+        f"Expected ['a', 'b'] but got {copied_values}"
+    )
+
+    # Verify we can still read the original
+    assert sorted(enum_param.force_extract_literal().get_values()) == ["a", "b"]
+
+    # Verify the enum type can still be accessed
+    copied_enum_type = copied_param.get_enum_type()
+    assert copied_enum_type is not None
+
+
 if __name__ == "__main__":
     import typer
 

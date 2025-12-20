@@ -7982,6 +7982,50 @@ class TestEnums:
         assert reserialized["type"] == "EnumSet"
         assert reserialized["data"]["enum"]["name"] == "BackendPackage"
 
+    def test_copy_into_enum_literal(self):
+        """
+        Test copying an enum literal to another graph preserves values.
+
+        This works because the enum literal's values are stored as pointers
+        to EnumValue nodes which are composition children. copy_into traverses
+        these forward edges and copies everything reachable.
+        """
+        g1 = graph.GraphView.create()
+        tg1 = fbrk.TypeGraph.create(g=g1)
+
+        class TestEnum(StrEnum):
+            FOO = "foo"
+            BAR = "bar"
+            BAZ = "baz"
+
+        # Create enum literal in graph 1
+        Enums = EnumsFactory(TestEnum)
+        original = (
+            Enums.bind_typegraph(tg=tg1)
+            .create_instance(g=g1)
+            .setup(TestEnum.FOO, TestEnum.BAR)
+        )
+
+        # Verify original works
+        original_values = original.get_values()
+        assert sorted(original_values) == ["bar", "foo"]
+
+        # Create new graph and copy the TypeGraph first
+        g2 = graph.GraphView.create()
+        # tg2 = tg1.copy_into(target_graph=g2, minimal=False)
+
+        # Copy the enum literal into the new graph
+        copied = original.copy_into(g=g2)
+
+        # Verify the copied literal has the same values
+        copied_values = copied.get_values()
+        assert sorted(copied_values) == ["bar", "foo"], (
+            f"Expected ['bar', 'foo'] but got {copied_values}"
+        )
+
+        # Also verify we can still read the original
+        assert sorted(original.get_values()) == ["bar", "foo"]
+
 
 # def test_make_lit():
 #     g = graph.GraphView.create()

@@ -1127,6 +1127,17 @@ class Mutator:
                 .create_instance(self.G_out)
                 .setup(is_unit=units, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
             )
+        elif param_obj.try_cast(F.Parameters.EnumParameter):
+            # FIXME, should just use copy_into
+            # also why is setup not called?
+            # started writing a test for this in
+            #   Parameters.py:test_copy_into_enum_parameter
+            new_param = (
+                F.Parameters.EnumParameter.bind_typegraph(self.tg_out).create_instance(
+                    self.G_out
+                )
+                # .setup(enum=p.get_enum())
+            )
         else:
             # trigger tg copy
             self.tg_out
