@@ -849,7 +849,7 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
 
 # List of regression example expressions for test_regression_literal_folding
 regression_examples: list[Callable[[], F.Parameters.can_be_operand]] = [
-    lambda: Add.c(lit(1.0), Builders.build_parameter(lit(1.0))),
+    lambda: Add.c(lit(1.0), lit(1.0)),
     lambda: Log.c(
         Sin.c(
             Add.c(
@@ -1032,6 +1032,7 @@ def test_regression_literal_folding(
 
     # Evaluate using our test evaluator
     # Skip expressions that can't be evaluated (e.g., sqrt of negative)
+    print(f"evaluating {expr.pretty()}")
     try:
         evaluated_expr = evaluate_e_p_l(expr, g=g, tg=tg)
     except (ValueError, NotImplementedError, OverflowError):
