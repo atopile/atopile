@@ -1,5 +1,4 @@
 import logging
-import re
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -30,14 +29,7 @@ from atopile.compiler.gentypegraph import (
     Symbol,
 )
 from atopile.compiler.overrides import ConnectOverrideRegistry, TraitOverrideRegistry
-from faebryk.core.faebrykpy import (
-    EdgeComposition,
-    EdgePointer,
-    EdgeTrait,
-    EdgeTraversal,
-)
-from faebryk.library.can_bridge import can_bridge
-from faebryk.library.Lead import can_attach_to_pad_by_name, is_lead
+from faebryk.core.faebrykpy import EdgeTraversal
 from faebryk.libs.util import cast_assert, groupby, import_from_path, not_none
 
 _Quantity = tuple[float, fabll._ChildField]
@@ -538,124 +530,13 @@ class ASTVisitor:
         self.visit(self._ast_root)
         return self._state
 
-    def execute_pending(self) -> None:
+    def _execute_for_loops(self) -> None:
         """
-        Execute deferred statements (phase 2).
+        Execute deferred for-loops.
 
-        Call this after linking is complete and all type references are resolved.
-
-        Order:
-        1. Resolve inheritance (copy parent structure into derived types)
-        2. Apply retypes (replace type references)
-        3. Execute for-loops (containers now have inherited/retyped fields)
+        Called by DeferredExecutor after inheritance and retype are applied.
+        For-loops need visitor infrastructure (visit() method, scope/type stacks).
         """
-        self._resolve_inheritance()
-        self._execute_pending_retypes()
-        self._execute_deferred_for_loops()
-
-    def _resolve_inheritance(self) -> None:
-        """
-        Resolve inheritance by copying parent structure into derived types. Processes
-        base types before derived types.
-        """
-
-        def _get_parent_name(parent_ref: ImportRef | str) -> str:
-            return parent_ref.name if isinstance(parent_ref, ImportRef) else parent_ref
-
-        from faebryk.libs.util import DAG
-
-        if not self._state.pending_inheritance:
-            return
-
-        dag: DAG[str] = DAG()
-        pending_by_name: dict[str, PendingInheritance] = {}
-
-        for item in self._state.pending_inheritance:
-            parent_name = _get_parent_name(item.parent_ref)
-            dag.add_edge(parent=parent_name, child=item.derived_name)
-            pending_by_name[item.derived_name] = item
-
-        try:
-            sorted_types = dag.topologically_sorted()
-        except ValueError as e:
-            raise DslException("Circular inheritance detected") from e
-
-        for type_name in sorted_types:
-            if type_name not in pending_by_name:
-                continue  # Base type without parent in this file
-
-            item = pending_by_name[type_name]
-            parent_name = _get_parent_name(item.parent_ref)
-
-            if (parent_type := self._state.type_roots.get(parent_name)) is None:
-                raise DslException(
-                    f"Parent type `{parent_name}` not found for `{item.derived_name}`"
-                )
-
-            # Applies inheritance
-            self._tg.copy_type_structure(
-                target=item.derived_type,
-                source=parent_type,
-                skip_identifiers=list(item.auto_generated_ids),
-            )
-
-    def _execute_pending_retypes(self) -> None:
-        """
-        Apply retype operations after all types are linked.
-
-        For each retype `target -> NewType`:
-        1. Resolve the target path to find owning type
-        2. Get the MakeChild's type reference for the leaf field
-        3. Update the type reference to point to the new type
-        """
-        for retype in sorted(self._state.pending_retypes, key=lambda r: r.source_order):
-            target_path = retype.target_path
-            path_ids = target_path.identifiers()
-
-            if target_path.is_singleton():
-                parent_path = None
-                (leaf_id,) = path_ids
-            else:
-                *parent_path, leaf_id = path_ids
-
-            if parent_path is not None:
-                if (
-                    owning_type := self._tg.resolve_child_path(
-                        start_type=retype.containing_type, path=parent_path
-                    )
-                ) is None:
-                    raise DslException(
-                        f"Cannot resolve path `{'.'.join(parent_path)}` for retyping"
-                    )
-            else:
-                owning_type = retype.containing_type
-
-            if (
-                type_ref := self._tg.get_make_child_type_reference_by_identifier(
-                    type_node=owning_type, identifier=leaf_id
-                )
-            ) is None:
-                raise DslException(
-                    f"Cannot retype `{target_path}`: field does not exist"
-                )
-
-            # linker should by now have resolved the type reference
-            if (
-                new_type := fbrk.Linker.get_resolved_type(
-                    type_reference=retype.new_type_ref
-                )
-            ) is None:
-                type_id = fbrk.TypeGraph.get_type_reference_identifier(
-                    type_reference=retype.new_type_ref
-                )
-                raise DslException(f"Cannot retype to `{type_id}`: type not linked")
-
-            # apply retype
-            fbrk.Linker.update_type_reference(
-                g=self._graph, type_reference=type_ref, target_type_node=new_type
-            )
-
-    def _execute_deferred_for_loops(self) -> None:
         for type_id, loops in groupby(
             self._state.pending_execution, key=lambda lp: lp.type_identifier
         ).items():
@@ -966,28 +847,6 @@ class ASTVisitor:
             parent_path=None,
         )
 
-    def _create_pin_child_field(
-        self, pin_label: str, identifier: str
-    ) -> fabll._ChildField:
-        """
-        Create a pin as an Electrical with is_lead trait attached.
-        Pins are Electrical interfaces that also act as leads for footprint pads.
-        """
-        regex = f"^{re.escape(str(pin_label))}$"
-
-        # Create Electrical with explicit identifier
-        pin = fabll._ChildField(nodetype=F.Electrical, identifier=identifier)
-
-        # Add is_lead trait to the pin (attached to pin itself via [pin])
-        lead = is_lead.MakeChild()
-        pin.add_dependant(fabll.Traits.MakeEdge(lead, [pin]))
-
-        # Add can_attach_to_pad_by_name trait to the lead (to match pin label to pad)
-        pad_attach = can_attach_to_pad_by_name.MakeChild(regex)
-        lead.add_dependant(fabll.Traits.MakeEdge(pad_attach, [lead]))
-
-        return pin
-
     def visit_PinDeclaration(self, node: AST.PinDeclaration):
         pin_label = node.get_label()
         if pin_label is None:
@@ -1010,7 +869,7 @@ class ASTVisitor:
             target_path=target_path,
             parent_reference=None,
             parent_path=None,
-            child_field=self._create_pin_child_field(pin_label_str, identifier),
+            child_field=ActionsFactory.pin_child_field(pin_label_str, identifier),
         )
 
     def visit_FieldRef(self, node: AST.FieldRef) -> FieldPath:
@@ -1098,24 +957,16 @@ class ASTVisitor:
 
             assert new_spec.type_identifier is not None
 
-            # Use templated MakeChild if we have template args and a stdlib type
-            if new_spec.template_args and module_fabll_type is not None:
-                child_field = self._create_module_child_field(
-                    module_type=module_fabll_type,
-                    identifier=target_path.leaf.identifier,
-                    template_args=new_spec.template_args,
-                )
-            else:
-                child_field = fabll._ChildField(
-                    nodetype=new_spec.type_identifier,
-                    identifier=target_path.leaf.identifier,
-                )
-
             return AddMakeChildAction(
                 target_path=target_path,  # FIXME: this seems wrong
                 parent_reference=parent_reference,
                 parent_path=parent_path,
-                child_field=child_field,
+                child_field=ActionsFactory.child_field(
+                    identifier=target_path.leaf.identifier,
+                    type_identifier=new_spec.type_identifier,
+                    module_type=module_fabll_type,
+                    template_args=new_spec.template_args,
+                ),
                 import_ref=new_spec.symbol.import_ref if new_spec.symbol else None,
             )
 
@@ -1136,23 +987,15 @@ class ASTVisitor:
                 )
             )
 
-            # Use templated MakeChild for array elements if applicable
-            if new_spec.template_args and module_fabll_type is not None:
-                element_child_field = self._create_module_child_field(
-                    module_type=module_fabll_type,
-                    identifier=element_path.identifiers()[0],
-                    template_args=new_spec.template_args,
-                )
-            else:
-                element_child_field = fabll._ChildField(
-                    nodetype=not_none(new_spec.type_identifier),
-                    identifier=element_path.identifiers()[0],
-                )
-
             element_actions.append(
                 AddMakeChildAction(
                     target_path=element_path,
-                    child_field=element_child_field,
+                    child_field=ActionsFactory.child_field(
+                        identifier=element_path.identifiers()[0],
+                        type_identifier=not_none(new_spec.type_identifier),
+                        module_type=module_fabll_type,
+                        template_args=new_spec.template_args,
+                    ),
                     parent_reference=pointer_action.parent_reference,
                     parent_path=pointer_action.parent_path,
                     import_ref=new_spec.symbol.import_ref if new_spec.symbol else None,
@@ -1600,7 +1443,7 @@ class ASTVisitor:
             nested_lhs_node = fabll.Traits(nested_lhs).get_obj_raw()
             _, middle_base_path = self._resolve_connectable_with_path(nested_lhs_node)
 
-            action = self._add_directed_link(
+            action = ActionsFactory.directed_link_action(
                 lhs_base_path, middle_base_path, node.get_direction()
             )
             self._type_stack.apply_action(action)
@@ -1610,47 +1453,9 @@ class ASTVisitor:
         rhs_node = fabll.Traits(rhs).get_obj_raw()
         _, rhs_base_path = self._resolve_connectable_with_path(rhs_node)
 
-        return self._add_directed_link(
+        return ActionsFactory.directed_link_action(
             lhs_base_path, rhs_base_path, node.get_direction()
         )
-
-    def _add_directed_link(
-        self,
-        lhs_path: FieldPath,
-        rhs_path: FieldPath,
-        direction: AST.DirectedConnectStmt.Direction,
-    ) -> AddMakeLinkAction:
-        if direction == AST.DirectedConnectStmt.Direction.RIGHT:  # ~>
-            lhs_pointer = F.can_bridge.out_.get_identifier()
-            rhs_pointer = F.can_bridge.in_.get_identifier()
-        else:  # <~
-            lhs_pointer = F.can_bridge.in_.get_identifier()
-            rhs_pointer = F.can_bridge.out_.get_identifier()
-
-        lhs_link_path = self._build_bridge_path(lhs_path, lhs_pointer)
-        rhs_link_path = self._build_bridge_path(rhs_path, rhs_pointer)
-
-        return AddMakeLinkAction(lhs_path=lhs_link_path, rhs_path=rhs_link_path)
-
-    def _build_bridge_path(self, base_path: FieldPath, pointer: str) -> LinkPath:
-        """
-        Build a LinkPath that traverses through the can_bridge trait.
-
-        For a base_path like "a", this builds:
-        ["a", EdgeTrait(can_bridge), EdgeComposition("out_"), EdgePointer()]
-        """
-        base_identifiers = list(base_path.identifiers())
-        # Apply legacy path translations (e.g., vcc -> hv, gnd -> lv)
-        base_identifiers = ConnectOverrideRegistry.translate_identifiers(
-            base_identifiers
-        )
-        path: LinkPath = [
-            *base_identifiers,
-            EdgeTrait.traverse(trait_type=can_bridge),
-            EdgeComposition.traverse(identifier=pointer),
-            EdgePointer.traverse(),
-        ]
-        return path
 
     @staticmethod
     def _select_elements(
@@ -1762,68 +1567,6 @@ class ASTVisitor:
 
         return template_args if template_args else None
 
-    def _create_trait_field(
-        self,
-        trait_type: type[fabll.Node],
-        template_args: dict[str, str | bool | float] | None,
-    ) -> fabll._ChildField:
-        """Create a trait field, using MakeChild with template args if available."""
-        if template_args and hasattr(trait_type, "MakeChild"):
-            try:
-                return trait_type.MakeChild(**template_args)
-            except TypeError as e:
-                logger.warning(
-                    f"MakeChild for {trait_type.__name__} failed with template "
-                    f"args: {e}. Falling back to generic _ChildField."
-                )
-
-        # Fallback: create generic _ChildField and constrain string params
-        trait_field = fabll._ChildField(trait_type)
-        if template_args:
-            for param_name, value in template_args.items():
-                if isinstance(value, str):
-                    attr = getattr(trait_type, param_name, None)
-                    if attr is not None:
-                        constraint = F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                            [trait_field, attr], value
-                        )
-                        trait_field.add_dependant(constraint)
-                else:
-                    logger.warning(
-                        f"Template arg {param_name}={value} - non-string unsupported"
-                    )
-        return trait_field
-
-    def _create_module_child_field(
-        self,
-        module_type: type[fabll.Node],
-        identifier: str,
-        template_args: dict[str, str | bool | float] | None,
-    ) -> fabll._ChildField:
-        if template_args and hasattr(module_type, "MakeChild"):
-            converted_args: dict[str, str | bool | int | float] = {}
-            for key, value in template_args.items():
-                if isinstance(value, float) and value.is_integer():
-                    converted_args[key] = int(value)
-                else:
-                    converted_args[key] = value
-
-            try:
-                child_field = module_type.MakeChild(**converted_args)
-                child_field._set_locator(identifier)
-                return child_field
-            except TypeError as e:
-                logger.warning(
-                    f"MakeChild for {module_type.__name__} failed with template "
-                    f"args {converted_args}: {e}. Falling back to generic _ChildField."
-                )
-
-        # Fallback: create generic _ChildField (no template support)
-        return fabll._ChildField(
-            nodetype=module_type,
-            identifier=identifier,
-        )
-
     def visit_TraitStmt(
         self, node: AST.TraitStmt
     ) -> list[AddMakeChildAction | AddMakeLinkAction] | NoOpAction:
@@ -1865,6 +1608,6 @@ class ASTVisitor:
             # raise DslException(f"Trait `{trait_type_name}` is not a valid trait")
 
             return ActionsFactory.trait_from_field(
-                self._create_trait_field(trait_fabll_type, template_args),
+                ActionsFactory.trait_field(trait_fabll_type, template_args),
                 target_path_list,
             )

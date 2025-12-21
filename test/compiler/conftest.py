@@ -3,6 +3,7 @@ import textwrap
 import faebryk.core.node as fabll
 from atopile.compiler.ast_visitor import STDLIB_ALLOWLIST
 from atopile.compiler.build import BuildFileResult, Linker, StdlibRegistry, build_source
+from atopile.compiler.deferred_executor import DeferredExecutor
 from faebryk.core.faebrykpy import TypeGraph
 from faebryk.core.graph import BoundNode, GraphView
 
@@ -12,7 +13,7 @@ def _link(
 ) -> None:
     linker = Linker(None, stdlib, tg)
     linker.link_imports(g, result.state)
-    result.visitor.execute_pending()
+    DeferredExecutor(g=g, tg=tg, state=result.state, visitor=result.visitor).execute()
 
 
 def build_type(

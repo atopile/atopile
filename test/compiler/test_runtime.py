@@ -408,8 +408,9 @@ def test_for_loop_over_imported_sequence(tmp_path: Path):
     linker = Linker(tmp_path, stdlib, tg)
     linker.link_imports(g, result.state)
 
-    if result.visitor is not None:
-        result.visitor.execute_pending()
+    from atopile.compiler.deferred_executor import DeferredExecutor
+
+    DeferredExecutor(g=g, tg=tg, state=result.state, visitor=result.visitor).execute()
 
     # Verify the for-loop created the expected connections
     app_type = result.state.type_roots["App"]

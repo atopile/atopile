@@ -78,6 +78,7 @@ def _init_ato_app(
     """Initialize a specific .ato build."""
     import faebryk.core.node as fabll
     from atopile.compiler.build import build_file
+    from atopile.compiler.deferred_executor import DeferredExecutor
 
     result = build_file(
         g=g,
@@ -86,7 +87,8 @@ def _init_ato_app(
         path=config.build.entry_file_path,
     )
     linker.link_imports(g, result.state)
-    result.visitor.execute_pending()
+    DeferredExecutor(g=g, tg=tg, state=result.state, visitor=result.visitor).execute()
+
     app_type = result.state.type_roots[config.build.entry_section]
     app_root = tg.instantiate_node(type_node=app_type, attributes={})
     return fabll.Node.bind_instance(app_root)

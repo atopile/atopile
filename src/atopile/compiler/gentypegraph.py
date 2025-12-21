@@ -2,6 +2,8 @@
 Shared data structures and helpers for the TypeGraph-generation IR.
 """
 
+import logging
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import ClassVar
@@ -10,8 +12,18 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from atopile.compiler import DslException
 from atopile.compiler import ast_types as AST
-from faebryk.core.faebrykpy import EdgeTraversal
+from faebryk.core.faebrykpy import (
+    EdgeComposition,
+    EdgePointer,
+    EdgeTrait,
+    EdgeTraversal,
+)
+from faebryk.library.can_bridge import can_bridge
+from faebryk.library.Lead import can_attach_to_pad_by_name, is_lead
+
+logger = logging.getLogger(__name__)
 
 LinkPath = list[str | EdgeTraversal]
 
@@ -149,6 +161,43 @@ class ActionsFactory:
     TRAIT_ID_PREFIX: ClassVar[str] = "_trait_"
 
     @staticmethod
+    def _try_make_child(
+        node_type: type[fabll.Node],
+        template_args: dict[str, str | bool | float] | None,
+        identifier: str | None = None,
+    ) -> fabll._ChildField | None:
+        """
+        Attempt to create a child field using MakeChild with template args.
+
+        Returns None if no template args or MakeChild unavailable.
+        Raises if MakeChild exists but fails (user error in template args).
+        """
+        if not template_args or not hasattr(node_type, "MakeChild"):
+            return None
+
+        # Convert float-to-int where applicable (ato parses all numbers as float)
+        converted: dict[str, str | bool | int | float] = {
+            key: int(value)
+            if isinstance(value, float) and value.is_integer()
+            else value
+            for key, value in template_args.items()
+        }
+
+        try:
+            child_field = node_type.MakeChild(**converted)
+        except TypeError as e:
+            from atopile.compiler import DslException
+
+            raise DslException(
+                f"Invalid template arguments for {node_type.__name__}: {e}"
+            ) from e
+
+        if identifier is not None:
+            child_field._set_locator(identifier)
+
+        return child_field
+
+    @staticmethod
     def trait_from_field(
         field: fabll._ChildField, target_path: LinkPath
     ) -> "list[AddMakeChildAction | AddMakeLinkAction]":
@@ -176,6 +225,139 @@ class ActionsFactory:
                 rhs_path=[trait_identifier],
                 edge=fbrk.EdgeTrait.build(),
             ),
+        ]
+
+    @staticmethod
+    def pin_child_field(pin_label: str, identifier: str) -> fabll._ChildField:
+        """
+        Create a pin as an Electrical with is_lead trait attached.
+
+        Pins are Electrical interfaces that also act as leads for footprint pads.
+        The pin label is used to match against pad names in the footprint.
+        """
+        regex = f"^{re.escape(str(pin_label))}$"
+
+        pin = fabll._ChildField(nodetype=F.Electrical, identifier=identifier)
+
+        # Add is_lead trait to the pin
+        lead = is_lead.MakeChild()
+        pin.add_dependant(fabll.Traits.MakeEdge(lead, [pin]))
+
+        # Add can_attach_to_pad_by_name trait to the lead (to match pin label to pad)
+        pad_attach = can_attach_to_pad_by_name.MakeChild(regex)
+        lead.add_dependant(fabll.Traits.MakeEdge(pad_attach, [lead]))
+
+        return pin
+
+    @staticmethod
+    def trait_field(
+        trait_type: type[fabll.Node],
+        template_args: dict[str, str | bool | float] | None,
+    ) -> fabll._ChildField:
+        """Create a trait field, using MakeChild with template args if available."""
+        if (
+            field := ActionsFactory._try_make_child(trait_type, template_args)
+        ) is not None:
+            return field
+
+        # Fallback: create generic _ChildField and constrain string params
+        # FIXME: handle non-string template args
+        field = fabll._ChildField(trait_type)
+        if template_args is not None:
+            for param_name, value in template_args.items():
+                if isinstance(value, str):
+                    if (attr := getattr(trait_type, param_name, None)) is not None:
+                        constraint = F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                            [field, attr], value
+                        )
+                        field.add_dependant(constraint)
+                else:
+                    raise DslException(
+                        f"Template arg {param_name}={value} - non-string unsupported"
+                    )
+        return field
+
+    @staticmethod
+    def _make_child_field(
+        nodetype: str | type[fabll.Node],
+        identifier: str,
+        template_args: dict[str, str | bool | float] | None,
+    ) -> fabll._ChildField:
+        """Common implementation for child field creation."""
+        if isinstance(nodetype, type):
+            if (
+                field := ActionsFactory._try_make_child(
+                    nodetype, template_args, identifier
+                )
+            ) is not None:
+                return field
+        return fabll._ChildField(nodetype=nodetype, identifier=identifier)
+
+    @staticmethod
+    def module_child_field(
+        module_type: type[fabll.Node],
+        identifier: str,
+        template_args: dict[str, str | bool | float] | None = None,
+    ) -> fabll._ChildField:
+        """Create a child field from a fabll.Node class with optional template args."""
+        return ActionsFactory._make_child_field(module_type, identifier, template_args)
+
+    @staticmethod
+    def child_field(
+        identifier: str,
+        type_identifier: str,
+        module_type: type[fabll.Node] | None = None,
+        template_args: dict[str, str | bool | float] | None = None,
+    ) -> fabll._ChildField:
+        """
+        Create a child field from a type identifier string.
+
+        If module_type is provided, uses it for template arg support.
+        """
+        if module_type is not None:
+            return ActionsFactory._make_child_field(
+                module_type, identifier, template_args
+            )
+        return fabll._ChildField(nodetype=type_identifier, identifier=identifier)
+
+    @staticmethod
+    def directed_link_action(
+        lhs_path: "FieldPath",
+        rhs_path: "FieldPath",
+        direction: AST.DirectedConnectStmt.Direction,
+    ) -> "AddMakeLinkAction":
+        """Create a link action for directed (~> or <~) connections via can_bridge."""
+        if direction == AST.DirectedConnectStmt.Direction.RIGHT:  # ~>
+            lhs_pointer = F.can_bridge.out_.get_identifier()
+            rhs_pointer = F.can_bridge.in_.get_identifier()
+        else:  # <~
+            lhs_pointer = F.can_bridge.in_.get_identifier()
+            rhs_pointer = F.can_bridge.out_.get_identifier()
+
+        lhs_link_path = ActionsFactory._build_bridge_path(lhs_path, lhs_pointer)
+        rhs_link_path = ActionsFactory._build_bridge_path(rhs_path, rhs_pointer)
+
+        return AddMakeLinkAction(lhs_path=lhs_link_path, rhs_path=rhs_link_path)
+
+    @staticmethod
+    def _build_bridge_path(base_path: "FieldPath", pointer: str) -> LinkPath:
+        """
+        Build a LinkPath that traverses through the can_bridge trait.
+
+        For a base_path like "a", this builds:
+        ["a", EdgeTrait(can_bridge), EdgeComposition("out_"), EdgePointer()]
+        """
+        from atopile.compiler.overrides import ConnectOverrideRegistry
+
+        base_identifiers = list(base_path.identifiers())
+        base_identifiers = ConnectOverrideRegistry.translate_identifiers(
+            base_identifiers
+        )
+        return [
+            *base_identifiers,
+            EdgeTrait.traverse(trait_type=can_bridge),
+            EdgeComposition.traverse(identifier=pointer),
+            EdgePointer.traverse(),
         ]
 
 

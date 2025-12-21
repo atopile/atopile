@@ -288,7 +288,7 @@ class Linker:
         self._linked_modules[source_path] = child_result.state.type_roots
         return child_result.state.type_roots[import_ref.name]
 
-    def link_imports(self, graph: graph.GraphView, build_state: BuildState) -> None:
+    def link_imports(self, g: graph.GraphView, build_state: BuildState) -> None:
         resolved_path = (
             self._resolver._normalize_path(build_state.file_path)
             if build_state.file_path is not None
@@ -297,12 +297,12 @@ class Linker:
 
         match resolved_path:
             case None:
-                self._link(graph, build_state)
+                self._link(g, build_state)
             case _ if resolved_path in self._linked_modules:
-                self._link(graph, build_state, self._linked_modules[resolved_path])
+                self._link(g, build_state, self._linked_modules[resolved_path])
             case _:
                 with self._guard_path(resolved_path):
-                    self._link(graph, build_state)
+                    self._link(g, build_state)
                     self._linked_modules[resolved_path] = build_state.type_roots
 
         # Only check for unresolved refs at the top level

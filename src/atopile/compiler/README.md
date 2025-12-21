@@ -18,7 +18,7 @@ As currently implemented — pending bespoke lexer/parser.
 - Linker (`build.py`)
   Resolves imports and links type-graphs to generate a fully-specified self-contained compilation unit.
 
-- Finalised faebryk type-graph (`ast_visitor.py:execute_pending`)
+- Finalised faebryk type-graph (`deferred_executor.py`)
   After linking, executes deferred operations that require resolved types:
   1. Inheritance resolution — copies parent structure into derived types
   2. Retype operations — updates type references for `target -> NewType` statements
@@ -33,21 +33,22 @@ The root node of the linked type-graph can then be instantiated to produce a des
 ```python
 # BYO graph
 graph = GraphView.create()
-
-# build the standard library
-stdlib_tg, stdlib_registry = build_stdlib(graph)
+typegraph = TypeGraph.create(graph)
+linker = Linker(config, StdlibRegistry(typegraph), typegraph)
 
 # build a file
-result = build_file(graph, "path/to/file.ato")
+result = build_file(graph, typegraph, import_path=Path("path/to/file.ato"), path=Path("path/to/file.ato"))
 
 # resolve + build imports and link
-linker = Linker(stdlib_registry, stdlib_tg)
 linker.link_imports(graph, result.state)
 
 # execute deferred operations (inheritance, retypes, for-loops)
-result.visitor.execute_pending()
+DeferredExecutor(g=graph, tg=typegraph, state=result.state, visitor=result.visitor).execute()
 
 # instantiate
 app_type = result.state.type_roots["ENTRYPOINT"]
-app = result.state.type_graph.instantiate_node(type_node=app_type, attributes={})
+app_node = typegraph.instantiate_node(type_node=app_type, attributes={})
+
+# as fabll Node for convenience
+app = fabll.Node.bind_instance(app_node)
 ```
