@@ -8,6 +8,7 @@ to persistent worker processes via HTTP.
 
 import bisect
 import datetime
+import html
 import json
 import os
 import queue
@@ -950,32 +951,26 @@ class TestAggregator:
             if t.output:
                 log_content = ""
                 if "stdout" in t.output and t.output["stdout"]:
-                    stdout = t.output["stdout"]
+                    stdout = html.escape(t.output["stdout"])
                     log_content += (
                         f'<div class="log-section"><h3>STDOUT</h3>'
                         f"<pre>{stdout}</pre></div>"
                     )
                 if "stderr" in t.output and t.output["stderr"]:
-                    stderr = t.output["stderr"]
+                    stderr = html.escape(t.output["stderr"])
                     log_content += (
                         f'<div class="log-section"><h3>STDERR</h3>'
                         f"<pre>{stderr}</pre></div>"
                     )
                 if "error" in t.output and t.output["error"]:
-                    error = t.output["error"]
+                    error = html.escape(t.output["error"])
                     log_content += (
                         f'<div class="log-section"><h3>ERROR</h3>'
                         f"<pre>{error}</pre></div>"
                     )
 
                 if log_content:
-                    safe_nodeid = (
-                        t.nodeid.replace("/", "_")
-                        .replace(".", "_")
-                        .replace(":", "_")
-                        .replace("[", "_")
-                        .replace("]", "_")
-                    )
+                    safe_nodeid = html.escape(t.nodeid)
                     modal_id = f"modal_{safe_nodeid}"
                     log_button = f"<button onclick=\"openModal('{modal_id}')\">View Logs</button>"  # noqa: E501
                     log_modal = f"""
@@ -1181,7 +1176,7 @@ class TestAggregator:
                     f"<strong>Baseline:</strong> {self._baseline.error}</span>"
                 )
 
-            html = HTML_TEMPLATE.format(
+            html_ = HTML_TEMPLATE.format(
                 status="Running" if running > 0 or queued > 0 else "Finished",
                 workers_active=workers_active,
                 workers_total=WORKER_COUNT,
@@ -1213,7 +1208,7 @@ class TestAggregator:
         try:
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, "w") as f:
-                f.write(html)
+                f.write(html_)
         except Exception as e:
             print(f"Failed to write HTML report: {e}")
 
