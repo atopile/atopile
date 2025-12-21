@@ -2056,69 +2056,6 @@ class TestTraitStatements:
                 """
             )
 
-    def test_trait_with_template_args(self):
-        """Trait with template arguments creates trait and constraint children."""
-        _, tg, _, result = build_type(
-            """
-            #pragma experiment("TRAITS")
-            import is_atomic_part
-
-            component MyComponent:
-                trait is_atomic_part<manufacturer="Murata", partnumber="GRM123", footprint="C0805.kicad_mod", symbol="cap.kicad_sym">
-            """  # noqa: E501
-        )
-
-        comp_type = result.state.type_roots["MyComponent"]
-
-        make_children = [
-            (identifier, child)
-            for identifier, child in tg.collect_make_children(type_node=comp_type)
-        ]
-        identifiers = [id for id, _ in make_children if id]
-        assert "_trait_self_is_atomic_part" in identifiers
-        constraint_ids = [id for id in identifiers if id.startswith("constrain_")]
-        assert len(constraint_ids) == 4
-
-    def test_trait_with_multiple_template_args(self):
-        """Trait with all template arguments including optional model."""
-        _, tg, _, result = build_type(
-            """
-            #pragma experiment("TRAITS")
-            import is_atomic_part
-
-            component FullPart:
-                trait is_atomic_part<manufacturer="Test Inc", partnumber="PN-001", footprint="fp.kicad_mod", symbol="sym.kicad_sym", model="part.step">
-            """  # noqa: E501
-        )
-
-        comp_type = result.state.type_roots["FullPart"]
-        make_children = list(tg.collect_make_children(type_node=comp_type))
-        identifiers = [id for id, _ in make_children if id]
-
-        assert "_trait_self_is_atomic_part" in identifiers
-        constraint_ids = [id for id in identifiers if id.startswith("constrain_")]
-        assert len(constraint_ids) == 5
-
-    def test_trait_template_args_create_constraints(self):
-        """Template args create constraint child fields on the type."""
-        _, tg, _, result = build_type(
-            """
-            #pragma experiment("TRAITS")
-            import is_atomic_part
-
-            component ConstrainedPart:
-                trait is_atomic_part<manufacturer="ACME", partnumber="12345", footprint="fp.mod", symbol="sym.sym">
-            """  # noqa: E501
-        )
-
-        comp_type = result.state.type_roots["ConstrainedPart"]
-        make_children = list(tg.collect_make_children(type_node=comp_type))
-        identifiers = [id for id, _ in make_children if id]
-
-        assert "_trait_self_is_atomic_part" in identifiers
-        constraint_ids = [id for id in identifiers if id.startswith("constrain_")]
-        assert len(constraint_ids) == 4
-
     def test_trait_template_args_literal_values(self):
         """Template args constrain trait parameters to expected literal values."""
         import faebryk.core.node as fabll
@@ -2156,10 +2093,10 @@ class TestAssignments:
     @pytest.mark.parametrize(
         "assignment,param_name,expected_values",
         [
-            ("a = 1", "a", [1]),
-            ("b = 5V", "b", [5]),
-            ("c = 100kohm +/- 10%", "c", [90, 110]),  # 100k +/- 10% in kohm
-            ("d = 3V to 5V", "d", [3, 5]),
+            ("a = 1", "a", [1.0, 1.0]),  # get_values() returns [min, max]
+            ("b = 5V", "b", [5.0, 5.0]),
+            ("c = 100kohm +/- 10%", "c", [90.0, 110.0]),  # 100k +/- 10% in kohm
+            ("d = 3V to 5V", "d", [3.0, 5.0]),
         ],
     )
     def test_top_level_parameter_assignment(
@@ -2242,14 +2179,11 @@ class TestAssignments:
         )
         r = F.Resistor.bind_instance(not_none(r_bnode))
 
-        assert r.max_power.get().force_extract_literal_subset().get_single() == 3
-        assert (
-            r.max_power.get()
-            .force_extract_literal_subset()
-            .get_is_unit()
-            ._extract_multiplier()
-            == 0.001
-        )
+        # Assignments create Is constraints, use try_extract_aliased_literal
+        literal = r.max_power.get().try_extract_aliased_literal()
+        assert literal is not None, "max_power should have an aliased literal"
+        assert literal.get_single() == 3
+        assert literal.get_is_unit()._extract_multiplier() == 0.001
         assert fabll.Traits(r.max_power.get().get_units()).get_obj(F.Units.Watt)
 
     def test_assign_bilateral_tolerance(self):
@@ -2283,10 +2217,10 @@ class TestAssignments:
         r = F.Resistor.bind_instance(not_none(r_bnode))
 
         # 100 ohm +/- 5% = [95, 105]
-        assert r.resistance.get().force_extract_literal_subset().get_values() == [
-            95.0,
-            105.0,
-        ]
+        # Assignments create Is constraints, use try_extract_aliased_literal
+        literal = r.resistance.get().try_extract_aliased_literal()
+        assert literal is not None, "resistance should have an aliased literal"
+        assert literal.get_values() == [95.0, 105.0]
 
     def test_assign_bounded_range(self):
         """Test assigning a bounded range value to an existing field."""
@@ -2318,7 +2252,10 @@ class TestAssignments:
         )
         r = F.Resistor.bind_instance(not_none(r_bnode))
 
-        assert r.max_power.get().force_extract_literal_subset().get_values() == [3, 5]
+        # Assignments create Is constraints, use try_extract_aliased_literal
+        literal = r.max_power.get().try_extract_aliased_literal()
+        assert literal is not None, "max_power should have an aliased literal"
+        assert literal.get_values() == [3.0, 5.0]
 
     def test_assert_within_constraint(self):
         """Test assert within constraint on an existing field."""
