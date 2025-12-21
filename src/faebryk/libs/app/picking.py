@@ -6,13 +6,11 @@ import logging
 from enum import StrEnum
 
 import faebryk.core.faebrykpy as fbrk
-import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.kicad.fileformats import Property
 from faebryk.libs.picker.lcsc import PickedPart, PickedPartLCSC
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
-from faebryk.libs.util import KeyErrorNotFound
 
 NO_LCSC_DISPLAY = "No LCSC number"
 
@@ -142,17 +140,27 @@ def load_part_info_from_pcb(tg: fbrk.TypeGraph):
 
             param_name = key.removeprefix(Properties.param_prefix)
             # Skip if parameter doesn't exist in node
-            try:
-                param = node[param_name]
-            except KeyErrorNotFound:
+            param_child = fbrk.EdgeComposition.get_child_by_identifier(
+                bound_node=node.instance, child_identifier=param_name
+            )
+            if param_child is None:
                 logger.warning(
                     f"Parameter {param_name} not found in node {node.get_name()}"
                 )
                 continue
+            param = fabll.Node.bind_instance(param_child)
+            # Skip if not a parameter
+            if not param.has_trait(F.Parameters.is_parameter):
+                logger.warning(f"{param_name} in {node.get_name()} is not a parameter")
+                continue
             param_value = json.loads(value)
-            param_value = F.Literals.is_literal.deserialize(param_value)
-            assert isinstance(param, F.Parameters.is_parameter)
-            param.alias_is(param_value)
+            param_lit = F.Literals.is_literal.deserialize(
+                param_value, g=node.g, tg=node.tg
+            )
+            # Alias the parameter to the deserialized literal
+            param.get_trait(F.Parameters.is_parameter_operatable).alias_to_literal(
+                g=node.g, value=param_lit.switch_cast()
+            )
 
 
 def save_part_info_to_pcb(app: fabll.Node):
@@ -197,11 +205,16 @@ def save_part_info_to_pcb(app: fabll.Node):
             node=node, trait=F.SerializableMetadata
         ).setup(key=Properties.manufacturer_partno, value=part.partno)
 
-        for p in node.get_children(direct_only=True, types=F.Parameters.is_parameter):
-            lit = p.try_get_literal()
+        for p in node.get_children(
+            direct_only=True,
+            types=fabll.Node,
+            required_trait=F.Parameters.is_parameter,
+        ):
+            lit = p.get_trait(
+                F.Parameters.is_parameter_operatable
+            ).try_get_subset_or_alias_literal()
             if lit is None:
                 continue
-            lit = F.Literals.Numbers.setup_from_singleton(value=lit)
             fabll.Traits.create_and_add_instance_to(
                 node=node, trait=F.SerializableMetadata
             ).setup(
@@ -242,6 +255,48 @@ def test_load_part_info_from_pcb():
     pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE).kicad_pcb
     k_pcb_fp = pcb.footprints[1]
 
+    # Add required part properties to the footprint
+    test_lcsc = "C123456"
+    test_mfr = "blaze-it-inc"
+    test_partno = "69420"
+    at = kicad.pcb.Xyr(x=0, y=0, r=0)
+    k_pcb_fp.propertys.append(
+        kicad.pcb.Property(
+            name="LCSC",
+            value=test_lcsc,
+            at=at,
+            layer="F.Fab",
+            uuid=kicad.gen_uuid(),
+            hide=True,
+            effects=None,
+            unlocked=None,
+        )
+    )
+    k_pcb_fp.propertys.append(
+        kicad.pcb.Property(
+            name="Manufacturer",
+            value=test_mfr,
+            at=at,
+            layer="F.Fab",
+            uuid=kicad.gen_uuid(),
+            hide=True,
+            effects=None,
+            unlocked=None,
+        )
+    )
+    k_pcb_fp.propertys.append(
+        kicad.pcb.Property(
+            name="Partnumber",
+            value=test_partno,
+            at=at,
+            layer="F.Fab",
+            uuid=kicad.gen_uuid(),
+            hide=True,
+            effects=None,
+            unlocked=None,
+        )
+    )
+
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
@@ -250,11 +305,19 @@ def test_load_part_info_from_pcb():
         res = F.Resistor.MakeChild()
 
     app = TestApp.bind_typegraph(tg).create_instance(g=g)
-    # fabll.Traits.create_and_add_instance_to(app.res.get(), F.has_part_picked).setup(
-    #     PickedPartLCSC(
-    #         supplier_partno="C123456", manufacturer="blaze-it-inc", partno="69420"
-    #     )
-    # )
+    res_node = app.res.get()
+
+    # Add SerializableMetadata with matching properties to simulate previous build
+    fabll.Traits.create_and_add_instance_to(res_node, F.SerializableMetadata).setup(
+        key=Properties.supplier_partno.value, value=test_lcsc
+    )
+    fabll.Traits.create_and_add_instance_to(res_node, F.SerializableMetadata).setup(
+        key=Properties.manufacturer.value, value=test_mfr
+    )
+    fabll.Traits.create_and_add_instance_to(res_node, F.SerializableMetadata).setup(
+        key=Properties.manufacturer_partno.value, value=test_partno
+    )
+
     fp_node = fabll.Node.bind_typegraph(tg).create_instance(g=g)
     fp = fabll.Traits.create_and_add_instance_to(fp_node, F.Footprints.is_footprint)
 
@@ -264,16 +327,22 @@ def test_load_part_info_from_pcb():
         fp, F.KiCadFootprints.has_associated_kicad_pcb_footprint
     ).setup(k_pcb_fp, transformer)
     fabll.Traits.create_and_add_instance_to(
-        app.res.get(), F.Footprints.has_associated_footprint
+        res_node, F.Footprints.has_associated_footprint
     ).setup(footprint=fp)
 
-    load_part_info_from_pcb(tg)
+    # Mock lcsc_attach to avoid network calls and project config requirements
+    # Since this test is in the same module, we need to replace the global directly
+    original_lcsc_attach = globals()["lcsc_attach"]
+    globals()["lcsc_attach"] = lambda *args, **kwargs: None
+    try:
+        load_part_info_from_pcb(tg)
+    finally:
+        globals()["lcsc_attach"] = original_lcsc_attach
 
-    picked_trait = app.res.get().get_trait(F.has_part_picked)
+    picked_trait = res_node.get_trait(F.has_part_picked)
     assert picked_trait is not None
     part = picked_trait.try_get_part()
     assert part is not None
-    assert part.supplier_partno == "C123456"
-    assert part.manufacturer == "blaze-it-inc"
-    assert part.partno == "69420"
-    assert False
+    assert part.supplier_partno == test_lcsc
+    assert part.manufacturer == test_mfr
+    assert part.partno == test_partno
