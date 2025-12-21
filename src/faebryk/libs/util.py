@@ -3115,27 +3115,41 @@ def run_processes(cmds: list[list[str]]) -> bool:
 def run_gdb(test_bin: Path | None = None) -> None:
     # TODO move to util.py
 
+    if sys.platform.startswith("win") or sys.platform.startswith("darwin"):
+        print("Debugging with core dumps is not supported on Windows or macOS")
+        return
+
     if test_bin is None:
         # run coredumpctl info and look for 'Executable: <test_bin>'
-        result = subprocess.run(
-            ["coredumpctl", "info"],
-            capture_output=True,
-            check=True,
-        )
+        try:
+            result = subprocess.run(
+                ["coredumpctl", "info"],
+                capture_output=True,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            print("coredumpctl not available or no core dump found")
+            return
+
         match = re.search(
             r"Executable: (.*)", result.stdout.decode("utf-8"), re.MULTILINE
         )
         if not match:
-            raise ValueError("Could not find test binary in coredump")
+            print("Could not find test binary in coredump")
+            return
         test_bin = Path(match.group(1))
 
     with tempfile.TemporaryDirectory() as temp_dir:
         core_file = Path(temp_dir) / "core.dump"
-        subprocess.run(
-            ["coredumpctl", "dump", test_bin, *["--output", core_file]],
-            capture_output=True,
-            check=True,
-        )
+        try:
+            subprocess.run(
+                ["coredumpctl", "dump", test_bin, *["--output", core_file]],
+                capture_output=True,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            print("Failed to dump core file with coredumpctl")
+            return
 
         args = """-q -batch \
             -ex 'set debuginfod enabled off' \
@@ -3169,7 +3183,10 @@ def run_gdb(test_bin: Path | None = None) -> None:
         """
         cmd = f"gdb {test_bin} {core_file} {args}"
         print(f"Attach gdb with: `gdb {test_bin} {core_file}")
-        subprocess.run(cmd, shell=True, capture_output=False, check=True)
+        try:
+            subprocess.run(cmd, shell=True, capture_output=False, check=True)
+        except subprocess.CalledProcessError:
+            print("Failed to run gdb on core dump")
 
 
 class _LazyProxy:
