@@ -31,12 +31,12 @@ class is_pickable_by_type(fabll.Node):
     # TODO: Forward this trait to parent
     _is_pickable = fabll.Traits.MakeEdge(F.is_pickable.MakeChild())
 
-    def get_params(self) -> list[fabll.Node]:
+    def get_params(self) -> "list[F.Parameters.is_parameter]":
         param_tuples = self.params_.get().as_list()
         parameters = [
-            F.Collections.PointerTuple.bind_instance(
-                param_tuple.instance
-            ).deref_pointer()
+            F.Collections.PointerTuple.bind_instance(param_tuple.instance)
+            .deref_pointer()
+            .get_trait(F.Parameters.is_parameter)
             for param_tuple in param_tuples
         ]
 

@@ -274,27 +274,44 @@ def find_independent_groups(
     unique_modules: set[F.is_pickable] = set(modules)
 
     # partition params into cliques by expression involvement
-    param_eqs = EquivalenceClasses[F.Parameters.is_parameter_operatable]()
+    p_cliques = EquivalenceClasses[F.Parameters.is_parameter]()
     tg = list(modules)[0].tg  # FIXME
 
-    for pred in F.Expressions.is_predicate.bind_typegraph(tg).get_instances():
-        involved_params = pred.as_expression.get().get_operand_leaves_operatable()
-        param_eqs.add_eq(
-            *[p for p in involved_params if p.try_get_aliased_literal() is None]
+    # get root predicates
+    root_preds = [
+        pred
+        for pred in F.Expressions.is_predicate.bind_typegraph(tg).get_instances()
+        if not pred.as_expression.get()
+        .as_operand.get()
+        .get_operations(recursive=True, predicates_only=True)
+    ]
+    # add related parameters for non-aliased paramops
+    for root_pred in root_preds:
+        pred_e = root_pred.as_expression.get()
+        leaves = pred_e.get_operand_leaves_operatable()
+        p_cliques.add_eq(
+            *[
+                p
+                for leaf in leaves
+                if (p := leaf.as_parameter.try_get())
+                and leaf.try_get_aliased_literal() is None
+            ]
         )
 
     # partition modules into cliques by parameter clique membership
-    module_eqs = EquivalenceClasses[F.is_pickable](unique_modules)
-    for p_eq in param_eqs.get():
-        p_modules = {
-            m
-            for p in p_eq
-            if (parent := p.get_parent()) is not None
-            and (m := parent[0]).has_trait(fabll.is_module)
-            and m in unique_modules
-        }
-        module_eqs.add_eq(*[not_none(n.get_trait(F.is_pickable)) for n in p_modules])
-    out = module_eqs.get()
+    module_cliques = EquivalenceClasses[F.is_pickable](unique_modules)
+    p_to_module_map = dict[F.Parameters.is_parameter, F.is_pickable_by_type]()
+    for m in unique_modules:
+        if not (m_pbt := fabll.Traits(m).get_obj_raw().try_cast(F.is_pickable_by_type)):
+            continue
+        params = m_pbt.get_params()
+        for p in params:
+            p_to_module_map[p] = m_pbt
+
+    for po_clique in p_cliques.get():
+        p_modules = {p_to_module_map[p] for p in po_clique}
+        module_cliques.add_eq(*[n._is_pickable.get() for n in p_modules])
+    out = module_cliques.get()
     logger.debug(
         indented_container(
             [{m.get_pickable_node() for m in g} for g in out],
@@ -338,8 +355,8 @@ def pick_topologically(
         )
         if not pbt:
             return set()
-        param_objs = pbt.get_params()
-        return {p.get_trait(F.Parameters.can_be_operand) for p in param_objs}
+        params = pbt.get_params()
+        return {p.as_operand.get() for p in params}
 
     tree_backup = set(tree.keys())
     _pick_count = len(tree)
@@ -374,9 +391,7 @@ def pick_topologically(
                 )
 
             while tree:
-                # TODO fix this
-                # groups = find_independent_groups(tree.keys(), solver)
-                groups = [set(tree.keys())]
+                groups = find_independent_groups(tree.keys(), solver)
                 # pick module with least candidates first
                 picked = [
                     (

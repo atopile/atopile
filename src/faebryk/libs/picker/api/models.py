@@ -81,7 +81,11 @@ def make_params_for_type(module: fabll.Node) -> type:
             field(default=pickable_trait.endpoint, init=False),
         ),
         *[
-            (param.get_name(), ApiParamT, SerializableField())
+            (
+                fabll.Traits(param).get_obj_raw().get_name(),
+                ApiParamT,
+                SerializableField(),
+            )
             for param in pickable_trait.get_params()
         ],
     ]
@@ -242,13 +246,13 @@ class Component:
             attribute_literals = self.attribute_literals(g=module.g, tg=module.tg)
             # Get parameters from the trait
             design_params = {
-                p.get_name(): p
+                fabll.Traits(p).get_obj_raw().get_name(): p
                 for p in module.get_trait(F.is_pickable_by_type).get_params()
             }
             for name, literal in attribute_literals.items():
                 # Get parameter from the trait's registered params
-                param_node = design_params.get(name)
-                if param_node is None:
+                param = design_params.get(name)
+                if param is None:
                     missing_attrs.append(name)
                     continue
 
@@ -257,8 +261,7 @@ class Component:
                     continue
 
                 # Get the parameter traits
-                assert param_node.has_trait(F.Parameters.is_parameter)
-                param_operand = param_node.get_trait(F.Parameters.can_be_operand)
+                param_operand = param.as_operand.get()
 
                 # Create Is expression to alias parameter to the literal value
                 from faebryk.library.Expressions import Is

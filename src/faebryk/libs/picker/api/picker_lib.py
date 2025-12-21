@@ -158,12 +158,15 @@ def _prepare_query(
 
         generic_field_names = {f.name for f in fields(params_t)}
         _, known_params = more_itertools.partition(
-            lambda p: p.get_name() in generic_field_names, (trait.get_params())
+            lambda p: fabll.Traits(p).get_obj_raw().get_name() in generic_field_names,
+            trait.get_params(),
         )
         cmp_params = {
-            p.get_name(): solver.inspect_get_known_supersets(
+            fabll.Traits(p)
+            .get_obj_raw()
+            .get_name(): solver.inspect_get_known_supersets(
                 # FIXME g
-                p.get_trait(F.Parameters.is_parameter)  # , g=g, tg=tg
+                p  # , g=g, tg=tg
             )
             for p in known_params
         }
