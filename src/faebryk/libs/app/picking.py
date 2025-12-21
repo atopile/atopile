@@ -307,16 +307,19 @@ def test_load_part_info_from_pcb():
     app = TestApp.bind_typegraph(tg).create_instance(g=g)
     res_node = app.res.get()
 
-    # Add SerializableMetadata with matching properties to simulate previous build
-    fabll.Traits.create_and_add_instance_to(res_node, F.SerializableMetadata).setup(
-        key=Properties.supplier_partno.value, value=test_lcsc
-    )
-    fabll.Traits.create_and_add_instance_to(res_node, F.SerializableMetadata).setup(
-        key=Properties.manufacturer.value, value=test_mfr
-    )
-    fabll.Traits.create_and_add_instance_to(res_node, F.SerializableMetadata).setup(
-        key=Properties.manufacturer_partno.value, value=test_partno
-    )
+    # Add SerializableMetadata as children to simulate previous build
+    # Use add_child since get_properties looks for children, not traits
+    meta1 = F.SerializableMetadata.bind_typegraph(tg).create_instance(g)
+    meta1.setup(key=Properties.supplier_partno.value, value=test_lcsc)
+    res_node.add_child(meta1, f"_meta_{Properties.supplier_partno.value}")
+
+    meta2 = F.SerializableMetadata.bind_typegraph(tg).create_instance(g)
+    meta2.setup(key=Properties.manufacturer.value, value=test_mfr)
+    res_node.add_child(meta2, f"_meta_{Properties.manufacturer.value}")
+
+    meta3 = F.SerializableMetadata.bind_typegraph(tg).create_instance(g)
+    meta3.setup(key=Properties.manufacturer_partno.value, value=test_partno)
+    res_node.add_child(meta3, f"_meta_{Properties.manufacturer_partno.value}")
 
     fp_node = fabll.Node.bind_typegraph(tg).create_instance(g=g)
     fp = fabll.Traits.create_and_add_instance_to(fp_node, F.Footprints.is_footprint)
