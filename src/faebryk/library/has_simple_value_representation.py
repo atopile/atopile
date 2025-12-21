@@ -371,9 +371,15 @@ def test_repr_chain_no_literal():
     tg = fbrk.TypeGraph.create(g=g)
 
     class TestModule(fabll.Node):
-        param1 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
-        param2 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
-        param3 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+        param1 = F.Parameters.NumericParameter.MakeChild(
+            unit=F.Units.Volt, domain=F.NumberDomain.Args(negative=True)
+        )
+        param2 = F.Parameters.NumericParameter.MakeChild(
+            unit=F.Units.Ampere, domain=F.NumberDomain.Args(negative=True)
+        )
+        param3 = F.Parameters.NumericParameter.MakeChild(
+            unit=F.Units.Volt, domain=F.NumberDomain.Args(negative=True)
+        )
 
         S = has_simple_value_representation.Spec
         _simple_repr = fabll.Traits.MakeEdge(
