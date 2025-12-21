@@ -249,6 +249,9 @@ class Test:
         electricPowerType = F.ElectricPower.bind_typegraph(tg)
         eps = [electricPowerType.create_instance(g=g) for _ in range(4)]
 
+        for i in range(3):
+            eps[i]._is_interface.get().connect_to(eps[i + 1])
+
         eps[0].hv.get()._is_interface.get().connect_to(eps[3].lv.get())
 
         with pytest.raises(ERCFaultShortedInterfaces):
