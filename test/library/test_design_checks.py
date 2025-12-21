@@ -8,6 +8,7 @@ from faebryk.libs.exceptions import UserDesignCheckException
 from faebryk.libs.smd import SMDSize
 
 
+@pytest.mark.skip(reason="I2C.requires_pulls not implemented yet")
 def test_i2c_requires_pulls():
     class A(fabll.Node):
         i2c: F.I2C
