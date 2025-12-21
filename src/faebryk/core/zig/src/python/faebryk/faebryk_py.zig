@@ -3415,10 +3415,15 @@ fn wrap_typegraph_add_type_reference() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const type_id_slice = bind.unwrap_str(kwarg_obj.type_identifier) orelse return null;
+            const allocator = wrapper.data.self_node.g.allocator;
+            const type_id_copy = allocator.dupe(u8, type_id_slice) catch {
+                py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate type identifier");
+                return null;
+            };
 
             const bnode = faebryk.typegraph.TypeGraph.TypeReferenceNode.create_and_insert(
                 wrapper.data,
-                type_id_slice,
+                type_id_copy,
             ) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "add_type_reference failed");
                 return null;
@@ -4380,8 +4385,13 @@ fn wrap_typegraph_get_or_create_type() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const identifier = bind.unwrap_str(kwarg_obj.type_identifier) orelse return null;
+            const allocator = wrapper.data.self_node.g.allocator;
+            const identifier_copy = allocator.dupe(u8, identifier) catch {
+                py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate type identifier");
+                return null;
+            };
 
-            const bnode = faebryk.typegraph.TypeGraph.get_or_create_type(wrapper.data, identifier) catch {
+            const bnode = faebryk.typegraph.TypeGraph.get_or_create_type(wrapper.data, identifier_copy) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "get_or_create_type failed");
                 return null;
             };
