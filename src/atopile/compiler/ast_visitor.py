@@ -1091,6 +1091,8 @@ class ASTVisitor:
             case FieldPath() as field_path:
                 cbo_path = list(field_path.identifiers())
                 return cbo_path
+            case (fabll._ChildField() as child_field, _):
+                return [child_field]
             # case fabll.Node() if assignable.has_trait(AST.is_arithmetic_atom):
             #     return [assignable]
 
@@ -1131,14 +1133,16 @@ class ASTVisitor:
                 raise DslException(f"Unknown comparison operator: {operator}")
 
         expr = expr_type.MakeChild(lhs_refpath, rhs_refpath, assert_=True)
-
-        # Add childfields from expression tree as dependant to expression
-        for seg in lhs_refpath:
-            if isinstance(seg, fabll._ChildField):
-                expr.add_dependant(seg, identifier="lhs", before=True)
-        for seg in rhs_refpath:
-            if isinstance(seg, fabll._ChildField):
-                expr.add_dependant(seg, identifier="rhs", before=True)
+        expr.add_dependant(
+            *[seg for seg in lhs_refpath if isinstance(seg, fabll._ChildField)],
+            identifier="lhs",
+            before=True,
+        )
+        expr.add_dependant(
+            *[seg for seg in rhs_refpath if isinstance(seg, fabll._ChildField)],
+            identifier="rhs",
+            before=True,
+        )
 
         return AddMakeChildAction(
             target_path=[*lhs_refpath, str(lhs_refpath).replace(".", "_")],
