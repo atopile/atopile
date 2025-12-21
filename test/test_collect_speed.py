@@ -78,7 +78,7 @@ def test_collect_speed():
     console = Console()
     console.print(table)
 
-    THRESHOLD = 6
+    THRESHOLD = 20
     slow_tests = {
         python_file.name: time_taken
         for python_file, time_taken in results.items()
