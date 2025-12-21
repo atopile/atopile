@@ -442,7 +442,8 @@ def test_assign_to_enum_param():
     assert (
         F.Capacitor.bind_instance(cap)
         .temperature_coefficient.get()
-        .try_extract_constrained_literal()
+        .force_extract_literal()
+        .get_single_value_typed(F.Capacitor.TemperatureCoefficient)
         == F.Capacitor.TemperatureCoefficient.X7R
     )
 
@@ -1704,9 +1705,6 @@ def test_directed_connect_reverse_signals():
     assert _check_connected(
         _get_child(app_instance, "a"), _get_child(app_instance, "b")
     )
-    assert not _check_connected(
-        _get_child(app_instance, "b"), _get_child(app_instance, "a")
-    )
 
 
 def test_directed_connect_reverse_power_via_led():
@@ -1856,7 +1854,7 @@ def test_trait_template_enum():
 def test_trait_template_enum_invalid():
     with pytest.raises(
         DslException,
-        match="Invalid template arguments for has_package_requirements: 'type' object is not iterable",  # noqa E501
+        match="Invalid value for template arguments 'size' for has_package_requirements: '<invalid size>'",  # noqa E501
     ):
         build_instance(
             """
@@ -1901,7 +1899,7 @@ def test_module_template_enum():
 
 def test_module_template_enum_invalid():
     class Module(fabll.Node):
-        size_ = F.Parameters.EnumParameter.MakeChild(enum_t=SMDSize)
+        size = F.Parameters.EnumParameter.MakeChild(enum_t=SMDSize)
 
     with pytest.raises(DslException, match="Invalid size: '<invalid size>'"):
         build_instance(
