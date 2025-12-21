@@ -38,6 +38,8 @@ def build_instance(
     import_path: str | None = None,
     stdlib_extra: list[type[fabll.Node]] = [],
 ) -> tuple[GraphView, TypeGraph, StdlibRegistry, BuildFileResult, BoundNode]:
+    import faebryk.library._F as F
+
     g = GraphView.create()
     tg = TypeGraph.create(g=g)
     stdlib_allowlist = STDLIB_ALLOWLIST.copy() | set(stdlib_extra)
@@ -53,10 +55,16 @@ def build_instance(
 
     _link(g, stdlib, tg, result)
 
+    app_root = tg.instantiate_node(
+        type_node=result.state.type_roots[root], attributes={}
+    )
+    app = fabll.Node.bind_instance(app_root)
+    F.Parameters.NumericParameter.infer_units_in_tree(app)
+
     return (
         g,
         tg,
         stdlib,
         result,
-        tg.instantiate_node(type_node=result.state.type_roots[root], attributes={}),
+        app_root,
     )

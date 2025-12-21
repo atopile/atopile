@@ -752,6 +752,10 @@ class NumericParameter(fabll.Node):
         return self
 
     @classmethod
+    def MakeChild_DeferredUnit(cls) -> fabll._ChildField[Self]:
+        return fabll._ChildField(cls)
+
+    @classmethod
     def MakeChild(  # type: ignore[invalid-method-override]
         cls,
         unit: type[fabll.Node],
@@ -853,6 +857,61 @@ class NumericParameter(fabll.Node):
                 unit=self.get_units(),
             )
         )
+
+    @staticmethod
+    def infer_units_in_tree(root: fabll.Node) -> None:
+        """
+        Resolve units for NumericParameters without has_unit trait.
+
+        Traverses all NumericParameter instances under root, finds those missing
+        the has_unit trait, resolves their unit from constraining expressions,
+        and attaches the trait.
+        """
+        from faebryk.library.Expressions import is_assertable
+        from faebryk.library.Units import (
+            UnitsNotCommensurableError,
+            is_unit,
+            resolve_unit_expression,
+        )
+
+        params_missing_units = [
+            param
+            for param in root.get_children(direct_only=False, types=NumericParameter)
+            if not param.has_trait(is_unit)
+        ]
+
+        for param in params_missing_units:
+            constraining_operands = [
+                operand_obj
+                for op in param.is_parameter_operatable.get().get_operations(
+                    predicates_only=True
+                )
+                if (
+                    (trait := op.try_get_trait(is_assertable)) is not None
+                    and trait.is_asserted()
+                )
+                for operand in trait.as_expression.get().get_operands()
+                if (operand_obj := operand.get_raw_obj()).instance != param.instance
+            ]
+
+            param_unit_node = None
+            for expr in constraining_operands:
+                expr_unit_node = resolve_unit_expression(
+                    g=param.g, tg=param.tg, expr=expr.instance
+                )
+                if param_unit_node is None:
+                    param_unit_node = expr_unit_node
+                    fabll.Traits.add_instance_to(
+                        node=param,
+                        trait_instance=param_unit_node.get_is_unit(),
+                    )
+                else:
+                    if not param_unit_node.get_is_unit().is_commensurable_with(
+                        expr_unit_node.get_is_unit()
+                    ):
+                        raise UnitsNotCommensurableError(
+                            "Parameter constraints have incompatible units"
+                        )
 
 
 ParameterNodes = StringParameter | BooleanParameter | EnumParameter | NumericParameter

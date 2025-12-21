@@ -707,6 +707,10 @@ class is_assertable(fabll.Node):
             return
         return fabll.Traits.create_and_add_instance_to(node=parent, trait=is_predicate)
 
+    def is_asserted(self) -> bool:
+        parent = self.get_parent_force()[0]
+        return bool(parent.has_trait(is_predicate))
+
 
 class is_predicate(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())

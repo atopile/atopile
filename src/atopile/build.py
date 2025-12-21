@@ -77,6 +77,7 @@ def _init_ato_app(
 ) -> "fabll.Node":
     """Initialize a specific .ato build."""
     import faebryk.core.node as fabll
+    import faebryk.library._F as F
     from atopile.compiler.build import build_file
     from atopile.compiler.deferred_executor import DeferredExecutor
 
@@ -91,4 +92,8 @@ def _init_ato_app(
 
     app_type = result.state.type_roots[config.build.entry_section]
     app_root = tg.instantiate_node(type_node=app_type, attributes={})
-    return fabll.Node.bind_instance(app_root)
+    app = fabll.Node.bind_instance(app_root)
+
+    F.Parameters.NumericParameter.infer_units_in_tree(app)
+
+    return app

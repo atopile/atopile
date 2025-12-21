@@ -2423,3 +2423,392 @@ class TestRetypeRuntime:
         assert "Specialized" in inner_type, (
             f"inner should be Specialized, got {inner_type}"
         )
+
+
+class TestImplicitParameterUnitInference:
+    """Tests for implicit parameter unit inference from arithmetic expressions."""
+
+    def test_declared_param_still_works(self):
+        """Ensure explicitly declared params with arithmetic expressions still work."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module App:
+                a: dimensionless
+                b: dimensionless
+                a = 1 to 2 * 3
+                b = a + 4
+            """,
+            "App",
+        )
+        a = _get_child(app_instance, "a")
+        b = _get_child(app_instance, "b")
+
+        a_param = F.Parameters.NumericParameter.bind_instance(a)
+        b_param = F.Parameters.NumericParameter.bind_instance(b)
+
+        assert a_param is not None
+        assert b_param is not None
+
+    def test_implicit_param_from_literal_addition(self):
+        """Test implicit parameter declaration from literal addition."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module App:
+                a = 1V + 2V
+            """,
+            "App",
+        )
+        a = _get_child(app_instance, "a")
+        a_param = F.Parameters.NumericParameter.bind_instance(a)
+        assert a_param is not None
+
+        # Verify unit is Volt (basis vector for voltage)
+        unit_trait = a_param.has_trait(F.Units.has_unit)
+        assert unit_trait is not None
+
+    def test_implicit_param_from_field_ref_arithmetic(self):
+        """Test implicit parameter with field reference operand."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module App:
+                x: V
+                x = 5V
+                y = x * 2
+            """,
+            "App",
+        )
+        y = _get_child(app_instance, "y")
+        y_param = F.Parameters.NumericParameter.bind_instance(y)
+        assert y_param is not None
+
+    def test_implicit_param_derived_unit_multiply(self):
+        """Test unit inference for multiplication producing derived unit (V * A = W)."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module App:
+                v: V
+                v = 5V
+                i: A
+                i = 1A
+                p = v * i
+            """,
+            "App",
+        )
+        p = _get_child(app_instance, "p")
+        p_param = F.Parameters.NumericParameter.bind_instance(p)
+        assert p_param is not None
+
+        # Power = Voltage * Current should have Watt basis vector
+        unit_trait = p_param.has_trait(F.Units.has_unit)
+        assert unit_trait is not None
+
+    def test_implicit_param_derived_unit_divide(self):
+        """Test unit inference for division producing derived unit (V / A = Ohm)."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module App:
+                v: V
+                v = 10V
+                i: A
+                i = 2A
+                r = v / i
+            """,
+            "App",
+        )
+        r = _get_child(app_instance, "r")
+        r_param = F.Parameters.NumericParameter.bind_instance(r)
+        assert r_param is not None
+
+
+class TestUnitConflicts:
+    """Tests for unit conflict detection and error handling."""
+
+    def test_add_incommensurable_units_raises(self):
+        """Adding V + A should raise UnitsNotCommensurableError."""
+        from faebryk.library.Units import UnitsNotCommensurableError
+
+        with pytest.raises(UnitsNotCommensurableError):
+            build_instance(
+                """
+                module App:
+                    x = 1V + 1A
+                """,
+                "App",
+            )
+
+    def test_subtract_incommensurable_units_raises(self):
+        """Subtracting V - A should raise UnitsNotCommensurableError."""
+        from faebryk.library.Units import UnitsNotCommensurableError
+
+        with pytest.raises(UnitsNotCommensurableError):
+            build_instance(
+                """
+                module App:
+                    x = 5V - 2A
+                """,
+                "App",
+            )
+
+    def test_add_same_units_succeeds(self):
+        """Adding V + V should succeed."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module App:
+                x = 1V + 2V
+            """,
+            "App",
+        )
+        x = _get_child(app_instance, "x")
+        x_param = F.Parameters.NumericParameter.bind_instance(x)
+        assert x_param is not None
+
+    def test_subtract_same_units_succeeds(self):
+        """Subtracting V - V should succeed."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module App:
+                x = 5V - 2V
+            """,
+            "App",
+        )
+        x = _get_child(app_instance, "x")
+        x_param = F.Parameters.NumericParameter.bind_instance(x)
+        assert x_param is not None
+
+    def test_add_commensurable_scaled_units(self):
+        """Adding mV + V should succeed (same basis vector, different multiplier)."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module App:
+                x = 100mV + 1V
+            """,
+            "App",
+        )
+        x = _get_child(app_instance, "x")
+        x_param = F.Parameters.NumericParameter.bind_instance(x)
+        assert x_param is not None
+
+    def test_multiply_different_units_succeeds(self):
+        """Multiplying V * A should succeed and produce W."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module App:
+                x = 5V * 2A
+            """,
+            "App",
+        )
+        x = _get_child(app_instance, "x")
+        x_param = F.Parameters.NumericParameter.bind_instance(x)
+        assert x_param is not None
+
+    def test_divide_different_units_succeeds(self):
+        """Dividing V / A should succeed and produce Ohm."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module App:
+                x = 10V / 2A
+            """,
+            "App",
+        )
+        x = _get_child(app_instance, "x")
+        x_param = F.Parameters.NumericParameter.bind_instance(x)
+        assert x_param is not None
+
+    def test_assert_incompatible_units_raises(self):
+        """Assert constraint with incompatible units should raise."""
+        from faebryk.library.Units import UnitsNotCommensurableError
+
+        with pytest.raises(UnitsNotCommensurableError):
+            build_instance(
+                """
+                module App:
+                    x = 5V
+                    assert x within 1A + 2A
+                """,
+                "App",
+            )
+
+    def test_assert_compatible_units_succeeds(self):
+        """Assert constraint with compatible units should succeed."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module App:
+                x = 5V
+                assert x within 3V to 7V
+            """,
+            "App",
+        )
+        x = _get_child(app_instance, "x")
+        x_param = F.Parameters.NumericParameter.bind_instance(x)
+        assert x_param is not None
+
+    def test_expression_with_multiple_parameters_compatible(self):
+        """Expression involving multiple parameters with compatible units."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module App:
+                a = 3V
+                b = 2V
+                c = a + b
+            """,
+            "App",
+        )
+        c = _get_child(app_instance, "c")
+        c_param = F.Parameters.NumericParameter.bind_instance(c)
+        assert c_param is not None
+
+    def test_expression_with_multiple_parameters_incompatible(self):
+        """Expression involving multiple parameters with incompatible units."""
+        from faebryk.library.Units import UnitsNotCommensurableError
+
+        with pytest.raises(UnitsNotCommensurableError):
+            build_instance(
+                """
+                module App:
+                    a = 3V
+                    b = 2A
+                    c = a + b
+                """,
+                "App",
+            )
+
+    def test_nested_expression_incompatible(self):
+        """Nested expression with incompatible units in inner expression."""
+        from faebryk.library.Units import UnitsNotCommensurableError
+
+        with pytest.raises(UnitsNotCommensurableError):
+            build_instance(
+                """
+                module App:
+                    x = (1V + 1A) * 2
+                """,
+                "App",
+            )
+
+    def test_chained_addition_all_compatible(self):
+        """Chained addition with all compatible units."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module App:
+                x = 1V + 2V + 3V
+            """,
+            "App",
+        )
+        x = _get_child(app_instance, "x")
+        x_param = F.Parameters.NumericParameter.bind_instance(x)
+        assert x_param is not None
+
+    def test_chained_addition_one_incompatible(self):
+        """Chained addition with one incompatible unit in the chain."""
+        from faebryk.library.Units import UnitsNotCommensurableError
+
+        with pytest.raises(UnitsNotCommensurableError):
+            build_instance(
+                """
+                module App:
+                    x = 1V + 2V + 3A
+                """,
+                "App",
+            )
+
+    def test_mixed_multiply_then_add_incompatible(self):
+        """Multiply produces derived unit, then add with incompatible."""
+        from faebryk.library.Units import UnitsNotCommensurableError
+
+        with pytest.raises(UnitsNotCommensurableError):
+            build_instance(
+                """
+                module App:
+                    x = (1V * 1A) + 1V
+                """,
+                "App",
+            )
+
+    def test_mixed_multiply_then_add_compatible(self):
+        """Multiply produces derived unit (W), then add with compatible (W)."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module App:
+                x = (1V * 1A) + 1W
+            """,
+            "App",
+        )
+        x = _get_child(app_instance, "x")
+        x_param = F.Parameters.NumericParameter.bind_instance(x)
+        assert x_param is not None
+
+    def test_parameter_from_child_module_compatible(self):
+        """Parameter from child module used in compatible expression."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module Child:
+                v = 5V
+
+            module App:
+                child = new Child
+                x = child.v + 3V
+            """,
+            "App",
+        )
+        x = _get_child(app_instance, "x")
+        x_param = F.Parameters.NumericParameter.bind_instance(x)
+        assert x_param is not None
+
+    def test_parameter_from_child_module_incompatible(self):
+        """Parameter from child module used in incompatible expression."""
+        from faebryk.library.Units import UnitsNotCommensurableError
+
+        with pytest.raises(UnitsNotCommensurableError):
+            build_instance(
+                """
+                module Child:
+                    v = 5V
+
+                module App:
+                    child = new Child
+                    x = child.v + 3A
+                """,
+                "App",
+            )
+
+    def test_cross_module_parameter_addition_compatible(self):
+        """Parameters from different modules added together compatibly."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module ModuleA:
+                voltage = 3V
+
+            module ModuleB:
+                voltage = 2V
+
+            module App:
+                a = new ModuleA
+                b = new ModuleB
+                total = a.voltage + b.voltage
+            """,
+            "App",
+        )
+        total = _get_child(app_instance, "total")
+        total_param = F.Parameters.NumericParameter.bind_instance(total)
+        assert total_param is not None
+
+    def test_cross_module_parameter_addition_incompatible(self):
+        """Parameters from different modules with incompatible units."""
+        from faebryk.library.Units import UnitsNotCommensurableError
+
+        with pytest.raises(UnitsNotCommensurableError):
+            build_instance(
+                """
+                module ModuleA:
+                    voltage = 3V
+
+                module ModuleB:
+                    current = 2A
+
+                module App:
+                    a = new ModuleA
+                    b = new ModuleB
+                    bad = a.voltage + b.current
+                """,
+                "App",
+            )

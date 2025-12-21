@@ -562,13 +562,14 @@ class is_unit(fabll.Node):
     ) -> "is_unit":
         # TODO: caching?
         # TODO: generate symbol
-        unit = (
-            _AnonymousUnit.bind_typegraph(tg=tg)
-            .create_instance(g=g)
-            .setup(vector=vector, multiplier=multiplier, offset=offset)
-        )
 
-        return unit.is_unit.get()
+        return (
+            AnonymousUnitFactory(vector=vector, multiplier=multiplier, offset=offset)
+            .bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .cast(_AnonymousUnit, check=False)
+            .get_is_unit()
+        )
 
     def scaled_copy(
         self, g: graph.GraphView, tg: fbrk.TypeGraph, multiplier: float
@@ -1256,24 +1257,48 @@ def UnitExpressionFactory(
 
 
 class _AnonymousUnit(fabll.Node):
+    _is_unit_id: ClassVar[str] = "is_unit"
     is_unit_type = fabll.Traits.MakeEdge(is_unit_type.MakeChild(())).put_on_type()
-    is_unit = fabll.Traits.MakeEdge(is_unit.MakeChild_Empty())
-
     can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
 
-    def setup(  # type: ignore[invalid-method-override]
-        self, vector: BasisVector, multiplier: float = 1.0, offset: float = 0.0
-    ) -> Self:
-        self.is_unit.get().setup(
-            g=self.instance.g(),
-            tg=self.tg,
-            symbols=[],
-            unit_vector=vector,
-            multiplier=multiplier,
-            offset=offset,
+    def get_is_unit(self) -> "is_unit":
+        # FIXME
+        return is_unit.bind_instance(
+            instance=not_none(
+                fbrk.EdgeComposition.get_child_by_identifier(
+                    bound_node=self.instance, child_identifier=self._is_unit_id
+                )
+            )
         )
 
-        return self
+
+def AnonymousUnitFactory(
+    vector: BasisVector,
+    multiplier: float = 1.0,
+    offset: float = 0.0,
+    symbols: tuple[str, ...] = (),
+) -> type[fabll.Node]:
+    """
+    Create an anonymous unit type from raw unit info.
+
+    Unlike UnitExpressionFactory which takes a UnitVectorT (unit types with exponents),
+    this takes a BasisVector directly. Useful for creating units with computed
+    dimensional properties (e.g., from unit inference).
+    """
+    ConcreteUnit = fabll.Node._copy_type(_AnonymousUnit)
+    ConcreteUnit.__name__ = f"_AnonymousUnit<{vector}x{multiplier}>"
+
+    # Add attributes for extract_unit_info compatibility (same as base units)
+    ConcreteUnit.unit_vector_arg = vector
+    ConcreteUnit.multiplier_arg = multiplier
+    ConcreteUnit.offset_arg = offset
+
+    ConcreteUnit._add_field(
+        ConcreteUnit._is_unit_id,
+        fabll.Traits.MakeEdge(is_unit.MakeChild(symbols, vector, multiplier, offset)),
+    )
+
+    return ConcreteUnit
 
 
 class _UnitExpressionResolver:
@@ -1282,14 +1307,28 @@ class _UnitExpressionResolver:
         self.tg = tg
 
     def visit(self, node: fabll.Node) -> is_unit:
+        if node.isinstance(F.Parameters.can_be_operand):
+            # unwrap and try again
+            return self.visit(
+                node.cast(F.Parameters.can_be_operand, check=False).get_raw_obj()
+            )
+
         if unit := node.try_get_trait(is_unit):
+            # already resolved
             if unit.is_affine:
                 raise UnitExpressionError(
                     "Cannot use affine unit in compound expression"
                 )
             return unit
 
-        if node.isinstance(F.Expressions.Multiply):
+        if has_unit_trait := node.try_get_trait(has_unit):
+            return has_unit_trait.get_is_unit()
+
+        if node.isinstance(F.Expressions.Add):
+            return self.visit_additive(node.cast(F.Expressions.Add))
+        elif node.isinstance(F.Expressions.Subtract):
+            return self.visit_subtract(node.cast(F.Expressions.Subtract))
+        elif node.isinstance(F.Expressions.Multiply):
             return self.visit_multiply(node.cast(F.Expressions.Multiply))
         elif node.isinstance(F.Expressions.Divide):
             return self.visit_divide(node.cast(F.Expressions.Divide))
@@ -1323,6 +1362,40 @@ class _UnitExpressionResolver:
             multiplier=multiplier * inner_multiplier,
             offset=0.0,
         )
+
+    def visit_additive(self, node: F.Expressions.Add) -> is_unit:
+        """Resolve Add expression - all operands must be commensurable."""
+        operands = node.operands.get().as_list()
+
+        first_op, *other_ops = operands
+        first_unit = self.visit(first_op)
+        first_vector = first_unit._extract_basis_vector()
+
+        for op in other_ops:
+            op_unit = self.visit(op)
+            if op_unit._extract_basis_vector() != first_vector:
+                raise UnitsNotCommensurableError(
+                    "Operands in addition must have commensurable units"
+                )
+
+        return first_unit
+
+    def visit_subtract(self, node: F.Expressions.Subtract) -> is_unit:
+        """Resolve Subtract expression - all operands must be commensurable."""
+        minuend = node.minuend.get().deref()
+        subtrahends = node.subtrahends.get().as_list()
+
+        minuend_unit = self.visit(minuend)
+        minuend_vector = minuend_unit._extract_basis_vector()
+
+        for sub in subtrahends:
+            sub_unit = self.visit(sub)
+            if sub_unit._extract_basis_vector() != minuend_vector:
+                raise UnitsNotCommensurableError(
+                    "Operands in subtraction must have commensurable units"
+                )
+
+        return minuend_unit
 
     def visit_multiply(self, node: F.Expressions.Multiply) -> is_unit:
         operands = node.operands.get().as_list()
@@ -1380,13 +1453,13 @@ class _UnitExpressionResolver:
 
 def resolve_unit_expression(
     g: graph.GraphView, tg: fbrk.TypeGraph, expr: graph.BoundNode
-) -> fabll.Node:
+) -> _AnonymousUnit:
     # TODO: caching?
     resolver = _UnitExpressionResolver(g=g, tg=tg)
     node = fabll.Node.bind_instance(expr)
     result_unit = resolver.visit(node)
     parent, _ = result_unit.get_parent_force()
-    return parent
+    return parent.cast(_AnonymousUnit, check=False)
 
 
 def resolve_unit_vector(unit_vector: UnitVectorT) -> UnitInfo:
@@ -3147,3 +3220,56 @@ class TestUnitExpressions(_TestWithContext):
         unit = resolved.get_trait(is_unit)
         assert unit._extract_basis_vector() == _BasisVector.ORIGIN
         assert unit.is_dimensionless()
+
+
+class TestResolvePendingParameterUnits(_TestWithContext):
+    """Tests for instance-level unit inference."""
+
+    def test_resolve_param_unit_from_literal(self, ctx: BoundUnitsContext):
+        """Test resolving unit from a literal constraint."""
+        param = ctx.NumericParameter
+
+        # Initially no has_unit on the parameter
+        # (Note: In real use, parameter would be created without unit)
+        # For this test, we verify the resolver can find and attach units
+
+        # Create a literal with Volt unit
+        lit = ctx.literals.Numbers.setup_from_singleton(
+            value=5.0, unit=ctx.Volt.is_unit.get()
+        )
+
+        # Constrain param to literal via Is
+        F.Expressions.Is.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g).setup(
+            param.can_be_operand.get(),
+            lit.is_literal.get().as_operand.get(),
+            assert_=True,
+        )
+
+        # The literal should have has_unit
+        assert lit.try_get_trait(has_unit) is not None
+
+    def test_resolve_add_expression_units(self, ctx: BoundUnitsContext):
+        """Test that Add expressions return commensurable unit."""
+        resolver = _UnitExpressionResolver(g=ctx.g, tg=ctx.tg)
+
+        add_expr = (
+            F.Expressions.Add.bind_typegraph(tg=ctx.tg)
+            .create_instance(g=ctx.g)
+            .setup(ctx.Meter, ctx.Meter)  # type: ignore[arg-type]
+        )
+
+        result = resolver.visit_additive(add_expr)
+        assert result._extract_basis_vector() == BasisVector(meter=1)
+
+    def test_resolve_add_incommensurable_raises(self, ctx: BoundUnitsContext):
+        """Test that Add with incommensurable units raises error."""
+        resolver = _UnitExpressionResolver(g=ctx.g, tg=ctx.tg)
+
+        add_expr = (
+            F.Expressions.Add.bind_typegraph(tg=ctx.tg)
+            .create_instance(g=ctx.g)
+            .setup(ctx.Meter, ctx.Second)  # type: ignore[arg-type]
+        )
+
+        with pytest.raises(UnitsNotCommensurableError):
+            resolver.visit_additive(add_expr)

@@ -521,6 +521,21 @@ class ActionsFactory:
 
         return actions
 
+    @staticmethod
+    def deferred_expression_action(
+        expression_path: "FieldPath",
+        operand: fabll._ChildField,
+        parent_reference: graph.BoundNode | None,
+        parent_path: "FieldPath | None",
+    ) -> "AddMakeChildAction":
+        """Create action for an expression whose parameter will be inferred later."""
+        return AddMakeChildAction(
+            target_path=expression_path,
+            child_field=operand,
+            parent_reference=parent_reference,
+            parent_path=parent_path,
+        )
+
 
 @dataclass(frozen=True)
 class AddMakeChildAction:

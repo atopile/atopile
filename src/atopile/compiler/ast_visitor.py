@@ -563,8 +563,9 @@ class ASTVisitor:
         for type_id, loops in groupby(
             self._state.pending_execution, key=lambda lp: lp.type_identifier
         ).items():
-            if (type_node := self._state.type_roots.get(type_id)) is None:
+            if (bound_tg := self._state.type_bound_tgs.get(type_id)) is None:
                 raise CompilerException(f"Type `{type_id}` not found")
+            type_node = bound_tg.get_or_create_type()
 
             for loop in sorted(loops, key=lambda lp: lp.source_order):
                 self._execute_deferred_for_loop(type_node, type_id, loop)
@@ -780,7 +781,7 @@ class ASTVisitor:
 
         type_node_bound_tg = fabll.TypeNodeBoundTG(tg=self._tg, t=_Block)
         type_node = type_node_bound_tg.get_or_create_type()
-        self._state.type_bound_tgs[module_name] = type_node_bound_tg
+        self._state.type_bound_tgs[type_identifier] = type_node_bound_tg
 
         # Capture compiler-internal identifiers before we process statements
         auto_generated_ids = frozenset(
@@ -817,7 +818,7 @@ class ASTVisitor:
 
         stmts = node.scope.get().stmts.get().as_list()
         with self._scope_stack.enter():
-            with self._type_stack.enter(type_node, type_node_bound_tg, module_name):
+            with self._type_stack.enter(type_node, type_node_bound_tg, type_identifier):
                 for stmt in stmts:
                     self._type_stack.apply_action(self.visit(stmt))
 
@@ -1058,12 +1059,10 @@ class ASTVisitor:
                 return self._handle_new_child(
                     target_path, new_spec, parent_reference, parent_path
                 )
-            case ParameterSpec(param_child=None) as param_spec:
-                # Arithmetic expression - target param must already exist
-                if not self._scope_stack.has_field(target_path):
-                    raise NotImplementedError(
-                        "Arithmetic expression assignment to undeclared parameter"
-                    )
+            case ParameterSpec(param_child=None) as param_spec if (
+                self._scope_stack.has_field(target_path)
+            ):
+                # Parameter already declared in same type -> add constraint
                 return ActionsFactory.parameter_actions(
                     target_path=target_path,
                     param_child=param_spec.param_child,
@@ -1073,6 +1072,19 @@ class ASTVisitor:
                     create_param=False,
                     use_is_constraint=self._type_stack.is_component(),
                 )
+            case ParameterSpec(param_child=None) as param_spec:
+                # Parameter not declared - create without unit for later inference
+                self._scope_stack.add_field(target_path)
+                return ActionsFactory.parameter_actions(
+                    target_path=target_path,
+                    param_child=F.Parameters.NumericParameter.MakeChild_DeferredUnit(),
+                    constraint_operand=param_spec.operand,
+                    parent_reference=parent_reference,
+                    parent_path=parent_path,
+                    create_param=True,
+                    use_is_constraint=self._type_stack.is_component(),
+                )
+
             case ParameterSpec() as param_spec:
                 return ActionsFactory.parameter_actions(
                     target_path=target_path,
@@ -1116,7 +1128,8 @@ class ASTVisitor:
             case AST.BinaryExpression() | AST.GroupExpression() as arithmetic:
                 expr = self.visit(arithmetic)
                 assert isinstance(expr, fabll._ChildField)
-                # No param_child - target param must already exist
+                # Unit must be inferred after linking, so we can't specify a parameter
+                # yet
                 return ParameterSpec(param_child=None, operand=expr)
 
             case _:
@@ -1215,19 +1228,7 @@ class ASTVisitor:
         return operand, unit_t
 
     def visit_BinaryExpression(self, node: AST.BinaryExpression) -> "fabll._ChildField":
-        """
-        Visit a binary arithmetic expression and return a _ChildField for the
-        corresponding F.Expressions type.
-
-        Maps operators to expression types:
-        - +  -> F.Expressions.Add
-        - -  -> F.Expressions.Subtract
-        - *  -> F.Expressions.Multiply
-        - /  -> F.Expressions.Divide
-        - ** -> F.Expressions.Power
-        """
         operator = node.get_operator()
-
         lhs_refpath = self.to_expression_tree(node.get_lhs())
         rhs_refpath = self.to_expression_tree(node.get_rhs())
 
