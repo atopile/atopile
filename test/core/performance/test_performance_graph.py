@@ -85,6 +85,12 @@ def test_performance_parameters(A: int = 1, B: int = 1, rs: int = 1, pick: bool 
         tid = n.t._type_identifier()
         with timings.context(f"create_instance -- {tid}"):
             instances[tid] = n.create_instance(g=g)
+
+    instances["NumericParameter"].setup(
+        is_unit=F.Units.Dimensionless.bind_typegraph(tg)
+        .create_instance(g=g)
+        .is_unit.get()
+    )
     app = instances["App"]
 
     g_copy = graph.GraphView.create()
@@ -151,9 +157,10 @@ def test_performance_parameters(A: int = 1, B: int = 1, rs: int = 1, pick: bool 
     # print(indented_container(tg_overview))
     print("Total typed nodes:", sum(tg_overview.values()))
 
-    with timings.context("print_expr"):
-        expr_str = app.expressions[0].get().is_expression.get().compact_repr()
-    print("Expr: ", expr_str)
+    if A > 0:
+        with timings.context("print_expr"):
+            expr_str = app.expressions[0].get().is_expression.get().compact_repr()
+        print("Expr: ", expr_str)
 
     if rs:
         with timings.context("connect_interfaces"):

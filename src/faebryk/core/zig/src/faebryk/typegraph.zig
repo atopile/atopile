@@ -438,10 +438,7 @@ pub const TypeGraph = struct {
             }
 
             pub fn get_order(self: @This()) u7 {
-                if (self.node.node.get("order")) |o| {
-                    return @intCast(o.Int);
-                }
-                return 0;
+                return @intCast(self.node.node.get("order").?.Int);
             }
 
             pub fn get_edge_type(self: @This()) Edge.EdgeType {
@@ -452,7 +449,7 @@ pub const TypeGraph = struct {
                 const directional = self.node.node.get("directional");
                 const name = self.node.node.get("name");
                 const edge_type: Edge.EdgeType = @intCast(self.node.node.get("edge_type").?.Int);
-                const order = self.get_order();
+                const order: u7 = @intCast(self.node.node.get("order").?.Int);
                 var dynamic = graph.DynamicAttributes.init_on_stack();
 
                 const AttrVisitor = struct {
