@@ -2235,8 +2235,8 @@ class TestAssignments:
         # Assignments create Is constraints, use try_extract_aliased_literal
         literal = r.max_power.get().force_extract_literal_subset()
         assert literal is not None, "max_power should have an aliased literal"
-        assert literal.get_single() == 3
-        assert literal.get_is_unit()._extract_multiplier() == 0.001
+        assert literal.get_single() == 0.003
+        assert literal.get_is_unit()._extract_multiplier() == 1.0
         assert fabll.Traits(r.max_power.get().get_units()).get_obj(F.Units.Watt)
 
     def test_assign_bilateral_tolerance(self):
