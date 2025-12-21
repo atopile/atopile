@@ -1922,7 +1922,8 @@ class Mutator:
     @property
     @once
     def tg_out(self) -> fbrk.TypeGraph:
-        return self.tg_in.copy_into(target_graph=self.G_out, minimal=False)
+        out = self.tg_in.copy_into(target_graph=self.G_out, minimal=False)
+        return out
 
     @property
     @once
@@ -1982,14 +1983,15 @@ class Mutator:
         clean_no_congruent = clean - set(congruencies.keys())
 
         for p in clean_no_congruent:
-            p_copy = p.copy_into(self.G_out)
-            if (
-                pred := p.try_get_sibling_trait(F.Expressions.is_predicate)
-            ) and pred in self.transformations.terminated:
-                self.predicate_terminate(
-                    p_copy.get_sibling_trait(F.Expressions.is_predicate)
-                )
-            self.transformations.mutated[p] = p_copy
+            self.get_copy_po(p)
+            # p_copy = p.copy_into(self.G_out)
+            # if (
+            #    pred := p.try_get_sibling_trait(F.Expressions.is_predicate)
+            # ) and pred in self.transformations.terminated:
+            #    self.predicate_terminate(
+            #        p_copy.get_sibling_trait(F.Expressions.is_predicate)
+            #    )
+            # self.transformations.mutated[p] = p_copy
 
         for p in dirtied - touched | set(congruencies.keys()):
             self.get_copy_po(p)

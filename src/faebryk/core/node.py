@@ -1447,20 +1447,21 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
         return self_name.removeprefix(root_name + ".")
 
-    def try_get_trait[TR: NodeT](self, trait: type[TR]) -> TR | None:
+    def try_get_trait[TR: NodeT](self, trait: type[TR], required=False) -> TR | None:
+        trait_type = TypeNodeBoundTG.get_or_create_type_in_tg(self.tg, trait)
         impl = fbrk.Trait.try_get_trait(
             target=self.instance,
-            trait_type=TypeNodeBoundTG.get_or_create_type_in_tg(self.tg, trait),
+            trait_type=trait_type,
         )
         if impl is None:
+            # just for better debugging
+            if required:
+                raise TraitNotFound(f"No trait {trait} found on {self}")
             return None
         return trait.bind_instance(instance=impl)
 
     def get_trait[TR: Node](self, trait: type[TR]) -> TR:
-        impl = self.try_get_trait(trait)
-        if impl is None:
-            raise TraitNotFound(f"No trait {trait} found on {self}")
-        return impl
+        return cast(TR, self.try_get_trait(trait, required=True))
 
     def has_trait(self, trait: type["NodeT"]) -> bool:
         return self.try_get_trait(trait) is not None

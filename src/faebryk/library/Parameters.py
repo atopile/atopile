@@ -262,7 +262,10 @@ class is_parameter_operatable(fabll.Node):
 
     def __rich_repr__(self):
         """Yield values for rich text display (compact repr and full type name)."""
-        yield self.compact_repr()
+        try:
+            yield self.compact_repr()
+        except Exception as e:
+            yield f"Error in repr: {e}"
         yield "on " + fabll.Traits(self).get_obj_raw().get_full_name(types=True)
 
     def get_depth(self) -> int:
@@ -1623,6 +1626,28 @@ def test_copy_into_enum_parameter():
     # Verify the enum type can still be accessed
     copied_enum_type = copied_param.get_enum_type()
     assert copied_enum_type is not None
+
+
+def test_copy_numeric_parameter():
+    from faebryk.library.Units import Dimensionless
+
+    g1 = fabll.graph.GraphView.create()
+    tg1 = fbrk.TypeGraph.create(g=g1)
+
+    class App(fabll.Node):
+        numeric_param = NumericParameter.MakeChild(unit=Dimensionless)
+
+    app = App.bind_typegraph(tg=tg1).create_instance(g=g1)
+
+    # numeric_param = NumericParameter.bind_typegraph(tg=tg1).create_instance(g=g1)
+    # numeric_param.setup(is_unit=dl_is_unit)
+    numeric_param = app.numeric_param.get()
+
+    g2 = graph.GraphView.create()
+    numeric_param2 = numeric_param.copy_into(g=g2)
+
+    numeric_param.debug_print_tree()
+    numeric_param2.debug_print_tree()
 
 
 if __name__ == "__main__":

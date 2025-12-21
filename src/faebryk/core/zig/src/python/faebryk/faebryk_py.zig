@@ -4490,7 +4490,7 @@ fn wrap_typegraph_copy_node_into() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            faebryk.typegraph.TypeGraph.copy_node_into(kwarg_obj.start_node.*, kwarg_obj.target_graph);
+            faebryk.typegraph.TypeGraph.copy_node_into(kwarg_obj.start_node.*, kwarg_obj.target_graph, false);
             return bind.wrap_none();
         }
     };

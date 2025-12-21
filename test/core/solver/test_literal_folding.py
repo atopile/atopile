@@ -1359,4 +1359,5 @@ if __name__ == "__main__":
     # expr = Add.c(lit(1.0), p(1.0))
     expr = Floor.c(Cos.c(lit(1e-12)))
     setup_basic_logging()
-    typer.run(lambda: test_regression_literal_folding(lambda: expr))
+    # typer.run(lambda: test_regression_literal_folding(lambda: expr))
+    typer.run(lambda: test_regression_literal_folding(regression_examples[0]))

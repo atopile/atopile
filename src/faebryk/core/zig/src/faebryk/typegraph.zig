@@ -1701,12 +1701,12 @@ pub const TypeGraph = struct {
     pub fn copy_into(self: *@This(), dst: *GraphView, minimal: bool) @This() {
         // minimal = tg node + bootstrap nodes only
         const start_node = if (minimal) self.get_MakeChild() else self.self_node;
-        copy_node_into(start_node, dst);
+        copy_node_into(start_node, dst, !minimal);
         // Return a TypeGraph wrapping the copied self_node in the destination graph
         return TypeGraph.of(dst.bind(self.self_node.node));
     }
 
-    pub fn copy_node_into(start_node: BoundNodeReference, dst: *GraphView) void {
+    pub fn copy_node_into(start_node: BoundNodeReference, dst: *GraphView, force_descent: bool) void {
         const g = start_node.g;
         var arena = std.heap.ArenaAllocator.init(dst.base_allocator);
         const allocator = arena.allocator();
@@ -1862,7 +1862,10 @@ pub const TypeGraph = struct {
             .edge_uuid_set = edge_uuid_set,
         };
 
-        _ = collector.add_node(start_node.node);
+        const root_new = collector.add_node(start_node.node);
+        if (force_descent and !root_new) {
+            queue.append(start_node.node) catch @panic("OOM");
+        }
 
         var i: usize = 0;
         while (i < queue.items.len) : (i += 1) {

@@ -92,7 +92,7 @@ class GraphRenderer:
                     tn := type_bound.node().get_attr(key="type_identifier"),
                     str,
                 ):
-                    return tn
+                    return f"{tn}[0x{type_node.get_uuid():x}]"
         except Exception:
             pass
         return None
