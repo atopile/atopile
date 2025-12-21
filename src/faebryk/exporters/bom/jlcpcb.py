@@ -13,7 +13,6 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.picker.lcsc import PickedPartLCSC
 
 logger = logging.getLogger(__name__)
 
@@ -198,11 +197,10 @@ def test_get_bomline():
         _has_designator = fabll.Traits.MakeEdge(F.has_designator.MakeChild("R1"))
         _has_part_picked = fabll.Traits.MakeEdge(
             F.has_part_picked.MakeChild(
-                PickedPartLCSC(
-                    manufacturer="Amazing manufacturer",
-                    partno="ABC-Part",
-                    supplier_partno="C12345",
-                )
+                manufacturer="Amazing manufacturer",
+                partno="ABC-Part",
+                supplier_partno="C12345",
+                supplier_id="lcsc",
             )
         )
         has_associated_footprint_ = fabll.Traits.MakeEdge(

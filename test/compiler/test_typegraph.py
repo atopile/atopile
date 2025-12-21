@@ -2148,102 +2148,253 @@ class TestTraitStatements:
         assert trait.get_symbol() == "sym.kicad_sym"
 
 
-# FIXME: break up
-def test_literal_assignment():
-    import logging
+class TestAssignments:
+    """Tests for parameter assignments in ato."""
 
-    import faebryk.core.faebrykpy as fbrk
-    import faebryk.core.node as fabll
-    import faebryk.library._F as F
-    from faebryk.libs.util import not_none
+    @pytest.mark.parametrize(
+        "assignment,param_name,expected_values",
+        [
+            ("a = 1", "a", [1]),
+            ("b = 5V", "b", [5]),
+            ("c = 100kohm +/- 10%", "c", [90, 110]),  # 100k +/- 10% in kohm
+            ("d = 3V to 5V", "d", [3, 5]),
+        ],
+    )
+    def test_top_level_parameter_assignment(
+        self, assignment: str, param_name: str, expected_values: list
+    ):
+        """Test that direct literal assignment creates a top-level parameter.
 
-    logging.basicConfig(level=logging.DEBUG)
-    g, tg, stdlib, result = build_type(
+        When writing `a = 1` in a module, this should create a NumericParameter
+        child named "a" and constrain it to the literal value.
         """
-        import Resistor
-        import is_atomic_part
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.core.node as fabll
+        import faebryk.library._F as F
+        from faebryk.libs.util import not_none
 
-        module App:
-            r1 = new Resistor
-            r1.max_power = 3 mW
-            r1.resistance = 100kohm +/- 10%
-            assert r1.max_voltage within 25 volt to 100 volt
+        g, tg, stdlib, result = build_type(
+            f"""
+            module App:
+                {assignment}
+            """
+        )
 
-            r2 = new Resistor
-            r2.resistance = 100 ohm +/- 5%
-            r2.max_power = 3 watt to 5 watt
-            assert r2.max_voltage within 100kV +/- 1%
+        linker = Linker(None, stdlib, tg)
+        linker.link_imports(g, result.state)
 
-            atomic_part = new is_atomic_part
-            atomic_part.footprint = "R_0402"
-        """
-    )
+        app_type = result.state.type_roots["App"]
 
-    linker = Linker(None, stdlib, tg)
-    linker.link_imports(g, result.state)
+        # Verify the parameter child exists
+        make_children = list(tg.collect_make_children(type_node=app_type))
+        identifiers = [id for id, _ in make_children if id]
+        assert param_name in identifiers, (
+            f"Parameter '{param_name}' should be created by `{assignment}`"
+        )
 
-    app_type_node = result.state.type_roots["App"]
+        # Instantiate and verify the literal value can be extracted
+        app_instance = fabll.Node(
+            tg.instantiate_node(type_node=app_type, attributes={})
+        )
+        param_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_instance.instance, child_identifier=param_name
+        )
+        param = F.Parameters.NumericParameter.bind_instance(not_none(param_bnode))
 
-    app_instance = fabll.Node(
-        tg.instantiate_node(type_node=app_type_node, attributes={})
-    )
-    r1_bnode = fbrk.EdgeComposition.get_child_by_identifier(
-        bound_node=app_instance.instance, child_identifier="r1"
-    )
-    r2_bnode = fbrk.EdgeComposition.get_child_by_identifier(
-        bound_node=app_instance.instance, child_identifier="r2"
-    )
-    r1 = F.Resistor.bind_instance(not_none(r1_bnode))
+        # The parameter should have an aliased literal with expected values
+        literal = param.try_extract_aliased_literal()
+        assert literal is not None, (
+            f"Parameter '{param_name}' should have an aliased literal"
+        )
+        assert literal.get_values() == expected_values, (
+            f"Expected {expected_values}, got {literal.get_values()}"
+        )
 
-    assert r1.max_power.get().force_extract_literal_subset().get_single() == 3
-    assert (
-        r1.max_power.get()
-        .force_extract_literal_subset()
-        .get_is_unit()
-        ._extract_multiplier()
-        == 0.001
-    )
-    assert fabll.Traits(r1.max_power.get().get_units()).get_obj(F.Units.Watt)
-    # assert r1.resistance.get().force_extract_literal_subset().get_values() == [
-    #     10.0,
-    #     20.0,
-    # ]
-    assert r1.max_voltage.get().force_extract_literal_subset().get_values() == [
-        25.0,
-        100.0,
-    ]
+    def test_assign_single_value_with_unit(self):
+        """Test assigning a single value with unit to an existing field."""
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.core.node as fabll
+        import faebryk.library._F as F
+        from faebryk.libs.util import not_none
 
-    r2 = F.Resistor.bind_instance(not_none(r2_bnode))
-    assert r2.resistance.get().force_extract_literal_subset().get_values() == [
-        95.0,
-        105.0,
-    ]
-    assert r2.max_power.get().force_extract_literal_subset().get_values() == [3, 5]
-    assert r2.max_voltage.get().force_extract_literal_subset().get_values() == [99, 101]
-    assert (
-        r2.max_voltage.get()
-        .force_extract_literal_subset()
-        .get_is_unit()
-        ._extract_multiplier()
-        == 1000
-    )
+        g, tg, stdlib, result = build_type(
+            """
+            import Resistor
 
-    # atomic_party_bnode = fbrk.EdgeComposition.get_child_by_identifier(
-    #     bound_node=app_instance.instance, child_identifier="atomic_part"
-    # )
-    # atomic_party = F.is_atomic_part.bind_instance(not_none(atomic_party_bnode))
+            module App:
+                r = new Resistor
+                r.max_power = 3 mW
+            """
+        )
 
-    # assert (
-    #     # TODO: This accessor pattern is crazy
-    #     fabll.Traits(
-    #         atomic_party.footprint.get()
-    #         .is_parameter_operatable.get()
-    #         .try_extract_literal(allow_subset=True)
-    #     )
-    #     .get_obj(F.Literals.Strings)
-    #     .get_single()
-    #     == "R_0402"
-    # )
+        linker = Linker(None, stdlib, tg)
+        linker.link_imports(g, result.state)
+
+        app_type_node = result.state.type_roots["App"]
+        app_instance = fabll.Node(
+            tg.instantiate_node(type_node=app_type_node, attributes={})
+        )
+
+        r_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_instance.instance, child_identifier="r"
+        )
+        r = F.Resistor.bind_instance(not_none(r_bnode))
+
+        assert r.max_power.get().force_extract_literal_subset().get_single() == 3
+        assert (
+            r.max_power.get()
+            .force_extract_literal_subset()
+            .get_is_unit()
+            ._extract_multiplier()
+            == 0.001
+        )
+        assert fabll.Traits(r.max_power.get().get_units()).get_obj(F.Units.Watt)
+
+    def test_assign_bilateral_tolerance(self):
+        """Test assigning a bilateral tolerance value to an existing field."""
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.core.node as fabll
+        import faebryk.library._F as F
+        from faebryk.libs.util import not_none
+
+        g, tg, stdlib, result = build_type(
+            """
+            import Resistor
+
+            module App:
+                r = new Resistor
+                r.resistance = 100 ohm +/- 5%
+            """
+        )
+
+        linker = Linker(None, stdlib, tg)
+        linker.link_imports(g, result.state)
+
+        app_type_node = result.state.type_roots["App"]
+        app_instance = fabll.Node(
+            tg.instantiate_node(type_node=app_type_node, attributes={})
+        )
+
+        r_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_instance.instance, child_identifier="r"
+        )
+        r = F.Resistor.bind_instance(not_none(r_bnode))
+
+        # 100 ohm +/- 5% = [95, 105]
+        assert r.resistance.get().force_extract_literal_subset().get_values() == [
+            95.0,
+            105.0,
+        ]
+
+    def test_assign_bounded_range(self):
+        """Test assigning a bounded range value to an existing field."""
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.core.node as fabll
+        import faebryk.library._F as F
+        from faebryk.libs.util import not_none
+
+        g, tg, stdlib, result = build_type(
+            """
+            import Resistor
+
+            module App:
+                r = new Resistor
+                r.max_power = 3 watt to 5 watt
+            """
+        )
+
+        linker = Linker(None, stdlib, tg)
+        linker.link_imports(g, result.state)
+
+        app_type_node = result.state.type_roots["App"]
+        app_instance = fabll.Node(
+            tg.instantiate_node(type_node=app_type_node, attributes={})
+        )
+
+        r_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_instance.instance, child_identifier="r"
+        )
+        r = F.Resistor.bind_instance(not_none(r_bnode))
+
+        assert r.max_power.get().force_extract_literal_subset().get_values() == [3, 5]
+
+    def test_assert_within_constraint(self):
+        """Test assert within constraint on an existing field."""
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.core.node as fabll
+        import faebryk.library._F as F
+        from faebryk.libs.util import not_none
+
+        g, tg, stdlib, result = build_type(
+            """
+            import Resistor
+
+            module App:
+                r = new Resistor
+                assert r.max_voltage within 25 volt to 100 volt
+            """
+        )
+
+        linker = Linker(None, stdlib, tg)
+        linker.link_imports(g, result.state)
+
+        app_type_node = result.state.type_roots["App"]
+        app_instance = fabll.Node(
+            tg.instantiate_node(type_node=app_type_node, attributes={})
+        )
+
+        r_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_instance.instance, child_identifier="r"
+        )
+        r = F.Resistor.bind_instance(not_none(r_bnode))
+
+        assert r.max_voltage.get().force_extract_literal_subset().get_values() == [
+            25.0,
+            100.0,
+        ]
+
+    def test_assert_within_bilateral_tolerance(self):
+        """Test assert within with bilateral tolerance."""
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.core.node as fabll
+        import faebryk.library._F as F
+        from faebryk.libs.util import not_none
+
+        g, tg, stdlib, result = build_type(
+            """
+            import Resistor
+
+            module App:
+                r = new Resistor
+                assert r.max_voltage within 100kV +/- 1%
+            """
+        )
+
+        linker = Linker(None, stdlib, tg)
+        linker.link_imports(g, result.state)
+
+        app_type_node = result.state.type_roots["App"]
+        app_instance = fabll.Node(
+            tg.instantiate_node(type_node=app_type_node, attributes={})
+        )
+
+        r_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_instance.instance, child_identifier="r"
+        )
+        r = F.Resistor.bind_instance(not_none(r_bnode))
+
+        # 100kV +/- 1% = [99, 101] kV
+        assert r.max_voltage.get().force_extract_literal_subset().get_values() == [
+            99,
+            101,
+        ]
+        assert (
+            r.max_voltage.get()
+            .force_extract_literal_subset()
+            .get_is_unit()
+            ._extract_multiplier()
+            == 1000
+        )
 
 
 class TestModuleTemplating:

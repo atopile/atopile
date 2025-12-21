@@ -71,47 +71,34 @@ class has_part_picked(fabll.Node):
         return self.has_trait(F.has_part_removed)
 
     @classmethod
-    def MakeChild(cls, picked_part: "PickedPart") -> fabll._ChildField:
+    def MakeChild(
+        cls,
+        supplier_id: str,
+        supplier_partno: str,
+        manufacturer: str,
+        partno: str,
+    ) -> fabll._ChildField[Self]:
+        """Create a child field with part info constraints."""
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.manufacturer], picked_part.manufacturer
+                [out, cls.manufacturer], manufacturer
+            )
+        )
+        out.add_dependant(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.partno], partno)
+        )
+        out.add_dependant(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                [out, cls.supplier_partno], supplier_partno
             )
         )
         out.add_dependant(
             F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.partno], picked_part.partno
-            )
-        )
-        out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.supplier_partno], picked_part.supplier_partno
-            )
-        )
-        out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.supplier_id], picked_part.supplier.supplier_id
+                [out, cls.supplier_id], supplier_id
             )
         )
         return out
-
-    @classmethod
-    def MakeChild_by_supplier(
-        cls, supplier_id: str, supplier_partno: str, manufacturer: str, partno: str
-    ) -> fabll._ChildField[Self]:
-        from faebryk.libs.picker.lcsc import PickedPartLCSC
-
-        match supplier_id:
-            case "lcsc":
-                return cls.MakeChild(
-                    PickedPartLCSC(
-                        manufacturer=manufacturer,
-                        partno=partno,
-                        supplier_partno=supplier_partno,
-                    )
-                )
-            case _:
-                raise ValueError(f"Unknown supplier: {supplier_id}")
 
     def setup(self, picked_part: "PickedPart") -> Self:
         self.manufacturer.get().alias_to_single(value=picked_part.manufacturer)

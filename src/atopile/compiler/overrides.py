@@ -143,6 +143,10 @@ _TRAIT_OVERRIDES: dict[str, TraitOverrideSpec] = {
             ground_only=args.get("gnd_only", False)
         ),
     ),
+    "has_part_picked": TraitOverrideSpec(
+        trait_class=F.has_part_picked,
+        make_trait_field=lambda args: F.has_part_picked.MakeChild(**args),
+    ),
 }
 
 

@@ -688,7 +688,9 @@ class ASTVisitor:
         path = node.get_path()
         import_ref = ImportRef(name=type_ref_name, path=path)
 
-        if path is None and type_ref_name not in self._stdlib_allowlist:
+        is_stdlib = type_ref_name in self._stdlib_allowlist
+        is_trait_shim = TraitOverrideRegistry.matches_trait_override(type_ref_name)
+        if path is None and not is_stdlib and not is_trait_shim:
             raise DslException(f"Standard library import not found: {type_ref_name}")
 
         self._scope_stack.add_symbol(Symbol(name=type_ref_name, import_ref=import_ref))
