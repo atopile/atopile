@@ -558,6 +558,7 @@ pub const TraversedEdge = struct {
 
 pub const BFSPath = struct {
     traversed_edges: std.ArrayList(TraversedEdge),
+    allocator: std.mem.Allocator,
     g: *GraphView,
     start_node: BoundNodeReference,
     invalid_path: bool = false,
@@ -572,10 +573,11 @@ pub const BFSPath = struct {
         std.debug.assert(self.is_consistent());
     }
 
-    pub fn init(start: BoundNodeReference) !*@This() {
-        var path = try start.g.allocator.create(BFSPath);
+    pub fn init(allocator: std.mem.Allocator, start: BoundNodeReference) !*@This() {
+        var path = try allocator.create(BFSPath);
         path.* = BFSPath{
-            .traversed_edges = std.ArrayList(TraversedEdge).init(start.g.allocator),
+            .traversed_edges = std.ArrayList(TraversedEdge).init(allocator),
+            .allocator = allocator,
             .g = start.g,
             .start_node = start,
             .invalid_path = false,
@@ -585,12 +587,12 @@ pub const BFSPath = struct {
         return path;
     }
 
-    pub fn cloneAndExtend(base: *const BFSPath, from_node: BoundNodeReference, edge: EdgeReference) !*BFSPath {
+    pub fn cloneAndExtend(allocator: std.mem.Allocator, base: *const BFSPath, from_node: BoundNodeReference, edge: EdgeReference) !*BFSPath {
         base.assert_consistent();
         const g = base.g;
         std.debug.assert(base.start_node.g == g);
 
-        var new_path = try BFSPath.init(base.start_node);
+        var new_path = try BFSPath.init(allocator, base.start_node);
 
         const new_len = base.traversed_edges.items.len + 1;
         try new_path.traversed_edges.ensureTotalCapacity(new_len);
@@ -611,10 +613,27 @@ pub const BFSPath = struct {
         return new_path;
     }
 
+    /// Copy path to a different allocator (for returning from BFS)
+    pub fn copy(self: *const @This(), allocator: std.mem.Allocator) !*@This() {
+        var new_path = try allocator.create(BFSPath);
+        new_path.* = BFSPath{
+            .traversed_edges = std.ArrayList(TraversedEdge).init(allocator),
+            .allocator = allocator,
+            .g = self.g,
+            .start_node = self.start_node,
+            .invalid_path = self.invalid_path,
+            .stop_new_path_discovery = self.stop_new_path_discovery,
+            .visit_strength = self.visit_strength,
+        };
+        try new_path.traversed_edges.ensureTotalCapacity(self.traversed_edges.items.len);
+        new_path.traversed_edges.appendSliceAssumeCapacity(self.traversed_edges.items);
+        return new_path;
+    }
+
     pub fn deinit(self: *@This()) void {
         self.assert_consistent();
         self.traversed_edges.deinit();
-        self.g.allocator.destroy(self);
+        self.allocator.destroy(self);
     }
 
     pub fn get_last_node(self: *const @This()) BoundNodeReference {
@@ -940,12 +959,7 @@ pub const GraphView = struct {
         var visited_nodes = NodeRefMap.T(VisitInfo).init(allocator);
         visited_nodes.ensureTotalCapacity(1024) catch @panic("OOM");
 
-        defer {
-            while (open_path_queue.readItem()) |bfspath| {
-                bfspath.deinit();
-            }
-            open_path_queue.deinit();
-        }
+        defer open_path_queue.deinit();
         defer visited_nodes.deinit();
 
         const EdgeVisitor = struct {
@@ -953,6 +967,7 @@ pub const GraphView = struct {
             current_path: *BFSPath,
             open_path_queue: *std.fifo.LinearFifo(*BFSPath, .Dynamic),
             visited_nodes_ev: *NodeRefMap.T(VisitInfo),
+            path_allocator: std.mem.Allocator,
 
             fn valid_node_to_add_to_path(self: *@This(), node: NodeReference) bool {
                 if (self.current_path.contains(node)) {
@@ -976,7 +991,7 @@ pub const GraphView = struct {
                 const other_node = bound_edge.edge.get_other_node(self.start_node_ev.node);
 
                 if (self.valid_node_to_add_to_path(other_node)) {
-                    const new_path = BFSPath.cloneAndExtend(self.current_path, self.start_node_ev, bound_edge.edge) catch @panic("OOM");
+                    const new_path = BFSPath.cloneAndExtend(self.path_allocator, self.current_path, self.start_node_ev, bound_edge.edge) catch @panic("OOM");
                     self.open_path_queue.writeItem(new_path) catch @panic("OOM");
                 }
                 return visitor.VisitResult(void){ .CONTINUE = {} };
@@ -984,12 +999,10 @@ pub const GraphView = struct {
         };
 
         visited_nodes.put(start_node.node, VisitInfo{ .visit_strength = .strong }) catch @panic("OOM");
-        const empty_path_copy = BFSPath.init(start_node) catch @panic("OOM");
+        const empty_path_copy = BFSPath.init(allocator, start_node) catch @panic("OOM");
         open_path_queue.writeItem(empty_path_copy) catch @panic("OOM");
 
         while (open_path_queue.readItem()) |path| {
-            defer path.deinit();
-
             const bfs_visitor_result = f(ctx, path);
 
             visited_nodes.put(path.get_last_node().node, VisitInfo{ .visit_strength = path.visit_strength }) catch @panic("OOM");
@@ -1011,6 +1024,7 @@ pub const GraphView = struct {
                 .visited_nodes_ev = &visited_nodes,
                 .current_path = path,
                 .open_path_queue = &open_path_queue,
+                .path_allocator = allocator,
             };
 
             if (edge_type_filter) |ets| {
@@ -1074,14 +1088,14 @@ test "BFSPath cloneAndExtend preserves start metadata" {
     _ = g.insert_edge(e12);
     _ = g.insert_edge(e23);
 
-    var base = try BFSPath.init(bn1);
+    var base = try BFSPath.init(a, bn1);
     defer base.deinit();
     try base.traversed_edges.append(TraversedEdge{
         .edge = e12,
         .forward = true,
     });
 
-    const cloned = try BFSPath.cloneAndExtend(base, bn2, e23);
+    const cloned = try BFSPath.cloneAndExtend(a, base, bn2, e23);
     defer cloned.deinit();
 
     try std.testing.expect(cloned.start_node.node.is_same(bn1.node));
@@ -1101,7 +1115,7 @@ test "BFSPath detects inconsistent graph view" {
 
     const bn1 = g1.create_and_insert_node();
 
-    var path = try BFSPath.init(bn1);
+    var path = try BFSPath.init(a, bn1);
     defer {
         path.g = path.start_node.g;
         path.deinit();

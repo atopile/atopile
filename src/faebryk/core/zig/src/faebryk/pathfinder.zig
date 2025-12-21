@@ -122,10 +122,8 @@ pub const PathFinder = struct {
 
         path.visit_strength = .strong;
 
-        // else save to path_list
-        var copied_path = BFSPath.init(path.start_node) catch @panic("OOM");
-        copied_path.traversed_edges.ensureTotalCapacity(path.traversed_edges.items.len) catch @panic("OOM");
-        copied_path.traversed_edges.appendSliceAssumeCapacity(path.traversed_edges.items);
+        // Copy path to long-lived allocator (BFS arena paths are freed when BFS ends)
+        var copied_path = path.copy(std.heap.page_allocator) catch @panic("OOM");
         copied_path.stop_new_path_discovery = path.stop_new_path_discovery;
         copied_path.visit_strength = path.visit_strength;
         self.path_list.append(copied_path) catch @panic("OOM");
@@ -348,7 +346,7 @@ test "filter_hierarchy_stack" {
     const be2 = g.insert_edge(EdgeReference.init(bn3.node, bn4.node, EdgeComposition.tid));
     const be3 = g.insert_edge(EdgeReference.init(bn2.node, bn3.node, EdgeInterfaceConnection.tid));
 
-    var bfs_path = try BFSPath.init(bn1);
+    var bfs_path = try BFSPath.init(a, bn1);
 
     try bfs_path.traversed_edges.append(TraversedEdge{ .edge = be1.edge, .forward = false }); // bn1 -> bn2 (target -> source)
     try bfs_path.traversed_edges.append(TraversedEdge{ .edge = be3.edge, .forward = true }); // bn2 -> bn3 (source -> target)
