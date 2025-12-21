@@ -1132,81 +1132,76 @@ class ASTVisitor:
             child_field=expr,
         )
 
-    def _get_unit_fabll_type(self, unit_symbol: str | None) -> type[fabll.Node]:
-        if unit_symbol is None:
-            # TODO: Dont allow to compile without unit symbol?
-            # raise DslException("Unit symbol is required for quantity")
-            return F.Units.Dimensionless
-        else:
-            return F.Units.decode_symbol(self._graph, self._tg, unit_symbol)
-
     def visit_Quantity(
         self, node: AST.Quantity
     ) -> "fabll._ChildField[F.Literals.Numbers]":
-        # Make childfield and edge pointer to unit_ptr to unit node child field
-        unit_type = self._get_unit_fabll_type(node.try_get_unit_symbol())
-
-        return F.Literals.Numbers.MakeChild_SingleValue(node.get_value(), unit_type)
+        return F.Literals.Numbers.MakeChild_SingleValue(
+            value=node.get_value(),
+            unit=F.Units.Dimensionless
+            if (symbol := node.try_get_unit_symbol()) is None
+            else F.Units.decode_symbol(self._graph, self._tg, symbol),
+        )
 
     def visit_BoundedQuantity(
         self, node: AST.BoundedQuantity
     ) -> "fabll._ChildField[F.Literals.Numbers]":
         start_unit_symbol = node.start.get().try_get_unit_symbol()
         end_unit_symbol = node.end.get().try_get_unit_symbol()
-        # TODO: handle this more intelligentlly
-        if start_unit_symbol is not None and end_unit_symbol is not None:
-            assert start_unit_symbol == end_unit_symbol, (
-                f"Unit mismatch: {start_unit_symbol} vs {end_unit_symbol}"
-            )
-        if start_unit_symbol is None or end_unit_symbol is None:
-            raise DslException("Unit symbol is required for bounded quantity")
 
-        unit_type = self._get_unit_fabll_type(start_unit_symbol)
+        match [start_unit_symbol, end_unit_symbol]:
+            case [None, _] | [_, None]:
+                raise DslException("Unit symbol is required for bounded quantity")
+            case [_, _] if start_unit_symbol != end_unit_symbol:
+                raise DslException("Bounded quantity start and end units must match")
 
         return F.Literals.Numbers.MakeChild(
             min=node.start.get().get_value(),
             max=node.end.get().get_value(),
-            unit=unit_type,
+            unit=F.Units.Dimensionless
+            if (symbol := start_unit_symbol) is None
+            else F.Units.decode_symbol(self._graph, self._tg, symbol),
         )
 
     def visit_BilateralQuantity(
         self, node: AST.BilateralQuantity
     ) -> "fabll._ChildField[F.Literals.Numbers]":
-        quantity_unit_symbol = node.quantity.get().try_get_unit_symbol()
-        tolerance_unit_symbol = node.tolerance.get().try_get_unit_symbol()
-        # TODO: handle this more intelligentlly
-        assert (
-            tolerance_unit_symbol == "%"
-            or quantity_unit_symbol == tolerance_unit_symbol
-        )
-        if quantity_unit_symbol is None or tolerance_unit_symbol is None:
-            raise DslException("Unit symbol is required for bilateralquantity")
-        unit_type = self._get_unit_fabll_type(quantity_unit_symbol)
-
         node_quantity_value = node.quantity.get().get_value()
+        quantity_unit_symbol = node.quantity.get().try_get_unit_symbol()
         node_tolerance_value = node.tolerance.get().get_value()
+        tolerance_unit_symbol = node.tolerance.get().try_get_unit_symbol()
 
-        if tolerance_unit_symbol == "%":
-            tolerance_value = node_tolerance_value / 100
-            start_value = node_quantity_value * (1 - tolerance_value)
-            end_value = node_quantity_value * (1 + tolerance_value)
-        else:
-            start_value = node_quantity_value - node_tolerance_value
-            end_value = node_quantity_value + node_tolerance_value
-
-        return F.Literals.Numbers.MakeChild(
-            min=start_value,
-            max=end_value,
-            unit=unit_type,
+        unit_type = (
+            F.Units.Dimensionless
+            if (symbol := quantity_unit_symbol) is None
+            else F.Units.decode_symbol(self._graph, self._tg, symbol)
         )
+
+        match [quantity_unit_symbol, tolerance_unit_symbol]:
+            case [None, _] | [_, None]:
+                raise DslException("Unit is required for toleranced quantity")
+            case [_, F.Units.PERCENT_SYMBOL]:
+                return F.Literals.Numbers.MakeChild_FromCenterRel(
+                    center=node_quantity_value,
+                    rel=node_tolerance_value / 100,
+                    unit=unit_type,
+                )
+            case [_, _] if quantity_unit_symbol == tolerance_unit_symbol:
+                return F.Literals.Numbers.MakeChild(
+                    min=node_quantity_value - node_tolerance_value,
+                    max=node_quantity_value + node_tolerance_value,
+                    unit=unit_type,
+                )
+            case _:
+                raise DslException("Toleranced quantity has incompatible units")
 
     def visit_NewExpression(self, node: AST.NewExpression):
         type_name = node.get_type_ref_name()
         symbol = self._scope_stack.try_resolve_symbol(type_name)
 
         # Extract template arguments if present (e.g., new Addressor<address_bits=2>)
-        template_args = self._extract_template_args(node.template.get())
-        if template_args is not None:
+        if (
+            template_args := self._extract_template_args(node.template.get())
+        ) is not None:
             self.ensure_experiment(ASTVisitor._Experiment.MODULE_TEMPLATING)
 
         return NewChildSpec(
