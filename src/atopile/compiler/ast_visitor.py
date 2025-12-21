@@ -1722,8 +1722,8 @@ class ASTVisitor:
             except KeyError:
                 raise DslException(f"External trait `{trait_type_name}` not supported")
 
-            # FIXME: check if the node has the fabll.Traits.is_trait trait
-            # raise DslException(f"Trait `{trait_type_name}` is not a valid trait")
+            if not fabll.Traits.is_trait_type(trait_fabll_type):
+                raise DslException(f"`{trait_type_name}` is not a valid trait")
 
             return ActionsFactory.trait_from_field(
                 ActionsFactory.trait_field(trait_fabll_type, template_args),

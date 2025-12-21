@@ -1,7 +1,9 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import re
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
+from dataclasses import fields as dataclass_fields
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -736,7 +738,7 @@ _ATTR_UNSET = object()
 
 @dataclass(kw_only=True)
 class NodeAttributes:
-    _loaded_from: "graph.Node | None" = field(
+    _loaded_from: "graph.Node | None" = dataclass_field(
         default=None, repr=False, compare=False, hash=False
     )
 
@@ -752,7 +754,11 @@ class NodeAttributes:
             node = node.instance
         return cls(
             _loaded_from=node.node(),
-            **{f.name: _ATTR_UNSET for f in fields(cls) if f.name != "_loaded_from"},
+            **{
+                f.name: _ATTR_UNSET
+                for f in dataclass_fields(cls)
+                if f.name != "_loaded_from"
+            },
         )
 
     def __getattribute__(self, name: str) -> Any:
@@ -766,7 +772,7 @@ class NodeAttributes:
     def to_dict(self) -> dict[str, Literal]:
         return {
             f.name: getattr(self, f.name)
-            for f in fields(type(self))
+            for f in dataclass_fields(type(self))
             if f.name != "_loaded_from"
         }
 
@@ -1959,6 +1965,13 @@ class Traits:
         if TypeNodeBoundTG.try_get_trait_of_type(ImplementsTrait, type_node):
             return Traits.bind(node)
         return None
+
+    @staticmethod
+    def is_trait_type(type_: type[NodeT]) -> bool:
+        for attr in type_.__dict__.values():
+            if isinstance(attr, _ChildField) and attr.nodetype == ImplementsTrait:
+                return True
+        return False
 
     def trait_repr(self):
         return f" on {self.get_obj_raw()!r}"
