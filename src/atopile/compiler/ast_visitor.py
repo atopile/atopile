@@ -1115,17 +1115,17 @@ class ASTVisitor:
         operator = root_comparison_clause.get_operator()
 
         match operator:
-            case AST.ComparisonOperator.GREATER_THAN:
+            case AST.ComparisonClause.ComparisonOperator.GREATER_THAN:
                 expr_type = F.Expressions.GreaterThan
-            case AST.ComparisonOperator.GT_EQ:
+            case AST.ComparisonClause.ComparisonOperator.GT_EQ:
                 expr_type = F.Expressions.GreaterOrEqual
-            case AST.ComparisonOperator.LESS_THAN:
+            case AST.ComparisonClause.ComparisonOperator.LESS_THAN:
                 expr_type = F.Expressions.LessThan
-            case AST.ComparisonOperator.LT_EQ:
+            case AST.ComparisonClause.ComparisonOperator.LT_EQ:
                 expr_type = F.Expressions.LessOrEqual
-            case AST.ComparisonOperator.WITHIN:
+            case AST.ComparisonClause.ComparisonOperator.WITHIN:
                 expr_type = F.Expressions.IsSubset
-            case AST.ComparisonOperator.IS:
+            case AST.ComparisonClause.ComparisonOperator.IS:
                 expr_type = F.Expressions.Is
             case _:
                 raise DslException(f"Unknown comparison operator: {operator}")
