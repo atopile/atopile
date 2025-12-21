@@ -478,7 +478,7 @@ def test_assert_is():
     assert (
         E.lit_op_range_from_center_rel((2, E.U.mV), rel=0.1)
         .as_literal.force_get()
-        .equals(a.force_extract_literal_subset().is_literal.get())
+        .equals(a.force_extract_literal().is_literal.get())
     )
     # TODO: check b is c; d is e is f
 
