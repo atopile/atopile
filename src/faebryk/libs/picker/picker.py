@@ -426,10 +426,11 @@ def pick_topologically(
     logger.info("Verify design")
     try:
         # hack
-        n = next(iter(tree_backup))
-        g = n.g
-        tg = n.tg
-        solver.simplify(g, tg, terminal=True)
+        n = next(iter(tree_backup), None)
+        if n:
+            g = n.g
+            tg = n.tg
+            solver.simplify(g, tg, terminal=True)
     except Contradiction as e:
         raise PickVerificationError(str(e), *tree_backup) from e
 

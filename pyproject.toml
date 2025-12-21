@@ -96,8 +96,9 @@ dev = [
     "atopile-mkdocs-plugin",
     "ziglang==0.14.1",
     "graphviz>=0.21",
-    "austin-dist>=4.0.0",
-    "austin-python>=2.1.2",
+    "py-spy>=0.4.1",
+    #"austin-dist>=4.0.0",
+    #"austin-python>=2.1.2",
 ]
 
 

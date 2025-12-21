@@ -1167,10 +1167,10 @@ test "duplicate edge insertion" {
     const e1 = EdgeReference.init(bn1.node, bn2.node, TestLinkType);
 
     _ = g.insert_edge(e1);
-    try std.testing.expectEqual(@as(usize, 1), g.edges.count());
+    try std.testing.expectEqual(@as(usize, 1), g.get_edge_count());
 
     _ = g.insert_edge(e1);
-    try std.testing.expectEqual(@as(usize, 1), g.edges.count());
+    try std.testing.expectEqual(@as(usize, 1), g.get_edge_count());
 }
 
 test "insert_subgraph performance" {

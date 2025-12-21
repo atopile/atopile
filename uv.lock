@@ -130,7 +130,7 @@ dev = [
     { name = "mkdocstrings", extra = ["python"] },
     { name = "nanobind" },
     { name = "pre-commit" },
-    { name = "pyinstrument" },
+    { name = "py-spy" },
     { name = "pytest-timeout" },
     { name = "uvicorn" },
     { name = "viztracer" },
@@ -199,7 +199,7 @@ dev = [
     { name = "mkdocstrings", extras = ["python"], specifier = ">=0.27.0" },
     { name = "nanobind", specifier = ">=2.2,<3.0" },
     { name = "pre-commit", specifier = ">=2.20,<4.0" },
-    { name = "pyinstrument", specifier = "~=4.7.1" },
+    { name = "py-spy", specifier = ">=0.4.1" },
     { name = "pytest-timeout", specifier = ">=2.3.1" },
     { name = "uvicorn", specifier = ">=0.29.0" },
     { name = "viztracer", specifier = ">=1.0.0,<2.0.0" },
@@ -1694,6 +1694,21 @@ wheels = [
 ]
 
 [[package]]
+name = "py-spy"
+version = "0.4.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/19/e2/ff811a367028b87e86714945bb9ecb5c1cc69114a8039a67b3a862cef921/py_spy-0.4.1.tar.gz", hash = "sha256:e53aa53daa2e47c2eef97dd2455b47bb3a7e7f962796a86cc3e7dbde8e6f4db4", size = 244726, upload-time = "2025-07-31T19:33:25.172Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/14/e3/3a32500d845bdd94f6a2b4ed6244982f42ec2bc64602ea8fcfe900678ae7/py_spy-0.4.1-py2.py3-none-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:809094208c6256c8f4ccadd31e9a513fe2429253f48e20066879239ba12cd8cc", size = 3682508, upload-time = "2025-07-31T19:33:13.753Z" },
+    { url = "https://files.pythonhosted.org/packages/4f/bf/e4d280e9e0bec71d39fc646654097027d4bbe8e04af18fb68e49afcff404/py_spy-0.4.1-py2.py3-none-macosx_11_0_arm64.whl", hash = "sha256:1fb8bf71ab8df95a95cc387deed6552934c50feef2cf6456bc06692a5508fd0c", size = 1796395, upload-time = "2025-07-31T19:33:15.325Z" },
+    { url = "https://files.pythonhosted.org/packages/df/79/9ed50bb0a9de63ed023aa2db8b6265b04a7760d98c61eb54def6a5fddb68/py_spy-0.4.1-py2.py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ee776b9d512a011d1ad3907ed53ae32ce2f3d9ff3e1782236554e22103b5c084", size = 2034938, upload-time = "2025-07-31T19:33:17.194Z" },
+    { url = "https://files.pythonhosted.org/packages/53/a5/36862e3eea59f729dfb70ee6f9e14b051d8ddce1aa7e70e0b81d9fe18536/py_spy-0.4.1-py2.py3-none-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:532d3525538254d1859b49de1fbe9744df6b8865657c9f0e444bf36ce3f19226", size = 2658968, upload-time = "2025-07-31T19:33:18.916Z" },
+    { url = "https://files.pythonhosted.org/packages/08/f8/9ea0b586b065a623f591e5e7961282ec944b5fbbdca33186c7c0296645b3/py_spy-0.4.1-py2.py3-none-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:4972c21890b6814017e39ac233c22572c4a61fd874524ebc5ccab0f2237aee0a", size = 2147541, upload-time = "2025-07-31T19:33:20.565Z" },
+    { url = "https://files.pythonhosted.org/packages/68/fb/bc7f639aed026bca6e7beb1e33f6951e16b7d315594e7635a4f7d21d63f4/py_spy-0.4.1-py2.py3-none-manylinux_2_5_x86_64.manylinux1_x86_64.whl", hash = "sha256:6a80ec05eb8a6883863a367c6a4d4f2d57de68466f7956b6367d4edd5c61bb29", size = 2763338, upload-time = "2025-07-31T19:33:22.202Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/da/fcc9a9fcd4ca946ff402cff20348e838b051d69f50f5d1f5dca4cd3c5eb8/py_spy-0.4.1-py2.py3-none-win_amd64.whl", hash = "sha256:d92e522bd40e9bf7d87c204033ce5bb5c828fca45fa28d970f58d71128069fdc", size = 1818784, upload-time = "2025-07-31T19:33:23.802Z" },
+]
+
+[[package]]
 name = "pycparser"
 version = "2.23"
 source = { registry = "https://pypi.org/simple" }
@@ -1777,24 +1792,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/b0/77/a5b8c569bf593b0140bde72ea885a803b82086995367bf2037de0159d924/pygments-2.19.2.tar.gz", hash = "sha256:636cb2477cec7f8952536970bc533bc43743542f70392ae026374600add5b887", size = 4968631, upload-time = "2025-06-21T13:39:12.283Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c7/21/705964c7812476f378728bdf590ca4b771ec72385c533964653c68e86bdc/pygments-2.19.2-py3-none-any.whl", hash = "sha256:86540386c03d588bb81d44bc3928634ff26449851e99741617ecb9037ee5ec0b", size = 1225217, upload-time = "2025-06-21T13:39:07.939Z" },
-]
-
-[[package]]
-name = "pyinstrument"
-version = "4.7.3"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/df/ff/a899b0cb585f88a515703181b02488ba83c82a0df886d8eacb6921da6642/pyinstrument-4.7.3.tar.gz", hash = "sha256:3ad61041ff1880d4c99d3384cd267e38a0a6472b5a4dd765992db376bd4394c8", size = 129732, upload-time = "2024-09-06T11:13:49.195Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b6/96/5b9102380458702ce7ce5d09c625a25dc5d42cb243a89efb8273029ae6dc/pyinstrument-4.7.3-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:6de792dc65dcc75e73b721f4e89aa60a4d2f8617e5a5da060244058018ad0399", size = 110998, upload-time = "2024-09-06T11:13:11.897Z" },
-    { url = "https://files.pythonhosted.org/packages/45/33/97aa76dbb34af7d54aa007753615c0f1b5af876db7ce41ca7a6f51e4033a/pyinstrument-4.7.3-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:73da379506a09cdff2fdd23a0b3eb8f020f473d019f604538e0e5045613e33d4", size = 103026, upload-time = "2024-09-06T11:13:12.844Z" },
-    { url = "https://files.pythonhosted.org/packages/97/39/04c6d79e8af80197125a5fc2c8485ce823e0f28aecd4302d55df0225b011/pyinstrument-4.7.3-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:21e05f53810a6ff5fa261da838935fd1b2ab2bf30a7c053f6c72bcaaa6de0933", size = 126690, upload-time = "2024-09-06T11:13:13.745Z" },
-    { url = "https://files.pythonhosted.org/packages/5c/3c/e23cac0427bf422eba75e2157b3daea02a16d68eaad384f9c11dc4eda675/pyinstrument-4.7.3-cp313-cp313-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:d648596ea04409ca3ca260029041ed7fa046b776205bf9a0b75cda0a4f4d2515", size = 125596, upload-time = "2024-09-06T11:13:15.113Z" },
-    { url = "https://files.pythonhosted.org/packages/76/a8/14eeb9e33698fc47160210b225d0d2dff6b0d2fd21b0e59e378302c89b55/pyinstrument-4.7.3-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3d98997347047a217ef6b844273d3753e543e0984f2220e9dd284cbef6054c2a", size = 127001, upload-time = "2024-09-06T11:13:16.306Z" },
-    { url = "https://files.pythonhosted.org/packages/5f/4d/1d3d03fff607b145b647c46ebe25d61adc689d0359378fc05181d4007287/pyinstrument-4.7.3-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:7f09ebad95af94f5427c20005fc7ba84a0a3deae6324434d7ec3be99d369bf37", size = 126696, upload-time = "2024-09-06T11:13:17.238Z" },
-    { url = "https://files.pythonhosted.org/packages/f9/b0/d80246d8dc2020f08dd836a483c1d7e7159d2abc6e5215c2908108562380/pyinstrument-4.7.3-cp313-cp313-musllinux_1_2_i686.whl", hash = "sha256:8a66aee3d2cf0cc6b8e57cb189fd9fb16d13b8d538419999596ce4f58b5d4a9a", size = 126467, upload-time = "2024-09-06T11:13:18.292Z" },
-    { url = "https://files.pythonhosted.org/packages/d9/a8/d87e440011cda09cb219feb5f0e848ad14635a26a962fe601b277e7ddd89/pyinstrument-4.7.3-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:eaa45270af0b9d86f1cef705520e9b43f4a1cd18397083f8a594a28f898d078b", size = 126880, upload-time = "2024-09-06T11:13:21.842Z" },
-    { url = "https://files.pythonhosted.org/packages/48/00/aece845913ac703f6575dcb0c29f7a651a6fd11b922025b9395d470c04e1/pyinstrument-4.7.3-cp313-cp313-win32.whl", hash = "sha256:6e85b34a9b8ed4df4deaa0afe63bc765ea29003eb5b9b3bc0323f7ad7f7cd0fd", size = 104713, upload-time = "2024-09-06T11:13:22.994Z" },
-    { url = "https://files.pythonhosted.org/packages/21/81/1f8dcb1ad94bafc777dc2e6fd8fa82dc838ccaf01d9051f019ae1ff1641c/pyinstrument-4.7.3-cp313-cp313-win_amd64.whl", hash = "sha256:6002ea1018d6d6f9b6f1c66b3e14805213573bd69f79b2e7ad2c507441b3e73e", size = 105501, upload-time = "2024-09-06T11:13:24.365Z" },
 ]
 
 [[package]]
