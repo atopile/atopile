@@ -12,7 +12,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.compiler import DslException
+from atopile.compiler import CompilerException, DslException
 from atopile.compiler import ast_types as AST
 from faebryk.core.faebrykpy import (
     EdgeComposition,
@@ -483,7 +483,7 @@ class ActionsFactory:
 
         if constraint_operand is not None:
             if constraint_expr is None:
-                raise ValueError(
+                raise CompilerException(
                     "constraint_expr is required when constraint_operand is provided"
                 )
 
@@ -504,7 +504,6 @@ class ActionsFactory:
                 )
             )
 
-            # Components use Is (exact), modules use IsSubset (refinable)
             actions.append(
                 AddMakeChildAction(
                     target_path=FieldPath(
