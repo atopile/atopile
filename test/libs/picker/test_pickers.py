@@ -293,7 +293,7 @@ def test_pick_resistor_by_params():
 
     # Constrain resistance
     resistance_op = E.lit_op_range(((100, E.U.Ohm), (110, E.U.Ohm)))
-    E.is_(
+    E.is_subset(
         app.r1.get().resistance.get().can_be_operand.get(), resistance_op, assert_=True
     )
 
@@ -382,7 +382,7 @@ def test_pick_led_by_colour():
         E.lit_op_enum(color),
         assert_=True,
     )
-    E.is_(
+    E.is_subset(
         led.diode.get().current.get().can_be_operand.get(),
         E.lit_op_range_from_center_rel((10, E.U.mA), 0.1),
         assert_=True,
