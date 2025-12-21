@@ -1148,53 +1148,80 @@ class ASTVisitor:
         self, node: AST.BoundedQuantity
     ) -> "fabll._ChildField[F.Literals.Numbers]":
         start_unit_symbol = node.start.get().try_get_unit_symbol()
+        start_value = node.start.get().get_value()
+
         end_unit_symbol = node.end.get().try_get_unit_symbol()
+        end_value = node.end.get().get_value()
 
         match [start_unit_symbol, end_unit_symbol]:
-            case [None, _] | [_, None]:
-                raise DslException("Unit symbol is required for bounded quantity")
-            case [_, _] if start_unit_symbol != end_unit_symbol:
-                raise DslException("Bounded quantity start and end units must match")
+            case [None, None]:
+                unit_t = F.Units.Dimensionless
+            case [None, _]:
+                unit_t = F.Units.decode_symbol(self._graph, self._tg, end_unit_symbol)
+            case [_, None]:
+                unit_t = F.Units.decode_symbol(self._graph, self._tg, start_unit_symbol)
+            case [_, _]:
+                unit_t = F.Units.decode_symbol(self._graph, self._tg, start_unit_symbol)
+                end_unit_t = F.Units.decode_symbol(
+                    self._graph, self._tg, end_unit_symbol
+                )
+                scale, offset = end_unit_t.get_conversion_to(unit_t)
+                end_value = end_value * scale + offset
+                if not unit_t.is_commensurable_with(end_unit_t):
+                    raise DslException(
+                        "Bounded quantity start and end units must be commensurable"
+                    )
 
-        return F.Literals.Numbers.MakeChild(
-            min=node.start.get().get_value(),
-            max=node.end.get().get_value(),
-            unit=F.Units.Dimensionless
-            if (symbol := start_unit_symbol) is None
-            else F.Units.decode_symbol(self._graph, self._tg, symbol),
-        )
+        return F.Literals.Numbers.MakeChild(min=start_value, max=end_value, unit=unit_t)
 
     def visit_BilateralQuantity(
         self, node: AST.BilateralQuantity
     ) -> "fabll._ChildField[F.Literals.Numbers]":
         node_quantity_value = node.quantity.get().get_value()
         quantity_unit_symbol = node.quantity.get().try_get_unit_symbol()
+
         node_tolerance_value = node.tolerance.get().get_value()
         tolerance_unit_symbol = node.tolerance.get().try_get_unit_symbol()
 
-        unit_type = (
-            F.Units.Dimensionless
-            if (symbol := quantity_unit_symbol) is None
-            else F.Units.decode_symbol(self._graph, self._tg, symbol)
-        )
+        def _decode_symbol(symbol: str) -> type[fabll.Node]:
+            return F.Units.decode_symbol(self._graph, self._tg, symbol)
 
         match [quantity_unit_symbol, tolerance_unit_symbol]:
-            case [None, _] | [_, None]:
-                raise DslException("Unit is required for toleranced quantity")
-            case [_, F.Units.PERCENT_SYMBOL]:
-                return F.Literals.Numbers.MakeChild_FromCenterRel(
-                    center=node_quantity_value,
-                    rel=node_tolerance_value / 100,
-                    unit=unit_type,
-                )
-            case [_, _] if quantity_unit_symbol == tolerance_unit_symbol:
-                return F.Literals.Numbers.MakeChild(
-                    min=node_quantity_value - node_tolerance_value,
-                    max=node_quantity_value + node_tolerance_value,
-                    unit=unit_type,
-                )
+            case [None, None]:
+                rel = False
+                unit_t = F.Units.Dimensionless
+            case [None, F.Units.PERCENT_SYMBOL]:
+                rel = True
+                unit_t = F.Units.Dimensionless
+            case [_, None]:
+                rel = False
+                unit_t = _decode_symbol(quantity_unit_symbol)
+            case [None, _]:
+                rel = False
+                unit_t = _decode_symbol(tolerance_unit_symbol)
+            case [_, _]:
+                rel = False
+                unit_t = _decode_symbol(quantity_unit_symbol)
+                tol_unit_t = _decode_symbol(tolerance_unit_symbol)
+
+                if not unit_t.is_commensurable_with(tol_unit_t):
+                    raise DslException("Toleranced quantity has incompatible units")
             case _:
-                raise DslException("Toleranced quantity has incompatible units")
+                raise DslException("Unexpected quantity and tolerance units")
+
+        return (
+            F.Literals.Numbers.MakeChild_FromCenterRel(
+                center=node_quantity_value,
+                rel=node_tolerance_value / 100,
+                unit=unit_t,
+            )
+            if rel
+            else F.Literals.Numbers.MakeChild(
+                min=node_quantity_value - node_tolerance_value,
+                max=node_quantity_value + node_tolerance_value,
+                unit=unit_t,
+            )
+        )
 
     def visit_NewExpression(self, node: AST.NewExpression):
         type_name = node.get_type_ref_name()
