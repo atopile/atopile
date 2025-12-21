@@ -313,11 +313,20 @@ class Quantity(fabll.Node):
 
 
 class BinaryExpression(fabll.Node):
+    class BinaryOperator(StrEnum):
+        ADD = "+"
+        SUBTRACT = "-"
+        MULTIPLY = "*"
+        DIVIDE = "/"
+        POWER = "**"
+        OR = "|"
+        AND = "&"
+
     _is_arithmetic = fabll.Traits.MakeEdge(is_arithmetic.MakeChild())
     _is_assignable = fabll.Traits.MakeEdge(is_assignable.MakeChild())
 
     source = SourceChunk.MakeChild()
-    operator = F.Literals.Strings.MakeChild()
+    operator = F.Parameters.EnumParameter.MakeChild(enum_t=BinaryOperator)
     lhs = F.Collections.Pointer.MakeChild()  # TODO: required but deferred
     rhs = F.Collections.Pointer.MakeChild()
 
@@ -328,8 +337,9 @@ class BinaryExpression(fabll.Node):
         lhs: is_arithmetic,
         rhs: is_arithmetic,
     ) -> Self:
+        operator_ = self.BinaryOperator(operator)
         self.source.get().setup(source_info=source_info)
-        self.operator.get().setup_from_values(operator)
+        self.operator.get().alias_to_literal(operator_)
 
         lhs_node = fabll.Traits(lhs).get_obj_raw()
         self.lhs.get().point(lhs_node)
@@ -346,6 +356,10 @@ class BinaryExpression(fabll.Node):
 
     def get_rhs(self) -> is_arithmetic:
         return self.rhs.get().deref().get_trait(is_arithmetic)
+
+    def get_operator(self) -> "BinaryExpression.BinaryOperator":
+        value = self.operator.get().force_extract_literal().get_single()
+        return self.BinaryOperator(value)
 
 
 class GroupExpression(fabll.Node):

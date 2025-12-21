@@ -1024,9 +1024,22 @@ class ASTVisitor:
                 return self._handle_new_child(
                     target_path, new_spec, parent_reference, parent_path
                 )
-            case ParameterSpec() as param_spec:
+            case ParameterSpec(param_child=None) as param_spec:
                 # FIXME: add constraint type (is, ss) to spec?
                 # FIXME: should be IsSubset unless top of stack is a component
+                # Arithmetic expression - target param must already exist
+                if not self._scope_stack.has_field(target_path):
+                    raise NotImplementedError(
+                        "Arithmetic expression assignment to undeclared parameter"
+                    )
+                return ActionsFactory.parameter_actions(
+                    target_path=target_path,
+                    param_spec=param_spec,
+                    parent_reference=parent_reference,
+                    parent_path=parent_path,
+                    create_param=False,
+                )
+            case ParameterSpec() as param_spec:
                 return ActionsFactory.parameter_actions(
                     target_path=target_path,
                     param_spec=param_spec,
@@ -1066,37 +1079,36 @@ class ASTVisitor:
                 )
             case AST.BinaryExpression() | AST.GroupExpression() as arithmetic:
                 expr = self.visit(arithmetic)
-                assert isinstance(
-                    expr, fabll._ChildField
-                )  # F.Expressions.ExpressionNodes (some)
-                # FIXME: need unit to create a parameter
-                raise NotImplementedError("TODO")
+                assert isinstance(expr, fabll._ChildField)
+                # No param_child - target param must already exist
+                return ParameterSpec(param_child=None, operand=expr)
 
             case _:
                 raise ValueError(f"Unhandled assignable type: {assignable}")
 
-    # TODO: implement recursion until arrival at atomic
     def to_expression_tree(self, node: AST.is_arithmetic) -> fabll.RefPath:
         """Convert an arithmetic AST node to a RefPath for expression trees.
+
+        Handles:
+        - FieldRef -> list of string identifiers
+        - Quantity/BilateralQuantity/BoundedQuantity -> [literal_child_field]
+        - BinaryExpression/GroupExpression -> [expression_child_field]
 
         Note: The returned paths do NOT include "can_be_operand" suffix.
         This is because MakeChild_Constrain methods append it themselves.
         """
-        cbo_path: fabll.RefPath | None = None
+        visited = self.visit(fabll.Traits(node).get_obj_raw())
 
-        assignable = self.visit(fabll.Traits(node).get_obj_raw())
-
-        # TODO: handle arithmetic expressions within assert
-        match assignable:
+        match visited:
             case fabll._ChildField() as child_field:
+                # Expression or standalone literal
                 return [child_field]
             case FieldPath() as field_path:
-                cbo_path = list(field_path.identifiers())
-                return cbo_path
+                # Reference to existing field
+                return list(field_path.identifiers())
             case (fabll._ChildField() as child_field, _):
+                # Quantity with unit tuple (child_field, unit_type)
                 return [child_field]
-            # case fabll.Node() if assignable.has_trait(AST.is_arithmetic_atom):
-            #     return [assignable]
 
         raise DslException(
             f"Unknown arithmetic: {fabll.Traits(node).get_obj_raw().get_type_name()}"
@@ -1165,6 +1177,60 @@ class ASTVisitor:
             value=node.get_value(), unit=unit_t
         )
         return operand, unit_t
+
+    def visit_BinaryExpression(self, node: AST.BinaryExpression) -> "fabll._ChildField":
+        """
+        Visit a binary arithmetic expression and return a _ChildField for the
+        corresponding F.Expressions type.
+
+        Maps operators to expression types:
+        - +  -> F.Expressions.Add
+        - -  -> F.Expressions.Subtract
+        - *  -> F.Expressions.Multiply
+        - /  -> F.Expressions.Divide
+        - ** -> F.Expressions.Power
+        """
+        operator = node.get_operator()
+
+        lhs_refpath = self.to_expression_tree(node.get_lhs())
+        rhs_refpath = self.to_expression_tree(node.get_rhs())
+
+        match operator:
+            case AST.BinaryExpression.BinaryOperator.ADD:
+                expr_t = F.Expressions.Add
+            case AST.BinaryExpression.BinaryOperator.SUBTRACT:
+                expr_t = F.Expressions.Subtract
+            case AST.BinaryExpression.BinaryOperator.MULTIPLY:
+                expr_t = F.Expressions.Multiply
+            case AST.BinaryExpression.BinaryOperator.DIVIDE:
+                expr_t = F.Expressions.Divide
+            case AST.BinaryExpression.BinaryOperator.POWER:
+                expr_t = F.Expressions.Power
+            case (
+                AST.BinaryExpression.BinaryOperator.OR
+                | AST.BinaryExpression.BinaryOperator.AND
+            ):
+                raise DslException(f"Unsupported binary operator: {operator}")
+
+        expr = expr_t.MakeChild(lhs_refpath, rhs_refpath)
+        expr.add_dependant(
+            *[seg for seg in lhs_refpath if isinstance(seg, fabll._ChildField)],
+            identifier="lhs",
+            before=True,
+        )
+        expr.add_dependant(
+            *[seg for seg in rhs_refpath if isinstance(seg, fabll._ChildField)],
+            identifier="rhs",
+            before=True,
+        )
+        return expr
+
+    def visit_GroupExpression(
+        self, node: AST.GroupExpression
+    ) -> "fabll._ChildField | FieldPath | tuple[fabll._ChildField, type[fabll.Node]]":
+        """Unwrap a parenthesized expression and delegate to inner expression."""
+        inner_arithmetic = node.get_expression()
+        return self.visit(fabll.Traits(inner_arithmetic).get_obj_raw())
 
     def visit_BoundedQuantity(
         self, node: AST.BoundedQuantity
@@ -1426,6 +1492,7 @@ class ASTVisitor:
         unit_symbol = node.unit_symbol.get().symbol.get().get_single()
         unit_t = F.Units.decode_symbol(self._graph, self._tg, not_none(unit_symbol))
         target_path = self.visit_FieldRef(node.get_field_ref())
+        self._scope_stack.add_field(target_path)
         return ActionsFactory.parameter_actions(
             target_path=target_path,
             param_spec=ParameterSpec(

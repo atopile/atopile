@@ -152,7 +152,7 @@ class NewChildSpec:
 class ParameterSpec:
     """Specification for creating a parameter, optionally with a constraint."""
 
-    param_child: fabll._ChildField
+    param_child: fabll._ChildField | None
     operand: (
         fabll._ChildField[F.Literals.Numbers]
         | fabll._ChildField[F.Literals.Strings]
@@ -463,7 +463,7 @@ class ActionsFactory:
         """Create actions for a parameter, optionally with a constraint."""
         actions: list[AddMakeChildAction] = []
 
-        if create_param:
+        if create_param and param_spec.param_child is not None:
             actions.append(
                 AddMakeChildAction(
                     target_path=target_path,
