@@ -455,7 +455,8 @@ class ActionsFactory:
     @staticmethod
     def parameter_actions(
         target_path: "FieldPath",
-        param_spec: "ParameterSpec",
+        param_child: fabll._ChildField | None,
+        constraint_operand: fabll._ChildField | None,
         parent_reference: graph.BoundNode | None,
         parent_path: "FieldPath | None",
         create_param: bool = True,
@@ -463,17 +464,17 @@ class ActionsFactory:
         """Create actions for a parameter, optionally with a constraint."""
         actions: list[AddMakeChildAction] = []
 
-        if create_param and param_spec.param_child is not None:
+        if create_param and param_child is not None:
             actions.append(
                 AddMakeChildAction(
                     target_path=target_path,
                     parent_reference=parent_reference,
                     parent_path=parent_path,
-                    child_field=param_spec.param_child,
+                    child_field=param_child,
                 )
             )
 
-        if param_spec.operand is not None:
+        if constraint_operand is not None:
             # FIXME: add constraint type (is, ss) to spec?
             # FIXME: should be IsSubset unless top of stack is a component
             unique_target_str = str(target_path).replace(".", "_")
@@ -489,7 +490,7 @@ class ActionsFactory:
                     ),
                     parent_reference=parent_reference,
                     parent_path=parent_path,
-                    child_field=param_spec.operand,
+                    child_field=constraint_operand,
                 )
             )
 
@@ -505,7 +506,7 @@ class ActionsFactory:
                     parent_reference=parent_reference,
                     parent_path=parent_path,
                     child_field=F.Expressions.Is.MakeChild(
-                        target_path.to_ref_path(), [param_spec.operand], assert_=True
+                        target_path.to_ref_path(), [constraint_operand], assert_=True
                     ),
                 )
             )

@@ -1034,7 +1034,8 @@ class ASTVisitor:
                     )
                 return ActionsFactory.parameter_actions(
                     target_path=target_path,
-                    param_spec=param_spec,
+                    param_child=param_spec.param_child,
+                    constraint_operand=param_spec.operand,
                     parent_reference=parent_reference,
                     parent_path=parent_path,
                     create_param=False,
@@ -1042,7 +1043,8 @@ class ASTVisitor:
             case ParameterSpec() as param_spec:
                 return ActionsFactory.parameter_actions(
                     target_path=target_path,
-                    param_spec=param_spec,
+                    param_child=param_spec.param_child,
+                    constraint_operand=param_spec.operand,
                     parent_reference=parent_reference,
                     parent_path=parent_path,
                     create_param=not self._scope_stack.has_field(target_path),
@@ -1363,12 +1365,12 @@ class ASTVisitor:
 
     def _resolve_connectable_with_path(
         self, connectable_node: fabll.Node
-    ) -> tuple[graph.BoundNode, FieldPath]:
-        """Resolve a connectable node to a graph reference and path.
+    ) -> tuple[FieldPath, list[AddMakeChildAction]]:
+        """Resolve a connectable node to a path and any actions needed to create it.
 
         Handles two cases:
-        - FieldRef: reference to existing field (must exist)
-        - Declarations (Signal, Pin): may create if not exists
+        - FieldRef: reference to existing field (must exist), no actions
+        - Declarations (Signal, Pin): may create if not exists, returns creation actions
         """
         if connectable_node.isinstance(AST.FieldRef):
             return self._resolve_field_ref(connectable_node.cast(t=AST.FieldRef))
@@ -1376,29 +1378,29 @@ class ASTVisitor:
 
     def _resolve_field_ref(
         self, field_ref: AST.FieldRef
-    ) -> tuple[graph.BoundNode, FieldPath]:
-        """Resolve a reference to an existing field."""
+    ) -> tuple[FieldPath, list[AddMakeChildAction]]:
+        """Resolve a reference to an existing field. Returns empty action list."""
         path = self.visit_FieldRef(field_ref)
         (root, *_) = path.segments
         root_path = FieldPath(segments=(root,))
 
         self._scope_stack.ensure_defined(root_path)
+        self._type_stack.resolve_reference(path, validate=False)
 
-        ref = self._type_stack.resolve_reference(path, validate=False)
-        return ref, path
+        return path, []
 
     def _resolve_declaration(
         self, node: fabll.Node
-    ) -> tuple[graph.BoundNode, FieldPath]:
-        """Resolve a declaration node, creating it if it doesn't exist."""
+    ) -> tuple[FieldPath, list[AddMakeChildAction]]:
+        """
+        Resolve a declaration node, returning creation actions if it doesn't exist.
+        """
         target_path, visit_fn = self._get_declaration_info(node)
 
         if not self._scope_stack.has_field(target_path):
-            action = visit_fn()
-            self._type_stack.apply_action(action)
+            return target_path, [visit_fn()]
 
-        ref = self._type_stack.resolve_reference(target_path, validate=False)
-        return ref, target_path
+        return target_path, []
 
     def _get_declaration_info(
         self, node: fabll.Node
@@ -1439,8 +1441,8 @@ class ASTVisitor:
         lhs_node = fabll.Traits(lhs).get_obj_raw()
         rhs_node = fabll.Traits(rhs).get_obj_raw()
 
-        _, lhs_path = self._resolve_connectable_with_path(lhs_node)
-        _, rhs_path = self._resolve_connectable_with_path(rhs_node)
+        lhs_path, lhs_actions = self._resolve_connectable_with_path(lhs_node)
+        rhs_path, rhs_actions = self._resolve_connectable_with_path(rhs_node)
 
         # Convert FieldPath to LinkPath (list of string identifiers)
         # Apply legacy path translations (e.g., vcc -> hv, gnd -> lv)
@@ -1451,7 +1453,8 @@ class ASTVisitor:
             ConnectOverrideRegistry.translate_identifiers(list(rhs_path.identifiers()))
         )
 
-        return AddMakeLinkAction(lhs_path=lhs_link_path, rhs_path=rhs_link_path)
+        link_action = AddMakeLinkAction(lhs_path=lhs_link_path, rhs_path=rhs_link_path)
+        return [*lhs_actions, *rhs_actions, link_action]
 
     def visit_RetypeStmt(self, node: AST.RetypeStmt):
         """
@@ -1495,10 +1498,8 @@ class ASTVisitor:
         self._scope_stack.add_field(target_path)
         return ActionsFactory.parameter_actions(
             target_path=target_path,
-            param_spec=ParameterSpec(
-                param_child=F.Parameters.NumericParameter.MakeChild(unit=unit_t),
-                operand=None,
-            ),
+            param_child=F.Parameters.NumericParameter.MakeChild(unit=unit_t),
+            constraint_operand=None,
             parent_reference=None,
             parent_path=None,
             create_param=True,
@@ -1522,26 +1523,29 @@ class ASTVisitor:
                 )
 
         lhs_node = fabll.Traits(lhs).get_obj_raw()
-        _, lhs_base_path = self._resolve_connectable_with_path(lhs_node)
+        lhs_base_path, lhs_actions = self._resolve_connectable_with_path(lhs_node)
 
         if nested_rhs := rhs.try_cast(t=AST.DirectedConnectStmt):
             nested_lhs = nested_rhs.get_lhs()
             nested_lhs_node = fabll.Traits(nested_lhs).get_obj_raw()
-            _, middle_base_path = self._resolve_connectable_with_path(nested_lhs_node)
+            middle_base_path, middle_actions = self._resolve_connectable_with_path(
+                nested_lhs_node
+            )
 
-            action = ActionsFactory.directed_link_action(
+            link_action = ActionsFactory.directed_link_action(
                 lhs_base_path, middle_base_path, node.get_direction()
             )
-            self._type_stack.apply_action(action)
+            nested_actions = self.visit_DirectedConnectStmt(nested_rhs)
 
-            return self.visit_DirectedConnectStmt(nested_rhs)
+            return [*lhs_actions, *middle_actions, link_action, *nested_actions]
 
         rhs_node = fabll.Traits(rhs).get_obj_raw()
-        _, rhs_base_path = self._resolve_connectable_with_path(rhs_node)
+        rhs_base_path, rhs_actions = self._resolve_connectable_with_path(rhs_node)
 
-        return ActionsFactory.directed_link_action(
+        link_action = ActionsFactory.directed_link_action(
             lhs_base_path, rhs_base_path, node.get_direction()
         )
+        return [*lhs_actions, *rhs_actions, link_action]
 
     @staticmethod
     def _select_elements(
