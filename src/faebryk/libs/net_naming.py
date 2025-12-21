@@ -222,13 +222,9 @@ def _extract_net_name_info(
                 continue
             if not node.has_trait(F.has_net_name):
                 continue
+            # has_net_name is always a required/expected name (no level property)
             has_net_name = node.get_trait(F.has_net_name)
-            node_depth = len(node.get_hierarchy())
-            if has_net_name.level == F.has_net_name.Level.EXPECTED.value:
-                required_names.add(has_net_name.name)
-            elif has_net_name.level == F.has_net_name.Level.SUGGESTED.value:
-                rank = _calculate_suggested_name_rank(electrical, node_depth)
-                suggested_names.append((has_net_name.name, rank))
+            required_names.add(has_net_name.get_name())
     except fabll.NodeNoParent:
         pass
 
