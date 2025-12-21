@@ -610,6 +610,8 @@ class st_exprs(Namespace):
 
 def evaluate_e_p_l(
     operand: F.Parameters.can_be_operand,
+    g: graph.GraphView,
+    tg: fbrk.TypeGraph,
 ) -> F.Literals.Numbers:
     obj = fabll.Traits(operand).get_obj_raw()
     if np := obj.try_cast(F.Literals.Numbers):
@@ -621,32 +623,8 @@ def evaluate_e_p_l(
     expr = operand.get_sibling_trait(F.Expressions.is_expression).switch_cast()
 
     return eval_pure_literal_expression(
-        type(expr), expr.is_expression.get().get_operands()
+        type(expr), expr.is_expression.get().get_operands(), g=g, tg=tg
     )
-
-
-@contextmanager
-def graph_reset():
-    global global_g, global_tg
-    print("pre g", global_g, hex(global_g.get_self_node().node().get_uuid()))
-    yield
-    print("post g", global_g, hex(global_g.get_self_node().node().get_uuid()))
-    global_g.destroy()
-    global_g = graph.GraphView.create()
-    global_tg = fbrk.TypeGraph.create(g=global_g)
-    print("new g", global_g, hex(global_g.get_self_node().node().get_uuid()))
-
-
-def _cleanup_g[T](f: Callable[..., T]) -> T:
-    def _(*args, **kwargs) -> T:
-        out = f(*args, **kwargs)
-        global global_g, global_tg
-        print("cleanup g", global_g, hex(global_g.get_self_node().node().get_uuid()))
-        # cant do this because the same runner might run a test in the same file again
-        # global_g.destroy()
-        return out
-
-    return _  # type: ignore
 
 
 # TODO: increase max_examples when graph is faster
@@ -669,15 +647,17 @@ _can_eval_examples = list(range(50))
 
 @pytest.mark.parametrize("expr_id", _can_eval_examples)
 def test_can_evaluate_literals_ci(expr_id: int):
-    # TODO: with graph_reset()
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
     while True:
         try:
             expr = st_exprs.trees.example()
         except UnsatisfiedAssumption:
             continue
+        print(expr)
         print(f"expr: {expr.pretty()}")
         try:
-            result = evaluate_e_p_l(expr)
+            result = evaluate_e_p_l(expr, g=g, tg=tg)
             break
         except (ValueError, NotImplementedError):
             # Skip expressions that can't be evaluated (e.g., negative base to
@@ -685,6 +665,7 @@ def test_can_evaluate_literals_ci(expr_id: int):
             continue
     print(f"result: {result.pretty_str()}")
     assert isinstance(result, F.Literals.Numbers)
+    g.destroy()
 
 
 def _track():
@@ -699,7 +680,6 @@ def _track():
 
 
 @pytest.mark.not_in_ci
-@_cleanup_g
 @given(st_exprs.trees)
 @settings(
     deadline=None,  # timedelta(milliseconds=1000),
@@ -1039,68 +1019,48 @@ regression_examples: list[Callable[[], F.Parameters.can_be_operand]] = [
 def test_regression_literal_folding(
     expr_factory: Callable[[], F.Parameters.can_be_operand],
 ):
-    with graph_reset():
-        expr = expr_factory()
-        # make sure all root operands are copied over to test graph
-        app = fabll.Node.bind_typegraph(tg=global_tg).create_instance(g=global_g)
-        for root_operand in expr.get_root_operands():
-            global_g.insert_edge(
-                edge=fbrk.EdgePointer.create(
-                    from_node=app.instance.node(),
-                    to_node=root_operand.instance.node(),
-                )
-            )
+    g = graph.GraphView.create()
+    expr = expr_factory().copy_into(g)
+    tg = expr.tg
 
-        solver = DefaultSolver()
+    solver = DefaultSolver()
 
-        test_g = graph.GraphView.create()
-        global_tg.copy_into(target_graph=test_g, minimal=False)
+    # Get the expression node that owns the can_be_operand trait, then copy that
+    E = BoundExpressions(g=g, tg=tg)
+    root = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
+    E.is_(root, expr, assert_=True)
 
-        app_copy = app.copy_into(test_g)
+    # Evaluate using our test evaluator
+    # Skip expressions that can't be evaluated (e.g., sqrt of negative)
+    try:
+        evaluated_expr = evaluate_e_p_l(expr, g=g, tg=tg)
+    except (ValueError, NotImplementedError, OverflowError):
+        # bad example, skip
+        return
+    assert isinstance(evaluated_expr, F.Literals.Numbers)
 
-        # Get the expression node that owns the can_be_operand trait, then copy that
-        expr_node = fabll.Traits(expr).get_obj_raw()
-        test_expr_node = fabll.Node.bind_instance(
-            instance=test_g.bind(node=expr_node.instance.node())
-        )
-        test_expr = test_expr_node.get_trait(F.Parameters.can_be_operand)
-        test_tg = app_copy.tg
+    # Run the solver
+    solver.update_superset_cache(root)
+    solver_result = solver.inspect_get_known_supersets(
+        root.get_sibling_trait(F.Parameters.is_parameter)
+    )
+    solver_result_num = fabll.Traits(solver_result).get_obj(F.Literals.Numbers)
 
-        E = BoundExpressions(g=test_g, tg=test_tg)
-        root = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
-        E.is_(root, test_expr, assert_=True)
+    # Compare results (need to pass g and tg for Numbers.equals)
+    match = solver_result_num.equals(evaluated_expr, g=g, tg=tg)
+    print("\n" + "=" * 70)
+    print("COMPARISON")
+    print("=" * 70)
+    print(f"Expression: {expr.pretty()}")
+    print(f"Test Evaluated: {evaluated_expr.pretty_str()}")
+    print(f"Solver Result:  {solver_result_num.pretty_str()}")
+    print(f"Match:          {'✓ PASS' if match else '✗ FAIL'}")
+    print("=" * 70 + "\n")
+    # assert match, f"Solver: {solver_result_num} != Test: {evaluated_expr}"
+    ok = solver_result_num.equals(evaluated_expr, g=g, tg=tg)
 
-        # Evaluate using our test evaluator
-        # Skip expressions that can't be evaluated (e.g., sqrt of negative)
-        try:
-            evaluated_expr = evaluate_e_p_l(test_expr)
-        except (ValueError, NotImplementedError, OverflowError):
-            # bad example, skip
-            return
-        assert isinstance(evaluated_expr, F.Literals.Numbers)
-
-        # Run the solver
-        solver.update_superset_cache(root)
-        solver_result = solver.inspect_get_known_supersets(
-            root.get_sibling_trait(F.Parameters.is_parameter)
-        )
-        solver_result_num = fabll.Traits(solver_result).get_obj(F.Literals.Numbers)
-
-        # Compare results (need to pass g and tg for Numbers.equals)
-        match = solver_result_num.equals(evaluated_expr, g=test_g, tg=test_tg)
-        print("\n" + "=" * 70)
-        print("COMPARISON")
-        print("=" * 70)
-        print(f"Expression: {expr.pretty()}")
-        print(f"Test Evaluated: {evaluated_expr.pretty_str()}")
-        print(f"Solver Result:  {solver_result_num.pretty_str()}")
-        print(f"Match:          {'✓ PASS' if match else '✗ FAIL'}")
-        print("=" * 70 + "\n")
-        # assert match, f"Solver: {solver_result_num} != Test: {evaluated_expr}"
-        ok = solver_result_num.equals(evaluated_expr, g=test_g, tg=test_tg)
-
-        # solver_result.g.destroy()
-        assert ok
+    assert ok
+    g.destroy()
 
 
 class Stats:

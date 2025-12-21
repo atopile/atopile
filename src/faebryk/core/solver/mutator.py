@@ -906,19 +906,19 @@ class MutationMap:
         algorithm: SolverAlgorithm | str = "identity",
         iteration: int = 0,
         print_context: F.Parameters.ReprContext | None = None,
-        relevant: list[F.Parameters.is_parameter] | None = None,
+        relevant: list[F.Parameters.can_be_operand] | None = None,
     ) -> "MutationMap":
         if relevant is not None:
             g_out = graph.GraphView.create()
             relevant_root_predicates = MutatorUtils.get_relevant_predicates(
-                *(p.as_parameter_operatable.get().as_operand.get() for p in relevant),
+                *relevant,
             )
             for root_expr in relevant_root_predicates:
                 root_expr.copy_into(g_out)
             tg_out = fbrk.TypeGraph.of(node=g_out.bind(node=tg.get_self_node().node()))
             nodes_uuids = {p.instance.node().get_uuid() for p in relevant}
             for p_out in fabll.Traits.get_implementors(
-                F.Parameters.is_parameter.bind_typegraph(tg_out)
+                F.Parameters.can_be_operand.bind_typegraph(tg_out)
             ):
                 if p_out.instance.node().get_uuid() not in nodes_uuids:
                     continue

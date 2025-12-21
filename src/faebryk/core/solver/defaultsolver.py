@@ -166,7 +166,7 @@ class DefaultSolver(Solver):
         print_context: F.Parameters.ReprContext | None,
         g: graph.GraphView,
         tg: fbrk.TypeGraph,
-        relevant: list[F.Parameters.is_parameter] | None = None,
+        relevant: list[F.Parameters.can_be_operand] | None = None,
     ):
         # TODO consider not getting full graph of node gs, but scope to only relevant
 
@@ -308,7 +308,7 @@ class DefaultSolver(Solver):
         tg: fbrk.TypeGraph | graph.GraphView,
         print_context: F.Parameters.ReprContext | None = None,
         terminal: bool = True,
-        relevant: list[F.Parameters.is_parameter] | None = None,
+        relevant: list[F.Parameters.can_be_operand] | None = None,
     ) -> SolverState:
         """
         Args:
@@ -472,14 +472,14 @@ class DefaultSolver(Solver):
             predicate.assert_()
         return True
 
-    def update_superset_cache(self, *nodes: fabll.Node):
-        if not nodes:
+    def update_superset_cache(self, *ops: F.Parameters.can_be_operand):
+        if not ops:
             return
-        tg = nodes[0].tg
+        tg = ops[0].tg
         # TODO consider creating new graph view that contains only the nodes
-        g = nodes[0].g
+        g = ops[0].g
         try:
-            self.simplify(tg, g, terminal=True)
+            self.simplify(tg, g, terminal=True, relevant=list(ops))
         except TimeoutError:
             if not ALLOW_PARTIAL_STATE:
                 raise

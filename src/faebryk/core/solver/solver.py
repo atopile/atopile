@@ -88,5 +88,5 @@ class Solver(Protocol):
         g: graph.GraphView,
         tg: fbrk.TypeGraph,
         terminal: bool = False,
-        relevant: list[F.Parameters.is_parameter] | None = None,
+        relevant: list[F.Parameters.can_be_operand] | None = None,
     ): ...

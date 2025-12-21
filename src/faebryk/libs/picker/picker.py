@@ -345,14 +345,14 @@ def pick_topologically(
 
     timings = Times(name="pick")
 
-    def _relevant_params(m: F.is_pickable) -> set[F.Parameters.is_parameter]:
+    def _relevant_params(m: F.is_pickable) -> set[F.Parameters.can_be_operand]:
         pbt = m.get_parent_of_type(
             F.is_pickable_by_type, direct_only=True, include_root=False
         )
         if not pbt:
             return set()
         param_objs = pbt.get_params()
-        return {p.get_trait(F.Parameters.is_parameter) for p in param_objs}
+        return {p.get_trait(F.Parameters.can_be_operand) for p in param_objs}
 
     tree_backup = set(tree.keys())
     _pick_count = len(tree)
