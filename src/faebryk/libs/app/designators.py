@@ -130,7 +130,6 @@ def load_kicad_pcb_designators(
     from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
     footprint_map = PCB_Transformer.map_footprints(tg, pcb)
-    print(footprint_map)
 
     # Sort modules by atopile_address / full_name for deterministic iteration
     modules_sorted = natsorted(
@@ -143,7 +142,6 @@ def load_kicad_pcb_designators(
         fp = footprint_map[module]
         if ref := _get_reference(fp):
             known_designators[module] = ref
-    print(known_designators)
     if attach:
         if dups := duplicates(known_designators, lambda x: known_designators[x]):
             dups_fmt = {k: [f"`{m}`" for m in v] for k, v in dups.items()}

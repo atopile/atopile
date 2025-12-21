@@ -658,10 +658,12 @@ class NumericParameter(fabll.Node):
             return trait.get_is_unit()
         return self.get_units()
 
-    def format_literal_for_display(self, lit: "Literals.Numbers") -> str:
+    def format_literal_for_display(
+        self, lit: "Literals.Numbers", show_tolerance: bool = True
+    ) -> str:
         display_unit = self.get_display_units()
         converted = lit.convert_to_unit(display_unit, g=self.g, tg=self.tg)
-        return converted.pretty_str()
+        return converted.pretty_str(show_tolerance=show_tolerance)
 
     def get_within(self) -> "Literals.Numbers | None":
         # TODO

@@ -374,7 +374,6 @@ class DefaultSolver(Solver):
         - terminal: if True, result of simplication can't be reused, but simplification
             is more powerful
         """
-        print(f"Simplifying {g} {tg}")
         timings = Times(name="simplify")
 
         now = time.time()

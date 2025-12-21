@@ -68,22 +68,25 @@ class has_simple_value_representation(fabll.Node):
             if lit is None:
                 raise ValueError(f"No literal found for {self.param}")
 
-            # Check if tolerance should be shown
-            tolerance_literal = F.Parameters.BooleanParameter.bind_instance(
+            show_tolerance_lit = F.Parameters.BooleanParameter.bind_instance(
                 self.tolerance_.get().instance
             ).try_extract_constrained_literal()
             show_tolerance = (
-                tolerance_literal is None or tolerance_literal.get_values()[0]
+                show_tolerance_lit is None or show_tolerance_lit.get_values()[0]
             )
 
-            # For Numbers literals, use the show_tolerance parameter
-            # This only affects tolerance notation (center±X%), not ranges (min..max)
-            try:
-                numbers_lit = fabll.Traits(lit).get_obj(F.Literals.Numbers)
+            # NumericParameter handles display unit conversion (e.g., kohm not ohm)
+            numeric_param = self.param.try_cast(F.Parameters.NumericParameter)
+            if numeric_param and (numbers_lit := lit.try_cast(F.Literals.Numbers)):
+                return numeric_param.format_literal_for_display(
+                    numbers_lit, show_tolerance=show_tolerance
+                )
+
+            # Numbers literal without NumericParameter context
+            if numbers_lit := lit.try_cast(F.Literals.Numbers):
                 return numbers_lit.pretty_str(show_tolerance=show_tolerance)
-            except Exception:
-                # Not a Numbers literal, use default pretty_str
-                return lit.pretty_str()
+
+            return lit.pretty_str()
 
             # TODO this is probably not the only place we will ever need
             #  this big switch
@@ -397,3 +400,48 @@ def test_repr_chain_no_literal():
     )
     val = m._simple_repr.get().get_value()
     assert val == "10.0V P3: MISSING"
+
+
+def test_repr_display_unit_conversion():
+    """
+    Test that values are converted to display unit (e.g., kΩ instead of Ω).
+    """
+    import faebryk.library._F as F
+    from faebryk.library.Units import BasisVector, is_unit, is_unit_type
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    # Define Kiloohm unit with proper symbols
+    class Kiloohm(fabll.Node):
+        unit_vector_arg = BasisVector(kilogram=1, meter=2, second=-3, ampere=-2)
+        is_unit_type_trait = fabll.Traits.MakeEdge(
+            is_unit_type.MakeChild(("kΩ", "kohm"), unit_vector_arg)
+        ).put_on_type()
+        is_unit_trait = fabll.Traits.MakeEdge(
+            is_unit.MakeChild(("kΩ", "kohm"), unit_vector_arg, multiplier=1000.0)
+        )
+        can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
+
+    # Create instances
+    kohm_instance = Kiloohm.bind_typegraph(tg=tg).create_instance(g=g)
+    kohm_unit = kohm_instance.is_unit_trait.get()
+
+    # Create parameter with kohm as display unit
+    param = F.Parameters.NumericParameter.bind_typegraph(tg).create_instance(g=g)
+    param.setup(is_unit=kohm_unit)
+
+    # Set value in base ohms (47000 ohm = 47 kohm)
+    base_ohm = F.Units.Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
+    lit = (
+        F.Literals.Numbers.bind_typegraph(tg)
+        .create_instance(g=g)
+        .setup_from_singleton(value=47000.0, unit=base_ohm)
+    )
+    param.alias_to_literal(g=g, value=lit)
+
+    # format_literal_for_display should convert value and show correct unit
+    formatted = param.format_literal_for_display(lit)
+
+    # Should show 47.0kΩ (converted from 47000Ω)
+    assert formatted == "47.0kΩ", f"Expected '47.0kΩ', got '{formatted}'"

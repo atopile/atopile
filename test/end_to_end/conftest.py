@@ -18,7 +18,11 @@ DEFAULT_CONFIG = HERE / "default_ato.yaml"
 def exec_build(args: list[str], cwd: Path) -> tuple[str, str, subprocess.Popen]:
     return run_live(
         [sys.executable, "-m", "atopile", "build", *args],
-        env={**os.environ, "NONINTERACTIVE": "1"},
+        env={
+            **os.environ,
+            "NONINTERACTIVE": "1",
+            "FBRK_SKIP_SOLVING": "y",
+        },
         stdout=print,
         stderr=print,
         check=False,
