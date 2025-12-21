@@ -95,11 +95,11 @@ class has_explicit_part(fabll.Node):
     @classmethod
     def MakeChild(
         cls,
-        mfr: str | None,
-        partno: str | None,
-        supplier_id: str | None,
-        supplier_partno: str | None,
-        pinmap: dict[str, fabll._ChildField[F.Electrical] | None] | None,
+        mfr: str | None = None,
+        partno: str | None = None,
+        supplier_id: str | None = None,
+        supplier_partno: str | None = None,
+        pinmap: dict[str, fabll._ChildField[F.Electrical] | None] | None = None,
         override_footprint: tuple[fabll._ChildField[F.Footprints.is_footprint], str]
         | None = None,
     ):

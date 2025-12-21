@@ -174,6 +174,10 @@ _TRAIT_OVERRIDES: dict[str, TraitOverrideSpec] = {
         trait_class=F.has_part_picked,
         make_trait_field=lambda args: F.has_part_picked.MakeChild(**args),
     ),
+    "has_explicit_part": TraitOverrideSpec(
+        trait_class=F.has_explicit_part,
+        make_trait_field=lambda args: F.has_explicit_part.MakeChild(**args),
+    ),
 }
 
 
