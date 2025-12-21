@@ -41,7 +41,12 @@ def _create_letters(
         units = E.U.dl
 
     class App(fabll.Node):
-        params = [F.Parameters.NumericParameter.MakeChild(unit=units) for _ in range(n)]
+        params = [
+            F.Parameters.NumericParameter.MakeChild(
+                unit=units, domain=F.NumberDomain.Args(negative=True)
+            )
+            for _ in range(n)
+        ]
 
     app = App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
     params = [p.get().is_parameter_operatable.get() for p in app.params]
