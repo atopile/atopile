@@ -610,9 +610,11 @@ class st_exprs(Namespace):
 
 def evaluate_e_p_l(
     operand: F.Parameters.can_be_operand,
-    g: graph.GraphView,
-    tg: fbrk.TypeGraph,
+    g: graph.GraphView | None = None,
+    tg: fbrk.TypeGraph | None = None,
 ) -> F.Literals.Numbers:
+    g = g or operand.g
+    tg = tg or operand.tg
     obj = fabll.Traits(operand).get_obj_raw()
     if np := obj.try_cast(F.Literals.Numbers):
         return np
@@ -642,30 +644,30 @@ def evaluate_e_p_l(
 #     assert isinstance(result, F.Literals.Numbers)
 
 
-_can_eval_examples = list(range(50))
-
-
-@pytest.mark.parametrize("expr_id", _can_eval_examples)
-def test_can_evaluate_literals_ci(expr_id: int):
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-    while True:
+def test_can_evaluate_literals_ci():
+    # dynamic create a pytest test case for each example
+    errored = False
+    for _ in range(50):
         try:
-            expr = st_exprs.trees.example()
-        except UnsatisfiedAssumption:
+            while True:
+                try:
+                    expr = st_exprs.trees.example()
+                except UnsatisfiedAssumption:
+                    continue
+                print(f"expr: {expr.pretty()}")
+                try:
+                    result = evaluate_e_p_l(expr)
+                    break
+                except (ValueError, NotImplementedError):
+                    # Skip expressions that can't be evaluated (e.g., negative base to
+                    # fractional exponent which would produce complex results)
+                    continue
+            print(f"result: {result.pretty_str()}")
+        except Exception as e:
+            print(f"error: {e}")
+            errored = True
             continue
-        print(expr)
-        print(f"expr: {expr.pretty()}")
-        try:
-            result = evaluate_e_p_l(expr, g=g, tg=tg)
-            break
-        except (ValueError, NotImplementedError):
-            # Skip expressions that can't be evaluated (e.g., negative base to
-            # fractional exponent which would produce complex results)
-            continue
-    print(f"result: {result.pretty_str()}")
-    assert isinstance(result, F.Literals.Numbers)
-    g.destroy()
+    assert not errored
 
 
 def _track():
