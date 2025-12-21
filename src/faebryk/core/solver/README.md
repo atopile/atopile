@@ -136,7 +136,7 @@ X = Range(10*P.W, 20*P.W)
 A = Parameter()
 A.alias_is(X)
 E = A - A
-out, = DefaultSolver().simplify_symbolically(E)
+out, = DefaultSolver().simplify(E)
 out[E]
 -> Single(0*P.W)
 ```
@@ -174,7 +174,7 @@ Is(A, B).assert_()
 A.alias_is(B)
 
 E = A - B
-out, = DefaultSolver().simplify_symbolically(E)
+out, = DefaultSolver().simplify(E)
 out[E]
 -> Single(0*P.W)
 ```

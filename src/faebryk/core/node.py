@@ -1913,9 +1913,7 @@ class Traits:
 
     @staticmethod
     def create_and_add_instance_to[T: Node[Any]](node: Node[Any], trait: type[T]) -> T:
-        trait_bound = trait.bind_typegraph_from_instance(
-            node.instance
-        ).get_or_create_type()
+        trait_bound = trait.bind_typegraph(node.tg).get_or_create_type()
         trait_type_node = Node.bind_instance(instance=trait_bound)
         trait_instance_node = Traits.add_to(node=node, trait=trait_type_node)
         return trait.bind_instance(instance=trait_instance_node)

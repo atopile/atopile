@@ -653,7 +653,7 @@ def test_pick_voltage_divider_complex():
 
     solver = DefaultSolver()
 
-    solver.simplify_symbolically(tg, g)
+    solver.simplify(tg, g)
 
     # pick_part_recursively(app, solver)
 

@@ -128,7 +128,7 @@ def test_solve_phase_one():
     E.is_(voltage1_op, E.lit_op_range(((1, E.U.V), (3, E.U.V))), assert_=True)
     E.is_(voltage3_op, E.lit_op_range(((2, E.U.V), (6, E.U.V))), assert_=True)
 
-    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
     # voltage1 and voltage2 are aliased, so they should have the same value
     assert _extract_and_check(
@@ -176,7 +176,7 @@ def test_simplify():
     le = E.less_or_equal(acc, E.lit_op_single((11, E.U.dl)), assert_=True)
 
     solver = DefaultSolver()
-    res = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+    res = solver.simplify(E.tg, E.g).data.mutation_map
     out = res.map_forward(le.as_parameter_operatable.force_get()).maps_to
 
     assert out
@@ -228,7 +228,7 @@ def test_simplify_logic_and():
     anded = E.and_(anded, anded, assert_=True)
 
     solver = DefaultSolver()
-    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
     # Y = And!(X, X) canonicalizes to Not!(Or(Not(p0), Not(p1), Not(p2), Not(p3)))
     # which simplifies to Not(false) = true (the assertion is satisfied)
@@ -261,7 +261,7 @@ def test_shortcircuit_logic_and():
     solver = DefaultSolver()
 
     with pytest.raises(ContradictionByLiteral):
-        solver.simplify_symbolically(E.tg, E.g)
+        solver.simplify(E.tg, E.g)
 
 
 def test_shortcircuit_logic_or():
@@ -284,7 +284,7 @@ def test_shortcircuit_logic_or():
     Y = E.or_(X, X)
 
     solver = DefaultSolver()
-    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     assert _extract_and_check(Y, repr_map, True)
 
 
@@ -318,7 +318,7 @@ def test_remove_obvious_tautologies():
     X = E.is_(p2, p2, assert_=True)
 
     solver = DefaultSolver()
-    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
     # The tautology X = (p2 is! p2) gets simplified to Is(p2) with single operand
     out = repr_map.map_forward(X.as_parameter_operatable.force_get())
@@ -374,9 +374,7 @@ def test_alias_classes():
     for p in (A, B, C, D, H):
         p.as_parameter_operatable.force_get().compact_repr(context)
     solver = DefaultSolver()
-    repr_map = solver.simplify_symbolically(
-        E.tg, E.g, print_context=context
-    ).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
 
     # A, B, and H are aliased via the Is constraints and commutativity of addition
     # A is! B, B is! (C+D), H is! (D+C) where C+D == D+C
@@ -425,7 +423,7 @@ def test_solve_realworld_biggest():
     # app = App()
     # F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
     # solver = DefaultSolver()
-    # solver.simplify_symbolically(app.get_graph())
+    # solver.simplify(app.get_graph())
 
     # pick_part_recursively(app, solver)
 
@@ -467,7 +465,7 @@ def test_obvious_contradiction_by_literal():
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
-        solver.simplify_symbolically(E.tg, E.g)
+        solver.simplify(E.tg, E.g)
 
 
 def test_subset_is():
@@ -490,7 +488,7 @@ def test_subset_is():
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
-        solver.simplify_symbolically(E.tg, E.g)
+        solver.simplify(E.tg, E.g)
 
 
 def test_subset_is_expr():
@@ -510,7 +508,7 @@ def test_subset_is_expr():
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
-        solver.simplify_symbolically(E.tg, E.g, print_context=context)
+        solver.simplify(E.tg, E.g, print_context=context)
 
 
 def test_subset_single_alias():
@@ -520,7 +518,7 @@ def test_subset_single_alias():
     E.is_subset(A, E.lit_op_single((1, E.U.V)), assert_=True)
 
     solver = DefaultSolver()
-    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     assert _extract_and_check(A, repr_map, E.lit_op_single((1, E.U.V)))
 
 
@@ -542,7 +540,7 @@ def test_very_simple_alias_class():
         p.as_parameter_operatable.force_get().compact_repr(context)
 
     solver = DefaultSolver()
-    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     A_res = _extract(A, repr_map)
     B_res = _extract(B, repr_map)
     C_res = _extract(C, repr_map)
@@ -568,7 +566,7 @@ def test_domain():
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
-        solver.simplify_symbolically(E.tg, E.g)
+        solver.simplify(E.tg, E.g)
 
 
 def test_less_obvious_contradiction_by_literal():
@@ -588,7 +586,7 @@ def test_less_obvious_contradiction_by_literal():
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
-        solver.simplify_symbolically(E.tg, E.g, print_context=print_context)
+        solver.simplify(E.tg, E.g, print_context=print_context)
 
 
 def test_symmetric_inequality_correlated():
@@ -604,7 +602,7 @@ def test_symmetric_inequality_correlated():
     E.greater_or_equal(p1, p0, assert_=True)
 
     solver = DefaultSolver()
-    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     p0_lit = _extract(p0, repr_map)
     p1_lit = _extract(p1, repr_map)
     assert p0_lit.equals(p1_lit)
@@ -638,7 +636,7 @@ def test_simple_literal_folds_arithmetic(
     E.less_or_equal(expr, E.lit_op_single(100.0), assert_=True)
 
     solver = DefaultSolver()
-    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     assert _extract_and_check(expr, repr_map, expected_result, allow_subset=True)
 
 
@@ -667,7 +665,7 @@ def test_super_simple_literal_folding(
 
     E.less_or_equal(expr, E.lit_op_single(100.0), assert_=True)
 
-    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     assert _extract_and_check(expr, repr_map, expected)
 
 
@@ -696,7 +694,7 @@ def test_literal_folding_add_multiplicative_1():
     E.less_or_equal(expr, E.lit_op_single(100.0), assert_=True)
 
     solver = DefaultSolver()
-    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
     rep_add = not_none(
         repr_map.map_forward(expr.as_parameter_operatable.force_get()).maps_to
@@ -762,7 +760,7 @@ def test_literal_folding_add_multiplicative_2():
     E.less_or_equal(expr, E.lit_op_single(100.0), assert_=True)
 
     solver = DefaultSolver()
-    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     rep_add = not_none(
         repr_map.map_forward(expr.as_parameter_operatable.force_get()).maps_to
     )
@@ -812,9 +810,7 @@ def test_transitive_subset():
     E.is_(C, E.lit_op_range((0, 10)), assert_=True)
 
     solver = DefaultSolver()
-    repr_map = solver.simplify_symbolically(
-        E.tg, E.g, print_context=context
-    ).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
     assert _extract_and_check(A, repr_map, E.lit_op_range((0, 10)), allow_subset=True)
 
 
@@ -831,7 +827,7 @@ def test_nested_additions():
     E.is_(D, E.add(C, A), assert_=True)
 
     solver = DefaultSolver()
-    repr_map = not_none(solver.simplify_symbolically(E.tg, E.g).data.mutation_map)
+    repr_map = not_none(solver.simplify(E.tg, E.g).data.mutation_map)
 
     assert _extract_and_check(A, repr_map, 1)
     assert _extract_and_check(B, repr_map, 1)
@@ -1024,7 +1020,7 @@ def test_voltage_divider_reject_invalid_r_top():
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
-        solver.simplify_symbolically(E.tg, E.g)
+        solver.simplify(E.tg, E.g)
 
 
 def test_base_unit_switch():
@@ -1035,7 +1031,7 @@ def test_base_unit_switch():
     E.greater_or_equal(A, E.lit_op_single((0.100, E.U.As)), assert_=True)
 
     solver = DefaultSolver()
-    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     assert _extract_and_check(
         A, repr_map, E.lit_op_range(((0.100, E.U.As), (0.600, E.U.As)))
     )
@@ -1082,7 +1078,7 @@ def test_congruence_filter():
     )
 
     solver = DefaultSolver()
-    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     y1_mut = repr_map.map_forward(y1.as_parameter_operatable.force_get()).maps_to
     y2_mut = repr_map.map_forward(y2.as_parameter_operatable.force_get()).maps_to
     assert y1_mut == y2_mut
@@ -1496,7 +1492,7 @@ def test_fold_pow():
     E.is_(B, E.power(A, lit_operand_op), assert_=True)
 
     solver = DefaultSolver()
-    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
     assert _extract_and_check(
         B,
@@ -1527,9 +1523,7 @@ def test_graph_split():
         p.as_parameter_operatable.force_get().compact_repr(context)
 
     solver = DefaultSolver()
-    repr_map = solver.simplify_symbolically(
-        E.tg, E.g, print_context=context
-    ).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
 
     assert (
         not_none(
@@ -1555,7 +1549,7 @@ def test_ss_single_into_alias():
     _ = E.add(A, B)
 
     solver = DefaultSolver()
-    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
     assert _extract_and_check(B, repr_map, 5)
     assert _extract_and_check(A, repr_map, E.lit_op_range((5, 10)))
@@ -1604,7 +1598,7 @@ def test_find_contradiction_by_predicate(
     solver = DefaultSolver()
 
     with pytest.raises(Contradiction):
-        solver.simplify_symbolically(E.tg, E.g)
+        solver.simplify(E.tg, E.g)
 
 
 def test_find_contradiction_by_gt():
@@ -1619,7 +1613,7 @@ def test_find_contradiction_by_gt():
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
-        solver.simplify_symbolically(E.tg, E.g)
+        solver.simplify(E.tg, E.g)
 
 
 def test_can_add_parameters():
@@ -1648,7 +1642,7 @@ def test_ss_estimation_ge():
     E.greater_or_equal(B, A, assert_=True)
 
     solver = DefaultSolver()
-    res = solver.simplify_symbolically(E.tg, E.g)
+    res = solver.simplify(E.tg, E.g)
     assert _extract_and_check(
         B, res.data.mutation_map, E.lit_op_range((10, math.inf)), allow_subset=True
     )
@@ -2025,7 +2019,7 @@ def test_simplify_non_terminal_manual_test_1():
 
     solver.simplify(E.g, E.tg)
 
-    solver.simplify_symbolically(E.tg, E.g, terminal=True)
+    solver.simplify(E.tg, E.g, terminal=True)
 
     solver.simplify(E.g, E.tg)
 
@@ -2055,7 +2049,7 @@ def test_simplify_non_terminal_manual_test_2():
         )
 
     solver = DefaultSolver()
-    solver.simplify_symbolically(E.tg, E.g, terminal=False, print_context=context)
+    solver.simplify(E.tg, E.g, terminal=False, print_context=context)
 
     origin = 1, E.lit_op_range(((9, E.U.V), (11, E.U.V)))
     E.is_(ps[origin[0]].as_operand.get(), (origin[1]), assert_=True)
@@ -2111,7 +2105,7 @@ def test_abstract_lowpass_ss():
 
     # solve
     solver = DefaultSolver()
-    solver.simplify_symbolically(E.tg, E.g)
+    solver.simplify(E.tg, E.g)
 
     # C_expected = 1 / (4 * math.pi**2 * Li_const * fc_const**2)
     C_expected = (
@@ -2210,7 +2204,7 @@ def test_symmetric_inequality_uncorrelated():
     solver = DefaultSolver()
 
     with pytest.raises(Contradiction):
-        solver.simplify_symbolically(E.tg, E.g)
+        solver.simplify(E.tg, E.g)
 
 
 def test_fold_correlated():
@@ -2249,9 +2243,7 @@ def test_fold_correlated():
         p.as_parameter_operatable.force_get().compact_repr(context)
 
     solver = DefaultSolver()
-    repr_map = solver.simplify_symbolically(
-        E.tg, E.g, print_context=context
-    ).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
 
     is_lit = repr_map.try_get_literal(
         C.as_parameter_operatable.force_get(), allow_subset=False
@@ -2453,7 +2445,7 @@ def test_exec_pure_literal_expressions(
     E.is_(result, expr, assert_=True)
 
     solver = DefaultSolver()
-    repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     assert _extract_and_check(result, repr_map, expected_converted)
 
 

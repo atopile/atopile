@@ -143,10 +143,12 @@ class ApiClient:
         return self.query_parts(params.endpoint, params)
 
     def fetch_parts_multiple(
-        self, params: list[BaseParams | LCSCParams | ManufacturerPartParams]
+        self,
+        params: list[BaseParams | LCSCParams | ManufacturerPartParams] | list[dict],
     ) -> list[list["Component"]]:
         # TODO: batch queries
-        response = self._post("/v0/query", {"queries": [p.serialize() for p in params]})
+        query = [p.serialize() if not isinstance(p, dict) else p for p in params]
+        response = self._post("/v0/query", {"queries": query})
         results = [
             [Component.from_dict(part) for part in result["components"]]  # type: ignore
             for result in response.json()["results"]

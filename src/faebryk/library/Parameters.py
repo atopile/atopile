@@ -134,27 +134,31 @@ class can_be_operand(fabll.Node):
 
         return out
 
-    def get_root_operands(self) -> set["can_be_operand"]:
+    def get_root_operands(
+        self, *more: "can_be_operand", predicates_only: bool = False
+    ) -> set["can_be_operand"]:
         # Import inside function to avoid gen_F.py cycle detection
-        from faebryk.library.Expressions import is_expression
+        from faebryk.library.Expressions import is_expression, is_predicate
 
-        if expr := self.try_get_sibling_trait(is_expression):
-            expr_leaves = expr.get_operand_leaves() | {self}
-        else:
-            expr_leaves = {self}
+        expr_leaves = set((self, *more))
+
+        for e in expr_leaves:
+            if expr := e.try_get_sibling_trait(is_expression):
+                expr_leaves.update(expr.get_operand_leaves())
 
         all_expressions = {
             expr.get_trait(can_be_operand)
             for leaf in expr_leaves
-            for expr in leaf.get_operations(recursive=True)
+            for expr in leaf.get_operations(
+                recursive=True, predicates_only=predicates_only
+            )
         }
 
         root_expressions = {
-            root_expr for root_expr in all_expressions if not root_expr.get_operations()
+            root_expr
+            for root_expr in all_expressions
+            if not root_expr.get_operations(predicates_only=predicates_only)
         }
-
-        if not root_expressions:
-            return {self}
 
         return root_expressions
 
@@ -286,8 +290,12 @@ class is_parameter_operatable(fabll.Node):
             return None
         if len(lits) == 1:
             return next(iter(lits))
-        if not not_none(is_lit).is_subset_of(not_none(ss_lit), g=self.g, tg=self.tg):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        if not not_none(is_lit).is_subset_of(not_none(ss_lit), g=g, tg=tg):
+            g.destroy()
             raise ContradictingLiterals(lits)
+        g.destroy()
         return is_lit
 
     def try_extract_literal(

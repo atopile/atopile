@@ -712,6 +712,10 @@ class MutationStage:
         )
 
 
+class solver_relevant(fabll.Node):
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+
 class MutationMap:
     @dataclass
     class LookupResult:
@@ -841,6 +845,8 @@ class MutationMap:
         po: F.Parameters.is_parameter_operatable,
         allow_subset: bool = False,
         domain_default: bool = False,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> F.Literals.is_literal | None:
         def _default():
             if not domain_default:
@@ -862,9 +868,9 @@ class MutationMap:
             and (lit_n := fabll.Traits(lit).get_obj_raw().try_cast(F.Literals.Numbers))
             and not lit_n.are_units_compatible(param_unit := param_unit_t.get_is_unit())
         ):
-            N = F.Literals.Numbers.bind_typegraph_from_instance(instance=lit_n.instance)
+            N = F.Literals.Numbers.bind_typegraph(tg or lit_n.tg)
             NumberLit = lambda value, unit: N.create_instance(  # noqa: E731
-                g=lit_n.g
+                g=g or lit_n.g
             ).setup_from_singleton(value=value, unit=unit)
             return (
                 # return ((lit - offset) / multiplier) * param_unit
@@ -888,8 +894,8 @@ class MutationMap:
     def __str__(self) -> str:
         return (
             f"|stages|={len(self.mutation_stages)}"
-            f", |graph|={self.G_out.get_node_count()}"
-            f", |V|={len(self.last_stage.output_operables)}"
+            f", |ops|={len(self.last_stage.output_operables)}"
+            f", {self.G_out}"
         )
 
     @staticmethod
@@ -899,7 +905,47 @@ class MutationMap:
         algorithm: SolverAlgorithm | str = "identity",
         iteration: int = 0,
         print_context: F.Parameters.ReprContext | None = None,
+        relevant: list[F.Parameters.is_parameter] | None = None,
     ) -> "MutationMap":
+        if relevant is not None:
+            g_out = graph.GraphView.create()
+            # tg_out = tg.copy_into(target_graph=g_out, minimal=False)
+            root_exprs = F.Parameters.can_be_operand.get_root_operands(
+                *(p.as_parameter_operatable.get().as_operand.get() for p in relevant),
+                predicates_only=True,
+            )
+            for root_expr in root_exprs:
+                root_expr.copy_into(g_out)
+            tg_out = fbrk.TypeGraph.of(node=g_out.bind(node=tg.get_self_node().node()))
+            for p in relevant:
+                # needed to copy because some might not be involved in predicates
+                p_out = p.copy_into(g_out)
+                fabll.Traits.create_and_add_instance_to(p_out, solver_relevant)
+
+            all_ops_out = F.Parameters.is_parameter_operatable.bind_typegraph(
+                tg_out
+            ).get_instances(g=g_out)
+            return MutationMap(
+                MutationStage(
+                    tg_in=tg,
+                    tg_out=tg_out,
+                    algorithm=algorithm,
+                    iteration=iteration,
+                    print_context=print_context or F.Parameters.ReprContext(),
+                    transformations=Transformations(
+                        input_print_context=print_context or F.Parameters.ReprContext(),
+                        mutated={
+                            F.Parameters.is_parameter_operatable.bind_instance(
+                                g.bind(node=op.instance.node())
+                            ): op
+                            for op in all_ops_out
+                        },
+                    ),
+                    G_in=g,
+                    G_out=g_out,
+                )
+            )
+
         return MutationMap(
             MutationStage.identity(
                 tg,
@@ -1114,9 +1160,8 @@ class Mutator:
         param: F.Parameters.is_parameter,
         units: F.Units.is_unit | None = None,
     ) -> F.Parameters.is_parameter:
-        if p_mutated := self.transformations.mutated.get(
-            param.as_parameter_operatable.get(), None
-        ):
+        p_po = param.as_parameter_operatable.get()
+        if p_mutated := self.try_get_mutated(p_po):
             return p_mutated.as_parameter.force_get()
 
         param_obj = fabll.Traits(param).get_obj_raw()
@@ -1126,7 +1171,7 @@ class Mutator:
                 F.Parameters.NumericParameter.bind_typegraph(self.tg_out)
                 .create_instance(self.G_out)
                 .setup(is_unit=units, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
-            )
+            ).is_parameter_operatable.get()
         elif param_obj.try_cast(F.Parameters.EnumParameter):
             # FIXME, should just use copy_into
             # also why is setup not called?
@@ -1137,15 +1182,17 @@ class Mutator:
                     self.G_out
                 )
                 # .setup(enum=p.get_enum())
-            )
+            ).is_parameter_operatable.get()
         else:
             # trigger tg copy
-            self.tg_out
-            new_param = param_obj.copy_into(self.G_out)
+            # self.tg_out
+            new_param = param.copy_into(self.G_out).get_sibling_trait(
+                F.Parameters.is_parameter_operatable
+            )
 
         return self._mutate(
-            param.as_parameter_operatable.get(),
-            new_param.get_trait(F.Parameters.is_parameter_operatable),
+            p_po,
+            new_param,
         ).as_parameter.force_get()
 
     def _create_expression[T: fabll.NodeT](
@@ -1475,8 +1522,8 @@ class Mutator:
         if accept_soft and obj_po in self.transformations.soft_replaced:
             return self.transformations.soft_replaced[obj_po]
 
-        if self.has_been_mutated(obj_po):
-            return self.get_mutated(obj_po)
+        if m := self.try_get_mutated(obj_po):
+            return m
 
         # TODO: not sure if ok
         # if obj is new, no need to copy
@@ -1885,6 +1932,11 @@ class Mutator:
         self, po: F.Parameters.is_parameter_operatable
     ) -> F.Parameters.is_parameter_operatable:
         return self.transformations.mutated[po]
+
+    def try_get_mutated(
+        self, po: F.Parameters.is_parameter_operatable
+    ) -> F.Parameters.is_parameter_operatable | None:
+        return self.transformations.mutated.get(po)
 
     # Solver Interface -----------------------------------------------------------------
     def __init__(

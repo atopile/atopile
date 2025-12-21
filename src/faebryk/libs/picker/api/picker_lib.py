@@ -111,7 +111,7 @@ BackendPackage.from_smd_size = classmethod(_from_smd_size)  # type: ignore
 
 
 def _prepare_query(
-    module: F.is_pickable, solver: Solver
+    module: F.is_pickable, solver: Solver, g: graph.GraphView, tg: fbrk.TypeGraph
 ) -> BaseParams | LCSCParams | ManufacturerPartParams:
     # assert module.has_trait(F.is_pickable)
     # Error can propagate through,
@@ -138,12 +138,12 @@ def _prepare_query(
 
         if pkg_t := module_node.try_get_trait(F.has_package_requirements):
             package_constraint = solver.inspect_get_known_supersets(
-                pkg_t.size.get().is_parameter.get()
+                pkg_t.size.get().is_parameter.get(), g=g, tg=tg
             )
             package = (
                 F.Literals.EnumsFactory(BackendPackage)  # type: ignore[arg-type]
-                .bind_typegraph(tg=module.tg)
-                .create_instance(g=module.g)
+                .bind_typegraph(tg=tg)
+                .create_instance(g=g)
                 .setup(
                     *[
                         BackendPackage.from_smd_size(SMDSize[s], trait.pick_type)  # type: ignore[attr-defined]
@@ -162,7 +162,8 @@ def _prepare_query(
         )
         cmp_params = {
             p.get_name(): solver.inspect_get_known_supersets(
-                p.get_trait(F.Parameters.is_parameter)
+                # FIXME g
+                p.get_trait(F.Parameters.is_parameter)  # , g=g, tg=tg
             )
             for p in known_params
         }
@@ -221,11 +222,15 @@ def _find_modules(
 ) -> dict[F.is_pickable, list[Component]]:
     timings = Times(name="find_modules")
 
-    params = {m: _prepare_query(m, solver) for m in modules}
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    params = {m: _prepare_query(m, solver, g, tg) for m in modules}
     timings.add("prepare queries")
 
-    grouped = groupby(params.items(), lambda p: p[1])
-    queries = list(grouped.keys())
+    # deduplicate params
+    grouped = groupby(params.items(), lambda p: str(p[1].serialize()))
+    queries = [v[0][1] for v in grouped.values()]
+    logger.debug(f"Queries: {len(queries)}")
 
     def _map_response[T](results: list[T]) -> dict[F.is_pickable, T]:
         assert len(results) == len(queries)
@@ -234,6 +239,9 @@ def _find_modules(
     try:
         results = client.fetch_parts_multiple(queries)
         timings.add("fetch parts")
+        logger.debug(
+            f"Fetched {len(results)} parts in {timings.get_formatted('fetch parts')}"
+        )
     except TimeoutException as e:
         raise UserInfraError(
             "Fetching component data failed to complete in time. "
@@ -279,6 +287,9 @@ def _find_modules(
     }
 
     timings.add("process candidates")
+    logger.debug(
+        f"Processed {len(out)} candidates in {timings.get_formatted('process candidates')}"
+    )
     return out
 
 

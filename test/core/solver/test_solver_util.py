@@ -572,7 +572,7 @@ def test_traceback_filtering_chain():
     E2 = E.add(E1, A.as_operand.get())
 
     solver = DefaultSolver()
-    out = solver.simplify_symbolically(E.tg, E.g, print_context=context, terminal=False)
+    out = solver.simplify(E.tg, E.g, print_context=context, terminal=False)
 
     E2_new = out.data.mutation_map.map_forward(
         E2.as_parameter_operatable.force_get()
@@ -594,7 +594,7 @@ def test_traceback_filtering_tree():
     E.is_subset(A.as_operand.get(), C.as_operand.get(), assert_=True)
 
     solver = DefaultSolver()
-    out = solver.simplify_symbolically(E.tg, E.g, print_context=context, terminal=True)
+    out = solver.simplify(E.tg, E.g, print_context=context, terminal=True)
 
     A_new = out.data.mutation_map.map_forward(A).maps_to
     assert A_new
@@ -618,7 +618,7 @@ def test_contradiction_message_subset():
     solver = DefaultSolver()
 
     with pytest.raises(ContradictionByLiteral, match="is lit not subset of ss lits"):
-        solver.simplify_symbolically(E.tg, E.g, print_context=context, terminal=True)
+        solver.simplify(E.tg, E.g, print_context=context, terminal=True)
 
 
 def test_contradiction_message_superset():
@@ -634,7 +634,7 @@ def test_contradiction_message_superset():
     with pytest.raises(
         ContradictionByLiteral, match="Contradiction: Incompatible literal subsets"
     ):
-        solver.simplify_symbolically(E.tg, E.g, print_context=context, terminal=True)
+        solver.simplify(E.tg, E.g, print_context=context, terminal=True)
 
 
 if __name__ == "__main__":

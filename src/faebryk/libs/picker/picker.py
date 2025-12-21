@@ -290,11 +290,8 @@ def find_independent_groups(
     param_eqs = EquivalenceClasses[F.Parameters.is_parameter_operatable]()
     tg = list(modules)[0].tg  # FIXME
 
-    for expr in F.Expressions.is_assertable.bind_typegraph(tg).get_instances():
-        if not expr.try_get_sibling_trait(F.Expressions.is_predicate):
-            continue
-
-        involved_params = expr.as_expression.get().get_operand_leaves_operatable()
+    for pred in F.Expressions.is_predicate.bind_typegraph(tg).get_instances():
+        involved_params = pred.as_expression.get().get_operand_leaves_operatable()
         param_eqs.add_eq(
             *[p for p in involved_params if p.try_get_aliased_literal() is None]
         )
@@ -311,7 +308,15 @@ def find_independent_groups(
         }
         module_eqs.add_eq(*[not_none(n.get_trait(F.is_pickable)) for n in p_modules])
     out = module_eqs.get()
-    logger.debug(indented_container(out, recursive=True))
+    logger.debug(
+        indented_container(
+            [
+                {fabll.Traits(fabll.Traits(m).get_obj_raw()).get_obj_raw() for m in g}
+                for g in out
+            ],
+            recursive=True,
+        )
+    )
     return out
 
 
@@ -343,27 +348,14 @@ def pick_topologically(
 
     timings = Times(name="pick")
 
-    def _get_candidates(
-        _tree: Tree[F.is_pickable],
-    ) -> dict[F.is_pickable, list["Component"]]:
-        g, tg = _get_graph(*_tree.keys())
-        # with timings.as_global("pre-solve"):
-        #    solver.simplify(g, tg)
-
-        try:
-            with timings.as_global("solve"):
-                # Rerun solver for new system
-                solver.simplify(g, tg, terminal=True)
-        except Contradiction as e:
-            raise PickError(str(e), *_tree.keys())
-        with timings.as_global("get candidates"):
-            candidates = picker_lib.get_candidates(_tree, solver)
-        if LOG_PICK_SOLVE:
-            logger.info(
-                "Candidates: \n\t"
-                f"{'\n\t'.join(f'{m}: {len(p)}' for m, p in candidates.items())}"
-            )
-        return candidates
+    def _relevant_params(m: F.is_pickable) -> set[F.Parameters.is_parameter]:
+        pbt = m.get_parent_of_type(
+            F.is_pickable_by_type, direct_only=True, include_root=False
+        )
+        if not pbt:
+            return set()
+        param_objs = pbt.get_params()
+        return {p.get_trait(F.Parameters.is_parameter) for p in param_objs}
 
     tree_backup = set(tree.keys())
     _pick_count = len(tree)
@@ -380,42 +372,47 @@ def pick_topologically(
         tree, _ = update_pick_tree(tree)
 
     timings.add("setup")
-    # Works by looking for each module again for compatible parts
-    # If no compatible parts are found,
-    #   it means we need to backtrack or there is no solution
-    with timings.as_global("parallel slow-pick", context=True):
-        if tree:
+    relevant = [rp for m in tree.keys() for rp in _relevant_params(m)]
+    with timings.as_global("parallel slow-pick"):
+        if relevant:
+            g = relevant[0].g
+            tg = relevant[0].tg
+            logger.info(f"Simplifying with {len(relevant)} relevant parameters")
+            with timings.as_global("simplify"):
+                solver.simplify(g, tg, terminal=True, relevant=relevant)
             logger.info(f"Picking {len(tree)} modules in parallel")
-
-        while tree:
-            try:
-                candidates = _get_candidates(tree)
-            except Contradiction as e:
-                # TODO better error, also remove from get_candidates
+            with timings.as_global("get candidates"):
+                candidates = picker_lib.get_candidates(tree, solver)
+            no_candidates = [m for m, cs in candidates.items() if not cs]
+            if no_candidates:
                 raise PickError(
-                    "Contradiction in system."
-                    "Unfixable due to lack of backtracking." + str(e),
-                    *[],
+                    f"No candidates found for {no_candidates}", *no_candidates
                 )
-            groups = find_independent_groups(candidates.keys(), solver)
-            # pick module with least candidates first
-            picked = [
-                (
-                    m := min(group, key=lambda _m: len(candidates[_m])),
-                    candidates[m][0],
-                )
-                for group in groups
-            ]
-            logger.info(
-                f"Picking {len(groups)} independent groups: "
-                f"{indented_container([m for m, _ in picked])}"
-            )
-            for m, part in picked:
-                picker_lib.attach_single_no_check(m, part, solver)
-                if progress:
-                    progress.advance()
+            logger.info(f"Solved in {timings.get_formatted('simplify')}")
 
-            tree, _ = update_pick_tree(tree)
+            while tree:
+                groups = find_independent_groups(tree.keys(), solver)
+                # pick module with least candidates first
+                picked = [
+                    (
+                        m := min(group, key=lambda _m: len(candidates[_m])),
+                        candidates[m][0],
+                    )
+                    for group in groups
+                ]
+                logger.info(f"Picking {len(groups)} independent groups")
+                for m, part in picked:
+                    picker_lib.attach_single_no_check(m, part, solver)
+                    if progress:
+                        progress.advance()
+                relevant = [rp for m in tree.keys() for rp in _relevant_params(m)]
+                g = relevant[0].g
+                tg = relevant[0].tg
+                if not relevant:
+                    break
+                solver.simplify(g, tg, terminal=True, relevant=relevant)
+
+                tree, _ = update_pick_tree(tree)
 
     if _pick_count:
         logger.info(
@@ -423,16 +420,20 @@ def pick_topologically(
         )
 
     logger.info(f"Picked complete: picked {_pick_count} parts")
-    logger.info("Verify design")
-    try:
-        # hack
-        n = next(iter(tree_backup), None)
-        if n:
-            g = n.g
-            tg = n.tg
-            solver.simplify(g, tg, terminal=True)
-    except Contradiction as e:
-        raise PickVerificationError(str(e), *tree_backup) from e
+    relevant = [rp for m in tree_backup for rp in _relevant_params(m)]
+    if relevant:
+        logger.info("Verify design")
+        try:
+            # hack
+            n = next(iter(relevant), None)
+            if n:
+                g = n.g
+                tg = n.tg
+                solver.simplify(g, tg, terminal=True, relevant=relevant)
+        except Contradiction as e:
+            raise PickVerificationError(str(e), *tree_backup) from e
+    else:
+        logger.info("No relevant parameters to verify design with")
 
 
 # TODO should be a Picker

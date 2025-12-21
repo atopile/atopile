@@ -117,34 +117,11 @@ class DefaultSolver(Solver):
         for phase_name, algo in enumerate(algos):
             timings.add("_")
 
-            # def _tgoverview(tg: fbrk.TypeGraph) -> dict[str, int]:
-            #     out = tg.get_type_instance_overview()
-            #     out.append(("0TOTAL", sum(x[1] for x in out)))
-            #     return dict(sorted(out, key=lambda x: x[0]))
-
-            # def _tgdiff(
-            #     overview1: dict[str, int], overview2: dict[str, int]
-            # ) -> dict[str, int]:
-            #     return {
-            #         k: d
-            #         for k in overview1.keys() | overview2.keys()
-            #         if (d := overview2.get(k, 0) - overview1.get(k, 0))
-            #     }
-
-            # G_in_operands = set(
-            #     fabll.Traits.get_implementors(
-            #         F.Parameters.is_parameter_operatable.bind_typegraph(
-            #             data.mutation_map.tg_out
-            #         ),
-            #         data.mutation_map.G_out,
-            #     )
-            # )
-            # G_in_overview = _tgoverview(data.mutation_map.tg_out)
             if PRINT_START:
-                G_in_count = data.mutation_map.G_out.get_node_count()
+                G_in = data.mutation_map.G_out
                 logger.debug(
                     f"START Iteration {iterno} Phase {phase_name}: {algo.name}"
-                    f" G_in:{G_in_count}"
+                    f" G_in:{G_in}"
                 )
 
             mutator = Mutator(
@@ -162,50 +139,8 @@ class DefaultSolver(Solver):
             algo_result = mutator.close()
 
             if algo_result.dirty and logger.isEnabledFor(logging.DEBUG):
-                # G_in_operands_after = set(
-                #    fabll.Traits.get_implementors(
-                #        F.Parameters.is_parameter_operatable.bind_typegraph(
-                #            data.mutation_map.tg_out
-                #        ),
-                #        data.mutation_map.G_out,
-                #    )
-                # )
-                # G_in_overview_after = dict(_tgoverview(data.mutation_map.tg_out))
-                # G_out_operands = set(
-                #    fabll.Traits.get_implementors(
-                #        F.Parameters.is_parameter_operatable.bind_typegraph(
-                #            algo_result.mutation_stage.tg_out
-                #        ),
-                #        algo_result.mutation_stage.G_out,
-                #    )
-                # )
-                # G_out_overview = dict(_tgoverview(algo_result.mutation_stage.tg_out))
-                # G_in_count_after = data.mutation_map.G_out.get_node_count()
-                # G_out_count = algo_result.mutation_stage.G_out.get_node_count()
-                # suffix = ""
-                # if len({G_in_count, G_in_count_after, G_out_count}) != 1:
-                #  suffix += f"\n (inconsistent counts:
-                # {G_in_count}, {G_in_count_after}, {G_out_count})"
-                #    suffix += f"\nG_in_diff
-                # {indented_container(_tgdiff(G_in_overview, G_in_overview_after))}"
-                #    suffix += f"\nIn_Out_diff
-                # {indented_container(_tgdiff(G_in_overview_after, G_out_overview))}"
-                # if (
-                #    len(
-                #        {
-                #            len(G_in_operands),
-                #            len(G_in_operands_after),
-                #            len(G_out_operands),
-                #        }
-                #    )
-                #    != 1
-                # ):
-                #    suffix += f"\n (inconsistent operand counts:
-                # {len(G_in_operands)},
-                # {len(G_in_operands_after)}, {len(G_out_operands)})"
-                suffix = ""
                 logger.debug(
-                    f"DONE  Iteration {iterno} Phase {phase_name}: {algo.name}{suffix}"
+                    f"DONE  Iteration {iterno} Phase {phase_name}: {algo.name}"
                 )
                 # atm only one stage
                 # expensive
@@ -231,6 +166,7 @@ class DefaultSolver(Solver):
         print_context: F.Parameters.ReprContext | None,
         g: graph.GraphView,
         tg: fbrk.TypeGraph,
+        relevant: list[F.Parameters.is_parameter] | None = None,
     ):
         # TODO consider not getting full graph of node gs, but scope to only relevant
 
@@ -246,7 +182,10 @@ class DefaultSolver(Solver):
             return DefaultSolver.SolverState(
                 data=DefaultSolver.IterationData(
                     mutation_map=MutationMap.bootstrap(
-                        tg, g, print_context=print_context
+                        tg=tg,
+                        g=g,
+                        print_context=print_context,
+                        relevant=relevant,
                     )
                 ),
             )
@@ -361,26 +300,32 @@ class DefaultSolver(Solver):
             ),
         )
 
+    @override
     @times_out(TIMEOUT)
-    def simplify_symbolically(
+    def simplify(
         self,
-        tg: fbrk.TypeGraph,
-        g: graph.GraphView,
+        g: graph.GraphView | fbrk.TypeGraph,
+        tg: fbrk.TypeGraph | graph.GraphView,
         print_context: F.Parameters.ReprContext | None = None,
         terminal: bool = True,
+        relevant: list[F.Parameters.is_parameter] | None = None,
     ) -> SolverState:
         """
         Args:
         - terminal: if True, result of simplication can't be reused, but simplification
             is more powerful
         """
+        # TODO remove compatibility layer
+        if isinstance(g, fbrk.TypeGraph) and isinstance(tg, graph.GraphView):
+            g, tg = tg, g
+        assert isinstance(g, graph.GraphView) and isinstance(tg, fbrk.TypeGraph)
         timings = Times(name="simplify")
 
         now = time.time()
         if LOG_PICK_SOLVE:
             logger.info("Phase 1 Solving: Symbolic Solving ".ljust(NET_LINE_WIDTH, "="))
 
-        self.state = self._create_or_resume_state(print_context, g, tg)
+        self.state = self._create_or_resume_state(print_context, g, tg, relevant)
 
         if S_LOG:
             self.state.data.mutation_map.print_name_mappings()
@@ -465,7 +410,7 @@ class DefaultSolver(Solver):
         tg = predicate.tg
 
         try:
-            solver_result = self.simplify_symbolically(tg, g, terminal=True)
+            solver_result = self.simplify(tg, g, terminal=True)
         except TimeoutError:
             if not allow_unknown:
                 raise
@@ -527,10 +472,6 @@ class DefaultSolver(Solver):
             predicate.assert_()
         return True
 
-    @override
-    def simplify(self, g: graph.GraphView, tg: fbrk.TypeGraph, terminal: bool = False):
-        self.simplify_symbolically(tg, g, terminal=terminal)
-
     def update_superset_cache(self, *nodes: fabll.Node):
         if not nodes:
             return
@@ -538,7 +479,7 @@ class DefaultSolver(Solver):
         # TODO consider creating new graph view that contains only the nodes
         g = nodes[0].g
         try:
-            self.simplify_symbolically(tg, g, terminal=True)
+            self.simplify(tg, g, terminal=True)
         except TimeoutError:
             if not ALLOW_PARTIAL_STATE:
                 raise
@@ -546,11 +487,16 @@ class DefaultSolver(Solver):
                 raise
 
     def inspect_get_known_supersets(
-        self, value: F.Parameters.is_parameter
+        self,
+        value: F.Parameters.is_parameter,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> F.Literals.is_literal:
         """
         Careful, only use after solver ran!
         """
+        g = g or value.g
+        tg = tg or value.tg
         value_po = value.as_parameter_operatable.get()
 
         is_lit = value_po.try_get_aliased_literal()
@@ -566,7 +512,7 @@ class DefaultSolver(Solver):
 
         ss_lit = value_po.try_get_subset_or_alias_literal()
         if ss_lit is None:
-            ss_lit = value.domain_set()
+            ss_lit = value.domain_set(g=g, tg=tg)
 
         solver_lit = None
         if self.state is not None:
@@ -578,7 +524,7 @@ class DefaultSolver(Solver):
             return ss_lit
 
         return F.Literals.is_literal.op_intersect_intervals(
-            ss_lit, solver_lit, g=value.g, tg=value.tg
+            ss_lit, solver_lit, g=g, tg=tg
         )
 
     @override
@@ -632,7 +578,7 @@ def test_defaultsolver_super_basic():
     P = FT.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
     P.alias_to_single(True)
     solver = DefaultSolver()
-    res = solver.simplify_symbolically(tg, g, terminal=True)
+    res = solver.simplify(tg, g, terminal=True)
     lit = res.data.mutation_map.try_get_literal(P.is_parameter_operatable.get())
     assert lit
     print(lit.pretty_str())
@@ -674,7 +620,7 @@ def test_defaultsolver_basic():
     )
 
     solver = DefaultSolver()
-    res = solver.simplify_symbolically(tg, g, terminal=True)
+    res = solver.simplify(tg, g, terminal=True)
     C_lit = res.data.mutation_map.try_get_literal(
         app.C.get().is_parameter_operatable.get(),
         # TODO should not be needed
