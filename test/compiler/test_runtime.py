@@ -965,7 +965,7 @@ def test_directed_connect_signal_to_resistor():
     assert _check_connected(a, r.unnamed[0].get())
 
 
-@pytest.mark.xfail(reason="TODO: DSL error handling")
+@pytest.mark.skip(reason="Error handling not implemented yet")
 def test_directed_connect_non_bridge():
     with pytest.raises(DslException, match="not bridgeable"):
         build_instance(
