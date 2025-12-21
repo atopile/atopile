@@ -70,9 +70,12 @@ def main():
 
                 # Run pytest for this nodeid
                 # We inject our http adapter plugin
+                # Set terminal width for better debug output formatting
+                os.environ["COLUMNS"] = "120"
                 pytest.main(
                     [
                         nodeid,
+                        "-vv",
                         "-p",
                         "test.runner.plugin",
                         "-q",

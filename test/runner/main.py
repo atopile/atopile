@@ -27,6 +27,7 @@ from typing import Any, Optional, cast
 import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
+from jinja2 import Template
 
 # Ensure we can import from test package
 sys.path.insert(0, os.getcwd())
@@ -542,7 +543,11 @@ tests_total = 0
 workers: dict[int, subprocess.Popen[bytes]] = {}
 
 # Read HTML template from file
-HTML_TEMPLATE = (Path(__file__).parent / "report.html").read_text(encoding="utf-8")
+HTML_TEMPLATE: Template = Template(
+    (Path(__file__).parent / "report.html").read_text(encoding="utf-8"),
+    variable_start_string="[[",
+    variable_end_string="]]",
+)
 
 
 # Helper to extract params from a string
@@ -1176,7 +1181,9 @@ class TestAggregator:
                     f"<strong>Baseline:</strong> {self._baseline.error}</span>"
                 )
 
-            html_ = HTML_TEMPLATE.format(
+            finishing_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            html_ = HTML_TEMPLATE.render(
                 status="Running" if running > 0 or queued > 0 else "Finished",
                 workers_active=workers_active,
                 workers_total=WORKER_COUNT,
@@ -1193,6 +1200,7 @@ class TestAggregator:
                 progress_percent=progress_percent,
                 rows="\n".join(rows),
                 timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                finishing_time=finishing_time,
                 total_duration=total_duration_str,
                 total_summed_duration=format_duration(sum_test_durations),
                 total_memory=f"{total_memory_mb:.2f} MB",
