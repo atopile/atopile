@@ -1443,6 +1443,15 @@ class ASTVisitor:
         lhs = node.get_lhs()
         rhs = node.get_rhs()
 
+        # Validate that all directions in a chain are the same (e.g. a ~> b ~> c)
+        current_direction = node.get_direction()
+        if nested_rhs := rhs.try_cast(t=AST.DirectedConnectStmt):
+            nested_direction = nested_rhs.get_direction()
+            if current_direction != nested_direction:
+                raise DslException(
+                    "Only one type of connection direction per statement allowed"
+                )
+
         lhs_node = fabll.Traits(lhs).get_obj_raw()
         _, lhs_base_path = self._resolve_connectable_with_path(lhs_node)
 
