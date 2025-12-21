@@ -1142,13 +1142,16 @@ class DeclarationStmt(fabll.Node):
         self,
         source_info: SourceInfo,
         field_ref: FieldRef,
-        unit_symbol: str,
+        unit_symbol: str | None,
         unit_source_info: SourceInfo,
     ) -> Self:
         self.source.get().setup(source_info=source_info)
         self.field_ref.get().point(field_ref)
         _add_anon_child(self, field_ref)
-        self.unit_symbol.get().setup(source_info=unit_source_info, symbol=unit_symbol)
+        if unit_symbol is not None:
+            self.unit_symbol.get().setup(
+                source_info=unit_source_info, symbol=unit_symbol
+            )
         return self
 
     def get_field_ref(self) -> FieldRef:

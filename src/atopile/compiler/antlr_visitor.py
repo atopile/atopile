@@ -779,8 +779,8 @@ class ANTLRVisitor(AtoParserVisitor):
         unit = self.visitUnit(ctx.unit()) if ctx.unit() else None
         return number, unit, self._extract_source_info(ctx)
 
-    def visitUnit(self, ctx: AtoParser.UnitContext) -> str:
-        return self.visitName(ctx.name())
+    def visitUnit(self, ctx: AtoParser.UnitContext | None) -> str | None:
+        return None if ctx is None else self.visitName(ctx.name())
 
     def visitDeclaration_stmt(
         self, ctx: AtoParser.Declaration_stmtContext
@@ -829,6 +829,9 @@ class ANTLRVisitor(AtoParserVisitor):
         self, ctx: AtoParser.Bilateral_toleranceContext
     ) -> tuple[int | float, str | None, AST.SourceInfo, AST.SourceInfo | None]:
         match [ctx.unit(), ctx.PERCENT()]:
+            case [None, None]:
+                unit = None
+                unit_source = None
             case [unit_ctx, None]:
                 unit = self.visitUnit(unit_ctx)
                 unit_source = self._extract_source_info(unit_ctx)
