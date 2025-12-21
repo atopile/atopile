@@ -16,7 +16,6 @@ from faebryk.libs.kicad.fileformats import (
 )
 from faebryk.libs.kicad.paths import find_pcbnew
 from faebryk.libs.util import (
-    cast_assert,
     duplicates,
     groupby,
     md_list,
@@ -71,7 +70,7 @@ def load_net_names(tg: fbrk.TypeGraph, raise_duplicates: bool = True) -> set[F.N
     """
 
     net_names: dict[F.Net, str] = {
-        cast_assert(F.Net, net_t.get_net().name): not_none(net_t.get_net().name)
+        fabll.Traits(net_t).get_obj(F.Net): not_none(net_t.get_net().name)
         for net_t in F.KiCadFootprints.has_associated_kicad_pcb_net.bind_typegraph(
             tg
         ).get_instances()
@@ -105,3 +104,40 @@ def check_net_names(tg: fbrk.TypeGraph):
     }
     if net_name_collisions:
         raise UserResourceException(f"Net name collision: {net_name_collisions}")
+
+
+def test_load_net_names():
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+    from faebryk.libs.kicad.fileformats import kicad
+    from faebryk.libs.test.fileformats import PCBFILE
+
+    pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE)
+    kpcb = pcb.kicad_pcb
+    app = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
+    transformer = PCB_Transformer(pcb=kpcb, app=app)
+    module = F.Net.bind_typegraph(tg=tg).create_instance(g=g)
+    nets = kpcb.nets
+
+    # net 0 is reserved for unconnected/nameless nets
+    fabll.Traits.create_and_add_instance_to(
+        node=module, trait=F.KiCadFootprints.has_associated_kicad_pcb_net
+    ).setup(nets[1], transformer)
+
+    trait = module.try_get_trait(F.KiCadFootprints.has_associated_kicad_pcb_net)
+    assert trait is not None
+    assert trait.get_transformer() is transformer
+    retrieved_net = trait.get_net()
+    assert retrieved_net.name == nets[1].name
+    assert retrieved_net.number == nets[1].number
+
+    nets_from_load = load_net_names(tg)
+    nfl = next(iter(nets_from_load))
+    nft_k_pcb_t = nfl.try_get_trait(F.KiCadFootprints.has_associated_kicad_pcb_net)
+    assert nft_k_pcb_t is not None
+    net_from_load = nft_k_pcb_t.get_net()
+    assert net_from_load.name == nets[1].name
+    assert net_from_load.number == nets[1].number
+
+    assert nfl.has_trait(F.has_net_name)
