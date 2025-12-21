@@ -2086,6 +2086,56 @@ class TestTraitStatements:
         assert trait.get_footprint() == "fp.kicad_mod"
         assert trait.get_symbol() == "sym.kicad_sym"
 
+    def test_trait_template_args_numeric_values(self):
+        """Template args constrain trait parameters to expected numeric values."""
+        import faebryk.core.node as fabll
+        import faebryk.library._F as F
+        from test.compiler.conftest import build_instance
+
+        # Create a test trait with numeric parameter
+        class has_numeric_param(fabll.Node):
+            is_trait = fabll.Traits.MakeEdge(
+                fabll.ImplementsTrait.MakeChild().put_on_type()
+            )
+            count = F.Parameters.NumericParameter.MakeChild(
+                unit=F.Units.Dimensionless,
+            )
+
+            @classmethod
+            def MakeChild(  # type: ignore[override]
+                cls, count: int
+            ) -> fabll._ChildField:
+                out = fabll._ChildField(cls)
+                out.add_dependant(
+                    F.Literals.Numbers.MakeChild_ConstrainToSingleton(
+                        param_ref=[out, cls.count],
+                        value=float(count),
+                        unit=F.Units.Dimensionless,
+                    )
+                )
+                return out
+
+            def get_count(self) -> int:
+                return int(self.count.get().force_extract_literal().get_single())
+
+        # Register the trait and build the ato code
+        g, tg, stdlib, result, instance = build_instance(
+            """
+            #pragma experiment("TRAITS")
+            import has_numeric_param
+
+            module MyModule:
+                trait has_numeric_param<count=42>
+            """,
+            root="MyModule",
+            stdlib_extra=[has_numeric_param],
+        )
+
+        part = fabll.Node.bind_instance(instance)
+        trait = part.get_trait(has_numeric_param)
+
+        assert trait.get_count() == 42
+
 
 class TestAssignments:
     """Tests for parameter assignments in ato."""
