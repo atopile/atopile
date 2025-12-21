@@ -138,7 +138,7 @@ class is_ato_block(fabll.Node):
 
     def get_source_dir(self) -> str:
         """Get the source directory path where the .ato file is located."""
-        return self.source_dir.get().force_extract_literal().get_values()[0]
+        return self.source_dir.get().force_extract_literal().get_single()
 
 
 class is_ato_module(fabll.Node):
@@ -394,12 +394,6 @@ class _TypeContextStack:
 
 class AnyAtoBlock(fabll.Node):
     _definition_identifier: ClassVar[str] = "definition"
-    # FIXME: this should likely be removed or updated to use the new MakeChild
-    # For now, we'll pass an empty string as source_dir since this seems to be
-    # a base type
-    # For now, we'll pass an empty string as source_dir since this seems to be
-    #  a base type
-    is_ato_block = fabll.Traits.MakeEdge(is_ato_block.MakeChild(source_dir=""))
 
 
 class ASTVisitor:
@@ -908,6 +902,7 @@ class ASTVisitor:
     ) -> list[AddMakeChildAction | AddMakeLinkAction] | AddMakeChildAction:
         self._scope_stack.add_field(target_path)
 
+        # FIXME: linker should handle this
         # Check if module type is in stdlib or an imported python module
         module_fabll_type = (
             self._stdlib_allowlist.get(new_spec.type_identifier)
@@ -957,62 +952,33 @@ class ASTVisitor:
 
             assert new_spec.type_identifier is not None
 
-            return AddMakeChildAction(
-                target_path=target_path,  # FIXME: this seems wrong
+            return ActionsFactory.new_child_action(
+                target_path=target_path,
+                type_identifier=new_spec.type_identifier,
+                module_type=module_fabll_type,
+                template_args=new_spec.template_args,
                 parent_reference=parent_reference,
                 parent_path=parent_path,
-                child_field=ActionsFactory.child_field(
-                    identifier=target_path.leaf.identifier,
-                    type_identifier=new_spec.type_identifier,
-                    module_type=module_fabll_type,
-                    template_args=new_spec.template_args,
-                ),
                 import_ref=new_spec.symbol.import_ref if new_spec.symbol else None,
             )
 
-        pointer_action = AddMakeChildAction(
-            target_path=target_path,
-            child_field=F.Collections.PointerSequence.MakeChild(),
-            parent_reference=parent_reference,
-            parent_path=parent_path,
+        child_actions, link_actions, element_paths = (
+            ActionsFactory.new_child_array_actions(
+                target_path=target_path,
+                type_identifier=not_none(new_spec.type_identifier),
+                module_type=module_fabll_type,
+                template_args=new_spec.template_args,
+                count=new_spec.count,
+                parent_reference=parent_reference,
+                parent_path=parent_path,
+                import_ref=new_spec.symbol.import_ref if new_spec.symbol else None,
+            )
         )
 
-        element_actions: list[AddMakeChildAction] = []
-        link_actions: list[AddMakeLinkAction] = []
-        for idx in range(new_spec.count):
-            element_path = FieldPath(
-                segments=(
-                    *target_path.segments,
-                    FieldPath.Segment(identifier=str(idx), is_index=True),
-                )
-            )
-
-            element_actions.append(
-                AddMakeChildAction(
-                    target_path=element_path,
-                    child_field=ActionsFactory.child_field(
-                        identifier=element_path.identifiers()[0],
-                        type_identifier=not_none(new_spec.type_identifier),
-                        module_type=module_fabll_type,
-                        template_args=new_spec.template_args,
-                    ),
-                    parent_reference=pointer_action.parent_reference,
-                    parent_path=pointer_action.parent_path,
-                    import_ref=new_spec.symbol.import_ref if new_spec.symbol else None,
-                )
-            )
-
-            link_actions.append(
-                AddMakeLinkAction(
-                    lhs_path=list(target_path.identifiers()),
-                    rhs_path=list(element_path.identifiers()),
-                    edge=fbrk.EdgePointer.build(identifier="e", order=idx),
-                )
-            )
-
+        for element_path in element_paths:
             self._scope_stack.add_field(element_path)
 
-        return [pointer_action, *element_actions, *link_actions]
+        return [*child_actions, *link_actions]
 
     def visit_Slice(self, node: AST.Slice) -> tuple[int | None, int | None, int | None]:
         start, stop, step = node.get_values()
@@ -1056,39 +1022,12 @@ class ASTVisitor:
             case ConstraintSpec() as constraint_spec:
                 # FIXME: add constraint type (is, ss) to spec?
                 # FIXME: should be IsSubset unless top of stack is a component
-
-                unique_target_str = str(target_path).replace(".", "_")
-
-                # operand as child of type
-                operand_action = AddMakeChildAction(
-                    target_path=FieldPath(
-                        segments=(
-                            *target_path.segments,
-                            FieldPath.Segment(f"operand_{unique_target_str}"),
-                        )
-                    ),
+                return ActionsFactory.constraint_actions(
+                    target_path=target_path,
+                    constraint_spec=constraint_spec,
                     parent_reference=parent_reference,
                     parent_path=parent_path,
-                    child_field=constraint_spec.operand,
                 )
-
-                # expr linking target param to operand
-                expr_action = AddMakeChildAction(
-                    target_path=FieldPath(
-                        segments=(
-                            *target_path.segments,
-                            FieldPath.Segment(f"constraint_{unique_target_str}"),
-                        )
-                    ),
-                    parent_reference=parent_reference,
-                    parent_path=parent_path,
-                    child_field=F.Expressions.IsSubset.MakeChild(  # TODO: conditional
-                        target_path.to_ref_path(),
-                        [constraint_spec.operand],
-                        assert_=True,
-                    ),
-                )
-                return [operand_action, expr_action]
             case _:
                 raise NotImplementedError(f"Unhandled assignable type: {assignable}")
 

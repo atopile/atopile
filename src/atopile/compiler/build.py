@@ -418,9 +418,9 @@ def build_source(
     import_path: str | None = None,
     stdlib_allowlist: AllowListT | None = None,
 ) -> BuildFileResult:
-    import uuid
-
     if import_path is None:
+        import uuid
+
         import_path = f"__source_{uuid.uuid4().hex[:8]}__.ato"
 
     return _build_from_ctx(

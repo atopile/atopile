@@ -360,6 +360,139 @@ class ActionsFactory:
             EdgePointer.traverse(),
         ]
 
+    @staticmethod
+    def new_child_action(
+        target_path: "FieldPath",
+        type_identifier: str,
+        module_type: type[fabll.Node] | None,
+        template_args: dict[str, str | bool | float] | None,
+        parent_reference: graph.BoundNode | None,
+        parent_path: "FieldPath | None",
+        import_ref: "ImportRef | None",
+    ) -> "AddMakeChildAction":
+        """Create a single AddMakeChildAction for a new child instantiation."""
+        return AddMakeChildAction(
+            target_path=target_path,
+            parent_reference=parent_reference,
+            parent_path=parent_path,
+            child_field=ActionsFactory.child_field(
+                identifier=target_path.leaf.identifier,
+                type_identifier=type_identifier,
+                module_type=module_type,
+                template_args=template_args,
+            ),
+            import_ref=import_ref,
+        )
+
+    @staticmethod
+    def new_child_array_actions(
+        target_path: "FieldPath",
+        type_identifier: str,
+        module_type: type[fabll.Node] | None,
+        template_args: dict[str, str | bool | float] | None,
+        count: int,
+        parent_reference: graph.BoundNode | None,
+        parent_path: "FieldPath | None",
+        import_ref: "ImportRef | None",
+    ) -> "tuple[list[AddMakeChildAction], list[AddMakeLinkAction], list[FieldPath]]":
+        """
+        Create actions for a new child array instantiation.
+
+        Returns a tuple of:
+        - Child actions (pointer + elements)
+        - Link actions (pointer-to-element edges)
+        - Element paths (for scope registration by caller)
+        """
+        pointer_action = AddMakeChildAction(
+            target_path=target_path,
+            child_field=F.Collections.PointerSequence.MakeChild(),
+            parent_reference=parent_reference,
+            parent_path=parent_path,
+        )
+
+        element_actions: list[AddMakeChildAction] = []
+        link_actions: list[AddMakeLinkAction] = []
+        element_paths: list[FieldPath] = []
+
+        for idx in range(count):
+            element_path = FieldPath(
+                segments=(
+                    *target_path.segments,
+                    FieldPath.Segment(identifier=str(idx), is_index=True),
+                )
+            )
+            element_paths.append(element_path)
+
+            element_actions.append(
+                AddMakeChildAction(
+                    target_path=element_path,
+                    child_field=ActionsFactory.child_field(
+                        identifier=element_path.identifiers()[0],
+                        type_identifier=type_identifier,
+                        module_type=module_type,
+                        template_args=template_args,
+                    ),
+                    parent_reference=parent_reference,
+                    parent_path=parent_path,
+                    import_ref=import_ref,
+                )
+            )
+
+            link_actions.append(
+                AddMakeLinkAction(
+                    lhs_path=list(target_path.identifiers()),
+                    rhs_path=list(element_path.identifiers()),
+                    edge=fbrk.EdgePointer.build(identifier="e", order=idx),
+                )
+            )
+
+        return [pointer_action, *element_actions], link_actions, element_paths
+
+    @staticmethod
+    def constraint_actions(
+        target_path: "FieldPath",
+        constraint_spec: "ConstraintSpec",
+        parent_reference: graph.BoundNode | None,
+        parent_path: "FieldPath | None",
+    ) -> "list[AddMakeChildAction]":
+        """Create actions for a constraint assignment (operand + expression)."""
+        # FIXME: add constraint type (is, ss) to spec?
+        # FIXME: should be IsSubset unless top of stack is a component
+        unique_target_str = str(target_path).replace(".", "_")
+
+        # Operand as child of type
+        operand_action = AddMakeChildAction(
+            target_path=FieldPath(
+                segments=(
+                    *target_path.segments,
+                    FieldPath.Segment(f"operand_{unique_target_str}"),
+                )
+            ),
+            parent_reference=parent_reference,
+            parent_path=parent_path,
+            child_field=constraint_spec.operand,
+        )
+
+        # Expression linking target param to operand
+        expr_action = AddMakeChildAction(
+            target_path=FieldPath(
+                segments=(
+                    *target_path.segments,
+                    FieldPath.Segment(f"constraint_{unique_target_str}"),
+                )
+            ),
+            parent_reference=parent_reference,
+            parent_path=parent_path,
+            # TODO: conditional on constraint type
+            child_field=F.Expressions.IsSubset.MakeChild(
+                target_path.to_ref_path(),
+                [constraint_spec.operand],
+                assert_=True,
+            ),
+        )
+
+        return [operand_action, expr_action]
+
 
 @dataclass(frozen=True)
 class AddMakeChildAction:
