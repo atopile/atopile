@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
     "A,B,rs,pick",
     [
         # (10, 7, 1000, False),
-        (1, 1, 5, True),
+        (1, 1, 5, False),
     ],
 )
 def test_performance_parameters(A: int, B: int, rs: int, pick: bool):
