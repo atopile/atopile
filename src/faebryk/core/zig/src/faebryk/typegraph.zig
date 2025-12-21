@@ -2233,8 +2233,8 @@ test "resolve path through trait and pointer edges" {
     _ = EdgeComposition.add_child(can_bridge_instance, out_ptr.node, "out_");
 
     // Point the Pointer nodes to p1 and p2
-    _ = EdgePointer.point_to(in_ptr, p1_instance.node, null);
-    _ = EdgePointer.point_to(out_ptr, p2_instance.node, null);
+    _ = EdgePointer.point_to(in_ptr, p1_instance.node, null, null);
+    _ = EdgePointer.point_to(out_ptr, p2_instance.node, null, null);
 
     // 5. Create reference path using EdgeTraversal:
     //    can_bridge (Trait edge) -> in_ (Composition) -> dereference (Pointer)
@@ -2291,8 +2291,8 @@ test "resolve path through trait and pointer edges" {
     const child_out_ptr = try tg.instantiate_node(PointerType);
     _ = EdgeComposition.add_child(child_can_bridge, child_in_ptr.node, "in_");
     _ = EdgeComposition.add_child(child_can_bridge, child_out_ptr.node, "out_");
-    _ = EdgePointer.point_to(child_in_ptr, child_p1.node, null);
-    _ = EdgePointer.point_to(child_out_ptr, child_p2.node, null);
+    _ = EdgePointer.point_to(child_in_ptr, child_p1.node, null, null);
+    _ = EdgePointer.point_to(child_out_ptr, child_p2.node, null, null);
 
     std.debug.print("\nMixed path test:\n", .{});
     std.debug.print("TopModule instance: {d}\n", .{top_instance.node.get_uuid()});
