@@ -2055,6 +2055,25 @@ test "typegraph iterators and mount chains" {
     };
     _ = try tg.add_make_link(top, base_reference, extra_reference, link_attrs);
 
+    const element0_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("0")});
+    const element1_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("1")});
+    const ptr_link_attrs_0 = EdgeCreationAttributes{
+        .edge_type = EdgePointer.tid,
+        .directional = true,
+        .name = null,
+        .order = 0,
+        .dynamic = graph.DynamicAttributes.init_on_stack(),
+    };
+    _ = try tg.add_make_link(top, container_reference, element0_reference, ptr_link_attrs_0);
+    const ptr_link_attrs_1 = EdgeCreationAttributes{
+        .edge_type = EdgePointer.tid,
+        .directional = true,
+        .name = null,
+        .order = 1,
+        .dynamic = graph.DynamicAttributes.init_on_stack(),
+    };
+    _ = try tg.add_make_link(top, container_reference, element1_reference, ptr_link_attrs_1);
+
     const children = tg.collect_make_children(a, top);
     defer a.free(children);
     try std.testing.expectEqual(@as(usize, 5), children.len);
@@ -2086,14 +2105,22 @@ test "typegraph iterators and mount chains" {
         }
         a.free(detailed_links);
     }
-    try std.testing.expectEqual(@as(usize, 1), detailed_links.len);
-    try std.testing.expectEqual(@as(usize, 1), detailed_links[0].lhs_path.len);
-    try std.testing.expectEqualStrings("base", detailed_links[0].lhs_path[0]);
-    try std.testing.expectEqual(@as(usize, 1), detailed_links[0].rhs_path.len);
-    try std.testing.expectEqualStrings("extra", detailed_links[0].rhs_path[0]);
+    try std.testing.expectEqual(@as(usize, 3), detailed_links.len);
 
-    const lhs = EdgeComposition.get_child_by_identifier(detailed_links[0].make_link, "lhs").?;
-    const rhs = EdgeComposition.get_child_by_identifier(detailed_links[0].make_link, "rhs").?;
+    // Find the base->extra link for specific validation
+    var base_extra_link: ?TypeGraph.MakeLinkInfo = null;
+    for (detailed_links) |info| {
+        if (info.lhs_path.len == 1 and std.mem.eql(u8, info.lhs_path[0], "base")) {
+            base_extra_link = info;
+            break;
+        }
+    }
+    try std.testing.expect(base_extra_link != null);
+    try std.testing.expectEqual(@as(usize, 1), base_extra_link.?.rhs_path.len);
+    try std.testing.expectEqualStrings("extra", base_extra_link.?.rhs_path[0]);
+
+    const lhs = EdgeComposition.get_child_by_identifier(base_extra_link.?.make_link, "lhs").?;
+    const rhs = EdgeComposition.get_child_by_identifier(base_extra_link.?.make_link, "rhs").?;
     try std.testing.expect(lhs.node.is_same(base_reference.node));
     try std.testing.expect(rhs.node.is_same(extra_reference.node));
 
