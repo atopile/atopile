@@ -17,8 +17,10 @@ logger = logging.getLogger(__name__)
 @pytest.mark.parametrize(
     "A,B,rs,pick",
     [
-        # (10, 7, 1000, False),
-        (1, 1, 5, False),
+        (10, 7, 1000, False),
+        # (1, 1, 5000, False),
+        # (1, 1, 1, False),
+        (1, 1, 2, True),
     ],
 )
 def test_performance_parameters(A: int, B: int, rs: int, pick: bool):
@@ -81,26 +83,27 @@ def test_performance_parameters(A: int, B: int, rs: int, pick: bool):
         bound_numbers.get_or_create_type()
         bound_ohm.get_or_create_type()
 
+    with timings.context("bind dimless"):
+        dimless = F.Units.Dimensionless.bind_typegraph(tg)
+
+    with timings.context("get_or_create_dimless"):
+        dimless.get_or_create_type()
+
     instances = {}
     for n in [app_type, bound_expression, bound_parameter, bound_resistor]:
         tid = n.t._type_identifier()
         with timings.context(f"create_instance -- {tid}"):
             instances[tid] = n.create_instance(g=g)
+        if tid == "NumericParameter":
+            dimless_inst = dimless.create_instance(g=g)
+            with timings.context(f"setup -- {tid}"):
+                instances[tid].setup(is_unit=dimless_inst.is_unit.get())
 
-    instances["NumericParameter"].setup(
-        is_unit=F.Units.Dimensionless.bind_typegraph(tg)
-        .create_instance(g=g)
-        .is_unit.get()
-    )
     app = instances["App"]
 
     g_copy = graph.GraphView.create()
     g_copy2 = graph.GraphView.create()
     timings.add_seperator()
-    with timings.context("bind dimless"):
-        dimless = F.Units.Dimensionless.bind_typegraph(tg)
-    with timings.context("get_or_create_dimless"):
-        dimless.get_or_create_type()
     dimless_instance = dimless.create_instance(g=g)
     with timings.context("create_instance_dimless"):
         dimless_instance2 = F.Units.Dimensionless.bind_typegraph(tg).create_instance(
@@ -144,30 +147,27 @@ def test_performance_parameters(A: int, B: int, rs: int, pick: bool):
         ]
         numbers_as_op = [n.can_be_operand.get() for n in numbers]
     with timings.context("constrain_resistors"):
-        for r, n in zip(resistors_as_op[-1:], numbers_as_op):
-            # for r, n in zip(resistors_as_op, numbers_as_op):
+        for r, n in zip(resistors_as_op, numbers_as_op):
             F.Expressions.IsSubset.from_operands(
                 r,
                 n,
                 assert_=True,
             )
     with timings.context("constrain_resistors_subset"):
-        for r1, r2 in pairwise(resistors_as_op):
+        for r1, r2 in pairwise(resistors_as_op[len(resistors_as_op) // 2 :]):
             F.Expressions.GreaterOrEqual.from_operands(
-                r1,
                 F.Expressions.Add.c(
+                    r1,
                     r2,
-                    F.Literals.Numbers.bind_typegraph(tg)
-                    .create_instance(g=g)
-                    .setup_from_center_rel(
-                        100 * 1000,
-                        0.5,
-                        F.Units.Ohm.bind_typegraph(tg)
-                        .create_instance(g=g)
-                        .is_unit.get(),
-                    )
-                    .can_be_operand.get(),
                 ),
+                F.Literals.Numbers.bind_typegraph(tg)
+                .create_instance(g=g)
+                .setup_from_center_rel(
+                    1,
+                    0.1,
+                    F.Units.Ohm.bind_typegraph(tg).create_instance(g=g).is_unit.get(),
+                )
+                .can_be_operand.get(),
                 assert_=True,
             )
 
@@ -283,7 +283,7 @@ def test_performance_parameters(A: int, B: int, rs: int, pick: bool):
 
     if pick:
         solver = DefaultSolver()
-        with timings.as_global("pick", context=True):
+        with timings.as_global("pick_topologically", context=True):
             pick_topologically(pick_tree, solver)
             # solver.simplify(tg, g, terminal=True)
 

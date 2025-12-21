@@ -116,7 +116,16 @@ class Field:
         global _anon_counter
         if identifier is None:
             _anon_counter += 1
-            identifier = f"anon{_anon_counter:04x}_{id(self):x}"
+            _t_id = (
+                (
+                    self.nodetype
+                    if isinstance(self.nodetype, str)
+                    else self.nodetype.__name__
+                )
+                if isinstance(self, _ChildField)
+                else f"{id(self):x}"
+            )
+            identifier = f"anon{_anon_counter:04x}_{_t_id}"
         self.identifier = identifier
 
     def get_identifier(self) -> str:
