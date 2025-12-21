@@ -1101,7 +1101,7 @@ class ASTVisitor:
     def visit_AssertStmt(self, node: AST.AssertStmt) -> AddMakeChildAction:
         comparison_expression = node.get_comparison()
         comparison_clauses = comparison_expression.get_comparison_clauses()
-        root_comparison_clause = comparison_clauses[0]
+        (root_comparison_clause, *_) = comparison_clauses
 
         lhs_refpath = self.to_expression_tree(comparison_expression.get_lhs())
         rhs_refpath = self.to_expression_tree(root_comparison_clause.get_rhs())
@@ -1173,22 +1173,36 @@ class ASTVisitor:
             case [None, None]:
                 unit_t = F.Units.Dimensionless
             case [None, _]:
-                unit_t = F.Units.decode_symbol(self._graph, self._tg, end_unit_symbol)
-            case [_, None]:
-                unit_t = F.Units.decode_symbol(self._graph, self._tg, start_unit_symbol)
-            case [_, _] if start_unit_symbol != end_unit_symbol:
-                unit_t = F.Units.decode_symbol(self._graph, self._tg, start_unit_symbol)
-                end_unit_t = F.Units.decode_symbol(
-                    self._graph, self._tg, end_unit_symbol
+                unit_t = F.Units.decode_symbol(
+                    self._graph, self._tg, not_none(end_unit_symbol)
                 )
-                if not unit_t.is_commensurable_with(end_unit_t):
+            case [_, None]:
+                unit_t = F.Units.decode_symbol(
+                    self._graph, self._tg, not_none(start_unit_symbol)
+                )
+            case [_, _] if start_unit_symbol != end_unit_symbol:
+                unit_t = F.Units.decode_symbol(
+                    self._graph, self._tg, not_none(start_unit_symbol)
+                )
+                end_unit_t = F.Units.decode_symbol(
+                    self._graph, self._tg, not_none(end_unit_symbol)
+                )
+
+                unit_info = F.Units.extract_unit_info(unit_t)
+                end_unit_info = F.Units.extract_unit_info(end_unit_t)
+                if not unit_info.is_commensurable_with(end_unit_info):
                     raise DslException(
                         "Bounded quantity start and end units must be commensurable"
                     )
-                scale, offset = end_unit_t.get_conversion_to(unit_t)
-                end_value = end_value * scale + offset
+                end_value = end_unit_info.convert_value(end_value, unit_info)
             case [_, _]:
-                unit_t = F.Units.decode_symbol(self._graph, self._tg, start_unit_symbol)
+                unit_t = F.Units.decode_symbol(
+                    self._graph, self._tg, not_none(start_unit_symbol)
+                )
+            case _:
+                raise CompilerException(
+                    "Unexpected bounded quantity start and end units"
+                )
 
         operand = F.Literals.Numbers.MakeChild(
             min=start_value, max=end_value, unit=unit_t
@@ -1216,20 +1230,20 @@ class ASTVisitor:
                 unit_t = F.Units.Dimensionless
             case [_, F.Units.PERCENT_SYMBOL]:
                 rel = True
-                unit_t = _decode_symbol(quantity_unit_symbol)
+                unit_t = _decode_symbol(not_none(quantity_unit_symbol))
             case [_, None]:
                 rel = False
-                unit_t = _decode_symbol(quantity_unit_symbol)
+                unit_t = _decode_symbol(not_none(quantity_unit_symbol))
             case [None, _]:
                 rel = False
-                unit_t = _decode_symbol(tol_unit_symbol)
+                unit_t = _decode_symbol(not_none(tol_unit_symbol))
             case [_, _] if quantity_unit_symbol == tol_unit_symbol:
                 rel = False
-                unit_t = _decode_symbol(quantity_unit_symbol)
+                unit_t = _decode_symbol(not_none(quantity_unit_symbol))
             case [_, _]:
                 rel = False
-                unit_t = _decode_symbol(quantity_unit_symbol)
-                tol_unit_t = _decode_symbol(tol_unit_symbol)
+                unit_t = _decode_symbol(not_none(quantity_unit_symbol))
+                tol_unit_t = _decode_symbol(not_none(tol_unit_symbol))
 
                 q_info = F.Units.extract_unit_info(unit_t)
                 tol_info = F.Units.extract_unit_info(tol_unit_t)
@@ -1404,14 +1418,12 @@ class ASTVisitor:
 
     def visit_DeclarationStmt(self, node: AST.DeclarationStmt):
         unit_symbol = node.unit_symbol.get().symbol.get().get_single()
-        unit_child_field = self._get_unit_fabll_type(unit_symbol)
+        unit_t = F.Units.decode_symbol(self._graph, self._tg, not_none(unit_symbol))
         target_path = self.visit_FieldRef(node.get_field_ref())
         return ActionsFactory.parameter_actions(
             target_path=target_path,
             param_spec=ParameterSpec(
-                param_child=F.Parameters.NumericParameter.MakeChild(
-                    unit=unit_child_field
-                ),
+                param_child=F.Parameters.NumericParameter.MakeChild(unit=unit_t),
                 operand=None,
             ),
             parent_reference=None,

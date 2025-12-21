@@ -424,7 +424,7 @@ class ComparisonExpression(fabll.Node):
     def get_lhs(self) -> is_arithmetic:
         return self.lhs.get().deref().get_trait(is_arithmetic)
 
-    def get_comparison_clauses(self) -> Iterable[ComparisonClause]:
+    def get_comparison_clauses(self) -> list[ComparisonClause]:
         return [
             clause.cast(t=ComparisonClause, check=True)
             for clause in self.rhs_clauses.get().as_list()
