@@ -1623,7 +1623,10 @@ def test_slice_for_loop():
 
 
 def test_slice_non_list():
-    with pytest.raises(DslException, match="[Cc]annot iterate over type"):
+    with pytest.raises(
+        DslException,
+        match="Cannot iterate over `r_single`: expected a sequence, got `Resistor`",
+    ):
         build_instance(
             """
             #pragma experiment("FOR_LOOP")
@@ -1669,17 +1672,18 @@ def test_slice_bigger_start_than_end():
     assert "App" in result.state.type_roots
 
     resistors = _get_child(app_instance, "resistors")
-    assert isinstance(resistors, list)
-    for r_node in resistors[3:1]:
-        r = F.Resistor.bind_instance(r_node)
+    rs = F.Collections.PointerSequence.bind_instance(cast_assert(BoundNode, resistors))
+    resistor_list = rs.as_list()
+    assert isinstance(resistor_list, list)
+    for r_node in resistor_list[3:1]:
         assert (
             E.lit_op_single((100, E.U.kohm))
             .as_literal.force_get()
-            .equals(r.resistance.get().force_extract_literal())
+            .equals(r_node.cast(F.Resistor).resistance.get().force_extract_literal())
         )
 
-    for r_node in set(resistors) - set(resistors[3:1]):
-        r = F.Resistor.bind_instance(r_node)
+    for r_node in set(resistor_list) - set(resistor_list[3:1]):
+        r = r_node.cast(F.Resistor)
         assert r.resistance.get().try_extract_aliased_literal() is None
 
 
@@ -1851,7 +1855,10 @@ def test_trait_template_enum():
 
 
 def test_trait_template_enum_invalid():
-    with pytest.raises(DslException):
+    with pytest.raises(
+        DslException,
+        match="Invalid template arguments for has_package_requirements: 'type' object is not iterable",  # noqa E501
+    ):
         build_instance(
             """
             #pragma experiment("TRAITS")
