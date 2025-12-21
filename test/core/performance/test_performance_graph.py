@@ -1,7 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from itertools import pairwise
 import logging
 from typing import cast
 
@@ -21,7 +20,7 @@ logger = logging.getLogger(__name__)
         (1, 1, 5, True),
     ],
 )
-def test_performance_parameters(A: int = 1, B: int = 1, rs: int = 1, pick: bool = True):
+def test_performance_parameters(A: int, B: int, rs: int, pick: bool):
     timings = Times()
 
     assert B > 0
@@ -301,5 +300,4 @@ if __name__ == "__main__":
     from faebryk.libs.logging import setup_basic_logging
 
     setup_basic_logging()
-
     typer.run(test_performance_parameters)
