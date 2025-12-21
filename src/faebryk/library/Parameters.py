@@ -1334,7 +1334,7 @@ def test_compact_repr():
     expr4str_w_lit_suffix = expr4_po.compact_repr(context)
     assert (
         expr4str_w_lit_suffix
-        == "¬C ∧ ((((A[V]{S|{0.0..∞}V} + B[V]{S|{0.0..∞}V}) + 5.0V) * 10.0) ≥ 10.0V)"
+        == "¬C ∧ ((((A[V]{S|{ℝ+}V} + B[V]{S|{ℝ+}V}) + 5.0V) * 10.0) ≥ 10.0V)"
     )
 
     # Helper to create dimensionless numeric parameters
@@ -1360,14 +1360,14 @@ def test_compact_repr():
     pZ_repr = pZ.is_parameter.get().compact_repr(context, no_lit_suffix=True)
     assert pZ_repr == "Z"
     pZ_repr_w_lit_suffix = pZ.is_parameter.get().compact_repr(context)
-    assert pZ_repr_w_lit_suffix == "Z{S|{0.0..∞}}"
+    assert pZ_repr_w_lit_suffix == "Z{S|{ℝ+}}"
 
     # Next should wrap to lowercase 'a'
     pa = make_param()
     pa_repr = pa.is_parameter.get().compact_repr(context, no_lit_suffix=True)
     assert pa_repr == "a"
     pa_repr_w_lit_suffix = pa.is_parameter.get().compact_repr(context)
-    assert pa_repr_w_lit_suffix == "a{S|{0.0..∞}}"
+    assert pa_repr_w_lit_suffix == "a{S|{ℝ+}}"
 
     # Create parameters b through z (ord("z") - ord("a") = 25)
     manyps2 = times(ord("z") - ord("a"), make_param)
@@ -1382,13 +1382,13 @@ def test_compact_repr():
     palpha_repr = palpha.is_parameter.get().compact_repr(context, no_lit_suffix=True)
     assert palpha_repr == "α"
     palpha_repr_w_lit_suffix = palpha.is_parameter.get().compact_repr(context)
-    assert palpha_repr_w_lit_suffix == "α{S|{0.0..∞}}"
+    assert palpha_repr_w_lit_suffix == "α{S|{ℝ+}}"
 
     pbeta = make_param()
     pbeta_repr = pbeta.is_parameter.get().compact_repr(context, no_lit_suffix=True)
     assert pbeta_repr == "β"
     pbeta_repr_w_lit_suffix = pbeta.is_parameter.get().compact_repr(context)
-    assert pbeta_repr_w_lit_suffix == "β{S|{0.0..∞}}"
+    assert pbeta_repr_w_lit_suffix == "β{S|{ℝ+}}"
 
     # Create parameters γ through ω (ord("ω") - ord("β") = 23)
     manyps3 = times(ord("ω") - ord("β"), make_param)
@@ -1403,7 +1403,7 @@ def test_compact_repr():
     pAA_repr = pAA.is_parameter.get().compact_repr(context, no_lit_suffix=True)
     assert pAA_repr == "A₁"
     pAA_repr_w_lit_suffix = pAA.is_parameter.get().compact_repr(context)
-    assert pAA_repr_w_lit_suffix == "A₁{S|{0.0..∞}}"
+    assert pAA_repr_w_lit_suffix == "A₁{S|{ℝ+}}"
 
 
 @pytest.mark.xfail(reason="TODO is_congruent_to not implemeneted yet")
