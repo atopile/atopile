@@ -94,6 +94,58 @@ class TestStdlibRegistry:
             registry.get("NotARealType")
 
 
+class FabllTypeImportError(Exception):
+    """Base class for fabll.Node import errors."""
+
+    pass
+
+
+class FabllTypeFileNotFoundError(FabllTypeImportError):
+    pass
+
+
+class FabllTypeSymbolNotFoundError(FabllTypeImportError):
+    pass
+
+
+class FabllTypeNotATypeError(FabllTypeImportError):
+    pass
+
+
+class FabllTypeNotNodeSubclassError(FabllTypeImportError):
+    pass
+
+
+def import_fabll_type(path: Path, symbol: str) -> type[fabll.Node]:
+    """
+    Import a fabll.Node subclass from a Python file.
+
+    Raises FabllTypeImportError subclasses on failure:
+    - FabllTypeFileNotFoundError: file doesn't exist
+    - FabllTypeSymbolNotFoundError: symbol not found in module
+    - FabllTypeNotATypeError: symbol is not a type
+    - FabllTypeNotNodeSubclassError: type is not a fabll.Node subclass
+    """
+    try:
+        obj = import_from_path(path, symbol)
+    except FileNotFoundError as e:
+        raise FabllTypeFileNotFoundError(f"File not found: {path}") from e
+    except (AttributeError, ImportError) as e:
+        raise FabllTypeSymbolNotFoundError(
+            f"Symbol `{symbol}` not found in `{path}`"
+        ) from e
+
+    if not isinstance(obj, type):
+        raise FabllTypeNotATypeError(f"Symbol `{symbol}` in `{path}` is not a type")
+
+    if not issubclass(obj, fabll.Node):
+        raise FabllTypeNotNodeSubclassError(
+            f"Symbol `{symbol}` in `{path}` is not a fabll.Node subclass"
+        )
+
+    return obj
+
+
 class LinkerException(Exception):
     pass
 
@@ -261,18 +313,11 @@ class Linker:
 
         if source_path.suffix == ".py":
             try:
-                obj = import_from_path(source_path, import_ref.name)
-            except (AttributeError, ImportError) as e:
-                raise UndefinedSymbolError(
-                    f"Symbol `{import_ref.name}` not found in `{source_path}`"
-                ) from e
+                node_t = import_fabll_type(source_path, import_ref.name)
+            except FabllTypeImportError as e:
+                raise UndefinedSymbolError(str(e)) from e
 
-            if not isinstance(obj, type) or not issubclass(obj, fabll.Node):
-                raise UndefinedSymbolError(
-                    f"Symbol `{import_ref.name}` in `{source_path}` is not a fabll.Node"
-                )
-
-            type_node = obj.bind_typegraph(self._tg).get_or_create_type()
+            type_node = node_t.bind_typegraph(self._tg).get_or_create_type()
             if source_path not in self._linked_modules:
                 self._linked_modules[source_path] = {}
             self._linked_modules[source_path][import_ref.name] = type_node

@@ -35,32 +35,35 @@ def init_app() -> "fabll.Node":
 
 def _init_python_app(*, g: "graph.GraphView", tg: "fbrk.TypeGraph") -> "fabll.Node":
     """Initialize a specific .py build."""
-
     from atopile import errors
-    from faebryk.libs.util import import_from_path
+    from atopile.compiler.build import (
+        FabllTypeFileNotFoundError,
+        FabllTypeNotATypeError,
+        FabllTypeNotNodeSubclassError,
+        FabllTypeSymbolNotFoundError,
+        import_fabll_type,
+    )
 
     try:
-        app_class = import_from_path(
+        app_class = import_fabll_type(
             config.build.entry_file_path, config.build.entry_section
         )
-    except FileNotFoundError as e:
+    except FabllTypeFileNotFoundError as e:
         raise errors.UserFileNotFoundError(
             f"Cannot find build entry {config.build.address}"
         ) from e
-    except Exception as e:
+    except FabllTypeSymbolNotFoundError as e:
         raise errors.UserPythonModuleError(
             f"Cannot import build entry {config.build.address}"
         ) from e
-
-    if not isinstance(app_class, type):
+    except FabllTypeNotATypeError as e:
         raise errors.UserPythonLoadError(
             f"Build entry {config.build.address} is not a module we can instantiate"
-        )
-    # check app_class is direct subclass of fabll.Node
-    if not issubclass(app_class, fabll.Node):
+        ) from e
+    except FabllTypeNotNodeSubclassError as e:
         raise errors.UserPythonConstructionError(
             f"Build entry {config.build.address} is not a subclass of fabll.Node"
-        )
+        ) from e
 
     try:
         app = app_class.bind_typegraph(tg=tg).create_instance(g=g)
