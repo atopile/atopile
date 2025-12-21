@@ -1297,10 +1297,7 @@ def test_compact_repr():
     exprstr = expr_po.compact_repr(context, no_lit_suffix=True)
     assert exprstr == "((A[V] + B[V]) + 5.0V) * 10.0"
     exprstr_w_lit_suffix = expr_po.compact_repr(context)
-    assert (
-        exprstr_w_lit_suffix
-        == "((A[V]{S|{0.0..∞}V} + B[V]{S|{0.0..∞}V}) + 5.0V) * 10.0"
-    )
+    assert exprstr_w_lit_suffix == "((A[V]{S|{ℝ+}V} + B[V]{S|{ℝ+}V}) + 5.0V) * 10.0"
 
     # Test p2 + p1 (order matters in repr context - p2 was already assigned 'B')
     expr2 = Add.c(p2_op, p1_op)
@@ -1308,7 +1305,7 @@ def test_compact_repr():
     expr2str = expr2_po.compact_repr(context, no_lit_suffix=True)
     assert expr2str == "B[V] + A[V]"
     expr2str_w_lit_suffix = expr2_po.compact_repr(context)
-    assert expr2str_w_lit_suffix == "B[V]{S|{0.0..∞}V} + A[V]{S|{0.0..∞}V}"
+    assert expr2str_w_lit_suffix == "B[V]{S|{ℝ+}V} + A[V]{S|{ℝ+}V}"
 
     # Create a boolean parameter (p3 will be 'C')
     p3 = BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
@@ -1660,7 +1657,7 @@ def test_can_be_operand_pretty_print():
     assert singleton.can_be_operand.get().pretty() == "5.0Ω"
     assert discrete_set.can_be_operand.get().pretty() == "{1.0, 2.0, 3.0, 4.0}Ω"
     assert continuous_set.can_be_operand.get().pretty() == "{5.0..10.0}Ω"
-    assert inf_set.can_be_operand.get().pretty() == "{-∞..∞}Ω"
+    assert inf_set.can_be_operand.get().pretty() == "{ℝ}Ω"
     assert continuous_set_rel.can_be_operand.get().pretty() == "{5.0±0.5%}Ω"
     assert disjoint_union.can_be_operand.get().pretty() == "{5.0..10.0, 15.0..20.0}Ω"
 
