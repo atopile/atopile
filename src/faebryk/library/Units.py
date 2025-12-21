@@ -67,7 +67,9 @@ class UnitException(Exception): ...
 
 
 class UnitsNotCommensurableError(UnitException):
-    def __init__(self, message: str, incommensurable_items: Sequence[fabll.NodeT]):
+    def __init__(
+        self, message: str, incommensurable_items: Sequence[fabll.NodeT] | None = None
+    ):
         self.message = message
         self.incommensurable_items = incommensurable_items
 
@@ -137,23 +139,41 @@ class BasisVector(DataClassJsonMixin):
     def scalar_multiply(self, scalar: int) -> "BasisVector":
         return self._scalar_op(lambda x: x * scalar)
 
-    @staticmethod
-    def op_power(base: "UnitInfoT", exponent: int) -> "UnitInfoT":
-        v, m, o = base
-        if o != 0.0:
+
+@dataclass(frozen=True)
+class UnitInfo:
+    basis_vector: BasisVector
+    multiplier: float
+    offset: float
+
+    def op_power(self, exponent: int) -> "UnitInfo":
+        return UnitInfo(
+            basis_vector=self.basis_vector.scalar_multiply(exponent),
+            multiplier=self.multiplier**exponent,
+            offset=self.offset,
+        )
+
+    def op_multiply(self, other: "UnitInfo") -> "UnitInfo":
+        if self.offset != 0.0 or other.offset != 0.0:
             raise UnitExpressionError("Cannot use unit expression with non-zero offset")
-        return (v.scalar_multiply(exponent), m**exponent, o)
 
-    @staticmethod
-    def op_multiply(a: "UnitInfoT", b: "UnitInfoT") -> "UnitInfoT":
-        va, ma, oa = a
-        vb, mb, ob = b
-        if oa != 0.0 or ob != 0.0:
-            raise UnitExpressionError("Cannot use unit expression with non-zero offset")
-        return (va.add(vb), ma * mb, oa + ob)
+        return UnitInfo(
+            basis_vector=self.basis_vector.add(other.basis_vector),
+            multiplier=self.multiplier * other.multiplier,
+            offset=self.offset + other.offset,
+        )
 
+    def is_commensurable_with(self, other: "UnitInfo") -> bool:
+        return self.basis_vector == other.basis_vector
 
-UnitInfoT = tuple[BasisVector, float, float]
+    def convert_value(self, value: float, value_unit_info: "UnitInfo") -> float:
+        if not self.is_commensurable_with(value_unit_info):
+            raise UnitsNotCommensurableError(
+                f"Units {self} and {value_unit_info} are not commensurable"
+            )
+        scale = value_unit_info.multiplier / self.multiplier
+        offset = value_unit_info.offset - self.offset
+        return value * scale + offset
 
 
 class _BasisVector(fabll.Node):
@@ -796,6 +816,9 @@ def decode_symbol(
     rather than searching for instances. Use this when you need to resolve
     symbols before any instances are created.
     """
+    # TODO: caching
+    # TODO: optimisation: pre-compute symbol map; build suffix trie
+    # FIXME: only once per typegraph
     sorted_symbol_map = register_all_units(
         g, tg
     )  # Ensure all unit types are registered)
@@ -826,15 +849,16 @@ def decode_symbol(
             # fabll_unit_type_node = not_none(
             #     fabll_unit_type.bind_typegraph(tg).try_get_type_trait(is_unit_type)
             # ).get_basis_vector()
-            unit_expression = UnitExpressionFactory(
+            unit_expression_t = UnitExpressionFactory(
                 (symbol,), ((fabll_unit_type, 1),), scale_factor, 0.0
             )
 
-            return unit_expression
+            return unit_expression_t
 
     raise UnitNotFoundError(symbol)
 
 
+# TODO: remove?
 def decode_symbol_runtime(
     g: graph.GraphView, tg: fbrk.TypeGraph, symbol: str
 ) -> is_unit:
@@ -946,11 +970,13 @@ class _UnitRegistry(Enum):
     Rpm = auto()
 
 
+PERCENT_SYMBOL = "%"
 DIMENSIONLESS_SYMBOL = "dimensionless"
+
 _UNIT_SYMBOLS: dict[_UnitRegistry, tuple[str, ...]] = {
     # prefereed unit for display comes first (must be valid with prefixes)
     _UnitRegistry.Dimensionless: (DIMENSIONLESS_SYMBOL,),
-    _UnitRegistry.Percent: ("%",),
+    _UnitRegistry.Percent: (PERCENT_SYMBOL,),
     _UnitRegistry.Ppm: ("ppm",),
     _UnitRegistry.Ampere: ("A", "ampere"),
     _UnitRegistry.Second: ("s",),
@@ -1192,14 +1218,17 @@ def UnitExpressionFactory(
     # Derive the basis/multiplier/offset tuple for this expression.
     # Resolve the unit vector to get the composed basis vector, multiplier, and offset
     # from any nested UnitExpressions. Then combine with the user-provided values.
-    basis_vector, inner_multiplier, inner_offset = resolve_unit_vector(unit_vector)
-    total_multiplier = multiplier * inner_multiplier
-    total_offset = offset + inner_offset
+    unit_info = resolve_unit_vector(unit_vector)
 
     ConcreteUnitExpr._add_field(
         "is_unit",
         fabll.Traits.MakeEdge(
-            is_unit.MakeChild(symbols, basis_vector, total_multiplier, total_offset)
+            is_unit.MakeChild(
+                symbols,
+                unit_info.basis_vector,
+                multiplier * unit_info.multiplier,
+                offset + unit_info.offset,
+            )
         ),
     )
 
@@ -1340,20 +1369,15 @@ def resolve_unit_expression(
     return parent
 
 
-def resolve_unit_vector(
-    unit_vector: UnitVectorT,
-) -> UnitInfoT:
-    terms = [
-        BasisVector.op_power(extract_unit_info(unit), exponent)
-        for unit, exponent in unit_vector
-    ]
+def resolve_unit_vector(unit_vector: UnitVectorT) -> UnitInfo:
     return reduce(
-        lambda a, b: BasisVector.op_multiply(a, b),
-        terms,
+        lambda a, b: a.op_multiply(b),
+        [extract_unit_info(unit).op_power(exponent) for unit, exponent in unit_vector],
     )
 
 
-def extract_unit_info(unit_type: type[fabll.Node]) -> UnitInfoT:
+# FIXME: refactor
+def extract_unit_info(unit_type: type[fabll.Node]) -> UnitInfo:
     # Handle UnitExpression types (have _unit_vector_arg with underscore prefix)
     # These need to be recursively resolved since they compose other units
     if hasattr(unit_type, "_unit_vector_arg"):
@@ -1361,9 +1385,13 @@ def extract_unit_info(unit_type: type[fabll.Node]) -> UnitInfoT:
         multiplier = getattr(unit_type, "_multiplier_arg")
         offset = getattr(unit_type, "_offset_arg")
         # Recursively resolve the unit vector to get the basis vector
-        basis_vector, inner_multiplier, inner_offset = resolve_unit_vector(unit_vector)
+        unit_info = resolve_unit_vector(unit_vector)
         # Combine multipliers (the inner multiplier is already factored into basis)
-        return (basis_vector, multiplier * inner_multiplier, offset + inner_offset)
+        return UnitInfo(
+            basis_vector=unit_info.basis_vector,
+            multiplier=multiplier * unit_info.multiplier,
+            offset=offset + unit_info.offset,
+        )
 
     # Handle base units (have unit_vector_arg without underscore)
     basis_vector = getattr(
@@ -1375,7 +1403,7 @@ def extract_unit_info(unit_type: type[fabll.Node]) -> UnitInfoT:
     multiplier = getattr(unit_type, "multiplier_arg")
     offset = getattr(unit_type, "offset_arg")
 
-    return (basis_vector, multiplier, offset)
+    return UnitInfo(basis_vector=basis_vector, multiplier=multiplier, offset=offset)
 
 
 # SI base units ------------------------------------------------------------------------
@@ -2406,8 +2434,7 @@ class TestIsUnit(_TestWithContext):
                 raise UnitsNotCommensurableError(
                     "Operands have incommensurable units:\n"
                     + "\n".join(
-                        f"`{item.__repr__()}` ({symbols[i]})"
-                        for i, item in enumerate(items)
+                        f"`{item!r}` ({symbols[i]})" for i, item in enumerate(items)
                     ),
                     incommensurable_items=items,
                 )

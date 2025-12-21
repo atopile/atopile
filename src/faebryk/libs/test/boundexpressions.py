@@ -562,12 +562,40 @@ class BoundExpressions:
     def lit_op_range_from_center_rel(
         self, center: _Quantity, rel: float
     ) -> F.Parameters.can_be_operand:
-        is_unit = self._resolve_unit(center[1])
+        value, unit_t = center
+        is_unit = self._resolve_unit(unit_t)
         return (
             (
                 F.Literals.Numbers.bind_typegraph(tg=self.tg)
                 .create_instance(g=self.g)
-                .setup_from_center_rel(center=center[0], rel=rel, unit=is_unit)
+                .setup_from_center_rel(center=value, rel=rel, unit=is_unit)
+            )
+            .is_literal.get()
+            .as_operand.get()
+        )
+
+    def lit_op_range_from_center(
+        self, center: _Quantity, tolerance: _Quantity
+    ) -> F.Parameters.can_be_operand:
+        value, unit_t = center
+        is_unit = self._resolve_unit(unit_t)
+
+        tol_value, tol_unit_t = tolerance
+        tol_is_unit = self._resolve_unit(tol_unit_t)
+
+        tol_scale_factor, tol_offset = tol_is_unit.get_conversion_to(is_unit)
+        tol_value = tol_value * tol_scale_factor + tol_offset
+
+        return (
+            (
+                F.Literals.Numbers.bind_typegraph(tg=self.tg)
+                .create_instance(g=self.g)
+                .setup(
+                    numeric_set=F.Literals.NumericSet.bind_typegraph(tg=self.tg)
+                    .create_instance(g=self.g)
+                    .setup_from_values(values=[(value - tol_value, value + tol_value)]),
+                    unit=is_unit,
+                )
             )
             .is_literal.get()
             .as_operand.get()

@@ -16,13 +16,13 @@ from atopile.compiler.gentypegraph import (
     ActionsFactory,
     AddMakeChildAction,
     AddMakeLinkAction,
-    ConstraintSpec,
     DeferredForLoop,
     FieldPath,
     ImportRef,
     LinkPath,
     NewChildSpec,
     NoOpAction,
+    ParameterSpec,
     PendingInheritance,
     PendingRetype,
     ScopeState,
@@ -30,6 +30,7 @@ from atopile.compiler.gentypegraph import (
 )
 from atopile.compiler.overrides import ConnectOverrideRegistry, TraitOverrideRegistry
 from faebryk.core.faebrykpy import EdgeTraversal
+from faebryk.library.Units import UnitsNotCommensurableError
 from faebryk.libs.util import cast_assert, groupby, import_from_path, not_none
 
 _Quantity = tuple[float, fabll._ChildField]
@@ -1021,26 +1022,33 @@ class ASTVisitor:
                 return self._handle_new_child(
                     target_path, new_spec, parent_reference, parent_path
                 )
-            case ConstraintSpec() as constraint_spec:
+            case ParameterSpec() as param_spec:
                 # FIXME: add constraint type (is, ss) to spec?
                 # FIXME: should be IsSubset unless top of stack is a component
-                return ActionsFactory.constraint_actions(
+                return ActionsFactory.parameter_actions(
                     target_path=target_path,
-                    constraint_spec=constraint_spec,
+                    param_spec=param_spec,
                     parent_reference=parent_reference,
                     parent_path=parent_path,
+                    create_param=not self._scope_stack.has_field(target_path),
                 )
             case _:
                 raise NotImplementedError(f"Unhandled assignable type: {assignable}")
 
     def visit_Assignable(
         self, node: AST.Assignable
-    ) -> ConstraintSpec | NewChildSpec | None:
+    ) -> ParameterSpec | NewChildSpec | None:
         match assignable := node.get_value().switch_cast():
             case AST.AstString() as string:
-                return ConstraintSpec(operand=self.visit_AstString(string))
+                return ParameterSpec(
+                    param_child=F.Parameters.StringParameter.MakeChild(),
+                    operand=self.visit_AstString(string),
+                )
             case AST.Boolean() as boolean:
-                return ConstraintSpec(operand=self.visit_Boolean(boolean))
+                return ParameterSpec(
+                    param_child=F.Parameters.BooleanParameter.MakeChild(),
+                    operand=self.visit_Boolean(boolean),
+                )
             case AST.NewExpression() as new:
                 return self.visit_NewExpression(new)
             case (
@@ -1048,15 +1056,20 @@ class ASTVisitor:
                 | AST.BilateralQuantity()
                 | AST.BoundedQuantity() as quantity
             ):
-                lit = self.visit(quantity)
+                lit, unit = self.visit(quantity)
                 assert isinstance(lit, fabll._ChildField)
-                return ConstraintSpec(operand=lit)
+                return ParameterSpec(
+                    param_child=F.Parameters.NumericParameter.MakeChild(unit=unit),
+                    operand=lit,
+                )
             case AST.BinaryExpression() | AST.GroupExpression() as arithmetic:
                 expr = self.visit(arithmetic)
                 assert isinstance(
                     expr, fabll._ChildField
                 )  # F.Expressions.ExpressionNodes (some)
-                return ConstraintSpec(operand=expr)
+                # FIXME: need unit to create a parameter
+                raise NotImplementedError("TODO")
+
             case _:
                 raise ValueError(f"Unhandled assignable type: {assignable}")
 
@@ -1136,17 +1149,20 @@ class ASTVisitor:
 
     def visit_Quantity(
         self, node: AST.Quantity
-    ) -> "fabll._ChildField[F.Literals.Numbers]":
-        return F.Literals.Numbers.MakeChild_SingleValue(
-            value=node.get_value(),
-            unit=F.Units.Dimensionless
+    ) -> tuple["fabll._ChildField[F.Literals.Numbers]", type[fabll.Node]]:
+        unit_t = (
+            F.Units.Dimensionless
             if (symbol := node.try_get_unit_symbol()) is None
-            else F.Units.decode_symbol(self._graph, self._tg, symbol),
+            else F.Units.decode_symbol(self._graph, self._tg, symbol)
         )
+        operand = F.Literals.Numbers.MakeChild_SingleValue(
+            value=node.get_value(), unit=unit_t
+        )
+        return operand, unit_t
 
     def visit_BoundedQuantity(
         self, node: AST.BoundedQuantity
-    ) -> "fabll._ChildField[F.Literals.Numbers]":
+    ) -> tuple["fabll._ChildField[F.Literals.Numbers]", type[fabll.Node]]:
         start_unit_symbol = node.start.get().try_get_unit_symbol()
         start_value = node.start.get().get_value()
 
@@ -1160,68 +1176,86 @@ class ASTVisitor:
                 unit_t = F.Units.decode_symbol(self._graph, self._tg, end_unit_symbol)
             case [_, None]:
                 unit_t = F.Units.decode_symbol(self._graph, self._tg, start_unit_symbol)
-            case [_, _]:
+            case [_, _] if start_unit_symbol != end_unit_symbol:
                 unit_t = F.Units.decode_symbol(self._graph, self._tg, start_unit_symbol)
                 end_unit_t = F.Units.decode_symbol(
                     self._graph, self._tg, end_unit_symbol
                 )
-                scale, offset = end_unit_t.get_conversion_to(unit_t)
-                end_value = end_value * scale + offset
                 if not unit_t.is_commensurable_with(end_unit_t):
                     raise DslException(
                         "Bounded quantity start and end units must be commensurable"
                     )
+                scale, offset = end_unit_t.get_conversion_to(unit_t)
+                end_value = end_value * scale + offset
+            case [_, _]:
+                unit_t = F.Units.decode_symbol(self._graph, self._tg, start_unit_symbol)
 
-        return F.Literals.Numbers.MakeChild(min=start_value, max=end_value, unit=unit_t)
+        operand = F.Literals.Numbers.MakeChild(
+            min=start_value, max=end_value, unit=unit_t
+        )
+        return operand, unit_t
 
     def visit_BilateralQuantity(
         self, node: AST.BilateralQuantity
-    ) -> "fabll._ChildField[F.Literals.Numbers]":
-        node_quantity_value = node.quantity.get().get_value()
+    ) -> tuple["fabll._ChildField[F.Literals.Numbers]", type[fabll.Node]]:
+        quantity_value = node.quantity.get().get_value()
         quantity_unit_symbol = node.quantity.get().try_get_unit_symbol()
 
-        node_tolerance_value = node.tolerance.get().get_value()
-        tolerance_unit_symbol = node.tolerance.get().try_get_unit_symbol()
+        tol_value = node.tolerance.get().get_value()
+        tol_unit_symbol = node.tolerance.get().try_get_unit_symbol()
 
         def _decode_symbol(symbol: str) -> type[fabll.Node]:
             return F.Units.decode_symbol(self._graph, self._tg, symbol)
 
-        match [quantity_unit_symbol, tolerance_unit_symbol]:
+        match [quantity_unit_symbol, tol_unit_symbol]:
             case [None, None]:
                 rel = False
                 unit_t = F.Units.Dimensionless
             case [None, F.Units.PERCENT_SYMBOL]:
                 rel = True
                 unit_t = F.Units.Dimensionless
+            case [_, F.Units.PERCENT_SYMBOL]:
+                rel = True
+                unit_t = _decode_symbol(quantity_unit_symbol)
             case [_, None]:
                 rel = False
                 unit_t = _decode_symbol(quantity_unit_symbol)
             case [None, _]:
                 rel = False
-                unit_t = _decode_symbol(tolerance_unit_symbol)
+                unit_t = _decode_symbol(tol_unit_symbol)
+            case [_, _] if quantity_unit_symbol == tol_unit_symbol:
+                rel = False
+                unit_t = _decode_symbol(quantity_unit_symbol)
             case [_, _]:
                 rel = False
                 unit_t = _decode_symbol(quantity_unit_symbol)
-                tol_unit_t = _decode_symbol(tolerance_unit_symbol)
+                tol_unit_t = _decode_symbol(tol_unit_symbol)
 
-                if not unit_t.is_commensurable_with(tol_unit_t):
-                    raise DslException("Toleranced quantity has incompatible units")
+                q_info = F.Units.extract_unit_info(unit_t)
+                tol_info = F.Units.extract_unit_info(tol_unit_t)
+
+                try:
+                    tol_value = q_info.convert_value(tol_value, tol_info)
+                except UnitsNotCommensurableError as e:
+                    raise DslException(
+                        f"Tolerance unit `{tol_unit_symbol}` is not commensurable "
+                        f"with quantity unit `{quantity_unit_symbol}`"
+                    ) from e
             case _:
                 raise DslException("Unexpected quantity and tolerance units")
 
-        return (
+        operand = (
             F.Literals.Numbers.MakeChild_FromCenterRel(
-                center=node_quantity_value,
-                rel=node_tolerance_value / 100,
-                unit=unit_t,
+                center=quantity_value, rel=tol_value / 100, unit=unit_t
             )
             if rel
             else F.Literals.Numbers.MakeChild(
-                min=node_quantity_value - node_tolerance_value,
-                max=node_quantity_value + node_tolerance_value,
+                min=quantity_value - tol_value,
+                max=quantity_value + tol_value,
                 unit=unit_t,
             )
         )
+        return operand, unit_t
 
     def visit_NewExpression(self, node: AST.NewExpression):
         type_name = node.get_type_ref_name()
@@ -1372,11 +1406,17 @@ class ASTVisitor:
         unit_symbol = node.unit_symbol.get().symbol.get().get_single()
         unit_child_field = self._get_unit_fabll_type(unit_symbol)
         target_path = self.visit_FieldRef(node.get_field_ref())
-        return AddMakeChildAction(
+        return ActionsFactory.parameter_actions(
             target_path=target_path,
+            param_spec=ParameterSpec(
+                param_child=F.Parameters.NumericParameter.MakeChild(
+                    unit=unit_child_field
+                ),
+                operand=None,
+            ),
             parent_reference=None,
             parent_path=None,
-            child_field=F.Parameters.NumericParameter.MakeChild(unit=unit_child_field),
+            create_param=True,
         )
 
     def visit_DirectedConnectStmt(self, node: AST.DirectedConnectStmt):

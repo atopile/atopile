@@ -474,7 +474,7 @@ def test_assert_is():
     _ = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "f"))
 
     # Check constraints are applied
-    assert a.get_units().compact_repr() == "mV"
+    assert a.get_units().compact_repr() == "V"
     assert (
         E.lit_op_range_from_center_rel((2, E.U.mV), rel=0.1)
         .as_literal.force_get()
@@ -534,7 +534,7 @@ def test_numeric_literals():
 
     f = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "f"))
     assert (
-        E.lit_op_range_from_center_rel((3.3, E.U.V), rel=0.05)
+        E.lit_op_range_from_center((3.3, E.U.V), (0.05, E.U.V))
         .as_literal.force_get()
         .equals(not_none(f.try_extract_aliased_literal()))
     )
@@ -2025,8 +2025,8 @@ def test_module_template_multiple_enum_args():
         ("5 to 8V", E.lit_op_ranges(((5, E.U.V), (8, E.U.V)))),
         ("5V to 8", E.lit_op_ranges(((5, E.U.V), (8, E.U.V)))),
         ("100mV +/- 10%", E.lit_op_range_from_center_rel((100, E.U.mV), rel=0.1)),
-        ("3.3V +/- 50mV", E.lit_op_range_from_center_rel((3.3, E.U.V), rel=0.05)),
-        ("3300 +/- 50mV", E.lit_op_range_from_center_rel((3300, E.U.mV), rel=0.05)),
+        ("3.3V +/- 50mV", E.lit_op_range_from_center((3.3, E.U.V), (50, E.U.mV))),
+        ("3300 +/- 50mV", E.lit_op_range_from_center((3300, E.U.mV), (50, E.U.mV))),
     ],
 )
 def test_literals(value: str, literal: F.Parameters.can_be_operand):
@@ -2037,7 +2037,8 @@ def test_literals(value: str, literal: F.Parameters.can_be_operand):
         """,
         "App",
     )
-    a = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "a"))
+    a_node = _get_child(app_instance, "a")
+    a = F.Parameters.NumericParameter.bind_instance(a_node)
     assert literal.as_literal.force_get().equals(
         not_none(a.try_extract_aliased_literal())
     )

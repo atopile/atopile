@@ -149,12 +149,16 @@ class NewChildSpec:
 
 
 @dataclass(frozen=True)
-class ConstraintSpec:
+class ParameterSpec:
+    """Specification for creating a parameter, optionally with a constraint."""
+
+    param_child: fabll._ChildField
     operand: (
-        fabll._ChildField[F.Literals.Strings]
+        fabll._ChildField[F.Literals.Numbers]
+        | fabll._ChildField[F.Literals.Strings]
         | fabll._ChildField[F.Literals.Booleans]
-        | fabll._ChildField[F.Literals.Numbers]
-    )
+        | None
+    ) = None
 
 
 class ActionsFactory:
@@ -449,49 +453,64 @@ class ActionsFactory:
         return [pointer_action, *element_actions], link_actions, element_paths
 
     @staticmethod
-    def constraint_actions(
+    def parameter_actions(
         target_path: "FieldPath",
-        constraint_spec: "ConstraintSpec",
+        param_spec: "ParameterSpec",
         parent_reference: graph.BoundNode | None,
         parent_path: "FieldPath | None",
+        create_param: bool = True,
     ) -> "list[AddMakeChildAction]":
-        """Create actions for a constraint assignment (operand + expression)."""
-        # FIXME: add constraint type (is, ss) to spec?
-        # FIXME: should be IsSubset unless top of stack is a component
-        unique_target_str = str(target_path).replace(".", "_")
+        """Create actions for a parameter, optionally with a constraint."""
+        actions: list[AddMakeChildAction] = []
 
-        # Operand as child of type
-        operand_action = AddMakeChildAction(
-            target_path=FieldPath(
-                segments=(
-                    *target_path.segments,
-                    FieldPath.Segment(f"operand_{unique_target_str}"),
+        if create_param:
+            actions.append(
+                AddMakeChildAction(
+                    target_path=target_path,
+                    parent_reference=parent_reference,
+                    parent_path=parent_path,
+                    child_field=param_spec.param_child,
                 )
-            ),
-            parent_reference=parent_reference,
-            parent_path=parent_path,
-            child_field=constraint_spec.operand,
-        )
+            )
 
-        # Expression linking target param to operand
-        expr_action = AddMakeChildAction(
-            target_path=FieldPath(
-                segments=(
-                    *target_path.segments,
-                    FieldPath.Segment(f"constraint_{unique_target_str}"),
+        if param_spec.operand is not None:
+            # FIXME: add constraint type (is, ss) to spec?
+            # FIXME: should be IsSubset unless top of stack is a component
+            unique_target_str = str(target_path).replace(".", "_")
+
+            # Operand as child of type
+            actions.append(
+                AddMakeChildAction(
+                    target_path=FieldPath(
+                        segments=(
+                            *target_path.segments,
+                            FieldPath.Segment(f"operand_{unique_target_str}"),
+                        )
+                    ),
+                    parent_reference=parent_reference,
+                    parent_path=parent_path,
+                    child_field=param_spec.operand,
                 )
-            ),
-            parent_reference=parent_reference,
-            parent_path=parent_path,
-            # TODO: conditional on constraint type
-            child_field=F.Expressions.IsSubset.MakeChild(
-                target_path.to_ref_path(),
-                [constraint_spec.operand],
-                assert_=True,
-            ),
-        )
+            )
 
-        return [operand_action, expr_action]
+            # Expression linking target param to operand
+            actions.append(
+                AddMakeChildAction(
+                    target_path=FieldPath(
+                        segments=(
+                            *target_path.segments,
+                            FieldPath.Segment(f"constraint_{unique_target_str}"),
+                        )
+                    ),
+                    parent_reference=parent_reference,
+                    parent_path=parent_path,
+                    child_field=F.Expressions.Is.MakeChild(
+                        target_path.to_ref_path(), [param_spec.operand], assert_=True
+                    ),
+                )
+            )
+
+        return actions
 
 
 @dataclass(frozen=True)
