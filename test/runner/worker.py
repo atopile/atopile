@@ -65,8 +65,9 @@ def main():
                 nodeid = response.nodeid
 
                 if not nodeid:
-                    print(f"Worker {pid} received no work, exiting.")
-                    break
+                    print(f"Worker {pid} received no work, sleeping.")
+                    time.sleep(1)
+                    continue
 
                 # Run pytest for this nodeid
                 # We inject our http adapter plugin
@@ -84,6 +85,9 @@ def main():
                         "--disable-warnings",
                     ]
                 )
+
+                # always exit
+                # break
 
             except httpx.RequestError as e:
                 print(f"Worker {pid} connection error: {e}", file=sys.stderr)
