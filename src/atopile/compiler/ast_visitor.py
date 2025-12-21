@@ -1083,65 +1083,54 @@ class ASTVisitor:
             f"Unknown arithmetic: {fabll.Traits(node).get_obj_raw().get_type_name()}"
         )
 
-    def visit_AssertStmt(self, node: AST.AssertStmt):
-        expr = None
+    def visit_AssertStmt(self, node: AST.AssertStmt) -> AddMakeChildAction:
         comparison_expression = node.get_comparison()
         comparison_clauses = comparison_expression.get_comparison_clauses()
+        root_comparison_clause = comparison_clauses[0]
 
         lhs_refpath = self.to_expression_tree(comparison_expression.get_lhs())
-        rhs_refpath = self.to_expression_tree(list(comparison_clauses)[0].get_rhs())
+        rhs_refpath = self.to_expression_tree(root_comparison_clause.get_rhs())
 
-        if len(list(comparison_clauses)) != 1:
+        if len(comparison_clauses) > 1:
             raise NotImplementedError(
                 "Assert statement must have exactly one comparison clause (operator)"
             )
-        # for clause in comparison_clauses:
-        clause = list(comparison_clauses)[0]
-        operator = clause.get_operator()
+            # TODO: handle multiple clauses
 
-        if operator == ">":
-            expr = F.Expressions.GreaterThan.MakeChild(
-                lhs_refpath, rhs_refpath, assert_=True
-            )
-        elif operator == ">=":
-            expr = F.Expressions.GreaterOrEqual.MakeChild(
-                lhs_refpath, rhs_refpath, assert_=True
-            )
-        elif operator == "<":
-            expr = F.Expressions.LessThan.MakeChild(
-                lhs_refpath, rhs_refpath, assert_=True
-            )
-        elif operator == "<=":
-            expr = F.Expressions.LessOrEqual.MakeChild(
-                lhs_refpath, rhs_refpath, assert_=True
-            )
-        elif operator == "within":
-            expr = F.Expressions.IsSubset.MakeChild(
-                lhs_refpath, rhs_refpath, assert_=True
-            )
-        elif operator == "is":
-            expr = F.Expressions.Is.MakeChild(lhs_refpath, rhs_refpath, assert_=True)
-        else:
-            raise DslException(f"Unknown comparison operator: {operator}")
+        operator = root_comparison_clause.get_operator()
 
-        if expr is not None:
-            # Add childfields from expression tree as dependant to expression
-            for seg in lhs_refpath:
-                if isinstance(seg, fabll._ChildField):
-                    expr.add_dependant(seg, identifier="lhs", before=True)
-            for seg in rhs_refpath:
-                if isinstance(seg, fabll._ChildField):
-                    expr.add_dependant(seg, identifier="rhs", before=True)
-            return [
-                AddMakeChildAction(
-                    target_path=[*lhs_refpath, str(lhs_refpath).replace(".", "_")],
-                    parent_reference=None,
-                    parent_path=None,
-                    child_field=expr,
-                )
-            ]
-        # TODO: is a plain assert legal?
-        return NoOpAction()
+        match operator:
+            case AST.ComparisonOperator.GREATER_THAN:
+                expr_type = F.Expressions.GreaterThan
+            case AST.ComparisonOperator.GT_EQ:
+                expr_type = F.Expressions.GreaterOrEqual
+            case AST.ComparisonOperator.LESS_THAN:
+                expr_type = F.Expressions.LessThan
+            case AST.ComparisonOperator.LT_EQ:
+                expr_type = F.Expressions.LessOrEqual
+            case AST.ComparisonOperator.WITHIN:
+                expr_type = F.Expressions.IsSubset
+            case AST.ComparisonOperator.IS:
+                expr_type = F.Expressions.Is
+            case _:
+                raise DslException(f"Unknown comparison operator: {operator}")
+
+        expr = expr_type.MakeChild(lhs_refpath, rhs_refpath, assert_=True)
+
+        # Add childfields from expression tree as dependant to expression
+        for seg in lhs_refpath:
+            if isinstance(seg, fabll._ChildField):
+                expr.add_dependant(seg, identifier="lhs", before=True)
+        for seg in rhs_refpath:
+            if isinstance(seg, fabll._ChildField):
+                expr.add_dependant(seg, identifier="rhs", before=True)
+
+        return AddMakeChildAction(
+            target_path=[*lhs_refpath, str(lhs_refpath).replace(".", "_")],
+            parent_reference=None,
+            parent_path=None,
+            child_field=expr,
+        )
 
     def _get_unit_fabll_type(self, unit_symbol: str | None) -> type[fabll.Node]:
         if unit_symbol is None:
