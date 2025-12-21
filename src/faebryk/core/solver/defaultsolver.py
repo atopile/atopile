@@ -476,7 +476,6 @@ class DefaultSolver(Solver):
         if not ops:
             return
         tg = ops[0].tg
-        # TODO consider creating new graph view that contains only the nodes
         g = ops[0].g
         try:
             self.simplify(tg, g, terminal=True, relevant=list(ops))

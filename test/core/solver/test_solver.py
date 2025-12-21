@@ -228,7 +228,7 @@ def test_simplify_logic_and():
     anded = E.and_(anded, anded, assert_=True)
 
     solver = DefaultSolver()
-    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
+    repr_map = solver.simplify(E.tg, E.g, relevant=p_ops).data.mutation_map
 
     # Y = And!(X, X) canonicalizes to Not!(Or(Not(p0), Not(p1), Not(p2), Not(p3)))
     # which simplifies to Not(false) = true (the assertion is satisfied)
@@ -343,11 +343,8 @@ def test_subset_of_literal():
     E.is_(p1, p2, assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(
-        fabll.Traits(p0).get_obj_raw(),
-        fabll.Traits(p1).get_obj_raw(),
-        fabll.Traits(p2).get_obj_raw(),
-    )
+    solver.update_superset_cache(p0, p1, p2)
+
     # for p in (p0, p1, p2):
     #     assert solver.inspect_get_known_supersets(
     #         p.as_parameter.force_get()
@@ -1091,7 +1088,7 @@ def test_inspect_enum_simple():
     E.is_subset(A, E.lit_op_enum(F.LED.Color.EMERALD), assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(fabll.Traits(A).get_obj_raw())
+    solver.update_superset_cache(A)
     assert _extract_and_check(A, solver, F.LED.Color.EMERALD)
 
 
@@ -1123,7 +1120,7 @@ def test_inspect_enum_led():
     )
 
     solver = DefaultSolver()
-    solver.update_superset_cache(led.color.get())
+    solver.update_superset_cache(led.color.get().can_be_operand.get())
     assert _extract_and_check(
         led.color.get().can_be_operand.get(),
         solver,
@@ -1689,9 +1686,7 @@ def test_fold_not():
     E.is_(E.not_(A), B, assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(
-        fabll.Traits(A).get_obj_raw(), fabll.Traits(B).get_obj_raw()
-    )
+    solver.update_superset_cache(A, B)
     assert _extract_and_check(B, solver, True)
 
 
@@ -2055,7 +2050,7 @@ def test_simplify_non_terminal_manual_test_2():
     E.is_(ps[origin[0]].as_operand.get(), (origin[1]), assert_=True)
     solver.simplify(E.g, E.tg)
 
-    solver.update_superset_cache(*ps)
+    solver.update_superset_cache(*[p.as_operand.get() for p in ps])
     for i, p in enumerate(ps):
         # _inc = increase ** (i - origin[0])
         _inc = E.lit_op_single(1)

@@ -1220,7 +1220,7 @@ class Mutator:
             ).is_parameter_operatable.get()
         else:
             # trigger tg copy
-            # self.tg_out
+            self.tg_out
             new_param = param.copy_into(self.G_out).get_sibling_trait(
                 F.Parameters.is_parameter_operatable
             )
@@ -1249,7 +1249,8 @@ class Mutator:
             .setup(*new_operands)
         )
 
-        if assert_ and (ce := new_expr.try_get_trait(F.Expressions.is_assertable)):
+        if assert_:
+            ce = new_expr.get_trait(F.Expressions.is_assertable)
             self.assert_(ce, _no_alias=True)
 
         for op in new_operands:
@@ -1544,6 +1545,7 @@ class Mutator:
         if obj_po := obj.as_parameter_operatable.try_get():
             return self.get_copy_po(obj_po, accept_soft).as_operand.get()
         if obj_lit := obj.as_literal.try_get():
+            self.tg_out
             return obj_lit.copy_into(self.G_out).as_operand.get()
         if obj.try_get_sibling_trait(F.Units.is_unit_expression):
             raise ValueError(
@@ -1639,8 +1641,8 @@ class Mutator:
             ] = from_ops
 
         # TODO double constrain ugly
-        if assert_ and (co := expr.try_get_trait(F.Expressions.is_assertable)):
-            self.assert_(co)
+        if assert_:
+            self.assert_(expr.get_trait(F.Expressions.is_assertable))
 
         return expr.get_trait(F.Expressions.is_expression)
 
