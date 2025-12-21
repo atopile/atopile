@@ -2191,7 +2191,7 @@ class TestAssignments:
         param = F.Parameters.NumericParameter.bind_instance(not_none(param_bnode))
 
         # The parameter should have an aliased literal with expected values
-        literal = param.try_extract_aliased_literal()
+        literal = param.force_extract_literal_subset()
         assert literal is not None, (
             f"Parameter '{param_name}' should have an aliased literal"
         )
@@ -2230,7 +2230,7 @@ class TestAssignments:
         r = F.Resistor.bind_instance(not_none(r_bnode))
 
         # Assignments create Is constraints, use try_extract_aliased_literal
-        literal = r.max_power.get().try_extract_aliased_literal()
+        literal = r.max_power.get().force_extract_literal_subset()
         assert literal is not None, "max_power should have an aliased literal"
         assert literal.get_single() == 3
         assert literal.get_is_unit()._extract_multiplier() == 0.001
@@ -2267,8 +2267,7 @@ class TestAssignments:
         r = F.Resistor.bind_instance(not_none(r_bnode))
 
         # 100 ohm +/- 5% = [95, 105]
-        # Assignments create Is constraints, use try_extract_aliased_literal
-        literal = r.resistance.get().try_extract_aliased_literal()
+        literal = r.resistance.get().force_extract_literal_subset()
         assert literal is not None, "resistance should have an aliased literal"
         assert literal.get_values() == [95.0, 105.0]
 
@@ -2302,8 +2301,7 @@ class TestAssignments:
         )
         r = F.Resistor.bind_instance(not_none(r_bnode))
 
-        # Assignments create Is constraints, use try_extract_aliased_literal
-        literal = r.max_power.get().try_extract_aliased_literal()
+        literal = r.max_power.get().force_extract_literal_subset()
         assert literal is not None, "max_power should have an aliased literal"
         assert literal.get_values() == [3.0, 5.0]
 
@@ -2384,6 +2382,99 @@ class TestAssignments:
             ._extract_multiplier()
             == 1000
         )
+
+    def test_component_parameter_uses_is_constraint(self):
+        """Component parameter assignments use Is constraint (not IsSubset).
+
+        In components, parameter assignments should create exact (Is) constraints
+        that can be extracted with force_extract_literal(), unlike modules which
+        use IsSubset constraints.
+        """
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.core.node as fabll
+        import faebryk.library._F as F
+        from faebryk.libs.util import not_none
+
+        g, tg, stdlib, result = build_type(
+            """
+            import Resistor
+
+            component App:
+                r = new Resistor
+                r.resistance = 100 ohm +/- 5%
+                r.max_power = 3 mW to 5 mW
+            """
+        )
+
+        linker = Linker(None, stdlib, tg)
+        linker.link_imports(g, result.state)
+
+        app_type_node = result.state.type_roots["App"]
+        app_instance = fabll.Node(
+            tg.instantiate_node(type_node=app_type_node, attributes={})
+        )
+
+        r_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_instance.instance, child_identifier="r"
+        )
+        r = F.Resistor.bind_instance(not_none(r_bnode))
+
+        # Components use Is constraint, so force_extract_literal should work
+        resistance_literal = r.resistance.get().force_extract_literal()
+        assert resistance_literal is not None, (
+            "resistance should have an Is-constrained literal"
+        )
+        # 100 ohm +/- 5% = [95, 105]
+        assert resistance_literal.get_values() == [95.0, 105.0]
+
+        max_power_literal = r.max_power.get().force_extract_literal()
+        assert max_power_literal is not None, (
+            "max_power should have an Is-constrained literal"
+        )
+        # 3 mW to 5 mW = [3, 5] (in base units, that's 0.003 to 0.005)
+        assert max_power_literal.get_values() == [3.0, 5.0]
+
+    def test_module_parameter_uses_issubset_constraint(self):
+        """Module parameter assignments use IsSubset constraint (not Is).
+
+        In modules, parameter assignments should create subset constraints
+        that allow further refinement in derived modules.
+        """
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.core.node as fabll
+        import faebryk.library._F as F
+        from faebryk.libs.util import not_none
+
+        g, tg, stdlib, result = build_type(
+            """
+            import Resistor
+
+            module App:
+                r = new Resistor
+                r.resistance = 100 ohm +/- 5%
+            """
+        )
+
+        linker = Linker(None, stdlib, tg)
+        linker.link_imports(g, result.state)
+
+        app_type_node = result.state.type_roots["App"]
+        app_instance = fabll.Node(
+            tg.instantiate_node(type_node=app_type_node, attributes={})
+        )
+
+        r_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_instance.instance, child_identifier="r"
+        )
+        r = F.Resistor.bind_instance(not_none(r_bnode))
+
+        # Modules use IsSubset constraint, so force_extract_literal_subset works
+        resistance_literal = r.resistance.get().force_extract_literal_subset()
+        assert resistance_literal is not None, (
+            "resistance should have an IsSubset literal"
+        )
+        # 100 ohm +/- 5% = [95, 105]
+        assert resistance_literal.get_values() == [95.0, 105.0]
 
 
 class TestModuleTemplating:

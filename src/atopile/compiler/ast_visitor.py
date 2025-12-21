@@ -295,6 +295,33 @@ class _TypeContextStack:
         type_node, bound_tg, identifier = self._stack[-1]
         return type_node, bound_tg, identifier
 
+    def is_component(self) -> bool:
+        """Return True if currently inside a component block.
+
+        Checks if the current type_node has is_ato_component as a child.
+        """
+        if not self._stack:
+            return False
+        type_node, _, _ = self._stack[-1]
+
+        # Check if type has a child whose type is is_ato_component
+        is_ato_component_type = is_ato_component.bind_typegraph(
+            self._tg
+        ).get_or_create_type()
+
+        for ident, _ in self._tg.collect_make_children(type_node=type_node):
+            if ident is None:
+                continue
+            type_ref = self._tg.get_make_child_type_reference_by_identifier(
+                type_node=type_node, identifier=ident
+            )
+            if type_ref is None:
+                continue
+            resolved = fbrk.Linker.get_resolved_type(type_reference=type_ref)
+            if resolved and resolved.node().is_same(other=is_ato_component_type.node()):
+                return True
+        return False
+
     def apply_action(self, action) -> None:
         type_node, bound_tg, _ = self.current()
 
@@ -1025,8 +1052,6 @@ class ASTVisitor:
                     target_path, new_spec, parent_reference, parent_path
                 )
             case ParameterSpec(param_child=None) as param_spec:
-                # FIXME: add constraint type (is, ss) to spec?
-                # FIXME: should be IsSubset unless top of stack is a component
                 # Arithmetic expression - target param must already exist
                 if not self._scope_stack.has_field(target_path):
                     raise NotImplementedError(
@@ -1039,6 +1064,7 @@ class ASTVisitor:
                     parent_reference=parent_reference,
                     parent_path=parent_path,
                     create_param=False,
+                    use_is_constraint=self._type_stack.is_component(),
                 )
             case ParameterSpec() as param_spec:
                 return ActionsFactory.parameter_actions(
@@ -1048,6 +1074,7 @@ class ASTVisitor:
                     parent_reference=parent_reference,
                     parent_path=parent_path,
                     create_param=not self._scope_stack.has_field(target_path),
+                    use_is_constraint=self._type_stack.is_component(),
                 )
             case _:
                 raise NotImplementedError(f"Unhandled assignable type: {assignable}")
@@ -1503,6 +1530,7 @@ class ASTVisitor:
             parent_reference=None,
             parent_path=None,
             create_param=True,
+            use_is_constraint=self._type_stack.is_component(),
         )
 
     def visit_DirectedConnectStmt(self, node: AST.DirectedConnectStmt):
