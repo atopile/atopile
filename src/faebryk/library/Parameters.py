@@ -142,7 +142,7 @@ class can_be_operand(fabll.Node):
 
         expr_leaves = set((self, *more))
 
-        for e in expr_leaves:
+        for e in set(expr_leaves):
             if expr := e.try_get_sibling_trait(is_expression):
                 expr_leaves.update(expr.get_operand_leaves())
 
