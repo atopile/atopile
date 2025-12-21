@@ -3170,3 +3170,38 @@ def run_gdb(test_bin: Path | None = None) -> None:
         cmd = f"gdb {test_bin} {core_file} {args}"
         print(f"Attach gdb with: `gdb {test_bin} {core_file}")
         subprocess.run(cmd, shell=True, capture_output=False, check=True)
+
+
+class _LazyProxy:
+    def __init__(self, f: Callable[[], None], parent: Any, name: str) -> None:
+        self.__f = f
+        self.__parent = parent
+        self.__name = name
+
+    def __get_and_set(self):
+        self.__f()
+        return getattr(self.__parent, self.__name)
+
+    @override
+    def __getattribute__(self, name: str, /) -> Any:
+        if name.startswith("_"):
+            return super().__getattribute__(name)
+        return getattr(self.__get_and_set(), name)
+
+    @override
+    def __setattr__(self, name: str, value: Any, /) -> None:
+        if name.startswith("_"):
+            return super().__setattr__(name, value)
+        setattr(self.__get_and_set(), name, value)
+
+    def __contains__(self, value: Any) -> bool:
+        return value in self.__get_and_set()
+
+    def __iter__(self) -> Iterator[Any]:
+        return iter(self.__get_and_set())
+
+    def __getitem__(self, key: Any) -> Any:
+        return self.__get_and_set()[key]
+
+    def __repr__(self) -> str:
+        return f"_LazyProxy({self.__f}, {self.__parent})"

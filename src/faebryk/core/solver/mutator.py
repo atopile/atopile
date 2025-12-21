@@ -118,7 +118,7 @@ class Transformations:
 
         for s, d in self.mutated.items():
             if (s_p := s.as_parameter.try_get()) and (d_p := d.as_parameter.try_get()):
-                s_p.compact_repr(context_old)
+                s_p.compact_repr(context_old, no_lit_suffix=True)
                 s_mapping = context_old.variable_mapping.mapping[s_p]
                 d_mapping = context_new.variable_mapping.mapping.get(d_p, None)
                 if d_mapping is None or d_mapping > s_mapping:

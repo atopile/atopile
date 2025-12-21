@@ -777,48 +777,51 @@ class NodeAttributes:
         return fbrk.NodeCreationAttributes.init(dynamic=attrs)
 
 
-class _LazyProxy:
-    def __init__(self, f: Callable[[], None], parent: Any, name: str) -> None:
-        self.___f = f
-        self.___parent = parent
-        self.___name = name
+class _LazyProxyPerf:
+    slots = ("__parent",)
 
-    def ___get_and_set(self):
-        self.___f()
-        return getattr(self.___parent, self.___name)
+    def __init__(self, parent: Any) -> None:
+        self.__parent = parent
+
+    def __get_and_set(self):
+        f = Node._load_fields
+        parent = self.__parent
+        f(parent)
+        return getattr(parent, type(self).__name__)
 
     @override
     def __getattribute__(self, name: str, /) -> Any:
-        if "___" in name:
+        if name.startswith("_"):
             return super().__getattribute__(name)
-        return getattr(self.___get_and_set(), name)
-
-    @override
-    def __setattr__(self, name: str, value: Any, /) -> None:
-        if "___" in name:
-            return super().__setattr__(name, value)
-        setattr(self.___get_and_set(), name, value)
+        return getattr(self.__get_and_set(), name)
 
     def __contains__(self, value: Any) -> bool:
-        return value in self.___get_and_set()
+        return value in self.__get_and_set()
 
     def __iter__(self) -> Iterator[Any]:
-        return iter(self.___get_and_set())
+        return iter(self.__get_and_set())
 
     def __getitem__(self, key: Any) -> Any:
-        return self.___get_and_set()[key]
+        return self.__get_and_set()[key]
 
     def __repr__(self) -> str:
-        return f"_LazyProxy({self.___f}, {self.___parent})"
+        return f"_LazyProxy({type(self).__name__},{self.__parent})"
+
+
+def lazy_proxy(f: Callable[[Any], Any], name: str) -> type[_LazyProxyPerf]:
+    class _(_LazyProxyPerf):
+        pass
+
+    out = _
+    out.__name__ = name
+    return out
 
 
 class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     Attributes = NodeAttributes
-    __fields: dict[str, Field] = {}
-    # TODO do we need this?
-    # _fields_bound_tg: dict[fbrk.TypeGraph, list[InstanceChildBoundType]] = {}
-    # tg.self_node -> type_node cache
     _type_cache: dict[tuple[int, int], graph.BoundNode] = {}
+    __fields: dict[str, Field] = {}
+    __proxys: list[type[_LazyProxyPerf]] = []
 
     def __init__(self, instance: graph.BoundNode) -> None:
         self.instance = instance
@@ -826,10 +829,9 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         # setup instance accessors
         # perfomance optimization: only load fields when needed
         # self._load_fields()
-        fs = type(self).__fields
-        for name in fs:
-            p = _LazyProxy(self._load_fields, self, name)
-            super().__setattr__(name, p)
+        for pt in type(self).__proxys:
+            p = pt(self)
+            super().__setattr__(pt.__name__, p)
 
     @once
     def _load_fields(self) -> None:
@@ -882,6 +884,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         super().__init_subclass__()
         cls._type_cache = {}
         cls.__fields = {}
+        cls.__proxys = []
 
         # Scan through class fields and add handle ChildFields
         # e.g ```python
@@ -1027,6 +1030,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         assert locator not in cls.__fields, f"Field {locator} already exists"
         field._set_locator(locator=locator)
         cls.__fields[locator] = field
+        cls.__proxys.append(lazy_proxy(f=cls._load_fields, name=locator))
 
     @classmethod
     def _add_type_child(
@@ -1323,10 +1327,12 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         """
         if Node in type_node:
             return True
-        bound_type_nodes = [
-            tn.bind_typegraph_from_instance(self.instance) for tn in type_node
-        ]
-        return any(tn.isinstance(self) for tn in bound_type_nodes)
+        tn = self.get_type_name()
+        if not tn:
+            return False
+        # a bit of a hack, but this should be fast
+        # also internally thats exactly what would happen
+        return any(tn == t._type_identifier() for t in type_node)
 
     @classmethod
     def istypeof(cls, node: "NodeT") -> bool:
@@ -1458,7 +1464,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             if required:
                 raise TraitNotFound(f"No trait {trait} found on {self}")
             return None
-        return trait.bind_instance(instance=impl)
+        return trait(impl)
 
     def get_trait[TR: Node](self, trait: type[TR]) -> TR:
         return cast(TR, self.try_get_trait(trait, required=True))
@@ -1516,7 +1522,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         if check and not self.isinstance(t):
             # TODO other exception
             raise FabLLException(f"Node {self} is not an instance of {t}")
-        return t.bind_instance(self.instance)
+        return t(self.instance)
 
     def try_cast[N: NodeT](self, t: type[N]) -> N | None:
         if not self.isinstance(t):
@@ -1743,7 +1749,7 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
             ctx=instances,
             f=lambda ctx, edge: ctx.append(edge.g().bind(node=edge.edge().target())),
         )
-        return [self.t(instance=instance) for instance in instances]
+        return [self.t(instance) for instance in instances]
 
     # node type agnostic ---------------------------------------------------------------
     @deprecated("Use Traits.get_implementors instead")

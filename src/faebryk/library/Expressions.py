@@ -16,6 +16,7 @@ from faebryk.libs.util import (
     groupby,
     indented_container,
     not_none,
+    once,
     zip_dicts_by_key,
 )
 
@@ -165,6 +166,7 @@ class is_expression(fabll.Node):
             symbol = None
         return is_expression.ReprStyle(placement=placement, symbol=symbol)
 
+    @once
     def get_operands(self) -> list["F.Parameters.can_be_operand"]:
         from faebryk.library.Collections import PointerProtocol
 
@@ -178,7 +180,7 @@ class is_expression(fabll.Node):
 
         for pointer in pointers:
             li = pointer.as_list()
-            li_op = [c.cast(F.Parameters.can_be_operand) for c in li]
+            li_op = [c.cast(F.Parameters.can_be_operand, check=False) for c in li]
             operands.extend(li_op)
 
         return operands
