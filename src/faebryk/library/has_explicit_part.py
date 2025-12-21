@@ -54,22 +54,22 @@ class has_explicit_part(fabll.Node):
     @property
     def mfr(self) -> str | None:
         literal = self.mfr_.get().try_extract_constrained_literal()
-        return None if literal is None else str(literal)
+        return None if literal is None else literal.get_values()[0]
 
     @property
     def partno(self) -> str | None:
         literal = self.partno_.get().try_extract_constrained_literal()
-        return None if literal is None else str(literal)
+        return None if literal is None else literal.get_values()[0]
 
     @property
     def supplier_id(self) -> str | None:
         literal = self.supplier_id_.get().try_extract_constrained_literal()
-        return None if literal is None else str(literal)
+        return None if literal is None else literal.get_values()[0]
 
     @property
     def supplier_partno(self) -> str | None:
         literal = self.supplier_partno_.get().try_extract_constrained_literal()
-        return None if literal is None else str(literal)
+        return None if literal is None else literal.get_values()[0]
 
     @property
     def pinmap(self) -> dict[str, F.Electrical | None]:

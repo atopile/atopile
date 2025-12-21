@@ -827,10 +827,13 @@ def test_reserved_attrs(import_stmt: str, class_name: str, pkg_str: str, pkg: SM
         .get_trait(F.has_package_requirements)
         .size.get()
         .force_extract_literal()
+        .get_single_value_typed(SMDSize)
         == pkg
     )
-    assert fabll.Node.bind_instance(a).get_trait(F.has_explicit_part).mfr == mfr
-    assert fabll.Node.bind_instance(a).get_trait(F.has_explicit_part).partno == mpn
+    has_explicit_part = fabll.Node.bind_instance(a).try_get_trait(F.has_explicit_part)
+    assert has_explicit_part is not None
+    assert has_explicit_part.mfr == mfr
+    assert has_explicit_part.partno == mpn
 
 
 def test_import_ato(tmp_path: Path):

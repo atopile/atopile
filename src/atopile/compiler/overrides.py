@@ -97,6 +97,30 @@ _ASSIGNMENT_OVERRIDES: dict[str, TraitOverrideSpec] = {
             override_footprint=None,
         ),
     ),
+    "mpn": TraitOverrideSpec(
+        trait_class=F.has_explicit_part,
+        expected_type=str,
+        make_trait_field=lambda v: F.has_explicit_part.MakeChild(
+            mfr=None,
+            partno=v,
+            supplier_id="lcsc",
+            supplier_partno=None,
+            pinmap=None,
+            override_footprint=None,
+        ),
+    ),
+    "manufacturer": TraitOverrideSpec(
+        trait_class=F.has_explicit_part,
+        expected_type=str,
+        make_trait_field=lambda v: F.has_explicit_part.MakeChild(
+            mfr=v,
+            partno=None,
+            supplier_id="lcsc",
+            supplier_partno=None,
+            pinmap=None,
+            override_footprint=None,
+        ),
+    ),
     "datasheet_url": TraitOverrideSpec(
         trait_class=F.has_datasheet,
         expected_type=str,
