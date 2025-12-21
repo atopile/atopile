@@ -200,7 +200,7 @@ def test_check_missing_picks_no_footprint_no_picker(caplog):
     tg = fbrk.TypeGraph.create(g=g)
 
     class App(fabll.Node):
-        r1 = F.Resistor.MakeChild()
+        r1 = F.LED.MakeChild()
         r2 = F.Resistor.MakeChild()
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)

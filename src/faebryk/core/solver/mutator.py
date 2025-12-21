@@ -910,12 +910,14 @@ class MutationMap:
     ) -> "MutationMap":
         if relevant is not None:
             g_out = graph.GraphView.create()
+            # TODO dont copy whole tg
+            tg_out = tg.copy_into(target_graph=g_out, minimal=False)
             relevant_root_predicates = MutatorUtils.get_relevant_predicates(
                 *relevant,
             )
             for root_expr in relevant_root_predicates:
                 root_expr.copy_into(g_out)
-            tg_out = fbrk.TypeGraph.of(node=g_out.bind(node=tg.get_self_node().node()))
+            # tg_out = fbrk.TypeGraph.of(node=g_out.bind(node=tg.get_self_node().node()))
             nodes_uuids = {p.instance.node().get_uuid() for p in relevant}
             for p_out in fabll.Traits.get_implementors(
                 F.Parameters.can_be_operand.bind_typegraph(tg_out)

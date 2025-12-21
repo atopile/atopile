@@ -19,12 +19,15 @@ from faebryk.libs.util import (
     Advancable,
     ConfigFlag,
     EquivalenceClasses,
+    KeyErrorAmbiguous,
+    KeyErrorNotFound,
     Tree,
     debug_perf,
     groupby,
     indented_container,
     not_none,
     partition,
+    try_or,
 )
 
 if TYPE_CHECKING:
@@ -207,54 +210,39 @@ def check_missing_picks(module: fabll.Node):
     # - has_associated_footprint trait
     # - has_part_picked trait
     # - is_pickable trait or is_pickable_by_type trait
-    # missing = module.get_children(
-    #     types=fabll.Node,
-    #     required_trait=fabll.is_module,
-    #     direct_only=False,
-    #     include_root=True,
-    #     # leaf == no children
-    #     f_filter=lambda m: not m.get_children(
-    #         types=fabll.Node,
-    #         required_trait=fabll.is_module,
-    #         direct_only=False,
-    #         f_filter=lambda x: not isinstance(x, F.Footprints.GenericFootprint),
-    #     )
-    #     and not isinstance(m, F.Footprints.GenericFootprint)
-    #     # no parent with part picked
-    #     and not try_or(
-    #         lambda: m.get_parent_with_trait(F.has_part_picked),
-    #         default=False,
-    #         catch=KeyErrorNotFound,
-    #     )
-    #     # no parent with picker
-    #     and not try_or(
-    #         lambda: try_or(
-    #             lambda: m.get_parent_with_trait(F.is_pickable),
-    #             default=False,
-    #             catch=KeyErrorNotFound,
-    #         ),
-    #         default=True,
-    #         catch=KeyErrorAmbiguous,
-    #     ),
-    # )
-    # Get actual module nodes from is_module trait instances via get_obj()
-    modules = [
-        m.get_obj() for m in fabll.is_module.bind_typegraph(module.tg).get_instances()
-    ]
-
-    missing = [
-        m
-        for m in modules
-        if not m.has_trait(F.has_part_picked)
-        and not m.has_trait(F.Footprints.has_associated_footprint)
-        # TODO: really just want to look for is_pickable, which the other traits have
-        and not (
-            m.has_trait(F.is_pickable)
-            or m.has_trait(F.is_pickable_by_type)
-            or m.has_trait(F.is_pickable_by_part_number)
-            or m.has_trait(F.is_pickable_by_supplier_id)
+    missing = module.get_children(
+        types=fabll.Node,
+        required_trait=fabll.is_module,
+        direct_only=False,
+        include_root=True,
+        # leaf == no children
+        f_filter=lambda m:
+        # no parent with part picked
+        not try_or(
+            lambda: m.get_parent_with_trait(F.has_part_picked),
+            default=False,
+            catch=KeyErrorNotFound,
         )
-    ]
+        # no parent with picker
+        and not try_or(
+            lambda: any(
+                try_or(
+                    lambda: m.get_parent_with_trait(t),
+                    default=False,
+                    catch=KeyErrorNotFound,
+                )
+                for t in (
+                    # TODO: really just want to look for is_pickable,
+                    # which the other traits have
+                    F.is_pickable_by_type,
+                    F.is_pickable_by_part_number,
+                    F.is_pickable_by_supplier_id,
+                )
+            ),
+            default=True,
+            catch=KeyErrorAmbiguous,
+        ),
+    )
 
     if missing:
         no_fp, with_fp = map(
