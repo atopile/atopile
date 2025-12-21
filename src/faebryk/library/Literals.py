@@ -4416,6 +4416,15 @@ class Numbers(fabll.Node):
             max_val = iv.get_max_value()
             center = (min_val + max_val) / 2
 
+            if max_val == math.inf:
+                if min_val == -math.inf:
+                    return "ℝ"
+                if min_val == 0:
+                    return "ℝ+"
+                return f"≥{f(min_val)}"
+            if min_val == -math.inf:
+                return f"≤{f(max_val)}"
+
             # Use center±tolerance format if center is non-zero and tolerance < 1%
             if (
                 center != 0

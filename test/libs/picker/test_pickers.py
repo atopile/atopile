@@ -283,10 +283,8 @@ def test_pick_resistor_by_params():
 
     class App(fabll.Node):
         r1 = F.Resistor.MakeChild()
-        r1.add_dependant(
-            fabll.Traits.MakeEdge(
-                F.has_package_requirements.MakeChild(size=SMDSize.I0805), [r1]
-            )
+        _r1_pkg = fabll.Traits.MakeEdge(
+            F.has_package_requirements.MakeChild(size=SMDSize.I0805), [r1]
         )
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
@@ -296,9 +294,6 @@ def test_pick_resistor_by_params():
     E.is_subset(
         app.r1.get().resistance.get().can_be_operand.get(), resistance_op, assert_=True
     )
-
-    # Constrain package
-    fabll.Traits.create_and_add_instance_to(app.r1.get(), F.has_package_requirements)
 
     tree = get_pick_tree(app)
     pick_topologically(tree, solver)
@@ -486,7 +481,7 @@ def test_pick_dependency_simple():
     r1r = app.r1.get().resistance.get().can_be_operand.get()
     r2r = app.r2.get().resistance.get().can_be_operand.get()
     sum_lit = E.lit_op_range_from_center_rel((100000, E.U.Ohm), 0.2)
-    E.is_(E.add(r1r, r2r), sum_lit, assert_=True)
+    E.is_subset(E.add(r1r, r2r), sum_lit, assert_=True)
     E.is_subset(r1r, E.subtract(sum_lit, r2r), assert_=True)
     E.is_subset(r2r, E.subtract(sum_lit, r1r), assert_=True)
 

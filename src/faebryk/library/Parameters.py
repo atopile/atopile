@@ -761,6 +761,7 @@ class NumericParameter(fabll.Node):
         unit: type[fabll.Node],
         domain: "NumberDomain.Args | None" = None,
     ):
+        from faebryk.library.NumberDomain import NumberDomain
         from faebryk.library.Units import (
             extract_unit_info,
             has_display_unit,
@@ -807,7 +808,16 @@ class NumericParameter(fabll.Node):
                 fabll.Traits.MakeEdge(has_unit.MakeChild([base_unit_child]), [out])
             )
 
-        # TODO domain constraints
+        if domain is not NumericParameter.DOMAIN_SKIP:
+            assert (domain is None) or isinstance(domain, NumberDomain.Args)
+            domain = domain or NumberDomain.Args()
+            # TODO other domain constraints
+            if not domain.negative:
+                out.add_dependant(
+                    F.Literals.Numbers.MakeChild_ConstrainToSubsetLiteral(
+                        param_ref=[out], min=0, max=math.inf, unit=unit
+                    )
+                )
 
         return out
 

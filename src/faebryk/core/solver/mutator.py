@@ -1050,8 +1050,8 @@ class MutationMap:
         table.add_column("Node name")
 
         params = set(
-            F.Parameters.is_parameter.bind_typegraph(self.tg_in).get_instances(
-                g=self.G_in
+            F.Parameters.is_parameter.bind_typegraph(self.tg_out).get_instances(
+                g=self.G_out
             )
         )
         for p in sorted(
@@ -1059,7 +1059,7 @@ class MutationMap:
             key=lambda p: p.get_full_name(),
         ):
             table.add_row(
-                p.compact_repr(self.input_print_context),
+                p.compact_repr(self.output_print_context),
                 fabll.Traits(p).get_obj_raw().get_full_name(),
             )
 
