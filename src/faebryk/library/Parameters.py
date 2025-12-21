@@ -149,9 +149,8 @@ class can_be_operand(fabll.Node):
         all_expressions = {
             expr.get_trait(can_be_operand)
             for leaf in expr_leaves
-            for expr in leaf.get_operations(
-                recursive=True, predicates_only=predicates_only
-            )
+            for expr in leaf.get_operations(recursive=True, predicates_only=False)
+            if not predicates_only or expr.has_trait(is_predicate)
         }
 
         root_expressions = {

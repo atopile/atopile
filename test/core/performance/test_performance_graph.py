@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from itertools import pairwise
 from typing import cast
 
 import pytest
@@ -143,32 +144,32 @@ def test_performance_parameters(A: int, B: int, rs: int, pick: bool):
         ]
         numbers_as_op = [n.can_be_operand.get() for n in numbers]
     with timings.context("constrain_resistors"):
-        # for r, n in zip(resistors_as_op[-1:], numbers_as_op):
-        for r, n in zip(resistors_as_op, numbers_as_op):
+        for r, n in zip(resistors_as_op[-1:], numbers_as_op):
+            # for r, n in zip(resistors_as_op, numbers_as_op):
             F.Expressions.IsSubset.from_operands(
                 r,
                 n,
                 assert_=True,
             )
-    # with timings.context("constrain_resistors_subset"):
-    #    for r1, r2 in pairwise(resistors_as_op):
-    #        F.Expressions.IsSubset.from_operands(
-    #            r1,
-    #            F.Expressions.Add.c(
-    #                r2,
-    #                F.Literals.Numbers.bind_typegraph(tg)
-    #                .create_instance(g=g)
-    #                .setup_from_center_rel(
-    #                    100 * 1000,
-    #                    0.5,
-    #                    F.Units.Ohm.bind_typegraph(tg)
-    #                    .create_instance(g=g)
-    #                    .is_unit.get(),
-    #                )
-    #                .can_be_operand.get(),
-    #            ),
-    #            assert_=True,
-    #        )
+    with timings.context("constrain_resistors_subset"):
+        for r1, r2 in pairwise(resistors_as_op):
+            F.Expressions.GreaterOrEqual.from_operands(
+                r1,
+                F.Expressions.Add.c(
+                    r2,
+                    F.Literals.Numbers.bind_typegraph(tg)
+                    .create_instance(g=g)
+                    .setup_from_center_rel(
+                        100 * 1000,
+                        0.5,
+                        F.Units.Ohm.bind_typegraph(tg)
+                        .create_instance(g=g)
+                        .is_unit.get(),
+                    )
+                    .can_be_operand.get(),
+                ),
+                assert_=True,
+            )
 
     with timings.context("print_tg_overview"):
         tg_overview = dict(

@@ -1088,6 +1088,34 @@ class MutatorUtils:
         )
 
     @staticmethod
+    def get_relevant_predicates(
+        *op: F.Parameters.can_be_operand,
+    ) -> set[F.Expressions.is_predicate]:
+        # get all root predicates
+        leaves = set(op)
+        roots = set[F.Expressions.is_predicate]()
+        while True:
+            new_roots = {
+                e.get_sibling_trait(F.Expressions.is_predicate)
+                for e in F.Parameters.can_be_operand.get_root_operands(
+                    *leaves, predicates_only=True
+                )
+            } - roots
+
+            # get leaves for transitive predicates
+            # A >! B, B >! C => only A >! B is in roots
+            leaves = {
+                leaf.as_operand.get()
+                for root in new_roots
+                for leaf in root.as_expression.get().get_operand_leaves_operatable()
+            } - leaves
+
+            roots.update(new_roots)
+
+            if not leaves:
+                return roots
+
+    @staticmethod
     def get_correlations(
         expr: F.Expressions.is_expression,
         exclude: set[F.Expressions.is_expression] | None = None,

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from textwrap import indent
@@ -11,8 +12,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
+from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.utils import Contradiction
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
@@ -310,10 +310,7 @@ def find_independent_groups(
     out = module_eqs.get()
     logger.debug(
         indented_container(
-            [
-                {fabll.Traits(fabll.Traits(m).get_obj_raw()).get_obj_raw() for m in g}
-                for g in out
-            ],
+            [{m.get_pickable_node() for m in g} for g in out],
             recursive=True,
         )
     )
@@ -380,7 +377,6 @@ def pick_topologically(
             logger.info(f"Simplifying with {len(relevant)} relevant parameters")
             with timings.as_global("simplify"):
                 solver.simplify(g, tg, terminal=True, relevant=relevant)
-            logger.info(f"Picking {len(tree)} modules in parallel")
             with timings.as_global("get candidates"):
                 candidates = picker_lib.get_candidates(tree, solver)
             no_candidates = [m for m, cs in candidates.items() if not cs]
@@ -391,7 +387,9 @@ def pick_topologically(
             logger.info(f"Solved in {timings.get_formatted('simplify')}")
 
             while tree:
-                groups = find_independent_groups(tree.keys(), solver)
+                # TODO fix this
+                # groups = find_independent_groups(tree.keys(), solver)
+                groups = [set(tree.keys())]
                 # pick module with least candidates first
                 picked = [
                     (
@@ -402,17 +400,22 @@ def pick_topologically(
                 ]
                 logger.info(f"Picking {len(groups)} independent groups")
                 for m, part in picked:
+                    logger.info(f"Picking {m.get_pickable_node()}")
                     picker_lib.attach_single_no_check(m, part, solver)
                     if progress:
                         progress.advance()
+                tree, _ = update_pick_tree(tree)
+                if not tree:
+                    break
                 relevant = [rp for m in tree.keys() for rp in _relevant_params(m)]
                 g = relevant[0].g
                 tg = relevant[0].tg
                 if not relevant:
                     break
-                solver.simplify(g, tg, terminal=True, relevant=relevant)
-
-                tree, _ = update_pick_tree(tree)
+                now = time.perf_counter()
+                with timings.context("simplify"):
+                    solver.simplify(g, tg, terminal=True, relevant=relevant)
+                logger.info(f"Solved in {(time.perf_counter() - now) * 1000:.3f}ms")
 
     if _pick_count:
         logger.info(

@@ -740,14 +740,15 @@ class MutationMap:
         return mapped param, True if removed or False if not mapped
         """
         # assert param.is_parameter()
-        is_root = fabll.Traits(param).get_obj_raw().get_parent() is not None
+        # is_root = fabll.Traits(param).get_obj_raw().get_parent() is not None
 
         if not self.non_identity_stages:
             out = self.first_stage.map_forward(param)
-            if out is None and is_root:
-                raise KeyErrorNotFound(
-                    f"Looking for root parameter not in graph: {param}"
-                )
+            # TODO consider
+            # if out is None and is_root:
+            #    raise KeyErrorNotFound(
+            #        f"Looking for root parameter not in graph: {param}"
+            #    )
             return MutationMap.LookupResult(maps_to=out)
 
         chain_end: F.Parameters.is_parameter_operatable = param
@@ -768,16 +769,16 @@ class MutationMap:
         for m in self.non_identity_stages[first_stage:]:
             maps_to = m.map_forward(chain_end)
             if maps_to is None:
-                is_start = param is chain_end
-                assert not is_root or is_start, (
-                    "should never remove root parameters"
-                    f" chain_end {param} -> {chain_end} interrupted at"
-                    f" {m.algorithm}:{m.iteration}"
-                )
-                if is_root and is_start:
-                    raise KeyErrorNotFound(
-                        f"Looking for root parameter not in graph: {param}"
-                    )
+                # is_start = param is chain_end
+                # assert not is_root or is_start, (
+                #    "should never remove root parameters"
+                #    f" chain_end {param} -> {chain_end} interrupted at"
+                #    f" {m.algorithm}:{m.iteration}"
+                # )
+                # if is_root and is_start:
+                #    raise KeyErrorNotFound(
+                #        f"Looking for root parameter not in graph: {param}"
+                #    )
                 return MutationMap.LookupResult(removed=chain_end is not param)
             chain_end = maps_to
         return MutationMap.LookupResult(maps_to=chain_end)
@@ -909,31 +910,65 @@ class MutationMap:
     ) -> "MutationMap":
         if relevant is not None:
             g_out = graph.GraphView.create()
-            # tg_out = tg.copy_into(target_graph=g_out, minimal=False)
-            root_exprs = F.Parameters.can_be_operand.get_root_operands(
+            relevant_root_predicates = MutatorUtils.get_relevant_predicates(
                 *(p.as_parameter_operatable.get().as_operand.get() for p in relevant),
-                predicates_only=True,
             )
-            for root_expr in root_exprs:
+            for root_expr in relevant_root_predicates:
                 root_expr.copy_into(g_out)
             tg_out = fbrk.TypeGraph.of(node=g_out.bind(node=tg.get_self_node().node()))
-            for p in relevant:
-                # needed to copy because some might not be involved in predicates
-                p_out = p.copy_into(g_out)
+            nodes_uuids = {p.instance.node().get_uuid() for p in relevant}
+            for p_out in fabll.Traits.get_implementors(
+                F.Parameters.is_parameter.bind_typegraph(tg_out)
+            ):
+                if p_out.instance.node().get_uuid() not in nodes_uuids:
+                    continue
                 fabll.Traits.create_and_add_instance_to(p_out, solver_relevant)
 
+            print_context = print_context or F.Parameters.ReprContext()
+            # print(
+            #    indented_container(
+            #        [
+            #            p.as_expression.get().compact_repr(
+            #                context=print_context,
+            #                no_lit_suffix=True,
+            #                use_name=True,
+            #            )
+            #            for p in relevant_root_predicates
+            #        ]
+            #    )
+            # )
             all_ops_out = F.Parameters.is_parameter_operatable.bind_typegraph(
                 tg_out
             ).get_instances(g=g_out)
+            # expr_count = len(
+            #    fabll.Traits.get_implementors(
+            #        F.Expressions.is_expression.bind_typegraph(tg_out)
+            #    )
+            # )
+            # param_count = len(
+            #    fabll.Traits.get_implementors(
+            #        F.Parameters.is_parameter.bind_typegraph(tg_out)
+            #    )
+            # )
+            # lit_count = len(
+            #    fabll.Traits.get_implementors(
+            #        F.Literals.is_literal.bind_typegraph(tg_out)
+            #    )
+            # )
+            # print(
+            #    f"|lits|={lit_count}"
+            #    f", |exprs|={expr_count}"
+            #    f", |params|={param_count} {g_out}"
+            # )
             return MutationMap(
                 MutationStage(
                     tg_in=tg,
                     tg_out=tg_out,
                     algorithm=algorithm,
                     iteration=iteration,
-                    print_context=print_context or F.Parameters.ReprContext(),
+                    print_context=print_context,
                     transformations=Transformations(
-                        input_print_context=print_context or F.Parameters.ReprContext(),
+                        input_print_context=print_context,
                         mutated={
                             F.Parameters.is_parameter_operatable.bind_instance(
                                 g.bind(node=op.instance.node())
