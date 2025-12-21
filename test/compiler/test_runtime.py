@@ -112,7 +112,7 @@ def test_interface_connect():
 
 
 def test_duck_type_connect():
-    """Test that duck-typed interfaces are connected."""
+    """Duck-typed interfaces are not supported anymore."""
     _, _, _, _, app_instance = build_instance(
         """
             interface SomeInterface:
@@ -138,8 +138,10 @@ def test_duck_type_connect():
     a_two = _get_child(a, "two")
     b_two = _get_child(b, "two")
 
-    assert _check_connected(a_one, b_one)
-    assert _check_connected(a_two, b_two)
+    # not supported anymore
+    assert not _check_connected(a, b)
+    assert not _check_connected(a_one, b_one)
+    assert not _check_connected(a_two, b_two)
     assert not any(_check_connected(a_one, other) for other in [a_two, b_two])
     assert not any(_check_connected(a_two, other) for other in [a_one, b_one])
 
@@ -1290,7 +1292,10 @@ def test_list_literal_empty():
 
 
 def test_list_literal_invalid():
-    with pytest.raises(DslException, match="[Ii]nvalid type"):
+    with pytest.raises(
+        UserSyntaxError,
+        match=r"mismatched input '\"A\"' expecting {NUMBER, NAME, '\(', '\+', '\-'}",
+    ):
         _, _, _, result, app_instance = build_instance(
             """
             #pragma experiment("FOR_LOOP")
