@@ -11,7 +11,6 @@ from typing import Callable
 from rich.table import Table
 
 from faebryk.libs.logging import rich_to_string
-from faebryk.libs.util import is_numeric_str
 
 
 class Times:
@@ -259,7 +258,10 @@ class Times:
         try:
             yield
         finally:
-            Times._in_measurement.remove(self)
+            for i, e in enumerate(reversed(Times._in_measurement)):
+                if e is self:
+                    Times._in_measurement.pop(-i)
+                    break
             if name is not None:
                 if context:
                     self._add(name, time.perf_counter() - start)
