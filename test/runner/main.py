@@ -732,7 +732,6 @@ class TestAggregator:
                         test.outcome = outcome_str
                         test.finish_time = datetime.datetime.now()
                         # If START was missed (e.g. transient HTTP issue), ensure
-                        # we still consider this test "not queued" and render sane durations.
                         if test.start_time is None:
                             test.start_time = test.finish_time
                         if output:
@@ -1484,7 +1483,11 @@ def get_log_file(worker_id: int) -> Path:
 LOG_DIR = Path("artifacts/logs")
 
 
-def main(args: list[str] | None = None, baseline_commit: str | None = None):
+def main(
+    args: list[str] | None = None,
+    baseline_commit: str | None = None,
+    open_browser: bool = False,
+):
     global tests_total, commit_info, ci_info, workers
 
     # Gather commit and CI info at startup (robust to failures)
@@ -1566,6 +1569,12 @@ def main(args: list[str] | None = None, baseline_commit: str | None = None):
     # Use OSC 8 hyperlink escape sequence for clickable links in modern terminals
     clickable_link = f"\033]8;;{report_url}\033\\📊 {report_url}\033]8;;\033\\"
     _print(f"Live report: {clickable_link}")
+
+    # Open browser if requested
+    if open_browser:
+        import webbrowser
+
+        webbrowser.open(report_url)
 
     # 3. Start Workers
     worker_script = Path(__file__).parent / "worker.py"
