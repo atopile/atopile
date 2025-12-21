@@ -22,7 +22,7 @@ _thisdir = _thisfile.parent
 _build_dir = _thisdir / "zig-out" / "lib"
 _pyi_dir = _build_dir / "gen"
 
-RELEASEMODE = ConfigFlagString("ZIG_RELEASEMODE", default="Debug")
+RELEASEMODE = ConfigFlagString("ZIG_RELEASEMODE", default="ReleaseFast")
 NORECOMPILE = ConfigFlag("ZIG_NORECOMPILE", default=False)
 
 
