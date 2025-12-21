@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import logging
-from typing import TYPE_CHECKING, Self, cast
+from typing import Self, cast
 
 import pytest
 
@@ -12,9 +12,6 @@ from faebryk.core import graph
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.exceptions import UserDesignCheckException
 from faebryk.libs.util import not_none
-
-if TYPE_CHECKING:
-    from faebryk.core.solver.solver import Solver
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +70,7 @@ class Addressor(fabll.Node):
             )
 
     @F.implements_design_check.register_post_solve_check
-    def __check_post_solve__(self, _solver: "Solver | None" = None):
+    def __check_post_solve__(self):
         """Set address lines based on the solved offset value."""
 
         # Try direct constraint first (returns Numbers)
@@ -83,8 +80,9 @@ class Addressor(fabll.Node):
         else:
             # Use solver to deduce from address = base + offset
             solver = self.design_check.get().get_solver()
+            offset_op = self.offset.get().is_parameter_operatable.get()
             offset_param = self.offset.get().is_parameter.get()
-            solver.update_superset_cache(offset_param)
+            solver.update_superset_cache(offset_op)
             lit = solver.inspect_get_known_supersets(offset_param)
             if lit is None or not lit.is_singleton():
                 raise Addressor.OffsetNotResolvedError(self)
@@ -583,10 +581,11 @@ def test_addressor_expression_propagation():
 
     # Run the solver using the same pattern as test_literal_folding.py
     solver = DefaultSolver()
+    offset_op = addressor.offset.get().is_parameter_operatable.get()
     offset_param = addressor.offset.get().is_parameter.get()
 
     # This runs the solver and caches supersets
-    solver.update_superset_cache(offset_param)
+    solver.update_superset_cache(offset_op)
 
     # Get the result - this is in the solver's transient graph
     solver_result = solver.inspect_get_known_supersets(offset_param)
