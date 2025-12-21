@@ -1828,25 +1828,24 @@ def test_trait_template_enum():
         #pragma experiment("TRAITS")
         #pragma experiment("MODULE_TEMPLATING")
 
-        import Resistor
         import has_package_requirements
 
-        module Resistor0805 from Resistor:
+        module MyModule:
             trait has_package_requirements<size="I0805">
 
         module App:
-            r = new Resistor0805
+            m = new MyModule
         """,
         "App",
     )
     assert "App" in result.state.type_roots
-    r = _get_child(app_instance, "r")
-    r = F.Resistor.bind_instance(r)
+    m = _get_child(app_instance, "m")
+    m = fabll.Node.bind_instance(m)
     assert (
-        r.get_trait(F.has_package_requirements)
+        m.get_trait(F.has_package_requirements)
         .size.get()
         .force_extract_literal()
-        .get_single()
+        .get_single_value_typed(SMDSize)
         == SMDSize.I0805
     )
 
@@ -1861,14 +1860,13 @@ def test_trait_template_enum_invalid():
             #pragma experiment("TRAITS")
             #pragma experiment("MODULE_TEMPLATING")
 
-            import Resistor
             import has_package_requirements
 
-            module Resistor0805 from Resistor:
+            module MyModule:
                 trait has_package_requirements<size="<invalid size>">
 
             module App:
-                r = new Resistor0805
+                m = new MyModule
             """,
             "App",
         )
@@ -1877,6 +1875,20 @@ def test_trait_template_enum_invalid():
 def test_module_template_enum():
     class Module(fabll.Node):
         size = F.Parameters.EnumParameter.MakeChild(enum_t=SMDSize)
+
+        @classmethod
+        def MakeChild(cls, size: str) -> fabll._ChildField:
+            try:
+                enum_value = SMDSize[size]
+            except KeyError:
+                raise DslException(f"Invalid size: '{size}'")
+            out = fabll._ChildField(cls)
+            out.add_dependant(
+                F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+                    [out, cls.size], enum_value
+                )
+            )
+            return out
 
     _, _, _, result, app_instance = build_instance(
         """
@@ -1894,12 +1906,29 @@ def test_module_template_enum():
     assert "App" in result.state.type_roots
     r = _get_child(app_instance, "r")
     r = Module.bind_instance(r)
-    assert r.size.get().force_extract_literal().get_single() == SMDSize.I0805
+    assert (
+        r.size.get().force_extract_literal().get_single_value_typed(SMDSize)
+        == SMDSize.I0805
+    )
 
 
 def test_module_template_enum_invalid():
     class Module(fabll.Node):
         size = F.Parameters.EnumParameter.MakeChild(enum_t=SMDSize)
+
+        @classmethod
+        def MakeChild(cls, size: str) -> fabll._ChildField:
+            try:
+                enum_value = SMDSize[size]
+            except KeyError:
+                raise DslException(f"Invalid size: '{size}'")
+            out = fabll._ChildField(cls)
+            out.add_dependant(
+                F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+                    [out, cls.size], enum_value
+                )
+            )
+            return out
 
     with pytest.raises(DslException, match="Invalid size: '<invalid size>'"):
         build_instance(
@@ -1933,49 +1962,112 @@ class _StrEnumForTests(StrEnum):
 
 # Test classes for enum template tests
 class ModuleWithIntEnum(fabll.Node):
-    _value = F.Parameters.EnumParameter.MakeChild(enum_t=_IntEnumForTests)
+    value = F.Parameters.EnumParameter.MakeChild(enum_t=_IntEnumForTests)
+
+    @classmethod
+    def MakeChild(cls, value: int) -> fabll._ChildField:
+        # IntEnum: convert int to enum member by value
+        enum_value = _IntEnumForTests(value)
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+                [out, cls.value], enum_value
+            )
+        )
+        return out
 
 
 class ModuleWithStrEnum(fabll.Node):
-    _value = F.Parameters.EnumParameter.MakeChild(enum_t=_StrEnumForTests)
+    mode = F.Parameters.EnumParameter.MakeChild(enum_t=_StrEnumForTests)
+
+    @classmethod
+    def MakeChild(cls, mode: str) -> fabll._ChildField:
+        # StrEnum: convert string to enum member by name
+        try:
+            enum_value = _StrEnumForTests[mode]
+        except KeyError:
+            raise DslException(f"Invalid mode: '{mode}'")
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+                [out, cls.mode], enum_value
+            )
+        )
+        return out
 
 
 @pytest.mark.parametrize(
-    "module_name,template_args,expected_value",
+    "module_class,template_args,expected_value",
     [
-        # Basic enum types
-        ("ModuleWithIntEnum", "<value=2>", _IntEnumForTests.VALUE_2),
-        ("ModuleWithStrEnum", '<mode="OPTION_B">', _StrEnumForTests.OPTION_B),
+        # IntEnum: value is passed as integer
+        (ModuleWithIntEnum, "<value=2>", _IntEnumForTests.VALUE_2),
+        # StrEnum: mode is passed as string
+        (ModuleWithStrEnum, '<mode="OPTION_B">', _StrEnumForTests.OPTION_B),
     ],
 )
-def test_module_template_enum_scenarios(module_name, template_args, expected_value):
+def test_module_template_enum_scenarios(module_class, template_args, expected_value):
     """Test various enum scenarios in module template constructors."""
 
     _, _, _, result, app_instance = build_instance(
         f"""
         #pragma experiment("MODULE_TEMPLATING")
 
-        import {module_name}
+        import {module_class.__name__}
 
         module App:
-            mod = new {module_name}{template_args}
+            mod = new {module_class.__name__}{template_args}
         """,
         "App",
-        stdlib_extra=[ModuleWithIntEnum, ModuleWithStrEnum],
+        stdlib_extra=[module_class],
     )
 
     mod = _get_child(app_instance, "mod")
-    mod = ModuleWithIntEnum.bind_instance(mod)
-    assert mod._value.get().force_extract_literal().get_single() == expected_value
+    mod_bound = module_class.bind_instance(mod)
+    # Access the correct attribute based on which module class
+    if module_class is ModuleWithIntEnum:
+        actual = mod_bound.value.get().force_extract_literal().get_single()
+        assert actual == expected_value
+    else:
+        actual = mod_bound.mode.get().force_extract_literal().get_single()
+        assert actual == expected_value
 
 
 def test_module_template_multiple_enum_args():
     class Module(fabll.Node):
-        _color = F.Parameters.EnumParameter.MakeChild(enum_t=F.LED.Color)
-        _channel = F.Parameters.EnumParameter.MakeChild(enum_t=F.MOSFET.ChannelType)
-        _temp_coeff = F.Parameters.EnumParameter.MakeChild(
+        color = F.Parameters.EnumParameter.MakeChild(enum_t=F.LED.Color)
+        channel = F.Parameters.EnumParameter.MakeChild(enum_t=F.MOSFET.ChannelType)
+        temp_coeff = F.Parameters.EnumParameter.MakeChild(
             enum_t=F.Capacitor.TemperatureCoefficient
         )
+
+        @classmethod
+        def MakeChild(
+            cls,
+            color: str | None = None,
+            channel: str | None = None,
+            temp_coeff: str | None = None,
+        ) -> fabll._ChildField:
+            out = fabll._ChildField(cls)
+            if color is not None:
+                out.add_dependant(
+                    F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+                        [out, cls.color], F.LED.Color[color]
+                    )
+                )
+            if channel is not None:
+                out.add_dependant(
+                    F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+                        [out, cls.channel], F.MOSFET.ChannelType[channel]
+                    )
+                )
+            if temp_coeff is not None:
+                out.add_dependant(
+                    F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+                        [out, cls.temp_coeff],
+                        F.Capacitor.TemperatureCoefficient[temp_coeff],
+                    )
+                )
+            return out
 
     _, _, _, result, app_instance = build_instance(
         """
@@ -1993,21 +2085,34 @@ def test_module_template_multiple_enum_args():
     assert "App" in result.state.type_roots
     mod1 = _get_child(app_instance, "mod1")
     mod1 = Module.bind_instance(mod1)
-    assert mod1._color.get().force_extract_literal().get_single() == F.LED.Color.BLUE
     assert (
-        mod1._channel.get().force_extract_literal().get_single()
+        mod1.color.get().force_extract_literal().get_single_value_typed(F.LED.Color)
+        == F.LED.Color.BLUE
+    )
+    assert (
+        mod1.channel.get()
+        .force_extract_literal()
+        .get_single_value_typed(F.MOSFET.ChannelType)
         == F.MOSFET.ChannelType.N_CHANNEL
     )
-    assert mod1._temp_coeff.get().force_extract_literal().get_single() is None
+    # temp_coeff not constrained for mod1
+    assert mod1.temp_coeff.get().try_extract_constrained_literal() is None
     mod2 = _get_child(app_instance, "mod2")
     mod2 = Module.bind_instance(mod2)
-    assert mod2._color.get().force_extract_literal().get_single() == F.LED.Color.RED
     assert (
-        mod2._channel.get().force_extract_literal().get_single()
+        mod2.color.get().force_extract_literal().get_single_value_typed(F.LED.Color)
+        == F.LED.Color.RED
+    )
+    assert (
+        mod2.channel.get()
+        .force_extract_literal()
+        .get_single_value_typed(F.MOSFET.ChannelType)
         == F.MOSFET.ChannelType.P_CHANNEL
     )
     assert (
-        mod2._temp_coeff.get().force_extract_literal().get_single()
+        mod2.temp_coeff.get()
+        .force_extract_literal()
+        .get_single_value_typed(F.Capacitor.TemperatureCoefficient)
         == F.Capacitor.TemperatureCoefficient.C0G
     )
 
