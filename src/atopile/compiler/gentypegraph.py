@@ -460,13 +460,14 @@ class ActionsFactory:
         parent_reference: graph.BoundNode | None,
         parent_path: "FieldPath | None",
         create_param: bool = True,
-        use_is_constraint: bool = False,
+        constraint_expr: type[fabll.Node] | None = None,
     ) -> "list[AddMakeChildAction]":
         """Create actions for a parameter, optionally with a constraint.
 
         Args:
-            use_is_constraint: If True, uses Is constraint (for components).
-                              If False, uses IsSubset constraint (for modules).
+            constraint_expr: Expression type for constraints (Is for components,
+                            IsSubset for modules). Required when constraint_operand
+                            is provided.
         """
         actions: list[AddMakeChildAction] = []
 
@@ -481,6 +482,11 @@ class ActionsFactory:
             )
 
         if constraint_operand is not None:
+            if constraint_expr is None:
+                raise ValueError(
+                    "constraint_expr is required when constraint_operand is provided"
+                )
+
             unique_target_str = str(target_path).replace(".", "_")
 
             # Operand as child of type
@@ -498,11 +504,7 @@ class ActionsFactory:
                 )
             )
 
-            # Expression linking target param to operand
             # Components use Is (exact), modules use IsSubset (refinable)
-            constraint_class = (
-                F.Expressions.Is if use_is_constraint else F.Expressions.IsSubset
-            )
             actions.append(
                 AddMakeChildAction(
                     target_path=FieldPath(
@@ -513,7 +515,7 @@ class ActionsFactory:
                     ),
                     parent_reference=parent_reference,
                     parent_path=parent_path,
-                    child_field=constraint_class.MakeChild(
+                    child_field=constraint_expr.MakeChild(
                         target_path.to_ref_path(), [constraint_operand], assert_=True
                     ),
                 )

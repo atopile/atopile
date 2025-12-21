@@ -121,6 +121,7 @@ class BuildState:
     pending_inheritance: list[PendingInheritance] = field(default_factory=list)
     pending_retypes: list[PendingRetype] = field(default_factory=list)
     type_bound_tgs: dict[str, fabll.TypeNodeBoundTG] = field(default_factory=dict)
+    constraining_expr_types: dict[str, type[fabll.Node]] = field(default_factory=dict)
 
 
 class is_ato_block(fabll.Node):
@@ -270,7 +271,9 @@ class _TypeContextStack:
     def __init__(
         self, *, g: graph.GraphView, tg: fbrk.TypeGraph, state: BuildState
     ) -> None:
-        self._stack: list[tuple[graph.BoundNode, fabll.TypeNodeBoundTG, str]] = []
+        self._stack: list[
+            tuple[graph.BoundNode, fabll.TypeNodeBoundTG, str, type[fabll.Node]]
+        ] = []
         self._g = g
         self._tg = tg
         self._state = state
@@ -280,10 +283,10 @@ class _TypeContextStack:
         self,
         type_node: graph.BoundNode,
         bound_tg: fabll.TypeNodeBoundTG,
-        type_identifier: str | None = None,
+        type_identifier: str,
+        constraint_expr: type[fabll.Node],
     ) -> Generator[None, None, None]:
-        identifier = type_identifier or bound_tg.t._type_identifier()
-        self._stack.append((type_node, bound_tg, identifier))
+        self._stack.append((type_node, bound_tg, type_identifier, constraint_expr))
         try:
             yield
         finally:
@@ -292,35 +295,13 @@ class _TypeContextStack:
     def current(self) -> tuple[graph.BoundNode, fabll.TypeNodeBoundTG, str]:
         if not self._stack:
             raise DslException("Type context is not available")
-        type_node, bound_tg, identifier = self._stack[-1]
+        type_node, bound_tg, identifier, _ = self._stack[-1]
         return type_node, bound_tg, identifier
 
-    def is_component(self) -> bool:
-        """Return True if currently inside a component block.
-
-        Checks if the current type_node has is_ato_component as a child.
-        """
-        if not self._stack:
-            return False
-        type_node, _, _ = self._stack[-1]
-
-        # Check if type has a child whose type is is_ato_component
-        is_ato_component_type = is_ato_component.bind_typegraph(
-            self._tg
-        ).get_or_create_type()
-
-        for ident, _ in self._tg.collect_make_children(type_node=type_node):
-            if ident is None:
-                continue
-            type_ref = self._tg.get_make_child_type_reference_by_identifier(
-                type_node=type_node, identifier=ident
-            )
-            if type_ref is None:
-                continue
-            resolved = fbrk.Linker.get_resolved_type(type_reference=type_ref)
-            if resolved and resolved.node().is_same(other=is_ato_component_type.node()):
-                return True
-        return False
+    @property
+    def constraint_expr(self) -> type[fabll.Node]:
+        _, _, _, constraint_expr = self._stack[-1]
+        return constraint_expr
 
     def apply_action(self, action) -> None:
         type_node, bound_tg, _ = self.current()
@@ -650,7 +631,15 @@ class ASTVisitor:
             element_paths = element_paths[slice(start, stop, step)]
 
         bound_tg = not_none(self._state.type_bound_tgs.get(type_identifier))
-        with self._type_stack.enter(type_node, bound_tg, type_identifier):
+        if (
+            constraint_expr := self._state.constraining_expr_types.get(type_identifier)
+        ) is None:
+            raise CompilerException(
+                f"No constraint expression type registered for `{type_identifier}`"
+            )
+        with self._type_stack.enter(
+            type_node, bound_tg, type_identifier, constraint_expr
+        ):
             with self._scope_stack.enter():
                 for identifier, _ in self._tg.collect_make_children(
                     type_node=type_node
@@ -749,6 +738,7 @@ class ASTVisitor:
                     is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
                 _Block = _Module
+                constraint_expr = F.Expressions.IsSubset
 
             case AST.BlockDefinition.BlockType.COMPONENT:
 
@@ -761,6 +751,7 @@ class ASTVisitor:
                     )
 
                 _Block = _Component
+                constraint_expr = F.Expressions.Is
 
             case AST.BlockDefinition.BlockType.INTERFACE:
 
@@ -774,6 +765,7 @@ class ASTVisitor:
                     is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
                 _Block = _Interface
+                constraint_expr = F.Expressions.IsSubset
 
         type_identifier = self._make_type_identifier(module_name)
         _Block.__name__ = type_identifier
@@ -782,6 +774,7 @@ class ASTVisitor:
         type_node_bound_tg = fabll.TypeNodeBoundTG(tg=self._tg, t=_Block)
         type_node = type_node_bound_tg.get_or_create_type()
         self._state.type_bound_tgs[type_identifier] = type_node_bound_tg
+        self._state.constraining_expr_types[type_identifier] = constraint_expr
 
         # Capture compiler-internal identifiers before we process statements
         auto_generated_ids = frozenset(
@@ -818,7 +811,9 @@ class ASTVisitor:
 
         stmts = node.scope.get().stmts.get().as_list()
         with self._scope_stack.enter():
-            with self._type_stack.enter(type_node, type_node_bound_tg, type_identifier):
+            with self._type_stack.enter(
+                type_node, type_node_bound_tg, type_identifier, constraint_expr
+            ):
                 for stmt in stmts:
                     self._type_stack.apply_action(self.visit(stmt))
 
@@ -1034,7 +1029,7 @@ class ASTVisitor:
             target_path.leaf.identifier, assignable_node
         ):
             return TraitOverrideRegistry.handle_enum_parameter_assignment(
-                target_path, assignable_node
+                target_path, assignable_node, self._type_stack.constraint_expr
             )
 
         if (assignable := self.visit_Assignable(assignable_node)) is None:
@@ -1070,7 +1065,7 @@ class ASTVisitor:
                     parent_reference=parent_reference,
                     parent_path=parent_path,
                     create_param=False,
-                    use_is_constraint=self._type_stack.is_component(),
+                    constraint_expr=self._type_stack.constraint_expr,
                 )
             case ParameterSpec(param_child=None) as param_spec:
                 # Parameter not declared - create without unit for later inference
@@ -1082,7 +1077,7 @@ class ASTVisitor:
                     parent_reference=parent_reference,
                     parent_path=parent_path,
                     create_param=True,
-                    use_is_constraint=self._type_stack.is_component(),
+                    constraint_expr=self._type_stack.constraint_expr,
                 )
 
             case ParameterSpec() as param_spec:
@@ -1093,7 +1088,7 @@ class ASTVisitor:
                     parent_reference=parent_reference,
                     parent_path=parent_path,
                     create_param=not self._scope_stack.has_field(target_path),
-                    use_is_constraint=self._type_stack.is_component(),
+                    constraint_expr=self._type_stack.constraint_expr,
                 )
             case _:
                 raise NotImplementedError(f"Unhandled assignable type: {assignable}")
@@ -1538,7 +1533,7 @@ class ASTVisitor:
             parent_reference=None,
             parent_path=None,
             create_param=True,
-            use_is_constraint=self._type_stack.is_component(),
+            constraint_expr=self._type_stack.constraint_expr,
         )
 
     def visit_DirectedConnectStmt(self, node: AST.DirectedConnectStmt):

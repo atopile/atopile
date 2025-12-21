@@ -299,7 +299,10 @@ class TraitOverrideRegistry:
 
     @classmethod
     def handle_enum_parameter_assignment(
-        cls, target_path: FieldPath, assignable_node: AST.Assignable
+        cls,
+        target_path: FieldPath,
+        assignable_node: AST.Assignable,
+        constraint_expr: type[fabll.Node] | None = None,
     ) -> list[AddMakeChildAction]:
         """Handle enum parameter assignments like `cap.temperature_coefficient`."""
         leaf_name = target_path.leaf.identifier
@@ -331,7 +334,7 @@ class TraitOverrideRegistry:
             parent_reference=parent_reference,
             parent_path=parent_path,
             create_param=False,
-            use_is_constraint=False,  # Use IsSubset for modules
+            constraint_expr=constraint_expr,
         )
 
     @classmethod
