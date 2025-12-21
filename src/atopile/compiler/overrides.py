@@ -130,18 +130,21 @@ _TRAIT_OVERRIDES: dict[str, TraitOverrideSpec] = {
             [args.get("input_name", "input")],
             [args.get("output_name", "output")],
         ),
+        deprecated_hint="Use can_bridge instead",
     ),
     "has_datasheet_defined": TraitOverrideSpec(
         trait_class=F.has_datasheet,
         make_trait_field=lambda args: F.has_datasheet.MakeChild(
             datasheet=args["datasheet"]
         ),
+        deprecated_hint="Use has_datasheet instead",
     ),
     "has_single_electric_reference_shared": TraitOverrideSpec(
         trait_class=F.has_single_electric_reference,
         make_trait_field=lambda args: F.has_single_electric_reference.MakeChild(
             ground_only=args.get("gnd_only", False)
         ),
+        deprecated_hint="Use has_single_electric_reference instead",
     ),
     "has_part_picked": TraitOverrideSpec(
         trait_class=F.has_part_picked,
@@ -181,11 +184,15 @@ class TraitOverrideRegistry:
 
         final_value = spec.transform_value(value) if spec.transform_value else value
 
-        trait_field = (
-            spec.make_trait_field(final_value)
-            if spec.make_trait_field
-            else spec.trait_class.MakeChild()
-        )
+        try:
+            trait_field = (
+                spec.make_trait_field(final_value)
+                if spec.make_trait_field
+                else spec.trait_class.MakeChild()
+            )
+        except KeyError as e:
+            raise DslException(f"Missing value for `{name}`: {e}") from e
+
         return ActionsFactory.trait_from_field(trait_field, target_path)
 
     @classmethod

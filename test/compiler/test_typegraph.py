@@ -1294,7 +1294,9 @@ class TestHasDatasheetDefinedShim:
         """Test that has_datasheet_defined requires a datasheet argument."""
         from atopile.compiler.ast_visitor import DslException
 
-        with pytest.raises(DslException, match="requires a 'datasheet'"):
+        with pytest.raises(
+            DslException, match="Missing value for `has_datasheet_defined`: 'datasheet'"
+        ):
             build_type(
                 """
                 #pragma experiment("TRAITS")
@@ -2923,11 +2925,12 @@ class TestMultiImportShim:
             for record in caplog.records
             if record.levelno == logging.WARNING
         ]
-        assert any(
-            "DEPRECATION" in msg and "Multiple imports" in msg
-            for msg in warning_messages
-        ), (
-            f"Expected deprecation warning about multiple imports. Got: {warning_messages}"  # noqa E501
+        assert len(warning_messages) == 1, (
+            f"Expected 1 deprecation warning, got {len(warning_messages)}"
+        )
+        assert (
+            "Multiple imports on one line is deprecated. Please use separate import statements for each module. Found:"  # noqa E501
+            in warning_messages[0]
         )
 
     def test_single_import_no_warning(self, caplog):

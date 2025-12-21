@@ -1296,7 +1296,7 @@ def test_list_literal_invalid():
             module App:
                 rs = new Resistor[2]
                 for r in [rs]:
-                    assert r.resistance is 100kohm
+                    assert r.resistance is "A"
             """
             "",
             "App",
