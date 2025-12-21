@@ -248,7 +248,7 @@ def check_missing_picks(module: fabll.Node):
         if not m.has_trait(F.has_part_picked)
         and not m.has_trait(F.Footprints.has_associated_footprint)
         # TODO: really just want to look for is_pickable, which the other traits have
-        and (
+        and not (
             m.has_trait(F.is_pickable)
             or m.has_trait(F.is_pickable_by_type)
             or m.has_trait(F.is_pickable_by_part_number)
