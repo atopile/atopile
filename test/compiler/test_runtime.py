@@ -441,11 +441,14 @@ def test_assign_to_enum_param():
         "App",
     )
     cap = _get_child(app_instance, "cap")
+    temp_coeff = F.Capacitor.bind_instance(cap).temperature_coefficient.get()
+    lit = temp_coeff.is_parameter_operatable.get().try_get_constrained_literal(
+        pred_type=F.Expressions.IsSubset
+    )
+    assert lit is not None
+    enum_lit = fabll.Traits(lit).get_obj(F.Literals.AbstractEnums)
     assert (
-        F.Capacitor.bind_instance(cap)
-        .temperature_coefficient.get()
-        .force_extract_literal()
-        .get_single_value_typed(F.Capacitor.TemperatureCoefficient)
+        enum_lit.get_single_value_typed(F.Capacitor.TemperatureCoefficient)
         == F.Capacitor.TemperatureCoefficient.X7R
     )
 
