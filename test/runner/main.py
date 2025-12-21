@@ -1586,6 +1586,9 @@ def main(
     env["FBRK_TEST_ORCHESTRATOR_URL"] = url
     # Ensure workers can find test modules
     env["PYTHONPATH"] = os.getcwd()
+    # no need to keep on recompiling zig
+    # already done during discovery latest
+    env["FBRK_ZIG_NORECOMPILE"] = "1"
 
     worker_count = min(WORKER_COUNT, tests_total)
 

@@ -1859,16 +1859,36 @@ pub const TypeGraph = struct {
         instance_count: usize,
     };
 
+    /// Visit all type nodes in the typegraph.
+    /// Each type node is a direct child of the typegraph's self_node.
+    pub fn visit_types(
+        self: *const @This(),
+        comptime T: type,
+        ctx: *anyopaque,
+        f: *const fn (*anyopaque, BoundNodeReference) visitor.VisitResult(T),
+    ) visitor.VisitResult(T) {
+        const Visit = struct {
+            ctx: *anyopaque,
+            cb: *const fn (*anyopaque, BoundNodeReference) visitor.VisitResult(T),
+
+            pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(T) {
+                const visitor_: *@This() = @ptrCast(@alignCast(self_ptr));
+                const type_node = bound_edge.g.bind(EdgeComposition.get_child_node(bound_edge.edge));
+                return visitor_.cb(visitor_.ctx, type_node);
+            }
+        };
+        var visitor_ = Visit{ .ctx = ctx, .cb = f };
+        return EdgeComposition.visit_children_edges(self.self_node, T, &visitor_, Visit.visit);
+    }
+
     pub fn get_type_instance_overview(self: *const @This(), allocator: std.mem.Allocator) std.ArrayList(TypeInstanceCount) {
         var result = std.ArrayList(TypeInstanceCount).init(allocator);
 
-        // Visit all children of self_node (these are type nodes)
         const Counter = struct {
             counts: *std.ArrayList(TypeInstanceCount),
 
-            pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
+            pub fn visit(self_ptr: *anyopaque, type_node: BoundNodeReference) visitor.VisitResult(void) {
                 const ctx: *@This() = @ptrCast(@alignCast(self_ptr));
-                const type_node = bound_edge.g.bind(EdgeComposition.get_child_node(bound_edge.edge));
 
                 // Get type name
                 const type_name = TypeNodeAttributes.of(type_node.node).get_type_name();
@@ -1896,7 +1916,7 @@ pub const TypeGraph = struct {
         };
 
         var counter = Counter{ .counts = &result };
-        const visit_result = EdgeComposition.visit_children_edges(self.self_node, void, &counter, Counter.visit);
+        const visit_result = self.visit_types(void, &counter, Counter.visit);
         switch (visit_result) {
             .ERROR => |err| switch (err) {
                 error.OutOfMemory => @panic("OOM"),
@@ -1928,6 +1948,23 @@ pub const TypeGraph = struct {
         return TypeGraph.of(dst.bind(self.self_node.node));
     }
 
+    /// Get a map of all type names to their corresponding type nodes.
+    pub fn get_type_names(self: *const @This(), type_names: *std.StringHashMap(NodeReference)) void {
+        const Collector = struct {
+            names: *std.StringHashMap(NodeReference),
+
+            pub fn visit(self_ptr: *anyopaque, type_node: BoundNodeReference) visitor.VisitResult(void) {
+                const ctx: *@This() = @ptrCast(@alignCast(self_ptr));
+                const type_name = TypeNodeAttributes.of(type_node.node).get_type_name();
+                ctx.names.put(type_name, type_node.node) catch @panic("OOM");
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+        };
+
+        var collector = Collector{ .names = type_names };
+        _ = self.visit_types(void, &collector, Collector.visit);
+    }
+
     pub fn copy_node_into(start_node: BoundNodeReference, dst: *GraphView, force_descent: bool) void {
         const g = start_node.g;
         var arena = std.heap.ArenaAllocator.init(dst.base_allocator);
@@ -1944,14 +1981,20 @@ pub const TypeGraph = struct {
         const node_uuid_set = &dst.node_set;
         const edge_uuid_set = &dst.edge_set;
 
+        var type_map = graph.NodeRefMap.T(NodeReference).init(allocator);
+        defer type_map.deinit();
+
         // Helper struct with functions to collect nodes
         const Collector = struct {
+            allocator: std.mem.Allocator,
             queue: *std.ArrayList(NodeReference),
             dst: *GraphView,
             node_collect: *std.ArrayList(NodeReference),
             edge_collect: *std.ArrayList(EdgeReference),
             node_uuid_set: *graph.UUIDBitSet,
             edge_uuid_set: *graph.UUIDBitSet,
+            type_map: *graph.NodeRefMap.T(NodeReference),
+            existing_tg: ?bool,
 
             fn raw_add_node(ctx: *@This(), node: NodeReference) void {
                 if (!ctx.node_uuid_set.get_or_set(node.get_uuid())) {
@@ -1992,8 +2035,36 @@ pub const TypeGraph = struct {
 
             fn visit_typegraph(ctx: *@This(), tg: TypeGraph) void {
                 if (ctx.contains_node(tg.self_node.node)) {
+                    if (ctx.existing_tg != null) {
+                        @branchHint(.likely);
+                        return;
+                    }
+                    // if tg already in other graph before copy
+                    // we need to make sure to merge the type names
+                    // prepping old type->new type mapping here
+                    // merging done in visit_type_node
+                    ctx.existing_tg = true;
+                    const tg_dst = TypeGraph.of(ctx.dst.bind(tg.self_node.node));
+
+                    var old_type_names = std.StringHashMap(NodeReference).init(ctx.allocator);
+                    var new_type_names = std.StringHashMap(NodeReference).init(ctx.allocator);
+                    tg.get_type_names(&old_type_names);
+                    tg_dst.get_type_names(&new_type_names);
+                    var iter = old_type_names.iterator();
+                    while (iter.next()) |entry| {
+                        const type_name = entry.key_ptr.*;
+                        const old_type_node = entry.value_ptr.*;
+                        if (new_type_names.get(type_name)) |new_type_node| {
+                            if (old_type_node.is_same(new_type_node)) {
+                                continue;
+                            }
+                            ctx.type_map.put(old_type_node, new_type_node) catch @panic("OOM");
+                        }
+                    }
                     return;
                 }
+
+                ctx.existing_tg = false;
                 // needs special treatment because it has all types as children
                 // so we dont want to put it in the queue
                 ctx.raw_add_node(tg.self_node.node);
@@ -2006,22 +2077,41 @@ pub const TypeGraph = struct {
                 }
             }
 
-            fn visit_type_node(ctx: *@This(), bound_node: graph.BoundNodeReference) void {
-                const tg = TypeGraph.of_type(bound_node).?;
-                ctx.visit_typegraph(tg);
-                // need to manually add composition edge to the typegraph
-                const parent_edge = EdgeComposition.get_parent_edge(bound_node).?.edge;
-                ctx.raw_add_edge(parent_edge);
-            }
-
             fn visit_type(ctx: *@This(), bound_node: graph.BoundNodeReference) void {
                 if (EdgeType.get_type_edge(bound_node)) |type_edge| {
-                    const type_node = EdgeType.get_type_node(type_edge.edge);
-                    const added = ctx.add_node(type_node);
-                    ctx.raw_add_edge(type_edge.edge);
-                    if (added) {
-                        ctx.visit_type_node(bound_node.g.bind(type_node));
+                    const type_node = bound_node.g.bind(EdgeType.get_type_node(type_edge.edge));
+
+                    // tg not visited yet, visit it
+                    if (ctx.existing_tg == null) {
+                        const tg = TypeGraph.of_type(type_node).?;
+                        ctx.visit_typegraph(tg);
                     }
+
+                    // type already exists, add our instance edge and call it a day
+                    if (ctx.node_uuid_set.contains(type_node.node.get_uuid())) {
+                        ctx.raw_add_edge(type_edge.edge);
+                        return;
+                    }
+
+                    const collision = ctx.type_map.get(type_node.node);
+
+                    if (ctx.existing_tg == true and collision != null) {
+                        // name collision, make instance edge to the existing type node
+                        ctx.raw_add_edge(EdgeType.init(collision.?, bound_node.node));
+                        return;
+                    }
+
+                    // dst graph didn't have it's own tg yet => no name collisions possible
+                    // or no collision found
+                    const new_type_node = ctx.add_node(type_node.node);
+
+                    // if type node wasn't in the dst graph before, we need to add the composition edge to the typegraph
+                    if (new_type_node) {
+                        const parent_edge = EdgeComposition.get_parent_edge(type_node).?.edge;
+                        ctx.raw_add_edge(parent_edge);
+                    }
+
+                    ctx.raw_add_edge(type_edge.edge);
                 }
             }
 
@@ -2076,12 +2166,15 @@ pub const TypeGraph = struct {
         };
 
         var collector = Collector{
+            .allocator = allocator,
             .queue = &queue,
             .dst = dst,
             .node_collect = &node_collect,
             .edge_collect = &edge_collect,
             .node_uuid_set = node_uuid_set,
             .edge_uuid_set = edge_uuid_set,
+            .type_map = &type_map,
+            .existing_tg = null,
         };
 
         const root_new = collector.add_node(start_node.node);

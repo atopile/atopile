@@ -3226,6 +3226,48 @@ def test_same_class_multiple_get_or_create_type_succeeds():
     assert type1.node().is_same(other=type2.node())
 
 
+def test_tg_merge_copy():
+    from faebryk.core.graph_render import GraphRenderer
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class MyType(Node):
+        pass
+
+    class MyType2(Node):
+        pass
+
+    mytype = MyType.bind_typegraph(tg)
+    inst1 = mytype.create_instance(g=g)
+
+    g2 = graph.GraphView.create()
+    # this will copy MyType to the new tg and create it there
+    copy_inst1 = inst1.copy_into(g=g2)
+    tg2 = fbrk.TypeGraph.of_instance(instance_node=copy_inst1.instance)
+    assert tg2
+    assert tg2.get_self_node().node().is_same(other=tg.get_self_node().node())
+    print(tg2.get_type_instance_overview())
+    print(GraphRenderer().render(tg2.get_self_node()))
+
+    mytype2 = MyType2.bind_typegraph(tg)
+    inst2 = mytype2.create_instance(g=g)
+
+    # this will create a new type node in the new tg that doesnt mirror the one in g
+    inst3 = MyType2.bind_typegraph(tg2).create_instance(g=g2)
+    print(tg2.get_type_instance_overview())
+    print(GraphRenderer().render(tg2.get_self_node()))
+
+    # this should cause a panic, because the type name collision is not handled yet
+    copy_inst2 = inst2.copy_into(g=g2)
+    print(tg2.get_type_instance_overview())
+    print(inst3.get_type_node())
+    print(copy_inst2.get_type_node())
+    print(GraphRenderer().render(tg2.get_self_node()))
+
+    assert dict(tg2.get_type_instance_overview())[MyType2._type_identifier()] == 2
+
+
 if __name__ == "__main__":
     import typer
 

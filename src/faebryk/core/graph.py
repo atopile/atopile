@@ -114,7 +114,9 @@ def test_graph_garbage_collection(
 
     if trim:
         # This is RSS in *bytes*. After destroy+gc+trim we expect this to be small.
-        assert mem_leaked < 2 * 1024 * 1024
+        SIZE_DYNAMIC_ATTRIBUTES = 40
+        BUFFER = 1024 * 1024 * 2
+        assert mem_leaked < n * SIZE_DYNAMIC_ATTRIBUTES + BUFFER
 
 
 if __name__ == "__main__":

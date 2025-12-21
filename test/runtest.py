@@ -166,6 +166,16 @@ def run_tests(matches: list[tuple[Path, Callable]]) -> None:
                             f"Test {test_func.__name__} is using usefixtures. "
                             "Manual discovery does not support usefixtures."
                         )
+        # check if has argument called tmpdir
+        if "tmpdir" in test_func.__code__.co_varnames:
+            old_test_func = test_func
+
+            def _(*args, **kwargs):
+                with tempfile.TemporaryDirectory() as tmp_path_:
+                    tmp_path = Path(tmp_path_)
+                    old_test_func(*args, tmpdir=tmp_path, **kwargs)  # type: ignore
+
+            test_func = _
 
         sys.argv = [test_func.__name__]
 

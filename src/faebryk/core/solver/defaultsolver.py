@@ -95,7 +95,10 @@ class DefaultSolver(Solver):
             self.data.mutation_map.destroy()
 
         def __del__(self) -> None:
-            self.destroy()
+            try:
+                self.destroy()
+            except Exception:
+                pass
 
     def __init__(self) -> None:
         super().__init__()
