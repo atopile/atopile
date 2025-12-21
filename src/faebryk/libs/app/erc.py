@@ -242,6 +242,32 @@ class Test:
         print(ex.value.path)
         # assert set(ex.value.path) == {ep1.lv, ep2.hv}
 
+    def test_erc_electric_power_short_multiple_paths(self):
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        electricPowerType = F.ElectricPower.bind_typegraph(tg)
+        eps = [electricPowerType.create_instance(g=g) for _ in range(4)]
+
+        eps[0].hv.get()._is_interface.get().connect_to(eps[3].lv.get())
+
+        with pytest.raises(ERCFaultShortedInterfaces):
+            simple_erc(tg)
+
+    def test_erc_electric_power_short_via_resistor_no_short(self):
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        electricPowerType = F.ElectricPower.bind_typegraph(tg)
+        ep1 = electricPowerType.create_instance(g=g)
+        resistor = F.Resistor.bind_typegraph(tg).create_instance(g=g)
+
+        ep1.hv.get()._is_interface.get().connect_to(resistor.unnamed[0].get())
+        ep1.lv.get()._is_interface.get().connect_to(resistor.unnamed[1].get())
+
+        # should not raise
+        simple_erc(tg)
+
     def test_erc_power_source_short(self):
         """
         Test that a power source is shorted when connected to another power source
