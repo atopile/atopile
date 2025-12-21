@@ -128,13 +128,14 @@ class is_ato_block(fabll.Node):
     source_dir = F.Parameters.StringParameter.MakeChild()
 
     @classmethod
-    def MakeChild(cls, source_dir: str) -> fabll._ChildField:
+    def MakeChild(cls, source_dir: str | None = None) -> fabll._ChildField:
         field = fabll._ChildField(cls)
-        field.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [field, cls.source_dir], source_dir
+        if source_dir is not None:
+            field.add_dependant(
+                F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                    [field, cls.source_dir], source_dir
+                )
             )
-        )
         return field
 
     def get_source_dir(self) -> str:
@@ -705,8 +706,9 @@ class ASTVisitor:
         if self._scope_stack.is_symbol_defined(module_name):
             raise DslException(f"Symbol `{module_name}` already defined in scope")
 
-        # Get source directory for is_ato_block trait
-        source_dir = str(self._state.file_path.parent) if self._state.file_path else ""
+        source_dir = (
+            str(self._state.file_path.parent) if self._state.file_path else None
+        )
 
         match node.get_block_type():
             case AST.BlockDefinition.BlockType.MODULE:
