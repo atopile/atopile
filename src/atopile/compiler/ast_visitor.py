@@ -72,6 +72,8 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.PDM,
         F.Resistor,
         F.ResistorVoltageDivider,
+        F.Regulator,
+        F.AdjustableRegulator,
         F.RS232,
         F.SPI,
         F.SPIFlash,
