@@ -160,7 +160,7 @@ def test_new_with_count_creates_pointer_sequence():
     assert len(element_nodes) == 3
 
 
-def test_new_with_count_children_have_mounts():
+def test_new_with_count_children_are_created():
     g, tg, _, result = build_type(
         """
         module Inner:
@@ -173,12 +173,11 @@ def test_new_with_count_children_have_mounts():
 
     app_type = result.state.type_roots["App"]
     members_node = _get_make_child(tg, app_type, "members")
-
-    assert tg.debug_get_mount_chain(make_child=members_node) == []
+    assert members_node is not None
 
     for idx in ["members[0]", "members[1]"]:
         elem_node = _get_make_child(tg, app_type, idx)
-        assert tg.debug_get_mount_chain(make_child=elem_node) == []
+        assert elem_node is not None
 
 
 def test_new_with_count_rejects_out_of_range_index():
@@ -539,36 +538,6 @@ class TestForLoops:
                         pass
                 """
             )
-
-
-@pytest.mark.xfail(reason="TODO: mount chain tracking for nested make children")
-def test_nested_make_child_uses_mount_reference():
-    _, tg, _, result = build_type(
-        """
-        module Electrical:
-            pass
-
-        module Resistor:
-            unnamed = new Electrical[2]
-
-        module Inner:
-            pass
-
-        module App:
-            base = new Inner
-            base.extra = new Resistor
-        """
-    )
-    app_type = result.state.type_roots["App"]
-
-    base_node = _get_make_child(tg, app_type, "base")
-    assert tg.debug_get_mount_chain(make_child=base_node) == []
-
-    extra_node = _get_make_child(tg, app_type, "extra")
-    assert tg.debug_get_mount_chain(make_child=extra_node) == ["base", "extra"]
-    for _, lhs_path, rhs_path in _collect_make_links(tg, app_type):
-        assert not lhs_path or lhs_path[0] not in ("base", "extra")
-        assert not rhs_path or rhs_path[0] not in ("base", "extra")
 
 
 def test_connects_between_top_level_fields():
@@ -3490,7 +3459,13 @@ class TestSoftHardMakeChild:
             tg.instantiate_node(type_node=app_type, attributes={})
         )
         # The parameter should have a constrained value
-        # (detailed value checking covered by other tests)
+        param_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_instance.instance, child_identifier="resistance"
+        )
+        param = F.Parameters.NumericParameter.bind_instance(not_none(param_bnode))
+        literal = param.force_extract_literal_subset()
+        assert literal is not None
+        assert literal.get_values() == [10.0, 10.0]
 
     def test_explicit_then_implicit_same_block(self):
         """Explicit declaration followed by implicit constraint in same block.
@@ -3553,7 +3528,6 @@ class TestSoftHardMakeChild:
                 resistance = 10kohm
             """,
             link=True,
-            validate=False,  # Skip validation - constraint refs are internal impl details
         )
 
         derived_type = result.state.type_roots["Derived"]

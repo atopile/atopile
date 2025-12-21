@@ -6082,7 +6082,6 @@ fn wrap_typegraph_ensure_child_reference() type {
             .args_def = struct {
                 type_node: *graph.BoundNodeReference,
                 path: *py.PyObject,
-                validate: *py.PyObject = py.Py_True(),
 
                 pub const fields_meta = .{
                     .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
@@ -6145,9 +6144,7 @@ fn wrap_typegraph_ensure_child_reference() type {
 
             const reference = faebryk.typegraph.TypeGraph.ensure_path_reference_mountaware(
                 wrapper.data,
-                kwarg_obj.type_node.*,
                 traversals.items,
-                py.PyObject_IsTrue(kwarg_obj.validate) == 1,
                 &failure,
             ) catch |err| {
                 raise_typegraph_path_exception(

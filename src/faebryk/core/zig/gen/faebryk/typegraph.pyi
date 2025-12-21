@@ -44,7 +44,7 @@ class TypeGraph:
         child_type: BoundNode,
         identifier: str | None,
         node_attributes: NodeCreationAttributes | None = ...,
-        mount_reference: BoundNode | None = ...,
+        is_soft: bool = ...,
     ) -> BoundNode: ...
     def add_make_child_deferred(
         self,
@@ -53,7 +53,8 @@ class TypeGraph:
         child_type_identifier: str,
         identifier: str | None,
         node_attributes: NodeCreationAttributes | None = ...,
-        mount_reference: BoundNode | None = ...,
+        parent_path: list[str] | None = ...,
+        is_soft: bool = ...,
     ) -> BoundNode: ...
     def add_type_reference(self, *, type_identifier: str) -> BoundNode:
         """Create a standalone TypeReference node to be linked later.
@@ -107,7 +108,6 @@ class TypeGraph:
         *,
         type_node: BoundNode,
         path: list[str | EdgeTraversal],
-        validate: bool = ...,
     ) -> BoundNode:
         """Create a reference path for traversing the instance graph.
 
@@ -163,11 +163,21 @@ class TypeGraph:
         *,
         type_node: BoundNode,
     ) -> list[tuple[BoundNode, tuple[str, ...], tuple[str, ...]]]: ...
-    def debug_get_mount_chain(
+    def validate_type(
         self,
         *,
-        make_child: BoundNode,
-    ) -> list[str]: ...
+        type_node: BoundNode,
+    ) -> list[tuple[BoundNode, str]]:
+        """Validate all reference paths in a type node.
+
+        Returns a list of (node, message) tuples for validation errors.
+        Empty list means the type is valid.
+
+        Validates:
+        - MakeLink endpoints (lhs and rhs paths exist)
+        """
+        ...
+
     def get_reference_path(
         self,
         *,

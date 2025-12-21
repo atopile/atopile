@@ -102,7 +102,6 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.has_single_electric_reference,
         F.is_atomic_part,
         F.is_auto_generated,
-        F.is_auto_generated,
         F.is_pickable,
         F.requires_external_usage,
     }
@@ -197,29 +196,6 @@ class _ScopeStack:
             if name in state.symbols:
                 return state.symbols[name]
 
-    @contextmanager
-    def temporary_alias(self, name: str, path: FieldPath):
-        # FIXME: prohibit shadowing
-        assert self.stack, "Alias cannot be installed without an active scope"
-
-        if self.is_symbol_defined(name):
-            raise DslException(
-                f"Alias `{name}` would shadow an existing symbol in scope"
-            )
-
-        state = self.current
-        had_existing = name in state.aliases
-        previous = state.aliases.get(name)
-        state.aliases[name] = path
-        try:
-            yield
-        finally:
-            if had_existing:
-                assert previous is not None
-                state.aliases[name] = previous
-            else:
-                state.aliases.pop(name, None)
-
     def resolve_alias(self, name: str) -> FieldPath | None:
         return self.current.aliases.get(name)
 
@@ -227,7 +203,7 @@ class _ScopeStack:
     def depth(self) -> int:
         return len(self.stack)
 
-    def is_symbol_defined(self, name: str) -> bool:
+    def symbol_exists(self, name: str) -> bool:
         return any(name in state.symbols for state in self.stack)
 
 
@@ -284,13 +260,13 @@ class _TypeContextStack:
 
     def get_alias(self, name: str) -> FieldPath | None:
         """Get a pin alias from the current type's persistent aliases."""
-        type_node, _, type_identifier = self.current()
+        _, _, type_identifier = self.current()
         type_aliases = self._state.type_aliases.get(type_identifier, {})
         return type_aliases.get(name)
 
     def add_alias(self, name: str, path: FieldPath) -> None:
         """Add a pin alias to the current type's persistent aliases."""
-        type_node, _, type_identifier = self.current()
+        _, _, type_identifier = self.current()
         if type_identifier not in self._state.type_aliases:
             self._state.type_aliases[type_identifier] = {}
         self._state.type_aliases[type_identifier][name] = path
@@ -317,13 +293,15 @@ class _TypeContextStack:
             case _:
                 raise NotImplementedError(f"Unhandled action: {action}")
 
-    def resolve_reference(
-        self, path: FieldPath, validate: bool = True
-    ) -> graph.BoundNode:
+    def resolve_reference(self, path: FieldPath) -> graph.BoundNode:
         type_node, _, _ = self.current()
-        return self._ensure_field_path(
-            type_node=type_node, field_path=path, validate=validate
-        )
+        identifiers: list[str | EdgeTraversal] = list(path.identifiers())
+        try:
+            return self._tg.ensure_child_reference(
+                type_node=type_node, path=identifiers
+            )
+        except fbrk.TypeGraphPathError as exc:
+            raise DslException(self._format_path_error(path, exc)) from exc
 
     @staticmethod
     def _format_path_error(
@@ -351,19 +329,6 @@ class _TypeContextStack:
             case _:
                 return f"Field `{full_path}` is not defined in scope"
 
-    def _ensure_field_path(
-        self, type_node: graph.BoundNode, field_path: FieldPath, validate: bool = True
-    ) -> graph.BoundNode:
-        # Cast to list[str | EdgeTraversal] for type compatibility with the
-        # ensure_child_reference API which accepts mixed string/EdgeTraversal paths
-        identifiers: list[str | EdgeTraversal] = list(field_path.identifiers())
-        try:
-            return self._tg.ensure_child_reference(
-                type_node=type_node, path=identifiers, validate=validate
-            )
-        except fbrk.TypeGraphPathError as exc:
-            raise DslException(self._format_path_error(field_path, exc)) from exc
-
     def _add_child(
         self,
         type_node: graph.BoundNode,
@@ -373,16 +338,13 @@ class _TypeContextStack:
         assert action.child_field is not None
         action.child_field._set_locator(action.get_identifier())
 
-        # Convert parent_path to list of strings for the typegraph
-        parent_path_strs: list[str] | None = None
-        if action.parent_path is not None:
-            parent_path_strs = list(action.parent_path.identifiers())
-
         fabll.Node._exec_field(
             t=bound_tg,
             field=action.child_field,
             is_soft=action.is_soft,
-            parent_path=parent_path_strs,
+            parent_path=list(action.parent_path.identifiers())
+            if action.parent_path
+            else None,
         )
 
         # Track unresolved type references (both imports and local forward refs)
@@ -558,18 +520,31 @@ class ASTVisitor:
             for loop in sorted(loops, key=lambda lp: lp.source_order):
                 self._execute_deferred_for_loop(type_node, type_id, loop)
 
+    @contextmanager
+    def _temporary_alias(self, name: str, path: FieldPath):
+        """Install a temporary alias, checking for conflicts in both namespaces."""
+        if self._scope_stack.symbol_exists(name):
+            raise DslException(
+                f"Loop variable `{name}` conflicts with an existing symbol in scope"
+            )
+        if self._type_stack.field_exists(name):
+            raise DslException(
+                f"Loop variable `{name}` conflicts with an existing field in scope"
+            )
+
+        state = self._scope_stack.current
+        state.aliases[name] = path
+        try:
+            yield
+        finally:
+            state.aliases.pop(name, None)
+
     def _execute_loop_body(
         self, loop_var: str, element_paths: list[FieldPath], stmts: list[fabll.Node]
     ) -> None:
         """Execute loop body statements for each element path."""
-        # Check for loop variable conflict with existing fields
-        if self._type_stack.field_exists(loop_var):
-            raise DslException(
-                f"Loop variable `{loop_var}` conflicts with an existing field in scope"
-            )
-
         for element_path in element_paths:
-            with self._scope_stack.temporary_alias(loop_var, element_path):
+            with self._temporary_alias(loop_var, element_path):
                 for stmt in stmts:
                     self._type_stack.apply_action(self.visit(stmt))
 
@@ -723,7 +698,7 @@ class ASTVisitor:
 
         module_name = node.get_type_ref_name()
 
-        if self._scope_stack.is_symbol_defined(module_name):
+        if self._scope_stack.symbol_exists(module_name):
             raise DslException(f"Symbol `{module_name}` already defined in scope")
 
         source_dir = (
@@ -872,7 +847,6 @@ class ASTVisitor:
                 nodetype=F.Electrical,
                 identifier=signal_name,
             ),
-            parent_reference=None,
             parent_path=None,
         )
 
@@ -894,7 +868,6 @@ class ASTVisitor:
 
         return AddMakeChildAction(
             target_path=target_path,
-            parent_reference=None,
             parent_path=None,
             child_field=ActionsFactory.pin_child_field(pin_label_str, identifier),
         )
@@ -916,15 +889,14 @@ class ASTVisitor:
         if not segments:
             raise DslException("Empty field reference encountered")
 
-        # Alias rewrite: if the root segment is an alias, expand it.
-        # First check loop aliases (transient), then persistent type aliases (for pins)
-        root_name = segments[0].identifier
-        aliased = self._scope_stack.resolve_alias(root_name)
-        if aliased is None:
-            aliased = self._type_stack.get_alias(root_name)
-        if aliased is not None:
-            # Replace root with alias path
-            segments = list(aliased.segments) + segments[1:]
+        (root, *other) = segments
+        if (
+            # First check loop aliases (transient), then persistent type aliases
+            # (for pins)
+            alias := self._scope_stack.resolve_alias(root.identifier)
+            or self._type_stack.get_alias(root.identifier)
+        ) is not None:
+            segments = [*alias.segments, *other]
 
         return FieldPath(segments=tuple(segments))
 
@@ -932,7 +904,6 @@ class ASTVisitor:
         self,
         target_path: FieldPath,
         new_spec: NewChildSpec,
-        parent_reference: graph.BoundNode | None,
         parent_path: FieldPath | None,
     ) -> list[AddMakeChildAction | AddMakeLinkAction] | AddMakeChildAction:
         # FIXME: linker should handle this
@@ -990,7 +961,6 @@ class ASTVisitor:
                 type_identifier=new_spec.type_identifier,
                 module_type=module_fabll_type,
                 template_args=new_spec.template_args,
-                parent_reference=parent_reference,
                 parent_path=parent_path,
                 import_ref=new_spec.symbol.import_ref if new_spec.symbol else None,
             )
@@ -1001,7 +971,6 @@ class ASTVisitor:
             module_type=module_fabll_type,
             template_args=new_spec.template_args,
             count=new_spec.count,
-            parent_reference=parent_reference,
             parent_path=parent_path,
             import_ref=new_spec.symbol.import_ref if new_spec.symbol else None,
         )
@@ -1036,61 +1005,23 @@ class ASTVisitor:
             return NoOpAction()
 
         parent_path: FieldPath | None = None
-        parent_reference: graph.BoundNode | None = None
 
         if target_path.parent_segments:
             parent_path = FieldPath(segments=tuple(target_path.parent_segments))
 
-            parent_reference = self._type_stack.resolve_reference(
-                parent_path, validate=False
-            )
-
         match assignable:
             case NewChildSpec() as new_spec:
-                return self._handle_new_child(
-                    target_path, new_spec, parent_reference, parent_path
-                )
-            case ParameterSpec(param_child=None) as param_spec if (
-                self._type_stack.field_exists(target_path.root.identifier)
-            ):
-                # Parameter already declared in same type -> add constraint
-                return ActionsFactory.parameter_actions(
-                    target_path=target_path,
-                    param_child=param_spec.param_child,
-                    constraint_operand=param_spec.operand,
-                    parent_reference=parent_reference,
-                    parent_path=parent_path,
-                    create_param=False,
-                    constraint_expr=self._type_stack.constraint_expr,
-                )
-            case ParameterSpec(param_child=None) as param_spec:
-                # Parameter not declared - create without unit for later inference
-                # Implicit parameter creation from assignment → soft
-                return ActionsFactory.parameter_actions(
-                    target_path=target_path,
-                    param_child=F.Parameters.NumericParameter.MakeChild_DeferredUnit(),
-                    constraint_operand=param_spec.operand,
-                    parent_reference=parent_reference,
-                    parent_path=parent_path,
-                    create_param=True,
-                    constraint_expr=self._type_stack.constraint_expr,
-                    is_soft=True,
-                )
-
+                return self._handle_new_child(target_path, new_spec, parent_path)
             case ParameterSpec() as param_spec:
-                # Implicit parameter creation from assignment → soft
-                create_param = not self._type_stack.field_exists(
-                    target_path.root.identifier
-                )
                 return ActionsFactory.parameter_actions(
                     target_path=target_path,
                     param_child=param_spec.param_child,
                     constraint_operand=param_spec.operand,
-                    parent_reference=parent_reference,
                     parent_path=parent_path,
-                    create_param=create_param,
                     constraint_expr=self._type_stack.constraint_expr,
-                    is_soft=create_param,  # Only soft if we're actually creating
+                    # parameter assignment implicitly creates the parameter, if it
+                    # doesn't exist already
+                    is_soft=True,
                 )
             case _:
                 raise NotImplementedError(f"Unhandled assignable type: {assignable}")
@@ -1125,9 +1056,10 @@ class ASTVisitor:
             case AST.BinaryExpression() | AST.GroupExpression() as arithmetic:
                 expr = self.visit(arithmetic)
                 assert isinstance(expr, fabll._ChildField)
-                # Unit must be inferred after linking, so we can't specify a parameter
-                # yet
-                return ParameterSpec(param_child=None, operand=expr)
+                return ParameterSpec(
+                    param_child=F.Parameters.NumericParameter.MakeChild_DeferredUnit(),
+                    operand=expr,
+                )
 
             case _:
                 raise ValueError(f"Unhandled assignable type: {assignable}")
@@ -1206,7 +1138,6 @@ class ASTVisitor:
 
         return AddMakeChildAction(
             target_path=[*lhs_refpath, str(lhs_refpath).replace(".", "_")],
-            parent_reference=None,
             parent_path=None,
             child_field=expr,
         )
@@ -1379,7 +1310,6 @@ class ASTVisitor:
 
     def visit_NewExpression(self, node: AST.NewExpression):
         type_name = node.get_type_ref_name()
-        symbol = self._scope_stack.try_resolve_symbol(type_name)
 
         # Extract template arguments if present (e.g., new Addressor<address_bits=2>)
         if (
@@ -1388,13 +1318,13 @@ class ASTVisitor:
             self.ensure_experiment(ASTVisitor._Experiment.MODULE_TEMPLATING)
 
         return NewChildSpec(
-            symbol=symbol,
+            symbol=self._scope_stack.try_resolve_symbol(type_name),
             type_identifier=type_name,
-            type_node=symbol.type_node if symbol else None,
             count=node.get_new_count(),
             template_args=template_args,
         )
 
+    # FIXME: refactor to match pattern
     def _resolve_connectable_with_path(
         self, connectable_node: fabll.Node
     ) -> tuple[FieldPath, list[AddMakeChildAction]]:
@@ -1413,7 +1343,8 @@ class ASTVisitor:
     ) -> tuple[FieldPath, list[AddMakeChildAction]]:
         """Resolve a reference to an existing field. Returns empty action list."""
         path = self.visit_FieldRef(field_ref)
-        self._type_stack.resolve_reference(path, validate=False)
+        # FIXME: refactor this, remove resolve_reference
+        self._type_stack.resolve_reference(path)
         return path, []
 
     def _resolve_declaration(
@@ -1424,10 +1355,9 @@ class ASTVisitor:
         """
         target_path, visit_fn = self._get_declaration_info(node)
 
-        if not self._type_stack.field_exists(target_path.root.identifier):
-            return target_path, [visit_fn()]
-
-        return target_path, []
+        # FIXME: invalid (pre-linking)
+        # if not self._type_stack.field_exists(target_path.root.identifier):
+        return target_path, [visit_fn()]
 
     def _get_declaration_info(
         self, node: fabll.Node
@@ -1489,19 +1419,18 @@ class ASTVisitor:
 
         Replaces an existing field's type reference with a new type.
         """
+        type_node, _, _ = self._type_stack.current()
         target_path = self.visit_FieldRef(node.get_target())
         new_type_name = node.get_new_type_name()
 
         # Try to resolve symbol for import path, but allow forward references
         symbol = self._scope_stack.try_resolve_symbol(new_type_name)
-
-        type_node, _, _ = self._type_stack.current()
-
-        # Create a type reference for the new type (linker will resolve it)
-        new_type_ref = self._tg.add_type_reference(type_identifier=new_type_name)
         import_ref = symbol.import_ref if symbol else None
-        self._state.external_type_refs.append((new_type_ref, import_ref))
 
+        # Linker will resolve this later
+        new_type_ref = self._tg.add_type_reference(type_identifier=new_type_name)
+
+        self._state.external_type_refs.append((new_type_ref, import_ref))
         self._state.pending_retypes.append(
             PendingRetype(
                 containing_type=type_node,
@@ -1521,9 +1450,7 @@ class ASTVisitor:
             target_path=target_path,
             param_child=F.Parameters.NumericParameter.MakeChild(unit=unit_t),
             constraint_operand=None,
-            parent_reference=None,
             parent_path=None,
-            create_param=True,
             constraint_expr=self._type_stack.constraint_expr,
         )
 
@@ -1694,7 +1621,7 @@ class ASTVisitor:
 
         (trait_type_name,) = node.type_ref.get().name.get().get_values()
 
-        if not self._scope_stack.is_symbol_defined(trait_type_name):
+        if not self._scope_stack.symbol_exists(trait_type_name):
             raise DslException(f"Trait `{trait_type_name}` must be imported before use")
 
         target_path_list: LinkPath = []

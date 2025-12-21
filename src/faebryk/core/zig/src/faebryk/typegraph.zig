@@ -130,11 +130,23 @@ pub const TypeGraph = struct {
             pub const child_literal_value = "child_literal_value";
             pub const parent_path_key = "parent_path";
             pub const is_soft_key = "is_soft";
-            pub const is_superseded_key = "is_superseded";
 
-            pub fn set_parent_path(self: @This(), path_str: ?str) void {
-                if (path_str) |p| {
+            /// Initialize all MakeChild attributes at creation time.
+            /// This is the only way to set these attributes - no setters exist.
+            pub fn init(
+                self: @This(),
+                identifier: ?str,
+                parent_path: ?str,
+                soft: bool,
+            ) void {
+                if (identifier) |id| {
+                    self.node.node.put(child_identifier, .{ .String = id });
+                }
+                if (parent_path) |p| {
                     self.node.node.put(parent_path_key, .{ .String = p });
+                }
+                if (soft) {
+                    self.node.node.put(is_soft_key, .{ .Bool = true });
                 }
             }
 
@@ -145,34 +157,11 @@ pub const TypeGraph = struct {
                 return null;
             }
 
-            pub fn set_is_soft(self: @This(), value: bool) void {
-                self.node.node.put(is_soft_key, .{ .Bool = value });
-            }
-
             pub fn is_soft(self: @This()) bool {
                 if (self.node.node.get(is_soft_key)) |value| {
                     return value.Bool;
                 }
                 return false; // default to hard (explicit)
-            }
-
-            /// Mark this MakeChild as superseded (replaced by inherited parent)
-            pub fn set_superseded(self: @This(), value: bool) void {
-                self.node.node.put(is_superseded_key, .{ .Bool = value });
-            }
-
-            /// Check if this MakeChild has been superseded by inheritance
-            pub fn is_superseded(self: @This()) bool {
-                if (self.node.node.get(is_superseded_key)) |value| {
-                    return value.Bool;
-                }
-                return false;
-            }
-
-            pub fn set_child_identifier(self: @This(), identifier: ?str) void {
-                if (identifier) |_identifier| {
-                    self.node.node.put(child_identifier, .{ .String = _identifier });
-                }
             }
 
             pub fn get_child_identifier(self: @This()) ?str {
@@ -697,9 +686,7 @@ pub const TypeGraph = struct {
         is_soft: bool,
     ) !BoundNodeReference {
         const make_child = try self.instantiate_node(self.get_MakeChild());
-        MakeChildNode.Attributes.of(make_child).set_child_identifier(identifier);
-        MakeChildNode.Attributes.of(make_child).set_parent_path(parent_path_str);
-        MakeChildNode.Attributes.of(make_child).set_is_soft(is_soft);
+        MakeChildNode.Attributes.of(make_child).init(identifier, parent_path_str, is_soft);
         if (node_attributes) |_node_attributes| {
             MakeChildNode.Attributes.of(make_child).store_node_attributes(_node_attributes.*);
         }
@@ -746,20 +733,15 @@ pub const TypeGraph = struct {
     ) CopyTypeError!void {
         const allocator = self.self_node.g.allocator;
 
-        // Collect existing children on target, tracking which are soft
-        // soft_children: identifiers of soft MakeChild nodes that can be replaced
+        // Collect existing hard children on target (for conflict detection)
         var hard_existing = std.StringHashMap(void).init(allocator);
         defer hard_existing.deinit();
-        var soft_existing = std.StringHashMap(BoundNodeReference).init(allocator);
-        defer soft_existing.deinit();
 
         const target_children = self.collect_make_children(allocator, target_type);
         defer allocator.free(target_children);
         for (target_children) |info| {
             if (info.identifier) |id| {
-                if (MakeChildNode.Attributes.of(info.make_child).is_soft()) {
-                    soft_existing.put(id, info.make_child) catch @panic("OOM");
-                } else {
+                if (!MakeChildNode.Attributes.of(info.make_child).is_soft()) {
                     hard_existing.put(id, {}) catch @panic("OOM");
                 }
             }
@@ -795,10 +777,8 @@ pub const TypeGraph = struct {
                     return error.ChildAlreadyExists;
                 }
 
-                // If there's a soft existing child, mark it as superseded (parent wins)
-                if (soft_existing.get(id)) |soft_child| {
-                    MakeChildNode.Attributes.of(soft_child).set_superseded(true);
-                }
+                // Soft children with the same id will be filtered out by
+                // visit_make_children when the inherited hard child is added
             }
             const child_type = MakeChildNode.get_child_type(info.make_child) orelse continue;
             // Inherited children are always hard (they become authoritative), no parent_path
@@ -902,7 +882,8 @@ pub const TypeGraph = struct {
     ) []ValidationError {
         var errors = std.ArrayList(ValidationError).init(allocator);
 
-        // Collect all make children (note: superseded ones are already filtered out)
+        // Soft/hard resolution is handled dynamically by visit_make_children,
+        // so collect_make_children already returns only the "winning" nodes.
         const make_children = self.collect_make_children(allocator, type_node);
         defer allocator.free(make_children);
 
@@ -922,7 +903,7 @@ pub const TypeGraph = struct {
                 // Skip validation if path contains internal segments
                 if (path_segments.items.len > 0 and self.isValidatablePath(path_segments.items)) {
                     if (self.resolve_child_path(type_node, path_segments.items) == null) {
-                        const msg = allocator.dupe(u8, path_str) catch continue;
+                        const msg = std.fmt.allocPrint(allocator, "Field `{s}` could not be resolved", .{path_str}) catch continue;
                         errors.append(.{
                             .node = child_info.make_child,
                             .message = msg,
@@ -965,16 +946,12 @@ pub const TypeGraph = struct {
 
                 // Check if identifiers match
                 if (std.mem.eql(u8, id, other_id)) {
-                    // Duplicate hard MakeChild - allocate error message with prefix
-                    const prefix = "duplicate:";
-                    const msg = allocator.alloc(u8, prefix.len + id.len) catch continue;
-                    @memcpy(msg[0..prefix.len], prefix);
-                    @memcpy(msg[prefix.len..], id);
+                    const message = std.fmt.allocPrint(allocator, "Field `{s}` is already defined", .{id}) catch continue;
                     errors.append(.{
                         .node = other_info.make_child,
-                        .message = msg,
+                        .message = message,
                     }) catch {
-                        allocator.free(msg);
+                        allocator.free(message);
                     };
                 }
             }
@@ -999,11 +976,12 @@ pub const TypeGraph = struct {
             if (link_info.lhs_path.len > 0 and self.isValidatablePath(link_info.lhs_path)) {
                 if (self.resolve_child_path(type_node, link_info.lhs_path) == null) {
                     if (self.format_path(allocator, link_info.lhs_path)) |path_str| {
+                        const message = std.fmt.allocPrint(allocator, "Field `{s}` could not be resolved", .{path_str}) catch continue;
                         errors.append(.{
                             .node = link_info.make_link,
-                            .message = path_str,
+                            .message = message,
                         }) catch {
-                            allocator.free(path_str);
+                            allocator.free(message);
                         };
                     }
                 }
@@ -1350,9 +1328,7 @@ pub const TypeGraph = struct {
     /// Create a child reference with optional validation and failure reporting.
     pub fn ensure_path_reference_mountaware(
         self: *@This(),
-        type_node: BoundNodeReference,
         path: []const ChildReferenceNode.EdgeTraversal,
-        validate: bool,
         failure: ?*?PathResolutionFailure,
     ) !BoundNodeReference {
         if (path.len == 0) {
@@ -1367,17 +1343,12 @@ pub const TypeGraph = struct {
             return error.ChildNotFound;
         }
 
-        var local_failure: ?PathResolutionFailure = null;
-        if (validate) {
-            _ = self.resolve_path_segments(type_node, path, &local_failure) catch {
-                if (failure) |f| f.* = local_failure;
-                return error.ChildNotFound;
-            };
-        }
-
         return ChildReferenceNode.create_and_insert(self, path);
     }
 
+    /// Visit MakeChild nodes with dynamic soft/hard filtering.
+    /// Soft nodes are skipped if a hard node with the same identifier exists.
+    /// If multiple soft nodes exist for the same identifier, only the first is visited.
     pub fn visit_make_children(
         self: *@This(),
         type_node: BoundNodeReference,
@@ -1385,28 +1356,76 @@ pub const TypeGraph = struct {
         ctx: *anyopaque,
         f: *const fn (*anyopaque, MakeChildInfo) visitor.VisitResult(T),
     ) visitor.VisitResult(T) {
-        const Visit = struct {
-            ctx: *anyopaque,
-            cb: *const fn (*anyopaque, MakeChildInfo) visitor.VisitResult(T),
+        const allocator = self.self_node.g.allocator;
 
-            pub fn visit(self_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(T) {
-                const visitor_: *@This() = @ptrCast(@alignCast(self_ptr));
+        // First, collect all MakeChild nodes
+        var all_children = std.ArrayList(MakeChildInfo).init(allocator);
+        defer all_children.deinit();
+
+        const RawCollector = struct {
+            list_ptr: *std.ArrayList(MakeChildInfo),
+
+            pub fn collect(ctx_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
+                const collector: *@This() = @ptrCast(@alignCast(ctx_ptr));
                 const make_child = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
-
-                // Skip superseded MakeChild nodes (replaced by inheritance)
-                if (MakeChildNode.Attributes.of(make_child).is_superseded()) {
-                    return visitor.VisitResult(T){ .CONTINUE = {} };
-                }
-
                 const identifier = MakeChildNode.Attributes.of(make_child).get_child_identifier();
-                return visitor_.cb(visitor_.ctx, MakeChildInfo{
+                collector.list_ptr.append(.{
                     .identifier = identifier,
                     .make_child = make_child,
-                });
+                }) catch return visitor.VisitResult(void){ .ERROR = error.OutOfMemory };
+                return visitor.VisitResult(void){ .CONTINUE = {} };
             }
         };
-        var visitor_ = Visit{ .ctx = ctx, .cb = f };
-        return EdgeComposition.visit_children_of_type(type_node, self.get_MakeChild().node, T, &visitor_, Visit.visit);
+        var raw_collector = RawCollector{ .list_ptr = &all_children };
+        const collect_result = EdgeComposition.visit_children_of_type(
+            type_node,
+            self.get_MakeChild().node,
+            void,
+            &raw_collector,
+            RawCollector.collect,
+        );
+        switch (collect_result) {
+            .ERROR => |err| return visitor.VisitResult(T){ .ERROR = err },
+            else => {},
+        }
+
+        // Build set of hard identifiers
+        var hard_ids = std.StringHashMap(void).init(allocator);
+        defer hard_ids.deinit();
+        for (all_children.items) |info| {
+            if (info.identifier) |id| {
+                if (!MakeChildNode.Attributes.of(info.make_child).is_soft()) {
+                    hard_ids.put(id, {}) catch continue;
+                }
+            }
+        }
+
+        // Track first soft for each identifier (to skip duplicates)
+        var first_soft_ids = std.StringHashMap(void).init(allocator);
+        defer first_soft_ids.deinit();
+
+        // Iterate with filtering
+        for (all_children.items) |info| {
+            if (info.identifier) |id| {
+                if (MakeChildNode.Attributes.of(info.make_child).is_soft()) {
+                    // Skip if a hard exists for this identifier
+                    if (hard_ids.contains(id)) continue;
+                    // Skip if we've already seen a soft for this identifier
+                    if (first_soft_ids.contains(id)) continue;
+                    first_soft_ids.put(id, {}) catch continue;
+                }
+            }
+            // Visit this node
+            switch (f(ctx, info)) {
+                .CONTINUE => {},
+                .STOP => return visitor.VisitResult(T){ .STOP = {} },
+                .OK => |result| return visitor.VisitResult(T){ .OK = result },
+                .EXHAUSTED => return visitor.VisitResult(T){ .EXHAUSTED = {} },
+                .ERROR => |err| return visitor.VisitResult(T){ .ERROR = err },
+            }
+        }
+
+        return visitor.VisitResult(T){ .EXHAUSTED = {} };
     }
 
     /// Return every MakeChild belonging to `type_node` without filtering or
@@ -2373,6 +2392,7 @@ test "typegraph iterators and mount chains" {
     };
     _ = try tg.add_make_link(top, base_reference, extra_reference, link_attrs);
 
+    const container_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("members")});
     const element0_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("0")});
     const element1_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("1")});
     const ptr_link_attrs_0 = EdgeCreationAttributes{

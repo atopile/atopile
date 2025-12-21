@@ -26,10 +26,6 @@ def build_type(
     link: bool = False,
     validate: bool = True,
 ) -> tuple[GraphView, TypeGraph, StdlibRegistry, BuildFileResult]:
-    from atopile.compiler import DslException
-    from atopile.compiler.deferred_executor import DeferredExecutor
-    from faebryk.libs.exceptions import accumulate
-
     g = GraphView.create()
     tg = TypeGraph.create(g=g)
     stdlib = StdlibRegistry(tg)
@@ -39,25 +35,7 @@ def build_type(
 
     if link:
         linker = Linker(None, stdlib, tg)
-        linker.link_imports(g, result.state)
-        DeferredExecutor(
-            g=g, tg=tg, state=result.state, visitor=result.visitor
-        ).execute()
-
-        if validate:
-            with accumulate() as accumulator:
-                for _, type_node in result.state.type_roots.items():
-                    for _, message in tg.validate_type(type_node=type_node):
-                        with accumulator.collect():
-                            if message.startswith("duplicate:"):
-                                field = message[len("duplicate:") :]
-                                raise DslException(
-                                    f"Field `{field}` is already defined"
-                                )
-                            else:
-                                raise DslException(
-                                    f"Field `{message}` is not defined in scope"
-                                )
+        build_stage_2(g=g, tg=tg, linker=linker, result=result, validate=validate)
 
     return g, tg, stdlib, result
 

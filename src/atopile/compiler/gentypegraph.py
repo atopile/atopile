@@ -143,7 +143,6 @@ class NewChildSpec:
 
     symbol: Symbol | None = None
     type_identifier: str | None = None
-    type_node: graph.BoundNode | None = None
     count: int | None = None
     template_args: dict[str, str | bool | float] | None = None
 
@@ -220,7 +219,6 @@ class ActionsFactory:
         return [
             AddMakeChildAction(
                 target_path=[trait_identifier],
-                parent_reference=None,
                 parent_path=None,
                 child_field=field,
             ),
@@ -370,14 +368,12 @@ class ActionsFactory:
         type_identifier: str,
         module_type: type[fabll.Node] | None,
         template_args: dict[str, str | bool | float] | None,
-        parent_reference: graph.BoundNode | None,
         parent_path: "FieldPath | None",
         import_ref: "ImportRef | None",
     ) -> "AddMakeChildAction":
         """Create a single AddMakeChildAction for a new child instantiation."""
         return AddMakeChildAction(
             target_path=target_path,
-            parent_reference=parent_reference,
             parent_path=parent_path,
             child_field=ActionsFactory.child_field(
                 identifier=target_path.leaf.identifier,
@@ -395,7 +391,6 @@ class ActionsFactory:
         module_type: type[fabll.Node] | None,
         template_args: dict[str, str | bool | float] | None,
         count: int,
-        parent_reference: graph.BoundNode | None,
         parent_path: "FieldPath | None",
         import_ref: "ImportRef | None",
     ) -> "tuple[list[AddMakeChildAction], list[AddMakeLinkAction], list[FieldPath]]":
@@ -410,7 +405,6 @@ class ActionsFactory:
         pointer_action = AddMakeChildAction(
             target_path=target_path,
             child_field=F.Collections.PointerSequence.MakeChild(),
-            parent_reference=parent_reference,
             parent_path=parent_path,
         )
 
@@ -436,7 +430,6 @@ class ActionsFactory:
                         module_type=module_type,
                         template_args=template_args,
                     ),
-                    parent_reference=parent_reference,
                     parent_path=parent_path,
                     import_ref=import_ref,
                 )
@@ -457,15 +450,14 @@ class ActionsFactory:
         target_path: "FieldPath",
         param_child: fabll._ChildField | None,
         constraint_operand: fabll._ChildField | None,
-        parent_reference: graph.BoundNode | None,
         parent_path: "FieldPath | None",
-        create_param: bool = True,
         constraint_expr: type[fabll.Node] | None = None,
         is_soft: bool = False,
     ) -> "list[AddMakeChildAction]":
         """Create actions for a parameter, optionally with a constraint.
 
         Args:
+            param_child: The parameter child field to create, or None to skip creation.
             constraint_expr: Expression type for constraints (Is for components,
                             IsSubset for modules). Required when constraint_operand
                             is provided.
@@ -476,11 +468,10 @@ class ActionsFactory:
         """
         actions: list[AddMakeChildAction] = []
 
-        if create_param and param_child is not None:
+        if param_child is not None:
             actions.append(
                 AddMakeChildAction(
                     target_path=target_path,
-                    parent_reference=parent_reference,
                     parent_path=parent_path,
                     child_field=param_child,
                     is_soft=is_soft,
@@ -504,7 +495,6 @@ class ActionsFactory:
                             FieldPath.Segment(f"operand_{unique_target_str}"),
                         )
                     ),
-                    parent_reference=parent_reference,
                     parent_path=parent_path,
                     child_field=constraint_operand,
                 )
@@ -518,7 +508,6 @@ class ActionsFactory:
                             FieldPath.Segment(f"constraint_{unique_target_str}"),
                         )
                     ),
-                    parent_reference=parent_reference,
                     parent_path=parent_path,
                     child_field=constraint_expr.MakeChild(
                         target_path.to_ref_path(), [constraint_operand], assert_=True
@@ -532,14 +521,12 @@ class ActionsFactory:
     def deferred_expression_action(
         expression_path: "FieldPath",
         operand: fabll._ChildField,
-        parent_reference: graph.BoundNode | None,
         parent_path: "FieldPath | None",
     ) -> "AddMakeChildAction":
         """Create action for an expression whose parameter will be inferred later."""
         return AddMakeChildAction(
             target_path=expression_path,
             child_field=operand,
-            parent_reference=parent_reference,
             parent_path=parent_path,
         )
 
@@ -549,13 +536,11 @@ class AddMakeChildAction:
     """
     target_path: String path to target eg. resistor.resistance
     relative to parent reference node. eg. app
-    parent_reference: Parent of the makechild node.
     parent_path: The path to the parent type.
     is_soft: If True, this MakeChild can be superseded by inheritance.
     """
 
     target_path: FieldPath | fabll.RefPath
-    parent_reference: graph.BoundNode | None
     parent_path: FieldPath | None
     child_field: fabll._ChildField | None = None
     import_ref: ImportRef | None = None

@@ -481,19 +481,20 @@ def build_source(
 
 
 def build_stage_2(
-    g: graph.GraphView, tg: fbrk.TypeGraph, linker: Linker, result: BuildFileResult
+    g: graph.GraphView,
+    tg: fbrk.TypeGraph,
+    linker: Linker,
+    result: BuildFileResult,
+    validate: bool = True,
 ) -> None:
     from atopile.compiler.deferred_executor import DeferredExecutor
 
     linker.link_imports(g, result.state)
     DeferredExecutor(g=g, tg=tg, state=result.state, visitor=result.visitor).execute()
 
-    with accumulate() as accumulator:
-        for _, type_node in result.state.type_roots.items():
-            for _, message in tg.validate_type(type_node=type_node):
-                with accumulator.collect():
-                    if message.startswith("duplicate:"):
-                        field = message[len("duplicate:") :]
-                        raise DslException(f"Field `{field}` is already defined")
-                    else:
+    if validate:
+        with accumulate() as accumulator:
+            for _, type_node in result.state.type_roots.items():
+                for _, message in tg.validate_type(type_node=type_node):
+                    with accumulator.collect():
                         raise DslException(f"Field `{message}` is not defined in scope")

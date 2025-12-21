@@ -329,11 +329,10 @@ class TraitOverrideRegistry:
 
         return ActionsFactory.parameter_actions(
             target_path=target_path,
-            param_child=None,  # Don't create param, it already exists
+            param_child=None,
             constraint_operand=enum_literal,
             parent_reference=parent_reference,
             parent_path=parent_path,
-            create_param=False,
             constraint_expr=constraint_expr,
         )
 

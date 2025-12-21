@@ -99,7 +99,6 @@ class TypeGraph:
         *,
         type_node: BoundNode,
         path: list[str | EdgeTraversal],
-        validate: bool = ...,
     ) -> BoundNode:
         """Create a reference path for traversing the instance graph.
 
