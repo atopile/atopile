@@ -59,6 +59,7 @@ from faebryk.library.XtalIF import XtalIF
 from faebryk.library.has_explicit_part import has_explicit_part
 from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.requires_external_usage import requires_external_usage
+from faebryk.library.Regulator import Regulator
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.BJT import BJT
 from faebryk.library.Capacitor import Capacitor
@@ -101,6 +102,7 @@ from faebryk.library.Ethernet import Ethernet
 from faebryk.library.OpAmp import OpAmp
 from faebryk.library.RS485HalfDuplex import RS485HalfDuplex
 from faebryk.library.USB2_0_IF import USB2_0_IF
+from faebryk.library.AdjustableRegulator import AdjustableRegulator
 from faebryk.library.requires_pulls import requires_pulls
 from faebryk.library.USB2_0 import USB2_0
 from faebryk.library.USB3_IF import USB3_IF
@@ -155,6 +157,7 @@ __all__ = [
     "has_explicit_part",
     "has_net_name_affix",
     "requires_external_usage",
+    "Regulator",
     "has_single_electric_reference",
     "BJT",
     "Capacitor",
@@ -197,6 +200,7 @@ __all__ = [
     "OpAmp",
     "RS485HalfDuplex",
     "USB2_0_IF",
+    "AdjustableRegulator",
     "requires_pulls",
     "USB2_0",
     "USB3_IF",
