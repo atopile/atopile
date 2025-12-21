@@ -29,7 +29,6 @@ from faebryk.libs.util import (
 
 if TYPE_CHECKING:
     from faebryk.libs.picker.api.models import Component
-    from faebryk.libs.picker.localpick import PickerOption
 
 NO_PROGRESS_BAR = ConfigFlag("NO_PROGRESS_BAR", default=False)
 
@@ -40,7 +39,7 @@ class PickSupplier(ABC):
     supplier_id: str
 
     @abstractmethod
-    def attach(self, module: "fabll.Node", part: "PickerOption"): ...
+    def attach(self, module: "fabll.Node", part: "PickedPart"): ...
 
 
 @dataclass(frozen=True)

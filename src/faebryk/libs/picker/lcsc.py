@@ -31,7 +31,6 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.config import config as Gcfg
 from faebryk.libs.kicad.fileformats import kicad
-from faebryk.libs.picker.localpick import PickerOption
 from faebryk.libs.picker.picker import PickedPart, PickSupplier
 from faebryk.libs.util import ConfigFlag, call_with_file_capture, not_none, once
 
@@ -651,10 +650,10 @@ def attach(
 class PickSupplierLCSC(PickSupplier):
     supplier_id: str = "lcsc"
 
-    def attach(self, module: fabll.Node, part: PickerOption):
-        assert isinstance(part.part, PickedPartLCSC)
+    def attach(self, module: fabll.Node, part: PickedPart):
+        assert isinstance(part, PickedPartLCSC)
         module_with_fp = module.get_trait(F.Footprints.can_attach_to_footprint)
-        attach(component_with_fp=module_with_fp, partno=part.part.lcsc_id)
+        attach(component_with_fp=module_with_fp, partno=part.lcsc_id)
 
     def __str__(self) -> str:
         return f"{type(self).__name__}()"

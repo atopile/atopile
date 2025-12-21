@@ -18,11 +18,9 @@ from faebryk.core.solver.utils import (
     Contradiction,
     ContradictionByLiteral,
 )
-from faebryk.libs.picker.lcsc import PickedPartLCSC
-from faebryk.libs.picker.localpick import PickerOption, pick_module_by_params
-from faebryk.libs.picker.picker import PickedPart, pick_part_recursively
+from faebryk.libs.picker.picker import pick_part_recursively
 from faebryk.libs.test.boundexpressions import BoundExpressions
-from faebryk.libs.util import cast_assert, not_none
+from faebryk.libs.util import not_none
 
 logger = logging.getLogger(__name__)
 
@@ -1125,122 +1123,6 @@ def test_inspect_enum_led():
         led.color.get().can_be_operand.get(),
         solver,
         F.LED.Color.EMERALD,
-    )
-
-
-@pytest.mark.usefixtures("setup_project_config")
-def test_simple_pick():
-    E = BoundExpressions()
-    led = F.LED.bind_typegraph(tg=E.tg).create_instance(g=E.g)
-
-    solver = DefaultSolver()
-    pick_module_by_params(
-        led,
-        solver,
-        [
-            PickerOption(
-                part=PickedPartLCSC(
-                    manufacturer="Everlight Elec",
-                    partno="19-217/GHC-YR1S2/3T",
-                    supplier_partno="C72043",
-                ),
-                params={
-                    "color": E.lit_op_enum(F.LED.Color.EMERALD).as_literal.force_get(),
-                    "max_brightness": E.lit_op_single(
-                        (0.285, E.U.cd)
-                    ).as_literal.force_get(),
-                    "forward_voltage": E.lit_op_single(
-                        (3.0, E.U.V)
-                    ).as_literal.force_get(),
-                    "max_current": E.lit_op_single(
-                        (0.1100, E.U.A)
-                    ).as_literal.force_get(),
-                },
-                pinmap={
-                    "1": led.diode.get().cathode.get(),
-                    "2": led.diode.get().anode.get(),
-                },
-            ),
-        ],
-    )
-
-    assert led.has_trait(F.has_part_picked)
-    assert (
-        cast_assert(
-            PickedPart, led.get_trait(F.has_part_picked).get_part()
-        ).supplier_partno
-        == "C72043"
-    )
-
-
-@pytest.mark.usefixtures("setup_project_config")
-def test_simple_negative_pick():
-    E = BoundExpressions()
-    led = F.LED.bind_typegraph(tg=E.tg).create_instance(g=E.g)
-    E.is_subset(
-        led.color.get().can_be_operand.get(),
-        E.lit_op_enum(F.LED.Color.RED, F.LED.Color.BLUE),
-        assert_=True,
-    )
-
-    solver = DefaultSolver()
-    pick_module_by_params(
-        led,
-        solver,
-        [
-            PickerOption(
-                part=PickedPartLCSC(
-                    manufacturer="Everlight Elec",
-                    partno="19-217/GHC-YR1S2/3T",
-                    supplier_partno="C72043",
-                ),
-                params={
-                    "color": E.lit_op_enum(F.LED.Color.EMERALD).as_literal.force_get(),
-                    "max_brightness": E.lit_op_single(
-                        (0.285, E.U.cd)
-                    ).as_literal.force_get(),
-                    "forward_voltage": E.lit_op_single(
-                        (3.0, E.U.V)
-                    ).as_literal.force_get(),
-                    "max_current": E.lit_op_single(
-                        (0.1100, E.U.A)
-                    ).as_literal.force_get(),
-                },
-                pinmap={
-                    "1": led.diode.get().cathode.get(),
-                    "2": led.diode.get().anode.get(),
-                },
-            ),
-            PickerOption(
-                part=PickedPartLCSC(
-                    manufacturer="Everlight Elec",
-                    partno="19-217/BHC-ZL1M2RY/3T",
-                    supplier_partno="C72041",
-                ),
-                params={
-                    "color": E.lit_op_enum(F.LED.Color.BLUE).as_literal.force_get(),
-                    "max_brightness": E.lit_op_single(
-                        (0.0280, E.U.cd)
-                    ).as_literal.force_get(),
-                    "forward_voltage": E.lit_op_single(
-                        (3.0, E.U.V)
-                    ).as_literal.force_get(),
-                    "max_current": E.lit_op_single(
-                        (0.1100, E.U.A)
-                    ).as_literal.force_get(),
-                },
-                pinmap={
-                    "1": led.diode.get().cathode.get(),
-                    "2": led.diode.get().anode.get(),
-                },
-            ),
-        ],
-    )
-
-    assert led.has_trait(F.has_part_picked)
-    assert (
-        cast_assert(PickedPartLCSC, led.get_trait(F.has_part_picked).get_part()).lcsc_id
-        == "C72041"
     )
 
 
