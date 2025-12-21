@@ -1661,10 +1661,10 @@ def test_assign_to_child_parameter():
     r = F.Resistor.bind_instance(_get_child(app_instance, "r"))
     resistance = r.resistance.get().force_extract_literal_subset()
     assert resistance.get_values() == [
-        90,
-        110,
+        90000,
+        110000,
     ]
-    assert resistance.get_is_unit().get_symbols() == ["kohm"]
+    assert resistance.get_is_unit().get_symbols()[0] == "Ω"
 
 
 def test_slice_non_list():

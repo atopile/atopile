@@ -8,14 +8,13 @@ import Resistor
 # Package imports from https://packages.atopile.io/
 from "atopile/usb-connectors/usb-connectors.ato" import USB2_0TypeCHorizontalConnector
 from "atopile/ti-tlv75901/ti-tlv75901.ato" import TLV75901_driver
-from "atopile/esp32/esp32_s3.ato" import ESP32_S3_WROOM
-
+from "atopile/espressif-esp32-c3/espressif-esp32-c3-mini.ato" import ESP32_C3_MINI_1
 
 module ESP32_MINIMAL:
     """
     ESP32 S3 WROOM with USB-C connector and LDO
     """
-    micro = new ESP32_S3_WROOM
+    micro = new ESP32_C3_MINI_1
     usb_c = new USB2_0TypeCHorizontalConnector
     ldo_3V3 = new TLV75901_driver
 
