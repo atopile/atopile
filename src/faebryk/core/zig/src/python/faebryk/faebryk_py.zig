@@ -3258,12 +3258,12 @@ fn wrap_typegraph_add_make_child() type {
                 child_type: *graph.BoundNodeReference,
                 identifier: *py.PyObject,
                 node_attributes: ?*py.PyObject = null,
-                mount_reference: ?*py.PyObject = null,
+                parent_path: ?*py.PyObject = null,
+                is_soft: ?*py.PyObject = null,
 
                 pub const fields_meta = .{
                     .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
                     .child_type = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
-                    .mount_reference = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
                 };
             },
             .static = false,
@@ -3293,16 +3293,43 @@ fn wrap_typegraph_add_make_child() type {
                 node_attributes = attrs_wrapper.data;
             }
 
-            var mount_reference: ?graph.BoundNodeReference = null;
-            if (kwarg_obj.mount_reference) |mount_obj| {
-                if (mount_obj != py.Py_None()) {
-                    const mount_wrapper = bind.castWrapper("BoundNodeReference", &graph_py.bound_node_type, BoundNodeWrapper, mount_obj) orelse {
-                        if (identifier_copy) |copy| allocator.free(copy);
+            // Parse parent_path from Python list of strings and join with "."
+            var parent_path_str: ?[]u8 = null;
+            const parent_path_obj: *py.PyObject = if (kwarg_obj.parent_path) |obj| obj else py.Py_None();
+            if (parent_path_obj != py.Py_None()) {
+                const list_len = py.PyList_Size(parent_path_obj);
+                if (list_len > 0) {
+                    var total_len: usize = 0;
+                    var i: isize = 0;
+                    while (i < list_len) : (i += 1) {
+                        const item = py.PyList_GetItem(parent_path_obj, i);
+                        const segment_slice = bind.unwrap_str(item) orelse return null;
+                        total_len += segment_slice.len;
+                        if (i < list_len - 1) total_len += 1;
+                    }
+
+                    parent_path_str = allocator.alloc(u8, total_len) catch {
+                        py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate parent path");
                         return null;
                     };
-                    mount_reference = mount_wrapper.data.*;
+                    var pos: usize = 0;
+                    i = 0;
+                    while (i < list_len) : (i += 1) {
+                        const item = py.PyList_GetItem(parent_path_obj, i);
+                        const segment_slice = bind.unwrap_str(item) orelse return null;
+                        @memcpy(parent_path_str.?[pos .. pos + segment_slice.len], segment_slice);
+                        pos += segment_slice.len;
+                        if (i < list_len - 1) {
+                            parent_path_str.?[pos] = '.';
+                            pos += 1;
+                        }
+                    }
                 }
             }
+
+            // Parse is_soft flag (default to false)
+            const is_soft_obj: *py.PyObject = if (kwarg_obj.is_soft) |obj| obj else py.Py_None();
+            const is_soft: bool = if (is_soft_obj != py.Py_None()) py.PyObject_IsTrue(is_soft_obj) == 1 else false;
 
             const bnode = faebryk.typegraph.TypeGraph.add_make_child(
                 wrapper.data,
@@ -3310,7 +3337,8 @@ fn wrap_typegraph_add_make_child() type {
                 kwarg_obj.child_type.*,
                 if (identifier_copy) |copy| copy else null,
                 node_attributes,
-                mount_reference,
+                if (parent_path_str) |pp| pp else null,
+                is_soft,
             ) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "add_make_child failed");
                 return null;
@@ -3331,11 +3359,11 @@ fn wrap_typegraph_add_make_child_deferred() type {
                 child_type_identifier: *py.PyObject,
                 identifier: *py.PyObject,
                 node_attributes: ?*py.PyObject = null,
-                mount_reference: ?*py.PyObject = null,
+                parent_path: ?*py.PyObject = null,
+                is_soft: ?*py.PyObject = null,
 
                 pub const fields_meta = .{
                     .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
-                    .mount_reference = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
                 };
             },
             .static = false,
@@ -3370,17 +3398,45 @@ fn wrap_typegraph_add_make_child_deferred() type {
                 node_attributes = attrs_wrapper.data;
             }
 
-            var mount_reference: ?graph.BoundNodeReference = null;
-            if (kwarg_obj.mount_reference) |mount_obj| {
-                if (mount_obj != py.Py_None()) {
-                    const mount_wrapper = bind.castWrapper("BoundNodeReference", &graph_py.bound_node_type, BoundNodeWrapper, mount_obj) orelse {
-                        if (identifier_copy) |copy| allocator.free(copy);
-                        allocator.free(child_type_identifier_copy);
+            // Parse parent_path from Python list of strings and join with "."
+            var parent_path_str: ?[]u8 = null;
+            const parent_path_obj: *py.PyObject = if (kwarg_obj.parent_path) |obj| obj else py.Py_None();
+            if (parent_path_obj != py.Py_None()) {
+                const list_len = py.PyList_Size(parent_path_obj);
+                if (list_len > 0) {
+                    // Calculate total length needed
+                    var total_len: usize = 0;
+                    var i: isize = 0;
+                    while (i < list_len) : (i += 1) {
+                        const item = py.PyList_GetItem(parent_path_obj, i);
+                        const segment_slice = bind.unwrap_str(item) orelse return null;
+                        total_len += segment_slice.len;
+                        if (i < list_len - 1) total_len += 1; // for '.'
+                    }
+
+                    // Allocate and build joined string
+                    parent_path_str = allocator.alloc(u8, total_len) catch {
+                        py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate parent path");
                         return null;
                     };
-                    mount_reference = mount_wrapper.data.*;
+                    var pos: usize = 0;
+                    i = 0;
+                    while (i < list_len) : (i += 1) {
+                        const item = py.PyList_GetItem(parent_path_obj, i);
+                        const segment_slice = bind.unwrap_str(item) orelse return null;
+                        @memcpy(parent_path_str.?[pos .. pos + segment_slice.len], segment_slice);
+                        pos += segment_slice.len;
+                        if (i < list_len - 1) {
+                            parent_path_str.?[pos] = '.';
+                            pos += 1;
+                        }
+                    }
                 }
             }
+
+            // Parse is_soft flag (default to false)
+            const is_soft_obj: *py.PyObject = if (kwarg_obj.is_soft) |obj| obj else py.Py_None();
+            const is_soft: bool = if (is_soft_obj != py.Py_None()) py.PyObject_IsTrue(is_soft_obj) == 1 else false;
 
             const bnode = faebryk.typegraph.TypeGraph.add_make_child_deferred(
                 wrapper.data,
@@ -3388,7 +3444,8 @@ fn wrap_typegraph_add_make_child_deferred() type {
                 child_type_identifier_copy,
                 if (identifier_copy) |copy| copy else null,
                 node_attributes,
-                mount_reference,
+                parent_path_str,
+                is_soft,
             ) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "add_make_child_deferred failed");
                 return null;
@@ -4040,16 +4097,16 @@ fn wrap_typegraph_collect_make_children() type {
     };
 }
 
-fn wrap_typegraph_debug_get_mount_chain() type {
+fn wrap_typegraph_validate_type() type {
     return struct {
         pub const descr = method_descr{
-            .name = "debug_get_mount_chain",
-            .doc = "Test helper: Return the ordered mount reference chain for a make-child, exposing how pointer-sequence elements attach to their containers.",
+            .name = "validate_type",
+            .doc = "Validate all reference paths in a type node. Returns list of (node, message) tuples for validation errors.",
             .args_def = struct {
-                make_child: *graph.BoundNodeReference,
+                type_node: *graph.BoundNodeReference,
 
                 pub const fields_meta = .{
-                    .make_child = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
                 };
             },
             .static = false,
@@ -4060,13 +4117,54 @@ fn wrap_typegraph_debug_get_mount_chain() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const allocator = std.heap.c_allocator;
-            const chain = faebryk.typegraph.TypeGraph.get_mount_chain(wrapper.data, allocator, kwarg_obj.make_child.*);
-            defer allocator.free(chain);
+            const errors = faebryk.typegraph.TypeGraph.validate_type(wrapper.data, allocator, kwarg_obj.type_node.*);
+            defer {
+                for (errors) |err| {
+                    allocator.free(err.message);
+                }
+                allocator.free(errors);
+            }
 
-            const list_obj = _path_segments_to_list(chain) orelse {
-                py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate mount chain");
+            const list_obj = py.PyList_New(@as(isize, @intCast(errors.len)));
+            if (list_obj == null) {
                 return null;
-            };
+            }
+
+            var idx: usize = 0;
+            while (idx < errors.len) : (idx += 1) {
+                const err = errors[idx];
+                const node_obj = graph_py.makeBoundNodePyObject(err.node) orelse {
+                    py.Py_DECREF(list_obj.?);
+                    return null;
+                };
+                const msg_obj = _make_py_string(err.message) orelse {
+                    py.Py_DECREF(node_obj);
+                    py.Py_DECREF(list_obj.?);
+                    return null;
+                };
+
+                const tuple_obj = py.PyTuple_New(2);
+                if (tuple_obj == null) {
+                    py.Py_DECREF(node_obj);
+                    py.Py_DECREF(msg_obj);
+                    py.Py_DECREF(list_obj.?);
+                    return null;
+                }
+
+                if (py.PyTuple_SetItem(tuple_obj, 0, node_obj) != 0 or
+                    py.PyTuple_SetItem(tuple_obj, 1, msg_obj) != 0)
+                {
+                    py.Py_DECREF(tuple_obj.?);
+                    py.Py_DECREF(list_obj.?);
+                    return null;
+                }
+
+                if (py.PyList_SetItem(list_obj, @as(isize, @intCast(idx)), tuple_obj) != 0) {
+                    py.Py_DECREF(tuple_obj.?);
+                    py.Py_DECREF(list_obj.?);
+                    return null;
+                }
+            }
 
             return list_obj;
         }
@@ -4077,7 +4175,6 @@ fn instantiation_error_message(err: anyerror) [*:0]const u8 {
     return switch (err) {
         error.InvalidArgument => "Node instantiation failed: type not found",
         error.UnresolvedTypeReference => "Node instantiation failed: unresolved type reference (linking required)",
-        error.UnresolvedMountReference => "Node instantiation failed: unresolved mount reference",
         error.UnresolvedReference => "Node instantiation failed: unresolved reference in MakeLink",
         error.MissingOperandReference => "Node instantiation failed: missing operand reference in MakeLink",
         else => "Node instantiation failed",
@@ -4602,7 +4699,7 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_collect_make_children(),
         wrap_typegraph_collect_make_links(),
         wrap_typegraph_get_reference_path(),
-        wrap_typegraph_debug_get_mount_chain(),
+        wrap_typegraph_validate_type(),
         wrap_typegraph_collect_pointer_members(),
         wrap_typegraph_ensure_child_reference(),
         wrap_typegraph_instantiate(),

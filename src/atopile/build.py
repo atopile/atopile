@@ -4,6 +4,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 from atopile.cli.logging_ import LoggingStage
+from atopile.compiler.build import build_stage_2
 from atopile.config import BuildType, config
 
 if TYPE_CHECKING:
@@ -82,7 +83,6 @@ def _init_ato_app(
     import faebryk.core.node as fabll
     import faebryk.library._F as F
     from atopile.compiler.build import build_file
-    from atopile.compiler.deferred_executor import DeferredExecutor
 
     result = build_file(
         g=g,
@@ -90,8 +90,8 @@ def _init_ato_app(
         import_path=config.build.entry_file_path.name,
         path=config.build.entry_file_path,
     )
-    linker.link_imports(g, result.state)
-    DeferredExecutor(g=g, tg=tg, state=result.state, visitor=result.visitor).execute()
+
+    build_stage_2(g=g, tg=tg, linker=linker, result=result)
 
     app_type = result.state.type_roots[config.build.entry_section]
     app_root = tg.instantiate_node(type_node=app_type, attributes={})

@@ -11,6 +11,7 @@ from typing import Iterable
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
+from atopile.compiler import DslException
 from atopile.compiler import ast_types as AST
 from atopile.compiler.antlr_visitor import ANTLRVisitor
 from atopile.compiler.ast_visitor import (
@@ -23,6 +24,7 @@ from atopile.compiler.gentypegraph import ImportRef
 from atopile.compiler.parse import parse_file, parse_text_as_file
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.config import find_project_dir
+from faebryk.libs.exceptions import accumulate
 from faebryk.libs.util import import_from_path, once, unique
 
 
@@ -476,3 +478,22 @@ def build_source(
         file_path=None,
         stdlib_allowlist=stdlib_allowlist,
     )
+
+
+def build_stage_2(
+    g: graph.GraphView, tg: fbrk.TypeGraph, linker: Linker, result: BuildFileResult
+) -> None:
+    from atopile.compiler.deferred_executor import DeferredExecutor
+
+    linker.link_imports(g, result.state)
+    DeferredExecutor(g=g, tg=tg, state=result.state, visitor=result.visitor).execute()
+
+    with accumulate() as accumulator:
+        for _, type_node in result.state.type_roots.items():
+            for _, message in tg.validate_type(type_node=type_node):
+                with accumulator.collect():
+                    if message.startswith("duplicate:"):
+                        field = message[len("duplicate:") :]
+                        raise DslException(f"Field `{field}` is already defined")
+                    else:
+                        raise DslException(f"Field `{message}` is not defined in scope")

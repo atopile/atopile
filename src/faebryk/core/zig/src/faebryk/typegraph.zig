@@ -70,6 +70,11 @@ pub const TypeGraph = struct {
         rhs_path: []const []const u8,
     };
 
+    pub const ValidationError = struct {
+        node: BoundNodeReference,
+        message: []const u8,
+    };
+
     pub const TypeNodeAttributes = struct {
         node: NodeReference,
 
@@ -123,6 +128,46 @@ pub const TypeGraph = struct {
 
             pub const child_identifier = "child_identifier";
             pub const child_literal_value = "child_literal_value";
+            pub const parent_path_key = "parent_path";
+            pub const is_soft_key = "is_soft";
+            pub const is_superseded_key = "is_superseded";
+
+            pub fn set_parent_path(self: @This(), path_str: ?str) void {
+                if (path_str) |p| {
+                    self.node.node.put(parent_path_key, .{ .String = p });
+                }
+            }
+
+            pub fn get_parent_path(self: @This()) ?str {
+                if (self.node.node.get(parent_path_key)) |value| {
+                    return value.String;
+                }
+                return null;
+            }
+
+            pub fn set_is_soft(self: @This(), value: bool) void {
+                self.node.node.put(is_soft_key, .{ .Bool = value });
+            }
+
+            pub fn is_soft(self: @This()) bool {
+                if (self.node.node.get(is_soft_key)) |value| {
+                    return value.Bool;
+                }
+                return false; // default to hard (explicit)
+            }
+
+            /// Mark this MakeChild as superseded (replaced by inherited parent)
+            pub fn set_superseded(self: @This(), value: bool) void {
+                self.node.node.put(is_superseded_key, .{ .Bool = value });
+            }
+
+            /// Check if this MakeChild has been superseded by inheritance
+            pub fn is_superseded(self: @This()) bool {
+                if (self.node.node.get(is_superseded_key)) |value| {
+                    return value.Bool;
+                }
+                return false;
+            }
 
             pub fn set_child_identifier(self: @This(), identifier: ?str) void {
                 if (identifier) |_identifier| {
@@ -182,22 +227,13 @@ pub const TypeGraph = struct {
         }
 
         const type_reference_identifier = "type_ref";
-        const mount_identifier = "mount";
 
         pub fn set_type_reference(mc_node: BoundNodeReference, type_reference: BoundNodeReference) void {
             _ = EdgeComposition.add_child(mc_node, type_reference.node, type_reference_identifier);
         }
 
-        pub fn set_mount_reference(mc_node: BoundNodeReference, mount_reference: BoundNodeReference) void {
-            _ = EdgeComposition.add_child(mc_node, mount_reference.node, mount_identifier);
-        }
-
         pub fn get_type_reference(mc_node: BoundNodeReference) BoundNodeReference {
             return EdgeComposition.get_child_by_identifier(mc_node, type_reference_identifier).?;
-        }
-
-        pub fn get_mount_reference(mc_node: BoundNodeReference) ?BoundNodeReference {
-            return EdgeComposition.get_child_by_identifier(mc_node, mount_identifier);
         }
     };
 
@@ -620,14 +656,16 @@ pub const TypeGraph = struct {
     //}
 
     /// Create a MakeChild node with the child type linked immediately.
-    /// mount_reference: Create child under different parent. WARNING DO NOT USE THIS!
+    /// is_soft: if true, this MakeChild can be discarded if a hard one exists for the same identifier
+    /// parent_path_str: optional dot-separated path to parent (e.g., "foo.bar") for nested assignments
     pub fn add_make_child(
         self: *@This(),
         target_type: BoundNodeReference,
         child_type: BoundNodeReference,
         identifier: ?str,
         node_attributes: ?*NodeCreationAttributes,
-        mount_reference: ?BoundNodeReference,
+        parent_path_str: ?str,
+        is_soft: bool,
     ) !BoundNodeReference {
         const child_type_identifier = TypeNodeAttributes.of(child_type.node).get_type_name();
         const make_child = try self.add_make_child_deferred(
@@ -635,7 +673,8 @@ pub const TypeGraph = struct {
             child_type_identifier,
             identifier,
             node_attributes,
-            mount_reference,
+            parent_path_str,
+            is_soft,
         );
         const type_reference = MakeChildNode.get_type_reference(make_child);
         try linker_mod.Linker.link_type_reference(self.self_node.g, type_reference, child_type);
@@ -645,26 +684,28 @@ pub const TypeGraph = struct {
     /// Create a MakeChild node without linking the type reference.
     /// Use this when the child type node is not yet available (e.g., external imports).
     /// Caller must call Linker.link_type_reference() later.
-    /// mount_reference: Create child under different parent. WARNING DO NOT USE THIS!
+    /// The optional parent_path specifies where this child should be attached for nested assignments.
+    /// parent_path_str should be a dot-separated string like "foo.bar".
+    /// is_soft: if true, this MakeChild can be discarded if a hard one exists for the same identifier
     pub fn add_make_child_deferred(
         self: *@This(),
         target_type: BoundNodeReference,
         child_type_identifier: str,
         identifier: ?str,
         node_attributes: ?*NodeCreationAttributes,
-        mount_reference: ?BoundNodeReference,
+        parent_path_str: ?str,
+        is_soft: bool,
     ) !BoundNodeReference {
         const make_child = try self.instantiate_node(self.get_MakeChild());
         MakeChildNode.Attributes.of(make_child).set_child_identifier(identifier);
+        MakeChildNode.Attributes.of(make_child).set_parent_path(parent_path_str);
+        MakeChildNode.Attributes.of(make_child).set_is_soft(is_soft);
         if (node_attributes) |_node_attributes| {
             MakeChildNode.Attributes.of(make_child).store_node_attributes(_node_attributes.*);
         }
 
         const type_reference = try TypeReferenceNode.create_and_insert(self, child_type_identifier);
         MakeChildNode.set_type_reference(make_child, type_reference);
-        if (mount_reference) |_mount_reference| {
-            MakeChildNode.set_mount_reference(make_child, _mount_reference);
-        }
         _ = EdgePointer.point_to(make_child, type_reference.node, identifier, null);
         _ = EdgeComposition.add_child(target_type, make_child.node, identifier);
 
@@ -693,7 +734,9 @@ pub const TypeGraph = struct {
     pub const CopyTypeError = error{ChildAlreadyExists};
 
     /// Copy MakeChild and MakeLink nodes from source_type into target_type.
-    /// Returns error if a child from source already exists on target (unless in skip_identifiers).
+    /// Handles soft/hard MakeChild semantics:
+    /// - If target has a soft MakeChild and source has the same identifier, source wins
+    /// - If target has a hard MakeChild and source has the same identifier, returns error
     /// Used for inheritance: flattens parent structure into derived type.
     pub fn copy_type_structure(
         self: *@This(),
@@ -703,15 +746,22 @@ pub const TypeGraph = struct {
     ) CopyTypeError!void {
         const allocator = self.self_node.g.allocator;
 
-        // Collect existing identifiers on target
-        var existing = std.StringHashMap(void).init(allocator);
-        defer existing.deinit();
+        // Collect existing children on target, tracking which are soft
+        // soft_children: identifiers of soft MakeChild nodes that can be replaced
+        var hard_existing = std.StringHashMap(void).init(allocator);
+        defer hard_existing.deinit();
+        var soft_existing = std.StringHashMap(BoundNodeReference).init(allocator);
+        defer soft_existing.deinit();
 
         const target_children = self.collect_make_children(allocator, target_type);
         defer allocator.free(target_children);
         for (target_children) |info| {
             if (info.identifier) |id| {
-                existing.put(id, {}) catch @panic("OOM");
+                if (MakeChildNode.Attributes.of(info.make_child).is_soft()) {
+                    soft_existing.put(id, info.make_child) catch @panic("OOM");
+                } else {
+                    hard_existing.put(id, {}) catch @panic("OOM");
+                }
             }
         }
 
@@ -721,20 +771,38 @@ pub const TypeGraph = struct {
 
         for (source_children) |info| {
             if (info.identifier) |id| {
-                if (existing.contains(id)) {
-                    var should_skip = false;
-                    for (skip_identifiers) |skip_id| {
-                        if (std.mem.eql(u8, id, skip_id)) {
-                            should_skip = true;
-                            break;
-                        }
+                // Skip internal expression nodes (implementation details)
+                if (std.mem.startsWith(u8, id, "anon") or
+                    std.mem.startsWith(u8, id, "lit_") or
+                    std.mem.startsWith(u8, id, "operand_") or
+                    std.mem.startsWith(u8, id, "constraint_"))
+                {
+                    continue;
+                }
+
+                // Check if should skip (explicit skip list)
+                var should_skip = false;
+                for (skip_identifiers) |skip_id| {
+                    if (std.mem.eql(u8, id, skip_id)) {
+                        should_skip = true;
+                        break;
                     }
-                    if (should_skip) continue;
+                }
+                if (should_skip) continue;
+
+                // Check for hard conflict (two hard declarations = error)
+                if (hard_existing.contains(id)) {
                     return error.ChildAlreadyExists;
+                }
+
+                // If there's a soft existing child, mark it as superseded (parent wins)
+                if (soft_existing.get(id)) |soft_child| {
+                    MakeChildNode.Attributes.of(soft_child).set_superseded(true);
                 }
             }
             const child_type = MakeChildNode.get_child_type(info.make_child) orelse continue;
-            _ = self.add_make_child(target_type, child_type, info.identifier, null, null) catch continue;
+            // Inherited children are always hard (they become authoritative), no parent_path
+            _ = self.add_make_child(target_type, child_type, info.identifier, null, null, false) catch continue;
         }
 
         // Copy MakeLink nodes from source
@@ -822,6 +890,216 @@ pub const TypeGraph = struct {
         return current_type;
     }
 
+    /// Validate all reference paths in a type node and its children.
+    /// Returns a list of validation errors (empty if valid).
+    /// Validates:
+    /// - MakeLink endpoints (lhs and rhs paths)
+    /// - Duplicate hard MakeChild declarations (same identifier, both hard)
+    pub fn validate_type(
+        self: *@This(),
+        allocator: std.mem.Allocator,
+        type_node: BoundNodeReference,
+    ) []ValidationError {
+        var errors = std.ArrayList(ValidationError).init(allocator);
+
+        // Collect all make children (note: superseded ones are already filtered out)
+        const make_children = self.collect_make_children(allocator, type_node);
+        defer allocator.free(make_children);
+
+        for (make_children) |child_info| {
+            // Validate parent_paths (for nested assignments like "parent.child = new X")
+            if (child_info.make_child.node.get(MakeChildNode.Attributes.parent_path_key)) |value| {
+                const path_str = value.String;
+                // Parse the path string (dot-separated) and check if it resolves
+                var path_segments = std.ArrayList([]const u8).init(allocator);
+                defer path_segments.deinit();
+
+                var iter = std.mem.splitSequence(u8, path_str, ".");
+                while (iter.next()) |seg| {
+                    path_segments.append(seg) catch continue;
+                }
+
+                // Skip validation if path contains internal segments
+                if (path_segments.items.len > 0 and self.isValidatablePath(path_segments.items)) {
+                    if (self.resolve_child_path(type_node, path_segments.items) == null) {
+                        const msg = allocator.dupe(u8, path_str) catch continue;
+                        errors.append(.{
+                            .node = child_info.make_child,
+                            .message = msg,
+                        }) catch {
+                            allocator.free(msg);
+                        };
+                    }
+                }
+            }
+        }
+
+        // Duplicate hard MakeChild detection
+        var i: usize = 0;
+        while (i < make_children.len) : (i += 1) {
+            const child_info = make_children[i];
+            const id = child_info.identifier orelse continue;
+
+            // Skip internal fields (starting with _ or special prefixes)
+            if (id.len > 0 and id[0] == '_') continue;
+            if (std.mem.startsWith(u8, id, "anon") or
+                std.mem.startsWith(u8, id, "lit_") or
+                std.mem.startsWith(u8, id, "operand_") or
+                std.mem.startsWith(u8, id, "constraint_") or
+                std.mem.startsWith(u8, id, "rhs_"))
+            {
+                continue;
+            }
+
+            // Skip if this child is soft
+            if (MakeChildNode.Attributes.of(child_info.make_child).is_soft()) continue;
+
+            // Look for duplicates in the rest of the list
+            var j: usize = i + 1;
+            while (j < make_children.len) : (j += 1) {
+                const other_info = make_children[j];
+                const other_id = other_info.identifier orelse continue;
+
+                // Skip if the other is soft
+                if (MakeChildNode.Attributes.of(other_info.make_child).is_soft()) continue;
+
+                // Check if identifiers match
+                if (std.mem.eql(u8, id, other_id)) {
+                    // Duplicate hard MakeChild - allocate error message with prefix
+                    const prefix = "duplicate:";
+                    const msg = allocator.alloc(u8, prefix.len + id.len) catch continue;
+                    @memcpy(msg[0..prefix.len], prefix);
+                    @memcpy(msg[prefix.len..], id);
+                    errors.append(.{
+                        .node = other_info.make_child,
+                        .message = msg,
+                    }) catch {
+                        allocator.free(msg);
+                    };
+                }
+            }
+        }
+
+        // Validate MakeLink endpoints
+        const make_links = self.collect_make_links(allocator, type_node) catch {
+            // If we can't collect make_links, there's likely an internal error
+            // This shouldn't happen in normal operation
+            return errors.toOwnedSlice() catch &[_]ValidationError{};
+        };
+        defer {
+            for (make_links) |info| {
+                allocator.free(info.lhs_path);
+                allocator.free(info.rhs_path);
+            }
+            allocator.free(make_links);
+        }
+
+        for (make_links) |link_info| {
+            // Validate lhs path (skip paths that can't be type-level validated)
+            if (link_info.lhs_path.len > 0 and self.isValidatablePath(link_info.lhs_path)) {
+                if (self.resolve_child_path(type_node, link_info.lhs_path) == null) {
+                    if (self.format_path(allocator, link_info.lhs_path)) |path_str| {
+                        errors.append(.{
+                            .node = link_info.make_link,
+                            .message = path_str,
+                        }) catch {
+                            allocator.free(path_str);
+                        };
+                    }
+                }
+            }
+
+            // Validate rhs path (skip paths that can't be type-level validated)
+            if (link_info.rhs_path.len > 0 and self.isValidatablePath(link_info.rhs_path)) {
+                if (self.resolve_child_path(type_node, link_info.rhs_path) == null) {
+                    if (self.format_path(allocator, link_info.rhs_path)) |path_str| {
+                        errors.append(.{
+                            .node = link_info.make_link,
+                            .message = path_str,
+                        }) catch {
+                            allocator.free(path_str);
+                        };
+                    }
+                }
+            }
+        }
+
+        return errors.toOwnedSlice() catch &[_]ValidationError{};
+    }
+
+    fn isValidatablePath(self: *@This(), path: []const []const u8) bool {
+        _ = self;
+        if (path.len == 0) return false;
+
+        // Check all segments for validation exclusions
+        for (path, 0..) |segment, idx| {
+            // Skip paths with special prefixes (trait syntax like <<)
+            if (segment.len >= 2 and segment[0] == '<' and segment[1] == '<') {
+                return false;
+            }
+
+            // Skip paths where first segment is numeric (shouldn't happen normally)
+            if (idx == 0 and segment.len > 0 and ascii.isDigit(segment[0])) {
+                return false;
+            }
+
+            // Skip paths where FIRST segment has bracket notation (e.g., "[0]")
+            // Later segments with brackets are fine (e.g., "items[0]") - they're
+            // indexed child references, but the root should still be validated
+            if (idx == 0) {
+                for (segment) |c| {
+                    if (c == '[' or c == ']') {
+                        return false;
+                    }
+                }
+            }
+
+            // Skip trait-generated fields (e.g., can_bridge, can_be_operand)
+            if (std.mem.eql(u8, segment, "can_bridge") or
+                std.mem.eql(u8, segment, "can_be_operand"))
+            {
+                return false;
+            }
+
+            // Skip internal expression nodes (implementation details)
+            if (std.mem.startsWith(u8, segment, "anon") or
+                std.mem.startsWith(u8, segment, "lit_") or
+                std.mem.startsWith(u8, segment, "operand_") or
+                std.mem.startsWith(u8, segment, "constraint_") or
+                std.mem.startsWith(u8, segment, "rhs_"))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    fn format_path(self: *@This(), allocator: std.mem.Allocator, path: []const []const u8) ?[]const u8 {
+        _ = self;
+        if (path.len == 0) {
+            return allocator.dupe(u8, "") catch return null;
+        }
+
+        var total_len: usize = 0;
+        for (path, 0..) |segment, i| {
+            total_len += segment.len;
+            if (i < path.len - 1) total_len += 1; // for '.'
+        }
+
+        const result = allocator.alloc(u8, total_len) catch return null;
+        var pos: usize = 0;
+        for (path, 0..) |segment, i| {
+            @memcpy(result[pos .. pos + segment.len], segment);
+            pos += segment.len;
+            if (i < path.len - 1) {
+                result[pos] = '.';
+                pos += 1;
+            }
+        }
+        return result;
+    }
+
     fn reference_matches_path(
         self: *@This(),
         reference: BoundNodeReference,
@@ -892,12 +1170,7 @@ pub const TypeGraph = struct {
                     return visitor.VisitResult(BoundNodeReference){ .OK = make_child };
                 }
 
-                if (MakeChildNode.get_mount_reference(make_child)) |mount_reference| {
-                    if (ctx.type_graph.reference_matches_path(mount_reference, ctx.parent_path)) {
-                        return visitor.VisitResult(BoundNodeReference){ .OK = make_child };
-                    }
-                }
-
+                // With mounts removed, we can only match by identifier when parent_path is empty
                 return visitor.VisitResult(BoundNodeReference){ .CONTINUE = {} };
             }
         };
@@ -1119,6 +1392,12 @@ pub const TypeGraph = struct {
             pub fn visit(self_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(T) {
                 const visitor_: *@This() = @ptrCast(@alignCast(self_ptr));
                 const make_child = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
+
+                // Skip superseded MakeChild nodes (replaced by inheritance)
+                if (MakeChildNode.Attributes.of(make_child).is_superseded()) {
+                    return visitor.VisitResult(T){ .CONTINUE = {} };
+                }
+
                 const identifier = MakeChildNode.Attributes.of(make_child).get_child_identifier();
                 return visitor_.cb(visitor_.ctx, MakeChildInfo{
                     .identifier = identifier,
@@ -1445,53 +1724,6 @@ pub const TypeGraph = struct {
         return list.toOwnedSlice() catch @panic("OOM");
     }
 
-    /// Return the mount-reference chain for `make_child` as ordered child
-    /// identifiers. Pointer-sequence elements mount under their container and
-    /// nested make-children mount under the parent they attach to, so this is
-    /// the canonical way to recover "mounts" for debugging and tests.
-    pub fn get_mount_chain(
-        self: *@This(),
-        allocator: std.mem.Allocator,
-        make_child: BoundNodeReference,
-    ) []const []const u8 {
-        _ = self;
-        var chain = std.ArrayList([]const u8).init(allocator);
-
-        if (MakeChildNode.get_mount_reference(make_child)) |mount_ref| {
-            var current = mount_ref;
-            while (true) {
-                const identifier = ChildReferenceNode.Attributes.of(current.node).get_child_identifier();
-                chain.append(identifier) catch @panic("OOM");
-
-                const next_node = EdgeNext.get_next_node_from_node(current);
-                if (next_node) |_next| {
-                    current = current.g.bind(_next);
-                } else {
-                    break;
-                }
-            }
-
-            if (chain.items.len > 0) {
-                if (MakeChildNode.Attributes.of(make_child).get_child_identifier()) |leaf_identifier| {
-                    var is_numeric = leaf_identifier.len > 0;
-                    var i: usize = 0;
-                    while (i < leaf_identifier.len) : (i += 1) {
-                        if (!ascii.isDigit(leaf_identifier[i])) {
-                            is_numeric = false;
-                            break;
-                        }
-                    }
-
-                    if (!is_numeric) {
-                        chain.append(leaf_identifier) catch @panic("OOM");
-                    }
-                }
-            }
-        }
-
-        return chain.toOwnedSlice() catch @panic("OOM");
-    }
-
     pub fn instantiate_node(tg: *@This(), type_node: BoundNodeReference) !graph.BoundNodeReference {
         // FIXME: restore
         // type_node may be linked from another TypeGraph
@@ -1517,20 +1749,13 @@ pub const TypeGraph = struct {
                     return visitor.VisitResult(void){ .ERROR = error.UnresolvedTypeReference };
                 };
 
-                var attachment_parent = self.parent_instance;
-                if (MakeChildNode.get_mount_reference(info.make_child)) |mount_reference| {
-                    attachment_parent = ChildReferenceNode.resolve(mount_reference, attachment_parent) orelse {
-                        return visitor.VisitResult(void){ .ERROR = error.UnresolvedMountReference };
-                    };
-                }
-
                 // 2.2) Instantiate child
                 const child = self.type_graph.instantiate_node(referenced_type) catch |e| {
                     return visitor.VisitResult(void){ .ERROR = e };
                 };
 
                 // 2.3) Attach child instance to parent instance with the reference name
-                _ = EdgeComposition.add_child(attachment_parent, child.node, info.identifier);
+                _ = EdgeComposition.add_child(self.parent_instance, child.node, info.identifier);
 
                 // 2.4) Copy node attributes from MakeChild node to child instance
                 MakeChildNode.Attributes.of(info.make_child).load_node_attributes(child.node);
@@ -1923,17 +2148,17 @@ test "basic instantiation" {
     // Build type graph
     const Electrical = try tg.add_type("Electrical");
     const Capacitor = try tg.add_type("Capacitor");
-    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null, null);
-    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null, null);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null);
     const Resistor = try tg.add_type("Resistor");
     // Test: add node attributes to p1 MakeChild
     var res_p1_attrs = TypeGraph.MakeChildNode.build(null);
     res_p1_attrs.dynamic.put("test_attr", .{ .String = "test_value" });
     res_p1_attrs.dynamic.put("pin_number", .{ .Int = 42 });
-    const res_p1_makechild = try tg.add_make_child(Resistor, Electrical, "p1", &res_p1_attrs, null);
+    const res_p1_makechild = try tg.add_make_child(Resistor, Electrical, "p1", &res_p1_attrs);
     std.debug.print("RES_P1_MAKECHILD: {s}\n", .{try EdgeComposition.get_name(EdgeComposition.get_parent_edge(res_p1_makechild).?.edge)});
-    _ = try tg.add_make_child(Resistor, Electrical, "p2", null, null);
-    _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null, null);
+    _ = try tg.add_make_child(Resistor, Electrical, "p2", null);
+    _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null);
 
     var node_attrs = TypeGraph.MakeChildNode.build("test_string");
     _ = try tg.add_make_child(
@@ -1941,7 +2166,6 @@ test "basic instantiation" {
         Electrical,
         "tp",
         &node_attrs,
-        null,
     );
 
     // Build instance graph
@@ -2039,13 +2263,14 @@ test "typegraph iterators and mount chains" {
     const Inner = try tg.add_type("Inner");
     const PointerSequence = try tg.add_type("PointerSequence");
 
-    const members = try tg.add_make_child(top, PointerSequence, "members", null, null);
-    _ = try tg.add_make_child(top, Inner, "base", null, null);
+    const members = try tg.add_make_child(top, PointerSequence, "members", null);
+    _ = try tg.add_make_child(top, Inner, "base", null);
+    const extra = try tg.add_make_child(top, Inner, "extra", null);
+    _ = members;
+    _ = extra;
+    _ = try tg.add_make_child(top, Inner, "element0", null);
+    _ = try tg.add_make_child(top, Inner, "element1", null);
     const base_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("base")});
-    const extra = try tg.add_make_child(top, Inner, "extra", null, base_reference);
-    const container_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("members")});
-    const element0 = try tg.add_make_child(top, Inner, "0", null, container_reference);
-    _ = try tg.add_make_child(top, Inner, "1", null, container_reference);
     const extra_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("extra")});
     const link_attrs = EdgeCreationAttributes{
         .edge_type = EdgePointer.tid,
@@ -2129,21 +2354,6 @@ test "typegraph iterators and mount chains" {
     try std.testing.expectEqual(@as(usize, 1), lhs_path.len);
     try std.testing.expectEqualStrings("base", lhs_path[0]);
 
-    const chain_members = tg.get_mount_chain(a, members);
-    defer a.free(chain_members);
-    try std.testing.expectEqual(@as(usize, 0), chain_members.len);
-
-    const chain_element0 = tg.get_mount_chain(a, element0);
-    defer a.free(chain_element0);
-    try std.testing.expectEqual(@as(usize, 1), chain_element0.len);
-    try std.testing.expect(std.mem.eql(u8, chain_element0[0], "members"));
-
-    const chain_extra = tg.get_mount_chain(a, extra);
-    defer a.free(chain_extra);
-    try std.testing.expectEqual(@as(usize, 2), chain_extra.len);
-    try std.testing.expect(std.mem.eql(u8, chain_extra[0], "base"));
-    try std.testing.expect(std.mem.eql(u8, chain_extra[1], "extra"));
-
     const pointer_members = try tg.collect_pointer_members(a, top, &.{"members"}, null);
     defer a.free(pointer_members);
     try std.testing.expectEqual(@as(usize, 2), pointer_members.len);
@@ -2164,11 +2374,11 @@ test "get_type_instance_overview" {
     // Build type graph with some types
     const Electrical = try tg.add_type("Electrical");
     const Capacitor = try tg.add_type("Capacitor");
-    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null, null);
-    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null, null);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null);
     const Resistor = try tg.add_type("Resistor");
-    _ = try tg.add_make_child(Resistor, Electrical, "p1", null, null);
-    _ = try tg.add_make_child(Resistor, Electrical, "p2", null, null);
+    _ = try tg.add_make_child(Resistor, Electrical, "p1", null);
+    _ = try tg.add_make_child(Resistor, Electrical, "p2", null);
 
     // Create some instances
     _ = try tg.instantiate_node(Capacitor);
@@ -2228,8 +2438,8 @@ test "resolve path through trait and pointer edges" {
     _ = EdgeTrait.add_trait_instance(CanBridge, implements_trait_instance.node);
 
     const Resistor = try tg.add_type("Resistor");
-    _ = try tg.add_make_child(Resistor, Electrical, "p1", null, null);
-    _ = try tg.add_make_child(Resistor, Electrical, "p2", null, null);
+    _ = try tg.add_make_child(Resistor, Electrical, "p1", null);
+    _ = try tg.add_make_child(Resistor, Electrical, "p2", null);
 
     // 2. Create a Resistor instance with p1, p2 children
     const resistor_instance = try tg.instantiate_node(Resistor);
@@ -2300,7 +2510,7 @@ test "resolve path through trait and pointer edges" {
     // Create a TopModule that contains the resistor as a child
 
     const TopModule = try tg.add_type("TopModule");
-    _ = try tg.add_make_child(TopModule, Resistor, "resistor", null, null);
+    _ = try tg.add_make_child(TopModule, Resistor, "resistor", null);
 
     // Create TopModule instance - this will auto-create resistor child
     const top_instance = try tg.instantiate_node(TopModule);

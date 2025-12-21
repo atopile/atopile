@@ -461,6 +461,7 @@ class ActionsFactory:
         parent_path: "FieldPath | None",
         create_param: bool = True,
         constraint_expr: type[fabll.Node] | None = None,
+        is_soft: bool = False,
     ) -> "list[AddMakeChildAction]":
         """Create actions for a parameter, optionally with a constraint.
 
@@ -468,6 +469,10 @@ class ActionsFactory:
             constraint_expr: Expression type for constraints (Is for components,
                             IsSubset for modules). Required when constraint_operand
                             is provided.
+            is_soft: If True, this parameter creation can be superseded by inheritance.
+                    Soft parameters are created from implicit assignments like
+                    `resistance = 10kohm`. Hard parameters come from explicit
+                    declarations like `resistance: ohm`.
         """
         actions: list[AddMakeChildAction] = []
 
@@ -478,6 +483,7 @@ class ActionsFactory:
                     parent_reference=parent_reference,
                     parent_path=parent_path,
                     child_field=param_child,
+                    is_soft=is_soft,
                 )
             )
 
@@ -545,6 +551,7 @@ class AddMakeChildAction:
     relative to parent reference node. eg. app
     parent_reference: Parent of the makechild node.
     parent_path: The path to the parent type.
+    is_soft: If True, this MakeChild can be superseded by inheritance.
     """
 
     target_path: FieldPath | fabll.RefPath
@@ -552,6 +559,7 @@ class AddMakeChildAction:
     parent_path: FieldPath | None
     child_field: fabll._ChildField | None = None
     import_ref: ImportRef | None = None
+    is_soft: bool = False
 
     def get_identifier(self) -> str:
         if isinstance(self.target_path, FieldPath):
@@ -607,10 +615,8 @@ class PendingRetype:
 @dataclass
 class ScopeState:
     symbols: dict[str, Symbol] = field(default_factory=dict)
-    fields: set[str] = field(default_factory=set)
-    # Aliases allow temporarily binding a loop variable name to a concrete
-    # field path during `for` iteration. Only used within the current
-    # lexical scope and intended to be short-lived.
+    # Aliases for temporary loop variable bindings during `for` iteration.
+    # Only used within the current lexical scope and intended to be short-lived.
     aliases: dict[str, FieldPath] = field(default_factory=dict)
 
 

@@ -253,11 +253,15 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
         t: "TypeNodeBoundTG[N, Any]",
         attributes: "NodeAttributes | None" = None,
         identifier: str | None | PLACEHOLDER = None,
+        is_soft: bool = False,
+        parent_path: list[str] | None = None,
     ) -> None:
         self.nodetype = nodetype
         self.t = t
         self.identifier = identifier
         self.attributes = attributes
+        self._is_soft = is_soft
+        self._parent_path = parent_path
 
         if isinstance(nodetype, str):
             # TODO: Add checking similar to below for prelinked childfields
@@ -283,7 +287,8 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
                 node_attributes=self.attributes.to_node_attributes()
                 if self.attributes is not None
                 else None,
-                mount_reference=None,
+                parent_path=self._parent_path,
+                is_soft=self._is_soft,
             )
         else:
             child_type_node = self.nodetype.bind_typegraph(
@@ -296,7 +301,8 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
                 node_attributes=self.attributes.to_node_attributes()
                 if self.attributes is not None
                 else None,
-                mount_reference=None,
+                parent_path=self._parent_path,
+                is_soft=self._is_soft,
             )
 
     def get(self) -> T:
@@ -925,7 +931,12 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
     @classmethod
     def _exec_field(
-        cls, t: "TypeNodeBoundTG[Self, T]", field: Field, type_field: bool = False
+        cls,
+        t: "TypeNodeBoundTG[Self, T]",
+        field: Field,
+        type_field: bool = False,
+        is_soft: bool = False,
+        parent_path: list[str] | None = None,
     ) -> None:
         type_field = type_field or field._type_child
         if isinstance(field, _ChildField):
@@ -952,6 +963,8 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     nodetype=field.nodetype,
                     identifier=identifier,
                     attributes=cast(NodeAttributes, field.attributes),
+                    is_soft=is_soft,
+                    parent_path=parent_path,
                 )
                 mc._add_to_typegraph()
             for dependant in field._dependants:
@@ -1796,9 +1809,16 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         *,
         identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
         attributes: NodeAttributes | None = None,
+        is_soft: bool = False,
+        parent_path: list[str] | None = None,
     ) -> InstanceChildBoundType[C]:
         return InstanceChildBoundType(
-            nodetype=nodetype, t=self, identifier=identifier, attributes=attributes
+            nodetype=nodetype,
+            t=self,
+            identifier=identifier,
+            attributes=attributes,
+            is_soft=is_soft,
+            parent_path=parent_path,
         )
 
     def MakeEdge(

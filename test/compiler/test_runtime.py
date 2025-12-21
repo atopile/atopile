@@ -322,7 +322,7 @@ class TestForLoopsRuntime:
             )
 
     def test_for_loop_stale_ref(self):
-        with pytest.raises(DslException):
+        with pytest.raises((DslException, ExceptionGroup)):
             build_instance(
                 """
                 #pragma experiment("FOR_LOOP")
