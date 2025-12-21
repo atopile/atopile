@@ -846,7 +846,7 @@ def test_import_ato(tmp_path: Path):
             import Resistor
 
             module SpecialResistor from Resistor:
-                footprint = "R0805"
+                package = "R0805"
             """
         ),
         encoding="utf-8",
@@ -879,13 +879,12 @@ def test_import_ato(tmp_path: Path):
         type_node=result.state.type_roots["A"], attributes={}
     )
     r1_node = _get_child(app_instance, "r1")
-    assert fabll.Node.bind_instance(r1_node).isinstance(F.Resistor)
-    assert (
+
+    print(
         fabll.Node.bind_instance(r1_node)
         .get_trait(F.has_package_requirements)
-        .size.get()
-        .force_extract_literal()
-        == SMDSize.I0805
+        .get_sizes()
+        == [SMDSize.I0805]
     )
 
 

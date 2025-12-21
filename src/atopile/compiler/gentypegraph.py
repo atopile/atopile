@@ -203,7 +203,7 @@ class ActionsFactory:
 
     @staticmethod
     def trait_from_field(
-        field: fabll._ChildField, target_path: LinkPath
+        field: fabll._ChildField, target_path: LinkPath | None
     ) -> "list[AddMakeChildAction | AddMakeLinkAction]":
         """Create actions to attach a trait to a target node."""
         trait_class = field.nodetype
@@ -225,7 +225,7 @@ class ActionsFactory:
                 child_field=field,
             ),
             AddMakeLinkAction(
-                lhs_path=target_path,
+                lhs_path=target_path if target_path else [],
                 rhs_path=[trait_identifier],
                 edge=fbrk.EdgeTrait.build(),
             ),

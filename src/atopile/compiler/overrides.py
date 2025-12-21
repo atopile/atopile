@@ -191,7 +191,11 @@ class TraitOverrideRegistry:
 
     @classmethod
     def _apply_spec(
-        cls, spec: TraitOverrideSpec, name: str, target_path: LinkPath, value: Any
+        cls,
+        spec: TraitOverrideSpec,
+        name: str,
+        target_path: LinkPath | None,
+        value: Any,
     ) -> list[AddMakeChildAction | AddMakeLinkAction] | NoOpAction:
         """Apply a spec to create trait actions."""
         if spec.deprecated_hint:
@@ -240,13 +244,10 @@ class TraitOverrideRegistry:
                 f"{expected_type_name}, got {type(value_node).__name__}"
             )
 
-        if not target_path.parent_segments:
-            raise DslException(
-                f"`{leaf_name}` must be set on a field, not at top level"
-            )
-
-        parent_path: LinkPath = list(
-            FieldPath(segments=tuple(target_path.parent_segments)).identifiers()
+        parent_path: LinkPath | None = (
+            list(FieldPath(segments=tuple(target_path.parent_segments)).identifiers())
+            if target_path.parent_segments
+            else None
         )
 
         return cls._apply_spec(spec, leaf_name, parent_path, value)
