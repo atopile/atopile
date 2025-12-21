@@ -20,11 +20,14 @@ class has_net_name_suggestion(fabll.Node):
     level_ = F.Parameters.EnumParameter.MakeChild(enum_t=Level)
 
     @classmethod
-    def MakeChild(cls, name: str, level: Level) -> fabll._ChildField[Any]:
+    def MakeChild(cls, name: str, level: "Level | str") -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.name_], name)
         )
+        # Accept string from ato template syntax and convert to enum
+        if isinstance(level, str):
+            level = cls.Level[level]
         out.add_dependant(
             F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
                 [out, cls.level_],

@@ -1029,6 +1029,13 @@ class ASTVisitor:
         ):
             return TraitOverrideRegistry.handle_assignment(target_path, assignable_node)
 
+        if TraitOverrideRegistry.matches_enum_parameter_override(
+            target_path.leaf.identifier, assignable_node
+        ):
+            return TraitOverrideRegistry.handle_enum_parameter_assignment(
+                target_path, assignable_node
+            )
+
         if (assignable := self.visit_Assignable(assignable_node)) is None:
             return NoOpAction()
 

@@ -8,6 +8,7 @@ and aliased trait names to their actual trait implementations.
 import logging
 import re
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Callable, ClassVar
 
 import atopile.compiler.ast_types as AST
@@ -71,6 +72,24 @@ class TraitOverrideSpec:
     skip_value: Callable[[Any], bool] | None = None
     transform_value: Callable[[Any], Any] | None = None
     deprecated_hint: str | None = None
+
+
+@dataclass
+class EnumParameterOverrideSpec:
+    """Specification for constraining an enum parameter from a string assignment."""
+
+    enum_type: type[Enum]
+
+
+def _get_enum_member(enum_type: type[Enum], value: str) -> Enum:
+    """Get enum member from string, with helpful error message."""
+    try:
+        return enum_type[value]
+    except KeyError:
+        valid = [e.name for e in enum_type]
+        raise DslException(
+            f"Invalid value: '{value}'. Valid values: {', '.join(valid)}"
+        )
 
 
 _ASSIGNMENT_OVERRIDES: dict[str, TraitOverrideSpec] = {
@@ -180,6 +199,13 @@ _TRAIT_OVERRIDES: dict[str, TraitOverrideSpec] = {
     ),
 }
 
+# Enum parameter overrides: handle string assignment to enum parameters
+_ENUM_PARAMETER_OVERRIDES: dict[str, EnumParameterOverrideSpec] = {
+    "temperature_coefficient": EnumParameterOverrideSpec(
+        enum_type=F.Capacitor.TemperatureCoefficient,
+    ),
+}
+
 
 class TraitOverrideRegistry:
     """
@@ -272,6 +298,43 @@ class TraitOverrideRegistry:
         )
 
     @classmethod
+    def handle_enum_parameter_assignment(
+        cls, target_path: FieldPath, assignable_node: AST.Assignable
+    ) -> list[AddMakeChildAction]:
+        """Handle enum parameter assignments like `cap.temperature_coefficient`."""
+        leaf_name = target_path.leaf.identifier
+        spec = _ENUM_PARAMETER_OVERRIDES[leaf_name]
+        value_node = assignable_node.get_value().switch_cast()
+
+        if not value_node.isinstance(AST.AstString):
+            raise DslException(
+                f"Invalid value for `{leaf_name}`: expected string, "
+                f"got {type(value_node).__name__}"
+            )
+
+        string_value = value_node.cast(t=AST.AstString).get_text()
+        enum_value = _get_enum_member(spec.enum_type, string_value)
+
+        parent_path: FieldPath | None = None
+        parent_reference = None
+
+        if target_path.parent_segments:
+            parent_path = FieldPath(segments=tuple(target_path.parent_segments))
+
+        # Create enum literal (parameter_actions will create the constraint)
+        enum_literal = F.Literals.AbstractEnums.MakeChild(enum_value)
+
+        return ActionsFactory.parameter_actions(
+            target_path=target_path,
+            param_child=None,  # Don't create param, it already exists
+            constraint_operand=enum_literal,
+            parent_reference=parent_reference,
+            parent_path=parent_path,
+            create_param=False,
+            use_is_constraint=False,  # Use IsSubset for modules
+        )
+
+    @classmethod
     def matches_assignment_override(
         cls, name: str, assignable_node: AST.Assignable
     ) -> bool:
@@ -279,6 +342,15 @@ class TraitOverrideRegistry:
             return False
 
         return name in _ASSIGNMENT_OVERRIDES
+
+    @classmethod
+    def matches_enum_parameter_override(
+        cls, name: str, assignable_node: AST.Assignable
+    ) -> bool:
+        if assignable_node.get_value().switch_cast().isinstance(AST.NewExpression):
+            return False
+
+        return name in _ENUM_PARAMETER_OVERRIDES
 
     @classmethod
     def matches_trait_override(cls, name: str) -> bool:
