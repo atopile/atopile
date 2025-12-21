@@ -837,7 +837,12 @@ class ASTVisitor:
 
     def visit_StringStmt(self, node: AST.StringStmt):
         """If first statement in block, attach as docstring trait to the type."""
-        type_node, bound_tg, _ = self._type_stack.current()
+        # TODO: handle File docstrings
+        try:
+            type_node, bound_tg, _ = self._type_stack.current()
+        except CompilerException:
+            return NoOpAction()
+
         block_node = fbrk.EdgePointer.get_pointed_node_by_identifier(
             bound_node=type_node, identifier=AnyAtoBlock._definition_identifier
         )
@@ -852,6 +857,7 @@ class ASTVisitor:
                 F.has_doc_string.MakeChild(node.string.get().get_text()).put_on_type()
             )
             field._set_locator("_has_doc_string")
+            # FIXME return action
             fabll.Node._exec_field(t=bound_tg, field=field, type_field=True)
         return NoOpAction()
 
