@@ -508,7 +508,7 @@ def test_numeric_literals():
     assert (
         E.lit_op_single((1, E.U.V))
         .as_literal.force_get()
-        .equals(not_none(b.try_extract_aliased_literal()))
+        .equals(not_none(b.force_extract_literal_subset()))
     )
 
     c = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "c"))
@@ -2039,7 +2039,7 @@ def test_literals(value: str, literal: F.Parameters.can_be_operand):
     a_node = _get_child(app_instance, "a")
     a = F.Parameters.NumericParameter.bind_instance(a_node)
     assert literal.as_literal.force_get().equals(
-        not_none(a.try_extract_aliased_literal())
+        not_none(a.force_extract_literal_subset())
     )
 
 
