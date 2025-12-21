@@ -1642,6 +1642,31 @@ def test_slice_for_loop():
         )
 
 
+def test_assign_to_child_parameter():
+    _, _, _, result, app_instance = build_instance(
+        """
+        import Resistor
+
+        module CustomResistor:
+            resistance: ohms
+
+        module App:
+            r = new Resistor
+            r -> CustomResistor
+            r.resistance = 100kohm +/- 10%
+        """,
+        "App",
+    )
+    assert "App" in result.state.type_roots
+    r = F.Resistor.bind_instance(_get_child(app_instance, "r"))
+    resistance = r.resistance.get().force_extract_literal_subset()
+    assert resistance.get_values() == [
+        90,
+        110,
+    ]
+    assert resistance.get_is_unit().get_symbols() == ["kohm"]
+
+
 def test_slice_non_list():
     with pytest.raises(
         DslException,
