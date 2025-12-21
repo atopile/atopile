@@ -1016,7 +1016,7 @@ _UNIT_SYMBOLS: dict[_UnitRegistry, tuple[str, ...]] = {
     _UnitRegistry.Coulomb: ("C",),
     _UnitRegistry.Volt: ("V", "volt"),
     _UnitRegistry.Farad: ("F", "farad"),
-    _UnitRegistry.Ohm: ("Ω", "ohm"),
+    _UnitRegistry.Ohm: ("Ω", "ohm", "ohms"),
     _UnitRegistry.Siemens: ("S",),
     _UnitRegistry.Weber: ("Wb",),
     _UnitRegistry.Tesla: ("T",),
@@ -2382,8 +2382,8 @@ class AmpereHour(fabll.Node):
     is_si_prefixed = fabll.Traits.MakeEdge(is_si_prefixed_unit.MakeChild())
 
 
-AmpereSecond = UnitExpressionFactory(("As", "A*s"), ((Ampere, 1), (Second, 1)))
-VoltsPerSecond = UnitExpressionFactory(("Vps", "V/s"), ((Volt, 1), (Second, -1)))
+AmpereSecond = UnitExpressionFactory(("As",), ((Ampere, 1), (Second, 1)))
+VoltsPerSecond = UnitExpressionFactory(("Vps",), ((Volt, 1), (Second, -1)))
 
 
 # Logarithmic units --------------------------------------------------------------------
