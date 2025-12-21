@@ -4423,6 +4423,8 @@ class Numbers(fabll.Node):
                     return "ℝ+"
                 return f"≥{f(min_val)}"
             if min_val == -math.inf:
+                if max_val == 0:
+                    return "ℝ-"
                 return f"≤{f(max_val)}"
 
             # Use center±tolerance format if center is non-zero and tolerance < 1%

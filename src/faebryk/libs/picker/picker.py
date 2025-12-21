@@ -364,6 +364,7 @@ def pick_topologically(
             logger.info(f"Simplifying with {len(relevant)} relevant parameters")
             with timings.as_global("simplify"):
                 solver.simplify(g, tg, terminal=True, relevant=relevant)
+            logger.info(f"Solved in {timings.get_formatted('simplify')}")
             with timings.as_global("get candidates"):
                 candidates = picker_lib.get_candidates(tree, solver)
             no_candidates = [m for m, cs in candidates.items() if not cs]
@@ -371,7 +372,6 @@ def pick_topologically(
                 raise PickError(
                     f"No candidates found for {no_candidates}", *no_candidates
                 )
-            logger.info(f"Solved in {timings.get_formatted('simplify')}")
 
             while tree:
                 # TODO fix this
@@ -403,6 +403,13 @@ def pick_topologically(
                 with timings.context("simplify"):
                     solver.simplify(g, tg, terminal=True, relevant=relevant)
                 logger.info(f"Solved in {(time.perf_counter() - now) * 1000:.3f}ms")
+                with timings.as_global("get candidates"):
+                    candidates = picker_lib.get_candidates(tree, solver)
+                no_candidates = [m for m, cs in candidates.items() if not cs]
+                if no_candidates:
+                    raise PickError(
+                        f"No candidates found for {no_candidates}", *no_candidates
+                    )
 
     if _pick_count:
         logger.info(
