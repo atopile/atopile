@@ -2,7 +2,6 @@ from typing import Any, override
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
-import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.solver import Solver
 
@@ -31,7 +30,10 @@ class NullSolver(Solver):
 
     @override
     def inspect_get_known_supersets(
-        self, value: F.Parameters.is_parameter
+        self,
+        value: F.Parameters.is_parameter,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> F.Literals.is_literal:
         lit = value.as_parameter_operatable.get().try_get_subset_or_alias_literal()
         if lit is None:
@@ -39,5 +41,11 @@ class NullSolver(Solver):
         return lit
 
     @override
-    def simplify(self, g: graph.GraphView, tg: fbrk.TypeGraph, terminal: bool = False):
+    def simplify(
+        self,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+        terminal: bool = False,
+        relevant: list[F.Parameters.can_be_operand] | None = None,
+    ):
         pass
