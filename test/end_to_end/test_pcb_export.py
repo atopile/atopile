@@ -109,11 +109,21 @@ def test_pcb_file_addition(tmpdir: Path):
     )
     assert p.returncode == 0
     assert "Creating new layout" not in stderr
-    assert (
-        SIMPLE_APP_PCB_SUMMARY.add_net("b.unnamed[0]")
-        .add_net("b.unnamed[1]")
-        .add_footprint("R2")
-    ) == summarize_pcb_file(pcb_file)
+    # When two resistors exist, net names get prefixed to disambiguate conflicts
+    # Format: <owner>.<interface>-<base_name>
+    expected = PcbSummary(
+        num_layers=SIMPLE_APP_PCB_SUMMARY.num_layers,
+        nets=sorted(
+            [
+                "a.unnamed[0]-unnamed[0]",
+                "a.unnamed[1]-unnamed[1]",
+                "b.unnamed[0]-unnamed[0]",
+                "b.unnamed[1]-unnamed[1]",
+            ]
+        ),
+        footprints=["R1", "R2"],
+    )
+    assert expected == summarize_pcb_file(pcb_file)
 
 
 def test_pcb_file_removal(tmpdir: Path):
@@ -127,9 +137,20 @@ def test_pcb_file_removal(tmpdir: Path):
     )
     assert p.returncode == 0
     assert "Creating new layout" in stderr
-    assert (
-        SIMPLE_APP_PCB_SUMMARY.add_net("b-net-0").add_net("b-net-1").add_footprint("R2")
-    ) == summarize_pcb_file(pcb_file)
+    # When two resistors exist, net names get prefixed to disambiguate conflicts
+    expected_with_two = PcbSummary(
+        num_layers=SIMPLE_APP_PCB_SUMMARY.num_layers,
+        nets=sorted(
+            [
+                "a.unnamed[0]-unnamed[0]",
+                "a.unnamed[1]-unnamed[1]",
+                "b.unnamed[0]-unnamed[0]",
+                "b.unnamed[1]-unnamed[1]",
+            ]
+        ),
+        footprints=["R1", "R2"],
+    )
+    assert expected_with_two == summarize_pcb_file(pcb_file)
 
     _, stderr, p = dump_and_run(SIMPLE_APP, [], working_dir=tmpdir)
     assert p.returncode == 0

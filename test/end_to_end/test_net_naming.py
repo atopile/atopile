@@ -10,8 +10,8 @@ def test_duplicate_specified_net_names(
         module App:
             a = new Resistor
             b = new Resistor
-            a.p1.has_net_name = "net"
-            b.p1.has_net_name = "net"
+            a.unnamed[0].override_net_name = "net"
+            b.unnamed[0].override_net_name = "net"
         """,
         [],
     )
@@ -27,9 +27,9 @@ def test_conflicting_net_names(build_app: EXEC_T, save_tmp_path_on_failure: None
         module App:
             a = new Resistor
             b = new Resistor
-            a.p1 ~ b.p1
-            a.p1.has_net_name = "net1"
-            b.p1.has_net_name = "net2"
+            a.unnamed[0] ~ b.unnamed[0]
+            a.unnamed[0].override_net_name = "net1"
+            b.unnamed[0].override_net_name = "net2"
         """,
         [],
     )
@@ -45,9 +45,9 @@ def test_agreeing_net_names(build_app: EXEC_T, save_tmp_path_on_failure: None):
         module App:
             a = new Resistor
             b = new Resistor
-            a.p1 ~ b.p1
-            a.p1.has_net_name = "net"
-            b.p1.has_net_name = "net"
+            a.unnamed[0] ~ b.unnamed[0]
+            a.unnamed[0].override_net_name = "net"
+            b.unnamed[0].override_net_name = "net"
         """,
         [],
     )
@@ -68,8 +68,8 @@ def test_duplicate_suggested_net_names(
         module App:
             a = new Resistor
             b = new Resistor
-            a.p1.has_net_name_suggestion = "net"
-            b.p1.has_net_name_suggestion = "net"
+            a.unnamed[0].suggest_net_name = "net"
+            b.unnamed[0].suggest_net_name = "net"
         """,
         [],
     )
@@ -90,9 +90,9 @@ def test_conflicting_suggested_names_on_same_net(
         module App:
             a = new Resistor
             b = new Resistor
-            a.p1 ~ b.p1
-            a.p1.has_net_name_suggestion = "net1"
-            b.p1.has_net_name_suggestion = "net2"
+            a.unnamed[0] ~ b.unnamed[0]
+            a.unnamed[0].suggest_net_name = "net1"
+            b.unnamed[0].suggest_net_name = "net2"
         """,
         [],
     )
