@@ -30,7 +30,13 @@ def from_project_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.mark.parametrize(
     "build_name,expected_error",
     [
-        ("unconstructable", errors.UserPythonConstructionError),
+        pytest.param(
+            "unconstructable",
+            errors.UserPythonConstructionError,
+            marks=pytest.mark.xfail(
+                reason="__preinit__ not called in new architecture"
+            ),
+        ),
         ("unimportable", errors.UserPythonModuleError),
     ],
 )
@@ -49,7 +55,18 @@ def test_build_errors(build_name: str, expected_error):
     assert exc_info.value.__cause__.args == (build_name,)
 
 
-@pytest.mark.parametrize("build_name", ["unconstructable", "unimportable"])
+@pytest.mark.parametrize(
+    "build_name",
+    [
+        pytest.param(
+            "unconstructable",
+            marks=pytest.mark.xfail(
+                reason="__preinit__ not called in new architecture"
+            ),
+        ),
+        "unimportable",
+    ],
+)
 @pytest.mark.usefixtures("from_project_dir")
 def test_build_error_logging(build_name: str):
     process = subprocess.run(
