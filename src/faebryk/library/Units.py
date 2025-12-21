@@ -758,6 +758,26 @@ class has_unit(fabll.Node):
         return self.is_unit_ptr.get().deref().cast(is_unit)
 
 
+class has_display_unit(fabll.Node):
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_unit_ptr = F.Collections.Pointer.MakeChild()
+
+    @classmethod
+    def MakeChild(cls, unit: fabll.RefPath) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            F.Collections.Pointer.MakeEdge([out, cls.is_unit_ptr], [*unit, "is_unit"])
+        )
+        return out
+
+    def setup(self, is_unit: "is_unit") -> Self:  # type: ignore[invalid-method-override]
+        self.is_unit_ptr.get().point(is_unit)
+        return self
+
+    def get_is_unit(self) -> "is_unit":
+        return self.is_unit_ptr.get().deref().cast(is_unit)
+
+
 class is_si_prefixed_unit(fabll.Node):
     # FIXME: short and long forms, plus trait to select for display
     SI_PREFIXES: ClassVar[dict[str, float]] = {
@@ -1394,10 +1414,9 @@ def extract_unit_info(unit_type: type[fabll.Node]) -> UnitInfo:
         )
 
     # Handle base units (have unit_vector_arg without underscore)
-    basis_vector = getattr(
-        unit_type, "unit_vector_arg", None
-    )  # TODO change string to protocol
-    assert isinstance(basis_vector, BasisVector), (
+    basis_vector = getattr(unit_type, "unit_vector_arg", None)
+    # Check class name to avoid module path issues when running tests on source files
+    assert basis_vector is not None and type(basis_vector).__name__ == "BasisVector", (
         f"Expected BasisVector, got {type(basis_vector)} for {unit_type}"
     )
     multiplier = getattr(unit_type, "multiplier_arg")
@@ -2956,7 +2975,7 @@ class TestUnitExpressions(_TestWithContext):
 
         # Error should be raised during factory creation, not at runtime
         with pytest.raises(UnitExpressionError):
-            UnitExpressionFactory(("degC",), ((DegreeCelsius, 1),))
+            UnitExpressionFactory(("degC·m",), ((DegreeCelsius, 1), (Meter, 1)))
 
     def test_resolve_basic_unit(self, ctx: BoundUnitsContext):
         """Test that a simple unit expression (Meter^1) resolves correctly."""

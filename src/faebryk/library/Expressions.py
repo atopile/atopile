@@ -96,7 +96,7 @@ class is_expression(fabll.Node):
     )
     as_operand = fabll.Traits.ImpliedTrait(F.Parameters.can_be_operand)
 
-    as_canonical: fabll.Traits.OptionalImpliedTrait["F.Expressions.is_canonical"] = (
+    as_canonical: fabll.Traits.OptionalImpliedTrait["is_canonical"] = (
         fabll.Traits.OptionalImpliedTrait(lambda: is_canonical)
     )
     as_assertable: fabll.Traits.OptionalImpliedTrait["is_assertable"] = (
@@ -3212,10 +3212,8 @@ ExpressionNodes = (
 class Mapping:
     @staticmethod
     def operation_switch_case_implications(
-        cases: Iterable[
-            tuple["F.Expressions.is_expression", "F.Expressions.is_expression"]
-        ],
-    ) -> "F.Expressions.is_expression":
+        cases: Iterable[tuple["is_expression", "is_expression"]],
+    ) -> "is_expression":
         from faebryk.library.Expressions import And, Implies
 
         return And.from_operands(
@@ -3231,8 +3229,8 @@ class Mapping:
     @staticmethod
     def operation_switch_case_subset(
         op: "F.Parameters.can_be_operand",
-        cases: Iterable[tuple["F.Literals.is_literal", "F.Expressions.is_expression"]],
-    ) -> "F.Expressions.is_expression":
+        cases: Iterable[tuple["F.Literals.is_literal", "is_expression"]],
+    ) -> "is_expression":
         from faebryk.library.Expressions import IsSubset
 
         exprs = [
@@ -3249,7 +3247,7 @@ class Mapping:
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         mapping: dict["F.Literals.is_literal", "F.Literals.is_literal"],
-    ) -> "F.Expressions.is_expression":
+    ) -> "is_expression":
         from faebryk.library.Expressions import IsSubset
 
         exprs = [
@@ -3274,7 +3272,7 @@ class Mapping:
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
-    ) -> "F.Expressions.is_expression":
+    ) -> "is_expression":
         out = Mapping.operation_mapping(left, right, mapping=mapping)
         if assert_:
             out.as_assertable.force_get().assert_()
@@ -3412,12 +3410,14 @@ def test_operand_order(expr_type: type[ExpressionNodes]):
 def test_expr_makechild():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
-    from faebryk.library.Units import Dimensionless
+    from faebryk.libs.test.boundexpressions import BoundExpressions
+
+    E = BoundExpressions()
 
     class App(fabll.Node):
-        op0 = F.Parameters.NumericParameter.MakeChild(unit=Dimensionless)
-        op1 = F.Parameters.NumericParameter.MakeChild(unit=Dimensionless)
-        op2 = F.Parameters.NumericParameter.MakeChild(unit=Dimensionless)
+        op0 = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl)
+        op1 = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl)
+        op2 = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl)
         expr = Subtract.MakeChild([op0], [op1], [op2])
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)

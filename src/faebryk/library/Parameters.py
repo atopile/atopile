@@ -331,10 +331,23 @@ class is_parameter_operatable(fabll.Node):
             lit = self.try_get_aliased_literal()
         except KeyErrorAmbiguous as e:
             return f"{{AMBIGUOUS_I: {e.duplicates}}}"
+
+        def format_lit(literal: "F.Literals.is_literal") -> str:
+            if param := self.as_parameter.try_get():
+                obj = fabll.Traits(param).get_obj_raw()
+                if numeric_param := obj.try_cast(NumericParameter):
+                    # Try to get the Numbers literal
+                    numbers_lit = (
+                        fabll.Traits(literal).get_obj_raw().try_cast(F.Literals.Numbers)
+                    )
+                    if numbers_lit:
+                        return numeric_param.format_literal_for_display(numbers_lit)
+            return literal.pretty_str()
+
         if lit is not None:
-            out = f"{{I|{lit.pretty_str()}}}"
+            out = f"{{I|{format_lit(lit)}}}"
         elif (lit := self.try_get_subset_or_alias_literal()) is not None:
-            out = f"{{S|{lit.pretty_str()}}}"
+            out = f"{{S|{format_lit(lit)}}}"
         if lit and lit.equals_singleton(True):
             out = "✓"
         elif lit and lit.equals_singleton(False):
@@ -378,9 +391,13 @@ class is_parameter(fabll.Node):
                 context.variable_mapping.next_id += 1
             letter = _param_id_to_human_str(context.variable_mapping.mapping[self])
 
-        # TODO
-        # unitstr = f" {self.units}" if self.units != dimensionless else ""
         unitstr = ""
+        if numeric_param := obj.try_cast(NumericParameter):
+            display_unit = numeric_param.get_display_units()
+            unit_symbol = display_unit.compact_repr()
+            # Don't show "dimensionless" as a unit
+            if unit_symbol != "dimensionless":
+                unitstr = f"[{unit_symbol}]"
 
         out = f"{letter}{unitstr}"
         out += (
@@ -634,6 +651,18 @@ class NumericParameter(fabll.Node):
 
         return self.get_trait(has_unit).get_is_unit()
 
+    def get_display_units(self) -> "Units.is_unit":
+        from faebryk.library.Units import has_display_unit
+
+        if trait := self.try_get_trait(has_display_unit):
+            return trait.get_is_unit()
+        return self.get_units()
+
+    def format_literal_for_display(self, lit: "Literals.Numbers") -> str:
+        display_unit = self.get_display_units()
+        converted = lit.convert_to_unit(display_unit, g=self.g, tg=self.tg)
+        return converted.pretty_str()
+
     def get_within(self) -> "Literals.Numbers | None":
         # TODO
         pass
@@ -679,9 +708,13 @@ class NumericParameter(fabll.Node):
     ) -> Self:
         from faebryk.library.Expressions import IsSubset
         from faebryk.library.NumberDomain import NumberDomain
-        from faebryk.library.Units import has_unit
+        from faebryk.library.Units import has_display_unit, has_unit
 
-        fabll.Traits.create_and_add_instance_to(self, has_unit).setup(is_unit=is_unit)
+        base_unit = is_unit.to_base_units(g=self.g, tg=self.tg)
+        fabll.Traits.create_and_add_instance_to(self, has_unit).setup(is_unit=base_unit)
+        fabll.Traits.create_and_add_instance_to(self, has_display_unit).setup(
+            is_unit=is_unit
+        )
 
         if within is not None:
             IsSubset.bind_typegraph(tg=self.tg).create_instance(g=self.g).setup(
@@ -701,7 +734,7 @@ class NumericParameter(fabll.Node):
                     .setup_from_min_max(
                         min=0,
                         max=math.inf,
-                        unit=is_unit,
+                        unit=base_unit,
                     )
                     .can_be_operand.get(),
                     assert_=True,
@@ -715,15 +748,51 @@ class NumericParameter(fabll.Node):
         unit: type[fabll.Node],
         domain: "NumberDomain.Args | None" = None,
     ):
-        from faebryk.library.Units import has_unit
+        from faebryk.library.Units import (
+            extract_unit_info,
+            has_display_unit,
+            has_unit,
+            is_unit,
+            is_unit_type,
+        )
 
         out = fabll._ChildField(cls)
 
-        unit_child_field = unit.MakeChild()
-        out.add_dependant(unit_child_field)
+        # Create display unit from the provided type
+        display_unit_child = unit.MakeChild()
+        out.add_dependant(display_unit_child)
         out.add_dependant(
-            fabll.Traits.MakeEdge(has_unit.MakeChild([unit_child_field]), [out])
+            fabll.Traits.MakeEdge(
+                has_display_unit.MakeChild([display_unit_child]), [out]
+            )
         )
+
+        unit_info = extract_unit_info(unit)
+        if unit_info.multiplier == 1.0 and unit_info.offset == 0.0:
+            # Base unit - use same child for has_unit
+            out.add_dependant(
+                fabll.Traits.MakeEdge(has_unit.MakeChild([display_unit_child]), [out])
+            )
+        else:
+            is_unit_trait_child = is_unit.MakeChild(
+                symbols=(),
+                basis_vector=unit_info.basis_vector,
+                multiplier=1.0,
+                offset=0.0,
+            )
+
+            class _BaseUnit(fabll.Node):
+                is_unit_type_trait = fabll.Traits.MakeEdge(
+                    is_unit_type.MakeChild(())
+                ).put_on_type()
+                is_unit = fabll.Traits.MakeEdge(is_unit_trait_child)
+                can_be_operand_trait = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+
+            base_unit_child = _BaseUnit.MakeChild()
+            out.add_dependant(base_unit_child)
+            out.add_dependant(
+                fabll.Traits.MakeEdge(has_unit.MakeChild([base_unit_child]), [out])
+            )
 
         # TODO domain constraints
 
@@ -1145,19 +1214,23 @@ def test_compact_repr():
     expr = Multiply.c(sum_with_five, ten_scalar_op)
 
     # Get expression repr
+    # Parameters now show their display unit in brackets, e.g., A[V] for Volts
     expr_po = expr.as_parameter_operatable.force_get()
     exprstr = expr_po.compact_repr(context, no_lit_suffix=True)
-    assert exprstr == "((A + B) + 5.0V) * 10.0"
+    assert exprstr == "((A[V] + B[V]) + 5.0V) * 10.0"
     exprstr_w_lit_suffix = expr_po.compact_repr(context)
-    assert exprstr_w_lit_suffix == "((A{S|{0.0..∞}V} + B{S|{0.0..∞}V}) + 5.0V) * 10.0"
+    assert (
+        exprstr_w_lit_suffix
+        == "((A[V]{S|{0.0..∞}V} + B[V]{S|{0.0..∞}V}) + 5.0V) * 10.0"
+    )
 
     # Test p2 + p1 (order matters in repr context - p2 was already assigned 'B')
     expr2 = Add.c(p2_op, p1_op)
     expr2_po = expr2.as_parameter_operatable.force_get()
     expr2str = expr2_po.compact_repr(context, no_lit_suffix=True)
-    assert expr2str == "B + A"
+    assert expr2str == "B[V] + A[V]"
     expr2str_w_lit_suffix = expr2_po.compact_repr(context)
-    assert expr2str_w_lit_suffix == "B{S|{0.0..∞}V} + A{S|{0.0..∞}V}"
+    assert expr2str_w_lit_suffix == "B[V]{S|{0.0..∞}V} + A[V]{S|{0.0..∞}V}"
 
     # Create a boolean parameter (p3 will be 'C')
     p3 = BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
@@ -1182,11 +1255,11 @@ def test_compact_repr():
     expr4 = And.c(expr3, ge_expr)
     expr4_po = expr4.as_parameter_operatable.force_get()
     expr4str = expr4_po.compact_repr(context, no_lit_suffix=True)
-    assert expr4str == "¬C ∧ ((((A + B) + 5.0V) * 10.0) ≥ 10.0V)"
+    assert expr4str == "¬C ∧ ((((A[V] + B[V]) + 5.0V) * 10.0) ≥ 10.0V)"
     expr4str_w_lit_suffix = expr4_po.compact_repr(context)
     assert (
         expr4str_w_lit_suffix
-        == "¬C ∧ ((((A{S|{0.0..∞}V} + B{S|{0.0..∞}V}) + 5.0V) * 10.0) ≥ 10.0V)"
+        == "¬C ∧ ((((A[V]{S|{0.0..∞}V} + B[V]{S|{0.0..∞}V}) + 5.0V) * 10.0) ≥ 10.0V)"
     )
 
     # Helper to create dimensionless numeric parameters
@@ -1265,7 +1338,6 @@ def test_expression_congruence():
     from faebryk.library.Expressions import Add, Is, Subtract
     from faebryk.library.Literals import (
         Booleans,
-        BooleansAttributes,
         BoundLiteralContext,
     )
     from faebryk.library.Units import Dimensionless
@@ -1648,6 +1720,194 @@ def test_copy_numeric_parameter():
 
     numeric_param.debug_print_tree()
     numeric_param2.debug_print_tree()
+
+
+def test_display_unit_normalization():
+    """
+    Test that parameters normalize to base units internally while
+    preserving the display unit for output.
+    """
+    from faebryk.library.Units import Volt, decode_symbol_runtime
+
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    # Create a Volt instance to register it in the typegraph
+    _ = Volt.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # Get mV unit (millivolt) via decode_symbol_runtime
+    mv_unit = decode_symbol_runtime(g=g, tg=tg, symbol="mV")
+
+    # Verify mV has the correct multiplier
+    assert mv_unit._extract_multiplier() == 0.001
+
+    # Create a numeric parameter with mV as display unit
+    param = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    param.setup(is_unit=mv_unit)
+
+    # The has_unit trait should store the base unit (V, multiplier=1)
+    base_unit = param.get_units()
+    assert base_unit._extract_multiplier() == 1.0
+
+    # The has_display_unit trait should store mV (multiplier=0.001)
+    display_unit = param.get_display_units()
+    assert display_unit._extract_multiplier() == 0.001
+
+
+def test_display_unit_compact_repr():
+    """
+    Test that compact_repr shows the display unit.
+
+    Note: Anonymous units (from decode_symbol_runtime) don't preserve symbols,
+    so the display shows basis vector notation. Named units (like Volt) show
+    their symbol.
+    """
+    from faebryk.library.Units import Volt
+
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    # Create a Volt instance
+    volt_instance = Volt.bind_typegraph(tg=tg).create_instance(g=g)
+    volt_unit = volt_instance.is_unit.get()
+
+    # Create a numeric parameter with V as display unit
+    param = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    param.setup(is_unit=volt_unit)
+
+    # Get the is_parameter trait
+    is_param = param.is_parameter.get()
+
+    # compact_repr should include the display unit symbol
+    context = ReprContext()
+    repr_str = is_param.compact_repr(context=context, no_lit_suffix=True)
+
+    # Should show [V] for Volt display unit
+    assert "[V]" in repr_str
+
+
+def test_display_unit_literal_conversion():
+    from faebryk.library.Literals import Numbers
+    from faebryk.library.Units import Volt, decode_symbol_runtime
+
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    # Create a Volt instance to register it
+    volt_instance = Volt.bind_typegraph(tg=tg).create_instance(g=g)
+    volt_unit = volt_instance.is_unit.get()
+
+    # Get mV unit
+    mv_unit = decode_symbol_runtime(g=g, tg=tg, symbol="mV")
+
+    # Create a numeric parameter with mV as display unit
+    param = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    param.setup(is_unit=mv_unit)
+
+    # Create a literal in base units (Volts): 4-5 V
+    literal = (
+        Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_min_max(min=4.0, max=5.0, unit=volt_unit)
+    )
+
+    # Alias the parameter to the literal
+    param.alias_to_literal(g=g, value=literal)
+
+    # Format the literal using the parameter's display unit
+    formatted = param.format_literal_for_display(literal)
+
+    # Should show values converted to mV (4000-5000)
+    # The key test is VALUE conversion from V to mV
+    assert "4000" in formatted
+    assert "5000" in formatted
+
+
+def test_display_unit_fallback():
+    from faebryk.library.Units import Volt
+
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    # Create a Volt instance
+    volt_instance = Volt.bind_typegraph(tg=tg).create_instance(g=g)
+    volt_unit = volt_instance.is_unit.get()
+
+    # Create a numeric parameter with base unit (V)
+    # When using base unit, has_unit and has_display_unit should be the same
+    param = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    param.setup(is_unit=volt_unit)
+
+    # Both should return the same unit (V with multiplier=1)
+    base_unit = param.get_units()
+    display_unit = param.get_display_units()
+
+    assert base_unit._extract_multiplier() == 1.0
+    assert display_unit._extract_multiplier() == 1.0
+
+
+def test_display_unit_makechild():
+    from faebryk.library.Units import Ohm, has_display_unit, has_unit
+
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class TestModule(fabll.Node):
+        resistance = NumericParameter.MakeChild(unit=Ohm)
+
+    module = TestModule.bind_typegraph(tg=tg).create_instance(g=g)
+    param = module.resistance.get()
+
+    # Both traits should be present
+    assert param.has_trait(has_unit)
+    assert param.has_trait(has_display_unit)
+
+    # Both should point to Ohm (base unit)
+    base_unit = param.get_units()
+    display_unit = param.get_display_units()
+
+    # For MakeChild with base unit type, both should have multiplier=1
+    assert base_unit._extract_multiplier() == 1.0
+    assert display_unit._extract_multiplier() == 1.0
+
+
+def test_display_unit_lit_suffix_conversion():
+    from faebryk.library.Literals import Numbers
+    from faebryk.library.Units import Volt, decode_symbol_runtime
+
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    # Create a Volt instance
+    volt_instance = Volt.bind_typegraph(tg=tg).create_instance(g=g)
+    volt_unit = volt_instance.is_unit.get()
+
+    # Get mV unit
+    mv_unit = decode_symbol_runtime(g=g, tg=tg, symbol="mV")
+
+    # Create a numeric parameter with mV as display unit
+    param = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    param.setup(is_unit=mv_unit)
+
+    # Create a literal in base units (Volts): 5 V (singleton)
+    literal = (
+        Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_singleton(value=5.0, unit=volt_unit)
+    )
+
+    # Alias the parameter to the literal
+    param.alias_to_literal(g=g, value=literal)
+
+    # Get the compact repr with lit suffix
+    is_param = param.is_parameter.get()
+    context = ReprContext()
+    repr_str = is_param.compact_repr(context=context)
+
+    # The value should be converted to display units (5V = 5000mV)
+    assert "5000" in repr_str
+    # Note: decode_symbol_runtime creates anonymous units without symbol preservation
+    # The basis vector representation is used instead of "mV"
 
 
 if __name__ == "__main__":
