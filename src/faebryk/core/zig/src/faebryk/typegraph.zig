@@ -129,16 +129,9 @@ pub const TypeGraph = struct {
             pub const child_identifier = "child_identifier";
             pub const child_literal_value = "child_literal_value";
             pub const parent_path_key = "parent_path";
-            pub const is_soft_key = "is_soft";
+            pub const soft_create_key = "soft_create";
 
-            /// Initialize all MakeChild attributes at creation time.
-            /// This is the only way to set these attributes - no setters exist.
-            pub fn init(
-                self: @This(),
-                identifier: ?str,
-                parent_path: ?str,
-                soft: bool,
-            ) void {
+            pub fn init(self: @This(), identifier: ?str, parent_path: ?str, soft: bool) void {
                 if (identifier) |id| {
                     self.node.node.put(child_identifier, .{ .String = id });
                 }
@@ -146,7 +139,7 @@ pub const TypeGraph = struct {
                     self.node.node.put(parent_path_key, .{ .String = p });
                 }
                 if (soft) {
-                    self.node.node.put(is_soft_key, .{ .Bool = true });
+                    self.node.node.put(soft_create_key, .{ .Bool = true });
                 }
             }
 
@@ -157,8 +150,8 @@ pub const TypeGraph = struct {
                 return null;
             }
 
-            pub fn is_soft(self: @This()) bool {
-                if (self.node.node.get(is_soft_key)) |value| {
+            pub fn soft_create(self: @This()) bool {
+                if (self.node.node.get(soft_create_key)) |value| {
                     return value.Bool;
                 }
                 return false; // default to hard (explicit)
@@ -645,7 +638,7 @@ pub const TypeGraph = struct {
     //}
 
     /// Create a MakeChild node with the child type linked immediately.
-    /// is_soft: if true, this MakeChild can be discarded if a hard one exists for the same identifier
+    /// soft_create: if true, this MakeChild can be discarded if a hard one exists for the same identifier
     /// parent_path_str: optional dot-separated path to parent (e.g., "foo.bar") for nested assignments
     pub fn add_make_child(
         self: *@This(),
@@ -654,7 +647,7 @@ pub const TypeGraph = struct {
         identifier: ?str,
         node_attributes: ?*NodeCreationAttributes,
         parent_path_str: ?str,
-        is_soft: bool,
+        soft_create: bool,
     ) !BoundNodeReference {
         const child_type_identifier = TypeNodeAttributes.of(child_type.node).get_type_name();
         const make_child = try self.add_make_child_deferred(
@@ -663,7 +656,7 @@ pub const TypeGraph = struct {
             identifier,
             node_attributes,
             parent_path_str,
-            is_soft,
+            soft_create,
         );
         const type_reference = MakeChildNode.get_type_reference(make_child);
         try linker_mod.Linker.link_type_reference(self.self_node.g, type_reference, child_type);
@@ -675,7 +668,7 @@ pub const TypeGraph = struct {
     /// Caller must call Linker.link_type_reference() later.
     /// The optional parent_path specifies where this child should be attached for nested assignments.
     /// parent_path_str should be a dot-separated string like "foo.bar".
-    /// is_soft: if true, this MakeChild can be discarded if a hard one exists for the same identifier
+    /// soft_create: if true, this MakeChild can be discarded if a hard one exists for the same identifier
     pub fn add_make_child_deferred(
         self: *@This(),
         target_type: BoundNodeReference,
@@ -683,10 +676,10 @@ pub const TypeGraph = struct {
         identifier: ?str,
         node_attributes: ?*NodeCreationAttributes,
         parent_path_str: ?str,
-        is_soft: bool,
+        soft_create: bool,
     ) !BoundNodeReference {
         const make_child = try self.instantiate_node(self.get_MakeChild());
-        MakeChildNode.Attributes.of(make_child).init(identifier, parent_path_str, is_soft);
+        MakeChildNode.Attributes.of(make_child).init(identifier, parent_path_str, soft_create);
         if (node_attributes) |_node_attributes| {
             MakeChildNode.Attributes.of(make_child).store_node_attributes(_node_attributes.*);
         }
@@ -741,7 +734,7 @@ pub const TypeGraph = struct {
         defer allocator.free(target_children);
         for (target_children) |info| {
             if (info.identifier) |id| {
-                if (!MakeChildNode.Attributes.of(info.make_child).is_soft()) {
+                if (!MakeChildNode.Attributes.of(info.make_child).soft_create()) {
                     hard_existing.put(id, {}) catch @panic("OOM");
                 }
             }
@@ -933,7 +926,7 @@ pub const TypeGraph = struct {
             }
 
             // Skip if this child is soft
-            if (MakeChildNode.Attributes.of(child_info.make_child).is_soft()) continue;
+            if (MakeChildNode.Attributes.of(child_info.make_child).soft_create()) continue;
 
             // Look for duplicates in the rest of the list
             var j: usize = i + 1;
@@ -942,7 +935,7 @@ pub const TypeGraph = struct {
                 const other_id = other_info.identifier orelse continue;
 
                 // Skip if the other is soft
-                if (MakeChildNode.Attributes.of(other_info.make_child).is_soft()) continue;
+                if (MakeChildNode.Attributes.of(other_info.make_child).soft_create()) continue;
 
                 // Check if identifiers match
                 if (std.mem.eql(u8, id, other_id)) {
@@ -991,9 +984,10 @@ pub const TypeGraph = struct {
             if (link_info.rhs_path.len > 0 and self.isValidatablePath(link_info.rhs_path)) {
                 if (self.resolve_child_path(type_node, link_info.rhs_path) == null) {
                     if (self.format_path(allocator, link_info.rhs_path)) |path_str| {
+                        const message = std.fmt.allocPrint(allocator, "Field `{s}` could not be resolved", .{path_str}) catch continue;
                         errors.append(.{
                             .node = link_info.make_link,
-                            .message = path_str,
+                            .message = message,
                         }) catch {
                             allocator.free(path_str);
                         };
@@ -1394,7 +1388,7 @@ pub const TypeGraph = struct {
         defer hard_ids.deinit();
         for (all_children.items) |info| {
             if (info.identifier) |id| {
-                if (!MakeChildNode.Attributes.of(info.make_child).is_soft()) {
+                if (!MakeChildNode.Attributes.of(info.make_child).soft_create()) {
                     hard_ids.put(id, {}) catch continue;
                 }
             }
@@ -1407,7 +1401,7 @@ pub const TypeGraph = struct {
         // Iterate with filtering
         for (all_children.items) |info| {
             if (info.identifier) |id| {
-                if (MakeChildNode.Attributes.of(info.make_child).is_soft()) {
+                if (MakeChildNode.Attributes.of(info.make_child).soft_create()) {
                     // Skip if a hard exists for this identifier
                     if (hard_ids.contains(id)) continue;
                     // Skip if we've already seen a soft for this identifier

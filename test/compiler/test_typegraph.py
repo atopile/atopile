@@ -137,7 +137,8 @@ def test_new_with_count_creates_pointer_sequence():
 
         module App:
             members = new Inner[3]
-        """
+        """,
+        link=True,
     )
 
     app_type = result.state.type_roots["App"]
@@ -151,11 +152,7 @@ def test_new_with_count_creates_pointer_sequence():
     element_nodes = []
     for idx in ["members[0]", "members[1]", "members[2]"]:
         element_nodes.append(_get_make_child(tg, app_type, idx))
-        ref = tg.ensure_child_reference(
-            type_node=app_type,
-            path=[idx],
-            validate=True,
-        )
+        ref = tg.ensure_child_reference(type_node=app_type, path=[idx])
         assert ref is not None
     assert len(element_nodes) == 3
 
@@ -198,44 +195,32 @@ def test_new_with_count_rejects_out_of_range_index():
 
 
 def test_typegraph_path_error_metadata():
-    g, tg, _, result = build_type(
-        """
-        module Inner:
-            pass
+    with pytest.raises(
+        DslException, match=r"Field `members[5]` is not defined in scope"
+    ):
+        g, tg, _, result = build_type(
+            """
+            module Inner:
+                pass
 
-        module App:
-            members = new Inner[2]
-        """
-    )
+            module App:
+                members = new Inner[2]
 
-    app_type = result.state.type_roots["App"]
-
-    with pytest.raises(fbrk.TypeGraphPathError) as excinfo:
-        tg.ensure_child_reference(
-            type_node=app_type,
-            path=["members", "5"],
-            validate=True,
-        )
-    err = excinfo.value
-    assert isinstance(err, fbrk.TypeGraphPathError)
-    assert err.kind == "invalid_index"
-    assert err.path == ["members", "5"]
-    assert err.failing_segment == "5"
-    assert err.failing_segment_index == 1
-    assert err.index_value is None
-
-    with pytest.raises(fbrk.TypeGraphPathError) as excinfo_missing:
-        tg.ensure_child_reference(
-            type_node=app_type,
-            path=["missing", "child"],
-            validate=True,
+                members[5] = "value"
+            """,
+            link=True,
         )
 
-    assert isinstance(excinfo_missing.value, fbrk.TypeGraphPathError)
-    err_missing = excinfo_missing.value
-    assert err_missing.kind in {"missing_parent", "missing_child"}
-    assert err_missing.path == ["missing", "child"]
-    assert err_missing.failing_segment_index == 0
+    with pytest.raises(
+        DslException, match=r"Field `missing.child` could not be resolved"
+    ):
+        g, tg, _, result = build_type(
+            """
+            module App:
+                missing.child = new Resistor
+            """,
+            link=True,
+        )
 
 
 class TestForLoops:
@@ -392,7 +377,7 @@ class TestForLoops:
         )
 
     def test_for_loop_alias_does_not_leak(self):
-        with pytest.raises(DslException, match="not defined"):
+        with pytest.raises(DslException, match="Field `r` could not be resolved"):
             build_type(
                 """
                 #pragma experiment("FOR_LOOP")
@@ -523,7 +508,10 @@ class TestForLoops:
         )
 
     def test_for_loop_alias_shadow_symbol_raises(self):
-        with pytest.raises(DslException, match="shadow"):
+        with pytest.raises(
+            DslException,
+            match="Loop variable `Resistor` conflicts with an existing symbol in scope",
+        ):
             build_type(
                 """
                 #pragma experiment("FOR_LOOP")
@@ -573,7 +561,7 @@ def test_connects_between_top_level_fields():
 
 
 def test_assignment_requires_existing_field():
-    with pytest.raises(DslException, match="not defined"):
+    with pytest.raises(DslException, match="Field `missing` could not be resolved"):
         build_type(
             """
         module Electrical:
@@ -678,7 +666,7 @@ def test_directed_connect():
 
 
 def test_connect_requires_existing_fields():
-    with pytest.raises(DslException, match="not defined"):
+    with pytest.raises(DslException, match="Field `missing` could not be resolved"):
         build_type(
             """
         module Electrical:
@@ -763,7 +751,7 @@ def test_deep_nested_connects_across_child_fields():
 
 def test_nested_connect_missing_prefix_raises():
     with pytest.raises(
-        DslException, match=r"Field `left\.missing\.branch` is not defined in scope"
+        DslException, match="Field `left.missing.branch` could not be resolved"
     ):
         build_type(
             """
@@ -1054,9 +1042,9 @@ class TestEdgeTraversalPathResolution:
                 fbrk.EdgeComposition.traverse(identifier="in_"),
                 fbrk.EdgePointer.traverse(),
             ],
-            validate=False,
         )
         assert ref is not None
+        tg.validate_type(type_node=Resistor)
 
         # Verify we can get the reference path back
         # Note: get_reference_path only returns non-empty identifiers
@@ -1092,8 +1080,8 @@ class TestEdgeTraversalPathResolution:
                 fbrk.EdgeComposition.traverse(identifier="in_"),
                 fbrk.EdgePointer.traverse(),
             ],
-            validate=False,
         )
+        tg.validate_type(type_node=App)
         assert ref is not None
 
         # Verify the path was stored correctly
@@ -2017,7 +2005,9 @@ class TestTraitStatements:
 
     def test_trait_on_undefined_field_raises(self):
         """Trait applied to undefined field raises error."""
-        with pytest.raises(DslException, match="not defined in scope"):
+        with pytest.raises(
+            DslException, match="Field `undefined_field` could not be resolved"
+        ):
             build_type(
                 """
                 #pragma experiment("TRAITS")

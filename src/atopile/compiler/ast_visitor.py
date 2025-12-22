@@ -341,7 +341,7 @@ class _TypeContextStack:
         fabll.Node._exec_field(
             t=bound_tg,
             field=action.child_field,
-            is_soft=action.is_soft,
+            soft_create=action.soft_create,
             parent_path=list(action.parent_path.identifiers())
             if action.parent_path
             else None,
@@ -1021,7 +1021,7 @@ class ASTVisitor:
                     constraint_expr=self._type_stack.constraint_expr,
                     # parameter assignment implicitly creates the parameter, if it
                     # doesn't exist already
-                    is_soft=True,
+                    soft_create=True,
                 )
             case _:
                 raise NotImplementedError(f"Unhandled assignable type: {assignable}")

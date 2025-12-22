@@ -452,20 +452,8 @@ class ActionsFactory:
         constraint_operand: fabll._ChildField | None,
         parent_path: "FieldPath | None",
         constraint_expr: type[fabll.Node] | None = None,
-        is_soft: bool = False,
+        soft_create: bool = False,
     ) -> "list[AddMakeChildAction]":
-        """Create actions for a parameter, optionally with a constraint.
-
-        Args:
-            param_child: The parameter child field to create, or None to skip creation.
-            constraint_expr: Expression type for constraints (Is for components,
-                            IsSubset for modules). Required when constraint_operand
-                            is provided.
-            is_soft: If True, this parameter creation can be superseded by inheritance.
-                    Soft parameters are created from implicit assignments like
-                    `resistance = 10kohm`. Hard parameters come from explicit
-                    declarations like `resistance: ohm`.
-        """
         actions: list[AddMakeChildAction] = []
 
         if param_child is not None:
@@ -474,7 +462,7 @@ class ActionsFactory:
                     target_path=target_path,
                     parent_path=parent_path,
                     child_field=param_child,
-                    is_soft=is_soft,
+                    soft_create=soft_create,
                 )
             )
 
@@ -537,14 +525,14 @@ class AddMakeChildAction:
     target_path: String path to target eg. resistor.resistance
     relative to parent reference node. eg. app
     parent_path: The path to the parent type.
-    is_soft: If True, this MakeChild can be superseded by inheritance.
+    soft_create: If True, this MakeChild can be superseded by inheritance.
     """
 
     target_path: FieldPath | fabll.RefPath
     parent_path: FieldPath | None
     child_field: fabll._ChildField | None = None
     import_ref: ImportRef | None = None
-    is_soft: bool = False
+    soft_create: bool = False
 
     def get_identifier(self) -> str:
         if isinstance(self.target_path, FieldPath):

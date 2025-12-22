@@ -36,7 +36,7 @@ class TypeGraph:
         child_type: BoundNode,
         identifier: str | None,
         node_attributes: NodeCreationAttributes | None = ...,
-        is_soft: bool = ...,
+        soft_create: bool = ...,
     ) -> BoundNode: ...
     def add_make_child_deferred(
         self,
@@ -46,7 +46,7 @@ class TypeGraph:
         identifier: str | None,
         node_attributes: NodeCreationAttributes | None = ...,
         parent_path: list[str] | None = ...,
-        is_soft: bool = ...,
+        soft_create: bool = ...,
     ) -> BoundNode: ...
     def add_type_reference(self, *, type_identifier: str) -> BoundNode:
         """Create a standalone TypeReference node to be linked later.

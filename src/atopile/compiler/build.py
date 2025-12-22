@@ -497,4 +497,4 @@ def build_stage_2(
             for _, type_node in result.state.type_roots.items():
                 for _, message in tg.validate_type(type_node=type_node):
                     with accumulator.collect():
-                        raise DslException(f"Field `{message}` is not defined in scope")
+                        raise DslException(message)

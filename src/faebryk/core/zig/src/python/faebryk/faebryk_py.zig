@@ -3259,7 +3259,7 @@ fn wrap_typegraph_add_make_child() type {
                 identifier: *py.PyObject,
                 node_attributes: ?*py.PyObject = null,
                 parent_path: ?*py.PyObject = null,
-                is_soft: ?*py.PyObject = null,
+                soft_create: ?*py.PyObject = null,
 
                 pub const fields_meta = .{
                     .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
@@ -3327,9 +3327,9 @@ fn wrap_typegraph_add_make_child() type {
                 }
             }
 
-            // Parse is_soft flag (default to false)
-            const is_soft_obj: *py.PyObject = if (kwarg_obj.is_soft) |obj| obj else py.Py_None();
-            const is_soft: bool = if (is_soft_obj != py.Py_None()) py.PyObject_IsTrue(is_soft_obj) == 1 else false;
+            // Parse soft_create flag (default to false)
+            const soft_create_obj: *py.PyObject = if (kwarg_obj.soft_create) |obj| obj else py.Py_None();
+            const soft_create: bool = if (soft_create_obj != py.Py_None()) py.PyObject_IsTrue(soft_create_obj) == 1 else false;
 
             const bnode = faebryk.typegraph.TypeGraph.add_make_child(
                 wrapper.data,
@@ -3338,7 +3338,7 @@ fn wrap_typegraph_add_make_child() type {
                 if (identifier_copy) |copy| copy else null,
                 node_attributes,
                 if (parent_path_str) |pp| pp else null,
-                is_soft,
+                soft_create,
             ) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "add_make_child failed");
                 return null;
@@ -3360,7 +3360,7 @@ fn wrap_typegraph_add_make_child_deferred() type {
                 identifier: *py.PyObject,
                 node_attributes: ?*py.PyObject = null,
                 parent_path: ?*py.PyObject = null,
-                is_soft: ?*py.PyObject = null,
+                soft_create: ?*py.PyObject = null,
 
                 pub const fields_meta = .{
                     .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
@@ -3434,9 +3434,9 @@ fn wrap_typegraph_add_make_child_deferred() type {
                 }
             }
 
-            // Parse is_soft flag (default to false)
-            const is_soft_obj: *py.PyObject = if (kwarg_obj.is_soft) |obj| obj else py.Py_None();
-            const is_soft: bool = if (is_soft_obj != py.Py_None()) py.PyObject_IsTrue(is_soft_obj) == 1 else false;
+            // Parse soft_create flag (default to false)
+            const soft_create_obj: *py.PyObject = if (kwarg_obj.soft_create) |obj| obj else py.Py_None();
+            const soft_create: bool = if (soft_create_obj != py.Py_None()) py.PyObject_IsTrue(soft_create_obj) == 1 else false;
 
             const bnode = faebryk.typegraph.TypeGraph.add_make_child_deferred(
                 wrapper.data,
@@ -3445,7 +3445,7 @@ fn wrap_typegraph_add_make_child_deferred() type {
                 if (identifier_copy) |copy| copy else null,
                 node_attributes,
                 parent_path_str,
-                is_soft,
+                soft_create,
             ) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "add_make_child_deferred failed");
                 return null;

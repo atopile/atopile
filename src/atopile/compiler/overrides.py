@@ -319,7 +319,6 @@ class TraitOverrideRegistry:
         enum_value = _get_enum_member(spec.enum_type, string_value)
 
         parent_path: FieldPath | None = None
-        parent_reference = None
 
         if target_path.parent_segments:
             parent_path = FieldPath(segments=tuple(target_path.parent_segments))
@@ -331,7 +330,6 @@ class TraitOverrideRegistry:
             target_path=target_path,
             param_child=None,
             constraint_operand=enum_literal,
-            parent_reference=parent_reference,
             parent_path=parent_path,
             constraint_expr=constraint_expr,
         )
