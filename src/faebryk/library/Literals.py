@@ -4281,11 +4281,12 @@ class Numbers(fabll.Node):
         """
         from faebryk.library.Units import is_unit
 
-        # If fully unbounded (min=-inf, max=inf), return None for API
+        # If unbounded in either direction, return None for API
+        # Half-infinite ranges like [0, inf) are considered unconstrained
         numeric_set = self.get_numeric_set()
         if (
             numeric_set.get_min_value() == -math.inf
-            and numeric_set.get_max_value() == math.inf
+            or numeric_set.get_max_value() == math.inf
         ):
             return None
 

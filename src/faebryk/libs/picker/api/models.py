@@ -40,7 +40,15 @@ def _pretty_params_helper(params) -> str:
     def _map(v: Any) -> str:
         if v is None:
             return "**unconstrained**"
-        elif isinstance(v, (fabll.Node, int, float)):
+        # Check if it's an is_literal - these have pretty_str for human-readable output
+        elif isinstance(v, F.Literals.is_literal):
+            return f"`{v.pretty_str()}`"
+        elif isinstance(v, fabll.Node):
+            # Check if this node has an is_literal trait (e.g., enum literal)
+            if v.has_trait(F.Literals.is_literal):
+                return f"`{v.get_trait(F.Literals.is_literal).pretty_str()}`"
+            return f"`{v}`"
+        elif isinstance(v, (int, float)):
             return f"`{v}`"
         elif isinstance(v, str):
             return f'"{v}"'
