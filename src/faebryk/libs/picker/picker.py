@@ -147,7 +147,7 @@ def get_pick_tree(
         if traits.get(F.has_part_picked):
             return tree
 
-        # Handle has_part_removed: create a has_part_picked trait with the removed marker
+        # Handle has_part_removed: create a has_part_picked trait with the removed marker # noqa: E501
         if traits.get(F.has_part_removed):
             picked_trait = fabll.Traits.create_and_add_instance_to(
                 module_or_interface_obj, F.has_part_picked
@@ -188,7 +188,7 @@ def get_pick_tree(
             logger.warning(f"No pickers for {module_or_interface_obj.get_full_name()}")
         else:
             logger.warning(
-                f"ATTENTION: No pickers and no footprint for {module_or_interface_obj.get_full_name()}."
+                f"ATTENTION: No pickers and no footprint for {module_or_interface_obj.get_full_name()}."  # noqa: E501
                 " Will not appear in netlist or pcb."
             )
 
@@ -263,8 +263,9 @@ def find_independent_groups(
             p_to_module_map[p] = m_pbt
 
     for po_clique in p_cliques.get():
-        p_modules = {p_to_module_map[p] for p in po_clique}
-        module_cliques.add_eq(*[n._is_pickable.get() for n in p_modules])
+        p_modules = {p_to_module_map[p] for p in po_clique if p in p_to_module_map}
+        if p_modules:
+            module_cliques.add_eq(*[n._is_pickable.get() for n in p_modules])
     out = module_cliques.get()
     logger.debug(
         indented_container(
