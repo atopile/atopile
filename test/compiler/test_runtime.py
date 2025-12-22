@@ -1,3 +1,4 @@
+import math
 import textwrap
 from enum import IntEnum, StrEnum
 from pathlib import Path
@@ -2847,7 +2848,7 @@ class TestParameterConstraintTypes:
 
     def test_module_uses_issubset_for_parameter_constraint(self):
         """Modules should use IsSubset for parameter constraints (refinable)."""
-        _, _, _, _, app_instance = build_instance(
+        g, tg, _, _, app_instance = build_instance(
             """
             module App:
                 voltage = 5V
@@ -2858,13 +2859,22 @@ class TestParameterConstraintTypes:
         voltage_param = F.Parameters.NumericParameter.bind_instance(voltage)
 
         # Modules use IsSubset - should find literal via subset extraction
-        assert voltage_param.try_extract_aliased_literal_subset() is not None
-        # Should NOT find literal via exact Is extraction
+        assert (
+            E.lit_op_single((5, E.U.V))
+            .as_literal.force_get()
+            .equals(
+                not_none(
+                    voltage_param.try_extract_aliased_literal_subset()
+                ).is_literal.get()
+            )
+        )
+
+        # Should NOT find literal via exact Is extraction (modules use IsSubset)
         assert voltage_param.try_extract_aliased_literal() is None
 
     def test_component_uses_is_for_parameter_constraint(self):
         """Components should use Is for parameter constraints (exact)."""
-        _, _, _, _, app_instance = build_instance(
+        g, tg, _, _, app_instance = build_instance(
             """
             component App:
                 voltage = 5V
@@ -2875,13 +2885,25 @@ class TestParameterConstraintTypes:
         voltage_param = F.Parameters.NumericParameter.bind_instance(voltage)
 
         # Components use Is - should find literal via exact extraction
-        assert voltage_param.try_extract_aliased_literal() is not None
+        assert (
+            E.lit_op_single((5, E.U.V))
+            .as_literal.force_get()
+            .equals(not_none(voltage_param.try_extract_aliased_literal()))
+        )
         # Should NOT find literal via subset extraction
-        assert voltage_param.try_extract_aliased_literal_subset() is None
+        assert (
+            E.lit_op_ranges(((0, E.U.V), (math.inf, E.U.V)))
+            .as_literal.force_get()
+            .equals(
+                not_none(
+                    voltage_param.try_extract_aliased_literal_subset()
+                ).is_literal.get()
+            )
+        )
 
     def test_module_with_toleranced_value_uses_issubset(self):
         """Module with toleranced value should use IsSubset."""
-        _, _, _, _, app_instance = build_instance(
+        g, tg, _, _, app_instance = build_instance(
             """
             module App:
                 resistance = 10kohm +/- 5%
@@ -2891,12 +2913,17 @@ class TestParameterConstraintTypes:
         resistance = _get_child(app_instance, "resistance")
         resistance_param = F.Parameters.NumericParameter.bind_instance(resistance)
 
-        assert resistance_param.try_extract_aliased_literal_subset() is not None
+        assert (
+            E.lit_op_range_from_center_rel((10000, E.U.Ohm), rel=0.05)
+            .as_literal.force_get()
+            .equals(not_none(resistance_param.try_extract_aliased_literal_subset()))
+        )
+        # Should NOT find literal via exact Is extraction (modules use IsSubset)
         assert resistance_param.try_extract_aliased_literal() is None
 
     def test_component_with_toleranced_value_uses_is(self):
         """Component with toleranced value should use Is."""
-        _, _, _, _, app_instance = build_instance(
+        g, tg, _, _, app_instance = build_instance(
             """
             component App:
                 resistance = 10kohm +/- 5%
@@ -2906,12 +2933,28 @@ class TestParameterConstraintTypes:
         resistance = _get_child(app_instance, "resistance")
         resistance_param = F.Parameters.NumericParameter.bind_instance(resistance)
 
-        assert resistance_param.try_extract_aliased_literal() is not None
-        assert resistance_param.try_extract_aliased_literal_subset() is None
+        assert (
+            E.lit_op_range_from_center_rel((10000, E.U.Ohm), rel=0.05)
+            .as_literal.force_get()
+            .equals(
+                not_none(
+                    resistance_param.try_extract_aliased_literal()
+                ).is_literal.get()
+            )
+        )
+        assert (
+            E.lit_op_ranges(((0, E.U.Ohm), (math.inf, E.U.Ohm)))
+            .as_literal.force_get()
+            .equals(
+                not_none(
+                    resistance_param.try_extract_aliased_literal_subset()
+                ).is_literal.get()
+            )
+        )
 
     def test_nested_module_in_component_uses_issubset(self):
         """Module nested inside component should still use IsSubset."""
-        _, _, _, _, app_instance = build_instance(
+        g, tg, _, _, app_instance = build_instance(
             """
             module Inner:
                 value = 3V
@@ -2926,12 +2969,21 @@ class TestParameterConstraintTypes:
         value_param = F.Parameters.NumericParameter.bind_instance(value)
 
         # Inner is a module, so it uses IsSubset
-        assert value_param.try_extract_aliased_literal_subset() is not None
+        assert (
+            E.lit_op_single((3, E.U.V))
+            .as_literal.force_get()
+            .equals(
+                not_none(
+                    value_param.try_extract_aliased_literal_subset()
+                ).is_literal.get()
+            )
+        )
+        # Should NOT find literal via exact Is extraction (modules use IsSubset)
         assert value_param.try_extract_aliased_literal() is None
 
     def test_nested_component_in_module_uses_is(self):
         """Component nested inside module should still use Is."""
-        _, _, _, _, app_instance = build_instance(
+        g, tg, _, _, app_instance = build_instance(
             """
             component Inner:
                 value = 3V
@@ -2946,12 +2998,24 @@ class TestParameterConstraintTypes:
         value_param = F.Parameters.NumericParameter.bind_instance(value)
 
         # Inner is a component, so it uses Is
-        assert value_param.try_extract_aliased_literal() is not None
-        assert value_param.try_extract_aliased_literal_subset() is None
+        assert (
+            E.lit_op_single((3, E.U.V))
+            .as_literal.force_get()
+            .equals(not_none(value_param.try_extract_aliased_literal()))
+        )
+        assert (
+            E.lit_op_ranges(((0, E.U.V), (math.inf, E.U.V)))
+            .as_literal.force_get()
+            .equals(
+                not_none(
+                    value_param.try_extract_aliased_literal_subset()
+                ).is_literal.get()
+            )
+        )
 
     def test_module_range_value_uses_issubset(self):
         """Module with range value should use IsSubset."""
-        _, _, _, _, app_instance = build_instance(
+        g, tg, _, _, app_instance = build_instance(
             """
             module App:
                 voltage = 3V to 5V
@@ -2961,12 +3025,17 @@ class TestParameterConstraintTypes:
         voltage = _get_child(app_instance, "voltage")
         voltage_param = F.Parameters.NumericParameter.bind_instance(voltage)
 
-        assert voltage_param.try_extract_aliased_literal_subset() is not None
+        assert (
+            E.lit_op_ranges(((3, E.U.V), (5, E.U.V)))
+            .as_literal.force_get()
+            .equals(not_none(voltage_param.try_extract_aliased_literal_subset()))
+        )
+        # Should NOT find literal via exact Is extraction (modules use IsSubset)
         assert voltage_param.try_extract_aliased_literal() is None
 
     def test_component_range_value_uses_is(self):
         """Component with range value should use Is."""
-        _, _, _, _, app_instance = build_instance(
+        g, tg, _, _, app_instance = build_instance(
             """
             component App:
                 voltage = 3V to 5V
@@ -2976,5 +3045,15 @@ class TestParameterConstraintTypes:
         voltage = _get_child(app_instance, "voltage")
         voltage_param = F.Parameters.NumericParameter.bind_instance(voltage)
 
-        assert voltage_param.try_extract_aliased_literal() is not None
-        assert voltage_param.try_extract_aliased_literal_subset() is None
+        assert (
+            E.lit_op_ranges(((3, E.U.V), (5, E.U.V)))
+            .as_literal.force_get()
+            .equals(
+                not_none(voltage_param.try_extract_aliased_literal()).is_literal.get()
+            )
+        )
+        assert (
+            E.lit_op_ranges(((0, E.U.V), (math.inf, E.U.V)))
+            .as_literal.force_get()
+            .equals(not_none(voltage_param.try_extract_aliased_literal_subset()))
+        )
