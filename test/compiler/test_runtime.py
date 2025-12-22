@@ -20,6 +20,7 @@ from atopile.compiler.build import Linker, StdlibRegistry, build_file
 from atopile.errors import UserSyntaxError
 from faebryk.core.faebrykpy import EdgeComposition, EdgeType
 from faebryk.core.graph import BoundNode, GraphView
+from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.test.boundexpressions import BoundExpressions
 from faebryk.libs.util import cast_assert, not_none
@@ -548,7 +549,7 @@ def test_numeric_literals():
 
 
 def test_basic_arithmetic():
-    _, _, _, result, app_instance = build_instance(
+    g, tg, _, result, app_instance = build_instance(
         """
         module A:
             a = 1 to 2 * 3
@@ -556,22 +557,37 @@ def test_basic_arithmetic():
         """,
         "A",
     )
-    assert "A" in result.state.type_roots
-    a = _get_child(app_instance, "a")
-    b = _get_child(app_instance, "b")
+    app = fabll.Node.bind_instance(app_instance)
+    F.Parameters.NumericParameter.infer_units_in_tree(app)
 
-    a = F.Parameters.NumericParameter.bind_instance(a)
-    b = F.Parameters.NumericParameter.bind_instance(b)
+    solver = DefaultSolver()
+    solver_result = solver.simplify(tg, g, terminal=True)
+    repr_map = solver_result.data.mutation_map
+
+    a = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "a"))
+    b = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "b"))
 
     assert (
         E.lit_op_range((3, 6))
         .as_literal.force_get()
-        .equals(not_none(a.force_extract_literal_subset()))
+        .equals(
+            not_none(
+                repr_map.try_get_literal(
+                    a.is_parameter_operatable.get(), allow_subset=True
+                )
+            )
+        )
     )
     assert (
         E.lit_op_range((7, 10))
         .as_literal.force_get()
-        .equals(not_none(b.force_extract_literal_subset()))
+        .equals(
+            not_none(
+                repr_map.try_get_literal(
+                    b.is_parameter_operatable.get(), allow_subset=True
+                )
+            )
+        )
     )
 
 
