@@ -1355,6 +1355,13 @@ class ASTVisitor:
         """
         target_path, visit_fn = self._get_declaration_info(node)
 
+        # Special handling for (legacy) pin declarations in connection contexts
+        # Check if already exists within the module's type context
+        if node.isinstance(AST.PinDeclaration):
+            if self._type_stack.field_exists(target_path.root.identifier):
+                # Pin already exists, returning existing path (pin)
+                return target_path, []
+
         # FIXME: invalid (pre-linking)
         # if not self._type_stack.field_exists(target_path.root.identifier):
         return target_path, [visit_fn()]
