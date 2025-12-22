@@ -60,7 +60,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core import graph
-from faebryk.libs.util import not_none, once
+from faebryk.libs.util import indented_container, not_none, once
 
 
 class UnitException(Exception): ...
@@ -68,13 +68,15 @@ class UnitException(Exception): ...
 
 class UnitsNotCommensurableError(UnitException):
     def __init__(
-        self, message: str, incommensurable_items: Sequence[fabll.NodeT] | None = None
+        self,
+        message: str,
+        incommensurable_items: Sequence[fabll.NodeT | None] | None = None,
     ):
         self.message = message
         self.incommensurable_items = incommensurable_items
 
     def __str__(self) -> str:
-        return self.message
+        return self.message + indented_container(self.incommensurable_items or {})
 
 
 class UnitNotFoundError(UnitException):
@@ -418,7 +420,10 @@ class is_unit(fabll.Node):
     def MakeChild_Empty(cls) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
         return fabll._ChildField(cls)
 
-    def _extract_multiplier(self) -> float:
+    def _extract_multiplier(self: "is_unit | None") -> float:
+        if self is None:
+            return 1.0
+
         multiplier_numeric = self.multiplier_ptr.get().try_deref()
         if multiplier_numeric is None:  # TODO: Pointer never set, assume default
             return 1.0
@@ -426,21 +431,29 @@ class is_unit(fabll.Node):
 
         return NumericInterval.bind_instance(multiplier_numeric.instance).get_single()
 
-    def _extract_offset(self) -> float:
+    def _extract_offset(self: "is_unit | None") -> float:
+        if self is None:
+            return 0.0
+
         offset_numeric = self.offset_ptr.get().deref()
         assert offset_numeric is not None
         from faebryk.library.Literals import NumericInterval
 
         return NumericInterval.bind_instance(offset_numeric.instance).get_single()
 
-    def _extract_symbols(self) -> list[str]:
+    def _extract_symbols(self: "is_unit | None") -> list[str]:
+        if self is None:
+            return []
+
         symbol_field = self.symbol_ptr.get().deref()
         assert symbol_field is not None
         from faebryk.library.Literals import Strings
 
         return Strings.bind_instance(symbol_field.instance).get_values()
 
-    def _extract_basis_vector(self) -> BasisVector:
+    def _extract_basis_vector(self: "is_unit | None") -> BasisVector:
+        if self is None:
+            return _BasisVector.ORIGIN
         return _BasisVector.bind_instance(
             self.basis_vector.get().deref().instance
         ).extract_vector()
@@ -488,13 +501,12 @@ class is_unit(fabll.Node):
         Get the owner node that has this is_unit trait.
         Useful when creating new QuantitySets from unit operations.
         """
-        import faebryk.core.faebrykpy as fbrk
+        return fabll.Traits(self).get_obj_raw()
 
-        owner = fbrk.EdgeTrait.get_owner_node_of(bound_node=self.instance)
-        assert owner is not None, "is_unit trait must have an owner node"
-        return fabll.Node.bind_instance(instance=owner)
+    def get_symbols(self: "is_unit | None") -> list[str]:
+        if self is None:
+            return [DIMENSIONLESS_SYMBOL]
 
-    def get_symbols(self) -> list[str]:
         lit = self.symbol_ptr.get().deref().instance
         assert lit is not None
         from faebryk.library.Literals import Strings
@@ -505,27 +517,30 @@ class is_unit(fabll.Node):
         return lit.get_values()
 
     @property
-    def is_affine(self) -> bool:
-        return self._extract_offset() != 0.0
+    def is_affine(self: "is_unit | None") -> bool:
+        return is_unit._extract_offset(self) != 0.0
 
-    def is_commensurable_with(self, other: "is_unit") -> bool:
-        self_vector = self._extract_basis_vector()
-        other_vector = other._extract_basis_vector()
+    def is_commensurable_with(self: "is_unit | None", other: "is_unit|None") -> bool:
+        self_vector = is_unit._extract_basis_vector(self)
+        other_vector = is_unit._extract_basis_vector(other)
+
         return self_vector == other_vector
 
-    def is_dimensionless(self) -> bool:
-        return self._extract_basis_vector() == _BasisVector.ORIGIN
+    def is_dimensionless(self: "is_unit | None") -> bool:
+        return is_unit._extract_basis_vector(self) == _BasisVector.ORIGIN
 
-    def is_angular(self) -> bool:
+    def is_angular(self: "is_unit | None") -> bool:
         """
         Check if this unit is angular (radians).
         Valid input for trigonometric functions.
         Enforces explicit use of Radian unit rather than accepting dimensionless.
         """
-        v = self._extract_basis_vector()
+        v = is_unit._extract_basis_vector(self)
         return v == BasisVector(radian=1)
 
-    def to_base_units(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "is_unit":
+    def to_base_units(
+        self: "is_unit | None", g: graph.GraphView, tg: fbrk.TypeGraph
+    ) -> "is_unit | None":
         """
         Returns a new anonymous unit with the same basis vector, but with multiplier=1.0
         and offset=0.0.
@@ -537,18 +552,26 @@ class is_unit(fabll.Node):
 
         # TODO: lookup and return existing named unit if available
         """
+        if self is None:
+            return None
         all_is_units = fabll.Traits.get_implementors(is_unit.bind_typegraph(tg=tg), g)
         for _is_unit in all_is_units:
             # Must match basis vector AND have base unit multiplier/offset
             if (
-                _is_unit._extract_basis_vector() == self._extract_basis_vector()
-                and _is_unit._extract_multiplier() == 1.0
+                is_unit._extract_basis_vector(_is_unit)
+                == is_unit._extract_basis_vector(self)
+                and is_unit._extract_multiplier(_is_unit) == 1.0
+                and is_unit._extract_offset(_is_unit) == 0.0
                 and _is_unit._extract_offset() == 0.0
             ):
                 return _is_unit
 
-        return self.new(
-            g=g, tg=tg, vector=self._extract_basis_vector(), multiplier=1.0, offset=0.0
+        return is_unit.new(
+            g=g,
+            tg=tg,
+            vector=is_unit._extract_basis_vector(self),
+            multiplier=1.0,
+            offset=0.0,
         )
 
     @classmethod
@@ -559,9 +582,12 @@ class is_unit(fabll.Node):
         vector: BasisVector,
         multiplier: float,
         offset: float,
-    ) -> "is_unit":
+    ) -> "is_unit | None":
         # TODO: caching?
         # TODO: generate symbol
+
+        if vector == _BasisVector.ORIGIN and multiplier == 1.0 and offset == 0.0:
+            return None
 
         return (
             AnonymousUnitFactory(vector=vector, multiplier=multiplier, offset=offset)
@@ -572,26 +598,38 @@ class is_unit(fabll.Node):
         )
 
     def scaled_copy(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, multiplier: float
-    ) -> "is_unit":
-        return self.new(
+        self: "is_unit | None",
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+        multiplier: float,
+    ) -> "is_unit | None":
+        return is_unit.new(
             g=g,
             tg=tg,
-            vector=self._extract_basis_vector(),
-            multiplier=multiplier * self._extract_multiplier(),
-            offset=self._extract_offset(),
+            vector=is_unit._extract_basis_vector(self),
+            multiplier=multiplier * is_unit._extract_multiplier(self),
+            offset=is_unit._extract_offset(self),
         )
 
     def op_multiply(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "is_unit"
-    ) -> "is_unit":
-        v1, v2 = self._extract_basis_vector(), other._extract_basis_vector()
-        m1, m2 = self._extract_multiplier(), other._extract_multiplier()
+        self: "is_unit | None",
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+        other: "is_unit | None",
+    ) -> "is_unit | None":
+        v1, v2 = (
+            is_unit._extract_basis_vector(self),
+            is_unit._extract_basis_vector(other),
+        )
+        m1, m2 = (
+            is_unit._extract_multiplier(self),
+            is_unit._extract_multiplier(other),
+        )
 
         new_multiplier = m1 * m2
         new_vector = v1.add(v2)
 
-        return self.new(
+        return is_unit.new(
             g=g,
             tg=tg,
             vector=new_vector,
@@ -600,15 +638,21 @@ class is_unit(fabll.Node):
         )
 
     def op_divide(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "is_unit"
-    ) -> "is_unit":
-        v1, v2 = self._extract_basis_vector(), other._extract_basis_vector()
-        m1, m2 = self._extract_multiplier(), other._extract_multiplier()
+        self: "is_unit | None",
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+        other: "is_unit | None",
+    ) -> "is_unit | None":
+        v1, v2 = (
+            is_unit._extract_basis_vector(self),
+            is_unit._extract_basis_vector(other),
+        )
+        m1, m2 = is_unit._extract_multiplier(self), is_unit._extract_multiplier(other)
 
         new_multiplier = m1 / m2
         new_vector = v1.subtract(v2)
 
-        return self.new(
+        return is_unit.new(
             g=g,
             tg=tg,
             vector=new_vector,
@@ -616,10 +660,12 @@ class is_unit(fabll.Node):
             offset=0.0,  # TODO
         )
 
-    def op_invert(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "is_unit":
-        v = self._extract_basis_vector()
-        m = self._extract_multiplier()
-        return self.new(
+    def op_invert(
+        self: "is_unit | None", g: graph.GraphView, tg: fbrk.TypeGraph
+    ) -> "is_unit | None":
+        v = is_unit._extract_basis_vector(self)
+        m = is_unit._extract_multiplier(self)
+        return is_unit.new(
             g=g,
             tg=tg,
             vector=v.scalar_multiply(-1),
@@ -628,11 +674,11 @@ class is_unit(fabll.Node):
         )
 
     def op_power(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, exponent: int
-    ) -> "is_unit":
-        v = self._extract_basis_vector()
-        m = self._extract_multiplier()
-        return self.new(
+        self: "is_unit | None", g: graph.GraphView, tg: fbrk.TypeGraph, exponent: int
+    ) -> "is_unit | None":
+        v = is_unit._extract_basis_vector(self)
+        m = is_unit._extract_multiplier(self)
+        return is_unit.new(
             g=g,
             tg=tg,
             vector=v.scalar_multiply(exponent),
@@ -640,22 +686,26 @@ class is_unit(fabll.Node):
             offset=0.0,  # TODO
         )
 
-    def get_conversion_to(self, target: "is_unit") -> tuple[float, float]:
-        if not self.is_commensurable_with(target):
+    def get_conversion_to(
+        self: "is_unit | None", target: "is_unit|None"
+    ) -> tuple[float, float]:
+        if not is_unit.is_commensurable_with(self, target):
             raise UnitsNotCommensurableError(
                 f"Units {self} and {target} are not commensurable",
                 incommensurable_items=[self, target],
             )
 
-        m1, o1 = self._extract_multiplier(), self._extract_offset()
-        m2, o2 = target._extract_multiplier(), target._extract_offset()
+        m1, o1 = is_unit._extract_multiplier(self), is_unit._extract_offset(self)
+        m2, o2 = is_unit._extract_multiplier(target), is_unit._extract_offset(target)
 
         scale = m1 / m2
         offset = (o1 - o2) / m2
 
         return (scale, offset)
 
-    def compact_repr(self) -> str:
+    def compact_repr(self: "is_unit | None") -> str:
+        if self is None:
+            return ""
         """Return compact unit repr (symbol or basis vector with multipliers)."""
 
         def to_superscript(n: int) -> str:
@@ -670,13 +720,13 @@ class is_unit(fabll.Node):
             return f"{value:g}"
 
         # use the first pre-defined symbol if available
-        if symbols := self._extract_symbols():
+        if symbols := is_unit._extract_symbols(self):
             return symbols[0]
 
         # otherwise, render the basis vector
-        vector = self._extract_basis_vector()
-        multiplier = self._extract_multiplier()
-        offset = self._extract_offset()
+        vector = is_unit._extract_basis_vector(self)
+        multiplier = is_unit._extract_multiplier(self)
+        offset = is_unit._extract_offset(self)
 
         result = "·".join(
             [
@@ -695,7 +745,7 @@ class is_unit(fabll.Node):
 
         return result
 
-    def serialize(self) -> dict | str:
+    def serialize(self: "is_unit | None") -> dict | str:
         """
         Serialize this unit to a dictionary.
 
@@ -718,13 +768,13 @@ class is_unit(fabll.Node):
             "offset": 0.0,
         }
         """
-        if symbols := self._extract_symbols():
+        if symbols := is_unit._extract_symbols(self):
             return symbols[0]
 
         out = {}
-        basis_vector = self._extract_basis_vector()
-        multiplier = self._extract_multiplier()
-        offset = self._extract_offset()
+        basis_vector = is_unit._extract_basis_vector(self)
+        multiplier = is_unit._extract_multiplier(self)
+        offset = is_unit._extract_offset(self)
 
         out["symbols"] = symbols
         out["basis_vector"] = basis_vector.to_dict()
@@ -882,7 +932,7 @@ def decode_symbol(
 # TODO: remove?
 def decode_symbol_runtime(
     g: graph.GraphView, tg: fbrk.TypeGraph, symbol: str
-) -> is_unit:
+) -> "is_unit | None":
     # TODO: caching
     # TODO: optimisation: pre-compute symbol map; build suffix trie
 
@@ -1306,12 +1356,10 @@ class _UnitExpressionResolver:
         self.g = g
         self.tg = tg
 
-    def visit(self, node: fabll.Node) -> is_unit:
-        if node.isinstance(F.Parameters.can_be_operand):
+    def visit(self, node: fabll.Node) -> "is_unit | None":
+        if op := node.try_cast(F.Parameters.can_be_operand):
             # unwrap and try again
-            return self.visit(
-                node.cast(F.Parameters.can_be_operand, check=False).get_raw_obj()
-            )
+            return self.visit(op.get_raw_obj())
 
         if unit := node.try_get_trait(is_unit):
             # already resolved
@@ -1323,6 +1371,10 @@ class _UnitExpressionResolver:
 
         if has_unit_trait := node.try_get_trait(has_unit):
             return has_unit_trait.get_is_unit()
+        if node.isinstance(F.Parameters.NumericParameter):
+            return None
+        if node.isinstance(F.Literals.Numbers):
+            return None
 
         if node.isinstance(F.Expressions.Add):
             return self.visit_additive(node.cast(F.Expressions.Add))
@@ -1341,7 +1393,7 @@ class _UnitExpressionResolver:
             f"Unsupported expression type: {node.get_type_name()}"
         )
 
-    def visit_unit_expression(self, node: UnitExpression) -> is_unit:
+    def visit_unit_expression(self, node: UnitExpression) -> "is_unit | None":
         """Resolve a UnitExpression by traversing its expression tree."""
 
         multiplier = node.get_multiplier()
@@ -1352,8 +1404,8 @@ class _UnitExpressionResolver:
             raise UnitExpressionError("Cannot use unit expression with non-zero offset")
 
         inner_unit = self.visit(node.get_expr())
-        inner_vector = inner_unit._extract_basis_vector()
-        inner_multiplier = inner_unit._extract_multiplier()
+        inner_vector = is_unit._extract_basis_vector(inner_unit)
+        inner_multiplier = is_unit._extract_multiplier(inner_unit)
 
         return is_unit.new(
             g=self.g,
@@ -1363,41 +1415,41 @@ class _UnitExpressionResolver:
             offset=0.0,
         )
 
-    def visit_additive(self, node: F.Expressions.Add) -> is_unit:
+    def visit_additive(self, node: F.Expressions.Add) -> "is_unit | None":
         """Resolve Add expression - all operands must be commensurable."""
         operands = node.operands.get().as_list()
 
         first_op, *other_ops = operands
         first_unit = self.visit(first_op)
-        first_vector = first_unit._extract_basis_vector()
+        first_vector = is_unit._extract_basis_vector(first_unit)
 
         for op in other_ops:
             op_unit = self.visit(op)
-            if op_unit._extract_basis_vector() != first_vector:
+            if is_unit._extract_basis_vector(op_unit) != first_vector:
                 raise UnitsNotCommensurableError(
                     "Operands in addition must have commensurable units"
                 )
 
         return first_unit
 
-    def visit_subtract(self, node: F.Expressions.Subtract) -> is_unit:
+    def visit_subtract(self, node: F.Expressions.Subtract) -> "is_unit | None":
         """Resolve Subtract expression - all operands must be commensurable."""
         minuend = node.minuend.get().deref()
         subtrahends = node.subtrahends.get().as_list()
 
         minuend_unit = self.visit(minuend)
-        minuend_vector = minuend_unit._extract_basis_vector()
+        minuend_vector = is_unit._extract_basis_vector(minuend_unit)
 
         for sub in subtrahends:
             sub_unit = self.visit(sub)
-            if sub_unit._extract_basis_vector() != minuend_vector:
+            if is_unit._extract_basis_vector(sub_unit) != minuend_vector:
                 raise UnitsNotCommensurableError(
                     "Operands in subtraction must have commensurable units"
                 )
 
         return minuend_unit
 
-    def visit_multiply(self, node: F.Expressions.Multiply) -> is_unit:
+    def visit_multiply(self, node: F.Expressions.Multiply) -> "is_unit | None":
         operands = node.operands.get().as_list()
 
         if not operands:
@@ -1410,13 +1462,13 @@ class _UnitExpressionResolver:
             )
 
         return reduce(
-            lambda a, b: a.op_multiply(self.g, self.tg, b),
+            lambda a, b: is_unit.op_multiply(a, g=self.g, tg=self.tg, other=b),
             (self.visit(op) for op in operands),
         )
 
-    def visit_divide(self, node: F.Expressions.Divide) -> is_unit:
+    def visit_divide(self, node: F.Expressions.Divide) -> "is_unit | None":
         return reduce(
-            lambda a, b: a.op_divide(self.g, self.tg, b),
+            lambda a, b: is_unit.op_divide(a, g=self.g, tg=self.tg, other=b),
             (
                 self.visit(op)
                 for op in (
@@ -1426,7 +1478,7 @@ class _UnitExpressionResolver:
             ),
         )
 
-    def visit_power(self, node: F.Expressions.Power) -> is_unit:
+    def visit_power(self, node: F.Expressions.Power) -> "is_unit | None":
         base = node.base.get().deref()
         exponent_node = node.exponent.get().deref()
 
@@ -1448,16 +1500,20 @@ class _UnitExpressionResolver:
                 f"Unit exponent must be integer, got {exponent_val}"
             )
 
-        return self.visit(base).op_power(self.g, self.tg, int(exponent_val))
+        return is_unit.op_power(
+            self.visit(base), g=self.g, tg=self.tg, exponent=int(exponent_val)
+        )
 
 
 def resolve_unit_expression(
     g: graph.GraphView, tg: fbrk.TypeGraph, expr: graph.BoundNode
-) -> _AnonymousUnit:
+) -> _AnonymousUnit | None:
     # TODO: caching?
     resolver = _UnitExpressionResolver(g=g, tg=tg)
     node = fabll.Node.bind_instance(expr)
     result_unit = resolver.visit(node)
+    if result_unit is None:
+        return None
     parent, _ = result_unit.get_parent_force()
     return parent.cast(_AnonymousUnit, check=False)
 
@@ -2618,8 +2674,8 @@ class TestIsUnit(_TestWithContext):
         with pytest.raises(UnitsNotCommensurableError):
             TestIsUnit.assert_commensurability(
                 [
-                    meters_per_second.get_trait(is_unit),
-                    meter_seconds.get_trait(is_unit),
+                    not_none(meters_per_second).get_trait(is_unit),
+                    not_none(meter_seconds).get_trait(is_unit),
                 ]
             )
 
@@ -2656,7 +2712,7 @@ class TestIsUnit(_TestWithContext):
         ampere = ctx.Ampere.is_unit.get()
 
         result = volt.op_multiply(ctx.g, ctx.tg, ampere)
-        assert result._extract_basis_vector() == BasisVector(
+        assert is_unit._extract_basis_vector(result) == BasisVector(
             kilogram=1, meter=2, second=-3
         )
 
@@ -2666,27 +2722,27 @@ class TestIsUnit(_TestWithContext):
         ampere = ctx.Ampere.is_unit.get()
 
         result = volt.op_divide(ctx.g, ctx.tg, ampere)
-        assert result._extract_basis_vector() == Ohm.unit_vector_arg
+        assert is_unit._extract_basis_vector(result) == Ohm.unit_vector_arg
 
     def test_unit_power(self, ctx: BoundUnitsContext):
         """Test unit exponentiation."""
         meter = ctx.Meter.is_unit.get()
 
         squared = meter.op_power(ctx.g, ctx.tg, 2)
-        assert squared._extract_basis_vector() == BasisVector(meter=2)
+        assert is_unit._extract_basis_vector(squared) == BasisVector(meter=2)
 
         cubed = meter.op_power(ctx.g, ctx.tg, 3)
-        assert cubed._extract_basis_vector() == BasisVector(meter=3)
+        assert is_unit._extract_basis_vector(cubed) == BasisVector(meter=3)
 
         inverse = meter.op_power(ctx.g, ctx.tg, -1)
-        assert inverse._extract_basis_vector() == BasisVector(meter=-1)
+        assert is_unit._extract_basis_vector(inverse) == BasisVector(meter=-1)
 
     def test_unit_invert(self, ctx: BoundUnitsContext):
         """Test unit inversion: 1/Second has the same basis as Hertz."""
         second = ctx.Second.is_unit.get()
 
         result = second.op_invert(ctx.g, ctx.tg)
-        assert result._extract_basis_vector() == Hertz.unit_vector_arg
+        assert is_unit._extract_basis_vector(result) == Hertz.unit_vector_arg
 
     def test_get_conversion_to_scaled(self, ctx: BoundUnitsContext):
         """Test conversion between units with different multipliers."""
@@ -2694,11 +2750,11 @@ class TestIsUnit(_TestWithContext):
         meter = decode_symbol_runtime(g=ctx.g, tg=ctx.tg, symbol="m")
         kilometer = decode_symbol_runtime(g=ctx.g, tg=ctx.tg, symbol="km")
 
-        scale, offset = kilometer.get_conversion_to(meter)
+        scale, offset = is_unit.get_conversion_to(kilometer, meter)
         assert scale == 1000.0
         assert offset == 0.0
 
-        scale, offset = meter.get_conversion_to(kilometer)
+        scale, offset = is_unit.get_conversion_to(meter, kilometer)
         assert scale == 0.001
         assert offset == 0.0
 
@@ -2776,31 +2832,31 @@ class TestIsUnit(_TestWithContext):
         """Prefixed unit normalizes to base unit with multiplier=1."""
         _ = ctx.Meter
         kilometer = decode_symbol_runtime(g=ctx.g, tg=ctx.tg, symbol="km")
-        base = kilometer.to_base_units(g=ctx.g, tg=ctx.tg)
+        base = is_unit.to_base_units(kilometer, g=ctx.g, tg=ctx.tg)
 
-        assert base._extract_basis_vector() == BasisVector(meter=1)
-        assert base._extract_multiplier() == 1.0
-        assert base._extract_offset() == 0.0
+        assert is_unit._extract_basis_vector(base) == BasisVector(meter=1)
+        assert is_unit._extract_multiplier(base) == 1.0
+        assert is_unit._extract_offset(base) == 0.0
 
     def test_to_base_units_affine(self, ctx: BoundUnitsContext):
         """Affine unit normalizes to base unit with offset=0."""
         celsius = ctx.DegreeCelsius.is_unit.get()
-        base = celsius.to_base_units(g=ctx.g, tg=ctx.tg)
+        base = is_unit.to_base_units(celsius, g=ctx.g, tg=ctx.tg)
 
-        assert base._extract_basis_vector() == BasisVector(kelvin=1)
-        assert base._extract_multiplier() == 1.0
-        assert base._extract_offset() == 0.0
+        assert is_unit._extract_basis_vector(base) == BasisVector(kelvin=1)
+        assert is_unit._extract_multiplier(base) == 1.0
+        assert is_unit._extract_offset(base) == 0.0
 
     def test_to_base_units_derived(self, ctx: BoundUnitsContext):
         """Derived unit normalizes to base SI dimensions."""
         newton = Newton.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g).is_unit.get()
         base = newton.to_base_units(g=ctx.g, tg=ctx.tg)
 
-        assert base._extract_basis_vector() == BasisVector(
+        assert is_unit._extract_basis_vector(base) == BasisVector(
             kilogram=1, meter=1, second=-2
         )
-        assert base._extract_multiplier() == 1.0
-        assert base._extract_offset() == 0.0
+        assert is_unit._extract_multiplier(base) == 1.0
+        assert is_unit._extract_offset(base) == 0.0
 
     def test_compact_repr_with_symbol(self, ctx: BoundUnitsContext):
         """Unit with symbol returns that symbol."""
@@ -2822,7 +2878,7 @@ class TestIsUnit(_TestWithContext):
             multiplier=1.0,
             offset=0.0,
         )
-        assert velocity_unit.compact_repr() == "s⁻¹·m"
+        assert is_unit.compact_repr(velocity_unit) == "s⁻¹·m"
 
     def test_compact_repr_dimensionless(self, ctx: BoundUnitsContext):
         """Dimensionless anonymous unit renders as empty string."""
@@ -2833,7 +2889,7 @@ class TestIsUnit(_TestWithContext):
             multiplier=1.0,
             offset=0.0,
         )
-        assert dimensionless_anon.compact_repr() == ""
+        assert is_unit.compact_repr(dimensionless_anon) == ""
 
     def test_compact_repr_dimensionless_with_multiplier(self, ctx: BoundUnitsContext):
         """Dimensionless with multiplier renders multiplier only (no trailing ×)."""
@@ -2844,7 +2900,7 @@ class TestIsUnit(_TestWithContext):
             multiplier=1000.0,
             offset=0.0,
         )
-        assert scaled_dimensionless.compact_repr() == "1000"
+        assert is_unit.compact_repr(scaled_dimensionless) == "1000"
 
     def test_compact_repr_with_multiplier(self, ctx: BoundUnitsContext):
         """Multiplier is prefixed without trailing zeros."""
@@ -2855,7 +2911,7 @@ class TestIsUnit(_TestWithContext):
             multiplier=1000.0,
             offset=0.0,
         )
-        assert scaled_unit.compact_repr() == "1000×m"
+        assert is_unit.compact_repr(scaled_unit) == "1000×m"
 
     def test_compact_repr_with_offset(self, ctx: BoundUnitsContext):
         """Offset wraps in parentheses without trailing zeros."""
@@ -2866,7 +2922,7 @@ class TestIsUnit(_TestWithContext):
             multiplier=1.0,
             offset=273.15,
         )
-        assert offset_unit.compact_repr() == "(K+273.15)"
+        assert is_unit.compact_repr(offset_unit) == "(K+273.15)"
 
     def test_compact_repr_with_multiplier_and_offset(self, ctx: BoundUnitsContext):
         """Both multiplier and offset render correctly."""
@@ -2877,7 +2933,7 @@ class TestIsUnit(_TestWithContext):
             multiplier=0.5,
             offset=100.0,
         )
-        assert scaled_offset_unit.compact_repr() == "(0.5×K+100)"
+        assert is_unit.compact_repr(scaled_offset_unit) == "(0.5×K+100)"
 
     def test_is_unit_serialize_named_unit(self, ctx: BoundUnitsContext):
         """Test that is_unit.serialize() returns the expected API format."""
@@ -2915,7 +2971,7 @@ class TestIsUnit(_TestWithContext):
             "offset": 1.0,
         }
 
-        assert anonymous_unit.serialize() == expected
+        assert is_unit.serialize(anonymous_unit) == expected
 
 
 class TestSymbols(_TestWithContext):
@@ -2924,18 +2980,18 @@ class TestSymbols(_TestWithContext):
         _ = ctx.Meter
         decoded = decode_symbol_runtime(g=ctx.g, tg=ctx.tg, symbol="m")
 
-        assert decoded._extract_basis_vector() == BasisVector(meter=1)
-        assert decoded._extract_multiplier() == 1.0
-        assert decoded._extract_offset() == 0.0
+        assert is_unit._extract_basis_vector(decoded) == BasisVector(meter=1)
+        assert is_unit._extract_multiplier(decoded) == 1.0
+        assert is_unit._extract_offset(decoded) == 0.0
 
     def test_decode_symbol_prefixed_unit(self, ctx: BoundUnitsContext):
         """Decode a prefixed unit symbol."""
         _ = ctx.Meter
         decoded = decode_symbol_runtime(g=ctx.g, tg=ctx.tg, symbol="km")
 
-        assert decoded._extract_basis_vector() == BasisVector(meter=1)
-        assert decoded._extract_multiplier() == 1000.0
-        assert decoded._extract_offset() == 0.0
+        assert is_unit._extract_basis_vector(decoded) == BasisVector(meter=1)
+        assert is_unit._extract_multiplier(decoded) == 1000.0
+        assert is_unit._extract_offset(decoded) == 0.0
 
     def test_decode_symbol_not_found(self, ctx: BoundUnitsContext):
         with pytest.raises(UnitNotFoundError):
@@ -2969,8 +3025,10 @@ class TestSymbols(_TestWithContext):
         _ = ctx.Meter
         decoded = decode_symbol_runtime(g=ctx.g, tg=ctx.tg, symbol=symbol)
 
-        assert decoded._extract_basis_vector() == BasisVector(meter=1)
-        assert decoded._extract_multiplier() == pytest.approx(expected_multiplier)
+        assert is_unit._extract_basis_vector(decoded) == BasisVector(meter=1)
+        assert is_unit._extract_multiplier(decoded) == pytest.approx(
+            expected_multiplier
+        )
 
     @pytest.mark.parametrize(
         "symbol,expected_multiplier",
@@ -2988,8 +3046,10 @@ class TestSymbols(_TestWithContext):
         _ = Bit.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
         decoded = decode_symbol_runtime(g=ctx.g, tg=ctx.tg, symbol=symbol)
 
-        assert decoded._extract_basis_vector() == BasisVector(bit=1)
-        assert decoded._extract_multiplier() == pytest.approx(expected_multiplier)
+        assert is_unit._extract_basis_vector(decoded) == BasisVector(bit=1)
+        assert is_unit._extract_multiplier(decoded) == pytest.approx(
+            expected_multiplier
+        )
 
     @pytest.mark.parametrize(
         "symbol,expected_multiplier",
@@ -3009,12 +3069,14 @@ class TestSymbols(_TestWithContext):
         _ = Byte.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
         decoded = decode_symbol_runtime(g=ctx.g, tg=ctx.tg, symbol=symbol)
 
-        assert decoded._extract_basis_vector() == BasisVector(bit=1)
-        assert decoded.get_conversion_to(ctx.Bit.is_unit.get()) == (
+        assert is_unit._extract_basis_vector(decoded) == BasisVector(bit=1)
+        assert is_unit.get_conversion_to(decoded, ctx.Bit.is_unit.get()) == (
             expected_multiplier,
             0.0,
         )
-        assert decoded._extract_multiplier() == pytest.approx(expected_multiplier)
+        assert is_unit._extract_multiplier(decoded) == pytest.approx(
+            expected_multiplier
+        )
 
     def test_decode_symbol_invalid_binary_prefix_for_si_only(
         self, ctx: BoundUnitsContext
@@ -3062,7 +3124,7 @@ class TestUnitExpressions(_TestWithContext):
             tg=ctx.tg, g=ctx.g, expr=app.meter_expr.get().instance
         )
 
-        unit = resolved.get_trait(is_unit)
+        unit = not_none(resolved).get_trait(is_unit)
         assert unit._extract_basis_vector() == BasisVector(meter=1)
         assert unit._extract_multiplier() == 1.0
 
@@ -3078,7 +3140,7 @@ class TestUnitExpressions(_TestWithContext):
             tg=ctx.tg, g=ctx.g, expr=app.velocity_expr.get().instance
         )
 
-        unit = resolved.get_trait(is_unit)
+        unit = not_none(resolved).get_trait(is_unit)
         assert unit._extract_basis_vector() == BasisVector(meter=1, second=-1)
         assert unit._extract_multiplier() == 1.0
 
@@ -3094,7 +3156,7 @@ class TestUnitExpressions(_TestWithContext):
             tg=ctx.tg, g=ctx.g, expr=app.km_expr.get().instance
         )
 
-        unit = resolved.get_trait(is_unit)
+        unit = not_none(resolved).get_trait(is_unit)
         assert unit._extract_basis_vector() == BasisVector(meter=1)
         assert unit._extract_multiplier() == 1000.0
 
@@ -3113,7 +3175,7 @@ class TestUnitExpressions(_TestWithContext):
             tg=ctx.tg, g=ctx.g, expr=app.kmh_expr.get().instance
         )
 
-        unit = resolved.get_trait(is_unit)
+        unit = not_none(resolved).get_trait(is_unit)
         assert unit._extract_basis_vector() == BasisVector(meter=1, second=-1)
         # km/h = 1000m / 3600s
         assert unit._extract_multiplier() == pytest.approx(1000.0 / 3600.0)
@@ -3127,8 +3189,8 @@ class TestUnitExpressions(_TestWithContext):
         )
 
         result = _UnitExpressionResolver(g=ctx.g, tg=ctx.tg).visit_divide(divide)
-        assert result._extract_basis_vector() == BasisVector(meter=1, second=-1)
-        assert result._extract_multiplier() == 1.0
+        assert is_unit._extract_basis_vector(result) == BasisVector(meter=1, second=-1)
+        assert is_unit._extract_multiplier(result) == 1.0
 
     def test_resolve_manual_power(self, ctx: BoundUnitsContext):
         """Test that manually constructed Power expressions resolve correctly."""
@@ -3150,8 +3212,8 @@ class TestUnitExpressions(_TestWithContext):
         )
 
         result = _UnitExpressionResolver(g=ctx.g, tg=ctx.tg).visit_power(power)
-        assert result._extract_basis_vector() == BasisVector(meter=2)
-        assert result._extract_multiplier() == 1.0
+        assert is_unit._extract_basis_vector(result) == BasisVector(meter=2)
+        assert is_unit._extract_multiplier(result) == 1.0
 
     def test_unit_expression_multiplier(self, ctx: BoundUnitsContext):
         """Test that multiplier on UnitExpression is correctly applied."""
@@ -3167,7 +3229,7 @@ class TestUnitExpressions(_TestWithContext):
             tg=ctx.tg, g=ctx.g, expr=app.scaled_expr.get().instance
         )
 
-        assert resolved.get_trait(is_unit)._extract_multiplier() == 1000.0
+        assert not_none(resolved).get_trait(is_unit)._extract_multiplier() == 1000.0
 
     def test_resolve_unit_expression_with_offset_raises(self, ctx: BoundUnitsContext):
         """Test that UnitExpression with non-zero offset raises error."""
@@ -3217,7 +3279,7 @@ class TestUnitExpressions(_TestWithContext):
             tg=ctx.tg, g=ctx.g, expr=app.dimensionless_expr.get().instance
         )
 
-        unit = resolved.get_trait(is_unit)
+        unit = not_none(resolved).get_trait(is_unit)
         assert unit._extract_basis_vector() == _BasisVector.ORIGIN
         assert unit.is_dimensionless()
 
@@ -3259,7 +3321,7 @@ class TestResolvePendingParameterUnits(_TestWithContext):
         )
 
         result = resolver.visit_additive(add_expr)
-        assert result._extract_basis_vector() == BasisVector(meter=1)
+        assert is_unit._extract_basis_vector(result) == BasisVector(meter=1)
 
     def test_resolve_add_incommensurable_raises(self, ctx: BoundUnitsContext):
         """Test that Add with incommensurable units raises error."""

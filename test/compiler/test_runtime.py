@@ -481,7 +481,7 @@ def test_assert_is():
     _ = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "f"))
 
     # Check constraints are applied
-    assert a.get_units().compact_repr() == "V"
+    assert a.force_get_units().compact_repr() == "V"
     assert (
         E.lit_op_range_from_center_rel((2, E.U.mV), rel=0.1)
         .as_literal.force_get()
@@ -1665,7 +1665,7 @@ def test_assign_to_child_parameter():
         90000,
         110000,
     ]
-    assert resistance.get_is_unit().get_symbols()[0] == "Ω"
+    assert F.Units.is_unit.get_symbols(resistance.get_is_unit()) == ["Ω", "ohm", "ohms"]
 
 
 def test_slice_non_list():
@@ -2477,6 +2477,33 @@ class TestImplicitParameterUnitInference:
 
         assert a_param is not None
         assert b_param is not None
+
+        # dimensionless = no unit
+        assert not a_param.has_trait(F.Units.has_unit)
+        assert not b_param.has_trait(F.Units.has_unit)
+
+    def test_implicit_dimensionless(self):
+        """Test implicit parameter declaration from literal addition."""
+        _, _, _, _, app_instance = build_instance(
+            """
+            module App:
+                a = 1 to 2
+                b = a + 3
+            """,
+            "App",
+        )
+
+        a = _get_child(app_instance, "a")
+        b = _get_child(app_instance, "b")
+
+        a_param = F.Parameters.NumericParameter.bind_instance(a)
+        b_param = F.Parameters.NumericParameter.bind_instance(b)
+
+        assert a_param is not None
+        assert b_param is not None
+
+        assert not a_param.has_trait(F.Units.has_unit)
+        assert not b_param.has_trait(F.Units.has_unit)
 
     def test_implicit_param_from_literal_addition(self):
         """Test implicit parameter declaration from literal addition."""

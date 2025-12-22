@@ -4,6 +4,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Self, cast
 
 import pytest
+from typing_extensions import deprecated
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -400,10 +401,10 @@ class is_parameter(fabll.Node):
 
         unitstr = ""
         if numeric_param := obj.try_cast(NumericParameter):
-            display_unit = numeric_param.get_display_units()
-            unit_symbol = display_unit.compact_repr()
-            # Don't show "dimensionless" as a unit
-            if unit_symbol != "dimensionless":
+            if (
+                display_unit := numeric_param.try_get_display_units()
+            ) is not None and not display_unit.is_dimensionless():
+                unit_symbol = display_unit.compact_repr()
                 unitstr = f"[{unit_symbol}]"
 
         out = f"{letter}{unitstr}"
@@ -642,6 +643,21 @@ class EnumParameter(fabll.Node):
         return enum_lit
 
 
+class waits_for_unit(fabll.Node):
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+    def is_resolved(self) -> bool:
+        return self.try_get_sibling_trait(has_received_unit) is not None
+
+    def resolve(self):
+        obj = fabll.Traits(self).get_obj(NumericParameter)
+        fabll.Traits.create_and_add_instance_to(obj, has_received_unit)
+
+
+class has_received_unit(fabll.Node):
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+
 class NumericParameter(fabll.Node):
     is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
     is_parameter_operatable = fabll.Traits.MakeEdge(is_parameter_operatable.MakeChild())
@@ -653,22 +669,37 @@ class NumericParameter(fabll.Node):
 
     # domain = fabll.ChildField(NumberDomain)
 
-    def get_units(self) -> "Units.is_unit":
+    def force_get_units(self) -> "Units.is_unit":
         from faebryk.library.Units import has_unit
 
         return self.get_trait(has_unit).get_is_unit()
 
-    def get_display_units(self) -> "Units.is_unit":
+    def try_get_units(self) -> "Units.is_unit | None":
+        from faebryk.library.Units import has_unit
+
+        out = self.try_get_trait(has_unit)
+        if out is None:
+            return None
+        return out.get_is_unit()
+
+    def force_get_display_units(self) -> "Units.is_unit":
         from faebryk.library.Units import has_display_unit
 
         if trait := self.try_get_trait(has_display_unit):
             return trait.get_is_unit()
-        return self.get_units()
+        return self.force_get_units()
+
+    def try_get_display_units(self) -> "Units.is_unit | None":
+        from faebryk.library.Units import has_display_unit
+
+        if out := self.try_get_trait(has_display_unit):
+            return out.get_is_unit()
+        return self.try_get_units()
 
     def format_literal_for_display(
         self, lit: "Literals.Numbers", show_tolerance: bool = True
     ) -> str:
-        display_unit = self.get_display_units()
+        display_unit = self.try_get_display_units()
         converted = lit.convert_to_unit(display_unit, g=self.g, tg=self.tg)
         return converted.pretty_str(show_tolerance=show_tolerance)
 
@@ -698,7 +729,7 @@ class NumericParameter(fabll.Node):
                 lit = (
                     Numbers.bind_typegraph(tg=self.tg)
                     .create_instance(g=g)
-                    .setup_from_singleton(value=value, unit=self.get_units())
+                    .setup_from_singleton(value=value, unit=self.try_get_units())
                 )
             case F.Literals.Numbers():
                 lit = value
@@ -710,7 +741,7 @@ class NumericParameter(fabll.Node):
     def setup(  # type: ignore[invalid-method-override]
         self,
         *,
-        is_unit: "Units.is_unit",
+        is_unit: "Units.is_unit | None" = None,
         # hard constraints
         within: "Literals.Numbers | None" = None,
         domain: "NumberDomain.Args | None | type[NumericParameter.DOMAIN_SKIP]" = None,
@@ -719,11 +750,16 @@ class NumericParameter(fabll.Node):
         from faebryk.library.NumberDomain import NumberDomain
         from faebryk.library.Units import has_display_unit, has_unit
 
-        base_unit = is_unit.to_base_units(g=self.g, tg=self.tg)
-        fabll.Traits.create_and_add_instance_to(self, has_unit).setup(is_unit=base_unit)
-        fabll.Traits.create_and_add_instance_to(self, has_display_unit).setup(
-            is_unit=is_unit
-        )
+        base_unit = None
+        if is_unit is not None and not is_unit.is_dimensionless():
+            base_unit = is_unit.to_base_units(g=self.g, tg=self.tg)
+            if base_unit:
+                fabll.Traits.create_and_add_instance_to(self, has_unit).setup(
+                    is_unit=base_unit
+                )
+            fabll.Traits.create_and_add_instance_to(self, has_display_unit).setup(
+                is_unit=is_unit
+            )
 
         if within is not None:
             IsSubset.bind_typegraph(tg=self.tg).create_instance(g=self.g).setup(
@@ -731,6 +767,7 @@ class NumericParameter(fabll.Node):
                 superset=within.can_be_operand.get(),
                 assert_=True,
             )
+
         if domain is not NumericParameter.DOMAIN_SKIP:
             assert (domain is None) or isinstance(domain, NumberDomain.Args)
             domain = domain or NumberDomain.Args()
@@ -753,16 +790,19 @@ class NumericParameter(fabll.Node):
 
     @classmethod
     def MakeChild_DeferredUnit(cls) -> fabll._ChildField[Self]:
-        return fabll._ChildField(cls)
+        out = fabll._ChildField(cls)
+        out.add_dependant(fabll.Traits.MakeEdge(waits_for_unit.MakeChild(), [out]))
+        return out
 
     @classmethod
     def MakeChild(  # type: ignore[invalid-method-override]
         cls,
-        unit: type[fabll.Node],
+        unit: type[fabll.Node] | None = None,
         domain: "NumberDomain.Args | None" = None,
     ):
         from faebryk.library.NumberDomain import NumberDomain
         from faebryk.library.Units import (
+            Dimensionless,
             extract_unit_info,
             has_display_unit,
             has_unit,
@@ -770,43 +810,51 @@ class NumericParameter(fabll.Node):
             is_unit_type,
         )
 
+        if unit is Dimensionless:
+            unit = None
+
         out = fabll._ChildField(cls)
 
-        # Create display unit from the provided type
-        display_unit_child = unit.MakeChild()
-        out.add_dependant(display_unit_child)
-        out.add_dependant(
-            fabll.Traits.MakeEdge(
-                has_display_unit.MakeChild([display_unit_child]), [out]
-            )
-        )
-
-        unit_info = extract_unit_info(unit)
-        if unit_info.multiplier == 1.0 and unit_info.offset == 0.0:
-            # Base unit - use same child for has_unit
+        if unit is not None:
+            # Create display unit from the provided type
+            display_unit_child = unit.MakeChild()
+            out.add_dependant(display_unit_child)
             out.add_dependant(
-                fabll.Traits.MakeEdge(has_unit.MakeChild([display_unit_child]), [out])
-            )
-        else:
-            is_unit_trait_child = is_unit.MakeChild(
-                symbols=(),
-                basis_vector=unit_info.basis_vector,
-                multiplier=1.0,
-                offset=0.0,
+                fabll.Traits.MakeEdge(
+                    has_display_unit.MakeChild([display_unit_child]), [out]
+                )
             )
 
-            class _BaseUnit(fabll.Node):
-                is_unit_type_trait = fabll.Traits.MakeEdge(
-                    is_unit_type.MakeChild(())
-                ).put_on_type()
-                is_unit = fabll.Traits.MakeEdge(is_unit_trait_child)
-                can_be_operand_trait = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+            unit_info = extract_unit_info(unit)
+            if unit_info.multiplier == 1.0 and unit_info.offset == 0.0:
+                # Base unit - use same child for has_unit
+                out.add_dependant(
+                    fabll.Traits.MakeEdge(
+                        has_unit.MakeChild([display_unit_child]), [out]
+                    )
+                )
+            else:
+                is_unit_trait_child = is_unit.MakeChild(
+                    symbols=(),
+                    basis_vector=unit_info.basis_vector,
+                    multiplier=1.0,
+                    offset=0.0,
+                )
 
-            base_unit_child = _BaseUnit.MakeChild()
-            out.add_dependant(base_unit_child)
-            out.add_dependant(
-                fabll.Traits.MakeEdge(has_unit.MakeChild([base_unit_child]), [out])
-            )
+                class _BaseUnit(fabll.Node):
+                    is_unit_type_trait = fabll.Traits.MakeEdge(
+                        is_unit_type.MakeChild(())
+                    ).put_on_type()
+                    is_unit = fabll.Traits.MakeEdge(is_unit_trait_child)
+                    can_be_operand_trait = fabll.Traits.MakeEdge(
+                        can_be_operand.MakeChild()
+                    )
+
+                base_unit_child = _BaseUnit.MakeChild()
+                out.add_dependant(base_unit_child)
+                out.add_dependant(
+                    fabll.Traits.MakeEdge(has_unit.MakeChild([base_unit_child]), [out])
+                )
 
         if domain is not NumericParameter.DOMAIN_SKIP:
             assert (domain is None) or isinstance(domain, NumberDomain.Args)
@@ -864,7 +912,7 @@ class NumericParameter(fabll.Node):
             .setup_from_min_max(
                 min=-math.inf,
                 max=math.inf,
-                unit=self.get_units(),
+                unit=self.try_get_units(),
             )
         )
 
@@ -876,8 +924,12 @@ class NumericParameter(fabll.Node):
         Traverses all NumericParameter instances under root, finds those missing
         the has_unit trait, resolves their unit from constraining expressions,
         and attaches the trait.
+
+        # TODO this doesnt work properly anymore because no has_unit might also
+        # mean dimensionless
+        # idea: attach 'needs_unit_resolution' trait to the parameter
+        # once done attach `units_resolved` trait to the parameter
         """
-        from faebryk.library.Expressions import is_assertable
         from faebryk.library.Units import (
             UnitsNotCommensurableError,
             is_unit,
@@ -887,40 +939,50 @@ class NumericParameter(fabll.Node):
         params_missing_units = [
             param
             for param in root.get_children(direct_only=False, types=NumericParameter)
-            if not param.has_trait(is_unit)
+            if (w := param.try_get_trait(waits_for_unit)) is not None
+            and not w.is_resolved()
         ]
 
+        print("params_missing_units:")
+        for p in params_missing_units:
+            print(p.get_trait(is_parameter_operatable).compact_repr(), p)
+
         for param in params_missing_units:
-            constraining_operands = [
-                operand_obj
+            p_op = param.can_be_operand.get()
+            constraining_operands = {
+                operand
                 for op in param.is_parameter_operatable.get().get_operations(
                     predicates_only=True
                 )
-                if (
-                    (trait := op.try_get_trait(is_assertable)) is not None
-                    and trait.is_asserted()
-                )
-                for operand in trait.as_expression.get().get_operands()
-                if (operand_obj := operand.get_raw_obj()).instance != param.instance
-            ]
+                for operand in op.get_trait(F.Expressions.is_expression).get_operands()
+                if not (w := operand.try_get_trait(waits_for_unit)) or w.is_resolved()
+            } - {p_op}
 
-            param_unit_node = None
-            for expr in constraining_operands:
-                expr_unit_node = resolve_unit_expression(
-                    g=param.g, tg=param.tg, expr=expr.instance
+            param_unit = -1
+            for operand_op in constraining_operands:
+                op_obj = operand_op.get_raw_obj()
+                operand_unit_node = resolve_unit_expression(
+                    g=param.g, tg=param.tg, expr=op_obj.instance
                 )
-                if param_unit_node is None:
-                    param_unit_node = expr_unit_node
-                    fabll.Traits.add_instance_to(
-                        node=param,
-                        trait_instance=param_unit_node.get_is_unit(),
-                    )
+                operand_unit = (
+                    operand_unit_node.get_is_unit() if operand_unit_node else None
+                )
+                if isinstance(param_unit, int) and param_unit == -1:
+                    param_unit = operand_unit
+                    if param_unit is not None:
+                        fabll.Traits.add_instance_to(
+                            node=param,
+                            trait_instance=param_unit,
+                        )
+                    param.get_trait(waits_for_unit).resolve()
                 else:
-                    if not param_unit_node.get_is_unit().is_commensurable_with(
-                        expr_unit_node.get_is_unit()
+                    if not is_unit.is_commensurable_with(
+                        cast(None | is_unit, param_unit),
+                        operand_unit,
                     ):
                         raise UnitsNotCommensurableError(
-                            "Parameter constraints have incompatible units"
+                            "Parameter constraints have incompatible units",
+                            [param_unit, operand_unit],
                         )
 
 
@@ -1526,8 +1588,10 @@ def test_expression_congruence():
     )
 
     # Test Is congruence with boolean literal
-    bool_true = Booleans.bind_typegraph(tg=tg).create_instance(
-        g=g, attributes=BooleansAttributes(True, False)
+    bool_true = (
+        Booleans.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_values(True, False)
     )
     is_bool_1 = Is.from_operands(
         p1.can_be_operand.get(), bool_true.can_be_operand.get(), g=g, tg=tg
@@ -1802,7 +1866,7 @@ def test_display_unit_normalization():
     Test that parameters normalize to base units internally while
     preserving the display unit for output.
     """
-    from faebryk.library.Units import Volt, decode_symbol_runtime
+    from faebryk.library.Units import Volt, decode_symbol_runtime, is_unit
 
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -1814,18 +1878,21 @@ def test_display_unit_normalization():
     mv_unit = decode_symbol_runtime(g=g, tg=tg, symbol="mV")
 
     # Verify mV has the correct multiplier
-    assert mv_unit._extract_multiplier() == 0.001
+    assert is_unit._extract_multiplier(mv_unit) == 0.001
 
     # Create a numeric parameter with mV as display unit
-    param = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    param.setup(is_unit=mv_unit)
+    param = (
+        NumericParameter.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(is_unit=mv_unit)
+    )
 
     # The has_unit trait should store the base unit (V, multiplier=1)
-    base_unit = param.get_units()
+    base_unit = param.force_get_units()
     assert base_unit._extract_multiplier() == 1.0
 
     # The has_display_unit trait should store mV (multiplier=0.001)
-    display_unit = param.get_display_units()
+    display_unit = param.force_get_display_units()
     assert display_unit._extract_multiplier() == 0.001
 
 
@@ -1914,8 +1981,8 @@ def test_display_unit_fallback():
     param.setup(is_unit=volt_unit)
 
     # Both should return the same unit (V with multiplier=1)
-    base_unit = param.get_units()
-    display_unit = param.get_display_units()
+    base_unit = param.force_get_units()
+    display_unit = param.force_get_display_units()
 
     assert base_unit._extract_multiplier() == 1.0
     assert display_unit._extract_multiplier() == 1.0
@@ -1938,8 +2005,8 @@ def test_display_unit_makechild():
     assert param.has_trait(has_display_unit)
 
     # Both should point to Ohm (base unit)
-    base_unit = param.get_units()
-    display_unit = param.get_display_units()
+    base_unit = param.force_get_units()
+    display_unit = param.force_get_display_units()
 
     # For MakeChild with base unit type, both should have multiplier=1
     assert base_unit._extract_multiplier() == 1.0
@@ -1961,8 +2028,11 @@ def test_display_unit_lit_suffix_conversion():
     mv_unit = decode_symbol_runtime(g=g, tg=tg, symbol="mV")
 
     # Create a numeric parameter with mV as display unit
-    param = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    param.setup(is_unit=mv_unit)
+    param = (
+        NumericParameter.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(is_unit=mv_unit)
+    )
 
     # Create a literal in base units (Volts): 5 V (singleton)
     literal = (

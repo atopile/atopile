@@ -128,15 +128,17 @@ class can_be_pulled(fabll.Node):
             return None
 
         resistances: list[F.Literals.Numbers | None] = []
-        parameters: list[F.Parameters.NumericParameter] = []
+        resistance_params: list[F.Parameters.NumericParameter] = []
         for resistor in parallel_resistors:
             param = resistor.resistance.get()
-            parameters.append(param)
+            resistance_params.append(param)
             lit_trait = param.get_trait(
                 F.Parameters.is_parameter_operatable
             ).try_get_subset_or_alias_literal()
             resistances.append(
-                None if lit_trait is None else fabll.Traits(lit_trait).get_obj_raw()
+                None
+                if lit_trait is None
+                else fabll.Traits(lit_trait).get_obj(F.Literals.Numbers)
             )
 
         if any(r is None for r in resistances):
@@ -157,12 +159,12 @@ class can_be_pulled(fabll.Node):
                 return None
 
             eff_literal = inverse_sum.op_invert(g=self.g, tg=self.tg).convert_to_unit(
-                g=self.g, tg=self.tg, unit=parameters[0].get_units()
+                g=self.g, tg=self.tg, unit=resistance_params[0].force_get_units()
             )
             eff_param = (
                 F.Parameters.NumericParameter.bind_typegraph(tg=self.tg)
                 .create_instance(g=self.g)
-                .setup(is_unit=parameters[0].get_units())
+                .setup(is_unit=resistance_params[0].force_get_units())
             )
             eff_param.alias_to_literal(g=self.g, value=eff_literal)
             return eff_param

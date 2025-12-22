@@ -2204,7 +2204,7 @@ class TestAssignments:
             f"Expected 0.003 W, got {base_value} W "
             f"(raw value={value}, multiplier={multiplier})"
         )
-        assert fabll.Traits(r.max_power.get().get_units()).get_obj(F.Units.Watt)
+        assert fabll.Traits(r.max_power.get().force_get_units()).get_obj(F.Units.Watt)
 
     def test_assign_bilateral_tolerance(self):
         """Test assigning a bilateral tolerance value to an existing field."""

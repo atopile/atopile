@@ -2804,8 +2804,8 @@ def test_resistor_instantiation():
     assert res_inst._type_identifier() == "Resistor"
     assert res_inst.unnamed[0].get().get_name() == "unnamed[0]"
     assert res_inst.resistance.get().get_name() == "resistance"
-    assert res_inst.resistance.get().get_units().get_symbols()[0] == "Ω"
-    assert res_inst.resistance.get().get_units().get_symbols()[1] == "ohm"
+    assert res_inst.resistance.get().force_get_units().get_symbols()[0] == "Ω"
+    assert res_inst.resistance.get().force_get_units().get_symbols()[1] == "ohm"
     assert res_inst.get_trait(is_module)
     leads = [
         n.get_trait(F.Lead.is_lead)

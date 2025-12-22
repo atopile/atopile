@@ -241,7 +241,7 @@ class BoundExpressions:
 
         self.u = self.U(self)
 
-    def _resolve_unit(self, unit: type[fabll.Node]) -> F.Units.is_unit:
+    def _resolve_unit(self, unit: type[fabll.Node]) -> F.Units.is_unit | None:
         instance = unit.bind_typegraph(tg=self.tg).create_instance(g=self.g)
 
         if is_unit_expr := instance.try_get_trait(F.Units.is_unit_expression):
@@ -249,6 +249,8 @@ class BoundExpressions:
             resolved = F.Units.resolve_unit_expression(
                 g=self.g, tg=self.tg, expr=instance.instance
             )
+            if resolved is None:
+                return None
             return resolved.get_trait(F.Units.is_unit)
 
         return instance.get_trait(F.Units.is_unit)

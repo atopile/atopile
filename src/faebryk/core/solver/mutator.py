@@ -1195,7 +1195,6 @@ class Mutator:
     def mutate_parameter(
         self,
         param: F.Parameters.is_parameter,
-        units: F.Units.is_unit | None = None,
     ) -> F.Parameters.is_parameter:
         p_po = param.as_parameter_operatable.get()
         if p_mutated := self.try_get_mutated(p_po):
@@ -1203,11 +1202,13 @@ class Mutator:
 
         param_obj = fabll.Traits(param).get_obj_raw()
 
-        if units and param_obj.try_cast(F.Parameters.NumericParameter):
+        if param_obj.has_trait(F.Units.has_unit) and param_obj.try_cast(
+            F.Parameters.NumericParameter
+        ):
             new_param = (
                 F.Parameters.NumericParameter.bind_typegraph(self.tg_out)
                 .create_instance(self.G_out)
-                .setup(is_unit=units, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
+                .setup(is_unit=None, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
             ).is_parameter_operatable.get()
         elif param_obj.try_cast(F.Parameters.EnumParameter):
             # FIXME, should just use copy_into

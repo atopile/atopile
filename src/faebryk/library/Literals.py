@@ -34,7 +34,7 @@ class UnitsNotCommensurableError(Exception):
     and which parameters/literals they belong to.
     """
 
-    def __init__(self, message: str, incommensurable_items: list["is_unit"]):
+    def __init__(self, message: str, incommensurable_items: list["is_unit|None"]):
         self.message = message
         self.incommensurable_items = incommensurable_items
         super().__init__(self._format_message())
@@ -51,11 +51,11 @@ class UnitsNotCommensurableError(Exception):
 
         return "\n".join(lines)
 
-    def _get_unit_info(self, unit: "is_unit") -> str:
+    def _get_unit_info(self, unit: "is_unit|None") -> str:
         """Get a human-readable description of a unit and its source."""
         try:
             # Get unit symbols (e.g., ["V", "volt"])
-            symbols = unit._extract_symbols()
+            symbols = unit._extract_symbols() if unit is not None else []
             symbol_str = symbols[0] if symbols else "unknown"
 
             # The str representation of is_unit includes the path and type info
@@ -70,7 +70,7 @@ class UnitsNotCommensurableError(Exception):
                 return f"{symbol_str!r}"
         except Exception:
             # Fallback if we can't extract info
-            return f"unit at {unit.instance}"
+            return f"unit at {unit}"
 
     def _extract_unit_type(self, unit_str: str) -> str | None:
         """Extract the unit type name from the string representation."""
@@ -295,7 +295,7 @@ class is_literal(fabll.Node):
     def is_not_correlatable(self) -> bool:
         return not self.is_singleton() and not self.is_empty()
 
-    def serialize(self) -> dict:
+    def serialize(self) -> dict[str, str | dict] | None:
         """Serialize literal to JSON-compatible dict for API/disk storage."""
         return self.switch_cast().serialize()
 
@@ -3001,7 +3001,7 @@ class Numbers(fabll.Node):
         cls,
         min: float,
         max: float,
-        unit: type[fabll.Node],
+        unit: type[fabll.Node] | None = None,
     ) -> fabll._ChildField[Self]:
         """
         Create a Numbers literal as a child field at type definition time.
@@ -3014,6 +3014,8 @@ class Numbers(fabll.Node):
                   that don't have dimensional meaning. For user-facing quantities,
                   explicitly pass Dimensionless if the quantity is dimensionless.
         """
+        from faebryk.library.Units import Dimensionless
+
         if not NumericInterval.validate_bounds(min, max):
             raise ValueError(f"Invalid interval: {min} > {max}")
         out = fabll._ChildField(cls)
@@ -3026,13 +3028,14 @@ class Numbers(fabll.Node):
             ),
         )
 
-        unit_child_field = unit.MakeChild()
-        out.add_dependant(unit_child_field)
-        from faebryk.library.Units import has_unit
+        if unit is not None and unit is not Dimensionless:
+            unit_child_field = unit.MakeChild()
+            out.add_dependant(unit_child_field)
+            from faebryk.library.Units import has_unit
 
-        out.add_dependant(
-            fabll.Traits.MakeEdge(has_unit.MakeChild([unit_child_field]), [out])
-        )
+            out.add_dependant(
+                fabll.Traits.MakeEdge(has_unit.MakeChild([unit_child_field]), [out])
+            )
 
         return out
 
@@ -3040,7 +3043,7 @@ class Numbers(fabll.Node):
     def MakeChild_SingleValue(
         cls,
         value: float,
-        unit: type[fabll.Node],
+        unit: type[fabll.Node] | None = None,
     ) -> fabll._ChildField[Self]:
         return cls.MakeChild(min=value, max=value, unit=unit)
 
@@ -3050,7 +3053,7 @@ class Numbers(fabll.Node):
         param_ref: fabll.RefPath,
         min: float,
         max: float,
-        unit: type[fabll.Node],
+        unit: type[fabll.Node] | None = None,
     ) -> fabll._ChildField["F.Expressions.IsSubset"]:
         from faebryk.library.Expressions import IsSubset
 
@@ -3065,7 +3068,7 @@ class Numbers(fabll.Node):
         param_ref: fabll.RefPath,
         min: float,
         max: float,
-        unit: type[fabll.Node],
+        unit: type[fabll.Node] | None = None,
     ) -> fabll._ChildField["F.Expressions.Is"]:
         """
         Create a Numbers literal and constrain a parameter to it.
@@ -3092,7 +3095,7 @@ class Numbers(fabll.Node):
         cls,
         center: float,
         rel: float,
-        unit: type[fabll.Node],
+        unit: type[fabll.Node] | None = None,
     ) -> fabll._ChildField[Self]:
         return cls.MakeChild(
             min=center - rel * center, max=center + rel * center, unit=unit
@@ -3103,7 +3106,7 @@ class Numbers(fabll.Node):
         cls,
         param_ref: fabll.RefPath,
         value: float,
-        unit: type[fabll.Node],
+        unit: type[fabll.Node] | None = None,
     ) -> fabll._ChildField["F.Expressions.Is"]:
         """
         Create a singleton Numbers literal and constrain a parameter to it.
@@ -3128,25 +3131,20 @@ class Numbers(fabll.Node):
     def setup(  # type: ignore[invalid-method-override]
         self,
         numeric_set: NumericSet,
-        unit: "is_unit",
+        unit: "is_unit | None" = None,
     ) -> "Numbers":
         g = self.g
-        tg = self.tg
         self.numeric_set_ptr.get().point(numeric_set)
 
         from faebryk.library.Units import has_unit
 
-        # TODO remove unit copy hack
-        unit = unit.copy_into(g=g)
+        if not unit or unit.is_dimensionless():
+            unit = None
+        else:
+            unit = unit.copy_into(g=g)
 
-        has_unit_instance = (
-            has_unit.bind_typegraph(tg=tg).create_instance(g=g).setup(is_unit=unit)
-        )
-
-        _ = fbrk.EdgeTrait.add_trait_instance(
-            bound_node=self.instance,
-            trait_instance=has_unit_instance.instance.node(),
-        )
+        if unit:
+            fabll.Traits.create_and_add_instance_to(self, has_unit).setup(is_unit=unit)
 
         return self
 
@@ -3154,7 +3152,7 @@ class Numbers(fabll.Node):
         self,
         center: float,
         rel: float,
-        unit: "is_unit",
+        unit: "is_unit | None" = None,
     ) -> "Numbers":
         """
         Create a Numbers literal from a center and relative tolerance.
@@ -3170,7 +3168,7 @@ class Numbers(fabll.Node):
         self,
         min: float,
         max: float,
-        unit: "is_unit",
+        unit: "is_unit | None" = None,
     ) -> "Numbers":
         g = self.g
         tg = self.tg
@@ -3179,7 +3177,9 @@ class Numbers(fabll.Node):
         )
         return self.setup(numeric_set=numeric_set, unit=unit)
 
-    def setup_from_singletons(self, values: list[float], unit: "is_unit") -> "Numbers":
+    def setup_from_singletons(
+        self, values: list[float], unit: "is_unit | None" = None
+    ) -> "Numbers":
         g = self.g
         tg = self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
@@ -3189,13 +3189,15 @@ class Numbers(fabll.Node):
 
     @classmethod
     def unbounded(
-        cls, unit: "is_unit", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        cls, unit: "is_unit | None" = None, *, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "Numbers":
         """Create an unbounded quantity set (-∞, +∞) with the given unit."""
         quantity_set = cls.create_instance(g=g, tg=tg)
         return quantity_set.setup_from_min_max(min=-math.inf, max=math.inf, unit=unit)
 
-    def setup_from_singleton(self, value: float, unit: "is_unit") -> "Numbers":
+    def setup_from_singleton(
+        self, value: float, unit: "is_unit | None" = None
+    ) -> "Numbers":
         return self.setup_from_min_max(min=value, max=value, unit=unit)
 
     def get_numeric_set(self) -> NumericSet:
@@ -3203,11 +3205,15 @@ class Numbers(fabll.Node):
         assert numeric_set is not None, "Numeric set child not found"
         return NumericSet.bind_instance(numeric_set.instance)
 
-    def get_is_unit(self) -> "is_unit":
+    # TODO
+    def get_is_unit(self) -> "is_unit|None":
         from faebryk.library.Units import has_unit
 
-        return self.get_trait(has_unit).get_is_unit()
+        if trait := self.try_get_trait(has_unit):
+            return trait.get_is_unit()
+        return None
 
+    # TODO
     def get_unit_node(self) -> fabll.Node:
         from faebryk.library.Units import has_unit
 
@@ -3279,7 +3285,9 @@ class Numbers(fabll.Node):
         Target must be a single value (min == max).
         Units must be commensurable. Returns a single-element quantity set.
         """
-        if not self.get_is_unit().is_commensurable_with(target.get_is_unit()):
+        from faebryk.library.Units import is_unit
+
+        if not is_unit.is_commensurable_with(self.get_is_unit(), target.get_is_unit()):
             raise UnitsNotCommensurableError(
                 "Cannot find closest element: units are not commensurable",
                 incommensurable_items=[self.get_is_unit(), target.get_is_unit()],
@@ -3295,10 +3303,14 @@ class Numbers(fabll.Node):
         )
 
     def has_compatible_units_with(self, other: "Numbers") -> bool:
-        return self.get_is_unit().is_commensurable_with(other.get_is_unit())
+        from faebryk.library.Units import is_unit
+
+        return is_unit.is_commensurable_with(self.get_is_unit(), other.get_is_unit())
 
     def are_units_compatible(self, unit: "F.Units.is_unit") -> bool:
-        return self.get_is_unit().is_commensurable_with(unit)
+        from faebryk.library.Units import is_unit
+
+        return is_unit.is_commensurable_with(self.get_is_unit(), unit)
 
     def is_superset_of(
         self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
@@ -3307,7 +3319,9 @@ class Numbers(fabll.Node):
         Check if this quantity set is a superset of another.
         Returns False if units are not commensurable.
         """
-        if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
+        from faebryk.library.Units import is_unit
+
+        if not is_unit.is_commensurable_with(self.get_is_unit(), other.get_is_unit()):
             return False
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         return self.get_numeric_set().is_superset_of(
@@ -3321,7 +3335,9 @@ class Numbers(fabll.Node):
         Check if this quantity set is a subset of another.
         Returns False if units are not commensurable.
         """
-        if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
+        from faebryk.library.Units import is_unit
+
+        if not is_unit.is_commensurable_with(self.get_is_unit(), other.get_is_unit()):
             return False
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         return self.get_numeric_set().is_subset_of(
@@ -3339,9 +3355,11 @@ class Numbers(fabll.Node):
         Compute the intersection of this quantity set with another.
         Units must be commensurable.
         """
+        from faebryk.library.Units import is_unit
+
         g = g or self.g
         tg = tg or self.tg
-        if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
+        if not is_unit.is_commensurable_with(self.get_is_unit(), other.get_is_unit()):
             raise UnitsNotCommensurableError(
                 "Cannot intersect quantity sets: units are not commensurable",
                 incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
@@ -3382,13 +3400,15 @@ class Numbers(fabll.Node):
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
+        from faebryk.library.Units import is_unit
+
         """
         Compute the union of this quantity set with another.
         Units must be commensurable.
         """
         g = g or self.g
         tg = tg or self.tg
-        if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
+        if not is_unit.is_commensurable_with(self.get_is_unit(), other.get_is_unit()):
             raise UnitsNotCommensurableError(
                 "Cannot compute union of quantity sets: units are not commensurable",
                 incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
@@ -3415,6 +3435,7 @@ class Numbers(fabll.Node):
         """
         if not others:
             raise ValueError("union_all requires at least one quantity set")
+        # TODO check units
         g = g or others[0].g
         tg = tg or others[0].tg
         result = others[0]
@@ -3434,9 +3455,11 @@ class Numbers(fabll.Node):
         Returns elements that are in self but not in other.
         Units must be commensurable.
         """
+        from faebryk.library.Units import is_unit
+
         g = g or self.g
         tg = tg or self.tg
-        if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
+        if not is_unit.is_commensurable_with(self.get_is_unit(), other.get_is_unit()):
             raise UnitsNotCommensurableError(
                 "Cannot compute difference of quantity sets: units are not commensurable",  # noqa: E501
                 incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
@@ -3452,18 +3475,20 @@ class Numbers(fabll.Node):
         )
 
     def convert_to_unit(
-        self, unit: "is_unit", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self, unit: "is_unit | None" = None, *, g: graph.GraphView, tg: fbrk.TypeGraph
     ):
         """
         Convert to specified unit.
         """
-        if not self.get_is_unit().is_commensurable_with(unit):
+        from faebryk.library.Units import is_unit
+
+        if not is_unit.is_commensurable_with(self.get_is_unit(), unit):
             raise UnitsNotCommensurableError(
                 f"Units {self.get_is_unit()} and {unit} are not commensurable",
                 incommensurable_items=[self.get_is_unit(), unit],
             )
 
-        scale, offset = self.get_is_unit().get_conversion_to(unit)
+        scale, offset = is_unit.get_conversion_to(self.get_is_unit(), unit)
 
         # Generate a numeric set for the scale
         scale_numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
@@ -3507,10 +3532,10 @@ class Numbers(fabll.Node):
         Returns a new Numbers with the converted values in dimensionless units.
         Offset and scale are applied to the returned NumericSet.
         """
-        from faebryk.library.Units import Dimensionless
+        from faebryk.library.Units import is_unit
 
-        scale = self.get_is_unit()._extract_multiplier()
-        offset = self.get_is_unit()._extract_offset()
+        scale = is_unit._extract_multiplier(self.get_is_unit())
+        offset = is_unit._extract_offset(self.get_is_unit())
 
         # Generate a numeric set for the scale
         scale_numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
@@ -3530,12 +3555,9 @@ class Numbers(fabll.Node):
         # Add the offset to the scaled numeric set
         out_numeric_set = out_numeric_set.op_add(g=g, tg=tg, other=offset_numeric_set)
 
-        dimensionless_unit = Dimensionless.bind_typegraph(tg=tg).create_instance(g=g)
-        dimensionless_is_unit = dimensionless_unit.is_unit.get()
-
         # Return the new quantity set
         return Numbers.create_instance(g=g, tg=tg).setup(
-            numeric_set=out_numeric_set, unit=dimensionless_is_unit
+            numeric_set=out_numeric_set, unit=None
         )
 
     def op_add_intervals(
@@ -3569,6 +3591,8 @@ class Numbers(fabll.Node):
         Arithmetically multiply two quantity sets.
         Result unit is self.unit * other.unit.
         """
+        from faebryk.library.Units import is_unit
+
         g = g or self.g
         tg = tg or self.tg
 
@@ -3578,7 +3602,9 @@ class Numbers(fabll.Node):
             out_numeric_set = out_numeric_set.op_multiply(
                 g=g, tg=tg, other=other.get_numeric_set()
             )
-            out_unit = out_unit.op_multiply(g=g, tg=tg, other=other.get_is_unit())
+            out_unit = is_unit.op_multiply(
+                out_unit, g=g, tg=tg, other=other.get_is_unit()
+            )
 
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
@@ -3616,6 +3642,8 @@ class Numbers(fabll.Node):
         minuend = others[0]
         subtrahend = others[1:]
         """
+        from faebryk.library.Units import is_unit
+
         g = g or self.g
         tg = tg or self.tg
         minuend = self
@@ -3623,7 +3651,9 @@ class Numbers(fabll.Node):
 
         out_numeric_set = minuend.get_numeric_set()
         for subtrahend in subtrahends:
-            if not self.get_is_unit().is_commensurable_with(subtrahend.get_is_unit()):
+            if not is_unit.is_commensurable_with(
+                self.get_is_unit(), subtrahend.get_is_unit()
+            ):
                 raise UnitsNotCommensurableError(
                     "Cannot subtract quantities: units are not commensurable",
                     incommensurable_items=[
@@ -3649,10 +3679,12 @@ class Numbers(fabll.Node):
         Invert this quantity set (1/x).
         Unit is also inverted.
         """
+        from faebryk.library.Units import is_unit
+
         g = g or self.g
         tg = tg or self.tg
         out_numeric_set = self.get_numeric_set().op_invert(g=g, tg=tg)
-        inverted_unit = self.get_is_unit().op_invert(g=g, tg=tg)
+        inverted_unit = is_unit.op_invert(self.get_is_unit(), g=g, tg=tg)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
             numeric_set=out_numeric_set,
@@ -3670,6 +3702,8 @@ class Numbers(fabll.Node):
         Result unit is numerator.unit / (denominator1.unit * denominator2.unit * ...).
         Unlike add/subtract, division doesn't require commensurable units.
         """
+        from faebryk.library.Units import is_unit
+
         g = g or self.g
         tg = tg or self.tg
         numerator = self
@@ -3680,7 +3714,9 @@ class Numbers(fabll.Node):
             out_numeric_set = out_numeric_set.op_div_intervals(
                 g=g, tg=tg, other=denominator.get_numeric_set()
             )
-            out_unit = out_unit.op_divide(g=g, tg=tg, other=denominator.get_is_unit())
+            out_unit = is_unit.op_divide(
+                out_unit, g=g, tg=tg, other=denominator.get_is_unit()
+            )
 
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
@@ -3700,22 +3736,26 @@ class Numbers(fabll.Node):
         Exponent must be dimensionless. If exponent is a range (not single value),
         then the base must also be dimensionless.
         """
+        from faebryk.library.Units import is_unit
+
         g = g or self.g
         tg = tg or self.tg
         base = self
-        if not exponent.get_is_unit().is_dimensionless():
+        if not is_unit.is_dimensionless(exponent.get_is_unit()):
             raise ValueError("exponent must have dimensionless units")
 
         exp_numeric = exponent.get_numeric_set()
         if not exp_numeric.is_singleton():
-            if not base.get_is_unit().is_dimensionless():
+            if not is_unit.is_dimensionless(base.get_is_unit()):
                 raise ValueError(
                     "base must have dimensionless units when exponent is an interval"
                 )
 
         # Get the exponent value for unit calculation (use min value)
         exp_value = int(exp_numeric.get_min_value())
-        result_unit = base.get_is_unit().op_power(g=g, tg=tg, exponent=exp_value)
+        result_unit = is_unit.op_power(
+            base.get_is_unit(), g=g, tg=tg, exponent=exp_value
+        )
 
         out_numeric_set = base.get_numeric_set().op_pow(g=g, tg=tg, other=exp_numeric)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
@@ -3792,11 +3832,8 @@ class Numbers(fabll.Node):
         g = g or self.g
         tg = tg or self.tg
         # Create a dimensionless quantity set with value 0.5
-        from faebryk.library.Units import Dimensionless
-
-        dimensionless_unit = Dimensionless.bind_typegraph(tg=tg).create_instance(g=g)
         half = Numbers.create_instance(g=g, tg=tg)
-        half.setup_from_min_max(min=0.5, max=0.5, unit=dimensionless_unit.is_unit.get())
+        half.setup_from_min_max(min=0.5, max=0.5, unit=None)
         return self.op_pow_intervals(g=g, tg=tg, exponent=half)
 
     def op_sin(
@@ -3899,9 +3936,11 @@ class Numbers(fabll.Node):
         Returns intervals that are in one set but not both.
         Units must be commensurable.
         """
+        from faebryk.library.Units import is_unit
+
         g = g or self.g
         tg = tg or self.tg
-        if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
+        if not is_unit.is_commensurable_with(self.get_is_unit(), other.get_is_unit()):
             raise UnitsNotCommensurableError(
                 "Cannot compute symmetric difference: units are not commensurable",
                 incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
@@ -4038,9 +4077,11 @@ class Numbers(fabll.Node):
         - [True, False] if uncertain (ranges overlap)
         Units must be commensurable.
         """
+        from faebryk.library.Units import is_unit
+
         g = g or self.g
         tg = tg or self.tg
-        if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
+        if not is_unit.is_commensurable_with(self.get_is_unit(), other.get_is_unit()):
             raise UnitsNotCommensurableError(
                 "Cannot compare (>=): units are not commensurable",
                 incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
@@ -4065,9 +4106,11 @@ class Numbers(fabll.Node):
         - [True, False] if uncertain (ranges overlap)
         Units must be commensurable.
         """
+        from faebryk.library.Units import is_unit
+
         g = g or self.g
         tg = tg or self.tg
-        if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
+        if not is_unit.is_commensurable_with(self.get_is_unit(), other.get_is_unit()):
             raise UnitsNotCommensurableError(
                 "Cannot compare (>): units are not commensurable",
                 incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
@@ -4092,9 +4135,11 @@ class Numbers(fabll.Node):
         - [True, False] if uncertain (ranges overlap)
         Units must be commensurable.
         """
+        from faebryk.library.Units import is_unit
+
         g = g or self.g
         tg = tg or self.tg
-        if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
+        if not is_unit.is_commensurable_with(self.get_is_unit(), other.get_is_unit()):
             raise UnitsNotCommensurableError(
                 "Cannot compare (<=): units are not commensurable",
                 incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
@@ -4119,9 +4164,11 @@ class Numbers(fabll.Node):
         - [True, False] if uncertain (ranges overlap)
         Units must be commensurable.
         """
+        from faebryk.library.Units import is_unit
+
         g = g or self.g
         tg = tg or self.tg
-        if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
+        if not is_unit.is_commensurable_with(self.get_is_unit(), other.get_is_unit()):
             raise UnitsNotCommensurableError(
                 "Cannot compare (<): units are not commensurable",
                 incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
@@ -4165,9 +4212,11 @@ class Numbers(fabll.Node):
 
     def __repr__(self) -> str:
         """Return a developer-friendly representation showing numeric set and unit."""
+        from faebryk.library.Units import is_unit
+
         try:
             numeric_set = self.get_numeric_set()
-            symbols = self.get_is_unit().get_symbols()
+            symbols = is_unit.get_symbols(self.get_is_unit())
             unit_symbol = symbols[0] if symbols else "<anonymous>"
             return f"Numbers({numeric_set}, unit={unit_symbol})"
         except Exception as e:
@@ -4203,7 +4252,7 @@ class Numbers(fabll.Node):
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         return self.get_numeric_set().contains(other_converted.get_single())
 
-    def serialize(self) -> dict | None:
+    def serialize(self) -> dict[str, str | dict] | None:
         """
         Serialize this quantity set to the API format.
 
@@ -4230,6 +4279,8 @@ class Numbers(fabll.Node):
         Values are in base SI units (e.g., 7e-8 for 70nH).
         Unit string is also the base SI unit (e.g., "henry" not "nanohenry").
         """
+        from faebryk.library.Units import is_unit
+
         # If fully unbounded (min=-inf, max=inf), return None for API
         numeric_set = self.get_numeric_set()
         if (
@@ -4238,7 +4289,7 @@ class Numbers(fabll.Node):
         ):
             return None
 
-        base_unit = self.get_is_unit().to_base_units(g=self.g, tg=self.tg)
+        base_unit = is_unit.to_base_units(self.get_is_unit(), g=self.g, tg=self.tg)
         as_base_units = self.convert_to_unit(
             g=self.g,
             tg=self.tg,
@@ -4255,7 +4306,7 @@ class Numbers(fabll.Node):
             "data": {
                 # Both values and unit string are in base SI
                 "intervals": numeric_set.serialize(),
-                "unit": base_unit.serialize(),
+                "unit": is_unit.serialize(base_unit),
             },
         }
 
@@ -4374,11 +4425,13 @@ class Numbers(fabll.Node):
         result = cls.create_instance(g=g, tg=tg)
         # The values are in base SI units
         return result.setup(
-            numeric_set=numeric_set, unit=unit.to_base_units(g=g, tg=tg)
+            numeric_set=numeric_set, unit=is_unit.to_base_units(unit, g=g, tg=tg)
         )
 
     def pretty_str(self, show_tolerance: bool = True) -> str:
         """Format number with units and tolerance for display."""
+        from faebryk.library.Units import is_unit
+
         numeric_set = self.get_numeric_set()
         if self.is_empty():
             return "<empty>"
@@ -4396,10 +4449,7 @@ class Numbers(fabll.Node):
         # Get unit symbol
         try:
             unit = self.get_is_unit()
-            unit_symbol = unit.compact_repr()
-            # TODO unit.compact_repr() should return "" for dimensionless
-            if unit_symbol == "dimensionless":
-                unit_symbol = ""
+            unit_symbol = is_unit.compact_repr(unit)
         except Exception:
             unit_symbol = ""
 
@@ -4457,6 +4507,8 @@ class Numbers(fabll.Node):
 
 class TestNumbers:
     def test_make_child(self):
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
 
@@ -4469,9 +4521,11 @@ class TestNumbers:
         numeric_set = app.quantity_set.get().get_numeric_set()
         assert numeric_set.get_min_value() == 0.0
         assert numeric_set.get_max_value() == 1.0
-        assert app.quantity_set.get().get_is_unit().get_symbols() == ["m"]
+        assert is_unit.get_symbols(app.quantity_set.get().get_is_unit()) == ["m"]
 
     def test_make_child_single_value(self):
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
 
@@ -4484,9 +4538,11 @@ class TestNumbers:
         numeric_set = app.quantity_set.get().get_numeric_set()
         assert numeric_set.get_min_value() == 1.0
         assert numeric_set.get_max_value() == 1.0
-        assert app.quantity_set.get().get_is_unit().get_symbols() == ["m"]
+        assert is_unit.get_symbols(app.quantity_set.get().get_is_unit()) == ["m"]
 
     def test_create_instance(self):
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
@@ -4498,7 +4554,7 @@ class TestNumbers:
         )
         assert quantity_set.get_numeric_set().get_min_value() == 0.0
         assert quantity_set.get_numeric_set().get_max_value() == 1.0
-        assert not_none(quantity_set.get_is_unit().get_symbols() == ["m"])
+        assert not_none(is_unit.get_symbols(quantity_set.get_is_unit())) == ["m"]
 
     def test_setup_from_singleton(self):
         g = graph.GraphView.create()
@@ -4511,6 +4567,8 @@ class TestNumbers:
         assert quantity_set.get_numeric_set().get_min_value() == 1.0
 
     def test_get_min_quantity(self):
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
@@ -4522,9 +4580,11 @@ class TestNumbers:
         )
         min_quantity = quantity_set.min_elem(g=g, tg=tg)
         assert min_quantity.get_numeric_set().get_min_value() == 0.0
-        assert min_quantity.get_is_unit().get_symbols() == ["m"]
+        assert is_unit.get_symbols(min_quantity.get_is_unit()) == ["m"]
 
     def test_get_max_quantity(self):
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
@@ -4536,9 +4596,11 @@ class TestNumbers:
         )
         max_quantity = quantity_set.max_elem(g=g, tg=tg)
         assert max_quantity.get_numeric_set().get_max_value() == 1.0
-        assert max_quantity.get_is_unit().get_symbols() == ["m"]
+        assert is_unit.get_symbols(max_quantity.get_is_unit()) == ["m"]
 
     def test_op_add_same_unit(self):
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
@@ -4555,10 +4617,12 @@ class TestNumbers:
         result = Numbers.op_add_intervals(quantity_set_1, quantity_set_2, g=g, tg=tg)
         assert result.get_numeric_set().get_min_value() == 0.0
         assert result.get_numeric_set().get_max_value() == 2.0
-        assert result.get_is_unit().get_symbols() == ["m"]
+        assert is_unit.get_symbols(result.get_is_unit()) == ["m"]
 
     def test_op_add_different_unit(self):
         # returns result in the self unit
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import DegreeCelsius, Kelvin
@@ -4576,9 +4640,11 @@ class TestNumbers:
             g=g, tg=tg, ndigits=2
         )
         assert result_numeric_set_rounded.get_min_value() == 273.15
-        assert result.get_is_unit().get_symbols() == ["K"]
+        assert is_unit.get_symbols(result.get_is_unit()) == ["K"]
 
     def test_op_multiply_same_unit(self):
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import BasisVector, Meter
@@ -4595,10 +4661,12 @@ class TestNumbers:
         result = Numbers.op_mul_intervals(quantity_set_1, quantity_set_2, g=g, tg=tg)
         assert result.get_numeric_set().get_min_value() == 6.0
         assert result.get_numeric_set().get_max_value() == 20.0
-        result_unit_basis_vector = result.get_is_unit()._extract_basis_vector()
+        result_unit_basis_vector = is_unit._extract_basis_vector(result.get_is_unit())
         assert result_unit_basis_vector == BasisVector(meter=2)
 
     def test_op_multiply_different_units(self):
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter, Newton
@@ -4616,9 +4684,11 @@ class TestNumbers:
         result = quantity_meter.op_mul_intervals(quantity_newton, g=g, tg=tg)
         assert result.get_numeric_set().get_min_value() == 3.0
         assert result.get_numeric_set().get_max_value() == 8.0
-        assert result.get_is_unit().compact_repr() == "s⁻²·m²·kg"
+        assert is_unit.compact_repr(result.get_is_unit()) == "s⁻²·m²·kg"
 
     def test_op_multiply_three_same_unit(self):
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import BasisVector, Meter
@@ -4641,11 +4711,13 @@ class TestNumbers:
         )
         assert result.get_numeric_set().get_min_value() == 24.0
         assert result.get_numeric_set().get_max_value() == 120.0
-        result_unit_basis_vector = result.get_is_unit()._extract_basis_vector()
+        result_unit_basis_vector = is_unit._extract_basis_vector(result.get_is_unit())
         assert result_unit_basis_vector == BasisVector(meter=3)
 
     def test_op_negate(self):
         """Test negation of a quantity set."""
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
@@ -4660,10 +4732,12 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == -5.0
         assert result.get_numeric_set().get_max_value() == -2.0
         # Unit should remain the same
-        assert result.get_is_unit().get_symbols() == ["m"]
+        assert is_unit.get_symbols(result.get_is_unit()) == ["m"]
 
     def test_op_subtract_same_unit(self):
         """Test subtraction of quantity sets with the same unit."""
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
@@ -4684,10 +4758,12 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 2.0
         assert result.get_numeric_set().get_max_value() == 9.0
         # Unit should remain the same as self
-        assert result.get_is_unit().get_symbols() == ["m"]
+        assert is_unit.get_symbols(result.get_is_unit()) == ["m"]
 
     def test_op_invert(self):
         """Test inversion (1/x) of a quantity set."""
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import BasisVector, Meter
@@ -4702,11 +4778,13 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 0.25
         assert result.get_numeric_set().get_max_value() == 0.5
         # Unit should be inverted: m -> m^-1
-        result_unit_basis_vector = result.get_is_unit()._extract_basis_vector()
+        result_unit_basis_vector = is_unit._extract_basis_vector(result.get_is_unit())
         assert result_unit_basis_vector == BasisVector(meter=-1)
 
     def test_op_divide_same_unit(self):
         """Test division of quantity sets with the same unit."""
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import BasisVector, Meter
@@ -4725,11 +4803,13 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 1.0
         assert result.get_numeric_set().get_max_value() == 4.0
         # Unit should be m / m = dimensionless (m^0)
-        result_unit_basis_vector = result.get_is_unit()._extract_basis_vector()
+        result_unit_basis_vector = is_unit._extract_basis_vector(result.get_is_unit())
         assert result_unit_basis_vector == BasisVector()
 
     def test_op_divide_different_units(self):
         """Test division of quantity sets with different units."""
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import BasisVector, Meter, Second
@@ -4749,11 +4829,13 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 2.0
         assert result.get_numeric_set().get_max_value() == 10.0
         # Unit should be m / s = m * s^-1
-        result_unit_basis_vector = result.get_is_unit()._extract_basis_vector()
+        result_unit_basis_vector = is_unit._extract_basis_vector(result.get_is_unit())
         assert result_unit_basis_vector == BasisVector(meter=1, second=-1)
 
     def test_op_pow(self):
         """Test raising a quantity set to a power."""
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import BasisVector, Dimensionless, Meter
@@ -4775,11 +4857,13 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 4.0
         assert result.get_numeric_set().get_max_value() == 9.0
         # Unit should be m^2
-        result_unit_basis_vector = result.get_is_unit()._extract_basis_vector()
+        result_unit_basis_vector = is_unit._extract_basis_vector(result.get_is_unit())
         assert result_unit_basis_vector == BasisVector(meter=2)
 
     def test_op_round(self):
         """Test rounding a quantity set."""
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
@@ -4793,7 +4877,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 2.3
         assert result.get_numeric_set().get_max_value() == 5.7
         # Unit should remain the same
-        assert result.get_is_unit().get_symbols() == ["m"]
+        assert is_unit.get_symbols(result.get_is_unit()) == ["m"]
 
     @pytest.mark.parametrize(
         "min_val, max_val, expected_min, expected_max",
@@ -4823,6 +4907,8 @@ class TestNumbers:
     )
     def test_op_floor(self, min_val, max_val, expected_min, expected_max):
         """Test floor of a quantity set."""
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
@@ -4836,10 +4922,12 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == expected_min
         assert result.get_numeric_set().get_max_value() == expected_max
         # Unit should remain the same
-        assert result.get_is_unit().get_symbols() == ["m"]
+        assert is_unit.get_symbols(result.get_is_unit()) == ["m"]
 
     def test_op_ceil(self):
         """Test ceil of a quantity set."""
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
@@ -4853,10 +4941,12 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 3.0
         assert result.get_numeric_set().get_max_value() == 6.0
         # Unit should remain the same
-        assert result.get_is_unit().get_symbols() == ["m"]
+        assert is_unit.get_symbols(result.get_is_unit()) == ["m"]
 
     def test_op_abs(self):
         """Test absolute value of a quantity set."""
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
@@ -4872,7 +4962,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 2.0
         assert result.get_numeric_set().get_max_value() == 5.0
         # Unit should remain the same
-        assert result.get_is_unit().get_symbols() == ["m"]
+        assert is_unit.get_symbols(result.get_is_unit()) == ["m"]
 
     def test_op_log(self):
         """Test natural log of a quantity set."""
@@ -4894,6 +4984,8 @@ class TestNumbers:
 
     def test_op_sin(self):
         """Test sine of a quantity set in radians."""
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Radian
@@ -4908,7 +5000,7 @@ class TestNumbers:
         assert abs(result.get_numeric_set().get_min_value() - 0.0) < 1e-10
         assert abs(result.get_numeric_set().get_max_value() - 1.0) < 1e-10
         # Result should be dimensionless
-        assert result.get_is_unit().is_dimensionless()
+        assert is_unit.is_dimensionless(result.get_is_unit())
 
     # Allowing dimensionless input for sine for now, need to think more about this
     # def test_op_sin_rejects_dimensionless(self):
@@ -4931,6 +5023,8 @@ class TestNumbers:
 
     def test_op_cos(self):
         """Test cosine of a quantity set in radians."""
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Radian
@@ -4945,10 +5039,12 @@ class TestNumbers:
         assert abs(result.get_numeric_set().get_min_value() - 1.0) < 1e-10
         assert abs(result.get_numeric_set().get_max_value() - 1.0) < 1e-10
         # Result should be dimensionless
-        assert result.get_is_unit().is_dimensionless()
+        assert is_unit.is_dimensionless(result.get_is_unit())
 
     def test_op_total_span(self):
         """Test total span calculation of a quantity set."""
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
@@ -4963,7 +5059,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 5.0
         assert result.get_numeric_set().get_max_value() == 5.0
         # Unit should remain the same
-        assert result.get_is_unit().get_symbols() == ["m"]
+        assert is_unit.get_symbols(result.get_is_unit()) == ["m"]
 
     def test_op_symmetric_difference(self):
         """Test symmetric difference of two quantity sets."""
@@ -4994,6 +5090,8 @@ class TestNumbers:
 
     def test_op_deviation_to(self):
         """Test deviation calculation between two quantity sets."""
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
@@ -5014,10 +5112,12 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 6.0
         assert result.get_numeric_set().get_max_value() == 6.0
         # Unit should remain the same
-        assert result.get_is_unit().get_symbols() == ["m"]
+        assert is_unit.get_symbols(result.get_is_unit()) == ["m"]
 
     def test_op_deviation_to_relative(self):
         """Test relative deviation calculation between two quantity sets."""
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
@@ -5040,7 +5140,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 0.75
         assert result.get_numeric_set().get_max_value() == 0.75
         # Result should be dimensionless (m / m = 1)
-        assert result.get_is_unit().is_dimensionless()
+        assert is_unit.is_dimensionless(result.get_is_unit())
 
     def test_closest_elem(self):
         """Test finding the closest element to a target."""
@@ -5329,6 +5429,8 @@ class TestNumbers:
 
     def test_to_dimensionless(self):
         """Test converting to dimensionless units."""
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
@@ -5343,7 +5445,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 2.0
         assert result.get_numeric_set().get_max_value() == 5.0
         # Unit should be dimensionless
-        assert result.get_is_unit().is_dimensionless()
+        assert is_unit.is_dimensionless(result.get_is_unit())
 
     def test_op_is_bit_set(self):
         """Test bit set operation."""
@@ -5535,6 +5637,7 @@ class TestNumbers:
 
         # Serialize (should be Quantity_Set_Discrete) and deserialize
         serialized = original.serialize()
+        assert serialized is not None
         assert serialized["type"] == "Quantity_Set_Discrete"
 
         deserialized = Numbers.deserialize(serialized, g=g, tg=tg)
@@ -5684,6 +5787,8 @@ class TestNumbers:
         self, min_val, max_val, unit_name, expected_min, expected_max, expected_basis
     ):
         """Test that serialize followed by deserialize returns equivalent Numbers."""
+        from faebryk.library.Units import is_unit
+
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library import Units
@@ -5701,6 +5806,7 @@ class TestNumbers:
 
         # Serialize and deserialize
         serialized = original.serialize()
+        assert serialized is not None
         deserialized = Numbers.deserialize(serialized, g=g, tg=tg)
 
         # Verify the values match
@@ -5711,7 +5817,7 @@ class TestNumbers:
             expected_max, rel=1e-9
         )
         # Unit should have same basis vector
-        assert deserialized.get_is_unit()._extract_basis_vector() == BasisVector(
+        assert is_unit._extract_basis_vector(deserialized.get_is_unit()) == BasisVector(
             **expected_basis
         )
 
@@ -5762,6 +5868,7 @@ class TestNumbers:
 
         # Serialize and deserialize
         serialized = original.serialize()
+        assert serialized is not None
         deserialized = Numbers.deserialize(serialized, g=g, tg=tg)
 
         # Values should be in base units after round trip
@@ -5786,7 +5893,7 @@ class TestNumbers:
 
         # Serialize via is_literal
         serialized = original.is_literal.get().serialize()
-
+        assert serialized is not None
         # Deserialize via is_literal
         deserialized_literal = is_literal.deserialize(serialized, g=g, tg=tg)
 
@@ -6353,7 +6460,7 @@ class TestCounts:
 
         # Serialize via is_literal
         serialized = original.is_literal.get().serialize()
-
+        assert serialized is not None
         # Deserialize via is_literal
         deserialized_literal = is_literal.deserialize(serialized, g=g, tg=tg)
 
@@ -7197,7 +7304,7 @@ class BoundLiteralContext:
     def create_numbers_from_singleton(
         self,
         value: float,
-        unit: "is_unit",
+        unit: "is_unit | None",
     ) -> "Numbers":
         """
         Create a Numbers literal with a single value.
@@ -7213,7 +7320,7 @@ class BoundLiteralContext:
         self,
         min: float,
         max: float,
-        unit: "is_unit",
+        unit: "is_unit | None",
     ) -> "Numbers":
         """
         Create a Numbers literal with an interval [min, max].
@@ -7389,6 +7496,7 @@ class TestStringLiterals:
 
         # Serialize via is_literal
         serialized = original.is_literal.get().serialize()
+        assert serialized is not None
 
         # Deserialize via is_literal
         deserialized_literal = is_literal.deserialize(serialized, g=g, tg=tg)
@@ -7680,7 +7788,7 @@ class TestBooleans:
 
         # Serialize via is_literal
         serialized = original.is_literal.get().serialize()
-
+        assert serialized is not None
         # Deserialize via is_literal
         deserialized_literal = is_literal.deserialize(serialized, g=g, tg=tg)
 
@@ -7939,7 +8047,7 @@ class TestEnums:
 
         # Serialize via is_literal
         serialized = original.is_literal.get().serialize()
-
+        assert serialized is not None
         # Deserialize via is_literal
         deserialized_literal = is_literal.deserialize(serialized, g=g, tg=tg)
 
