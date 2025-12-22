@@ -128,26 +128,15 @@ pub const TypeGraph = struct {
 
             pub const child_identifier = "child_identifier";
             pub const child_literal_value = "child_literal_value";
-            pub const parent_path_key = "parent_path";
             pub const soft_create_key = "soft_create";
 
-            pub fn init(self: @This(), identifier: ?str, parent_path: ?str, soft: bool) void {
+            pub fn init(self: @This(), identifier: ?str, soft: bool) void {
                 if (identifier) |id| {
                     self.node.node.put(child_identifier, .{ .String = id });
-                }
-                if (parent_path) |p| {
-                    self.node.node.put(parent_path_key, .{ .String = p });
                 }
                 if (soft) {
                     self.node.node.put(soft_create_key, .{ .Bool = true });
                 }
-            }
-
-            pub fn get_parent_path(self: @This()) ?str {
-                if (self.node.node.get(parent_path_key)) |value| {
-                    return value.String;
-                }
-                return null;
             }
 
             pub fn soft_create(self: @This()) bool {
@@ -639,14 +628,12 @@ pub const TypeGraph = struct {
 
     /// Create a MakeChild node with the child type linked immediately.
     /// soft_create: if true, this MakeChild can be discarded if a hard one exists for the same identifier
-    /// parent_path_str: optional dot-separated path to parent (e.g., "foo.bar") for nested assignments
     pub fn add_make_child(
         self: *@This(),
         target_type: BoundNodeReference,
         child_type: BoundNodeReference,
         identifier: ?str,
         node_attributes: ?*NodeCreationAttributes,
-        parent_path_str: ?str,
         soft_create: bool,
     ) !BoundNodeReference {
         const child_type_identifier = TypeNodeAttributes.of(child_type.node).get_type_name();
@@ -655,7 +642,6 @@ pub const TypeGraph = struct {
             child_type_identifier,
             identifier,
             node_attributes,
-            parent_path_str,
             soft_create,
         );
         const type_reference = MakeChildNode.get_type_reference(make_child);
@@ -666,8 +652,6 @@ pub const TypeGraph = struct {
     /// Create a MakeChild node without linking the type reference.
     /// Use this when the child type node is not yet available (e.g., external imports).
     /// Caller must call Linker.link_type_reference() later.
-    /// The optional parent_path specifies where this child should be attached for nested assignments.
-    /// parent_path_str should be a dot-separated string like "foo.bar".
     /// soft_create: if true, this MakeChild can be discarded if a hard one exists for the same identifier
     pub fn add_make_child_deferred(
         self: *@This(),
@@ -675,11 +659,10 @@ pub const TypeGraph = struct {
         child_type_identifier: str,
         identifier: ?str,
         node_attributes: ?*NodeCreationAttributes,
-        parent_path_str: ?str,
         soft_create: bool,
     ) !BoundNodeReference {
         const make_child = try self.instantiate_node(self.get_MakeChild());
-        MakeChildNode.Attributes.of(make_child).init(identifier, parent_path_str, soft_create);
+        MakeChildNode.Attributes.of(make_child).init(identifier, soft_create);
         if (node_attributes) |_node_attributes| {
             MakeChildNode.Attributes.of(make_child).store_node_attributes(_node_attributes.*);
         }
@@ -775,7 +758,7 @@ pub const TypeGraph = struct {
             }
             const child_type = MakeChildNode.get_child_type(info.make_child) orelse continue;
             // Inherited children are always hard (they become authoritative), no parent_path
-            _ = self.add_make_child(target_type, child_type, info.identifier, null, null, false) catch continue;
+            _ = self.add_make_child(target_type, child_type, info.identifier, null, false) catch continue;
         }
 
         // Copy MakeLink nodes from source
@@ -879,75 +862,6 @@ pub const TypeGraph = struct {
         // so collect_make_children already returns only the "winning" nodes.
         const make_children = self.collect_make_children(allocator, type_node);
         defer allocator.free(make_children);
-
-        for (make_children) |child_info| {
-            const attrs = MakeChildNode.Attributes.of(child_info.make_child);
-            const parent_path_opt = attrs.get_parent_path();
-            const identifier = child_info.identifier;
-
-            // For soft_create MakeChilds (assignments to existing fields), validate the full path exists
-            // This catches cases like `members[5] = "value"` where index 5 doesn't exist
-            if (attrs.soft_create()) {
-                var full_path = std.ArrayList([]const u8).init(allocator);
-                defer full_path.deinit();
-
-                // Add parent path segments if present
-                if (parent_path_opt) |parent_path| {
-                    var iter = std.mem.splitSequence(u8, parent_path, ".");
-                    while (iter.next()) |seg| {
-                        full_path.append(seg) catch continue;
-                    }
-                }
-
-                // Add identifier if present
-                if (identifier) |id| {
-                    full_path.append(id) catch {};
-                }
-
-                // Validate the full path resolves (but only if it has segments and is validatable)
-                if (full_path.items.len > 0 and self.isValidatablePath(full_path.items)) {
-                    if (self.resolve_child_path(type_node, full_path.items) == null) {
-                        // Format the path for the error message
-                        if (self.formatPathWithBrackets(allocator, full_path.items)) |path_str| {
-                            const msg = std.fmt.allocPrint(allocator, "Field `{s}` could not be resolved", .{path_str}) catch {
-                                allocator.free(path_str);
-                                continue;
-                            };
-                            allocator.free(path_str);
-                            errors.append(.{
-                                .node = child_info.make_child,
-                                .message = msg,
-                            }) catch {
-                                allocator.free(msg);
-                            };
-                        }
-                    }
-                }
-            } else {
-                // For hard creates, only validate that the parent_path resolves (the identifier is being created)
-                if (parent_path_opt) |parent_path| {
-                    var path_segments = std.ArrayList([]const u8).init(allocator);
-                    defer path_segments.deinit();
-
-                    var iter = std.mem.splitSequence(u8, parent_path, ".");
-                    while (iter.next()) |seg| {
-                        path_segments.append(seg) catch continue;
-                    }
-
-                    if (path_segments.items.len > 0 and self.isValidatablePath(path_segments.items)) {
-                        if (self.resolve_child_path(type_node, path_segments.items) == null) {
-                            const msg = std.fmt.allocPrint(allocator, "Field `{s}` could not be resolved", .{parent_path}) catch continue;
-                            errors.append(.{
-                                .node = child_info.make_child,
-                                .message = msg,
-                            }) catch {
-                                allocator.free(msg);
-                            };
-                        }
-                    }
-                }
-            }
-        }
 
         // Duplicate hard MakeChild detection
         var i: usize = 0;
@@ -1217,7 +1131,6 @@ pub const TypeGraph = struct {
                     return visitor.VisitResult(BoundNodeReference){ .OK = make_child };
                 }
 
-                // With mounts removed, we can only match by identifier when parent_path is empty
                 return visitor.VisitResult(BoundNodeReference){ .CONTINUE = {} };
             }
         };
@@ -2329,20 +2242,20 @@ test "basic instantiation" {
     // Build type graph
     const Electrical = try tg.add_type("Electrical");
     const Capacitor = try tg.add_type("Capacitor");
-    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null, null, false);
-    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null, null, false);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null, false);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null, false);
     const Resistor = try tg.add_type("Resistor");
     // Test: add node attributes to p1 MakeChild
     var res_p1_attrs = TypeGraph.MakeChildNode.build(null);
     res_p1_attrs.dynamic.put("test_attr", .{ .String = "test_value" });
     res_p1_attrs.dynamic.put("pin_number", .{ .Int = 42 });
-    const res_p1_makechild = try tg.add_make_child(Resistor, Electrical, "p1", &res_p1_attrs, null, false);
+    const res_p1_makechild = try tg.add_make_child(Resistor, Electrical, "p1", &res_p1_attrs, false);
     std.debug.print("RES_P1_MAKECHILD: {s}\n", .{try EdgeComposition.get_name(EdgeComposition.get_parent_edge(res_p1_makechild).?.edge)});
-    _ = try tg.add_make_child(Resistor, Electrical, "p2", null, null, false);
-    _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null, null, false);
+    _ = try tg.add_make_child(Resistor, Electrical, "p2", null, false);
+    _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null, false);
 
     var node_attrs = TypeGraph.MakeChildNode.build("test_string");
-    _ = try tg.add_make_child(Capacitor, Electrical, "tp", &node_attrs, null, false);
+    _ = try tg.add_make_child(Capacitor, Electrical, "tp", &node_attrs, false);
 
     // Build instance graph
     const resistor = try tg.instantiate_node(Resistor);
@@ -2439,13 +2352,13 @@ test "typegraph iterators and mount chains" {
     const Inner = try tg.add_type("Inner");
     const PointerSequence = try tg.add_type("PointerSequence");
 
-    const members = try tg.add_make_child(top, PointerSequence, "members", null, null, false);
-    _ = try tg.add_make_child(top, Inner, "base", null, null, false);
-    const extra = try tg.add_make_child(top, Inner, "extra", null, null, false);
+    const members = try tg.add_make_child(top, PointerSequence, "members", null, false);
+    _ = try tg.add_make_child(top, Inner, "base", null, false);
+    const extra = try tg.add_make_child(top, Inner, "extra", null, false);
     _ = members;
     _ = extra;
-    _ = try tg.add_make_child(top, Inner, "0", null, null, false);
-    _ = try tg.add_make_child(top, Inner, "1", null, null, false);
+    _ = try tg.add_make_child(top, Inner, "0", null, false);
+    _ = try tg.add_make_child(top, Inner, "1", null, false);
     const base_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("base")});
     const extra_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("extra")});
     const link_attrs = EdgeCreationAttributes{
@@ -2551,11 +2464,11 @@ test "get_type_instance_overview" {
     // Build type graph with some types
     const Electrical = try tg.add_type("Electrical");
     const Capacitor = try tg.add_type("Capacitor");
-    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null, null, false);
-    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null, null, false);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null, false);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null, false);
     const Resistor = try tg.add_type("Resistor");
-    _ = try tg.add_make_child(Resistor, Electrical, "p1", null, null, false);
-    _ = try tg.add_make_child(Resistor, Electrical, "p2", null, null, false);
+    _ = try tg.add_make_child(Resistor, Electrical, "p1", null, false);
+    _ = try tg.add_make_child(Resistor, Electrical, "p2", null, false);
 
     // Create some instances
     _ = try tg.instantiate_node(Capacitor);
@@ -2615,8 +2528,8 @@ test "resolve path through trait and pointer edges" {
     _ = EdgeTrait.add_trait_instance(CanBridge, implements_trait_instance.node);
 
     const Resistor = try tg.add_type("Resistor");
-    _ = try tg.add_make_child(Resistor, Electrical, "p1", null, null, false);
-    _ = try tg.add_make_child(Resistor, Electrical, "p2", null, null, false);
+    _ = try tg.add_make_child(Resistor, Electrical, "p1", null, false);
+    _ = try tg.add_make_child(Resistor, Electrical, "p2", null, false);
 
     // 2. Create a Resistor instance with p1, p2 children
     const resistor_instance = try tg.instantiate_node(Resistor);
@@ -2687,7 +2600,7 @@ test "resolve path through trait and pointer edges" {
     // Create a TopModule that contains the resistor as a child
 
     const TopModule = try tg.add_type("TopModule");
-    _ = try tg.add_make_child(TopModule, Resistor, "resistor", null, null, false);
+    _ = try tg.add_make_child(TopModule, Resistor, "resistor", null, false);
 
     // Create TopModule instance - this will auto-create resistor child
     const top_instance = try tg.instantiate_node(TopModule);

@@ -219,7 +219,6 @@ class ActionsFactory:
         return [
             AddMakeChildAction(
                 target_path=[trait_identifier],
-                parent_path=None,
                 child_field=field,
             ),
             AddMakeLinkAction(
@@ -368,13 +367,11 @@ class ActionsFactory:
         type_identifier: str,
         module_type: type[fabll.Node] | None,
         template_args: dict[str, str | bool | float] | None,
-        parent_path: "FieldPath | None",
         import_ref: "ImportRef | None",
     ) -> "AddMakeChildAction":
         """Create a single AddMakeChildAction for a new child instantiation."""
         return AddMakeChildAction(
             target_path=target_path,
-            parent_path=parent_path,
             child_field=ActionsFactory.child_field(
                 identifier=target_path.leaf.identifier,
                 type_identifier=type_identifier,
@@ -391,7 +388,6 @@ class ActionsFactory:
         module_type: type[fabll.Node] | None,
         template_args: dict[str, str | bool | float] | None,
         count: int,
-        parent_path: "FieldPath | None",
         import_ref: "ImportRef | None",
     ) -> "tuple[list[AddMakeChildAction], list[AddMakeLinkAction], list[FieldPath]]":
         """
@@ -405,7 +401,6 @@ class ActionsFactory:
         pointer_action = AddMakeChildAction(
             target_path=target_path,
             child_field=F.Collections.PointerSequence.MakeChild(),
-            parent_path=parent_path,
         )
 
         element_actions: list[AddMakeChildAction] = []
@@ -430,7 +425,6 @@ class ActionsFactory:
                         module_type=module_type,
                         template_args=template_args,
                     ),
-                    parent_path=parent_path,
                     import_ref=import_ref,
                 )
             )
@@ -450,17 +444,19 @@ class ActionsFactory:
         target_path: "FieldPath",
         param_child: fabll._ChildField | None,
         constraint_operand: fabll._ChildField | None,
-        parent_path: "FieldPath | None",
         constraint_expr: type[fabll.Node] | None = None,
         soft_create: bool = False,
     ) -> "list[AddMakeChildAction]":
         actions: list[AddMakeChildAction] = []
 
-        if param_child is not None:
+        # For nested paths, we don't create the parameter MakeChild - it must exist
+        # on the nested type. We only create constraints that reference the path.
+        is_nested = not target_path.is_singleton()
+
+        if param_child is not None and not is_nested:
             actions.append(
                 AddMakeChildAction(
                     target_path=target_path,
-                    parent_path=parent_path,
                     child_field=param_child,
                     soft_create=soft_create,
                 )
@@ -483,7 +479,6 @@ class ActionsFactory:
                             FieldPath.Segment(f"operand_{unique_target_str}"),
                         )
                     ),
-                    parent_path=parent_path,
                     child_field=constraint_operand,
                 )
             )
@@ -496,7 +491,6 @@ class ActionsFactory:
                             FieldPath.Segment(f"constraint_{unique_target_str}"),
                         )
                     ),
-                    parent_path=parent_path,
                     child_field=constraint_expr.MakeChild(
                         target_path.to_ref_path(), [constraint_operand], assert_=True
                     ),
@@ -509,13 +503,11 @@ class ActionsFactory:
     def deferred_expression_action(
         expression_path: "FieldPath",
         operand: fabll._ChildField,
-        parent_path: "FieldPath | None",
     ) -> "AddMakeChildAction":
         """Create action for an expression whose parameter will be inferred later."""
         return AddMakeChildAction(
             target_path=expression_path,
             child_field=operand,
-            parent_path=parent_path,
         )
 
 
@@ -524,12 +516,10 @@ class AddMakeChildAction:
     """
     target_path: String path to target eg. resistor.resistance
     relative to parent reference node. eg. app
-    parent_path: The path to the parent type.
     soft_create: If True, this MakeChild can be superseded by inheritance.
     """
 
     target_path: FieldPath | fabll.RefPath
-    parent_path: FieldPath | None
     child_field: fabll._ChildField | None = None
     import_ref: ImportRef | None = None
     soft_create: bool = False

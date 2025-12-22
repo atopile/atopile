@@ -45,7 +45,6 @@ class TypeGraph:
         child_type_identifier: str,
         identifier: str | None,
         node_attributes: NodeCreationAttributes | None = ...,
-        parent_path: list[str] | None = ...,
         soft_create: bool = ...,
     ) -> BoundNode: ...
     def add_type_reference(self, *, type_identifier: str) -> BoundNode:

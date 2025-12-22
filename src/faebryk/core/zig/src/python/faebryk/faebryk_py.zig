@@ -3258,7 +3258,6 @@ fn wrap_typegraph_add_make_child() type {
                 child_type: *graph.BoundNodeReference,
                 identifier: *py.PyObject,
                 node_attributes: ?*py.PyObject = null,
-                parent_path: ?*py.PyObject = null,
                 soft_create: ?*py.PyObject = null,
 
                 pub const fields_meta = .{
@@ -3293,40 +3292,6 @@ fn wrap_typegraph_add_make_child() type {
                 node_attributes = attrs_wrapper.data;
             }
 
-            // Parse parent_path from Python list of strings and join with "."
-            var parent_path_str: ?[]u8 = null;
-            const parent_path_obj: *py.PyObject = if (kwarg_obj.parent_path) |obj| obj else py.Py_None();
-            if (parent_path_obj != py.Py_None()) {
-                const list_len = py.PyList_Size(parent_path_obj);
-                if (list_len > 0) {
-                    var total_len: usize = 0;
-                    var i: isize = 0;
-                    while (i < list_len) : (i += 1) {
-                        const item = py.PyList_GetItem(parent_path_obj, i);
-                        const segment_slice = bind.unwrap_str(item) orelse return null;
-                        total_len += segment_slice.len;
-                        if (i < list_len - 1) total_len += 1;
-                    }
-
-                    parent_path_str = allocator.alloc(u8, total_len) catch {
-                        py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate parent path");
-                        return null;
-                    };
-                    var pos: usize = 0;
-                    i = 0;
-                    while (i < list_len) : (i += 1) {
-                        const item = py.PyList_GetItem(parent_path_obj, i);
-                        const segment_slice = bind.unwrap_str(item) orelse return null;
-                        @memcpy(parent_path_str.?[pos .. pos + segment_slice.len], segment_slice);
-                        pos += segment_slice.len;
-                        if (i < list_len - 1) {
-                            parent_path_str.?[pos] = '.';
-                            pos += 1;
-                        }
-                    }
-                }
-            }
-
             // Parse soft_create flag (default to false)
             const soft_create_obj: *py.PyObject = if (kwarg_obj.soft_create) |obj| obj else py.Py_None();
             const soft_create: bool = if (soft_create_obj != py.Py_None()) py.PyObject_IsTrue(soft_create_obj) == 1 else false;
@@ -3337,7 +3302,6 @@ fn wrap_typegraph_add_make_child() type {
                 kwarg_obj.child_type.*,
                 if (identifier_copy) |copy| copy else null,
                 node_attributes,
-                if (parent_path_str) |pp| pp else null,
                 soft_create,
             ) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "add_make_child failed");
@@ -3359,7 +3323,6 @@ fn wrap_typegraph_add_make_child_deferred() type {
                 child_type_identifier: *py.PyObject,
                 identifier: *py.PyObject,
                 node_attributes: ?*py.PyObject = null,
-                parent_path: ?*py.PyObject = null,
                 soft_create: ?*py.PyObject = null,
 
                 pub const fields_meta = .{
@@ -3398,42 +3361,6 @@ fn wrap_typegraph_add_make_child_deferred() type {
                 node_attributes = attrs_wrapper.data;
             }
 
-            // Parse parent_path from Python list of strings and join with "."
-            var parent_path_str: ?[]u8 = null;
-            const parent_path_obj: *py.PyObject = if (kwarg_obj.parent_path) |obj| obj else py.Py_None();
-            if (parent_path_obj != py.Py_None()) {
-                const list_len = py.PyList_Size(parent_path_obj);
-                if (list_len > 0) {
-                    // Calculate total length needed
-                    var total_len: usize = 0;
-                    var i: isize = 0;
-                    while (i < list_len) : (i += 1) {
-                        const item = py.PyList_GetItem(parent_path_obj, i);
-                        const segment_slice = bind.unwrap_str(item) orelse return null;
-                        total_len += segment_slice.len;
-                        if (i < list_len - 1) total_len += 1; // for '.'
-                    }
-
-                    // Allocate and build joined string
-                    parent_path_str = allocator.alloc(u8, total_len) catch {
-                        py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate parent path");
-                        return null;
-                    };
-                    var pos: usize = 0;
-                    i = 0;
-                    while (i < list_len) : (i += 1) {
-                        const item = py.PyList_GetItem(parent_path_obj, i);
-                        const segment_slice = bind.unwrap_str(item) orelse return null;
-                        @memcpy(parent_path_str.?[pos .. pos + segment_slice.len], segment_slice);
-                        pos += segment_slice.len;
-                        if (i < list_len - 1) {
-                            parent_path_str.?[pos] = '.';
-                            pos += 1;
-                        }
-                    }
-                }
-            }
-
             // Parse soft_create flag (default to false)
             const soft_create_obj: *py.PyObject = if (kwarg_obj.soft_create) |obj| obj else py.Py_None();
             const soft_create: bool = if (soft_create_obj != py.Py_None()) py.PyObject_IsTrue(soft_create_obj) == 1 else false;
@@ -3444,7 +3371,6 @@ fn wrap_typegraph_add_make_child_deferred() type {
                 child_type_identifier_copy,
                 if (identifier_copy) |copy| copy else null,
                 node_attributes,
-                parent_path_str,
                 soft_create,
             ) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "add_make_child_deferred failed");

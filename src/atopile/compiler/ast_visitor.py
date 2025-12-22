@@ -336,16 +336,10 @@ class _TypeContextStack:
         action: AddMakeChildAction,
     ) -> None:
         assert action.child_field is not None
-        action.child_field._set_locator(action.get_identifier())
 
-        fabll.Node._exec_field(
-            t=bound_tg,
-            field=action.child_field,
-            soft_create=action.soft_create,
-            parent_path=list(action.parent_path.identifiers())
-            if action.parent_path
-            else None,
-        )
+        action.child_field._set_locator(action.get_identifier())
+        action.child_field._soft_create = action.soft_create
+        fabll.Node._exec_field(t=bound_tg, field=action.child_field)
 
         # Track unresolved type references (both imports and local forward refs)
         if isinstance(action.child_field.nodetype, str):
@@ -847,7 +841,6 @@ class ASTVisitor:
                 nodetype=F.Electrical,
                 identifier=signal_name,
             ),
-            parent_path=None,
         )
 
     def visit_PinDeclaration(self, node: AST.PinDeclaration):
@@ -868,7 +861,6 @@ class ASTVisitor:
 
         return AddMakeChildAction(
             target_path=target_path,
-            parent_path=None,
             child_field=ActionsFactory.pin_child_field(pin_label_str, identifier),
         )
 
@@ -904,7 +896,6 @@ class ASTVisitor:
         self,
         target_path: FieldPath,
         new_spec: NewChildSpec,
-        parent_path: FieldPath | None,
     ) -> list[AddMakeChildAction | AddMakeLinkAction] | AddMakeChildAction:
         # FIXME: linker should handle this
         # Check if module type is in stdlib or an imported python module
@@ -932,17 +923,17 @@ class ASTVisitor:
                 module_fabll_type = obj
 
         if new_spec.count is None:
-            # TODO: review
-            if target_path.leaf.is_index and parent_path is not None:
+            if target_path.leaf.is_index and target_path.parent_segments:
+                container_path = FieldPath(segments=tuple(target_path.parent_segments))
                 try:
                     type_node, _, _ = self._type_stack.current()
                     pointer_members = self._tg.collect_pointer_members(
                         type_node=type_node,
-                        container_path=list(parent_path.identifiers()),
+                        container_path=list(container_path.identifiers()),
                     )
                 except fbrk.TypeGraphPathError as exc:
                     raise DslException(
-                        self._type_stack._format_path_error(parent_path, exc)
+                        self._type_stack._format_path_error(container_path, exc)
                     ) from exc
 
                 member_identifiers = {
@@ -961,7 +952,6 @@ class ASTVisitor:
                 type_identifier=new_spec.type_identifier,
                 module_type=module_fabll_type,
                 template_args=new_spec.template_args,
-                parent_path=parent_path,
                 import_ref=new_spec.symbol.import_ref if new_spec.symbol else None,
             )
 
@@ -971,7 +961,6 @@ class ASTVisitor:
             module_type=module_fabll_type,
             template_args=new_spec.template_args,
             count=new_spec.count,
-            parent_path=parent_path,
             import_ref=new_spec.symbol.import_ref if new_spec.symbol else None,
         )
 
@@ -1004,20 +993,14 @@ class ASTVisitor:
         if (assignable := self.visit_Assignable(assignable_node)) is None:
             return NoOpAction()
 
-        parent_path: FieldPath | None = None
-
-        if target_path.parent_segments:
-            parent_path = FieldPath(segments=tuple(target_path.parent_segments))
-
         match assignable:
             case NewChildSpec() as new_spec:
-                return self._handle_new_child(target_path, new_spec, parent_path)
+                return self._handle_new_child(target_path, new_spec)
             case ParameterSpec() as param_spec:
                 return ActionsFactory.parameter_actions(
                     target_path=target_path,
                     param_child=param_spec.param_child,
                     constraint_operand=param_spec.operand,
-                    parent_path=parent_path,
                     constraint_expr=self._type_stack.constraint_expr,
                     # parameter assignment implicitly creates the parameter, if it
                     # doesn't exist already
@@ -1138,7 +1121,6 @@ class ASTVisitor:
 
         return AddMakeChildAction(
             target_path=[*lhs_refpath, str(lhs_refpath).replace(".", "_")],
-            parent_path=None,
             child_field=expr,
         )
 
@@ -1457,7 +1439,6 @@ class ASTVisitor:
             target_path=target_path,
             param_child=F.Parameters.NumericParameter.MakeChild(unit=unit_t),
             constraint_operand=None,
-            parent_path=None,
             constraint_expr=self._type_stack.constraint_expr,
         )
 

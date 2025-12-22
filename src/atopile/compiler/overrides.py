@@ -318,11 +318,6 @@ class TraitOverrideRegistry:
         string_value = value_node.cast(t=AST.AstString).get_text()
         enum_value = _get_enum_member(spec.enum_type, string_value)
 
-        parent_path: FieldPath | None = None
-
-        if target_path.parent_segments:
-            parent_path = FieldPath(segments=tuple(target_path.parent_segments))
-
         # Create enum literal (parameter_actions will create the constraint)
         enum_literal = F.Literals.AbstractEnums.MakeChild(enum_value)
 
@@ -330,7 +325,6 @@ class TraitOverrideRegistry:
             target_path=target_path,
             param_child=None,
             constraint_operand=enum_literal,
-            parent_path=parent_path,
             constraint_expr=constraint_expr,
         )
 
