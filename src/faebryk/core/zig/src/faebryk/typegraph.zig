@@ -66,8 +66,8 @@ pub const TypeGraph = struct {
 
     pub const MakeLinkInfo = struct {
         make_link: BoundNodeReference,
-        lhs_path: []const []const u8,
-        rhs_path: []const []const u8,
+        lhs_path: []const ChildReferenceNode.EdgeTraversal,
+        rhs_path: []const ChildReferenceNode.EdgeTraversal,
     };
 
     pub const ValidationError = struct {
@@ -178,6 +178,29 @@ pub const TypeGraph = struct {
 
                 // TODO different API
                 node.copy_dynamic_attributes_into(&dynamic);
+            }
+
+            /// Extract dynamic attributes from this MakeChild into a NodeCreationAttributes struct.
+            /// Used when copying MakeChild nodes during inheritance.
+            pub fn extract_node_attributes(self: @This()) NodeCreationAttributes {
+                var dynamic = graph.DynamicAttributes.init_on_stack();
+
+                const AttrVisitor = struct {
+                    dynamic: *graph.DynamicAttributes,
+
+                    pub fn visit(ctx: *anyopaque, key: str, value: graph.Literal, _dynamic: bool) void {
+                        const s: *@This() = @ptrCast(@alignCast(ctx));
+                        if (!_dynamic) return;
+                        // Skip internal MakeChild attributes
+                        if (std.mem.eql(u8, key, "child_identifier")) return;
+                        if (std.mem.eql(u8, key, soft_create_key)) return;
+                        s.dynamic.put(key, value);
+                    }
+                };
+                var visit = AttrVisitor{ .dynamic = &dynamic };
+                self.node.node.visit_attributes(&visit, AttrVisitor.visit);
+
+                return .{ .dynamic = dynamic };
             }
         };
 
@@ -748,8 +771,10 @@ pub const TypeGraph = struct {
                 // visit_make_children when the inherited non-soft-created child is added
             }
             const child_type = MakeChildNode.get_child_type(info.make_child) orelse continue;
+            // Extract attributes from source MakeChild (e.g., literal values)
+            var attrs = MakeChildNode.Attributes.of(info.make_child).extract_node_attributes();
             // Inherited children are not soft-created (they become authoritative)
-            _ = self.add_make_child(target_type, child_type, info.identifier, null, false) catch continue;
+            _ = self.add_make_child(target_type, child_type, info.identifier, &attrs, false) catch continue;
         }
 
         // Copy MakeLink nodes from source
@@ -763,20 +788,8 @@ pub const TypeGraph = struct {
         }
 
         for (source_links) |link_info| {
-            var lhs_traversals = std.ArrayList(ChildReferenceNode.EdgeTraversal).init(allocator);
-            defer lhs_traversals.deinit();
-            for (link_info.lhs_path) |ident| {
-                lhs_traversals.append(EdgeComposition.traverse(ident)) catch continue;
-            }
-
-            var rhs_traversals = std.ArrayList(ChildReferenceNode.EdgeTraversal).init(allocator);
-            defer rhs_traversals.deinit();
-            for (link_info.rhs_path) |ident| {
-                rhs_traversals.append(EdgeComposition.traverse(ident)) catch continue;
-            }
-
-            const lhs_ref = ChildReferenceNode.create_and_insert(self, lhs_traversals.items) catch continue;
-            const rhs_ref = ChildReferenceNode.create_and_insert(self, rhs_traversals.items) catch continue;
+            const lhs_ref = ChildReferenceNode.create_and_insert(self, link_info.lhs_path) catch continue;
+            const rhs_ref = ChildReferenceNode.create_and_insert(self, link_info.rhs_path) catch continue;
 
             const attrs = MakeLinkNode.Attributes.of(link_info.make_link);
             const edge_attrs = EdgeCreationAttributes{
@@ -902,7 +915,8 @@ pub const TypeGraph = struct {
         for (make_links) |link_info| {
             // Validate lhs path (skip paths that can't be type-level validated)
             if (link_info.lhs_path.len > 0 and self.isValidatablePath(link_info.lhs_path)) {
-                if (self.resolve_child_path(type_node, link_info.lhs_path) == null) {
+                const lhs_result = self.resolve_path_segments(type_node, link_info.lhs_path, null);
+                if (lhs_result) |_| {} else |_| {
                     if (self.format_path(allocator, link_info.lhs_path)) |path_str| {
                         const message = std.fmt.allocPrint(allocator, "Field `{s}` could not be resolved", .{path_str}) catch continue;
                         errors.append(.{
@@ -917,7 +931,8 @@ pub const TypeGraph = struct {
 
             // Validate rhs path (skip paths that can't be type-level validated)
             if (link_info.rhs_path.len > 0 and self.isValidatablePath(link_info.rhs_path)) {
-                if (self.resolve_child_path(type_node, link_info.rhs_path) == null) {
+                const rhs_result = self.resolve_path_segments(type_node, link_info.rhs_path, null);
+                if (rhs_result) |_| {} else |_| {
                     if (self.format_path(allocator, link_info.rhs_path)) |path_str| {
                         const message = std.fmt.allocPrint(allocator, "Field `{s}` could not be resolved", .{path_str}) catch continue;
                         errors.append(.{
@@ -934,12 +949,14 @@ pub const TypeGraph = struct {
         return errors.toOwnedSlice() catch &[_]ValidationError{};
     }
 
-    fn isValidatablePath(self: *@This(), path: []const []const u8) bool {
+    fn isValidatablePath(self: *@This(), path: []const ChildReferenceNode.EdgeTraversal) bool {
         _ = self;
         if (path.len == 0) return false;
 
         // Check all segments for validation exclusions
-        for (path, 0..) |segment, idx| {
+        for (path, 0..) |traversal, idx| {
+            const segment = traversal.identifier;
+
             // Skip paths with special prefixes (trait syntax like <<)
             if (segment.len >= 2 and segment[0] == '<' and segment[1] == '<') {
                 return false;
@@ -960,27 +977,27 @@ pub const TypeGraph = struct {
                     }
                 }
             }
-
         }
 
         return true;
     }
 
-    fn format_path(self: *@This(), allocator: std.mem.Allocator, path: []const []const u8) ?[]const u8 {
+    fn format_path(self: *@This(), allocator: std.mem.Allocator, path: []const ChildReferenceNode.EdgeTraversal) ?[]const u8 {
         _ = self;
         if (path.len == 0) {
             return allocator.dupe(u8, "") catch return null;
         }
 
         var total_len: usize = 0;
-        for (path, 0..) |segment, i| {
-            total_len += segment.len;
+        for (path, 0..) |traversal, i| {
+            total_len += traversal.identifier.len;
             if (i < path.len - 1) total_len += 1; // for '.'
         }
 
         const result = allocator.alloc(u8, total_len) catch return null;
         var pos: usize = 0;
-        for (path, 0..) |segment, i| {
+        for (path, 0..) |traversal, i| {
+            const segment = traversal.identifier;
             @memcpy(result[pos .. pos + segment.len], segment);
             pos += segment.len;
             if (i < path.len - 1) {
@@ -1292,9 +1309,9 @@ pub const TypeGraph = struct {
         return ChildReferenceNode.create_and_insert(self, path);
     }
 
-    /// Visit MakeChild nodes with dynamic soft/hard filtering.
-    /// Soft nodes are skipped if a hard node with the same identifier exists.
-    /// If multiple soft nodes exist for the same identifier, only the first is visited.
+    /// Visit MakeChild nodes with soft-created filtering.
+    /// Soft-created nodes are skipped if a non-soft-created node with the same identifier exists.
+    /// If multiple soft-created nodes exist for the same identifier, only the first is visited.
     pub fn visit_make_children(
         self: *@This(),
         type_node: BoundNodeReference,
@@ -1335,18 +1352,18 @@ pub const TypeGraph = struct {
             else => {},
         }
 
-        // Build set of hard identifiers
-        var hard_ids = std.StringHashMap(void).init(allocator);
-        defer hard_ids.deinit();
+        // Build set of non-soft-created identifiers
+        var non_soft_ids = std.StringHashMap(void).init(allocator);
+        defer non_soft_ids.deinit();
         for (all_children.items) |info| {
             if (info.identifier) |id| {
                 if (!MakeChildNode.Attributes.of(info.make_child).soft_create()) {
-                    hard_ids.put(id, {}) catch continue;
+                    non_soft_ids.put(id, {}) catch continue;
                 }
             }
         }
 
-        // Track first soft for each identifier (to skip duplicates)
+        // Track first soft-created for each identifier (to skip duplicates)
         var first_soft_ids = std.StringHashMap(void).init(allocator);
         defer first_soft_ids.deinit();
 
@@ -1354,9 +1371,9 @@ pub const TypeGraph = struct {
         for (all_children.items) |info| {
             if (info.identifier) |id| {
                 if (MakeChildNode.Attributes.of(info.make_child).soft_create()) {
-                    // Skip if a hard exists for this identifier
-                    if (hard_ids.contains(id)) continue;
-                    // Skip if we've already seen a soft for this identifier
+                    // Skip if a non-soft-created exists for this identifier
+                    if (non_soft_ids.contains(id)) continue;
+                    // Skip if we've already seen a soft-created for this identifier
                     if (first_soft_ids.contains(id)) continue;
                     first_soft_ids.put(id, {}) catch continue;
                 }
@@ -1414,19 +1431,22 @@ pub const TypeGraph = struct {
     /// reason about the internals of that representation.
     /// An empty identifier with no successor is treated as a self-reference and
     /// returns an empty path (consistent with ChildReferenceNode.resolve).
+    /// Returns EdgeTraversal segments preserving both identifier and edge type.
     pub fn get_reference_path(
         self: *@This(),
         allocator: std.mem.Allocator,
         reference: BoundNodeReference,
-    ) error{InvalidReference}![]const []const u8 {
+    ) error{InvalidReference}![]const ChildReferenceNode.EdgeTraversal {
         _ = self;
 
-        var segments = std.ArrayList([]const u8).init(allocator);
+        var segments = std.ArrayList(ChildReferenceNode.EdgeTraversal).init(allocator);
         errdefer segments.deinit();
 
         var current = reference;
         while (true) {
-            const identifier = ChildReferenceNode.Attributes.of(current.node).get_child_identifier();
+            const attrs = ChildReferenceNode.Attributes.of(current.node);
+            const identifier = attrs.get_child_identifier();
+            const edge_type = attrs.get_edge_type();
             const next_node = EdgeNext.get_next_node_from_node(current);
 
             if (identifier.len == 0) {
@@ -1437,7 +1457,7 @@ pub const TypeGraph = struct {
                 // Empty identifier in middle of chain is invalid
                 return error.InvalidReference;
             }
-            segments.append(identifier) catch @panic("OOM");
+            segments.append(.{ .identifier = identifier, .edge_type = edge_type }) catch @panic("OOM");
 
             if (next_node) |_next| {
                 current = reference.g.bind(_next);
@@ -1597,12 +1617,12 @@ pub const TypeGraph = struct {
             pub fn visit(self_ptr: *anyopaque, info: MakeLinkInfo) visitor.VisitResult(T) {
                 const visitor_: *@This() = @ptrCast(@alignCast(self_ptr));
 
-                // Check if lhs_path matches container_path
+                // Check if lhs_path identifiers match container_path
                 if (info.lhs_path.len != visitor_.container_path_.len) {
                     return visitor.VisitResult(T){ .CONTINUE = {} };
                 }
-                for (info.lhs_path, visitor_.container_path_) |lhs_seg, container_seg| {
-                    if (!std.mem.eql(u8, lhs_seg, container_seg)) {
+                for (info.lhs_path, visitor_.container_path_) |lhs_traversal, container_seg| {
+                    if (!std.mem.eql(u8, lhs_traversal.identifier, container_seg)) {
                         return visitor.VisitResult(T){ .CONTINUE = {} };
                     }
                 }
@@ -1618,7 +1638,7 @@ pub const TypeGraph = struct {
                 if (info.rhs_path.len != 1) {
                     return visitor.VisitResult(T){ .CONTINUE = {} };
                 }
-                const element_id = info.rhs_path[0];
+                const element_id = info.rhs_path[0].identifier;
 
                 const make_child = visitor_.type_graph.find_make_child_node(
                     visitor_.type_node_,
@@ -2389,14 +2409,14 @@ test "typegraph iterators and mount chains" {
     // Find the base->extra link for specific validation
     var base_extra_link: ?TypeGraph.MakeLinkInfo = null;
     for (detailed_links) |info| {
-        if (info.lhs_path.len == 1 and std.mem.eql(u8, info.lhs_path[0], "base")) {
+        if (info.lhs_path.len == 1 and std.mem.eql(u8, info.lhs_path[0].identifier, "base")) {
             base_extra_link = info;
             break;
         }
     }
     try std.testing.expect(base_extra_link != null);
     try std.testing.expectEqual(@as(usize, 1), base_extra_link.?.rhs_path.len);
-    try std.testing.expectEqualStrings("extra", base_extra_link.?.rhs_path[0]);
+    try std.testing.expectEqualStrings("extra", base_extra_link.?.rhs_path[0].identifier);
 
     const lhs = EdgeComposition.get_child_by_identifier(base_extra_link.?.make_link, "lhs").?;
     const rhs = EdgeComposition.get_child_by_identifier(base_extra_link.?.make_link, "rhs").?;
@@ -2406,7 +2426,7 @@ test "typegraph iterators and mount chains" {
     const lhs_path = try tg.get_reference_path(a, lhs);
     defer a.free(lhs_path);
     try std.testing.expectEqual(@as(usize, 1), lhs_path.len);
-    try std.testing.expectEqualStrings("base", lhs_path[0]);
+    try std.testing.expectEqualStrings("base", lhs_path[0].identifier);
 
     const pointer_members = try tg.collect_pointer_members(a, top, &.{"members"}, null);
     defer a.free(pointer_members);

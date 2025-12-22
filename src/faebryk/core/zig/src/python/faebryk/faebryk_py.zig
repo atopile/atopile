@@ -3599,6 +3599,29 @@ fn _path_segments_to_tuple(path: []const []const u8) ?*py.PyObject {
     return tuple_obj;
 }
 
+fn _edge_traversals_to_tuple(path: []const faebryk.typegraph.TypeGraph.ChildReferenceNode.EdgeTraversal) ?*py.PyObject {
+    const tuple_obj = py.PyTuple_New(@as(isize, @intCast(path.len)));
+    if (tuple_obj == null) {
+        return null;
+    }
+
+    var idx: usize = 0;
+    while (idx < path.len) : (idx += 1) {
+        const traversal = path[idx];
+        const py_str = _make_py_string(traversal.identifier) orelse {
+            py.Py_DECREF(tuple_obj.?);
+            return null;
+        };
+        if (py.PyTuple_SetItem(tuple_obj, @as(isize, @intCast(idx)), py_str) != 0) {
+            py.Py_DECREF(py_str);
+            py.Py_DECREF(tuple_obj.?);
+            return null;
+        }
+    }
+
+    return tuple_obj;
+}
+
 fn _path_segments_to_list(segments: []const []const u8) ?*py.PyObject {
     const list_len = @as(isize, @intCast(segments.len));
     const list_obj = py.PyList_New(list_len);
@@ -5844,12 +5867,12 @@ fn wrap_typegraph_collect_make_links() type {
                     return null;
                 };
 
-                const lhs_tuple = _path_segments_to_tuple(info.lhs_path) orelse {
+                const lhs_tuple = _edge_traversals_to_tuple(info.lhs_path) orelse {
                     py.Py_DECREF(make_link_obj);
                     py.Py_DECREF(list_obj.?);
                     return null;
                 };
-                const rhs_tuple = _path_segments_to_tuple(info.rhs_path) orelse {
+                const rhs_tuple = _edge_traversals_to_tuple(info.rhs_path) orelse {
                     py.Py_DECREF(make_link_obj);
                     py.Py_DECREF(lhs_tuple);
                     py.Py_DECREF(list_obj.?);
@@ -5927,7 +5950,7 @@ fn wrap_typegraph_get_reference_path() type {
             };
             defer allocator.free(path);
 
-            const tuple_obj = _path_segments_to_tuple(path) orelse return null;
+            const tuple_obj = _edge_traversals_to_tuple(path) orelse return null;
             return tuple_obj;
         }
     };
