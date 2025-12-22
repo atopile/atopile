@@ -325,8 +325,8 @@ test "down_connect" {
     const ElectricalType = try tg.add_type("Electrical");
     // const LinkType = try tg.add_type("Link");
 
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV", null);
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV", null);
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV", null, null, false);
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV", null, null, false);
 
     const EP_1 = try tg.instantiate_node(ElectricPowerType);
     const HV_1 = EdgeComposition.get_child_by_identifier(EP_1, "HV").?;
@@ -521,8 +521,8 @@ test "hierarchy_short" {
     const ElectricPowerType = try tg.add_type("ElectricPower");
     const ElectricalType = try tg.add_type("Electrical");
 
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV", null);
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV", null);
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV", null, null, false);
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV", null, null, false);
 
     const electric_power = try tg.instantiate_node(ElectricPowerType);
     const hv_pin = EdgeComposition.get_child_by_identifier(electric_power, "HV").?;
@@ -553,8 +553,8 @@ test "shallow_filter_allows_alternative_route" {
     const ElectricPowerType = try tg.add_type("ElectricPower");
     const ElectricalType = try tg.add_type("Electrical");
 
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV", null);
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV", null);
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV", null, null, false);
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV", null, null, false);
 
     const start_parent = try tg.instantiate_node(ElectricPowerType);
     const start_child = EdgeComposition.get_child_by_identifier(start_parent, "HV").?;
@@ -591,10 +591,10 @@ test "chains_mixed_shallow_nested" {
     const HVType = try tg.add_type("HV");
     const LVType = try tg.add_type("LV");
 
-    _ = try tg.add_make_child(ElType, LineType, "line", null);
-    _ = try tg.add_make_child(ElType, RefType, "reference", null);
-    _ = try tg.add_make_child(RefType, HVType, "hv", null);
-    _ = try tg.add_make_child(RefType, LVType, "lv", null);
+    _ = try tg.add_make_child(ElType, LineType, "line", null, null, false);
+    _ = try tg.add_make_child(ElType, RefType, "reference", null, null, false);
+    _ = try tg.add_make_child(RefType, HVType, "hv", null, null, false);
+    _ = try tg.add_make_child(RefType, LVType, "lv", null, null, false);
 
     var el: [3]graph.BoundNodeReference = undefined;
     for (&el) |*slot| slot.* = try tg.instantiate_node(ElType);
@@ -654,8 +654,8 @@ test "split_flip_negative" {
     const HighType = try tg.add_type("High");
     const LowType = try tg.add_type("Low");
 
-    _ = try tg.add_make_child(HighType, LowType, "lower1", null);
-    _ = try tg.add_make_child(HighType, LowType, "lower2", null);
+    _ = try tg.add_make_child(HighType, LowType, "lower1", null, null, false);
+    _ = try tg.add_make_child(HighType, LowType, "lower2", null, null, false);
 
     var high: [2]graph.BoundNodeReference = undefined;
     for (&high) |*slot| slot.* = try tg.instantiate_node(HighType);
@@ -685,8 +685,8 @@ test "up_connect_simple_two_negative" {
     const Lower1Type = try tg.add_type("Lower1");
     const Lower2Type = try tg.add_type("Lower2");
 
-    _ = try tg.add_make_child(HighType, Lower1Type, "lower1", null);
-    _ = try tg.add_make_child(HighType, Lower2Type, "lower2", null);
+    _ = try tg.add_make_child(HighType, Lower1Type, "lower1", null, null, false);
+    _ = try tg.add_make_child(HighType, Lower2Type, "lower2", null, null, false);
 
     var high: [2]graph.BoundNodeReference = undefined;
     for (&high) |*slot| slot.* = try tg.instantiate_node(HighType);
@@ -821,11 +821,11 @@ test "type_graph_pathfinder" {
     const I2C_SDA = try tg.add_type("I2C_SDA");
 
     // I2C has dedicated SCL and SDA child types
-    _ = try tg.add_make_child(I2C, I2C_SCL, null, null);
-    _ = try tg.add_make_child(I2C, I2C_SDA, null, null);
+    _ = try tg.add_make_child(I2C, I2C_SCL, null, null, null, false);
+    _ = try tg.add_make_child(I2C, I2C_SDA, null, null, null, false);
 
     // Sensor has an I2C interface
-    _ = try tg.add_make_child(Sensor, I2C, null, null);
+    _ = try tg.add_make_child(Sensor, I2C, null, null, null, false);
 
     // Create sensor instances
     const sensor1 = try tg.instantiate_node(Sensor);
