@@ -49,6 +49,7 @@
         font-size: 1.5rem;
         margin-bottom: 10px;
         color: var(--ctp-text);
+        text-align: center;
       }
 
       .summary {
@@ -57,6 +58,13 @@
         background: var(--ctp-mantle);
         border-radius: 5px;
         border: 1px solid var(--ctp-surface0);
+        display: flex;
+        align-items: flex-start;
+        gap: 15px;
+      }
+
+      .summary .text-content {
+        line-height: 135%;
       }
 
       .progress-bar {
@@ -457,19 +465,21 @@
 
       /* Logo styling */
       .logo-container {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        z-index: 100;
+        margin-left: auto;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
       }
 
       .logo-container img {
-        width: 64px;
-        height: 64px;
+        max-height: 100%;
+        width: auto;
+        height: auto;
         border-radius: 8px;
         background-color: var(--ctp-mantle);
         padding: 4px;
         border: 1px solid var(--ctp-surface0);
+        object-fit: contain;
       }
     </style>
     <script>
@@ -481,9 +491,22 @@
           cb.addEventListener("change", filterTable);
         });
 
+        // Scale logo to match text content height
+        scaleLogoToText();
+
         // Start polling if running
         setInterval(checkAndReload, 2000);
       });
+
+      function scaleLogoToText() {
+        var textContent = document.querySelector(".text-content");
+        var logoContainer = document.querySelector(".logo-container");
+
+        if (textContent && logoContainer) {
+          var textHeight = textContent.offsetHeight;
+          logoContainer.style.height = textHeight + "px";
+        }
+      }
 
       async function checkAndReload() {
         // Don't reload if any modal is open
@@ -532,6 +555,9 @@
             if (currentSortColumn !== -1) {
               sortGrid(currentSortColumn, currentSortDir);
             }
+
+            // Rescale logo to match updated text content
+            scaleLogoToText();
           }
         } catch (e) {
           console.error("Failed to reload", e);
@@ -705,37 +731,39 @@
     </script>
   </head>
   <body>
-    <div class="logo-container">
-      <img
-        src="../../src/vscode-atopile/ato_logo_256x256.png"
-        alt="Atopile Logo"
-      />
-    </div>
     <h1>Test Execution Report</h1>
 
     <div class="summary">
-      <span id="status-text"><strong>Status:</strong> [[status]]</span> <br />
-      <strong>Workers:</strong> [[workers_active]] active / [[workers_total]]
-      total <br />
-      <strong>Duration:</strong> [[total_duration]] <br />
-      <strong>Sum Duration:</strong> [[total_summed_duration]] <br />
-      <strong>Total Memory:</strong> [[total_memory]] <br />
-      <strong>Updated at:</strong> [[finishing_time]] <br />
-      <strong>Passed:</strong> <span class="passed">[[passed]]</span> |
-      <strong>Failed:</strong> <span class="failed">[[failed]]</span> |
-      <strong>Errors:</strong> <span class="error">[[errors]]</span> |
-      <strong>Crashed:</strong> <span class="crashed">[[crashed]]</span> |
-      <strong>Skipped:</strong> <span class="skipped">[[skipped]]</span> |
-      <strong>Running:</strong> <span class="running">[[running]]</span> |
-      <strong>Queued:</strong> <span class="queued">[[remaining]]</span>
-      <br />
-      <strong>Comparison:</strong>
-      <span class="compare-badge badge-regression"
-        >[[regressions]] regressions</span
-      >
-      <span class="compare-badge badge-fixed">[[fixed]] fixed</span>
-      <span class="compare-badge badge-new">[[new_tests]] new</span>
-      [[baseline_info_html]] [[commit_info_html]] [[ci_info_html]]
+      <div class="text-content">
+        <span id="status-text"><strong>Status:</strong> [[status]]</span> <br />
+        <strong>Workers:</strong> [[workers_active]] active / [[workers_total]]
+        total <br />
+        <strong>Duration:</strong> [[total_duration]] <br />
+        <strong>Sum Duration:</strong> [[total_summed_duration]] <br />
+        <strong>Total Memory:</strong> [[total_memory]] <br />
+        <strong>Updated at:</strong> [[finishing_time]] <br />
+        <strong>Passed:</strong> <span class="passed">[[passed]]</span> |
+        <strong>Failed:</strong> <span class="failed">[[failed]]</span> |
+        <strong>Errors:</strong> <span class="error">[[errors]]</span> |
+        <strong>Crashed:</strong> <span class="crashed">[[crashed]]</span> |
+        <strong>Skipped:</strong> <span class="skipped">[[skipped]]</span> |
+        <strong>Running:</strong> <span class="running">[[running]]</span> |
+        <strong>Queued:</strong> <span class="queued">[[remaining]]</span>
+        <br />
+        <strong>Comparison:</strong>
+        <span class="compare-badge badge-regression"
+          >[[regressions]] regressions</span
+        >
+        <span class="compare-badge badge-fixed">[[fixed]] fixed</span>
+        <span class="compare-badge badge-new">[[new_tests]] new</span>
+        [[baseline_info_html]] [[commit_info_html]] [[ci_info_html]]
+      </div>
+      <div class="logo-container">
+        <img
+          src="../src/vscode-atopile/ato_logo_256x256.png"
+          alt="Atopile Logo"
+        />
+      </div>
     </div>
 
     <div class="progress-bar">
