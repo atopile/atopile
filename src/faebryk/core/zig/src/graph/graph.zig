@@ -5,11 +5,12 @@ pub const str = []const u8;
 
 const base_allocator = std.heap.page_allocator;
 var arena_allocator = std.heap.ArenaAllocator.init(base_allocator);
+var global_graph_allocator: std.mem.Allocator = arena_allocator.allocator();
 
-// Dynamic storage using arena allocator
-var Nodes = std.ArrayList(Node).init(arena_allocator.allocator());
-var Edges = std.ArrayList(Edge).init(arena_allocator.allocator());
-var Attrs = std.ArrayList(DynamicAttributes).init(arena_allocator.allocator());
+// Static storage for edges and attributes (temporary - will be replaced with proper allocator)
+var Nodes: [8 * 1024 * 1024]Node = undefined;
+var Edges: [16 * 1024 * 1024]Edge = undefined;
+var Attrs: [4 * 1024 * 1024]DynamicAttributes = undefined;
 
 // =============================================================================
 // Data types
@@ -97,7 +98,7 @@ pub const DynamicAttributes = struct {
         if (dst_ref.is_null()) {
             @panic("Cannot copy into null DynamicAttributesReference");
         }
-        const dst = &Attrs.items[dst_ref.uuid];
+        const dst = &Attrs[dst_ref.uuid];
         for (self.values[0..self.in_use]) |value| {
             if (dst.in_use == dst.values.len) {
                 @panic("Dynamic attributes are full");
@@ -195,13 +196,9 @@ pub const NodeReference = struct {
 
     pub fn init() NodeReference {
         Node.counter += 1;
-        const uuid = Node.counter;
-        if (uuid == 1) {
-            @branchHint(.unlikely);
-            Nodes.append(.{}) catch @panic("OOM");
-        }
-        Nodes.append(.{}) catch @panic("OOM");
-        return .{ .uuid = uuid };
+        return .{
+            .uuid = Node.counter,
+        };
     }
 
     pub fn is_same(self: @This(), other: @This()) bool {
@@ -213,24 +210,24 @@ pub const NodeReference = struct {
     }
 
     pub fn put(self: @This(), identifier: str, value: Literal) void {
-        _ = Nodes.items[self.uuid].dynamic.ensure();
-        Nodes.items[self.uuid].dynamic.put(identifier, value);
+        _ = Nodes[self.uuid].dynamic.ensure();
+        Nodes[self.uuid].dynamic.put(identifier, value);
     }
 
     pub fn get(self: @This(), identifier: str) ?Literal {
-        return Nodes.items[self.uuid].dynamic.get(identifier);
+        return Nodes[self.uuid].dynamic.get(identifier);
     }
 
     /// Copy dynamic attributes from a DynamicAttributes struct into this node's dynamic attributes
     pub fn copy_dynamic_attributes_into(self: @This(), source: *const DynamicAttributes) void {
         if (source.in_use == 0) return;
-        _ = Nodes.items[self.uuid].dynamic.ensure();
-        source.copy_into(Nodes.items[self.uuid].dynamic);
+        _ = Nodes[self.uuid].dynamic.ensure();
+        source.copy_into(Nodes[self.uuid].dynamic);
     }
 
     /// Visit all attributes on this node
     pub fn visit_attributes(self: @This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
-        Nodes.items[self.uuid].dynamic.visit(ctx, f);
+        Nodes[self.uuid].dynamic.visit(ctx, f);
     }
 };
 
@@ -240,21 +237,15 @@ pub const EdgeReference = struct {
     // --- Constructor ---
     pub fn init(source: NodeReference, target: NodeReference, edge_type: Edge.EdgeType) EdgeReference {
         Edge.counter += 1;
-        const uuid = Edge.counter;
-        if (uuid == 1) {
-            @branchHint(.unlikely);
-            Edges.append(.{
-                .source = undefined,
-                .target = undefined,
-                .flags = .{ .edge_type = 0 },
-            }) catch @panic("OOM");
-        }
-        Edges.append(.{
+        const out: EdgeReference = .{
+            .uuid = Edge.counter,
+        };
+        Edges[out.uuid] = .{
             .source = source,
             .target = target,
             .flags = .{ .edge_type = edge_type, .directional = 0 },
-        }) catch @panic("OOM");
-        return .{ .uuid = uuid };
+        };
+        return out;
     }
 
     // --- Instance methods ---
@@ -266,44 +257,44 @@ pub const EdgeReference = struct {
         return self.uuid;
     }
 
-    // --- Accessors (read from dynamic storage) ---
+    // --- Accessors (read from static storage) ---
     pub fn get_source_node(self: @This()) NodeReference {
-        return Edges.items[self.uuid].source;
+        return Edges[self.uuid].source;
     }
 
     pub fn get_target_node(self: @This()) NodeReference {
-        return Edges.items[self.uuid].target;
+        return Edges[self.uuid].target;
     }
 
     pub fn set_target_node(self: @This(), target: NodeReference) void {
-        Edges.items[self.uuid].target = target;
+        Edges[self.uuid].target = target;
     }
 
     pub fn get_attribute_directional(self: @This()) bool {
-        return Edges.items[self.uuid].flags.directional == 1;
+        return Edges[self.uuid].flags.directional == 1;
     }
 
     pub fn get_attribute_edge_type(self: @This()) Edge.EdgeType {
-        return Edges.items[self.uuid].flags.edge_type;
+        return Edges[self.uuid].flags.edge_type;
     }
 
     pub fn get(self: @This(), identifier: str) ?Literal {
-        return Edges.items[self.uuid].dynamic.get(identifier);
+        return Edges[self.uuid].dynamic.get(identifier);
     }
 
-    // --- Mutators (write to dynamic storage) ---
+    // --- Mutators (write to static storage) ---
     pub fn set_attribute_directional(self: @This(), directional: bool) void {
-        Edges.items[self.uuid].flags.directional = if (directional) 1 else 0;
+        Edges[self.uuid].flags.directional = if (directional) 1 else 0;
     }
 
     pub fn put(self: @This(), identifier: str, value: Literal) void {
-        _ = Edges.items[self.uuid].dynamic.ensure();
-        Edges.items[self.uuid].dynamic.put(identifier, value);
+        _ = Edges[self.uuid].dynamic.ensure();
+        Edges[self.uuid].dynamic.put(identifier, value);
     }
 
     // --- Computed properties ---
     pub fn get_other_node(self: @This(), N: NodeReference) NodeReference {
-        const e = &Edges.items[self.uuid];
+        const e = &Edges[self.uuid];
         if (e.source.is_same(N)) {
             return e.target;
         } else if (e.target.is_same(N)) {
@@ -320,7 +311,7 @@ pub const EdgeReference = struct {
     /// Returns source if directional, null otherwise
     pub fn get_directed_source(self: @This()) ?NodeReference {
         if (self.get_attribute_directional()) {
-            return Edges.items[self.uuid].source;
+            return Edges[self.uuid].source;
         }
         return null;
     }
@@ -328,34 +319,34 @@ pub const EdgeReference = struct {
     /// Returns target if directional, null otherwise
     pub fn get_directed_target(self: @This()) ?NodeReference {
         if (self.get_attribute_directional()) {
-            return Edges.items[self.uuid].target;
+            return Edges[self.uuid].target;
         }
         return null;
     }
 
     pub fn set_attribute_edge_type(self: @This(), edge_type: Edge.EdgeType) void {
-        Edges.items[self.uuid].flags.edge_type = edge_type;
+        Edges[self.uuid].flags.edge_type = edge_type;
     }
 
     pub fn get_order(self: @This()) u7 {
-        return Edges.items[self.uuid].flags.order;
+        return Edges[self.uuid].flags.order;
     }
 
     pub fn set_order(self: @This(), order: u7) void {
-        Edges.items[self.uuid].flags.order = order;
+        Edges[self.uuid].flags.order = order;
     }
 
     /// Name is stored in dynamic attributes under "name" key
     pub fn set_attribute_name(self: @This(), name: ?str) void {
         if (name) |n| {
-            _ = Edges.items[self.uuid].dynamic.ensure();
-            Edges.items[self.uuid].dynamic.put("name", .{ .String = n });
+            _ = Edges[self.uuid].dynamic.ensure();
+            Edges[self.uuid].dynamic.put("name", .{ .String = n });
         }
     }
 
     /// Get the name stored in dynamic attributes
     pub fn get_attribute_name(self: @This()) ?str {
-        const val = Edges.items[self.uuid].dynamic.get("name");
+        const val = Edges[self.uuid].dynamic.get("name");
         if (val) |v| {
             return v.String;
         }
@@ -365,8 +356,8 @@ pub const EdgeReference = struct {
     /// Copy dynamic attributes from a DynamicAttributes struct into this edge's dynamic attributes
     pub fn copy_dynamic_attributes_into(self: @This(), source: *const DynamicAttributes) void {
         if (source.in_use == 0) return;
-        _ = Edges.items[self.uuid].dynamic.ensure();
-        source.copy_into(Edges.items[self.uuid].dynamic);
+        _ = Edges[self.uuid].dynamic.ensure();
+        source.copy_into(Edges[self.uuid].dynamic);
     }
 };
 
@@ -376,17 +367,10 @@ pub const DynamicAttributesReference = struct {
     /// Create a new initialized DynamicAttributesReference
     pub fn init() DynamicAttributesReference {
         DynamicAttributes.counter += 1;
-        const uuid = DynamicAttributes.counter;
-        if (uuid == 1) {
-            @branchHint(.unlikely);
-            Attrs.append(.{ .in_use = 0 }) catch @panic("OOM");
-        }
-        //if (DynamicAttributes.counter >= Attrs.len) {
-        //    @panic("DynamicAttributes counter overflow");
-        //}
-        //Attrs[DynamicAttributes.counter] = .{};
-        Attrs.append(.{ .in_use = 0 }) catch @panic("OOM");
-        return .{ .uuid = uuid };
+        Attrs[DynamicAttributes.counter] = .{};
+        return .{
+            .uuid = DynamicAttributes.counter,
+        };
     }
 
     /// Create a null reference (default state)
@@ -409,7 +393,7 @@ pub const DynamicAttributesReference = struct {
 
     pub fn visit(self: @This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
         if (self.is_null()) return;
-        const attrs = &Attrs.items[self.uuid];
+        const attrs = &Attrs[self.uuid];
         for (attrs.values[0..attrs.in_use]) |value| {
             f(ctx, value.identifier, value.value, true);
         }
@@ -419,7 +403,7 @@ pub const DynamicAttributesReference = struct {
         if (self.is_null()) {
             @panic("Cannot put on null DynamicAttributesReference - use ensure() first");
         }
-        const attrs = &Attrs.items[self.uuid];
+        const attrs = &Attrs[self.uuid];
         if (attrs.in_use == attrs.values.len) {
             @panic("Dynamic attributes are full");
         }
@@ -429,7 +413,7 @@ pub const DynamicAttributesReference = struct {
 
     pub fn get(self: @This(), identifier: str) ?Literal {
         if (self.is_null()) return null;
-        const attrs = &Attrs.items[self.uuid];
+        const attrs = &Attrs[self.uuid];
         for (attrs.values[0..attrs.in_use]) |value| {
             // Fast path: pointer + length comparison (works for string literals which share memory)
             // Fall back to byte comparison only if lengths match but pointers differ
@@ -449,8 +433,8 @@ pub const DynamicAttributesReference = struct {
         if (other.is_null()) {
             @panic("Cannot copy into null DynamicAttributesReference");
         }
-        const src = &Attrs.items[self.uuid];
-        const dst = &Attrs.items[other.uuid];
+        const src = &Attrs[self.uuid];
+        const dst = &Attrs[other.uuid];
         if (dst.in_use > 0) {
             @panic("Other dynamic attributes are already in use");
         }
