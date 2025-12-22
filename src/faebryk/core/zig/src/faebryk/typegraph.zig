@@ -2329,25 +2329,20 @@ test "basic instantiation" {
     // Build type graph
     const Electrical = try tg.add_type("Electrical");
     const Capacitor = try tg.add_type("Capacitor");
-    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null);
-    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null, null, false);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null, null, false);
     const Resistor = try tg.add_type("Resistor");
     // Test: add node attributes to p1 MakeChild
     var res_p1_attrs = TypeGraph.MakeChildNode.build(null);
     res_p1_attrs.dynamic.put("test_attr", .{ .String = "test_value" });
     res_p1_attrs.dynamic.put("pin_number", .{ .Int = 42 });
-    const res_p1_makechild = try tg.add_make_child(Resistor, Electrical, "p1", &res_p1_attrs);
+    const res_p1_makechild = try tg.add_make_child(Resistor, Electrical, "p1", &res_p1_attrs, null, false);
     std.debug.print("RES_P1_MAKECHILD: {s}\n", .{try EdgeComposition.get_name(EdgeComposition.get_parent_edge(res_p1_makechild).?.edge)});
-    _ = try tg.add_make_child(Resistor, Electrical, "p2", null);
-    _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null);
+    _ = try tg.add_make_child(Resistor, Electrical, "p2", null, null, false);
+    _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null, null, false);
 
     var node_attrs = TypeGraph.MakeChildNode.build("test_string");
-    _ = try tg.add_make_child(
-        Capacitor,
-        Electrical,
-        "tp",
-        &node_attrs,
-    );
+    _ = try tg.add_make_child(Capacitor, Electrical, "tp", &node_attrs, null, false);
 
     // Build instance graph
     const resistor = try tg.instantiate_node(Resistor);
@@ -2444,13 +2439,13 @@ test "typegraph iterators and mount chains" {
     const Inner = try tg.add_type("Inner");
     const PointerSequence = try tg.add_type("PointerSequence");
 
-    const members = try tg.add_make_child(top, PointerSequence, "members", null);
-    _ = try tg.add_make_child(top, Inner, "base", null);
-    const extra = try tg.add_make_child(top, Inner, "extra", null);
+    const members = try tg.add_make_child(top, PointerSequence, "members", null, null, false);
+    _ = try tg.add_make_child(top, Inner, "base", null, null, false);
+    const extra = try tg.add_make_child(top, Inner, "extra", null, null, false);
     _ = members;
     _ = extra;
-    _ = try tg.add_make_child(top, Inner, "element0", null);
-    _ = try tg.add_make_child(top, Inner, "element1", null);
+    _ = try tg.add_make_child(top, Inner, "0", null, null, false);
+    _ = try tg.add_make_child(top, Inner, "1", null, null, false);
     const base_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("base")});
     const extra_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("extra")});
     const link_attrs = EdgeCreationAttributes{
@@ -2556,11 +2551,11 @@ test "get_type_instance_overview" {
     // Build type graph with some types
     const Electrical = try tg.add_type("Electrical");
     const Capacitor = try tg.add_type("Capacitor");
-    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null);
-    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null, null, false);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null, null, false);
     const Resistor = try tg.add_type("Resistor");
-    _ = try tg.add_make_child(Resistor, Electrical, "p1", null);
-    _ = try tg.add_make_child(Resistor, Electrical, "p2", null);
+    _ = try tg.add_make_child(Resistor, Electrical, "p1", null, null, false);
+    _ = try tg.add_make_child(Resistor, Electrical, "p2", null, null, false);
 
     // Create some instances
     _ = try tg.instantiate_node(Capacitor);
@@ -2620,8 +2615,8 @@ test "resolve path through trait and pointer edges" {
     _ = EdgeTrait.add_trait_instance(CanBridge, implements_trait_instance.node);
 
     const Resistor = try tg.add_type("Resistor");
-    _ = try tg.add_make_child(Resistor, Electrical, "p1", null);
-    _ = try tg.add_make_child(Resistor, Electrical, "p2", null);
+    _ = try tg.add_make_child(Resistor, Electrical, "p1", null, null, false);
+    _ = try tg.add_make_child(Resistor, Electrical, "p2", null, null, false);
 
     // 2. Create a Resistor instance with p1, p2 children
     const resistor_instance = try tg.instantiate_node(Resistor);
@@ -2692,7 +2687,7 @@ test "resolve path through trait and pointer edges" {
     // Create a TopModule that contains the resistor as a child
 
     const TopModule = try tg.add_type("TopModule");
-    _ = try tg.add_make_child(TopModule, Resistor, "resistor", null);
+    _ = try tg.add_make_child(TopModule, Resistor, "resistor", null, null, false);
 
     // Create TopModule instance - this will auto-create resistor child
     const top_instance = try tg.instantiate_node(TopModule);
