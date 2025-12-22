@@ -30,8 +30,7 @@ module VoltageDivider:
     r_total: Ω
 
     # Connections
-    power.hv ~ r_top.p1; r_top.p2 ~ output.line
-    output.line ~ r_bottom.p1; r_bottom.p2 ~ power.lv
+    power.hv ~> r_top ~> output.line ~> r_bottom ~> power.lv
 
     # Link interface voltages
     assert v_out is output.reference.voltage

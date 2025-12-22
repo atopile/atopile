@@ -48,7 +48,9 @@ def test_examples_build_fast(
 
     # expected warnings:
     # - missing kicad-cli for '3d-model' target (in CI only)
-    assert stderr.count("⚠") in (0, 1)
+    # - container modules without footprints (e.g. layout_reuse)
+    # - cache updates for KiCAD file format changes
+    assert stderr.count("⚠") <= 3
 
 
 @pytest.mark.slow
@@ -84,4 +86,6 @@ def test_examples_build_slow(
 
     # expected warnings:
     # - missing kicad-cli for '3d-model' target (in CI only)
-    assert stderr.count("⚠") in (0, 1)
+    # - container modules without footprints (e.g. layout_reuse)
+    # - cache updates for KiCAD file format changes
+    assert stderr.count("⚠") <= 3
