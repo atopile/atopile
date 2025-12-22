@@ -6,5 +6,5 @@ paths:
 
 builds:
   default:
-    entry: passives.py:App
+    entry: passives.ato:App
 
