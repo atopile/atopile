@@ -943,10 +943,6 @@ class NumericParameter(fabll.Node):
             and not w.is_resolved()
         ]
 
-        print("params_missing_units:")
-        for p in params_missing_units:
-            print(p.get_trait(is_parameter_operatable).compact_repr(), p)
-
         for param in params_missing_units:
             p_op = param.can_be_operand.get()
             constraining_operands = {
