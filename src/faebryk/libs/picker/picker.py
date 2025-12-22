@@ -19,15 +19,11 @@ from faebryk.libs.util import (
     Advancable,
     ConfigFlag,
     EquivalenceClasses,
-    KeyErrorAmbiguous,
-    KeyErrorNotFound,
+    KeyErrorAmbiguous,  # noqa: F401
     Tree,
     debug_perf,
     groupby,
     indented_container,
-    not_none,
-    partition,
-    try_or,
 )
 
 if TYPE_CHECKING:
@@ -128,7 +124,9 @@ class does_not_require_picker_check(fabll.Node):
 
 
 # module should be root node
-def get_pick_tree(module: fabll.Node) -> Tree[F.is_pickable]:
+def get_pick_tree(
+    module_or_interface_obj: fabll.Node, explore_only: bool = False
+) -> Tree[F.is_pickable]:
     # TODO no specialization
     # if module.has_trait(fabll.is_module):
     #     module = module.get_most_special()
@@ -136,48 +134,66 @@ def get_pick_tree(module: fabll.Node) -> Tree[F.is_pickable]:
     tree = Tree()
     merge_tree = tree
 
-    traits = module.try_get_traits(
-        F.has_part_picked,
-        F.has_part_removed,
-        F.is_pickable_by_type,
-        F.is_pickable_by_supplier_id,
-        F.is_pickable_by_part_number,
-    )
+    module = module_or_interface_obj.try_get_trait(fabll.is_module)
 
-    if traits.get(F.has_part_picked):
-        return tree
-
-    # Handle has_part_removed: create a has_part_picked trait with the removed marker
-    if traits.get(F.has_part_removed):
-        picked_trait = fabll.Traits.create_and_add_instance_to(
-            module, F.has_part_picked
+    if module:
+        traits = module_or_interface_obj.try_get_traits(
+            F.has_part_picked,
+            F.has_part_removed,
+            F.is_pickable_by_type,
+            F.is_pickable_by_supplier_id,
         )
-        fabll.Traits.create_and_add_instance_to(picked_trait, F.has_part_removed)
-        return tree
 
-    if pbt := traits.get(F.is_pickable_by_type):
-        merge_tree = Tree()
-        pickable_trait = pbt.get_trait(F.is_pickable)
-        tree[pickable_trait] = merge_tree
-    elif pbsi := traits.get(F.is_pickable_by_supplier_id):
-        merge_tree = Tree()
-        pickable_trait = pbsi.get_trait(F.is_pickable)
-        tree[pickable_trait] = merge_tree
-    elif pbpn := traits.get(F.is_pickable_by_part_number):
-        merge_tree = Tree()
-        pickable_trait = pbpn.get_trait(F.is_pickable)
-        tree[pickable_trait] = merge_tree
+        if traits.get(F.has_part_picked):
+            return tree
 
-    for child in module.get_children(
+        # Handle has_part_removed: create a has_part_picked trait with the removed marker
+        if traits.get(F.has_part_removed):
+            picked_trait = fabll.Traits.create_and_add_instance_to(
+                module_or_interface_obj, F.has_part_picked
+            )
+            fabll.Traits.create_and_add_instance_to(picked_trait, F.has_part_removed)
+            return tree
+
+        explore = True
+        if pbt := traits.get(F.is_pickable_by_type):
+            merge_tree = Tree()
+            pickable_trait = pbt.get_trait(F.is_pickable)
+            tree[pickable_trait] = merge_tree
+        elif pbsi := traits.get(F.is_pickable_by_supplier_id):
+            merge_tree = Tree()
+            pickable_trait = pbsi.get_trait(F.is_pickable)
+            tree[pickable_trait] = merge_tree
+        elif pbpn := F.is_pickable_by_part_number.try_check_or_convert(module):
+            merge_tree = Tree()
+            pickable_trait = pbpn.get_trait(F.is_pickable)
+            tree[pickable_trait] = merge_tree
+        else:
+            explore = False
+        explore_only = explore_only or explore
+
+    module_children = module_or_interface_obj.get_children(
         direct_only=True,
         types=fabll.Node,
         required_trait=fabll.is_module,
-    ) + module.get_children(
+    )
+    interface_children = module_or_interface_obj.get_children(
         direct_only=True,
         types=fabll.Node,
         required_trait=fabll.is_interface,
-    ):
-        child_tree = get_pick_tree(child)
+    )
+
+    if module and not module_children and not explore_only:
+        if module_or_interface_obj.has_trait(F.Footprints.has_associated_footprint):
+            logger.warning(f"No pickers for {module_or_interface_obj.get_full_name()}")
+        else:
+            logger.warning(
+                f"ATTENTION: No pickers and no footprint for {module_or_interface_obj.get_full_name()}."
+                " Will not appear in netlist or pcb."
+            )
+
+    for child in module_children + interface_children:
+        child_tree = get_pick_tree(child, explore_only=explore_only)
         merge_tree.update(child_tree)
 
     return tree
@@ -197,68 +213,6 @@ def update_pick_tree(tree: Tree[F.is_pickable]) -> tuple[Tree[F.is_pickable], bo
         return filtered_tree, True
 
     return filtered_tree, False
-
-
-def check_missing_picks(module: fabll.Node):
-    # - not skip self pick
-    # - no parent with part picked
-    # - not specialized
-    # - no module children
-    # - no parent with picker
-
-    # Probably just need to check for these two traits
-    # - has_associated_footprint trait
-    # - has_part_picked trait
-    # - is_pickable trait or is_pickable_by_type trait
-    missing = module.get_children(
-        types=fabll.Node,
-        required_trait=fabll.is_module,
-        direct_only=False,
-        include_root=True,
-        # leaf == no children
-        f_filter=lambda m:
-        # no parent with part picked
-        not try_or(
-            lambda: m.get_parent_with_trait(F.has_part_picked),
-            default=False,
-            catch=KeyErrorNotFound,
-        )
-        # no parent with picker
-        and not try_or(
-            lambda: any(
-                try_or(
-                    lambda: m.get_parent_with_trait(t),
-                    default=False,
-                    catch=KeyErrorNotFound,
-                )
-                for t in (
-                    # TODO: really just want to look for is_pickable,
-                    # which the other traits have
-                    F.is_pickable_by_type,
-                    F.is_pickable_by_part_number,
-                    F.is_pickable_by_supplier_id,
-                )
-            ),
-            default=True,
-            catch=KeyErrorAmbiguous,
-        ),
-    )
-
-    if missing:
-        no_fp, with_fp = map(
-            list,
-            partition(
-                lambda m: m.has_trait(F.Footprints.has_associated_footprint), missing
-            ),
-        )
-
-        if with_fp:
-            logger.warning(f"No pickers for {indented_container(with_fp)}")
-        if no_fp:
-            logger.warning(
-                f"No pickers and no footprint for {indented_container(no_fp)}."
-                "\nATTENTION: These modules will not appear in netlist or pcb."
-            )
 
 
 def _list_to_hack_tree(modules: Iterable[F.is_pickable]) -> Tree[F.is_pickable]:
@@ -456,7 +410,6 @@ def pick_part_recursively(
     pick_tree = get_pick_tree(module)
     if progress:
         progress.set_total(len(pick_tree))
-    check_missing_picks(module)
 
     try:
         pick_topologically(pick_tree, solver, progress)

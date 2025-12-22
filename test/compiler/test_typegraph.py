@@ -2684,7 +2684,7 @@ class TestAssignmentOverride:
             )
 
     def test_lcsc_id_attaches_trait(self):
-        """Verify `node.lcsc_id = "C12345"` attaches has_explicit_part trait."""
+        """Verify `node.lcsc_id = "C12345"` attaches is_pickable_by_supplier_id trait."""
         _, tg, _, result = build_type(
             """
             import Resistor
@@ -2704,13 +2704,13 @@ class TestAssignmentOverride:
         ]
         identifiers = [id for id, _ in make_children if id]
 
-        assert "_trait_resistor_has_explicit_part" in identifiers
+        assert "_trait_resistor_is_pickable_by_supplier_id" in identifiers
 
         # Check that the trait was linked to the resistor
         assert _check_make_links(
             tg,
             app_type,
-            expected=[(["resistor"], ["_trait_resistor_has_explicit_part"])],
+            expected=[(["resistor"], ["_trait_resistor_is_pickable_by_supplier_id"])],
         )
 
     def test_datasheet_url_attaches_trait(self):

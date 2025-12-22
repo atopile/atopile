@@ -250,7 +250,7 @@ class is_expression(fabll.Node):
         (A + B) * C -> {A, B, C}
         ```
         """
-        result: set[F.Parameters.is_parameter_operatable] = set()
+        result: set["F.Parameters.is_parameter_operatable"] = set()
         for operand in self.get_operands():
             if (po := operand.as_parameter_operatable.try_get()) and (
                 expr := po.as_expression.try_get()

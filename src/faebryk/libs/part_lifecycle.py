@@ -45,7 +45,6 @@ from faebryk.libs.util import (
     re_in,
     robustly_rm_dir,
     sanitize_filepath_part,
-    try_or,
 )
 
 logger = logging.getLogger(__name__)

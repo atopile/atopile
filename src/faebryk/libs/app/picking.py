@@ -90,24 +90,12 @@ def load_part_info_from_pcb(tg: fbrk.TypeGraph):
             )
         elif lcsc_id:
             fabll.Traits.create_and_add_instance_to(
-                node=node, trait=F.has_explicit_part
-            ).setup_by_supplier(
-                supplier_partno=lcsc_id,
-                supplier_id="lcsc",
-            )
-            fabll.Traits.create_and_add_instance_to(
                 node=node, trait=F.is_pickable_by_supplier_id
             ).setup(
                 supplier_part_id=lcsc_id,
                 supplier=F.is_pickable_by_supplier_id.Supplier.LCSC,
             )
         elif manufacturer and partno:
-            fabll.Traits.create_and_add_instance_to(
-                node=node, trait=F.has_explicit_part
-            ).setup_by_mfr(
-                mfr=manufacturer,
-                partno=partno,
-            )
             fabll.Traits.create_and_add_instance_to(
                 node=node, trait=F.is_pickable_by_part_number
             ).setup(manufacturer=manufacturer, partno=partno)

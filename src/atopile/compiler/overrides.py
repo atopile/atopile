@@ -105,39 +105,24 @@ _ASSIGNMENT_OVERRIDES: dict[str, TraitOverrideSpec] = {
         make_trait_field=lambda size: F.has_package_requirements.MakeChild(size=size),
     ),
     "lcsc_id": TraitOverrideSpec(
-        trait_class=F.has_explicit_part,
+        trait_class=F.is_pickable_by_supplier_id,
         expected_type=str,
-        make_trait_field=lambda v: F.has_explicit_part.MakeChild(
-            mfr=None,
-            partno=None,
-            supplier_id="lcsc",
-            supplier_partno=v,
-            pinmap=None,
-            override_footprint=None,
+        make_trait_field=lambda v: F.is_pickable_by_supplier_id.MakeChild(
+            supplier_part_id=v
         ),
     ),
     "mpn": TraitOverrideSpec(
-        trait_class=F.has_explicit_part,
+        trait_class=F.has_mpn_assigned,
         expected_type=str,
-        make_trait_field=lambda v: F.has_explicit_part.MakeChild(
-            mfr=None,
-            partno=v,
-            supplier_id="lcsc",
-            supplier_partno=None,
-            pinmap=None,
-            override_footprint=None,
+        make_trait_field=lambda v: F.has_mpn_assigned.MakeChild(
+            mpn=v,
         ),
     ),
     "manufacturer": TraitOverrideSpec(
-        trait_class=F.has_explicit_part,
+        trait_class=F.has_mfr_assigned,
         expected_type=str,
-        make_trait_field=lambda v: F.has_explicit_part.MakeChild(
+        make_trait_field=lambda v: F.has_mfr_assigned.MakeChild(
             mfr=v,
-            partno=None,
-            supplier_id="lcsc",
-            supplier_partno=None,
-            pinmap=None,
-            override_footprint=None,
         ),
     ),
     "datasheet_url": TraitOverrideSpec(
@@ -192,10 +177,6 @@ _TRAIT_OVERRIDES: dict[str, TraitOverrideSpec] = {
     "has_part_picked": TraitOverrideSpec(
         trait_class=F.has_part_picked,
         make_trait_field=lambda args: F.has_part_picked.MakeChild(**args),
-    ),
-    "has_explicit_part": TraitOverrideSpec(
-        trait_class=F.has_explicit_part,
-        make_trait_field=lambda args: F.has_explicit_part.MakeChild(**args),
     ),
 }
 

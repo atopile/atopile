@@ -42,7 +42,7 @@ from faebryk.library.has_part_picked import has_part_picked
 from faebryk.library.has_solver import has_solver
 from faebryk.library.has_usage_example import has_usage_example
 from faebryk.library.is_auto_generated import is_auto_generated
-from faebryk.library.is_pickable_by_part_number import is_pickable_by_part_number
+from faebryk.library.is_pickable_by_part_number import is_pickable_by_part_number, has_mpn_assigned, has_mfr_assigned
 from faebryk.library.is_pickable_by_supplier_id import is_pickable_by_supplier_id
 from faebryk.library.is_pickable_by_type import is_pickable_by_type
 import faebryk.library.Units as Units
@@ -56,7 +56,6 @@ from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Filter import Filter
 import faebryk.library.Lead as Lead
 from faebryk.library.XtalIF import XtalIF
-from faebryk.library.has_explicit_part import has_explicit_part
 from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.Regulator import Regulator
@@ -154,7 +153,6 @@ __all__ = [
     "Filter",
     "Lead",
     "XtalIF",
-    "has_explicit_part",
     "has_net_name_affix",
     "requires_external_usage",
     "Regulator",

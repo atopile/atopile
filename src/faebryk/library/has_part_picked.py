@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.util import not_none
 
 if TYPE_CHECKING:
@@ -27,20 +28,6 @@ class has_part_picked(fabll.Node):
         return not_none(self.try_get_part())
 
     def try_get_part(self) -> "PickedPart | None":
-        from faebryk.libs.picker.picker import PickedPart, PickSupplier
-
-        class DummyPickSupplier(PickSupplier):
-            if (
-                supplier_id_literal
-                := self.supplier_id.get().try_extract_constrained_literal()
-            ):
-                supplier_id = supplier_id_literal.get_values()[0]
-            else:
-                supplier_id = ""
-
-            def attach(self, *args, **kwargs):
-                return None
-
         if manufacturer := self.manufacturer.get().try_extract_constrained_literal():
             manufacturer = manufacturer.get_values()[0]
         else:
@@ -59,11 +46,18 @@ class has_part_picked(fabll.Node):
         else:
             return None
 
-        return PickedPart(
+        if (
+            not (
+                supplier_id := self.supplier_id.get().try_extract_constrained_literal()
+            )
+            or not supplier_id.is_singleton()
+            or supplier_id.get_single() != "lcsc"
+        ):
+            raise ValueError(f"Supplier {supplier_id} not supported")
+        return PickedPartLCSC(
             manufacturer=manufacturer,
             partno=partno,
             supplier_partno=supplier_partno,
-            supplier=DummyPickSupplier(),
         )
 
     @property

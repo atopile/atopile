@@ -930,6 +930,7 @@ class NumericParameter(fabll.Node):
         # idea: attach 'needs_unit_resolution' trait to the parameter
         # once done attach `units_resolved` trait to the parameter
         """
+        from faebryk.library.Expressions import is_expression
         from faebryk.library.Units import (
             UnitsNotCommensurableError,
             is_unit,
@@ -950,7 +951,7 @@ class NumericParameter(fabll.Node):
                 for op in param.is_parameter_operatable.get().get_operations(
                     predicates_only=True
                 )
-                for operand in op.get_trait(F.Expressions.is_expression).get_operands()
+                for operand in op.get_trait(is_expression).get_operands()
                 if not (w := operand.try_get_trait(waits_for_unit)) or w.is_resolved()
             } - {p_op}
 

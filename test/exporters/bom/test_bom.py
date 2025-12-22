@@ -54,16 +54,7 @@ def test_bom_picker_pick():
 def test_bom_explicit_pick():
     class TestComponent(fabll.Node):
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
-        _has_electric_reference = fabll.Traits.MakeEdge(
-            F.has_explicit_part.MakeChild(
-                mfr=None,
-                partno=None,
-                supplier_id="lcsc",
-                supplier_partno="C25804",
-                pinmap=None,
-                override_footprint=None,
-            )
-        )
+
         _is_pickable_by_supplier_id = fabll.Traits.MakeEdge(
             F.is_pickable_by_supplier_id.MakeChild(
                 supplier_part_id="C25804",
@@ -132,9 +123,6 @@ def test_bom_kicad_footprint_lcsc_verbose():
 
     test_module = F.Resistor.bind_typegraph(tg).create_instance(g=g)
 
-    fabll.Traits.create_and_add_instance_to(
-        node=test_module, trait=F.has_explicit_part
-    ).setup_by_supplier("C23162", pinmap={})
     fabll.Traits.create_and_add_instance_to(
         node=test_module, trait=F.is_pickable_by_supplier_id
     ).setup(

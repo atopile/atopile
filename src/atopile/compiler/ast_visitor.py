@@ -93,7 +93,6 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.has_datasheet,
         F.has_designator_prefix,
         F.has_doc_string,
-        F.has_explicit_part,
         F.has_net_name_affix,
         F.has_net_name_suggestion,
         F.has_package_requirements,

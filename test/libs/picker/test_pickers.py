@@ -194,7 +194,7 @@ def test_construct_pick_tree_multiple_children():
 def test_check_missing_picks_no_footprint_no_picker(caplog):
     import logging
 
-    from faebryk.libs.picker.picker import check_missing_picks
+    from faebryk.libs.picker.picker import get_pick_tree
 
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -207,7 +207,7 @@ def test_check_missing_picks_no_footprint_no_picker(caplog):
 
     # Optionally set log level to capture DEBUG messages
     with caplog.at_level(logging.DEBUG):
-        check_missing_picks(app)
+        get_pick_tree(app)
 
     # Assert on logs
     assert "No pickers and no footprint for" in caplog.text
@@ -216,7 +216,7 @@ def test_check_missing_picks_no_footprint_no_picker(caplog):
 def test_check_missing_picks_with_footprint_with_picker(caplog):
     import logging
 
-    from faebryk.libs.picker.picker import check_missing_picks
+    from faebryk.libs.picker.picker import get_pick_tree
 
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -232,7 +232,7 @@ def test_check_missing_picks_with_footprint_with_picker(caplog):
     fabll.Traits.create_and_add_instance_to(app.r1.get(), F.has_part_picked)
 
     with caplog.at_level(logging.DEBUG):
-        check_missing_picks(app)
+        get_pick_tree(app)
 
     assert caplog.text == ""
 

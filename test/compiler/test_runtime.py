@@ -834,6 +834,8 @@ def test_reserved_attrs(import_stmt: str, class_name: str, pkg_str: str, pkg: SM
     )
     assert "A" in result.state.type_roots
     a = _get_child(app_instance, "a")
+    a_node = fabll.Node.bind_instance(a)
+    a_module = a_node.get_trait(fabll.is_module)
     match class_name:
         case "Resistor":
             assert fabll.Node.bind_instance(a).isinstance(F.Resistor)
@@ -849,10 +851,10 @@ def test_reserved_attrs(import_stmt: str, class_name: str, pkg_str: str, pkg: SM
         .get_single_value_typed(SMDSize)
         == pkg
     )
-    has_explicit_part = fabll.Node.bind_instance(a).try_get_trait(F.has_explicit_part)
-    assert has_explicit_part is not None
-    assert has_explicit_part.mfr == mfr
-    assert has_explicit_part.partno == mpn
+    is_pbpn = F.is_pickable_by_part_number.try_check_or_convert(a_module)
+    assert is_pbpn is not None
+    assert is_pbpn.get_manufacturer() == mfr
+    assert is_pbpn.get_partno() == mpn
 
 
 def test_import_ato(tmp_path: Path):
@@ -1462,10 +1464,10 @@ def test_alternate_trait_constructor_dot_access():
             """
             #pragma experiment("TRAITS")
 
-            import has_explicit_part
+            import has_part_picked
 
             module App:
-                trait has_explicit_part.by_mfr
+                trait has_part_picked.by_supplier
             """,
             "App",
         )
@@ -1477,18 +1479,18 @@ def test_alternate_trait_constructor_no_params():
         """
         #pragma experiment("TRAITS")
 
-        import has_explicit_part
+        import has_part_picked
 
         module App:
-            trait has_explicit_part::by_mfr
+            trait has_part_picked::by_supplier
         """,
         "App",
     )
     assert "App" in result.state.type_roots
     # Trait is created but with no constraints on mfr/partno
-    trait = fabll.Node.bind_instance(app_instance).get_trait(F.has_explicit_part)
-    assert trait.mfr is None
-    assert trait.partno is None
+    trait = fabll.Node.bind_instance(app_instance).get_trait(F.has_part_picked)
+    assert trait.supplier_id is None
+    assert trait.supplier_partno is None
 
 
 # TODO: find a trait with a parameter-less alternate constructor
@@ -1499,18 +1501,18 @@ def test_alternate_trait_constructor_with_params():
         """
         #pragma experiment("TRAITS")
 
-        import has_explicit_part
+        import has_part_picked
 
         module App:
-            trait has_explicit_part::by_mfr<mfr="TI", partno="TCA9548APWR">
+            trait has_part_picked::by_supplier<supplier_id="lcsc", supplier_partno="C123456">
         """,
         "App",
     )
     assert "App" in result.state.type_roots
 
-    trait = fabll.Node.bind_instance(app_instance).get_trait(F.has_explicit_part)
-    assert trait.mfr == "TI"
-    assert trait.partno == "TCA9548APWR"
+    trait = fabll.Node.bind_instance(app_instance).get_trait(F.has_part_picked)
+    assert trait.supplier_id == "lcsc"
+    assert trait.supplier_partno == "C123456"
 
 
 def test_parameterised_trait_with_pos_args():
