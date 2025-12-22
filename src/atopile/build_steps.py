@@ -442,7 +442,10 @@ def update_pcb(
         pcb.transformer.hide_all_designators()
 
     # Backup layout
-    backup_file = config.build.paths.output_base.with_suffix(
+    backup_dir = config.build.paths.output_base.parent / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    artifact_name = config.build.paths.output_base.stem
+    backup_file = (backup_dir / artifact_name).with_suffix(
         f".{time.strftime('%Y%m%d-%H%M%S')}.kicad_pcb"
     )
     logger.info(f"Backing up layout to {backup_file}")
@@ -483,12 +486,14 @@ def generate_bom(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     """Generate a BOM for the project."""
-    write_bom(
-        app.get_children(
-            direct_only=False, types=fabll.Node, required_trait=fabll.is_module
-        ),
-        config.build.paths.output_base.with_suffix(".bom.csv"),
-    )
+    parts = [
+        m.get_trait(F.has_part_picked)
+        for m in app.get_children(
+            direct_only=False, types=fabll.Node, required_trait=F.has_part_picked
+        )
+        if not m.has_trait(F.has_part_removed)
+    ]
+    write_bom(parts, config.build.paths.output_base.with_suffix(".bom.csv"))
 
 
 @muster.register(

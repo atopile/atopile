@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+import pytest
+
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
@@ -47,7 +49,7 @@ def split_designator(designator: str) -> tuple[str, int]:
     return (prefix, number)
 
 
-def make_bom(components: Iterable[fabll.Module], jlcpcb_format: bool = True):
+def make_bom(components: Iterable[F.has_part_picked], jlcpcb_format: bool = True):
     bomlines = [line for c in components if (line := _get_bomline(c, jlcpcb_format))]
     bomlines = sorted(
         _compact_bomlines(bomlines),
@@ -59,7 +61,7 @@ def make_bom(components: Iterable[fabll.Module], jlcpcb_format: bool = True):
 
 
 def write_bom(
-    components: Iterable[fabll.Node], path: Path, jlcpcb_format: bool = True
+    components: Iterable[F.has_part_picked], path: Path, jlcpcb_format: bool = True
 ) -> None:
     if not path.parent.exists():
         os.makedirs(path.parent)
@@ -115,66 +117,70 @@ def _compact_bomlines(bomlines: list[BOMLine]) -> list[BOMLine]:
     return compact_bomlines
 
 
-def _get_bomline(cmp: fabll.Node, jlcpcb_format: bool = True) -> BOMLine | None:
+def _get_footprint_name(part: F.has_part_picked) -> str:
+    module = part.get_sibling_trait(fabll.is_module)
+    module_locator = module.get_module_locator()
     if not (
-        footprint_trait := cmp.try_get_trait(F.Footprints.has_associated_footprint)
+        footprint_trait := part.try_get_sibling_trait(
+            F.Footprints.has_associated_footprint
+        )
     ):
-        logger.warning(f"Missing associated footprint on component '{cmp}'")
-        return None
-    if cmp.has_trait(F.has_part_picked) and cmp.has_trait(F.has_part_removed):
-        logger.warning(f"Component '{cmp}' has part picked and removed")
-        return None
-
-    if missing := [
-        t.__name__
-        for t in (
-            F.has_part_picked,
-            F.has_designator,
+        logger.warning(
+            f"No footprint for '{module_locator}' will result in empty footprint column "
+            "in bom"
         )
-        if not cmp.has_trait(t)
-    ]:
-        logger.warning(f"Missing fields on component '{cmp}': {missing}")
-        return None
+        return ""
 
-    part = cmp.get_trait(F.has_part_picked).get_part()
-
-    kicad_footprint_trait = footprint_trait.get_footprint().try_get_trait(
+    if kicad_footprint_trait := footprint_trait.get_footprint().try_get_trait(
         F.KiCadFootprints.has_associated_kicad_pcb_footprint
+    ):
+        return kicad_footprint_trait.get_footprint().name
+    elif kicad_library_footprint_trait := footprint_trait.get_footprint().try_get_trait(
+        F.KiCadFootprints.has_associated_kicad_library_footprint
+    ):
+        return kicad_library_footprint_trait.library_name
+
+    logger.warning(
+        f"Missing any form of kicad footprint on component '{module_locator}'"
     )
-    if kicad_footprint_trait is None:
-        kicad_library_footprint_trait = footprint_trait.get_footprint().try_get_trait(
-            F.KiCadFootprints.has_associated_kicad_library_footprint
-        )
-        if kicad_library_footprint_trait is None:
-            logger.warning(f"Missing any form of kicad footprint on component '{cmp}'")
-            return None
-        footprint_name = kicad_library_footprint_trait.library_name
+    return ""
+
+
+def _get_bomline(part: F.has_part_picked, jlcpcb_format: bool = True) -> BOMLine | None:
+    module_name = part.get_sibling_trait(fabll.is_module).get_module_locator()
+    if not (designator_t := part.try_get_sibling_trait(F.has_designator)):
+        raise ValueError(f"Part '{part}' without designator")
+    designator = designator_t.get_designator() or ""
+
+    if hsvp := part.try_get_sibling_trait(F.has_simple_value_representation):
+        value = hsvp.get_value()
     else:
-        footprint_name = kicad_footprint_trait.get_footprint().name
+        value = ""
 
-    value = (
-        cmp.get_trait(F.has_simple_value_representation).get_value()
-        if cmp.has_trait(F.has_simple_value_representation)
-        else ""
-    )
-    designator = cmp.get_trait(F.has_designator).get_designator() or ""
+    footprint_name = _get_footprint_name(part)
+    picked_part = part.get_part()
 
-    if jlcpcb_format and not part.supplier_partno.lower().startswith("c"):
-        logger.warning(f"Non-LCSC parts not supported in JLCPCB BOM: {part}")
+    if jlcpcb_format and not picked_part.supplier_partno.lower().startswith("c"):
+        logger.warning(f"Non-LCSC parts not supported in JLCPCB BOM: {module_name}")
         return None
 
-    manufacturer = part.manufacturer
-    partnumber = part.partno
+    manufacturer = picked_part.manufacturer
+    partnumber = picked_part.partno
+    supplier_partnumber = picked_part.supplier_partno
 
-    return BOMLine(
+    out = BOMLine(
         Designator=designator,
         Footprint=footprint_name,
         Quantity=1,
         Value=value,
         Manufacturer=manufacturer,
         Partnumber=partnumber,
-        Supplier_Partnumber=part.supplier_partno,
+        Supplier_Partnumber=supplier_partnumber,
     )
+
+    logger.info(f"BOMLine for {module_name} {out=}")
+
+    return out
 
 
 def test_get_bomline():
@@ -218,7 +224,7 @@ def test_get_bomline():
         trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint,
     ).setup(k_pcb_fp, transformer)
 
-    bomline = _get_bomline(node)
+    bomline = _get_bomline(node.get_trait(F.has_part_picked))
 
     assert bomline is not None
     assert bomline.Designator == "R1"
@@ -226,3 +232,146 @@ def test_get_bomline():
     assert bomline.Value == ""
     assert bomline.Manufacturer == "Amazing manufacturer"
     assert bomline.Partnumber == "ABC-Part"
+
+
+class JlcBomTests:
+    @staticmethod
+    def _test_build(app: fabll.Node):
+        from faebryk.core.solver.defaultsolver import DefaultSolver
+        from faebryk.libs.app.designators import (
+            attach_random_designators,
+            load_kicad_pcb_designators,
+        )
+        from faebryk.libs.picker.picker import pick_part_recursively
+
+        load_kicad_pcb_designators(app.tg, attach=True)
+        solver = DefaultSolver()
+        pick_part_recursively(app, solver)
+        attach_random_designators(app.tg)
+
+    @pytest.mark.usefixtures("setup_project_config")
+    @staticmethod
+    def test_bom_picker_pick():
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        r = F.Resistor.bind_typegraph(tg).create_instance(g=g)
+        r1_value = (
+            F.Literals.Numbers.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_center_rel(
+                center=10 * 1e3,
+                rel=0.01,
+                unit=F.Units.Ohm.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .is_unit.get(),
+            )
+        )
+        r.resistance.get().alias_to_literal(g=g, value=r1_value)
+
+        JlcBomTests._test_build(r)
+
+        bomline = _get_bomline(r.get_trait(F.has_part_picked))
+        assert bomline is not None
+
+    @pytest.mark.usefixtures("setup_project_config")
+    @staticmethod
+    def test_bom_explicit_pick():
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        class TestComponent(fabll.Node):
+            _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+            _is_pickable_by_supplier_id = fabll.Traits.MakeEdge(
+                F.is_pickable_by_supplier_id.MakeChild(
+                    supplier_part_id="C25804",
+                    supplier=F.is_pickable_by_supplier_id.Supplier.LCSC,
+                )
+            )
+            can_attach_to_footprint_ = fabll.Traits.MakeEdge(
+                F.Footprints.can_attach_to_footprint.MakeChild()
+            )
+            has_designator_ = fabll.Traits.MakeEdge(F.has_designator.MakeChild("MOD"))
+
+        test_component = TestComponent.bind_typegraph(tg).create_instance(g=g)
+        JlcBomTests._test_build(test_component)
+
+        bomline = _get_bomline(test_component.get_trait(F.has_part_picked))
+        assert bomline is not None
+        assert bomline.Supplier_Partnumber == "C25804"
+
+    @staticmethod
+    def test_bom_kicad_footprint_no_lcsc():
+        from faebryk.libs.picker.lcsc import PickSupplierLCSC
+        from faebryk.libs.picker.picker import PickedPart
+
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        class TestPad(fabll.Node):
+            is_pad_ = fabll.Traits.MakeEdge(
+                F.Footprints.is_pad.MakeChild(pad_name="", pad_number="")
+            )
+
+        class TestFootprint(fabll.Node):
+            is_footprint_ = fabll.Traits.MakeEdge(F.Footprints.is_footprint.MakeChild())
+
+            pads_ = [TestPad.MakeChild() for _ in range(2)]
+
+        class TestModule(fabll.Node):
+            is_module_ = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+            can_attach_to_footprint_ = fabll.Traits.MakeEdge(
+                F.Footprints.can_attach_to_footprint.MakeChild()
+            )
+            has_designator_ = fabll.Traits.MakeEdge(F.has_designator.MakeChild("MOD"))
+
+        test_module = TestModule.bind_typegraph(tg).create_instance(g=g)
+        test_footprint = TestFootprint.bind_typegraph_from_instance(
+            instance=test_module.instance
+        ).create_instance(g=g)
+
+        fabll.Traits.create_and_add_instance_to(
+            node=test_module, trait=F.Footprints.has_associated_footprint
+        ).setup(test_footprint.is_footprint_.get())
+
+        fabll.Traits.create_and_add_instance_to(
+            node=test_module, trait=F.has_part_picked
+        ).setup(
+            PickedPart(
+                manufacturer="TestManu",
+                partno="TestPart",
+                supplier_partno="TestSupplierPart",
+                supplier=PickSupplierLCSC(),
+            )
+        )
+
+        JlcBomTests._test_build(test_module)
+
+        bomline = _get_bomline(test_module.get_trait(F.has_part_picked))
+        assert bomline is None
+
+    @pytest.mark.usefixtures("setup_project_config")
+    @staticmethod
+    def test_bom_kicad_footprint_lcsc_verbose():
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        test_module = F.Resistor.bind_typegraph(tg).create_instance(g=g)
+
+        fabll.Traits.create_and_add_instance_to(
+            node=test_module, trait=F.is_pickable_by_supplier_id
+        ).setup(
+            supplier_part_id="C23162",
+            supplier=F.is_pickable_by_supplier_id.Supplier.LCSC,
+        )
+        JlcBomTests._test_build(test_module)
+
+        bomline = _get_bomline(test_module.get_trait(F.has_part_picked))
+        assert bomline is not None
+        assert bomline.Supplier_Partnumber == "C23162"
+        assert bomline.Footprint == "UNI_ROYAL_0603WAF4701T5E"
+        assert bomline.Manufacturer == "UNI-ROYAL(Uniroyal Elec)"
+        assert bomline.Partnumber == "0603WAF4701T5E"
+        # assert bomline.Value == "4.7kΩ ± 1%" #TODO
+        assert bomline.Designator == "R1"

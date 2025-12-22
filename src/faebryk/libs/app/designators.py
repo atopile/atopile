@@ -17,13 +17,16 @@ from faebryk.libs.util import duplicates, md_list
 
 logger = logging.getLogger(__name__)
 
+# TODO rename designator -> part_designator
+# TODO rename designator_prefix -> part_designator_prefix
+
 
 def attach_random_designators(tg: fbrk.TypeGraph):
     """
-    Assigns sequential designators (R1, R2, C1, etc.) to components.
+    Assigns sequential designators (R1, R2, C1, etc.) to parts.
 
-    Components with has_designator_prefix get a has_designator trait if missing,
-    then any component without a designator value gets one assigned.
+    Parts with has_designator_prefix get a has_designator trait if missing,
+    then any part without a designator value gets one assigned.
     """
 
     def _get_first_available_number(used: list[int]) -> int:
@@ -34,79 +37,58 @@ def attach_random_designators(tg: fbrk.TypeGraph):
                 return i + 1
         return len(used) + 1
 
-    # Step 1: Ensure all components with a prefix also have a has_designator trait
-    components_with_prefix = fabll.Traits.get_implementor_objects(
-        F.has_designator_prefix.bind_typegraph(tg)
-    )
-    for component in components_with_prefix:
-        if not component.has_trait(F.has_designator):
-            fabll.Traits.create_and_add_instance_to(component, F.has_designator)
+    parts = fabll.Traits.get_implementors(F.has_part_picked.bind_typegraph(tg))
+    part_modules = [p.get_sibling_trait(fabll.is_module) for p in parts]
 
-    # Step 2: Get all components that have has_designator trait
-    all_components_with_designator = fabll.Traits.get_implementor_objects(
-        F.has_designator.bind_typegraph(tg)
-    )
+    parts_with_prefix = {
+        m: prefix.get_prefix()
+        for m in part_modules
+        if (prefix := m.try_get_sibling_trait(F.has_designator_prefix))
+    }
+
     # Sort by name only (not by designator) for stable ordering
-    components_sorted = natsorted(
-        all_components_with_designator,
-        key=lambda c: c.get_full_name(include_uuid=False) or "",
+    part_modules_sorted = dict(
+        natsorted(parts_with_prefix.items(), key=lambda c: c[0].get_module_locator())
     )
 
-    # Step 3: Parse existing designators to track which numbers are used per prefix
-    pattern = re.compile(r"([A-Z]+)([0-9]+)")
     assigned: dict[str, list[int]] = defaultdict(list)
 
-    for component in components_sorted:
-        designator_trait = component.get_trait(F.has_designator)
+    # Parse existing designators to track which numbers are used per prefix
+    pattern = re.compile(r"([A-Z]+)([0-9]+)")
+    for module in part_modules_sorted:
+        if (designator_trait := module.try_get_sibling_trait(F.has_designator)) is None:
+            continue
+        # manual designator might match prefix or not
         existing = designator_trait.get_designator()
-        if existing and (match := pattern.match(existing)):
-            prefix = match.group(1)
-            number = int(match.group(2))
-            assigned[prefix].append(number)
-
-    # Step 4: Assign designators to components that don't have one yet
-    for component in components_sorted:
-        designator_trait = component.get_trait(F.has_designator)
-        existing_designator = designator_trait.get_designator()
-
-        # Skip if already has a designator
-        if existing_designator is not None:
+        if not (match := pattern.match(existing)):
             continue
 
-        # Get prefix from has_designator_prefix trait, or use class name as fallback
-        if component.has_trait(F.has_designator_prefix):
-            prefix = component.get_trait(F.has_designator_prefix).get_prefix()
-        else:
-            prefix = type(component).__name__
-            logger.warning(
-                f"Component {component} has no designator prefix, using {prefix}"
-            )
+        prefix = match.group(1)
+        number = int(match.group(2))
+        assigned[prefix].append(number)
+
+    # Assign designators to components that don't have one yet
+    for module, prefix in part_modules_sorted.items():
+        if module.try_get_sibling_trait(F.has_designator):
+            continue
 
         # Assign next available number for this prefix
         next_num = _get_first_available_number(assigned[prefix])
         designator = f"{prefix}{next_num}"
 
-        # Double-check that designator wasn't set between check and assignment
-        # (shouldn't happen, but defensive programming)
-        if designator_trait.get_designator() is not None:
-            continue
-
-        logger.info(f"Setting designator {designator} for {component}")
-        designator_trait.setup(designator)
+        module_name = module.get_module_locator()
+        logger.info(f"Setting designator {designator}({prefix=}) to {module_name}")
+        fabll.Traits.create_and_add_instance_to(
+            module.get_obj(), F.has_designator
+        ).setup(designator=designator)
         assigned[prefix].append(next_num)
 
-    # Step 5: Verify all designators are set and unique
-    all_designators = [
-        component.get_trait(F.has_designator).get_designator()
-        for component in all_components_with_designator
-    ]
+    # Verify all designators are set and unique
+    designators = fabll.Traits.get_implementors(F.has_designator.bind_typegraph(tg))
 
-    logger.info(f"{len(all_designators)} designators assigned")
+    logger.info(f"{sum(len(v) for v in assigned.values())} prefix designators assigned")
 
-    missing = [d for d in all_designators if d is None]
-    assert not missing, f"Components without designators: {missing}"
-
-    dupes = duplicates(all_designators, lambda d: d)
+    dupes = duplicates(designators, lambda d: d.get_designator())
     assert not dupes, f"Duplicate designators: {md_list(dupes, recursive=True)}"
 
 
@@ -160,52 +142,66 @@ def load_kicad_pcb_designators(
     return known_designators
 
 
-def test_attach_random_designators():
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
+class TestAppDesignators:
+    @staticmethod
+    def test_attach_random_designators():
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
 
-    class TestComponent(fabll.Node):
-        is_module_ = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
-        has_designator_prefix_ = fabll.Traits.MakeEdge(
-            F.has_designator_prefix.MakeChild(prefix="TEST")
+        class TestComponent(fabll.Node):
+            is_module_ = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+            has_designator_prefix_ = fabll.Traits.MakeEdge(
+                F.has_designator_prefix.MakeChild(prefix="TEST")
+            )
+            has_part_picked_ = fabll.Traits.MakeEdge(
+                fabll._ChildField(F.has_part_picked)
+            )
+
+        TC = TestComponent.bind_typegraph(tg)
+
+        test_component_1 = TC.create_instance(g=g)
+        test_component_2 = TC.create_instance(g=g)
+        fabll.Traits.create_and_add_instance_to(
+            test_component_2, F.has_designator
+        ).setup(designator="COMPONENT2")
+
+        attach_random_designators(tg)
+
+        assert test_component_1.get_trait(F.has_designator).get_designator() == "TEST1"
+        assert (
+            test_component_2.get_trait(F.has_designator).get_designator()
+            == "COMPONENT2"
         )
 
-    test_component_1 = TestComponent.bind_typegraph(tg).create_instance(g=g)
-    test_component_2 = TestComponent.bind_typegraph(tg).create_instance(g=g)
-    fabll.Traits.create_and_add_instance_to(test_component_2, F.has_designator).setup(
-        designator="COMPONENT2"
-    )
+    @staticmethod
+    def test_load_kicad_pcb_designators():
+        from src.faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+        from src.faebryk.libs.test.fileformats import PCBFILE
 
-    attach_random_designators(tg)
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
 
-    assert test_component_1.get_trait(F.has_designator).get_designator() == "TEST1"
-    assert test_component_2.get_trait(F.has_designator).get_designator() == "COMPONENT2"
+        pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE).kicad_pcb
+        fp = pcb.footprints[1]
 
+        class TestComponent(fabll.Node):
+            is_module_ = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
-def test_load_kicad_pcb_designators():
-    from src.faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
-    from src.faebryk.libs.test.fileformats import PCBFILE
+        class TestApp(fabll.Node):
+            component = TestComponent.MakeChild()
 
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
+        test_app = TestApp.bind_typegraph(tg).create_instance(g=g)
 
-    pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE).kicad_pcb
-    fp = pcb.footprints[1]
+        transformer = PCB_Transformer(pcb=pcb, app=test_app)
 
-    class TestComponent(fabll.Node):
-        is_module_ = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        fabll.Traits.create_and_add_instance_to(
+            test_app.component.get(),
+            F.KiCadFootprints.has_associated_kicad_pcb_footprint,
+        ).setup(fp, transformer)
 
-    class TestApp(fabll.Node):
-        component = TestComponent.MakeChild()
+        load_kicad_pcb_designators(tg, attach=True)
 
-    test_app = TestApp.bind_typegraph(tg).create_instance(g=g)
-
-    transformer = PCB_Transformer(pcb=pcb, app=test_app)
-
-    fabll.Traits.create_and_add_instance_to(
-        test_app.component.get(), F.KiCadFootprints.has_associated_kicad_pcb_footprint
-    ).setup(fp, transformer)
-
-    load_kicad_pcb_designators(tg, attach=True)
-
-    assert test_app.component.get().get_trait(F.has_designator).get_designator() == "R1"
+        assert (
+            test_app.component.get().get_trait(F.has_designator).get_designator()
+            == "R1"
+        )

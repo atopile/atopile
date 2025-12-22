@@ -7,17 +7,16 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.app.designators import attach_random_designators
+from faebryk.libs.util import not_none
 
 
 class has_designator(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     designator_ = F.Parameters.StringParameter.MakeChild()
 
-    def get_designator(self) -> str | None:
+    def get_designator(self) -> str:
         literal = self.designator_.get().try_extract_constrained_literal()
-        if literal is None:
-            return None
-        return literal.get_values()[0]
+        return not_none(literal).get_single()
 
     @classmethod
     def MakeChild(cls, designator: str) -> fabll._ChildField:
@@ -36,6 +35,8 @@ class has_designator(fabll.Node):
 
 class Test:
     def test_designator_generation(self):
+        from faebryk.library.has_part_picked import has_part_picked
+
         g = fabll.graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         resistor1 = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
@@ -45,6 +46,9 @@ class Test:
         assert resistor1.has_trait(has_designator) is False
         assert resistor2.has_trait(has_designator) is False
         assert capacitor1.has_trait(has_designator) is False
+
+        for m in [resistor1, resistor2, capacitor1]:
+            fabll.Traits.create_and_add_instance_to(m, has_part_picked)
 
         attach_random_designators(tg)
 
@@ -56,11 +60,16 @@ class Test:
         assert capacitor1.get_trait(has_designator).get_designator() == "C1"
 
     def test_manual_designator_assignment(self):
+        from faebryk.library.has_part_picked import has_part_picked
+
         g = fabll.graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         resistor1 = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
         resistor2 = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
         capacitor1 = F.Capacitor.bind_typegraph(tg=tg).create_instance(g=g)
+
+        for m in [resistor1, resistor2, capacitor1]:
+            fabll.Traits.create_and_add_instance_to(m, has_part_picked)
 
         assert resistor1.has_trait(has_designator) is False
 
@@ -75,3 +84,19 @@ class Test:
         assert resistor2.get_trait(has_designator).get_designator() == "R2"
 
         assert capacitor1.get_trait(has_designator).get_designator() == "C1"
+
+    def test_no_part_no_designator(self):
+        from faebryk.library.has_part_picked import has_part_picked
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        resistor1 = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
+        resistor2 = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
+
+        for m in [resistor2]:
+            fabll.Traits.create_and_add_instance_to(m, has_part_picked)
+
+        attach_random_designators(tg)
+
+        assert not resistor1.has_trait(has_designator)
+        assert resistor2.get_trait(has_designator).get_designator() == "R1"

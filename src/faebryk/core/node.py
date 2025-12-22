@@ -2118,6 +2118,9 @@ class is_module(Node):
     def get_obj(self) -> NodeT:
         return Traits.get_obj_raw(Traits.bind(self))
 
+    def get_module_locator(self) -> str:
+        return self.get_obj().get_full_name(include_uuid=False, types=True)
+
 
 class is_interface(Node):
     is_trait = ImplementsTrait.MakeChild().put_on_type()
