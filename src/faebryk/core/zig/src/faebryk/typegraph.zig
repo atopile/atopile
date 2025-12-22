@@ -143,7 +143,7 @@ pub const TypeGraph = struct {
                 if (self.node.node.get(soft_create_key)) |value| {
                     return value.Bool;
                 }
-                return false; // default to hard (explicit)
+                return false; // default to not soft-created
             }
 
             pub fn get_child_identifier(self: @This()) ?str {
@@ -627,7 +627,7 @@ pub const TypeGraph = struct {
     //}
 
     /// Create a MakeChild node with the child type linked immediately.
-    /// soft_create: if true, this MakeChild can be discarded if a hard one exists for the same identifier
+    /// soft_create: if true, this MakeChild can be discarded if a non-soft-created one exists for the same identifier
     pub fn add_make_child(
         self: *@This(),
         target_type: BoundNodeReference,
@@ -652,7 +652,7 @@ pub const TypeGraph = struct {
     /// Create a MakeChild node without linking the type reference.
     /// Use this when the child type node is not yet available (e.g., external imports).
     /// Caller must call Linker.link_type_reference() later.
-    /// soft_create: if true, this MakeChild can be discarded if a hard one exists for the same identifier
+    /// soft_create: if true, this MakeChild can be discarded if a non-soft-created one exists for the same identifier
     pub fn add_make_child_deferred(
         self: *@This(),
         target_type: BoundNodeReference,
@@ -697,9 +697,9 @@ pub const TypeGraph = struct {
     pub const CopyTypeError = error{ChildAlreadyExists};
 
     /// Copy MakeChild and MakeLink nodes from source_type into target_type.
-    /// Handles soft/hard MakeChild semantics:
-    /// - If target has a soft MakeChild and source has the same identifier, source wins
-    /// - If target has a hard MakeChild and source has the same identifier, returns error
+    /// Handles soft-created MakeChild semantics:
+    /// - If target has a soft-created MakeChild and source has the same identifier, source wins
+    /// - If target has a non-soft-created MakeChild and source has the same identifier, returns error
     /// Used for inheritance: flattens parent structure into derived type.
     pub fn copy_type_structure(
         self: *@This(),
@@ -709,16 +709,16 @@ pub const TypeGraph = struct {
     ) CopyTypeError!void {
         const allocator = self.self_node.g.allocator;
 
-        // Collect existing hard children on target (for conflict detection)
-        var hard_existing = std.StringHashMap(void).init(allocator);
-        defer hard_existing.deinit();
+        // Collect existing non-soft-created children on target (for conflict detection)
+        var non_soft_existing = std.StringHashMap(void).init(allocator);
+        defer non_soft_existing.deinit();
 
         const target_children = self.collect_make_children(allocator, target_type);
         defer allocator.free(target_children);
         for (target_children) |info| {
             if (info.identifier) |id| {
                 if (!MakeChildNode.Attributes.of(info.make_child).soft_create()) {
-                    hard_existing.put(id, {}) catch @panic("OOM");
+                    non_soft_existing.put(id, {}) catch @panic("OOM");
                 }
             }
         }
@@ -729,15 +729,6 @@ pub const TypeGraph = struct {
 
         for (source_children) |info| {
             if (info.identifier) |id| {
-                // Skip internal expression nodes (implementation details)
-                if (std.mem.startsWith(u8, id, "anon") or
-                    std.mem.startsWith(u8, id, "lit_") or
-                    std.mem.startsWith(u8, id, "operand_") or
-                    std.mem.startsWith(u8, id, "constraint_"))
-                {
-                    continue;
-                }
-
                 // Check if should skip (explicit skip list)
                 var should_skip = false;
                 for (skip_identifiers) |skip_id| {
@@ -748,16 +739,16 @@ pub const TypeGraph = struct {
                 }
                 if (should_skip) continue;
 
-                // Check for hard conflict (two hard declarations = error)
-                if (hard_existing.contains(id)) {
+                // Conflict: two non-soft-created declarations with same identifier
+                if (non_soft_existing.contains(id)) {
                     return error.ChildAlreadyExists;
                 }
 
-                // Soft children with the same id will be filtered out by
-                // visit_make_children when the inherited hard child is added
+                // Soft-created children with the same id will be filtered out by
+                // visit_make_children when the inherited non-soft-created child is added
             }
             const child_type = MakeChildNode.get_child_type(info.make_child) orelse continue;
-            // Inherited children are always hard (they become authoritative), no parent_path
+            // Inherited children are not soft-created (they become authoritative)
             _ = self.add_make_child(target_type, child_type, info.identifier, null, false) catch continue;
         }
 
@@ -850,7 +841,7 @@ pub const TypeGraph = struct {
     /// Returns a list of validation errors (empty if valid).
     /// Validates:
     /// - MakeLink endpoints (lhs and rhs paths)
-    /// - Duplicate hard MakeChild declarations (same identifier, both hard)
+    /// - Duplicate non-soft-created MakeChild declarations (same identifier)
     pub fn validate_type(
         self: *@This(),
         allocator: std.mem.Allocator,
@@ -858,29 +849,18 @@ pub const TypeGraph = struct {
     ) []ValidationError {
         var errors = std.ArrayList(ValidationError).init(allocator);
 
-        // Soft/hard resolution is handled dynamically by visit_make_children,
+        // Soft-created resolution is handled dynamically by visit_make_children,
         // so collect_make_children already returns only the "winning" nodes.
         const make_children = self.collect_make_children(allocator, type_node);
         defer allocator.free(make_children);
 
-        // Duplicate hard MakeChild detection
+        // Duplicate non-soft-created MakeChild detection
         var i: usize = 0;
         while (i < make_children.len) : (i += 1) {
             const child_info = make_children[i];
             const id = child_info.identifier orelse continue;
 
-            // Skip internal fields (starting with _ or special prefixes)
-            if (id.len > 0 and id[0] == '_') continue;
-            if (std.mem.startsWith(u8, id, "anon") or
-                std.mem.startsWith(u8, id, "lit_") or
-                std.mem.startsWith(u8, id, "operand_") or
-                std.mem.startsWith(u8, id, "constraint_") or
-                std.mem.startsWith(u8, id, "rhs_"))
-            {
-                continue;
-            }
-
-            // Skip if this child is soft
+            // Skip if this child is soft-created
             if (MakeChildNode.Attributes.of(child_info.make_child).soft_create()) continue;
 
             // Look for duplicates in the rest of the list
@@ -981,22 +961,6 @@ pub const TypeGraph = struct {
                 }
             }
 
-            // Skip trait-generated fields (e.g., can_bridge, can_be_operand)
-            if (std.mem.eql(u8, segment, "can_bridge") or
-                std.mem.eql(u8, segment, "can_be_operand"))
-            {
-                return false;
-            }
-
-            // Skip internal expression nodes (implementation details)
-            if (std.mem.startsWith(u8, segment, "anon") or
-                std.mem.startsWith(u8, segment, "lit_") or
-                std.mem.startsWith(u8, segment, "operand_") or
-                std.mem.startsWith(u8, segment, "constraint_") or
-                std.mem.startsWith(u8, segment, "rhs_"))
-            {
-                return false;
-            }
         }
 
         return true;
