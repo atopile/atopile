@@ -9,7 +9,7 @@ import logging
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, ClassVar
+from typing import Any, Callable
 
 import atopile.compiler.ast_types as AST
 import faebryk.core.node as fabll
@@ -330,55 +330,3 @@ class TraitOverrideRegistry:
     @classmethod
     def matches_trait_override(cls, name: str) -> bool:
         return name in _TRAIT_OVERRIDES
-
-
-class ConnectOverrideRegistry:
-    """
-    Registry of path translations for connect statements.
-
-    Handles legacy path names that need to be translated to their current equivalents:
-    - `vcc` -> `hv` (high voltage rail on ElectricPower)
-    - `gnd` -> `lv` (low voltage rail on ElectricPower)
-
-    This provides backwards compatibility for older ato code that used the legacy
-    naming conventions for power interfaces.
-    """
-
-    # Mapping of legacy path segment names to their current equivalents
-    PATH_TRANSLATIONS: ClassVar[dict[str, str]] = {
-        "vcc": "hv",
-        "gnd": "lv",
-    }
-
-    @classmethod
-    def translate_segment(cls, segment: str) -> str:
-        """Translate a single path segment if it's a legacy name."""
-        if segment in cls.PATH_TRANSLATIONS:
-            _deprecated_warning(segment, cls.PATH_TRANSLATIONS[segment])
-            return cls.PATH_TRANSLATIONS[segment]
-        return segment
-
-    @classmethod
-    def translate_identifiers(cls, identifiers: list[str]) -> list[str]:
-        """Translate a list of string identifiers."""
-        return [cls.translate_segment(s) for s in identifiers]
-
-    @classmethod
-    def translate_path(cls, path: LinkPath) -> LinkPath:
-        """
-        Translate any legacy path segments to their current equivalents.
-
-        Only string segments are translated; EdgeTraversal objects are left unchanged.
-
-        Args:
-            path: A list of path segment identifiers (strings or EdgeTraversal)
-
-        Returns:
-            A new list with any legacy string names translated
-        """
-        return LinkPath(
-            [
-                cls.translate_segment(segment) if isinstance(segment, str) else segment
-                for segment in path
-            ]
-        )

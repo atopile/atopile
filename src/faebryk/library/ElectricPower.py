@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 
@@ -16,6 +17,22 @@ class ElectricPower(fabll.Node):
     # ----------------------------------------
     hv = F.Electrical.MakeChild()
     lv = F.Electrical.MakeChild()
+
+    # Deprecated aliases for backwards compatibility.
+    vcc = F.Electrical.MakeChild()
+    gnd = F.Electrical.MakeChild()
+
+    # Connect deprecated aliases to the actual rails
+    _ = fabll.MakeEdge(
+        [vcc],
+        [hv],
+        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
+    )
+    _ = fabll.MakeEdge(
+        [gnd],
+        [lv],
+        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
+    )
 
     # ----------------------------------------
     #                 traits
