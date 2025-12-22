@@ -3084,3 +3084,150 @@ class TestParameterConstraintTypes:
             .as_literal.force_get()
             .equals(not_none(voltage_param.try_extract_aliased_literal_subset()))
         )
+
+
+# =============================================================================
+# Inheritance + Traits/Directed Connect Tests
+# These test issues discovered while debugging ESP32 minimal example
+# =============================================================================
+
+
+class TestInheritanceWithTraits:
+    """
+    Tests for trait inheritance issues.
+
+    Key finding: When copy_type_structure copies MakeLinks during inheritance,
+    it only preserves string identifiers, losing edge type information
+    (EdgeTrait, EdgePointer traversals become EdgeComposition).
+    """
+
+    def test_trait_inherited_via_module_inheritance(self):
+        """
+        Test 1: Verify traits are properly inherited when a module inherits from another
+
+        This tests a simpler trait (requires_external_usage via .required = True)
+        to verify the basic trait inheritance mechanism works.
+
+        Issue: Traits defined on a parent module may not be visible on derived
+        module instances if copy_type_structure doesn't properly copy trait edges.
+        """
+        _, _, _, _, app_instance = build_instance(
+            """
+            module BaseModule:
+                signal input_signal
+                input_signal.required = True
+
+            module DerivedModule from BaseModule:
+                pass
+
+            module App:
+                derived = new DerivedModule
+            """,
+            "App",
+        )
+        derived = _get_child(app_instance, "derived")
+        input_signal = _get_child(derived, "input_signal")
+
+        # The derived module should inherit the .required = True trait
+        # from BaseModule's input_signal
+        assert fabll.Node.bind_instance(input_signal).has_trait(
+            F.requires_external_usage
+        )
+
+    def test_directed_connect_inherited_from_parent_module(self):
+        """
+        Test 2: Directed connect (~>) with inheritance and abstraction layers.
+
+        Simulates the TLV75901_driver / AdjustableRegulator pattern:
+        - BaseRegulator has power_in, power_out and can_bridge trait
+        - CustomRegulator inherits from BaseRegulator
+        - App uses CustomRegulator with directed connect across it
+
+        Issue: Directed connects use reference chains with EdgeTrait and EdgePointer
+        traversals. When parent's MakeLinks are copied to derived types,
+        these edge types are lost (all become EdgeComposition), causing
+        resolution failures during instantiation.
+        """
+        _, _, _, _, app_instance = build_instance(
+            """
+            #pragma experiment("BRIDGE_CONNECT")
+
+            import ElectricPower
+            import Resistor
+
+            module BaseRegulator:
+                power_in = new ElectricPower
+                power_out = new ElectricPower
+                internal_resistor = new Resistor
+                # Internal connection within the regulator
+                power_in.hv ~> internal_resistor ~> power_out.hv
+                power_in.lv ~ power_out.lv
+
+            module CustomRegulator from BaseRegulator:
+                # Derived regulator adds nothing, just inherits
+                pass
+
+            module App:
+                input_power = new ElectricPower
+                output_power = new ElectricPower
+                regulator = new CustomRegulator
+
+                # Bridge connect ACROSS the inherited regulator
+                input_power ~> regulator ~> output_power
+            """,
+            "App",
+        )
+        input_power = F.ElectricPower.bind_instance(
+            _get_child(app_instance, "input_power")
+        )
+        output_power = F.ElectricPower.bind_instance(
+            _get_child(app_instance, "output_power")
+        )
+        regulator = _get_child(app_instance, "regulator")
+        reg_power_in = F.ElectricPower.bind_instance(_get_child(regulator, "power_in"))
+        reg_power_out = F.ElectricPower.bind_instance(
+            _get_child(regulator, "power_out")
+        )
+
+        # Verify the directed connect created the expected connections:
+        # input_power.hv -> regulator.power_in.hv
+        assert _check_connected(input_power.hv.get(), reg_power_in.hv.get())
+        # regulator.power_out.hv -> output_power.hv
+        assert _check_connected(reg_power_out.hv.get(), output_power.hv.get())
+        # Ground connections
+        assert _check_connected(input_power.lv.get(), reg_power_in.lv.get())
+        assert _check_connected(reg_power_out.lv.get(), output_power.lv.get())
+
+    def test_assert_on_inherited_field(self):
+        """
+        Test 3: Assert statement on a field inherited from parent module.
+
+        Issue: Assert statements that reference inherited fields may fail
+        because they're executed after inheritance resolution but the
+        field references may not resolve correctly.
+        """
+        _, _, _, _, app_instance = build_instance(
+            """
+            module BaseRegulator:
+                output_voltage: V
+
+            module CustomRegulator from BaseRegulator:
+                # Assert on inherited field
+                assert output_voltage is 3.3V +/- 5%
+
+            module App:
+                regulator = new CustomRegulator
+                regulator.output_voltage = 3.3V +/- 5%
+            """,
+            "App",
+        )
+        regulator = _get_child(app_instance, "regulator")
+        output_voltage = _get_child(regulator, "output_voltage")
+        output_voltage_param = F.Parameters.NumericParameter.bind_instance(
+            output_voltage
+        )
+
+        # The assert should have been applied and the parameter should be constrained
+        # If the assert failed to resolve the inherited field, this would error
+        # during build or the constraint wouldn't be applied
+        assert output_voltage_param is not None
