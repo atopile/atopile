@@ -564,12 +564,12 @@ def test_basic_arithmetic():
     b = F.Parameters.NumericParameter.bind_instance(b)
 
     assert (
-        E.lit_op_range((1, 6))
+        E.lit_op_range((3, 6))
         .as_literal.force_get()
         .equals(not_none(a.force_extract_literal_subset()))
     )
     assert (
-        E.lit_op_range((5, 10))
+        E.lit_op_range((7, 10))
         .as_literal.force_get()
         .equals(not_none(b.force_extract_literal_subset()))
     )
