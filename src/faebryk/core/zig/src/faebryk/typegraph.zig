@@ -881,28 +881,69 @@ pub const TypeGraph = struct {
         defer allocator.free(make_children);
 
         for (make_children) |child_info| {
-            // Validate parent_paths (for nested assignments like "parent.child = new X")
-            if (child_info.make_child.node.get(MakeChildNode.Attributes.parent_path_key)) |value| {
-                const path_str = value.String;
-                // Parse the path string (dot-separated) and check if it resolves
-                var path_segments = std.ArrayList([]const u8).init(allocator);
-                defer path_segments.deinit();
+            const attrs = MakeChildNode.Attributes.of(child_info.make_child);
+            const parent_path_opt = attrs.get_parent_path();
+            const identifier = child_info.identifier;
 
-                var iter = std.mem.splitSequence(u8, path_str, ".");
-                while (iter.next()) |seg| {
-                    path_segments.append(seg) catch continue;
+            // For soft_create MakeChilds (assignments to existing fields), validate the full path exists
+            // This catches cases like `members[5] = "value"` where index 5 doesn't exist
+            if (attrs.soft_create()) {
+                var full_path = std.ArrayList([]const u8).init(allocator);
+                defer full_path.deinit();
+
+                // Add parent path segments if present
+                if (parent_path_opt) |parent_path| {
+                    var iter = std.mem.splitSequence(u8, parent_path, ".");
+                    while (iter.next()) |seg| {
+                        full_path.append(seg) catch continue;
+                    }
                 }
 
-                // Skip validation if path contains internal segments
-                if (path_segments.items.len > 0 and self.isValidatablePath(path_segments.items)) {
-                    if (self.resolve_child_path(type_node, path_segments.items) == null) {
-                        const msg = std.fmt.allocPrint(allocator, "Field `{s}` could not be resolved", .{path_str}) catch continue;
-                        errors.append(.{
-                            .node = child_info.make_child,
-                            .message = msg,
-                        }) catch {
-                            allocator.free(msg);
-                        };
+                // Add identifier if present
+                if (identifier) |id| {
+                    full_path.append(id) catch {};
+                }
+
+                // Validate the full path resolves (but only if it has segments and is validatable)
+                if (full_path.items.len > 0 and self.isValidatablePath(full_path.items)) {
+                    if (self.resolve_child_path(type_node, full_path.items) == null) {
+                        // Format the path for the error message
+                        if (self.formatPathWithBrackets(allocator, full_path.items)) |path_str| {
+                            const msg = std.fmt.allocPrint(allocator, "Field `{s}` could not be resolved", .{path_str}) catch {
+                                allocator.free(path_str);
+                                continue;
+                            };
+                            allocator.free(path_str);
+                            errors.append(.{
+                                .node = child_info.make_child,
+                                .message = msg,
+                            }) catch {
+                                allocator.free(msg);
+                            };
+                        }
+                    }
+                }
+            } else {
+                // For hard creates, only validate that the parent_path resolves (the identifier is being created)
+                if (parent_path_opt) |parent_path| {
+                    var path_segments = std.ArrayList([]const u8).init(allocator);
+                    defer path_segments.deinit();
+
+                    var iter = std.mem.splitSequence(u8, parent_path, ".");
+                    while (iter.next()) |seg| {
+                        path_segments.append(seg) catch continue;
+                    }
+
+                    if (path_segments.items.len > 0 and self.isValidatablePath(path_segments.items)) {
+                        if (self.resolve_child_path(type_node, path_segments.items) == null) {
+                            const msg = std.fmt.allocPrint(allocator, "Field `{s}` could not be resolved", .{parent_path}) catch continue;
+                            errors.append(.{
+                                .node = child_info.make_child,
+                                .message = msg,
+                            }) catch {
+                                allocator.free(msg);
+                            };
+                        }
                     }
                 }
             }
@@ -1070,6 +1111,40 @@ pub const TypeGraph = struct {
             }
         }
         return result;
+    }
+
+    /// Format a path with bracket notation for numeric indices (e.g., "members.5" -> "members[5]")
+    fn formatPathWithBrackets(self: *@This(), allocator: std.mem.Allocator, path: []const []const u8) ?[]const u8 {
+        _ = self;
+        if (path.len == 0) {
+            return allocator.dupe(u8, "") catch return null;
+        }
+
+        // Build the formatted path
+        var buf = std.ArrayList(u8).init(allocator);
+        for (path, 0..) |segment, i| {
+            // Check if segment is purely numeric (array index)
+            const is_numeric = blk: {
+                if (segment.len == 0) break :blk false;
+                for (segment) |c| {
+                    if (c < '0' or c > '9') break :blk false;
+                }
+                break :blk true;
+            };
+
+            if (is_numeric and i > 0) {
+                // Format as array index: [N]
+                buf.append('[') catch return null;
+                buf.appendSlice(segment) catch return null;
+                buf.append(']') catch return null;
+            } else {
+                // Regular field access
+                if (i > 0) buf.append('.') catch return null;
+                buf.appendSlice(segment) catch return null;
+            }
+        }
+
+        return buf.toOwnedSlice() catch return null;
     }
 
     fn reference_matches_path(
