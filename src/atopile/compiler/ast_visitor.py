@@ -721,6 +721,7 @@ class ASTVisitor:
                     is_ato_component = fabll.Traits.MakeEdge(
                         is_ato_component.MakeChild()
                     )
+                    is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
                 _Block = _Component
                 constraint_expr = F.Expressions.Is

@@ -11,7 +11,6 @@ import faebryk.library._F as F
 from faebryk.core import graph
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.exceptions import UserDesignCheckException
-from faebryk.libs.util import not_none
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +82,9 @@ class Addressor(fabll.Node):
             lit = solver.inspect_get_known_supersets(offset_param)
             if lit is None or not lit.is_singleton():
                 raise Addressor.OffsetNotResolvedError(self)
-            offset = int(not_none(lit.try_cast(F.Literals.Numbers)).get_single())
+            # lit is an is_literal trait - get the actual node it's attached to
+            lit_node = fabll.Traits(lit).get_obj_raw()
+            offset = int(lit_node.cast(F.Literals.Numbers).get_single())
 
         # address_lines is a PointerSequence pointing to ElectricLogic children
         lines = self.address_lines.get().as_list()
