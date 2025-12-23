@@ -21,9 +21,8 @@ from faebryk.library.is_sink import is_sink
 from faebryk.library.is_source import is_source
 from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
-from faebryk.library.Signal import Signal
 from faebryk.library.has_part_removed import has_part_removed
-from faebryk.library.is_pickable import is_pickable
+from faebryk.library.Signal import Signal
 from faebryk.library.is_app_root import is_app_root
 import faebryk.library.Literals as Literals
 from faebryk.library.can_bridge import can_bridge
@@ -31,6 +30,7 @@ import faebryk.library.Parameters as Parameters
 from faebryk.library.can_bridge_by_name import can_bridge_by_name
 import faebryk.library.Expressions as Expressions
 import faebryk.library.Footprints as Footprints
+import faebryk.library.Pickable as Pickable
 from faebryk.library.SerializableMetadata import SerializableMetadata
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator_prefix import has_designator_prefix
@@ -38,13 +38,9 @@ from faebryk.library.has_doc_string import has_doc_string
 from faebryk.library.has_net_name import has_net_name
 from faebryk.library.has_net_name_suggestion import has_net_name_suggestion
 from faebryk.library.has_package_requirements import has_package_requirements
-from faebryk.library.has_part_picked import has_part_picked
 from faebryk.library.has_solver import has_solver
 from faebryk.library.has_usage_example import has_usage_example
 from faebryk.library.is_auto_generated import is_auto_generated
-from faebryk.library.is_pickable_by_part_number import is_pickable_by_part_number, has_mpn_assigned, has_mfr_assigned
-from faebryk.library.is_pickable_by_supplier_id import is_pickable_by_supplier_id
-from faebryk.library.is_pickable_by_type import is_pickable_by_type
 import faebryk.library.Units as Units
 import faebryk.library.KiCadFootprints as KiCadFootprints
 from faebryk.library.implements_design_check import implements_design_check
@@ -118,9 +114,8 @@ __all__ = [
     "is_source",
     "Logic",
     "Mechanical",
-    "Signal",
     "has_part_removed",
-    "is_pickable",
+    "Signal",
     "is_app_root",
     "Literals",
     "can_bridge",
@@ -128,6 +123,7 @@ __all__ = [
     "can_bridge_by_name",
     "Expressions",
     "Footprints",
+    "Pickable",
     "SerializableMetadata",
     "has_datasheet",
     "has_designator_prefix",
@@ -135,13 +131,9 @@ __all__ = [
     "has_net_name",
     "has_net_name_suggestion",
     "has_package_requirements",
-    "has_part_picked",
     "has_solver",
     "has_usage_example",
     "is_auto_generated",
-    "is_pickable_by_part_number",
-    "is_pickable_by_supplier_id",
-    "is_pickable_by_type",
     "Units",
     "KiCadFootprints",
     "implements_design_check",

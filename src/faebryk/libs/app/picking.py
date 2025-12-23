@@ -39,7 +39,7 @@ def load_part_info_from_pcb(tg: fbrk.TypeGraph):
 
     for node, fp_t in nodes_with_fp:
         assert node.has_trait(fabll.is_module)
-        if node.has_trait(F.has_part_picked):
+        if node.has_trait(F.Pickable.has_part_picked):
             logger.warning(f"Skipping {node.get_name()} because it has part picked")
             continue
         assert F.SerializableMetadata.get_properties(node), "Should load when linking"
@@ -80,7 +80,7 @@ def load_part_info_from_pcb(tg: fbrk.TypeGraph):
         # Load Part from PCB
         if lcsc_id and manufacturer and partno:
             fabll.Traits.create_and_add_instance_to(
-                node=node, trait=F.has_part_picked
+                node=node, trait=F.Pickable.has_part_picked
             ).setup(
                 PickedPartLCSC(
                     supplier_partno=lcsc_id,
@@ -90,14 +90,14 @@ def load_part_info_from_pcb(tg: fbrk.TypeGraph):
             )
         elif lcsc_id:
             fabll.Traits.create_and_add_instance_to(
-                node=node, trait=F.is_pickable_by_supplier_id
+                node=node, trait=F.Pickable.is_pickable_by_supplier_id
             ).setup(
                 supplier_part_id=lcsc_id,
-                supplier=F.is_pickable_by_supplier_id.Supplier.LCSC,
+                supplier=F.Pickable.is_pickable_by_supplier_id.Supplier.LCSC,
             )
         elif manufacturer and partno:
             fabll.Traits.create_and_add_instance_to(
-                node=node, trait=F.is_pickable_by_part_number
+                node=node, trait=F.Pickable.is_pickable_by_part_number
             ).setup(manufacturer=manufacturer, partno=partno)
         else:
             raise ValueError(f"No part info found for {node.get_name()}")
@@ -160,12 +160,12 @@ def save_part_info_to_pcb(app: fabll.Node):
         direct_only=False,
         types=fabll.Node,
         include_root=True,
-        required_trait=F.has_part_picked,
+        required_trait=F.Pickable.has_part_picked,
     )
 
     # TODO we should pick by graph instead of by app?
     # nodes = fabll.Traits.get_implementor_objects(
-    #    F.has_part_picked.bind_typegraph(app.tg)
+    #    F.Pickable.has_part_picked.bind_typegraph(app.tg)
     # )
 
     if len(nodes) == 0:
@@ -173,7 +173,7 @@ def save_part_info_to_pcb(app: fabll.Node):
         return
 
     for node in nodes:
-        has_part_picked = node.get_trait(F.has_part_picked)
+        has_part_picked = node.get_trait(F.Pickable.has_part_picked)
         part = has_part_picked.try_get_part()
 
         if part is None:
@@ -217,7 +217,7 @@ def test_save_part_info_to_pcb():
     tg = fbrk.TypeGraph.create(g=g)
 
     res = F.Resistor.bind_typegraph(tg).create_instance(g=g)
-    fabll.Traits.create_and_add_instance_to(res, F.has_part_picked).setup(
+    fabll.Traits.create_and_add_instance_to(res, F.Pickable.has_part_picked).setup(
         PickedPartLCSC(
             supplier_partno="C123456", manufacturer="blaze-it-inc", partno="69420"
         )
@@ -330,7 +330,7 @@ def test_load_part_info_from_pcb():
     finally:
         globals()["lcsc_attach"] = original_lcsc_attach
 
-    picked_trait = res_node.get_trait(F.has_part_picked)
+    picked_trait = res_node.get_trait(F.Pickable.has_part_picked)
     assert picked_trait is not None
     part = picked_trait.try_get_part()
     assert part is not None

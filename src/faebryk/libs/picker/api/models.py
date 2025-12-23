@@ -68,7 +68,7 @@ def _pretty_params_helper(params) -> str:
 class BaseParams(Serializable):
     package: ApiParamT = SerializableField()
     qty: int
-    endpoint: F.is_pickable_by_type.Endpoint | None = None
+    endpoint: F.Pickable.is_pickable_by_type.Endpoint | None = None
 
     def serialize(self) -> dict:
         return self.to_dict()  # type: ignore
@@ -79,13 +79,13 @@ class BaseParams(Serializable):
 
 @once
 def make_params_for_type(module: fabll.Node) -> type:
-    assert module.has_trait(F.is_pickable_by_type)
-    pickable_trait = module.get_trait(F.is_pickable_by_type)
+    assert module.has_trait(F.Pickable.is_pickable_by_type)
+    pickable_trait = module.get_trait(F.Pickable.is_pickable_by_type)
 
     fields = [
         (
             "endpoint",
-            F.is_pickable_by_type.Endpoint,
+            F.Pickable.is_pickable_by_type.Endpoint,
             field(default=pickable_trait.endpoint, init=False),
         ),
         *[
@@ -216,7 +216,7 @@ class Component:
 
         return {k: deserialize(k, v) for k, v in self.attributes.items()}
 
-    def attach(self, pickable_module: F.is_pickable, qty: int = 1):
+    def attach(self, pickable_module: F.Pickable.is_pickable, qty: int = 1):
         module = pickable_module.get_pickable_node()
         if module is None:
             raise Exception(
@@ -228,7 +228,7 @@ class Component:
         lcsc_attach(module_with_fp, self.lcsc_display)
 
         fabll.Traits.create_and_add_instance_to(
-            node=module, trait=F.has_part_picked
+            node=module, trait=F.Pickable.has_part_picked
         ).setup(
             PickedPartLCSC(
                 manufacturer=self.manufacturer_name,
@@ -250,12 +250,12 @@ class Component:
 
         missing_attrs = []
         # only for type picks
-        if module.has_trait(F.is_pickable_by_type):
+        if module.has_trait(F.Pickable.is_pickable_by_type):
             attribute_literals = self.attribute_literals(g=module.g, tg=module.tg)
             # Get parameters from the trait
             design_params = {
                 fabll.Traits(p).get_obj_raw().get_name(): p
-                for p in module.get_trait(F.is_pickable_by_type).get_params()
+                for p in module.get_trait(F.Pickable.is_pickable_by_type).get_params()
             }
             for name, literal in attribute_literals.items():
                 # Get parameter from the trait's registered params

@@ -7,7 +7,7 @@ class App(fabll.Node):
     # diode = F.Diode.MakeChild()
     # diode.add_dependant(
     #     fabll.Traits.MakeEdge(
-    #         F.is_pickable_by_supplier_id.MakeChild(supplier_part_id="C64885"),
+    #         F.Pickable.is_pickable_by_supplier_id.MakeChild(supplier_part_id="C64885"),
     #         owner=[diode],
     #     )
     # )
@@ -15,7 +15,7 @@ class App(fabll.Node):
     # polarized_cap = F.CapacitorPolarized.MakeChild()
     # polarized_cap.add_dependant(
     #     fabll.Traits.MakeEdge(
-    #         F.is_pickable_by_supplier_id.MakeChild(supplier_part_id="C16133"),
+    #         F.Pickable.is_pickable_by_supplier_id.MakeChild(supplier_part_id="C16133"),
     #         owner=[polarized_cap],
     #     )
     # )
@@ -23,7 +23,7 @@ class App(fabll.Node):
     # led = F.LED.MakeChild()
     # led.add_dependant(
     #     fabll.Traits.MakeEdge(
-    #         F.is_pickable_by_supplier_id.MakeChild(supplier_part_id="C2286"),
+    #         F.Pickable.is_pickable_by_supplier_id.MakeChild(supplier_part_id="C2286"),
     #         owner=[led],
     #     )
     # )

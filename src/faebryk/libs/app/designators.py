@@ -37,7 +37,7 @@ def attach_random_designators(tg: fbrk.TypeGraph):
                 return i + 1
         return len(used) + 1
 
-    parts = fabll.Traits.get_implementors(F.has_part_picked.bind_typegraph(tg))
+    parts = fabll.Traits.get_implementors(F.Pickable.has_part_picked.bind_typegraph(tg))
     part_modules = [p.get_sibling_trait(fabll.is_module) for p in parts]
 
     parts_with_prefix = {
@@ -154,7 +154,7 @@ class TestAppDesignators:
                 F.has_designator_prefix.MakeChild(prefix="TEST")
             )
             has_part_picked_ = fabll.Traits.MakeEdge(
-                fabll._ChildField(F.has_part_picked)
+                fabll._ChildField(F.Pickable.has_part_picked)
             )
 
         TC = TestComponent.bind_typegraph(tg)

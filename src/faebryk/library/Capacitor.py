@@ -57,8 +57,8 @@ class Capacitor(fabll.Node):
     )
 
     _is_pickable = fabll.Traits.MakeEdge(
-        F.is_pickable_by_type.MakeChild(
-            endpoint=F.is_pickable_by_type.Endpoint.CAPACITORS,
+        F.Pickable.is_pickable_by_type.MakeChild(
+            endpoint=F.Pickable.is_pickable_by_type.Endpoint.CAPACITORS,
             params={
                 "capacitance": capacitance,
                 "max_voltage": max_voltage,

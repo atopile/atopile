@@ -704,7 +704,7 @@ class PartLifecycle:
                 )
 
             # Add LCSC ID from picked part
-            if picked_t := component.try_get_trait(F.has_part_picked):
+            if picked_t := component.try_get_trait(F.Pickable.has_part_picked):
                 if picked_part := picked_t.try_get_part():
                     if picked_part.supplier_partno:
                         Property.set_property(

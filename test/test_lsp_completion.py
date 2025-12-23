@@ -256,6 +256,55 @@ class TestEndToEndCompletion:
             expected_modules = {"Capacitor", "ElectricPower", "ElectricLogic"}
             assert len(labels.intersection(expected_modules)) > 0
 
+    @pytest.mark.parametrize(
+        "app",
+        [
+            """
+            import ElectricPower
+
+            module App:
+                power = new ElectricPower
+                power.required = True
+        """,
+            """
+            import ElectricPower
+
+            module AppNested:
+                power = new ElectricPower
+                power.hv.required = True
+        """,
+        ],
+    )
+    def test_trait_override_processing(self, app):
+        """Test that trait overrides are processed correctly in LSP context"""
+        ato_content = dedent(app)
+
+        test_uri = "file:///test_trait_override.ato"
+
+        # Clear any existing state
+        if test_uri in DOCUMENT_STATES:
+            del DOCUMENT_STATES[test_uri]
+
+        try:
+            # Build document - this should process the trait override
+            state = build_document(test_uri, dedent(ato_content))
+
+            # Verify document was built successfully
+            assert state is not None
+            assert len(state.diagnostics) == 0, (
+                f"Build failed with diagnostics: {state.diagnostics}"
+            )
+
+            # Verify build result exists
+            assert state.build_result is not None
+
+        finally:
+            # Cleanup
+            if test_uri in DOCUMENT_STATES:
+                state = DOCUMENT_STATES[test_uri]
+                state.reset_graph()
+                del DOCUMENT_STATES[test_uri]
+
 
 class TestGoToDefinition:
     """Tests for go-to-definition functionality"""

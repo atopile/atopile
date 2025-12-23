@@ -111,28 +111,34 @@ BackendPackage.from_smd_size = classmethod(_from_smd_size)  # type: ignore
 
 
 def _prepare_query(
-    module: F.is_pickable, solver: Solver, g: graph.GraphView, tg: fbrk.TypeGraph
+    module: F.Pickable.is_pickable,
+    solver: Solver,
+    g: graph.GraphView,
+    tg: fbrk.TypeGraph,
 ) -> BaseParams | LCSCParams | ManufacturerPartParams:
-    # assert module.has_trait(F.is_pickable)
+    # assert module.has_trait(F.Pickable.is_pickable)
     # Error can propagate through,
     # because we expect all pickable modules to be attachable
     module_node = module.get_pickable_node()
     check_attachable(module_node)
 
-    if trait := module_node.try_get_trait(F.is_pickable_by_part_number):
+    if trait := module_node.try_get_trait(F.Pickable.is_pickable_by_part_number):
         return ManufacturerPartParams(
             manufacturer_name=trait.get_manufacturer(),
             part_number=trait.get_partno(),
             quantity=qty,
         )
 
-    elif trait := module_node.try_get_trait(F.is_pickable_by_supplier_id):
-        if trait.get_supplier() == F.is_pickable_by_supplier_id.Supplier.LCSC.name:
+    elif trait := module_node.try_get_trait(F.Pickable.is_pickable_by_supplier_id):
+        if (
+            trait.get_supplier()
+            == F.Pickable.is_pickable_by_supplier_id.Supplier.LCSC.name
+        ):
             return LCSCParams(
                 lcsc=_extract_numeric_id(trait.get_supplier_part_id()), quantity=qty
             )
 
-    elif trait := module_node.try_get_trait(F.is_pickable_by_type):
+    elif trait := module_node.try_get_trait(F.Pickable.is_pickable_by_type):
         # TODO: Fix this
         params_t = make_params_for_type(module_node)
 
@@ -176,13 +182,13 @@ def _prepare_query(
         return params_t(package=package, qty=qty, **cmp_params)  # type: ignore
 
     raise NotImplementedError(
-        # f"Unsupported pickable trait: {module_node.get_trait(F.is_pickable)}"
+        # f"Unsupported pickable trait: {module_node.get_trait(F.Pickable.is_pickable)}"
         f"Unsupported pickable trait on node: {module_node}"
     )
 
 
 def _process_candidates(
-    module: F.is_pickable, candidates: list[Component]
+    module: F.Pickable.is_pickable, candidates: list[Component]
 ) -> list[Component]:
     # Filter parts with weird pinmaps
     it = iter(candidates)
@@ -221,8 +227,8 @@ def _process_candidates(
 
 
 def _find_modules(
-    modules: Tree[F.is_pickable], solver: Solver
-) -> dict[F.is_pickable, list[Component]]:
+    modules: Tree[F.Pickable.is_pickable], solver: Solver
+) -> dict[F.Pickable.is_pickable, list[Component]]:
     timings = Times(name="find_modules")
 
     g = graph.GraphView.create()
@@ -235,7 +241,7 @@ def _find_modules(
     queries = [v[0][1] for v in grouped.values()]
     logger.debug(f"Queries: {len(queries)}")
 
-    def _map_response[T](results: list[T]) -> dict[F.is_pickable, T]:
+    def _map_response[T](results: list[T]) -> dict[F.Pickable.is_pickable, T]:
         assert len(results) == len(queries)
         return {m: r for ms, r in zip(grouped.values(), results) for m, _ in ms}
 
@@ -291,12 +297,13 @@ def _find_modules(
 
     timings.add("process candidates")
     logger.debug(
-        f"Processed {len(out)} candidates in {timings.get_formatted('process candidates')}"
+        f"Processed {len(out)} candidates in "
+        f"{timings.get_formatted('process candidates')}"
     )
     return out
 
 
-def _attach(module: F.is_pickable, c: Component):
+def _attach(module: F.Pickable.is_pickable, c: Component):
     """
     Calls LCSC attach and wraps errors into PickError
     """
@@ -325,7 +332,7 @@ def _get_compatible_parameters(
     Check if the parameters of a component are compatible with the module
     """
     # Nothing to check
-    if not module.has_trait(F.is_pickable_by_type):
+    if not module.has_trait(F.Pickable.is_pickable_by_type):
         return {}
 
     # shortcut because solving slow
@@ -335,7 +342,8 @@ def _get_compatible_parameters(
         raise NotCompatibleException(module, c) from e
 
     design_params = {
-        p.get_name(): p for p in module.get_trait(F.is_pickable_by_type).get_params()
+        p.get_name(): p
+        for p in module.get_trait(F.Pickable.is_pickable_by_type).get_params()
     }
     component_params = c.attribute_literals(g=module.g, tg=module.tg)
 
@@ -383,7 +391,7 @@ def _get_compatible_parameters(
 
 
 def _check_candidates_compatible(
-    module_candidates: list[tuple[F.is_pickable, Component]],
+    module_candidates: list[tuple[F.Pickable.is_pickable, Component]],
     solver: Solver,
     allow_not_deducible: bool = False,
 ):
@@ -419,7 +427,7 @@ def _check_candidates_compatible(
 
 
 def check_and_attach_candidates(
-    candidates: list[tuple[F.is_pickable, Component]],
+    candidates: list[tuple[F.Pickable.is_pickable, Component]],
     solver: Solver,
     allow_not_deducible: bool = False,
 ):
@@ -443,8 +451,8 @@ def check_and_attach_candidates(
 
 
 def get_candidates(
-    modules: Tree[F.is_pickable], solver: Solver
-) -> dict[F.is_pickable, list[Component]]:
+    modules: Tree[F.Pickable.is_pickable], solver: Solver
+) -> dict[F.Pickable.is_pickable, list[Component]]:
     candidates = modules.copy()
     parts = {}
     empty = set()
@@ -472,7 +480,9 @@ def get_candidates(
     return {}
 
 
-def attach_single_no_check(cmp: F.is_pickable, part: Component, solver: Solver):
+def attach_single_no_check(
+    cmp: F.Pickable.is_pickable, part: Component, solver: Solver
+):
     """
     Attach a single component to a module
     Attention: Does not check compatibility before or after!

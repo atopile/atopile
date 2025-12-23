@@ -132,7 +132,7 @@ class ApiClient:
         return [Component.from_dict(part) for part in response.json()["components"]]  # type: ignore
 
     def query_parts(
-        self, method: F.is_pickable_by_type.Endpoint, params: BaseParams
+        self, method: F.Pickable.is_pickable_by_type.Endpoint, params: BaseParams
     ) -> list["Component"]:
         response = self._post(f"/v0/query/{method}", params.serialize())
         return [Component.from_dict(part) for part in response.json()["components"]]  # type: ignore

@@ -149,8 +149,8 @@ def simple_erc(tg: fbrk.TypeGraph):
                 assert isinstance(comp, (F.Resistor, F.Capacitor, F.Fuse))
                 # TODO make prettier
                 if (
-                    comp.has_trait(F.has_part_picked)
-                    and comp.get_trait(F.has_part_picked).removed
+                    comp.has_trait(F.Pickable.has_part_picked)
+                    and comp.get_trait(F.Pickable.has_part_picked).removed
                 ):
                     continue
 

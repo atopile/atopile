@@ -36,8 +36,8 @@ class Resistor(fabll.Node):
     )
 
     _is_pickable = fabll.Traits.MakeEdge(
-        F.is_pickable_by_type.MakeChild(
-            endpoint=F.is_pickable_by_type.Endpoint.RESISTORS,
+        F.Pickable.is_pickable_by_type.MakeChild(
+            endpoint=F.Pickable.is_pickable_by_type.Endpoint.RESISTORS,
             params={
                 "resistance": resistance,
                 "max_power": max_power,

@@ -71,8 +71,8 @@ def test_pick_module(case: "ComponentTestCase"):
     solver = DefaultSolver()
     pick_part_recursively(module, solver)
 
-    assert module.has_trait(F.has_part_picked)
-    part = module.get_trait(F.has_part_picked).get_part()
+    assert module.has_trait(F.Pickable.has_part_picked)
+    part = module.get_trait(F.Pickable.has_part_picked).get_part()
 
     # Sanity check
     assert part.partno
@@ -95,10 +95,10 @@ def test_type_pick():
     tg = fbrk.TypeGraph.create(g=g)
     module = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
 
-    fabll.Traits.create_and_add_instance_to(module, F.is_pickable)
+    fabll.Traits.create_and_add_instance_to(module, F.Pickable.is_pickable)
 
-    assert module.has_trait(F.is_pickable_by_type)
-    # assert module.has_trait(F.is_pickable)
+    assert module.has_trait(F.Pickable.is_pickable_by_type)
+    # assert module.has_trait(F.Pickable.is_pickable)
     is_subset = F.Expressions.IsSubset.bind_typegraph(tg=module.tg).create_instance(
         g=module.g
     )
@@ -120,7 +120,7 @@ def test_type_pick():
 
     pick_part_recursively(module, DefaultSolver())
 
-    assert module.has_trait(F.has_part_picked)
+    assert module.has_trait(F.Pickable.has_part_picked)
 
 
 @pytest.mark.usefixtures("setup_project_config")
@@ -132,8 +132,8 @@ def test_no_pick():
 
     pick_part_recursively(module, DefaultSolver())
 
-    assert module.has_trait(F.has_part_picked)
-    assert module.get_trait(F.has_part_picked).removed
+    assert module.has_trait(F.Pickable.has_part_picked)
+    assert module.get_trait(F.Pickable.has_part_picked).removed
 
 
 def test_construct_pick_tree_simple():
@@ -142,7 +142,7 @@ def test_construct_pick_tree_simple():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     module = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
-    fabll.Traits.create_and_add_instance_to(module, F.is_pickable)
+    fabll.Traits.create_and_add_instance_to(module, F.Pickable.is_pickable)
 
     class App(fabll.Node):
         r1 = F.Resistor.MakeChild()
@@ -152,10 +152,16 @@ def test_construct_pick_tree_simple():
     tree = get_pick_tree(app)
     assert len(tree) == 2
     assert (
-        app.r1.get().get_trait(F.is_pickable_by_type).get_trait(F.is_pickable) in tree
+        app.r1.get()
+        .get_trait(F.Pickable.is_pickable_by_type)
+        .get_trait(F.Pickable.is_pickable)
+        in tree
     )
     assert (
-        app.r2.get().get_trait(F.is_pickable_by_type).get_trait(F.is_pickable) in tree
+        app.r2.get()
+        .get_trait(F.Pickable.is_pickable_by_type)
+        .get_trait(F.Pickable.is_pickable)
+        in tree
     )
 
 
@@ -165,7 +171,7 @@ def test_construct_pick_tree_multiple_children():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     module = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
-    fabll.Traits.create_and_add_instance_to(module, F.is_pickable)
+    fabll.Traits.create_and_add_instance_to(module, F.Pickable.is_pickable)
 
     class App(fabll.Node):
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
@@ -185,8 +191,8 @@ def test_construct_pick_tree_multiple_children():
     assert (
         app.nested_interface.get()
         .r3.get()
-        .get_trait(F.is_pickable_by_type)
-        .get_trait(F.is_pickable)
+        .get_trait(F.Pickable.is_pickable_by_type)
+        .get_trait(F.Pickable.is_pickable)
         in tree
     )
 
@@ -229,7 +235,7 @@ def test_check_missing_picks_with_footprint_with_picker(caplog):
     fabll.Traits.create_and_add_instance_to(
         app.r1.get(), F.Footprints.has_associated_footprint
     )
-    fabll.Traits.create_and_add_instance_to(app.r1.get(), F.has_part_picked)
+    fabll.Traits.create_and_add_instance_to(app.r1.get(), F.Pickable.has_part_picked)
 
     with caplog.at_level(logging.DEBUG):
         get_pick_tree(app)
@@ -255,9 +261,9 @@ def test_pick_explicit_modules():
             out = fabll._ChildField(cls)
             out.add_dependant(
                 fabll.Traits.MakeEdge(
-                    F.is_pickable_by_supplier_id.MakeChild(
+                    F.Pickable.is_pickable_by_supplier_id.MakeChild(
                         supplier_part_id="C173561",
-                        supplier=F.is_pickable_by_supplier_id.Supplier.LCSC,
+                        supplier=F.Pickable.is_pickable_by_supplier_id.Supplier.LCSC,
                     ),
                     [out, cls.r1],
                 )
@@ -267,7 +273,7 @@ def test_pick_explicit_modules():
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
     tree = get_pick_tree(app)
     pick_topologically(tree, solver)
-    assert app.r1.get().has_trait(F.has_part_picked)
+    assert app.r1.get().has_trait(F.Pickable.has_part_picked)
 
 
 @pytest.mark.usefixtures("setup_project_config")
@@ -297,7 +303,7 @@ def test_pick_resistor_by_params():
 
     tree = get_pick_tree(app)
     pick_topologically(tree, solver)
-    assert app.r1.get().has_trait(F.has_part_picked)
+    assert app.r1.get().has_trait(F.Pickable.has_part_picked)
     assert (
         app.r1.get()
         .resistance.get()
@@ -321,11 +327,11 @@ def test_pick_resistor_by_params():
 
 #     module = _CapInherit()
 
-#     assert not module.has_trait(F.is_pickable)
+#     assert not module.has_trait(F.Pickable.is_pickable)
 
 #     pick_part_recursively(module, DefaultSolver())
 
-#     assert not module.has_trait(F.has_part_picked)
+#     assert not module.has_trait(F.Pickable.has_part_picked)
 
 
 @pytest.mark.usefixtures("setup_project_config")
@@ -341,8 +347,8 @@ def test_no_pick_inherit_remove():
 
     pick_part_recursively(module, DefaultSolver())
 
-    assert module.has_trait(F.has_part_picked)
-    assert module.get_trait(F.has_part_picked).removed
+    assert module.has_trait(F.Pickable.has_part_picked)
+    assert module.get_trait(F.Pickable.has_part_picked).removed
 
 
 @pytest.mark.usefixtures("setup_project_config")
@@ -358,8 +364,8 @@ def test_skip_self_pick():
 
     pick_part_recursively(module, DefaultSolver())
 
-    assert not module.has_trait(F.has_part_picked)
-    assert module.inner.get().has_trait(F.has_part_picked)
+    assert not module.has_trait(F.Pickable.has_part_picked)
+    assert module.inner.get().has_trait(F.Pickable.has_part_picked)
 
 
 @pytest.mark.usefixtures("setup_project_config")
@@ -386,7 +392,7 @@ def test_pick_led_by_colour():
     solver = DefaultSolver()
     pick_part_recursively(led, solver)
 
-    assert led.has_trait(F.has_part_picked)
+    assert led.has_trait(F.Pickable.has_part_picked)
     solver.update_superset_cache(led)
     assert solver.inspect_get_known_supersets(
         led.color.get().is_parameter.get()
@@ -487,8 +493,8 @@ def test_pick_dependency_simple():
 
     pick_part_recursively(app, solver)
 
-    # assert app.r1.has_trait(F.has_part_picked)
-    # assert app.r2.has_trait(F.has_part_picked)
+    # assert app.r1.has_trait(F.Pickable.has_part_picked)
+    # assert app.r2.has_trait(F.Pickable.has_part_picked)
 
 
 @pytest.mark.usefixtures("setup_project_config")
@@ -599,7 +605,7 @@ def test_null_solver():
     solver = NullSolver()
     pick_part_recursively(app, solver)
 
-    assert app.cap.get().has_trait(F.has_part_picked)
+    assert app.cap.get().has_trait(F.Pickable.has_part_picked)
     assert app.cap.get().get_trait(F.has_package_requirements).get_sizes() == [
         SMDSize.I0805
     ]
@@ -653,7 +659,7 @@ def test_pick_voltage_divider_complex():
     # pick_part_recursively(app, solver)
 
     # for m in app.get_children_modules(types=fabll.Module):
-    #    if not m.has_trait(F.has_part_picked):
+    #    if not m.has_trait(F.Pickable.has_part_picked):
     #        continue
     #    print(m.get_full_name(), m.pretty_params(solver))
 
@@ -672,4 +678,4 @@ def test_pick_capacitor_temperature_coefficient():
     solver = DefaultSolver()
     pick_part_recursively(cap, solver)
 
-    assert cap.has_trait(F.has_part_picked)
+    assert cap.has_trait(F.Pickable.has_part_picked)

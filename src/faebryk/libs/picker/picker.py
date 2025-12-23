@@ -126,7 +126,7 @@ class does_not_require_picker_check(fabll.Node):
 # module should be root node
 def get_pick_tree(
     module_or_interface_obj: fabll.Node, explore_only: bool = False
-) -> Tree[F.is_pickable]:
+) -> Tree["F.Pickable.is_pickable"]:
     # TODO no specialization
     # if module.has_trait(fabll.is_module):
     #     module = module.get_most_special()
@@ -138,35 +138,35 @@ def get_pick_tree(
 
     if module:
         traits = module_or_interface_obj.try_get_traits(
-            F.has_part_picked,
+            F.Pickable.has_part_picked,
             F.has_part_removed,
-            F.is_pickable_by_type,
-            F.is_pickable_by_supplier_id,
+            F.Pickable.is_pickable_by_type,
+            F.Pickable.is_pickable_by_supplier_id,
         )
 
-        if traits.get(F.has_part_picked):
+        if traits.get(F.Pickable.has_part_picked):
             return tree
 
         # Handle has_part_removed: create a has_part_picked trait with the removed marker # noqa: E501
         if traits.get(F.has_part_removed):
             picked_trait = fabll.Traits.create_and_add_instance_to(
-                module_or_interface_obj, F.has_part_picked
+                module_or_interface_obj, F.Pickable.has_part_picked
             )
             fabll.Traits.create_and_add_instance_to(picked_trait, F.has_part_removed)
             return tree
 
         explore = True
-        if pbt := traits.get(F.is_pickable_by_type):
+        if pbt := traits.get(F.Pickable.is_pickable_by_type):
             merge_tree = Tree()
-            pickable_trait = pbt.get_trait(F.is_pickable)
+            pickable_trait = pbt.get_trait(F.Pickable.is_pickable)
             tree[pickable_trait] = merge_tree
-        elif pbsi := traits.get(F.is_pickable_by_supplier_id):
+        elif pbsi := traits.get(F.Pickable.is_pickable_by_supplier_id):
             merge_tree = Tree()
-            pickable_trait = pbsi.get_trait(F.is_pickable)
+            pickable_trait = pbsi.get_trait(F.Pickable.is_pickable)
             tree[pickable_trait] = merge_tree
-        elif pbpn := F.is_pickable_by_part_number.try_check_or_convert(module):
+        elif pbpn := F.Pickable.is_pickable_by_part_number.try_check_or_convert(module):
             merge_tree = Tree()
-            pickable_trait = pbpn.get_trait(F.is_pickable)
+            pickable_trait = pbpn.get_trait(F.Pickable.is_pickable)
             tree[pickable_trait] = merge_tree
         else:
             explore = False
@@ -199,14 +199,16 @@ def get_pick_tree(
     return tree
 
 
-def update_pick_tree(tree: Tree[F.is_pickable]) -> tuple[Tree[F.is_pickable], bool]:
+def update_pick_tree(
+    tree: Tree["F.Pickable.is_pickable"],
+) -> tuple[Tree["F.Pickable.is_pickable"], bool]:
     if not tree:
         return tree, False
 
     filtered_tree = Tree(
         (k, sub[0])
         for k, v in tree.items()
-        if not k.get_pickable_node().has_trait(F.has_part_picked)
+        if not k.get_pickable_node().has_trait(F.Pickable.has_part_picked)
         and not (sub := update_pick_tree(v))[1]
     )
     if not filtered_tree:
@@ -215,17 +217,19 @@ def update_pick_tree(tree: Tree[F.is_pickable]) -> tuple[Tree[F.is_pickable], bo
     return filtered_tree, False
 
 
-def _list_to_hack_tree(modules: Iterable[F.is_pickable]) -> Tree[F.is_pickable]:
+def _list_to_hack_tree(
+    modules: Iterable["F.Pickable.is_pickable"],
+) -> Tree["F.Pickable.is_pickable"]:
     return Tree({m: Tree() for m in modules})
 
 
 def find_independent_groups(
-    modules: Iterable[F.is_pickable], solver: Solver
-) -> list[set[F.is_pickable]]:
+    modules: Iterable["F.Pickable.is_pickable"], solver: Solver
+) -> list[set["F.Pickable.is_pickable"]]:
     """
     Find groups of modules that are independent of each other.
     """
-    unique_modules: set[F.is_pickable] = set(modules)
+    unique_modules: set[F.Pickable.is_pickable] = set(modules)
 
     # partition params into cliques by expression involvement
     p_cliques = EquivalenceClasses[F.Parameters.is_parameter]()
@@ -253,10 +257,14 @@ def find_independent_groups(
         )
 
     # partition modules into cliques by parameter clique membership
-    module_cliques = EquivalenceClasses[F.is_pickable](unique_modules)
-    p_to_module_map = dict[F.Parameters.is_parameter, F.is_pickable_by_type]()
+    module_cliques = EquivalenceClasses[F.Pickable.is_pickable](unique_modules)
+    p_to_module_map = dict[F.Parameters.is_parameter, F.Pickable.is_pickable_by_type]()
     for m in unique_modules:
-        if not (m_pbt := fabll.Traits(m).get_obj_raw().try_cast(F.is_pickable_by_type)):
+        if not (
+            m_pbt := fabll.Traits(m)
+            .get_obj_raw()
+            .try_cast(F.Pickable.is_pickable_by_type)
+        ):
             continue
         params = m_pbt.get_params()
         for p in params:
@@ -286,13 +294,15 @@ def _get_graph(*nodes: fabll.Node) -> tuple[graph.GraphView, fbrk.TypeGraph]:
 
 
 def pick_topologically(
-    tree: Tree[F.is_pickable], solver: Solver, progress: Advancable | None = None
+    tree: Tree["F.Pickable.is_pickable"],
+    solver: Solver,
+    progress: Advancable | None = None,
 ):
     # TODO implement backtracking
 
     import faebryk.libs.picker.api.picker_lib as picker_lib
 
-    def _pick_explicit_modules(explicit_modules: list[F.is_pickable]):
+    def _pick_explicit_modules(explicit_modules: list["F.Pickable.is_pickable"]):
         explicit_parts = picker_lib._find_modules(
             _list_to_hack_tree(explicit_modules), solver
         )
@@ -304,9 +314,9 @@ def pick_topologically(
 
     timings = Times(name="pick")
 
-    def _relevant_params(m: F.is_pickable) -> set[F.Parameters.can_be_operand]:
+    def _relevant_params(m: F.Pickable.is_pickable) -> set[F.Parameters.can_be_operand]:
         pbt = m.get_parent_of_type(
-            F.is_pickable_by_type, direct_only=True, include_root=False
+            F.Pickable.is_pickable_by_type, direct_only=True, include_root=False
         )
         if not pbt:
             return set()
@@ -321,8 +331,8 @@ def pick_topologically(
     if explicit_modules := [
         m
         for m in tree.keys()
-        if m.get_pickable_node().has_trait(F.is_pickable_by_part_number)
-        or m.get_pickable_node().has_trait(F.is_pickable_by_supplier_id)
+        if m.get_pickable_node().has_trait(F.Pickable.is_pickable_by_part_number)
+        or m.get_pickable_node().has_trait(F.Pickable.is_pickable_by_supplier_id)
     ]:
         _pick_explicit_modules(explicit_modules)
         tree, _ = update_pick_tree(tree)

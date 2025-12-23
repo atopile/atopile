@@ -26,8 +26,8 @@ class Inductor(fabll.Node):
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
     _is_pickable = fabll.Traits.MakeEdge(
-        F.is_pickable_by_type.MakeChild(
-            endpoint=F.is_pickable_by_type.Endpoint.INDUCTORS,
+        F.Pickable.is_pickable_by_type.MakeChild(
+            endpoint=F.Pickable.is_pickable_by_type.Endpoint.INDUCTORS,
             params={
                 "inductance": inductance,
                 "max_current": max_current,

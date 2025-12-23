@@ -105,23 +105,23 @@ _ASSIGNMENT_OVERRIDES: dict[str, TraitOverrideSpec] = {
         make_trait_field=lambda size: F.has_package_requirements.MakeChild(size=size),
     ),
     "lcsc_id": TraitOverrideSpec(
-        trait_class=F.is_pickable_by_supplier_id,
+        trait_class=F.Pickable.is_pickable_by_supplier_id,
         expected_type=str,
-        make_trait_field=lambda v: F.is_pickable_by_supplier_id.MakeChild(
+        make_trait_field=lambda v: F.Pickable.is_pickable_by_supplier_id.MakeChild(
             supplier_part_id=v
         ),
     ),
     "mpn": TraitOverrideSpec(
-        trait_class=F.has_mpn_assigned,
+        trait_class=F.Pickable.has_mpn_assigned,
         expected_type=str,
-        make_trait_field=lambda v: F.has_mpn_assigned.MakeChild(
+        make_trait_field=lambda v: F.Pickable.has_mpn_assigned.MakeChild(
             mpn=v,
         ),
     ),
     "manufacturer": TraitOverrideSpec(
-        trait_class=F.has_mfr_assigned,
+        trait_class=F.Pickable.has_mfr_assigned,
         expected_type=str,
-        make_trait_field=lambda v: F.has_mfr_assigned.MakeChild(
+        make_trait_field=lambda v: F.Pickable.has_mfr_assigned.MakeChild(
             mfr=v,
         ),
     ),
@@ -175,8 +175,8 @@ _TRAIT_OVERRIDES: dict[str, TraitOverrideSpec] = {
         deprecated_hint="Use has_single_electric_reference instead",
     ),
     "has_part_picked": TraitOverrideSpec(
-        trait_class=F.has_part_picked,
-        make_trait_field=lambda args: F.has_part_picked.MakeChild(**args),
+        trait_class=F.Pickable.has_part_picked,
+        make_trait_field=lambda args: F.Pickable.has_part_picked.MakeChild(**args),
     ),
 }
 

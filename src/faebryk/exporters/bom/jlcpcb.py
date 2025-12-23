@@ -49,7 +49,9 @@ def split_designator(designator: str) -> tuple[str, int]:
     return (prefix, number)
 
 
-def make_bom(components: Iterable[F.has_part_picked], jlcpcb_format: bool = True):
+def make_bom(
+    components: Iterable[F.Pickable.has_part_picked], jlcpcb_format: bool = True
+):
     bomlines = [line for c in components if (line := _get_bomline(c, jlcpcb_format))]
     bomlines = sorted(
         _compact_bomlines(bomlines),
@@ -61,7 +63,9 @@ def make_bom(components: Iterable[F.has_part_picked], jlcpcb_format: bool = True
 
 
 def write_bom(
-    components: Iterable[F.has_part_picked], path: Path, jlcpcb_format: bool = True
+    components: Iterable[F.Pickable.has_part_picked],
+    path: Path,
+    jlcpcb_format: bool = True,
 ) -> None:
     if not path.parent.exists():
         os.makedirs(path.parent)
@@ -117,7 +121,7 @@ def _compact_bomlines(bomlines: list[BOMLine]) -> list[BOMLine]:
     return compact_bomlines
 
 
-def _get_footprint_name(part: F.has_part_picked) -> str:
+def _get_footprint_name(part: F.Pickable.has_part_picked) -> str:
     module = part.get_sibling_trait(fabll.is_module)
     module_locator = module.get_module_locator()
     if not (
@@ -126,8 +130,8 @@ def _get_footprint_name(part: F.has_part_picked) -> str:
         )
     ):
         logger.warning(
-            f"No footprint for '{module_locator}' will result in empty footprint column "
-            "in bom"
+            f"No footprint for '{module_locator}' will result in empty footprint column"
+            " in bom"
         )
         return ""
 
@@ -146,7 +150,9 @@ def _get_footprint_name(part: F.has_part_picked) -> str:
     return ""
 
 
-def _get_bomline(part: F.has_part_picked, jlcpcb_format: bool = True) -> BOMLine | None:
+def _get_bomline(
+    part: F.Pickable.has_part_picked, jlcpcb_format: bool = True
+) -> BOMLine | None:
     module_name = part.get_sibling_trait(fabll.is_module).get_module_locator()
     if not (designator_t := part.try_get_sibling_trait(F.has_designator)):
         raise ValueError(f"Part '{part}' without designator")
@@ -202,7 +208,7 @@ def test_get_bomline():
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         _has_designator = fabll.Traits.MakeEdge(F.has_designator.MakeChild("R1"))
         _has_part_picked = fabll.Traits.MakeEdge(
-            F.has_part_picked.MakeChild(
+            F.Pickable.has_part_picked.MakeChild(
                 manufacturer="Amazing manufacturer",
                 partno="ABC-Part",
                 supplier_partno="C12345",
@@ -224,7 +230,7 @@ def test_get_bomline():
         trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint,
     ).setup(k_pcb_fp, transformer)
 
-    bomline = _get_bomline(node.get_trait(F.has_part_picked))
+    bomline = _get_bomline(node.get_trait(F.Pickable.has_part_picked))
 
     assert bomline is not None
     assert bomline.Designator == "R1"
@@ -271,7 +277,7 @@ class JlcBomTests:
 
         JlcBomTests._test_build(r)
 
-        bomline = _get_bomline(r.get_trait(F.has_part_picked))
+        bomline = _get_bomline(r.get_trait(F.Pickable.has_part_picked))
         assert bomline is not None
 
     @pytest.mark.usefixtures("setup_project_config")
@@ -284,9 +290,9 @@ class JlcBomTests:
             _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
             _is_pickable_by_supplier_id = fabll.Traits.MakeEdge(
-                F.is_pickable_by_supplier_id.MakeChild(
+                F.Pickable.is_pickable_by_supplier_id.MakeChild(
                     supplier_part_id="C25804",
-                    supplier=F.is_pickable_by_supplier_id.Supplier.LCSC,
+                    supplier=F.Pickable.is_pickable_by_supplier_id.Supplier.LCSC,
                 )
             )
             can_attach_to_footprint_ = fabll.Traits.MakeEdge(
@@ -297,7 +303,7 @@ class JlcBomTests:
         test_component = TestComponent.bind_typegraph(tg).create_instance(g=g)
         JlcBomTests._test_build(test_component)
 
-        bomline = _get_bomline(test_component.get_trait(F.has_part_picked))
+        bomline = _get_bomline(test_component.get_trait(F.Pickable.has_part_picked))
         assert bomline is not None
         assert bomline.Supplier_Partnumber == "C25804"
 
@@ -336,7 +342,7 @@ class JlcBomTests:
         ).setup(test_footprint.is_footprint_.get())
 
         fabll.Traits.create_and_add_instance_to(
-            node=test_module, trait=F.has_part_picked
+            node=test_module, trait=F.Pickable.has_part_picked
         ).setup(
             PickedPart(
                 manufacturer="TestManu",
@@ -348,7 +354,7 @@ class JlcBomTests:
 
         JlcBomTests._test_build(test_module)
 
-        bomline = _get_bomline(test_module.get_trait(F.has_part_picked))
+        bomline = _get_bomline(test_module.get_trait(F.Pickable.has_part_picked))
         assert bomline is None
 
     @pytest.mark.usefixtures("setup_project_config")
@@ -360,14 +366,14 @@ class JlcBomTests:
         test_module = F.Resistor.bind_typegraph(tg).create_instance(g=g)
 
         fabll.Traits.create_and_add_instance_to(
-            node=test_module, trait=F.is_pickable_by_supplier_id
+            node=test_module, trait=F.Pickable.is_pickable_by_supplier_id
         ).setup(
             supplier_part_id="C23162",
-            supplier=F.is_pickable_by_supplier_id.Supplier.LCSC,
+            supplier=F.Pickable.is_pickable_by_supplier_id.Supplier.LCSC,
         )
         JlcBomTests._test_build(test_module)
 
-        bomline = _get_bomline(test_module.get_trait(F.has_part_picked))
+        bomline = _get_bomline(test_module.get_trait(F.Pickable.has_part_picked))
         assert bomline is not None
         assert bomline.Supplier_Partnumber == "C23162"
         assert bomline.Footprint == "UNI_ROYAL_0603WAF4701T5E"

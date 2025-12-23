@@ -1144,8 +1144,8 @@ def test_jlcpcb_pick_resistor():
     solver = DefaultSolver()
     pick_part_recursively(resistor, solver)
 
-    assert resistor.has_trait(F.has_part_picked)
-    print(resistor.get_trait(F.has_part_picked).get_part())
+    assert resistor.has_trait(F.Pickable.has_part_picked)
+    print(resistor.get_trait(F.Pickable.has_part_picked).get_part())
 
 
 @pytest.mark.usefixtures("setup_project_config")
@@ -1166,8 +1166,8 @@ def test_jlcpcb_pick_capacitor():
     solver = DefaultSolver()
     pick_part_recursively(capacitor, solver)
 
-    assert capacitor.has_trait(F.has_part_picked)
-    print(capacitor.get_trait(F.has_part_picked).get_part())
+    assert capacitor.has_trait(F.Pickable.has_part_picked)
+    print(capacitor.get_trait(F.Pickable.has_part_picked).get_part())
 
 
 @pytest.mark.xfail(reason="TODO: add support for leds")
@@ -1188,8 +1188,8 @@ def test_jlcpcb_pick_led():
     solver = DefaultSolver()
     pick_part_recursively(led, solver)
 
-    assert led.has_trait(F.has_part_picked)
-    print(led.get_trait(F.has_part_picked).get_part())
+    assert led.has_trait(F.Pickable.has_part_picked)
+    print(led.get_trait(F.Pickable.has_part_picked).get_part())
 
 
 @pytest.mark.xfail(reason="TODO: swap for test without PoweredLED")

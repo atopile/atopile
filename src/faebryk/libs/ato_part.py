@@ -292,7 +292,9 @@ class AtoPart:
         )
 
         pick_part = (
-            t.get_part() if (t := ato.try_get_trait(F.has_part_picked)) else None
+            t.get_part()
+            if (t := ato.try_get_trait(F.Pickable.has_part_picked))
+            else None
         )
 
         docstring = ato.parse_docstring()

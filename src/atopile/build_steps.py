@@ -487,9 +487,11 @@ def generate_bom(
 ) -> None:
     """Generate a BOM for the project."""
     parts = [
-        m.get_trait(F.has_part_picked)
+        m.get_trait(F.Pickable.has_part_picked)
         for m in app.get_children(
-            direct_only=False, types=fabll.Node, required_trait=F.has_part_picked
+            direct_only=False,
+            types=fabll.Node,
+            required_trait=F.Pickable.has_part_picked,
         )
         if not m.has_trait(F.has_part_removed)
     ]

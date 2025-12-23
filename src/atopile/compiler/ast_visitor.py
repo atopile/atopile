@@ -96,12 +96,12 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.has_net_name_affix,
         F.has_net_name_suggestion,
         F.has_package_requirements,
-        F.has_part_picked,
+        F.Pickable.has_part_picked,
         F.has_part_removed,
         F.has_single_electric_reference,
         F.is_atomic_part,
         F.is_auto_generated,
-        F.is_pickable,
+        F.Pickable.is_pickable,
         F.requires_external_usage,
     }
 )

@@ -851,7 +851,7 @@ def test_reserved_attrs(import_stmt: str, class_name: str, pkg_str: str, pkg: SM
         .get_single_value_typed(SMDSize)
         == pkg
     )
-    is_pbpn = F.is_pickable_by_part_number.try_check_or_convert(a_module)
+    is_pbpn = F.Pickable.is_pickable_by_part_number.try_check_or_convert(a_module)
     assert is_pbpn is not None
     assert is_pbpn.get_manufacturer() == mfr
     assert is_pbpn.get_partno() == mpn
@@ -1488,7 +1488,7 @@ def test_alternate_trait_constructor_no_params():
     )
     assert "App" in result.state.type_roots
     # Trait is created but with no constraints on mfr/partno
-    trait = fabll.Node.bind_instance(app_instance).get_trait(F.has_part_picked)
+    trait = fabll.Node.bind_instance(app_instance).get_trait(F.Pickable.has_part_picked)
     assert trait.supplier_id is None
     assert trait.supplier_partno is None
 
@@ -1505,12 +1505,12 @@ def test_alternate_trait_constructor_with_params():
 
         module App:
             trait has_part_picked::by_supplier<supplier_id="lcsc", supplier_partno="C123456">
-        """,
+        """,  # noqa: E501
         "App",
     )
     assert "App" in result.state.type_roots
 
-    trait = fabll.Node.bind_instance(app_instance).get_trait(F.has_part_picked)
+    trait = fabll.Node.bind_instance(app_instance).get_trait(F.Pickable.has_part_picked)
     assert trait.supplier_id == "lcsc"
     assert trait.supplier_partno == "C123456"
 
@@ -1562,7 +1562,7 @@ def test_trait_alternate_constructor_precedence():
         "App",
     )
     assert "App" in result.state.type_roots
-    trait = fabll.Node.bind_instance(app_instance).get_trait(F.has_part_picked)
+    trait = fabll.Node.bind_instance(app_instance).get_trait(F.Pickable.has_part_picked)
     assert trait.supplier_id.get().force_extract_literal().get_values()[0] == "1234"
     assert trait.supplier_partno.get().force_extract_literal().get_values()[0] == "2345"
     assert (
@@ -1589,6 +1589,21 @@ def test_parameterised_trait_no_params_net_name():
     # Trait is created but with no constraints
     trait = fabll.Node.bind_instance(app_instance).get_trait(F.has_net_name_suggestion)
     assert trait.name_.get().try_extract_constrained_literal() is None
+
+
+def test_nested_override_trait():
+    """Test if we can use overrides nested"""
+    _, _, _, result, app_instance = build_instance(
+        """
+        module App:
+            power = new ElectricPower
+            power.hv.required = True
+        """,
+        "App",
+    )
+    assert "App" in result.state.type_roots
+    power = F.ElectricPower.bind_instance(_get_child(app_instance, "power"))
+    assert power.hv.get().has_trait(F.requires_external_usage)
 
 
 def test_slice_for_loop():

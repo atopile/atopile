@@ -49,7 +49,7 @@ def test_ato_pick_resistor():
 
     pick_part_recursively(r1, DefaultSolver())
 
-    assert r1.has_trait(F.has_part_picked)
+    assert r1.has_trait(F.Pickable.has_part_picked)
 
 
 @pytest.mark.usefixtures("setup_project_config")
@@ -77,7 +77,7 @@ def test_ato_pick_capacitor():
 
     pick_part_recursively(r1, DefaultSolver())
 
-    assert r1.has_trait(F.has_part_picked)
+    assert r1.has_trait(F.Pickable.has_part_picked)
 
 
 @pytest.mark.usefixtures("setup_project_config")
@@ -128,7 +128,7 @@ def test_ato_pick_inductor(
 
     pick_part_recursively(inductor, DefaultSolver())
 
-    assert inductor.has_trait(F.has_part_picked)
+    assert inductor.has_trait(F.Pickable.has_part_picked)
 
     # Verify the picked part has an inductance value
     picked_inductance = inductor.inductance.get().try_extract_aliased_literal()
@@ -188,8 +188,8 @@ def test_ato_pick_resistor_dependency(tmp_path: Path):
 
     r1 = fabll.Node.bind_instance(_get_child(app_instance, "r1"))
     r2 = fabll.Node.bind_instance(_get_child(app_instance, "r2"))
-    assert r1.has_trait(F.has_part_picked)
-    assert r2.has_trait(F.has_part_picked)
+    assert r1.has_trait(F.Pickable.has_part_picked)
+    assert r2.has_trait(F.Pickable.has_part_picked)
 
 
 @pytest.mark.slow
@@ -231,8 +231,8 @@ def test_ato_pick_resistor_voltage_divider_fab():
     vdiv = F.ResistorVoltageDivider.bind_instance(_get_child(app_instance, "vdiv"))
     r_top = vdiv.r_top.get()
     r_bottom = vdiv.r_bottom.get()
-    assert r_top.has_trait(F.has_part_picked)
-    assert r_bottom.has_trait(F.has_part_picked)
+    assert r_top.has_trait(F.Pickable.has_part_picked)
+    assert r_bottom.has_trait(F.Pickable.has_part_picked)
 
 
 @pytest.mark.slow
@@ -278,5 +278,5 @@ def test_ato_pick_resistor_voltage_divider_ato(tmp_path: Path):
     vdiv = F.ResistorVoltageDivider.bind_instance(_get_child(app_instance, "vdiv"))
     r_top = vdiv.r_top.get()
     r_bottom = vdiv.r_bottom.get()
-    assert r_top.has_trait(F.has_part_picked)
-    assert r_bottom.has_trait(F.has_part_picked)
+    assert r_top.has_trait(F.Pickable.has_part_picked)
+    assert r_bottom.has_trait(F.Pickable.has_part_picked)
