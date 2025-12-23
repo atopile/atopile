@@ -518,12 +518,12 @@ test "get_children_query type filtering" {
     // Build type graph with Electrical and Capacitor types
     const Electrical = try tg.add_type("Electrical");
     const Capacitor = try tg.add_type("Capacitor");
-    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null, null, false);
-    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null, null, false);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null, false);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null, false);
     const Resistor = try tg.add_type("Resistor");
-    _ = try tg.add_make_child(Resistor, Electrical, "rp1", null, null, false);
-    _ = try tg.add_make_child(Resistor, Electrical, "rp2", null, null, false);
-    _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null, null, false);
+    _ = try tg.add_make_child(Resistor, Electrical, "rp1", null, false);
+    _ = try tg.add_make_child(Resistor, Electrical, "rp2", null, false);
+    _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null, false);
 
     // Instantiate a Resistor (which has p1, p2 as Electrical and cap1 as Capacitor)
     const resistor = try tg.instantiate_node(Resistor);
@@ -586,10 +586,10 @@ test "get_children_query recursive with type filtering" {
     // Build type graph: Resistor has a Capacitor child, Capacitor has Electrical children
     const Electrical = try tg.add_type("Electrical");
     const Capacitor = try tg.add_type("Capacitor");
-    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null, null, false);
-    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null, null, false);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null, false);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null, false);
     const Resistor = try tg.add_type("Resistor");
-    _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null, null, false);
+    _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null, false);
 
     // Instantiate a Resistor
     const resistor = try tg.instantiate_node(Resistor);
