@@ -35,7 +35,7 @@ class has_designator(fabll.Node):
 
 class Test:
     def test_designator_generation(self):
-        from faebryk.library.has_part_picked import has_part_picked
+        from faebryk.library.Pickable import has_part_picked
 
         g = fabll.graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
@@ -60,7 +60,7 @@ class Test:
         assert capacitor1.get_trait(has_designator).get_designator() == "C1"
 
     def test_manual_designator_assignment(self):
-        from faebryk.library.has_part_picked import has_part_picked
+        from faebryk.library.Pickable import has_part_picked
 
         g = fabll.graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
@@ -86,7 +86,7 @@ class Test:
         assert capacitor1.get_trait(has_designator).get_designator() == "C1"
 
     def test_no_part_no_designator(self):
-        from faebryk.library.has_part_picked import has_part_picked
+        from faebryk.library.Pickable import has_part_picked
 
         g = fabll.graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
