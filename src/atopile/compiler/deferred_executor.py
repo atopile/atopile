@@ -10,7 +10,7 @@ fully linked types:
 3. For-loop execution - expands deferred for-loops (delegated to visitor)
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -21,6 +21,13 @@ from faebryk.libs.util import DAG
 
 if TYPE_CHECKING:
     from atopile.compiler.ast_visitor import ASTVisitor
+
+
+class StdlibLookup(Protocol):
+    """Protocol for stdlib type lookup (matches StdlibRegistry interface)."""
+
+    def get(self, name: str) -> graph.BoundNode: ...
+    def __contains__(self, name: str) -> bool: ...
 
 
 class DeferredExecutor:
@@ -41,6 +48,7 @@ class DeferredExecutor:
         tg: fbrk.TypeGraph,
         state: BuildState,
         visitor: "ASTVisitor",
+        stdlib: StdlibLookup | None = None,
     ) -> None:
         self._g = g
         self._tg = tg
@@ -48,6 +56,7 @@ class DeferredExecutor:
         self._pending_retypes = state.pending_retypes
         self._type_roots = state.type_roots
         self._visitor = visitor
+        self._stdlib = stdlib
 
     def execute(self) -> None:
         """Execute all deferred operations in order."""
@@ -64,6 +73,23 @@ class DeferredExecutor:
 
         def _get_parent_name(parent_ref: ImportRef | str) -> str:
             return parent_ref.name if isinstance(parent_ref, ImportRef) else parent_ref
+
+        def _resolve_parent_type(
+            parent_ref: ImportRef | str,
+        ) -> graph.BoundNode | None:
+            """
+            Resolve parent type from either local type_roots or stdlib imports.
+
+            For stdlib imports (ImportRef with path=None), look up in stdlib registry.
+            For local or file imports, look up in type_roots.
+            """
+            if isinstance(parent_ref, ImportRef) and parent_ref.path is None:
+                # stdlib import - look up in stdlib registry
+                if self._stdlib is not None and parent_ref.name in self._stdlib:
+                    return self._stdlib.get(parent_ref.name)
+            # Local type or file import - look up in type_roots
+            parent_name = _get_parent_name(parent_ref)
+            return self._type_roots.get(parent_name)
 
         dag: DAG[str] = DAG()
         pending_by_name = {}
@@ -85,7 +111,7 @@ class DeferredExecutor:
             item = pending_by_name[type_name]
             parent_name = _get_parent_name(item.parent_ref)
 
-            if (parent_type := self._type_roots.get(parent_name)) is None:
+            if (parent_type := _resolve_parent_type(item.parent_ref)) is None:
                 raise DslException(
                     f"Parent type `{parent_name}` not found for `{item.derived_name}`"
                 )

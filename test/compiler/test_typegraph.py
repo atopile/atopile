@@ -2220,7 +2220,9 @@ class TestAssignments:
         assert len(values) == 2
         # The values are stored in the start unit (uA)
         assert values[0] == 2.1, f"Expected start value 2.1, got {values[0]}"
-        assert values[1] == 12000.0, f"Expected end value 12000 (12mA in uA), got {values[1]}"
+        assert values[1] == 12000.0, (
+            f"Expected end value 12000 (12mA in uA), got {values[1]}"
+        )
 
     def test_assert_within_constraint(self):
         """Test assert within constraint on an existing field."""

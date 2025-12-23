@@ -28,4 +28,3 @@ module App:
     resistor.unnamed[0] ~ diode.anode
     resistor.unnamed[1] ~ capacitor.unnamed[0]
     diode.cathode ~ capacitor.unnamed[1]
-

@@ -490,7 +490,9 @@ def build_stage_2(
     from atopile.compiler.deferred_executor import DeferredExecutor
 
     linker.link_imports(g, result.state)
-    DeferredExecutor(g=g, tg=tg, state=result.state, visitor=result.visitor).execute()
+    DeferredExecutor(
+        g=g, tg=tg, state=result.state, visitor=result.visitor, stdlib=linker._stdlib
+    ).execute()
 
     if validate:
         with accumulate() as accumulator:

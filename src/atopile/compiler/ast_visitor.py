@@ -629,7 +629,7 @@ class ASTVisitor:
 
     def visit(self, node: fabll.Node):
         # TODO: less magic dispatch
-        node_type = cast_assert(str, node.get_type_name())
+        node_type = cast_assert(str, node.get_type_name()).removeprefix("compiler_")
         logger.info(f"Visiting node of type {node_type}")
 
         try:

@@ -83,14 +83,20 @@ class Addressor(fabll.Node):
             from faebryk.core.solver.nullsolver import NullSolver
 
             if isinstance(solver, NullSolver):
-                raise Warning("Solver is NullSolver, can't use it to deduce the offset")
+                logger.warning(
+                    "Solver is NullSolver, can't use it to deduce the offset"
+                )
+                return
             assert isinstance(solver, DefaultSolver)
             offset_op = self.offset.get().can_be_operand.get()
             offset_param = self.offset.get().is_parameter.get()
             solver.update_superset_cache(offset_op)
             lit = solver.inspect_get_known_supersets(offset_param)
             if lit is None or not lit.is_singleton():
-                raise Addressor.OffsetNotResolvedError(self)
+                # raise Addressor.OffsetNotResolvedError(self)
+                raise Warning(
+                    "Offset not resolved"
+                )  # TODO: make the check only valid for external use
             # lit is an is_literal trait - get the actual node it's attached to
             lit_node = fabll.Traits(lit).get_obj_raw()
             offset = int(lit_node.cast(F.Literals.Numbers).get_single())
