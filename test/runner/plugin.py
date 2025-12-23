@@ -6,6 +6,7 @@ and send JSON events for test start/finish.
 """
 
 import os
+import sys
 import time
 import tracemalloc
 
@@ -14,6 +15,8 @@ import psutil
 import pytest
 
 from test.runner.common import ORCHESTRATOR_URL_ENV, EventRequest, EventType, Outcome
+
+FBRK_TEST_TEST_TIMEOUT = int(os.environ.get("FBRK_TEST_TEST_TIMEOUT", -1))
 
 
 def _extract_error_message(longreprtext: str) -> str:
@@ -183,3 +186,100 @@ def pytest_runtest_logreport(report: pytest.TestReport):
             memory_usage_mb=memory_usage_mb,
             memory_peak_mb=memory_peak_mb,
         )
+
+
+class TestTimeout(BaseException): ...
+
+
+def _get_thread_stack(thread_id: int) -> str:
+    """Capture the current stack trace of a thread by its ID."""
+    import sys
+    import traceback
+
+    frames = sys._current_frames()
+    if thread_id not in frames:
+        return "<thread not found>"
+    return "".join(traceback.format_stack(frames[thread_id]))
+
+
+if FBRK_TEST_TEST_TIMEOUT > 0:
+    # TODO
+    # probably need to manually call teardown and setup
+    raise NotImplementedError(
+        "This breaks a bunch of tests for some reason, even without timeout"
+    )
+
+    @pytest.hookimpl(trylast=True)
+    def pytest_runtest_call(item: pytest.Item):
+        import ctypes
+        import threading
+
+        timeout = FBRK_TEST_TEST_TIMEOUT
+
+        main_thread_id = threading.current_thread().ident
+        assert main_thread_id is not None  # Always valid for a running thread
+        stop_watchdog = threading.Event()
+
+        def _watchdog():
+            """
+            Thread-based watchdog that injects TestTimeout into the main thread.
+            Unlike signal handlers, this cannot be overridden by test code.
+            """
+            failures = 0
+            last_printed_stack: str | None = None
+            # Wait for initial timeout
+            if stop_watchdog.wait(timeout):
+                return  # Test completed normally
+
+            # Test timed out - repeatedly inject exception until it sticks
+            # (in case exceptions are caught/suppressed)
+            while not stop_watchdog.is_set():
+                if failures > 10:
+                    print("Test timed out too many times - exiting")
+                    sys.exit(0x59)  # random exit code
+                wait_time = max(5 / (2**failures), 0.05)
+                failures += 1
+                # Format current time with milliseconds for higher precision
+                t = time.time()
+                time_s = (
+                    time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t))
+                    + f".{int((t % 1) * 1000):03d}"
+                )
+                print(
+                    f"{time_s}: Test {item.nodeid} timed out - injecting exception"
+                    f" (waiting {wait_time:.2f}s)"
+                )
+                # Capture stack before injecting exception to see what's blocking
+                stack_before = _get_thread_stack(main_thread_id)
+                # one last extra check
+                # Inject TestTimeout exception into the main thread
+                ctypes.pythonapi.PyThreadState_SetAsyncExc(
+                    ctypes.c_ulong(main_thread_id),
+                    ctypes.py_object(TestTimeout),
+                )
+                # Retry if the exception doesn't take
+                if stop_watchdog.wait(timeout=wait_time):
+                    break
+
+                # Exception didn't work - print where the thread was stuck
+                stack_after = _get_thread_stack(main_thread_id)
+                # Only print full stacks if they differ from the last printed one
+                if stack_before != last_printed_stack:
+                    print(f"Stack when timeout was injected:\n{stack_before}")
+                    last_printed_stack = stack_before
+                if stack_after != last_printed_stack:
+                    print(f"Stack after waiting (still blocked):\n{stack_after}")
+                    last_printed_stack = stack_after
+
+        watchdog_thread = threading.Thread(target=_watchdog, daemon=True)
+        watchdog_thread.start()
+
+        try:
+            item.runtest()  # run the actual test function
+            stop_watchdog.set()
+        except TestTimeout:
+            stop_watchdog.set()
+            pytest.fail(f"Test timed out after {timeout:.2f}s", pytrace=False)
+        finally:
+            stop_watchdog.set()
+            watchdog_thread.join(timeout=0.1)

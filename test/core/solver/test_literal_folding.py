@@ -1210,9 +1210,6 @@ def test_folding_statistics(expr: F.Expressions.is_expression):
     except Contradiction:
         stats.event("contradiction", test_expr)
         return
-    except TimeoutError:
-        stats.event("timeout", test_expr)
-        return
     except NotImplementedError:
         stats.event("not implemented in solver", test_expr)
         return

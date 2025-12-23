@@ -974,7 +974,10 @@ def test_voltage_divider_find_resistances():
     # TODO: specify r_top (with tolerance), finish solving to find r_bottom
 
 
-def test_voltage_divider_find_r_top():
+def test_voltage_divider_find_r_top(request: pytest.FixtureRequest):
+    if request.node.get_closest_marker("slow") is None:
+        assert False, "slow"
+
     E = BoundExpressions()
     r_top = E.parameter_op(units=E.U.Ohm)
     r_bottom = E.parameter_op(units=E.U.Ohm)
@@ -1037,28 +1040,6 @@ def test_base_unit_switch():
     )
 
 
-@pytest.mark.parametrize("predicate_type", [F.Expressions.Is, F.Expressions.IsSubset])
-def test_try_fulfill_super_basic(
-    predicate_type: type[F.Expressions.Is] | type[F.Expressions.IsSubset],
-):
-    """
-    p0 is! [0, 10]V
-    deduce (p0 is [0, 10]V)
-    """
-    E = BoundExpressions()
-    p0 = E.parameter_op(units=E.U.V)
-    E.is_(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
-
-    solver = DefaultSolver()
-    pred = predicate_type.c(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))))
-    assert solver.try_fulfill(
-        pred.as_parameter_operatable.force_get()
-        .as_expression.force_get()
-        .as_assertable.force_get(),
-        lock=False,
-    )
-
-
 def test_congruence_filter():
     E = BoundExpressions()
 
@@ -1093,23 +1074,6 @@ def test_inspect_enum_simple():
     solver = DefaultSolver()
     solver.update_superset_cache(A)
     assert _extract_and_check(A, solver, F.LED.Color.EMERALD)
-
-
-def test_regression_enum_contradiction():
-    E = BoundExpressions()
-    A = E.enum_parameter_op(F.LED.Color)
-
-    E.is_subset(A, E.lit_op_enum(F.LED.Color.BLUE, F.LED.Color.RED), assert_=True)
-
-    solver = DefaultSolver()
-    with pytest.raises(Contradiction):
-        solver.try_fulfill(
-            E.is_(A, E.lit_op_enum(F.LED.Color.EMERALD))
-            .as_parameter_operatable.force_get()
-            .as_expression.force_get()
-            .as_assertable.force_get(),
-            lock=False,
-        )
 
 
 def test_inspect_enum_led():
@@ -1703,34 +1667,6 @@ def test_fold_literals():
     solver = DefaultSolver()
     solver.update_superset_cache(A)
     assert _extract_and_check(A, solver, E.lit_op_range((0, 20)))
-
-
-def test_deduce_negative():
-    E = BoundExpressions()
-    A = E.bool_parameter_op()
-
-    p = E.not_(A)
-
-    solver = DefaultSolver()
-    assert solver.try_fulfill(
-        p.as_parameter_operatable.force_get()
-        .as_expression.force_get()
-        .as_assertable.force_get(),
-        lock=False,
-    )
-
-
-def test_empty_and():
-    E = BoundExpressions()
-    solver = DefaultSolver()
-
-    p = E.and_()
-    assert solver.try_fulfill(
-        p.as_parameter_operatable.force_get()
-        .as_expression.force_get()
-        .as_assertable.force_get(),
-        lock=False,
-    )
 
 
 def test_implication():

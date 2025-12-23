@@ -64,7 +64,7 @@ jobs:
           uv run \
             test/runner/main.py \
             -m "not not_in_ci and not slow and not regression" \
-            --timeout=900 \
+            --timeout=120 \
         env:
           PYTHONPATH: .
           GH_TOKEN: ${{ github.token }}

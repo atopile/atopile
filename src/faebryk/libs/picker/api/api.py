@@ -9,6 +9,7 @@ from importlib.metadata import version as get_package_version
 
 import faebryk.library._F as F
 from atopile.config import config
+from atopile.errors import UserInfraError
 from faebryk.libs.http import HTTPStatusError, Response, http_client
 from faebryk.libs.picker.api.models import (
     BaseParams,
@@ -105,6 +106,11 @@ class ApiClient:
                 response.raise_for_status()
         except HTTPStatusError as e:
             raise ApiHTTPError(e) from e
+        except TimeoutError as e:
+            raise UserInfraError(
+                "Fetching component data failed to complete in time. "
+                "Please try again later."
+            ) from e
 
         if API_LOG:
             logger.debug(

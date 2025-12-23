@@ -81,7 +81,7 @@ class SocketClient:
         if self._sock:
             try:
                 self.send(_make_event(EventType.EXIT, ""))
-            except:
+            except Exception:
                 pass
             try:
                 self._sock.close()

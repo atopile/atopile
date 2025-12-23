@@ -17,9 +17,8 @@ from faebryk.core.solver.mutator import (
     MutationStage,
     Mutator,
     Transformations,
-    is_terminated,
 )
-from faebryk.core.solver.solver import LOG_PICK_SOLVE, NotDeducibleException, Solver
+from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.symbolic import (
     canonical,
     expression_groups,
@@ -32,11 +31,10 @@ from faebryk.core.solver.utils import (
     MAX_ITERATIONS_HEURISTIC,
     PRINT_START,
     S_LOG,
-    TIMEOUT,
 )
 from faebryk.libs.logging import NET_LINE_WIDTH
 from faebryk.libs.test.times import Times
-from faebryk.libs.util import not_none, times_out
+from faebryk.libs.util import not_none
 
 logger = logging.getLogger(__name__)
 
@@ -304,7 +302,7 @@ class DefaultSolver(Solver):
         )
 
     @override
-    @times_out(TIMEOUT)
+    # @times_out(TIMEOUT)
     def simplify(
         self,
         g: graph.GraphView | fbrk.TypeGraph,
@@ -362,7 +360,7 @@ class DefaultSolver(Solver):
                     terminal=terminal,
                     algos=pre_algos if first_iter else it_algos,
                 )
-            except:
+            except Exception:
                 if S_LOG:
                     self.state.data.mutation_map.last_stage.print_graph_contents()
                 raise
@@ -397,96 +395,12 @@ class DefaultSolver(Solver):
 
         return self.state
 
-    @override
-    def try_fulfill(
-        self,
-        predicate: F.Expressions.is_assertable,
-        lock: bool,
-        allow_unknown: bool = False,
-    ) -> bool | None:
-        assert not predicate.try_get_sibling_trait(F.Expressions.is_predicate)
-        asserted = predicate.assert_()
-
-        pred_po = predicate.get_sibling_trait(F.Parameters.is_parameter_operatable)
-
-        g = predicate.g
-        tg = predicate.tg
-
-        try:
-            solver_result = self.simplify(tg, g, terminal=True)
-        except TimeoutError:
-            if not allow_unknown:
-                raise
-            return None
-        finally:
-            asserted.unassert()
-
-        repr_map = solver_result.data.mutation_map
-
-        # FIXME: is this correct?
-        # definitely breaks a lot
-        G_out = repr_map.G_out
-        tg_out = repr_map.tg_out
-        repr_pred = repr_map.map_forward(pred_po).maps_to
-        print_context_new = repr_map.output_print_context
-
-        # FIXME: workaround for above
-        if repr_pred is not None:
-            G_out = repr_pred.g
-
-        new_preds = fabll.Traits.get_implementors(
-            F.Expressions.is_predicate.bind_typegraph(tg_out), G_out
-        )
-        not_deduced = [
-            p for p in new_preds if not p.try_get_sibling_trait(is_terminated)
-        ]
-
-        if not_deduced:
-            if not allow_unknown:
-                if LOG_PICK_SOLVE:
-                    logger.warning(
-                        f"PREDICATE not deducible: {pred_po.compact_repr()}"
-                        + (
-                            f" -> {repr_pred.compact_repr(print_context_new)}"
-                            if repr_pred is not None
-                            else ""
-                        )
-                    )
-                    logger.warning(
-                        f"NOT DEDUCED: \n    {
-                            '\n    '.join(
-                                [
-                                    p.get_sibling_trait(
-                                        F.Parameters.is_parameter_operatable
-                                    ).compact_repr(print_context_new)
-                                    for p in not_deduced
-                                ]
-                            )
-                        }"
-                    )
-
-                    repr_map.print_name_mappings(log=logger.warning)
-                    repr_map.last_stage.print_graph_contents(log=logger.warning)
-
-                raise NotDeducibleException(predicate, not_deduced)
-            return None
-
-        if lock:
-            predicate.assert_()
-        return True
-
     def update_superset_cache(self, *ops: F.Parameters.can_be_operand):
         if not ops:
             return
         tg = ops[0].tg
         g = ops[0].g
-        try:
-            self.simplify(tg, g, terminal=True, relevant=list(ops))
-        except TimeoutError:
-            if not ALLOW_PARTIAL_STATE:
-                raise
-            if self.state is None:
-                raise
+        self.simplify(tg, g, terminal=True, relevant=list(ops))
 
     def inspect_get_known_supersets(
         self,

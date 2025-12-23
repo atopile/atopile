@@ -16,7 +16,7 @@ from atopile.errors import UserInfraError
 from faebryk.core import graph
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.libs.exceptions import UserException, downgrade
-from faebryk.libs.http import RequestError, TimeoutException
+from faebryk.libs.http import RequestError
 from faebryk.libs.picker.api.api import ApiHTTPError, get_api_client
 from faebryk.libs.picker.api.models import (
     BaseParams,
@@ -251,11 +251,6 @@ def _find_modules(
         logger.debug(
             f"Fetched {len(results)} parts in {timings.get_formatted('fetch parts')}"
         )
-    except TimeoutException as e:
-        raise UserInfraError(
-            "Fetching component data failed to complete in time. "
-            "Please try again later."
-        ) from e
     except RequestError as e:
         cause = e.args[0]
         while not isinstance(cause, gaierror):
