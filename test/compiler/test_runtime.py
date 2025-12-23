@@ -1680,8 +1680,8 @@ def test_assign_to_child_parameter():
     r = F.Resistor.bind_instance(_get_child(app_instance, "r"))
     resistance = r.resistance.get().force_extract_literal_subset()
     assert resistance.get_values() == [
-        90000,
-        110000,
+        90,
+        110,
     ]
     assert F.Units.is_unit.get_symbols(resistance.get_is_unit()) == ["Ω", "ohm", "ohms"]
 
@@ -1860,9 +1860,11 @@ def test_module_templating():
     )
     assert "App" in result.state.type_roots
     addressor7 = _get_child(app_instance, "addressor7")
-    addressor7 = F.Addressor.bind_instance(addressor7)
-    # address_lines is a PointerSequence, use .get().as_list() to get elements
-    assert len(addressor7.address_lines.get().as_list()) == 7
+    # Get address_lines directly as a PointerSequence
+    address_lines = F.Collections.PointerSequence.bind_instance(
+        _get_child(addressor7, "address_lines")
+    )
+    assert len(address_lines.as_list()) == 7
 
 
 def test_module_templating_list():

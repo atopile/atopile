@@ -12,7 +12,7 @@ import ElectricPower
 import ElectricLogic
 import Resistor
 
-from "parts/Texas_Instruments_TCA9548APWR/Texas_Instruments_TCA9548APWR.ato" import Texas_Instruments_TCA9548APWR_package
+from "parts/Texas_Instruments_TCA9548APWR/Texas_Instruments_TCA9548APWR.ato" import Texas_Instrumens_TCA9548APWR_package
 
 module TI_TCA9548A:
     """
