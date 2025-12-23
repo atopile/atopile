@@ -39,6 +39,7 @@ def test_examples_build_fast(
         cwd=example_copy,
         stdout=print,
         stderr=print,
+        timeout=180,
     )
 
     # TODO: add a strict mode to the CLI

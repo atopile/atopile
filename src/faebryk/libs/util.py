@@ -1704,6 +1704,7 @@ def run_live(
     stdout: Callable[[str], Any] = logger.debug,
     stderr: Callable[[str], Any] = logger.error,
     check: bool = True,
+    timeout: float | None = None,
     **kwargs,
 ) -> tuple[str, str, subprocess.Popen]:
     """Runs a process and logs the output live."""
@@ -1767,7 +1768,7 @@ def run_live(
                     stderr(line.rstrip())
 
     # Ensure the process has finished
-    process.wait()
+    process.wait(timeout=timeout)
 
     # Get return code and check for errors
     if process.returncode != 0 and check:

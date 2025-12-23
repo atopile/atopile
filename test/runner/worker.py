@@ -83,6 +83,7 @@ def main():
                         "--no-header",
                         "--no-summary",
                         "--disable-warnings",
+                        *["--timeout", "300"],
                     ]
                 )
 
