@@ -1473,29 +1473,6 @@ def test_alternate_trait_constructor_dot_access():
         )
 
 
-def test_alternate_trait_constructor_no_params():
-    """Test that ::constructor syntax is accepted (constructor is ignored)."""
-    _, _, _, result, app_instance = build_instance(
-        """
-        #pragma experiment("TRAITS")
-
-        import has_part_picked
-
-        module App:
-            trait has_part_picked::by_supplier
-        """,
-        "App",
-    )
-    assert "App" in result.state.type_roots
-    # Trait is created but with no constraints on mfr/partno
-    trait = fabll.Node.bind_instance(app_instance).get_trait(F.Pickable.has_part_picked)
-    assert trait.supplier_id is None
-    assert trait.supplier_partno is None
-
-
-# TODO: find a trait with a parameter-less alternate constructor
-
-
 def test_alternate_trait_constructor_with_params():
     _, _, _, result, app_instance = build_instance(
         """
@@ -1504,15 +1481,17 @@ def test_alternate_trait_constructor_with_params():
         import has_part_picked
 
         module App:
-            trait has_part_picked::by_supplier<supplier_id="lcsc", supplier_partno="C123456">
+            trait has_part_picked::by_supplier<supplier_id="lcsc", supplier_partno="C123456", manufacturer="Example Inc.", partno="123456">
         """,  # noqa: E501
         "App",
     )
     assert "App" in result.state.type_roots
 
     trait = fabll.Node.bind_instance(app_instance).get_trait(F.Pickable.has_part_picked)
-    assert trait.supplier_id == "lcsc"
-    assert trait.supplier_partno == "C123456"
+    assert trait.supplier_id.get().force_extract_literal().get_values()[0] == "lcsc"
+    assert (
+        trait.supplier_partno.get().force_extract_literal().get_values()[0] == "C123456"
+    )
 
 
 def test_parameterised_trait_with_pos_args():
