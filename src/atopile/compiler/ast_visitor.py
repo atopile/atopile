@@ -28,7 +28,7 @@ from atopile.compiler.gentypegraph import (
     ScopeState,
     Symbol,
 )
-from atopile.compiler.overrides import ConnectOverrideRegistry, TraitOverrideRegistry
+from atopile.compiler.overrides import TraitOverrideRegistry
 from faebryk.core.faebrykpy import EdgeTraversal
 from faebryk.library.Units import UnitsNotCommensurableError
 from faebryk.libs.util import cast_assert, groupby, import_from_path, not_none
@@ -440,6 +440,7 @@ class ASTVisitor:
             type_._type_identifier(): type_
             for type_ in stdlib_allowlist or STDLIB_ALLOWLIST.copy()
         }
+        self._expr_counter = 0
 
     @staticmethod
     def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]]:
@@ -1106,20 +1107,35 @@ class ASTVisitor:
             case _:
                 raise DslException(f"Unknown comparison operator: {operator}")
 
+        # Generate unique identifier for this assertion to avoid collisions
+        # when multiple assertions target the same LHS
+        expr_id = self._expr_counter
+        self._expr_counter += 1
+
         expr = expr_type.MakeChild(lhs_refpath, rhs_refpath, assert_=True)
         expr.add_dependant(
             *[seg for seg in lhs_refpath if isinstance(seg, fabll._ChildField)],
-            identifier="lhs",
+            identifier=f"lhs_{expr_id}",
             before=True,
         )
         expr.add_dependant(
             *[seg for seg in rhs_refpath if isinstance(seg, fabll._ChildField)],
-            identifier="rhs",
+            identifier=f"rhs_{expr_id}",
             before=True,
         )
 
+        # Create a unique target path for this assertion
+        lhs_name = "_".join(
+            str(seg)
+            if isinstance(seg, str)
+            else (seg.identifier if isinstance(seg.identifier, str) else "anon")
+            for seg in lhs_refpath
+            if isinstance(seg, (str, fabll._ChildField))
+        )
+        unique_id = f"_assert_{lhs_name}_{expr_id}"
+
         return AddMakeChildAction(
-            target_path=[*lhs_refpath, str(lhs_refpath).replace(".", "_")],
+            target_path=FieldPath(segments=(FieldPath.Segment(unique_id),)),
             child_field=expr,
         )
 
@@ -1391,12 +1407,8 @@ class ASTVisitor:
 
         # Convert FieldPath to LinkPath (list of string identifiers)
         # Apply legacy path translations (e.g., vcc -> hv, gnd -> lv)
-        lhs_link_path = LinkPath(
-            ConnectOverrideRegistry.translate_identifiers(list(lhs_path.identifiers()))
-        )
-        rhs_link_path = LinkPath(
-            ConnectOverrideRegistry.translate_identifiers(list(rhs_path.identifiers()))
-        )
+        lhs_link_path = LinkPath(list(lhs_path.identifiers()))
+        rhs_link_path = LinkPath(list(rhs_path.identifiers()))
 
         link_action = AddMakeLinkAction(lhs_path=lhs_link_path, rhs_path=rhs_link_path)
         return [*lhs_actions, *rhs_actions, link_action]

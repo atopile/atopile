@@ -49,9 +49,6 @@ class Addressor(fabll.Node):
         domain=F.NumberDomain.Args(negative=False, integer=True),
     )
 
-    # address_lines is a PointerSequence that gets populated in MakeChild
-    address_lines = F.Collections.PointerSequence.MakeChild()
-
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
     _single_electric_reference = fabll.Traits.MakeEdge(
         F.has_single_electric_reference.MakeChild()
@@ -88,67 +85,54 @@ class Addressor(fabll.Node):
                 raise Addressor.OffsetNotResolvedError(self)
             offset = int(not_none(lit.try_cast(F.Literals.Numbers)).get_single())
 
-        line_nodes = self.address_lines.get().as_list()
-        max_offset = (1 << len(line_nodes)) - 1
+        # address_lines is a PointerSequence pointing to ElectricLogic children
+        lines = self.address_lines.get().as_list()
+        address_bits = len(lines)
+        max_offset = (1 << address_bits) - 1
         if not 0 <= offset <= max_offset:
             raise ValueError(f"Offset {offset} out of range [0, {max_offset}]")
 
-        for i, line_node in enumerate(line_nodes):
-            # Bind to ElectricLogic to access .set()
+        for i, line_node in enumerate(lines):
             line = F.ElectricLogic.bind_instance(line_node.instance)
             line.set(bool((offset >> i) & 1))
 
     @classmethod
     def MakeChild(cls, address_bits: int) -> fabll._ChildField[Self]:
-        if address_bits <= 0:
-            raise ValueError("At least one address bit is required")
+        """
+        Create an Addressor child field with the specified number of address bits.
 
+        Uses factory() to create a concrete type with address_lines as a proper
+        list of ElectricLogic children.
+        """
         logger.info(f"Addressor.MakeChild called: address_bits={address_bits}")
 
-        out = fabll._ChildField(Addressor)
+        # Use factory to create a concrete type with the right number of address lines
+        ConcreteAddressor = cls.factory(address_bits)
+        out = fabll._ChildField(ConcreteAddressor)
 
-        # Create ElectricLogic children and link them to the address_lines sequence
-        line_fields: list[fabll._ChildField[F.ElectricLogic]] = []
-        for i in range(address_bits):
-            line = F.ElectricLogic.MakeChild()
-            line._set_locator(f"_addr_line_{i}")
-            out.add_dependant(line)
-            line_fields.append(line)
-
-        # Link the ElectricLogics to the address_lines PointerSequence
-        for i, line in enumerate(line_fields):
-            edge = F.Collections.PointerSequence.MakeEdge(
-                seq_ref=[out, Addressor.address_lines],
-                elem_ref=[line],
-                order=i,
-            )
-            out.add_dependant(edge)
-
-        # Setup constraint: address is (base + offset)
+        # Setup constraint: address = base + offset
         add_expr = F.Expressions.Add.MakeChild(
-            [out, Addressor.base],
-            [out, Addressor.offset],
+            [out, ConcreteAddressor.base],
+            [out, ConcreteAddressor.offset],
         )
         is_addr_constraint = F.Expressions.Is.MakeChild(
-            [out, Addressor.address],
+            [out, ConcreteAddressor.address],
             [add_expr],
             assert_=True,
         )
         out.add_dependant(add_expr)
         out.add_dependant(is_addr_constraint)
 
-        # Add offset constraint: offset must be in valid range [0, 2^address_bits - 1]
-        # This is expressed as: max_offset >= offset (i.e., offset <= max_offset)
+        # Constrain offset to valid range [0, 2^address_bits - 1]
         max_offset_value = (1 << address_bits) - 1
         max_offset_lit = F.Literals.Numbers.MakeChild(
             min=max_offset_value,
             max=max_offset_value,
             unit=F.Units.Dimensionless,
         )
-        # Note: RefPaths must include "can_be_operand" trait reference for GreaterOrEqual #noqa: E501
         offset_bound_constraint = F.Expressions.GreaterOrEqual.MakeChild(
-            [max_offset_lit, "can_be_operand"],  # left: max_offset
-            [out, Addressor.offset, "can_be_operand"],  # right: offset
+            [max_offset_lit, "can_be_operand"],
+            [out, ConcreteAddressor.offset, "can_be_operand"],
             assert_=True,
         )
         out.add_dependant(max_offset_lit)
@@ -188,13 +172,38 @@ class Addressor(fabll.Node):
         """
         Create a concrete Addressor type with a fixed number of address bits.
 
-        Note: This factory is deprecated. Use MakeChild(address_bits=N) instead
-        for dynamic address_bits via ato templating.
+        This creates:
+        1. A PointerSequence named `address_lines` for for-loop iteration in ato
+        2. ElectricLogic children named `address_lines[0]`, `address_lines[1]`, etc.
+           for direct indexed access
+        3. MakeLink edges from the PointerSequence to each ElectricLogic element
         """
+        if address_bits <= 0:
+            raise ValueError("At least one address bit is required")
+
         ConcreteAddressor = fabll.Node._copy_type(cls)
         ConcreteAddressor.__name__ = f"Addressor<address_bits={address_bits}>"
-        # No longer adding address_lines here - it's now a PointerSequence on base class
-        # and populated via MakeChild
+
+        # 1. Create the PointerSequence for for-loop iteration
+        address_lines_seq = F.Collections.PointerSequence.MakeChild()
+        ConcreteAddressor._handle_cls_attr("address_lines", address_lines_seq)
+
+        # 2. Create ElectricLogic children with indexed names
+        # These become direct children: address_lines[0], address_lines[1], etc.
+        for i in range(address_bits):
+            line = F.ElectricLogic.MakeChild()
+            ConcreteAddressor._handle_cls_attr(f"address_lines[{i}]", line)
+
+            # 3. Create MakeLink edge from PointerSequence to element
+            # This allows iteration: for line in addressor.address_lines
+            edge = F.Collections.PointerSequence.MakeEdge(
+                seq_ref=[address_lines_seq],
+                elem_ref=[line],
+                order=i,
+            )
+            # Add edge as a class field so it gets processed
+            ConcreteAddressor._handle_cls_attr(f"_address_line_link_{i}", edge)
+
         return ConcreteAddressor
 
 
@@ -213,11 +222,11 @@ def test_addressor_x_bit(address_bits: int):
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
     addressor = app.addressor.get()
 
-    # address_lines is a PointerSequence, use .get().as_list() to get elements
-    address_lines = addressor.address_lines.get().as_list()
-    assert len(address_lines) == address_bits
-    for line in address_lines:
-        assert isinstance(line, fabll.Node)  # ElectricLogic bound as Node
+    # address_lines is a PointerSequence pointing to ElectricLogic children
+    lines = addressor.address_lines.get().as_list()
+    assert len(lines) == address_bits
+    for line in lines:
+        assert line.try_cast(F.ElectricLogic) is not None
 
 
 def test_addressor_make_child():
@@ -238,11 +247,11 @@ def test_addressor_make_child():
     assert (
         int(app.addressor.get().base.get().force_extract_literal().get_single()) == 0x48
     )
-    # address_lines is a PointerSequence, use .get().as_list() to get elements
-    address_lines = app.addressor.get().address_lines.get().as_list()
-    assert len(address_lines) == 3
-    for line in address_lines:
-        assert isinstance(line, fabll.Node)  # ElectricLogic bound as Node
+    # address_lines is a PointerSequence pointing to ElectricLogic children
+    lines = app.addressor.get().address_lines.get().as_list()
+    assert len(lines) == 3
+    for line in lines:
+        assert line.try_cast(F.ElectricLogic) is not None
 
 
 @pytest.mark.parametrize(

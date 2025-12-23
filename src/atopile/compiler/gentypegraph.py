@@ -348,12 +348,7 @@ class ActionsFactory:
         For a base_path like "a", this builds:
         ["a", EdgeTrait(can_bridge), EdgeComposition("out_"), EdgePointer()]
         """
-        from atopile.compiler.overrides import ConnectOverrideRegistry
-
         base_identifiers = list(base_path.identifiers())
-        base_identifiers = ConnectOverrideRegistry.translate_identifiers(
-            base_identifiers
-        )
         return [
             *base_identifiers,
             EdgeTrait.traverse(trait_type=can_bridge),

@@ -2,7 +2,8 @@
 This example demonstrates how to use the Addressor component to automatically
 configure the address pins of an I2C client device based on a desired I2C address.
 """
-
+#pragma experiment("FOR_LOOP")
+#pragma experiment("BRIDGE_CONNECT")
 #pragma experiment("MODULE_TEMPLATING")
 
 import Addressor
@@ -11,79 +12,126 @@ import ElectricPower
 import ElectricLogic
 import Resistor
 
-module I2CExampleIC:
+from "Texas_Instruments_TCA9548APWR/Texas_Instruments_TCA9548APWR.ato" import Texas_Instruments_TCA9548APWR_package
+
+module TI_TCA9548A:
     """
-    Example IC to use as I2C client/server
-    """
+    Texas Instruments TCA9548A I2C multiplexer/switch.
 
-    signal gnd ~ pin 12
-    signal vcc ~ pin 24
-
-    signal i2c_sda ~ pin 23
-    signal i2c_scl ~ pin 22
-
-    signal i2c_address_pin_0 ~ pin 1
-    signal i2c_address_pin_1 ~ pin 2
-    signal i2c_address_pin_2 ~ pin 21
-
-    signal i2c_out0_sda ~ pin 4
-    signal i2c_out0_scl ~ pin 5
-
-    manufacturer = "Texas Instruments"
-    mpn = "TCA9548APWR"  # 8-channel I2C switch
-
-module I2CExampleDriver:
-    """
-    Example driver for the I2C client/server example
+    Features:
+    - 8-channel I2C multiplexer/switch
+    - Bidirectional translation (1.65V to 5.5V)
+    - Low ON resistance (5Ω typical)
+    - Active HIGH channel selection
+    - 3-bit address configuration (0x70 to 0x77)
+    - 400kHz I2C bus speed support
+    - Low power consumption (2.5μA standby)
+    - Hardware reset pin
+    - TSSOP-24 package
     """
 
-    # addressor with 3 address lines
-    addressor = new Addressor<address_bits = 3>
-    ic = new I2CExampleIC
+    # External interfaces
     power = new ElectricPower
+    """
+    Power supply (1.65V to 5.5V)
+    """
+    power.required = True
+    assert power.voltage within 1.65V to 5.5V
 
-    i2c_in = new I2C
-    i2c_out = new I2C
+    i2c = new I2C
+    """
+    Main I2C bus connection (upstream/master side)
+    """
 
-    # Setup addressor:
-    # Link the addressor's logical address parameter to the I2C interface's address parameter.
-    assert addressor.address is i2c_in.address
-    # Define the base address for the address calculation (can be 0 if no base offset).
-    assert addressor.base is 16
-    # Connect the addressor's output lines to the physical address pins of the IC.
-    addressor.address_lines[0].line ~ ic.i2c_address_pin_0
-    addressor.address_lines[1].line ~ ic.i2c_address_pin_1
-    addressor.address_lines[2].line ~ ic.i2c_address_pin_2
-    # Provide a reference (e.g., ground) for the addressor's logic lines.
-    addressor.address_lines[0].reference ~ power
+    reset = new ElectricLogic
+    """
+    Hardware reset pin (active low). Pull high for normal operation.
+    """
 
-    # connect IC signals to the driver's interfaces (power and I2C)
-    power.lv ~ ic.gnd
-    power.hv ~ ic.vcc
+    # I2C channels (8 channels)
+    i2cs = new I2C[8]
+    """
+    8 independent I2C channels (downstream/slave side).
+    Each channel is isolated and can be individually enabled via I2C commands.
+    """
 
-    i2c_in.sda.line ~ ic.i2c_sda
-    i2c_in.scl.line ~ ic.i2c_scl
-    i2c_in.sda.reference ~ power
-    i2c_in.scl.reference ~ power
+    # Package
+    package = new Texas_Instruments_TCA9548APWR_package
 
-    i2c_out.sda.line ~ ic.i2c_out0_sda
-    i2c_out.scl.line ~ ic.i2c_out0_scl
-    i2c_out.sda.reference ~ power
-    i2c_out.scl.reference ~ power
+    # Connect I2C
+    i2c.sda.line ~ package.SDA
+    i2c.scl.line ~ package.SCL
+    i2c.sda.reference ~ power
+    i2c.scl.reference ~ power
 
-    assert i2c_out.address is 0
+    # Connect Power
+    power.hv ~ package.VCC
+    power.lv ~ package.GND
+
+    # Decoupling capacitors
+    decoupling_caps = new Capacitor[2]
+    decoupling_caps[0].capacitance = 100nF +/- 20%
+    decoupling_caps[0].package = "0402"
+    decoupling_caps[1].capacitance = 2.2uF +/- 20%
+    decoupling_caps[1].package = "0402"
+    for cap in decoupling_caps:
+        power.hv ~> cap ~> power.lv
+
+    # Reset (active low, with pullup)
+    reset.line ~ package.nRESET
+    reset.reference ~ power
+
+    # Reset pullup resistor
+    reset_pullup = new Resistor
+    reset_pullup.resistance = 10kohm +/- 1%
+    reset_pullup.package = "0402"
+    reset.line ~> reset_pullup ~> reset.reference.hv
+
+    # I2C Address Configuration (3 bits = 8 possible addresses)
+    addressor = new Addressor<address_bits = 3>
+    addressor.base = 0x70
+    addressor.address_lines[0].line ~ package.A0
+    addressor.address_lines[1].line ~ package.A1
+    addressor.address_lines[2].line ~ package.A2
+    for address_line in addressor.address_lines:
+        address_line.reference ~ power
+    assert addressor.address is i2c.address
+
+    # Connect I2C channels to package
+    i2cs[0].sda.line ~ package.SD0
+    i2cs[0].scl.line ~ package.SC0
+    i2cs[1].sda.line ~ package.SD1
+    i2cs[1].scl.line ~ package.SC1
+    i2cs[2].sda.line ~ package.SD2
+    i2cs[2].scl.line ~ package.SC2
+    i2cs[3].sda.line ~ package.SD3
+    i2cs[3].scl.line ~ package.SC3
+    i2cs[4].sda.line ~ package.SD4
+    i2cs[4].scl.line ~ package.SC4
+    i2cs[5].sda.line ~ package.SD5
+    i2cs[5].scl.line ~ package.SC5
+    i2cs[6].sda.line ~ package.SD6
+    i2cs[6].scl.line ~ package.SC6
+    i2cs[7].sda.line ~ package.SD7
+    i2cs[7].scl.line ~ package.SC7
+
+    # Connect I2C references to power
+    for i2c_ch in i2cs:
+        i2c_ch.sda.reference ~ power
+        i2c_ch.scl.reference ~ power
 
 module App:
     """
     Application to test the I2C client/server example
     """
-
-    i2c_server = new I2CExampleDriver
-    i2c_bridge = new I2CExampleDriver
-    i2c_bridge2 = new I2CExampleDriver
-    i2c_client = new I2CExampleDriver
-    i2c_client2 = new I2CExampleDriver
-    i2c_client_pre = new I2CExampleDriver
+    power = new ElectricPower
+    i2c_mux = new TI_TCA9548A
+    power ~ i2c_mux.power
+    # i2c_bridge = new I2CExampleDriver
+    # i2c_bridge2 = new I2CExampleDriver
+    # i2c_client = new TI_TCA9548A
+    # i2c_client2 = new I2CExampleDriver
+    # i2c_client_pre = new I2CExampleDriver
 
     # Set the desired I2C address for the client.
     # The addressor will automatically determine the required logic levels
@@ -93,14 +141,14 @@ module App:
     # - address_lines[0] -> LOW
     # - address_lines[1] -> HIGH
     # - address_lines[2] -> LOW
-    assert i2c_client.addressor.address is 18
-    assert i2c_bridge.addressor.address is 19
-    assert i2c_bridge2.addressor.address is 19
-    assert i2c_client2.addressor.address is 20
-    assert i2c_client_pre.addressor.address is 18
+    assert i2c_mux.addressor.address is 0x71
+    # assert i2c_bridge.addressor.address is 19
+    # assert i2c_bridge2.addressor.address is 19
+    # assert i2c_client2.addressor.address is 20
+    # assert i2c_client_pre.addressor.address is 18
     # Connect the client and server I2C buses together.
-    i2c_server.i2c_out ~ i2c_bridge.i2c_in
-    i2c_bridge.i2c_out ~ i2c_bridge2.i2c_in
-    i2c_bridge2.i2c_out ~ i2c_client.i2c_in
-    i2c_bridge2.i2c_out ~ i2c_client2.i2c_in
-    i2c_server.i2c_out ~ i2c_client_pre.i2c_in
+    # i2c_server.i2c_out ~ i2c_bridge.i2c_in
+    # i2c_bridge.i2c_out ~ i2c_bridge2.i2c_in
+    # i2c_bridge2.i2c_out ~ i2c_client.i2c_in
+    # i2c_bridge2.i2c_out ~ i2c_client2.i2c_in
+    # i2c_server.i2c_out ~ i2c_client_pre.i2c_in
