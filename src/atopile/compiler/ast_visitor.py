@@ -1229,7 +1229,7 @@ class ASTVisitor:
                     raise DslException(
                         "Bounded quantity start and end units must be commensurable"
                     )
-                end_value = end_unit_info.convert_value(end_value, unit_info)
+                end_value = unit_info.convert_value(end_value, end_unit_info)
             case [_, _]:
                 unit_t = F.Units.decode_symbol(
                     self._graph, self._tg, not_none(start_unit_symbol)

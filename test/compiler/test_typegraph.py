@@ -2175,6 +2175,53 @@ class TestAssignments:
         assert literal is not None, "max_power should have an aliased literal"
         assert literal.get_values() == [3.0, 5.0]
 
+    def test_assign_bounded_range_with_different_unit_prefixes(self):
+        """Test assigning a bounded range with different unit prefixes (e.g., uA to mA).
+
+        This test ensures that unit conversion works correctly when the start
+        and end units have different prefixes but are commensurable.
+        Regression test for: ValueError: Invalid interval: 2.1 > 0.012
+        """
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.core.node as fabll
+        import faebryk.library._F as F
+        from faebryk.libs.util import not_none
+
+        g, tg, stdlib, result = build_type(
+            """
+            import ElectricPower
+
+            module App:
+                power = new ElectricPower
+                # 2.1 uA to 12 mA - different unit prefixes (micro vs milli)
+                power.current = 2.1uA to 12mA
+            """
+        )
+
+        linker = Linker(None, stdlib, tg)
+        linker.link_imports(g, result.state)
+
+        app_type_node = result.state.type_roots["App"]
+        app_instance = fabll.Node(
+            tg.instantiate_node(type_node=app_type_node, attributes={})
+        )
+
+        power_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_instance.instance, child_identifier="power"
+        )
+        power = F.ElectricPower.bind_instance(not_none(power_bnode))
+
+        # The values should be stored in the unit of the start value (uA)
+        # 2.1 uA -> 2.1
+        # 12 mA -> 12000 uA
+        literal = power.current.get().force_extract_literal_subset()
+        assert literal is not None, "current should have an aliased literal"
+        values = literal.get_values()
+        assert len(values) == 2
+        # The values are stored in the start unit (uA)
+        assert values[0] == 2.1, f"Expected start value 2.1, got {values[0]}"
+        assert values[1] == 12000.0, f"Expected end value 12000 (12mA in uA), got {values[1]}"
+
     def test_assert_within_constraint(self):
         """Test assert within constraint on an existing field."""
         import faebryk.core.faebrykpy as fbrk

@@ -35,6 +35,7 @@ class Addressor(fabll.Node):
     """
 
     is_abstract = fabll.Traits.MakeEdge(fabll.is_abstract.MakeChild()).put_on_type()
+
     address = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Dimensionless,
         domain=F.NumberDomain.Args(negative=False, integer=True),
@@ -76,7 +77,15 @@ class Addressor(fabll.Node):
         else:
             # Use solver to deduce from address = base + offset
             solver = self.design_check.get().get_solver()
-            offset_op = self.offset.get().is_parameter_operatable.get()
+
+            # If solver is NullSolver, we can't deduce the offset
+            from faebryk.core.solver.defaultsolver import DefaultSolver
+            from faebryk.core.solver.nullsolver import NullSolver
+
+            if isinstance(solver, NullSolver):
+                raise Warning("Solver is NullSolver, can't use it to deduce the offset")
+            assert isinstance(solver, DefaultSolver)
+            offset_op = self.offset.get().can_be_operand.get()
             offset_param = self.offset.get().is_parameter.get()
             solver.update_superset_cache(offset_op)
             lit = solver.inspect_get_known_supersets(offset_param)
@@ -86,8 +95,8 @@ class Addressor(fabll.Node):
             lit_node = fabll.Traits(lit).get_obj_raw()
             offset = int(lit_node.cast(F.Literals.Numbers).get_single())
 
-        # address_lines is a PointerSequence pointing to ElectricLogic children
-        lines = self.address_lines.get().as_list()
+        # address_lines is a PointerSequence (dynamically added by factory())
+        lines = self.address_lines.get().as_list()  # type: ignore[attr-defined]
         address_bits = len(lines)
         max_offset = (1 << address_bits) - 1
         if not 0 <= offset <= max_offset:

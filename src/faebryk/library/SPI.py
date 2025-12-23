@@ -13,6 +13,8 @@ class SPI(fabll.Node):
     miso = F.ElectricLogic.MakeChild()
     mosi = F.ElectricLogic.MakeChild()
 
+    frequency = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz)
+
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
@@ -25,24 +27,21 @@ class SPI(fabll.Node):
     net_names = [
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="SCLK",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="SCLK", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[sclk]
+            owner=[sclk],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="MISO",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="MISO", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[miso]
+            owner=[miso],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
-                name="MOSI",
-                level=F.has_net_name_suggestion.Level.SUGGESTED
+                name="MOSI", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[mosi]
+            owner=[mosi],
         ),
     ]
 

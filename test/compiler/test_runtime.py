@@ -1884,16 +1884,16 @@ def test_module_templating_list():
     addressors_seq = F.Collections.PointerSequence.bind_instance(
         _get_child(app_instance, "addressors")
     )
-    addressors = [
-        F.Addressor.bind_instance(cast_assert(BoundNode, node.instance))
-        for node in addressors_seq.as_list()
+    addressor_nodes = [
+        cast_assert(BoundNode, node.instance) for node in addressors_seq.as_list()
     ]
-    assert len(addressors) == 3
-    assert all(isinstance(addressor, F.Addressor) for addressor in addressors)
-    # address_lines is a PointerSequence, use .get().as_list() to get elements
-    assert all(
-        len(addressor.address_lines.get().as_list()) == 7 for addressor in addressors
-    )
+    assert len(addressor_nodes) == 3
+    # Check each addressor has 7 address lines
+    for addressor_node in addressor_nodes:
+        address_lines = F.Collections.PointerSequence.bind_instance(
+            _get_child(addressor_node, "address_lines")
+        )
+        assert len(address_lines.as_list()) == 7
 
 
 def test_trait_template_enum():
