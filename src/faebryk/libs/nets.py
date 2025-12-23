@@ -17,17 +17,13 @@ def bind_fbrk_nets_to_kicad_nets(
     tg: fbrk.TypeGraph, g: fabll.graph.GraphView, transformer: "PCB_Transformer"
 ):
     """
-    Gets named fbrk nets and attempts to map them to existing kicad nets
+    Gets fbrk nets and attempts to map them to existing kicad nets
     """
 
     # get all nets
     for fbrk_net in F.Net.bind_typegraph(tg).get_instances(g):
         pad_count = 0
         kicad_net_name_counts: dict[str, int] = {}
-
-        # filter out unnamed nets, we only want to match named nets
-        if fbrk_net.get_name() is None:
-            continue
 
         # filter out nets that already have a kicad net association
         if fbrk_net.has_trait(F.KiCadFootprints.has_associated_kicad_pcb_net):
