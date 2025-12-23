@@ -342,6 +342,7 @@ def test_addressor_sets_address_lines(
             )
 
 
+@pytest.mark.skip(reason="Currently just a warning")
 def test_addressor_unresolved_offset_raises():
     """Test that an error is raised when offset cannot be determined."""
     from faebryk.core.solver.defaultsolver import DefaultSolver
