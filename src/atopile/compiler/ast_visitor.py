@@ -123,9 +123,6 @@ class BuildState:
     type_bound_tgs: dict[str, fabll.TypeNodeBoundTG] = field(default_factory=dict)
     constraining_expr_types: dict[str, type[fabll.Node]] = field(default_factory=dict)
     type_aliases: dict[str, dict[str, FieldPath]] = field(default_factory=dict)
-    # File imports needed for inheritance (parent types from other files)
-    # These are processed in the linking phase to ensure parent files are linked
-    # before inheritance resolution.
     inheritance_imports: list[ImportRef] = field(default_factory=list)
 
 
@@ -769,8 +766,6 @@ class ASTVisitor:
                 else None
             )
 
-            # If the parent type is from a file import, ensure it's linked
-            # before inheritance resolution runs.
             if import_ref is not None and import_ref.path is not None:
                 self._state.inheritance_imports.append(import_ref)
 
