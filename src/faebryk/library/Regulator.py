@@ -3,6 +3,7 @@
 
 import logging
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 
@@ -29,4 +30,19 @@ class Regulator(fabll.Node):
     # Mark as bridgeable between power_in and power_out
     _can_bridge = fabll.Traits.MakeEdge(
         F.can_bridge.MakeEdge(["power_in"], ["power_out"])
+    )
+
+    # Backwards compatibility aliases - v_in and v_out are aliases
+    # to power_in.voltage and power_out.voltage respectively
+    v_in = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    v_out = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    _ = fabll.MakeEdge(
+        [v_in],
+        ["power_in", "voltage"],
+        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
+    )
+    _ = fabll.MakeEdge(
+        [v_out],
+        ["power_out", "voltage"],
+        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
     )

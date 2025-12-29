@@ -60,3 +60,18 @@ class AdjustableRegulator(fabll.Node):
     _can_bridge = fabll.Traits.MakeEdge(
         F.can_bridge.MakeEdge(["power_in"], ["power_out"])
     )
+
+    # Backwards compatibility aliases - v_in and v_out are aliases
+    # to power_in.voltage and power_out.voltage respectively
+    v_in = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    v_out = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    _ = fabll.MakeEdge(
+        [v_in],
+        ["power_in", "voltage"],
+        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
+    )
+    _ = fabll.MakeEdge(
+        [v_out],
+        ["power_out", "voltage"],
+        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
+    )
