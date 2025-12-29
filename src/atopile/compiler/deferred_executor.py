@@ -10,6 +10,7 @@ fully linked types:
 3. For-loop execution - expands deferred for-loops (delegated to visitor)
 """
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 import faebryk.core.faebrykpy as fbrk
@@ -28,6 +29,14 @@ class StdlibLookup(Protocol):
 
     def get(self, name: str) -> graph.BoundNode: ...
     def __contains__(self, name: str) -> bool: ...
+
+
+class FileImportLookup(Protocol):
+    """Protocol for looking up types from linked file imports."""
+
+    def resolve(
+        self, path: str, name: str, base_file: Path | None
+    ) -> graph.BoundNode | None: ...
 
 
 class DeferredExecutor:
@@ -49,14 +58,17 @@ class DeferredExecutor:
         state: BuildState,
         visitor: "ASTVisitor",
         stdlib: StdlibLookup | None = None,
+        file_imports: FileImportLookup | None = None,
     ) -> None:
         self._g = g
         self._tg = tg
         self._pending_inheritance = state.pending_inheritance
         self._pending_retypes = state.pending_retypes
         self._type_roots = state.type_roots
+        self._base_file = state.file_path
         self._visitor = visitor
         self._stdlib = stdlib
+        self._file_imports = file_imports
 
     def execute(self) -> None:
         """Execute all deferred operations in order."""
@@ -78,16 +90,26 @@ class DeferredExecutor:
             parent_ref: ImportRef | str,
         ) -> graph.BoundNode | None:
             """
-            Resolve parent type from either local type_roots or stdlib imports.
+            Resolve parent type from local type_roots, stdlib, or file imports.
 
             For stdlib imports (ImportRef with path=None), look up in stdlib registry.
-            For local or file imports, look up in type_roots.
+            For file imports (ImportRef with path), use the file import resolver.
+            For local types (str), look up in type_roots.
             """
-            if isinstance(parent_ref, ImportRef) and parent_ref.path is None:
-                # stdlib import - look up in stdlib registry
-                if self._stdlib is not None and parent_ref.name in self._stdlib:
-                    return self._stdlib.get(parent_ref.name)
-            # Local type or file import - look up in type_roots
+            if isinstance(parent_ref, ImportRef):
+                if parent_ref.path is None:
+                    # stdlib import - look up in stdlib registry
+                    if self._stdlib is not None and parent_ref.name in self._stdlib:
+                        return self._stdlib.get(parent_ref.name)
+                else:
+                    # file import - use the file import resolver
+                    if self._file_imports is not None:
+                        return self._file_imports.resolve(
+                            path=parent_ref.path,
+                            name=parent_ref.name,
+                            base_file=self._base_file,
+                        )
+            # Local type - look up in type_roots
             parent_name = _get_parent_name(parent_ref)
             return self._type_roots.get(parent_name)
 

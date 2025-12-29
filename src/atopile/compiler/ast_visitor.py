@@ -123,6 +123,10 @@ class BuildState:
     type_bound_tgs: dict[str, fabll.TypeNodeBoundTG] = field(default_factory=dict)
     constraining_expr_types: dict[str, type[fabll.Node]] = field(default_factory=dict)
     type_aliases: dict[str, dict[str, FieldPath]] = field(default_factory=dict)
+    # File imports needed for inheritance (parent types from other files)
+    # These are processed in the linking phase to ensure parent files are linked
+    # before inheritance resolution.
+    inheritance_imports: list[ImportRef] = field(default_factory=list)
 
 
 class is_ato_block(fabll.Node):
@@ -759,16 +763,22 @@ class ASTVisitor:
         # Capture inheritance relationship for deferred resolution
         if (super_type_name := node.get_super_type_ref_name()) is not None:
             super_symbol = self._scope_stack.try_resolve_symbol(super_type_name)
+            import_ref = (
+                super_symbol.import_ref
+                if super_symbol and super_symbol.import_ref
+                else None
+            )
+
+            # If the parent type is from a file import, ensure it's linked
+            # before inheritance resolution runs.
+            if import_ref is not None and import_ref.path is not None:
+                self._state.inheritance_imports.append(import_ref)
 
             self._state.pending_inheritance.append(
                 PendingInheritance(
                     derived_type=type_node,
                     derived_name=module_name,
-                    parent_ref=(
-                        super_symbol.import_ref
-                        if super_symbol and super_symbol.import_ref
-                        else super_type_name
-                    ),
+                    parent_ref=(import_ref if import_ref else super_type_name),
                     source_order=len(self._state.pending_inheritance),
                     auto_generated_ids=auto_generated_ids,
                 )

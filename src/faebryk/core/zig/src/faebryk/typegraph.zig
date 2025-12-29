@@ -788,8 +788,12 @@ pub const TypeGraph = struct {
         }
 
         for (source_links) |link_info| {
-            const lhs_ref = ChildReferenceNode.create_and_insert(self, link_info.lhs_path) catch continue;
-            const rhs_ref = ChildReferenceNode.create_and_insert(self, link_info.rhs_path) catch continue;
+            const self_ref_path = [_]ChildReferenceNode.EdgeTraversal{EdgeComposition.traverse("")};
+            const lhs_path = if (link_info.lhs_path.len == 0) &self_ref_path else link_info.lhs_path;
+            const rhs_path = if (link_info.rhs_path.len == 0) &self_ref_path else link_info.rhs_path;
+
+            const lhs_ref = ChildReferenceNode.create_and_insert(self, lhs_path) catch continue;
+            const rhs_ref = ChildReferenceNode.create_and_insert(self, rhs_path) catch continue;
 
             const attrs = MakeLinkNode.Attributes.of(link_info.make_link);
             const edge_attrs = EdgeCreationAttributes{

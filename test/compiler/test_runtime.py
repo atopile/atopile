@@ -3165,9 +3165,11 @@ class TestInheritanceWithTraits:
         _, _, _, _, app_instance = build_instance(
             """
             #pragma experiment("BRIDGE_CONNECT")
+            #pragma experiment("TRAITS")
 
             import ElectricPower
             import Resistor
+            import can_bridge_by_name
 
             module BaseRegulator:
                 power_in = new ElectricPower
@@ -3176,6 +3178,9 @@ class TestInheritanceWithTraits:
                 # Internal connection within the regulator
                 power_in.hv ~> internal_resistor ~> power_out.hv
                 power_in.lv ~ power_out.lv
+
+                # Define can_bridge trait so ~> works ACROSS this module
+                trait can_bridge_by_name<input_name="power_in", output_name="power_out">
 
             module CustomRegulator from BaseRegulator:
                 # Derived regulator adds nothing, just inherits

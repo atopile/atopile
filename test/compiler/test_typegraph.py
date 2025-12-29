@@ -1213,6 +1213,61 @@ class TestCanBridgeByNameShim:
         }
         assert link_paths == expected, f"Expected {expected}, got {link_paths}"
 
+    def test_can_bridge_by_name_instantiation_and_trait_access(self):
+        """Test that can_bridge_by_name properly sets up the _can_bridge trait.
+
+        This is a regression test for the bug where can_bridge_by_name defined
+        `can_bridge` but accessed `self._can_bridge` in setup(), causing an
+        AttributeError. The fix ensures the attribute is named `_can_bridge`.
+        """
+        import faebryk.core.node as fabll
+        import faebryk.library._F as F
+
+        g, tg, stdlib, result = build_type(
+            """
+            #pragma experiment("TRAITS")
+            #pragma experiment("BRIDGE_CONNECT")
+
+            import ElectricLogic
+            import can_bridge_by_name
+
+            module BridgeableModule:
+                data_in = new ElectricLogic
+                data_out = new ElectricLogic
+                trait can_bridge_by_name<input_name="data_in", output_name="data_out">
+            """,
+            link=True,
+        )
+
+        bridge_type = result.state.type_roots["BridgeableModule"]
+
+        # Instantiate the module - this is where the bug would manifest
+        # as an AttributeError when accessing self._can_bridge
+        bridge_instance = tg.instantiate_node(type_node=bridge_type, attributes={})
+
+        # Verify the module has the can_bridge trait
+        bridge_node = fabll.Node.bind_instance(bridge_instance)
+        assert bridge_node.has_trait(F.can_bridge), (
+            "BridgeableModule should have can_bridge trait"
+        )
+
+        # Get the can_bridge trait and verify its pointers are set up
+        can_bridge_trait = bridge_node.get_trait(F.can_bridge)
+
+        # The in_ pointer should point to data_in
+        in_node = can_bridge_trait.get_in()
+        assert in_node is not None, "can_bridge.in_ should be set"
+        assert in_node.get_name() == "data_in", (
+            f"can_bridge.in_ should point to 'data_in', got '{in_node.get_name()}'"
+        )
+
+        # The out_ pointer should point to data_out
+        out_node = can_bridge_trait.get_out()
+        assert out_node is not None, "can_bridge.out_ should be set"
+        assert out_node.get_name() == "data_out", (
+            f"can_bridge.out_ should point to 'data_out', got '{out_node.get_name()}'"
+        )
+
 
 class TestHasDatasheetDefinedShim:
     """Tests for has_datasheet_defined trait shim.
@@ -2633,7 +2688,9 @@ class TestAssignmentOverride:
             )
 
     def test_lcsc_id_attaches_trait(self):
-        """Verify `node.lcsc_id = "C12345"` attaches is_pickable_by_supplier_id trait."""
+        """
+        Verify `node.lcsc_id = "C12345"` attaches is_pickable_by_supplier_id trait.
+        """
         _, tg, _, result = build_type(
             """
             import Resistor

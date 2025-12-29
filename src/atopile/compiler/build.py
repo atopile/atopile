@@ -294,6 +294,22 @@ class Linker:
         self._active_paths: set[Path] = set()
         self._linked_modules: dict[Path, dict[str, graph.BoundNode]] = {}
 
+    def resolve(
+        self, path: str, name: str, base_file: Path | None
+    ) -> graph.BoundNode | None:
+        """
+        Resolve a type from an imported file.
+        Implements the FileImportLookup protocol for DeferredExecutor.
+        """
+        try:
+            source_path = self._resolver.resolve(raw_path=path, base_file=base_file)
+        except ImportPathNotFoundError:
+            return None
+
+        if source_path in self._linked_modules:
+            return self._linked_modules[source_path].get(name)
+        return None
+
     def _build_imported_file(
         self, graph: graph.GraphView, import_ref: ImportRef, build_state: BuildState
     ) -> graph.BoundNode:
@@ -332,6 +348,20 @@ class Linker:
             path=source_path,
         )
         self._link_recursive(graph, child_result.state)
+        # Execute deferred operations (inheritance, retypes, for-loops) for the
+        # dependency file. This is critical for dependencies that use inheritance
+        # (e.g., `module X from Y:`), as the parent structure must be copied into
+        # derived types before their fields can be resolved.
+        from atopile.compiler.deferred_executor import DeferredExecutor
+
+        DeferredExecutor(
+            g=graph,
+            tg=self._tg,
+            state=child_result.state,
+            visitor=child_result.visitor,
+            stdlib=self._stdlib,
+            file_imports=self,  # Pass self as file import resolver
+        ).execute()
         self._linked_modules[source_path] = child_result.state.type_roots
         return child_result.state.type_roots[import_ref.name]
 
@@ -410,6 +440,17 @@ class Linker:
                 type_reference=type_reference,
                 target_type_node=target,
             )
+
+        # Process inheritance imports - these are file imports needed for parent
+        # types in inheritance relationships. We don't create type references for
+        # these, we just ensure the files are built/linked so that DeferredExecutor
+        # can look them up when resolving inheritance.
+        for import_ref in build_state.inheritance_imports:
+            if cached_type_roots is not None:
+                # Already linked, skip
+                continue
+            # Trigger the file build/link
+            self._build_imported_file(graph, import_ref, build_state)
 
     @contextmanager
     def _guard_path(self, path: Path) -> Generator[None, None, None]:
@@ -491,7 +532,12 @@ def build_stage_2(
 
     linker.link_imports(g, result.state)
     DeferredExecutor(
-        g=g, tg=tg, state=result.state, visitor=result.visitor, stdlib=linker._stdlib
+        g=g,
+        tg=tg,
+        state=result.state,
+        visitor=result.visitor,
+        stdlib=linker._stdlib,
+        file_imports=linker,
     ).execute()
 
     if validate:
