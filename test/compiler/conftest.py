@@ -68,6 +68,7 @@ def build_instance(
     )
     app = fabll.Node.bind_instance(app_root)
     F.Parameters.NumericParameter.infer_units_in_tree(app)
+    F.Parameters.NumericParameter.validate_predicate_units_in_tree(app)
 
     return (
         g,

@@ -4281,14 +4281,10 @@ class Numbers(fabll.Node):
         """
         from faebryk.library.Units import is_unit
 
-        # If fully unbounded in BOTH directions, return None for API
-        # Half-infinite ranges like [50, inf) represent minimum requirements
-        # and should be serialized (e.g., max_voltage >= 50V)
         numeric_set = self.get_numeric_set()
-        if (
-            numeric_set.get_min_value() == -math.inf
-            and numeric_set.get_max_value() == math.inf
-        ):
+        min_val = numeric_set.get_min_value()
+        max_val = numeric_set.get_max_value()
+        if max_val == math.inf and (min_val == -math.inf or min_val == 0):
             return None
 
         base_unit = is_unit.to_base_units(self.get_is_unit(), g=self.g, tg=self.tg)

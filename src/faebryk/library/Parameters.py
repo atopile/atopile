@@ -4,7 +4,6 @@ from enum import Enum
 from typing import TYPE_CHECKING, Self, cast
 
 import pytest
-from typing_extensions import deprecated
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -981,6 +980,64 @@ class NumericParameter(fabll.Node):
                             "Parameter constraints have incompatible units",
                             [param_unit, operand_unit],
                         )
+
+    @staticmethod
+    def validate_predicate_units_in_tree(root: fabll.Node) -> None:
+        """
+        Validate that all predicate expressions have commensurable operands.
+
+        Predicates (comparisons like IsSubset, Is, GreaterThan, etc.) require their
+        operands to have commensurable units. This function finds all predicates
+        in the tree and validates this constraint.
+
+        Raises UnitsNotCommensurableError if any predicate has incommensurable operands.
+        """
+        import faebryk.library._F as F
+        from faebryk.library.Expressions import is_expression, is_predicate
+        from faebryk.library.Units import (
+            UnitsNotCommensurableError,
+            is_unit,
+            resolve_unit_expression,
+        )
+
+        # Find all predicate expressions (assertions)
+        predicates = [
+            expr
+            for expr in root.get_children(direct_only=False, types=is_expression)
+            if expr.try_get_sibling_trait(is_predicate) is not None
+        ]
+
+        for predicate in predicates:
+            operands = predicate.get_operands()
+            if len(operands) < 2:
+                continue
+
+            # Resolve units for each operand
+            operand_units: list[tuple[F.Parameters.can_be_operand, is_unit | None]] = []
+            for operand in operands:
+                op_obj = operand.get_raw_obj()
+                try:
+                    unit_node = resolve_unit_expression(
+                        g=root.g, tg=root.tg, expr=op_obj.instance
+                    )
+                    unit = unit_node.get_is_unit() if unit_node else None
+                except Exception:
+                    # If we can't resolve the unit, skip this operand
+                    unit = None
+                operand_units.append((operand, unit))
+
+            # Check that all operands with units are commensurable
+            first_unit: is_unit | None = None
+            for operand, unit in operand_units:
+                if unit is None:
+                    continue
+                if first_unit is None:
+                    first_unit = unit
+                elif not is_unit.is_commensurable_with(first_unit, unit):
+                    raise UnitsNotCommensurableError(
+                        "Predicate operands have incompatible units",
+                        [first_unit, unit],
+                    )
 
 
 ParameterNodes = StringParameter | BooleanParameter | EnumParameter | NumericParameter
