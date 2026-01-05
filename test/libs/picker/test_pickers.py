@@ -128,6 +128,8 @@ def test_no_pick():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     module = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
+
+    fabll.Traits.create_and_add_instance_to(module, fabll.is_module)
     fabll.Traits.create_and_add_instance_to(module, F.has_part_removed)
 
     pick_part_recursively(module, DefaultSolver())
