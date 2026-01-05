@@ -46,6 +46,7 @@ TODO:
  - check all `is_unit`s in compiled designs for symbol conflicts
 """
 
+import difflib
 import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, fields
@@ -80,11 +81,15 @@ class UnitsNotCommensurableError(UnitException):
 
 
 class UnitNotFoundError(UnitException):
-    def __init__(self, symbol: str):
+    def __init__(self, symbol: str, matches: Sequence[str] | None = None):
         self.symbol = symbol
+        self.matches = matches
 
     def __str__(self) -> str:
-        return f"Unit not found: {self.symbol}"
+        msg = f"Unit not found: {self.symbol}"
+        if self.matches:
+            msg += f". Did you mean: {', '.join(self.matches)}?"
+        return msg
 
 
 class UnitExpressionError(UnitException): ...
@@ -889,6 +894,28 @@ class is_binary_prefixed_unit(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
+def _get_close_matches(symbol: str, possibilities: dict) -> list[str]:
+    """Find close matches, prioritizing case-insensitive exact and prefixed matches."""
+    poss_list = list(possibilities)
+    # 1. Case-insensitive exact match (e.g. 'v' -> 'V')
+    if ci := [p for p in poss_list if p.lower() == symbol.lower()]:
+        return ci
+
+    # 2. Case-insensitive prefixed match (e.g. 'kOhm' -> 'kohm')
+    prefixes = list(is_si_prefixed_unit.SI_PREFIXES) + list(
+        is_binary_prefixed_unit.BINARY_PREFIXES
+    )
+    if ci_pre := [
+        pre + p
+        for p in poss_list
+        for pre in prefixes
+        if (pre + p).lower() == symbol.lower()
+    ]:
+        return ci_pre
+
+    return difflib.get_close_matches(symbol, poss_list)
+
+
 def decode_symbol(
     g: graph.GraphView, tg: fbrk.TypeGraph, symbol: str
 ) -> type[fabll.Node]:
@@ -938,7 +965,9 @@ def decode_symbol(
 
             return unit_expression_t
 
-    raise UnitNotFoundError(symbol)
+    raise UnitNotFoundError(
+        symbol, _get_close_matches(symbol, sorted_symbol_map.keys())
+    )
 
 
 # TODO: remove?
@@ -979,7 +1008,7 @@ def decode_symbol_runtime(
             # TODO: provide symbol for caching
             return unit.scaled_copy(g=g, tg=tg, multiplier=scale_factor)
 
-    raise UnitNotFoundError(symbol)
+    raise UnitNotFoundError(symbol, _get_close_matches(symbol, symbol_map.keys()))
 
 
 class _UnitRegistry(Enum):
@@ -3294,6 +3323,42 @@ class TestUnitExpressions(_TestWithContext):
         unit = not_none(resolved).get_trait(is_unit)
         assert unit._extract_basis_vector() == _BasisVector.ORIGIN
         assert unit.is_dimensionless()
+
+    def test_unit_suggestions(self, ctx: BoundUnitsContext):
+        """Test that UnitNotFoundError provides helpful suggestions."""
+        # Ensure units are registered in the symbol map by accessing them
+        _ = ctx.Volt
+        _ = ctx.Ohm
+
+        # 1. Base unit casing (v -> V)
+        with pytest.raises(UnitNotFoundError) as excinfo:
+            decode_symbol(ctx.g, ctx.tg, "v")
+        assert "V" in str(excinfo.value)
+
+        # 2. Prefixed unit casing (kOhm -> kohm)
+        with pytest.raises(UnitNotFoundError) as excinfo:
+            decode_symbol(ctx.g, ctx.tg, "kOhm")
+        assert "kohm" in str(excinfo.value)
+
+        # 3. All-caps prefix (MOHM -> Mohm)
+        with pytest.raises(UnitNotFoundError) as excinfo:
+            decode_symbol(ctx.g, ctx.tg, "MOHM")
+        assert "Mohm" in str(excinfo.value) and "mohm" in str(excinfo.value)
+
+        # 4. Mixed casing (mOhm -> mohm)
+        with pytest.raises(UnitNotFoundError) as excinfo:
+            decode_symbol(ctx.g, ctx.tg, "mOhm")
+        assert "mohm" in str(excinfo.value) and "Mohm" in str(excinfo.value)
+
+        # 5. Fuzzy match
+        with pytest.raises(UnitNotFoundError) as excinfo:
+            decode_symbol(ctx.g, ctx.tg, "vol")
+        assert "volt" in str(excinfo.value)
+
+        # 6. Uppercase
+        with pytest.raises(UnitNotFoundError) as excinfo:
+            decode_symbol(ctx.g, ctx.tg, "Volt")
+        assert "volt" in str(excinfo.value)
 
 
 class TestResolvePendingParameterUnits(_TestWithContext):
