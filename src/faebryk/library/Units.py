@@ -142,6 +142,18 @@ class BasisVector(DataClassJsonMixin):
         return self._scalar_op(lambda x: x * scalar)
 
 
+def _accurate_div(m1: float, m2: float) -> float:
+    """
+    Divide two multipliers accurately, preserving powers of 10.
+    """
+    res = m1 / m2
+    if abs(res) > 0:
+        log_res = math.log10(abs(res))
+        if math.isclose(log_res, round(log_res), rel_tol=1e-12):
+            res = 10.0 ** round(log_res) * (1 if res > 0 else -1)
+    return res
+
+
 @dataclass(frozen=True)
 class UnitInfo:
     basis_vector: BasisVector
@@ -173,7 +185,7 @@ class UnitInfo:
             raise UnitsNotCommensurableError(
                 f"Units {self} and {value_unit_info} are not commensurable"
             )
-        scale = value_unit_info.multiplier / self.multiplier
+        scale = _accurate_div(value_unit_info.multiplier, self.multiplier)
         offset = value_unit_info.offset - self.offset
         return value * scale + offset
 
@@ -649,7 +661,7 @@ class is_unit(fabll.Node):
         )
         m1, m2 = is_unit._extract_multiplier(self), is_unit._extract_multiplier(other)
 
-        new_multiplier = m1 / m2
+        new_multiplier = _accurate_div(m1, m2)
         new_vector = v1.subtract(v2)
 
         return is_unit.new(
@@ -669,7 +681,7 @@ class is_unit(fabll.Node):
             g=g,
             tg=tg,
             vector=v.scalar_multiply(-1),
-            multiplier=1.0 / m,
+            multiplier=_accurate_div(1.0, m),
             offset=0.0,
         )
 
@@ -698,8 +710,8 @@ class is_unit(fabll.Node):
         m1, o1 = is_unit._extract_multiplier(self), is_unit._extract_offset(self)
         m2, o2 = is_unit._extract_multiplier(target), is_unit._extract_offset(target)
 
-        scale = m1 / m2
-        offset = (o1 - o2) / m2
+        scale = _accurate_div(m1, m2)
+        offset = _accurate_div(o1 - o2, m2)
 
         return (scale, offset)
 

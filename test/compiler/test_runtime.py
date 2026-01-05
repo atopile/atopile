@@ -1666,7 +1666,7 @@ def test_assign_to_child_parameter():
         module App:
             r = new Resistor
             r -> CustomResistor
-            r.resistance = 100kohm +/- 10%
+            r.resistance = 150kohm +/- 10%
         """,
         "App",
     )
@@ -1674,8 +1674,8 @@ def test_assign_to_child_parameter():
     r = F.Resistor.bind_instance(_get_child(app_instance, "r"))
     resistance = r.resistance.get().force_extract_literal_subset()
     assert resistance.get_values() == [
-        90,
-        110,
+        135000,
+        165000,
     ]
     assert F.Units.is_unit.get_symbols(resistance.get_is_unit()) == ["Ω", "ohm", "ohms"]
 
