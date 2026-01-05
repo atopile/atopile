@@ -992,7 +992,6 @@ class NumericParameter(fabll.Node):
 
         Raises UnitsNotCommensurableError if any predicate has incommensurable operands.
         """
-        import faebryk.library._F as F
         from faebryk.library.Expressions import is_expression, is_predicate
         from faebryk.library.Units import (
             UnitsNotCommensurableError,
@@ -1013,7 +1012,7 @@ class NumericParameter(fabll.Node):
                 continue
 
             # Resolve units for each operand
-            operand_units: list[tuple[F.Parameters.can_be_operand, is_unit | None]] = []
+            operand_units: list[tuple[can_be_operand, is_unit | None]] = []
             for operand in operands:
                 op_obj = operand.get_raw_obj()
                 try:
@@ -1846,14 +1845,15 @@ def test_copy_into_enum_parameter():
 
     # Create new graph and copy the TypeGraph first
     g2 = graph.GraphView.create()
-    tg2 = tg1.copy_into(target_graph=g2, minimal=False)
+    _ = tg1.copy_into(target_graph=g2, minimal=False)
 
     # Copy the Is expression (not just the parameter)
     # This should copy both operands (parameter and literal) along with it
     copied_is = is_expr.copy_into(g=g2)
     print(f"Copied Is expression in g2: {copied_is}")
 
-    # The copied parameter should now be accessible via the copied Is expression's operands
+    # The copied parameter should now be accessible via the
+    # copied Is expression's operands
     # Get operands using the is_expression trait API
     from faebryk.library.Expressions import is_expression
 
