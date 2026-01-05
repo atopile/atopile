@@ -2249,7 +2249,7 @@ class TestAssignments:
             module App:
                 power = new ElectricPower
                 # 2.1 uA to 12 mA - different unit prefixes (micro vs milli)
-                power.current = 2.1uA to 12mA
+                power.max_current = 2.1uA to 12mA
             """
         )
 
@@ -2269,7 +2269,7 @@ class TestAssignments:
         # The values should be stored in the unit of the start value (uA)
         # 2.1 uA -> 2.1
         # 12 mA -> 12000 uA
-        literal = power.current.get().force_extract_literal_subset()
+        literal = power.max_current.get().force_extract_literal_subset()
         assert literal is not None, "current should have an aliased literal"
         values = literal.get_values()
         assert len(values) == 2
