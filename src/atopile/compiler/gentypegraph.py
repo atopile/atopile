@@ -2,9 +2,10 @@
 Shared data structures and helpers for the TypeGraph-generation IR.
 """
 
+import itertools
 import logging
 import re
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import ClassVar
 
@@ -162,6 +163,7 @@ class ParameterSpec:
 
 class ActionsFactory:
     TRAIT_ID_PREFIX: ClassVar[str] = "_trait_"
+    _unique_counter: ClassVar[Iterator[int]] = itertools.count()
 
     @staticmethod
     def _try_make_child(
@@ -443,7 +445,6 @@ class ActionsFactory:
         soft_create: bool = False,
     ) -> "list[AddMakeChildAction]":
         actions: list[AddMakeChildAction] = []
-        from faebryk.core.node import _anon_counter
 
         # For nested paths, we don't create the parameter MakeChild - it must exist
         # on the nested type. We only create constraints that reference the path.
@@ -464,8 +465,10 @@ class ActionsFactory:
                     "constraint_expr is required when constraint_operand is provided"
                 )
 
-            unique_target_str = str(target_path).replace(".", "_") + f"_{_anon_counter}"
-            _anon_counter += 1
+            unique_target_str = (
+                str(target_path).replace(".", "_")
+                + f"_{next(ActionsFactory._unique_counter)}"
+            )
 
             # Operand as child of type
             actions.append(

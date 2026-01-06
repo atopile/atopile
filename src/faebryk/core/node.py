@@ -1,5 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
+import itertools
 import logging
 import re
 from dataclasses import dataclass
@@ -8,6 +9,7 @@ from dataclasses import fields as dataclass_fields
 from typing import (
     TYPE_CHECKING,
     Any,
+    ClassVar,
     Iterable,
     Iterator,
     Protocol,
@@ -99,11 +101,9 @@ class PLACEHOLDER:
         return "<PLACEHOLDER>"
 
 
-# Global counter for generating unique anonymous identifiers.
-_anon_counter = 0
-
-
 class Field:
+    _anon_counter: ClassVar[Iterator[int]] = itertools.count()
+
     def __init__(self, identifier: str | None | PLACEHOLDER = PLACEHOLDER()):
         self.identifier: str | PLACEHOLDER = PLACEHOLDER()
         if not isinstance(identifier, PLACEHOLDER):
@@ -114,9 +114,7 @@ class Field:
         self._is_dependant = False  # Set when added as a dependant of another field
 
     def _set_identifier(self, identifier: str | None) -> None:
-        global _anon_counter
         if identifier is None:
-            _anon_counter += 1
             _t_id = (
                 (
                     self.nodetype
@@ -126,7 +124,7 @@ class Field:
                 if isinstance(self, _ChildField)
                 else f"{id(self):x}"
             )
-            identifier = f"anon{_anon_counter:04x}_{_t_id}"
+            identifier = f"anon{next(self._anon_counter):04x}_{_t_id}"
         self.identifier = identifier
 
     def get_identifier(self) -> str:
@@ -2171,7 +2169,11 @@ class is_interface(Node):
         while remaining:
             interface = remaining.pop()
             logger.info(f"Grouping bus: {interface.get_full_name()}")
-            connected = interface.get_trait(is_interface).get_connected(include_self=True).keys()
+            connected = (
+                interface.get_trait(is_interface)
+                .get_connected(include_self=True)
+                .keys()
+            )
             logger.info(f"Grouping complete. Elements: {len(connected)}")
             logger.info({i.get_full_name() for i in connected})
             buses[interface] = connected
