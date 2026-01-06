@@ -894,11 +894,10 @@ class is_binary_prefixed_unit(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
-def _get_close_matches(symbol: str, possibilities: dict) -> list[str]:
+def _get_close_matches(symbol: str, possibilities: list[str]) -> list[str]:
     """Find close matches, prioritizing case-insensitive exact and prefixed matches."""
-    poss_list = list(possibilities)
     # 1. Case-insensitive exact match (e.g. 'v' -> 'V')
-    if ci := [p for p in poss_list if p.lower() == symbol.lower()]:
+    if ci := [p for p in possibilities if p.lower() == symbol.lower()]:
         return ci
 
     # 2. Case-insensitive prefixed match (e.g. 'kOhm' -> 'kohm')
@@ -907,13 +906,13 @@ def _get_close_matches(symbol: str, possibilities: dict) -> list[str]:
     )
     if ci_pre := [
         pre + p
-        for p in poss_list
+        for p in possibilities
         for pre in prefixes
         if (pre + p).lower() == symbol.lower()
     ]:
         return ci_pre
 
-    return difflib.get_close_matches(symbol, poss_list)
+    return difflib.get_close_matches(symbol, possibilities)
 
 
 def decode_symbol(
@@ -966,7 +965,7 @@ def decode_symbol(
             return unit_expression_t
 
     raise UnitNotFoundError(
-        symbol, _get_close_matches(symbol, sorted_symbol_map.keys())
+        symbol, _get_close_matches(symbol, list(sorted_symbol_map.keys()))
     )
 
 
@@ -1008,7 +1007,7 @@ def decode_symbol_runtime(
             # TODO: provide symbol for caching
             return unit.scaled_copy(g=g, tg=tg, multiplier=scale_factor)
 
-    raise UnitNotFoundError(symbol, _get_close_matches(symbol, symbol_map.keys()))
+    raise UnitNotFoundError(symbol, _get_close_matches(symbol, list(symbol_map.keys())))
 
 
 class _UnitRegistry(Enum):
@@ -2500,7 +2499,7 @@ def register_all_units(
     Returns symbol map of unit type by symbol.
     """
     # TODO: Solution without magic or dedicated table?
-    symbol_map = {}
+    symbol_map: dict[str, type[fabll.Node]] = {}
     for registry, symbols in _UNIT_SYMBOLS.items():
         unit_type = globals()[registry.name]
         assert isinstance(unit_type, type) and issubclass(unit_type, fabll.Node)
