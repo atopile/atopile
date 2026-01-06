@@ -3205,19 +3205,19 @@ class Numbers(fabll.Node):
         assert numeric_set is not None, "Numeric set child not found"
         return NumericSet.bind_instance(numeric_set.instance)
 
-    # TODO
-    def get_is_unit(self) -> "is_unit|None":
+    def get_is_unit(self) -> "is_unit | None":
         from faebryk.library.Units import has_unit
 
         if trait := self.try_get_trait(has_unit):
             return trait.get_is_unit()
         return None
 
-    # TODO
     def get_unit_node(self) -> fabll.Node:
         from faebryk.library.Units import has_unit
 
-        return self.get_trait(has_unit).is_unit_ptr.get().deref()
+        return fabll.Traits(
+            self.get_trait(has_unit).is_unit_ptr.get().deref()
+        ).get_obj_raw()
 
     def is_empty(self) -> bool:
         return self.get_numeric_set().is_empty()

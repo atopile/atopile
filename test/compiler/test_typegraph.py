@@ -180,7 +180,7 @@ def test_new_with_count_children_are_created():
 def test_new_with_count_rejects_out_of_range_index():
     with pytest.raises(
         DslException,
-        match=r"Field `members\[(2|2\.0)\]` is not defined in scope",
+        match=r"Field `members\[(2|2\.0)\]` with index can not be assigned with new",
     ):
         build_type(
             """
@@ -196,7 +196,7 @@ def test_new_with_count_rejects_out_of_range_index():
 
 def test_typegraph_path_error_metadata():
     with pytest.raises(
-        DslException, match=r"Field `members[5]` is not defined in scope"
+        DslException, match=r"Field `members\[5\]` is not defined in scope"
     ):
         g, tg, _, result = build_type(
             """
@@ -211,9 +211,7 @@ def test_typegraph_path_error_metadata():
             link=True,
         )
 
-    with pytest.raises(
-        DslException, match=r"Field `missing.child` could not be resolved"
-    ):
+    with pytest.raises(DslException, match=r"Field `missing` could not be resolved"):
         g, tg, _, result = build_type(
             """
             module App:
@@ -3505,8 +3503,12 @@ class TestSoftHardMakeChild:
         param = F.Parameters.NumericParameter.bind_instance(not_none(param_bnode))
         literal = param.force_extract_literal_subset()
         assert literal is not None
-        # 10kohm = 10000 ohm
-        assert literal.get_values() == [10000.0, 10000.0]
+        assert literal.get_values() == [10.0, 10.0]
+        assert not_none(literal.get_is_unit()).get_symbols() == ["kohm"]
+        assert (
+            fabll.Traits(param.force_get_units()).get_obj_raw().get_type_node()
+            == F.Units.Ohm.bind_typegraph(tg=tg).as_type_node().instance
+        )
 
     def test_inherited_explicit_with_implicit_constraint(self):
         """Child constrains inherited explicit parameter with implicit assignment.
@@ -3542,7 +3544,8 @@ class TestSoftHardMakeChild:
         """Multiple implicit (soft) declarations keep the first one.
 
         When the same identifier is assigned multiple times implicitly,
-        only the first soft MakeChild is kept.
+        only the first soft MakeChild is kept. Parameter will be constrained
+        to an empty numeric interval.
         """
         g, tg, stdlib, result = build_type(
             """
@@ -3563,6 +3566,24 @@ class TestSoftHardMakeChild:
         )
         assert resistance_count == 1, (
             f"Expected 1 'resistance' MakeChild, got {resistance_count}"
+        )
+
+        import faebryk.library._F as F
+
+        instance = tg.instantiate_node(type_node=app_type, attributes={})
+
+        assert (
+            F.Parameters.NumericParameter.bind_instance(
+                not_none(
+                    fbrk.EdgeComposition.get_child_by_identifier(
+                        bound_node=instance, child_identifier="resistance"
+                    )
+                )
+            )
+            .force_extract_literal_subset()
+            .get_numeric_set()
+            .get_intervals()
+            == []
         )
 
     def test_multiple_explicit_same_identifier_errors(self):
@@ -3605,4 +3626,20 @@ class TestSoftHardMakeChild:
         )
         assert resistance_count == 1, (
             f"Expected 1 'resistance' MakeChild, got {resistance_count}"
+        )
+        import faebryk.library._F as F
+
+        instance = tg.instantiate_node(type_node=derived_type, attributes={})
+        assert (
+            F.Parameters.NumericParameter.bind_instance(
+                not_none(
+                    fbrk.EdgeComposition.get_child_by_identifier(
+                        bound_node=instance, child_identifier="resistance"
+                    )
+                )
+            )
+            .force_extract_literal_subset()
+            .get_numeric_set()
+            .get_intervals()
+            == []
         )

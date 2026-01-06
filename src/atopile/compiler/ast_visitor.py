@@ -951,6 +951,20 @@ class ASTVisitor:
                 if target_path.leaf.identifier not in member_identifiers:
                     raise DslException(f"Field `{target_path}` is not defined in scope")
 
+            # Check if field exists for non-indexed assignments with parent segments
+            elif target_path.parent_segments:
+                parent_path = FieldPath(segments=tuple(target_path.parent_segments))
+                try:
+                    type_node, _, _ = self._type_stack.current()
+                    self._tg.collect_pointer_members(
+                        type_node=type_node,
+                        container_path=list(parent_path.identifiers()),
+                    )
+                except fbrk.TypeGraphPathError as exc:
+                    raise DslException(
+                        f"Field `{parent_path}` could not be resolved"
+                    ) from exc
+
             assert new_spec.type_identifier is not None
 
             return ActionsFactory.new_child_action(
@@ -1001,8 +1015,38 @@ class ASTVisitor:
 
         match assignable:
             case NewChildSpec() as new_spec:
+                if target_path.leaf.is_index:
+                    raise DslException(
+                        f"Field `{target_path}` with index can not be assigned with new"
+                    )
                 return self._handle_new_child(target_path, new_spec)
             case ParameterSpec() as param_spec:
+                # If index, check if path is defined in scope
+                if target_path.leaf.is_index and target_path.parent_segments:
+                    container_path = FieldPath(
+                        segments=tuple(target_path.parent_segments)
+                    )
+                    try:
+                        type_node, _, _ = self._type_stack.current()
+                        pointer_members = self._tg.collect_pointer_members(
+                            type_node=type_node,
+                            container_path=list(container_path.identifiers()),
+                        )
+                    except fbrk.TypeGraphPathError as exc:
+                        raise DslException(
+                            self._type_stack._format_path_error(container_path, exc)
+                        ) from exc
+
+                    member_identifiers = {
+                        identifier
+                        for identifier, _ in pointer_members
+                        if identifier is not None
+                    }
+
+                    if target_path.leaf.identifier not in member_identifiers:
+                        raise DslException(
+                            f"Field `{target_path}` is not defined in scope"
+                        )
                 return ActionsFactory.parameter_actions(
                     target_path=target_path,
                     param_child=param_spec.param_child,

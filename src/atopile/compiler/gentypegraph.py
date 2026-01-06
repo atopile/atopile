@@ -443,6 +443,7 @@ class ActionsFactory:
         soft_create: bool = False,
     ) -> "list[AddMakeChildAction]":
         actions: list[AddMakeChildAction] = []
+        from faebryk.core.node import _anon_counter
 
         # For nested paths, we don't create the parameter MakeChild - it must exist
         # on the nested type. We only create constraints that reference the path.
@@ -463,7 +464,7 @@ class ActionsFactory:
                     "constraint_expr is required when constraint_operand is provided"
                 )
 
-            unique_target_str = str(target_path).replace(".", "_")
+            unique_target_str = str(target_path).replace(".", "_") + f"_{_anon_counter}"
 
             # Operand as child of type
             actions.append(
@@ -475,7 +476,8 @@ class ActionsFactory:
                         )
                     ),
                     child_field=constraint_operand,
-                )
+                    soft_create=soft_create,
+                ),
             )
 
             actions.append(
@@ -487,8 +489,11 @@ class ActionsFactory:
                         )
                     ),
                     child_field=constraint_expr.MakeChild(
-                        target_path.to_ref_path(), [constraint_operand], assert_=True
+                        target_path.to_ref_path(),
+                        [constraint_operand],
+                        assert_=True,
                     ),
+                    soft_create=soft_create,
                 )
             )
 
