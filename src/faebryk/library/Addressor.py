@@ -147,8 +147,8 @@ class Addressor(fabll.Node):
             unit=F.Units.Dimensionless,
         )
         offset_bound_constraint = F.Expressions.GreaterOrEqual.MakeChild(
-            [max_offset_lit, "can_be_operand"],
-            [out, ConcreteAddressor.offset, "can_be_operand"],
+            [max_offset_lit],
+            [out, ConcreteAddressor.offset],
             assert_=True,
         )
         out.add_dependant(max_offset_lit)
