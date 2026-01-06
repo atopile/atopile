@@ -367,6 +367,25 @@ class TestForLoopsRuntime:
         with pytest.raises(DslException, match="Invalid statement"):
             build_instance(text, "App")
 
+    # TODO Sam please FIXME!
+    def test_for_loop_large(self):
+        """Test for loop with large number of elements."""
+        g, tg, _, _, _ = build_instance(
+            """
+                #pragma experiment("FOR_LOOP")
+                import ElectricPower
+
+                module App:
+                    ep = new ElectricPower[100]
+                    for e in ep:
+                        e ~ ep[0]
+            """,
+            "App",
+        )
+        electric_power = F.ElectricPower.bind_typegraph(tg).get_instances(g=g)
+        assert len(electric_power) == 150
+        buses_grouped = fabll.is_interface.group_into_buses(electric_power)
+        assert len(buses_grouped) == 1
 
 def test_for_loop_over_imported_sequence(tmp_path: Path):
     """Test iterating over a sequence defined in an imported module."""
