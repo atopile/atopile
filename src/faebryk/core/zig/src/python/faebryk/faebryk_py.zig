@@ -1699,7 +1699,7 @@ fn wrap_edge_interface_connection_is_connected_to() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const path = faebryk.interface.EdgeInterfaceConnection.is_connected_to(
-                kwarg_obj.source.g.allocator,
+                std.heap.c_allocator,
                 kwarg_obj.source.*,
                 kwarg_obj.target.*,
             ) catch {
@@ -1738,7 +1738,7 @@ fn wrap_edge_interface_connection_get_connected() type {
                 true;
 
             var paths_map = faebryk.interface.EdgeInterfaceConnection.get_connected(
-                kwarg_obj.source.g.allocator,
+                std.heap.c_allocator,
                 kwarg_obj.source.*,
                 include_self,
             ) catch @panic("OOM");

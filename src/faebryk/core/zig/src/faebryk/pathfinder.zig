@@ -83,12 +83,17 @@ pub const PathFinder = struct {
         self.path_list.clearRetainingCapacity();
         try self.path_list.ensureTotalCapacity(256);
 
+        const allowed_edges = [_]graph.Edge.EdgeType{
+            EdgeComposition.tid,
+            EdgeInterfaceConnection.tid,
+        };
+
         const result = start_node.g.visit_paths_bfs(
             start_node,
             void,
             self,
             Self.visit_fn,
-            null,
+            @constCast(&allowed_edges),
         );
 
         switch (result) {
@@ -123,7 +128,7 @@ pub const PathFinder = struct {
         path.visit_strength = .strong;
 
         // Copy path to long-lived allocator (BFS arena paths are freed when BFS ends)
-        var copied_path = path.copy(std.heap.page_allocator) catch @panic("OOM");
+        var copied_path = path.copy(self.allocator) catch @panic("OOM");
         copied_path.stop_new_path_discovery = path.stop_new_path_discovery;
         copied_path.visit_strength = path.visit_strength;
         self.path_list.append(copied_path) catch @panic("OOM");
@@ -157,7 +162,6 @@ pub const PathFinder = struct {
         func: *const fn (*Self, *BFSPath) visitor.VisitResult(void),
     }{
         .{ .name = "count_paths", .func = Self.count_paths },
-        .{ .name = "filter_path_by_edge_type", .func = Self.filter_path_by_edge_type },
         .{ .name = "filter_path_by_same_node_type", .func = Self.filter_path_by_same_node_type },
         .{ .name = "filter_siblings", .func = Self.filter_siblings },
         .{ .name = "filter_hierarchy_stack", .func = Self.filter_hierarchy_stack },
@@ -165,22 +169,6 @@ pub const PathFinder = struct {
 
     pub fn count_paths(self: *Self, _: *BFSPath) visitor.VisitResult(void) {
         self.path_counter += 1;
-        return visitor.VisitResult(void){ .CONTINUE = {} };
-    }
-
-    pub fn filter_path_by_edge_type(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
-        _ = self;
-
-        // skip this check if no edges in path
-        if (path.traversed_edges.items.len == 0) return visitor.VisitResult(void){ .CONTINUE = {} };
-
-        // filter out edges that aren't composition or interface
-        const last_edge = path.traversed_edges.items[path.traversed_edges.items.len - 1].edge;
-        if (EdgeComposition.is_instance(last_edge) or EdgeInterfaceConnection.is_instance(last_edge)) {
-            return visitor.VisitResult(void){ .CONTINUE = {} };
-        }
-        path.stop_new_path_discovery = true;
-        path.invalid_path = true;
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 

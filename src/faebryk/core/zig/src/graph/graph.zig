@@ -951,15 +951,17 @@ pub const GraphView = struct {
         f: fn (*anyopaque, *BFSPath) visitor.VisitResult(T),
         edge_type_filter: ?[]Edge.EdgeType,
     ) visitor.VisitResult(T) {
-        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        const allocator = arena.allocator();
-        defer arena.deinit();
-        var open_path_queue = std.fifo.LinearFifo(*BFSPath, .Dynamic).init(allocator);
-        open_path_queue.ensureTotalCapacity(1024) catch @panic("OOM");
-        var visited_nodes = NodeRefMap.T(VisitInfo).init(allocator);
-        visited_nodes.ensureTotalCapacity(1024) catch @panic("OOM");
+        // Use C allocator for path metadata to avoid Arena ballooning.
+        // Paths are manually deinitialized when popped from the queue.
+        const allocator = std.heap.c_allocator;
 
-        defer open_path_queue.deinit();
+        var open_path_queue = std.fifo.LinearFifo(*BFSPath, .Dynamic).init(allocator);
+        defer {
+            while (open_path_queue.readItem()) |p| p.deinit();
+            open_path_queue.deinit();
+        }
+
+        var visited_nodes = NodeRefMap.T(VisitInfo).init(allocator);
         defer visited_nodes.deinit();
 
         const EdgeVisitor = struct {
@@ -1003,6 +1005,7 @@ pub const GraphView = struct {
         open_path_queue.writeItem(empty_path_copy) catch @panic("OOM");
 
         while (open_path_queue.readItem()) |path| {
+            defer path.deinit();
             const bfs_visitor_result = f(ctx, path);
 
             visited_nodes.put(path.get_last_node().node, VisitInfo{ .visit_strength = path.visit_strength }) catch @panic("OOM");

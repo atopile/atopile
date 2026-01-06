@@ -130,7 +130,7 @@ pub const EdgeInterfaceConnection = struct {
         }
 
         // No path found - return empty path
-        return try graph.BFSPath.init(std.heap.page_allocator, source);
+        return try graph.BFSPath.init(allocator, source);
     }
 
     // TODO - A visitor would be nice instead of just returning a list don't ya think?
