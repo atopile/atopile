@@ -27,4 +27,4 @@ module ESP32_MINIMAL:
     ldo_3V3.v_in = 5V +/- 5%
     ldo_3V3.v_out = 3.3V +/- 3%
     # Connect USB
-    usb_c.usb ~ micro.usb2
+    usb_c.usb.usb_if ~ micro.usb_if

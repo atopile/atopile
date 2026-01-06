@@ -40,7 +40,7 @@ module LED_BADGE:
     led_grid = new SK6805EC20_grid10x10
     atopile_logo = new atopile_logo_25x6mm
 
-    charger.charge_current_limit = battery.model.capacity / 2h +/- 10%
+    charger.charge_current_limit = battery.model.capacity / 2hour +/- 10%
 
     # Power
     power_3v3 = new ElectricPower
@@ -101,7 +101,6 @@ module LED_BADGE:
     usb_c.usb2.usb_if.d.p.line.override_net_name = "usb_P"
     usb_c.usb2.usb_if.d.n.line.override_net_name = "usb_N"
 
-
 module SK6805EC20_strip10:
     """
     Row of 10 SK6805 addressable LEDs behaving like a single LED that can be bridged by name.
@@ -115,7 +114,7 @@ module SK6805EC20_strip10:
         power ~ led.power
 
     # Serial data interface (input → chain → output)
-    data_in  = new ElectricLogic
+    data_in = new ElectricLogic
     data_out = new ElectricLogic
 
     # Tie logic references to the power rail
@@ -127,7 +126,6 @@ module SK6805EC20_strip10:
 
     # Expose the strip as a single bridgable element
     trait can_bridge_by_name<input_name = "data_in", output_name = "data_out">
-
 
 module SK6805EC20_grid10x10:
     """
@@ -142,7 +140,7 @@ module SK6805EC20_grid10x10:
         power ~ row.power
 
     # Serial data interface for the whole matrix
-    data_in  = new ElectricLogic
+    data_in = new ElectricLogic
     data_out = new ElectricLogic
 
     power ~ data_in.reference
