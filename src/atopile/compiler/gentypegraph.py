@@ -465,6 +465,7 @@ class ActionsFactory:
                 )
 
             unique_target_str = str(target_path).replace(".", "_") + f"_{_anon_counter}"
+            _anon_counter += 1
 
             # Operand as child of type
             actions.append(

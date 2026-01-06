@@ -2492,8 +2492,12 @@ class LessThan(fabll.Node):
             out.add_dependant(
                 fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
             )
-        out.add_dependant(OperandPointer.MakeEdge([out, cls.left], lhs))
-        out.add_dependant(OperandPointer.MakeEdge([out, cls.right], rhs))
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.left], get_operand_path(lhs))
+        )
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.right], get_operand_path(rhs))
+        )
         return out
 
     def setup(
@@ -2560,8 +2564,12 @@ class GreaterThan(fabll.Node):
             out.add_dependant(
                 fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
             )
-        out.add_dependant(OperandPointer.MakeEdge([out, cls.left], lhs))
-        out.add_dependant(OperandPointer.MakeEdge([out, cls.right], rhs))
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.left], get_operand_path(lhs))
+        )
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.right], get_operand_path(rhs))
+        )
         return out
 
     def setup(
@@ -2627,8 +2635,12 @@ class LessOrEqual(fabll.Node):
             out.add_dependant(
                 fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
             )
-        out.add_dependant(OperandPointer.MakeEdge([out, cls.left], lhs))
-        out.add_dependant(OperandPointer.MakeEdge([out, cls.right], rhs))
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.left], get_operand_path(lhs))
+        )
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.right], get_operand_path(rhs))
+        )
         return out
 
     def setup(
@@ -2696,8 +2708,12 @@ class GreaterOrEqual(fabll.Node):
             out.add_dependant(
                 fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
             )
-        out.add_dependant(OperandPointer.MakeEdge([out, cls.left], lhs))
-        out.add_dependant(OperandPointer.MakeEdge([out, cls.right], rhs))
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.left], get_operand_path(lhs))
+        )
+        out.add_dependant(
+            OperandPointer.MakeEdge([out, cls.right], get_operand_path(rhs))
+        )
         return out
 
     def setup(
