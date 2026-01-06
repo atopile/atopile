@@ -293,6 +293,16 @@ class Linker:
         self._tg = tg
         self._active_paths: set[Path] = set()
         self._linked_modules: dict[Path, dict[str, graph.BoundNode]] = {}
+        self._stdlib_ato_files = self._discover_stdlib_ato_files()
+
+    def _discover_stdlib_ato_files(self) -> dict[str, Path]:
+        stdlib_ato_files = {}
+        faebryk_lib_path = Path(__file__).parent.parent.parent / "faebryk" / "library"
+        if faebryk_lib_path.exists():
+            for file_path in faebryk_lib_path.glob("*.ato"):
+                name = file_path.stem
+                stdlib_ato_files[name] = file_path
+        return stdlib_ato_files
 
     def resolve(
         self, path: str, name: str, base_file: Path | None
@@ -301,6 +311,12 @@ class Linker:
         Resolve a type from an imported file.
         Implements the FileImportLookup protocol for DeferredExecutor.
         """
+        if Path(path).stem in self._stdlib_ato_files:
+            stdlib_path = self._stdlib_ato_files[Path(path).stem]
+            if stdlib_path in self._linked_modules:
+                return self._linked_modules[stdlib_path].get(name)
+            return None
+
         try:
             source_path = self._resolver.resolve(raw_path=path, base_file=base_file)
         except ImportPathNotFoundError:
@@ -426,8 +442,74 @@ class Linker:
                         f"Symbol `{type_id}` is not defined in this scope"
                     )
             elif import_ref.path is None:
-                # stdlib import
-                target = self._stdlib.get(import_ref.name)
+                # stdlib import - first check Python types, then .ato files
+                if import_ref.name in self._stdlib:
+                    target = self._stdlib.get(import_ref.name)
+                elif import_ref.name in self._stdlib_ato_files:
+                    stdlib_path = self._stdlib_ato_files[import_ref.name]
+                    if stdlib_path in self._linked_modules:
+                        if import_ref.name in self._linked_modules[stdlib_path]:
+                            target = self._linked_modules[stdlib_path][import_ref.name]
+                        else:
+                            raise UndefinedSymbolError(
+                                f"Symbol `{import_ref.name}` not found in "
+                                f"stdlib file `{stdlib_path}`"
+                            )
+                    else:
+                        child_result = build_file(
+                            g=graph,
+                            tg=self._tg,
+                            import_path=str(stdlib_path),
+                            path=stdlib_path,
+                        )
+                        self._link_recursive(graph, child_result.state)
+                        from atopile.compiler.deferred_executor import DeferredExecutor
+
+                        DeferredExecutor(
+                            g=graph,
+                            tg=self._tg,
+                            state=child_result.state,
+                            visitor=child_result.visitor,
+                            stdlib=self._stdlib,
+                            file_imports=self,
+                        ).execute()
+                        self._linked_modules[stdlib_path] = (
+                            child_result.state.type_roots
+                        )
+                        target = child_result.state.type_roots[import_ref.name]
+            elif (
+                import_ref.path and Path(import_ref.path).stem in self._stdlib_ato_files
+            ):
+                stdlib_name = Path(import_ref.path).stem
+                stdlib_path = self._stdlib_ato_files[stdlib_name]
+                if stdlib_path in self._linked_modules:
+                    if import_ref.name in self._linked_modules[stdlib_path]:
+                        target = self._linked_modules[stdlib_path][import_ref.name]
+                    else:
+                        raise UndefinedSymbolError(
+                            f"Symbol `{import_ref.name}` not found in "
+                            f"stdlib file `{stdlib_path}`"
+                        )
+                else:
+                    child_result = build_file(
+                        g=graph,
+                        tg=self._tg,
+                        import_path=str(stdlib_path),
+                        path=stdlib_path,
+                    )
+                    self._link_recursive(graph, child_result.state)
+                    from atopile.compiler.deferred_executor import DeferredExecutor
+
+                    DeferredExecutor(
+                        g=graph,
+                        tg=self._tg,
+                        state=child_result.state,
+                        visitor=child_result.visitor,
+                        stdlib=self._stdlib,
+                        file_imports=self,
+                    ).execute()
+                    self._linked_modules[stdlib_path] = child_result.state.type_roots
+                    target = child_result.state.type_roots[import_ref.name]
             elif cached_type_roots is not None:
                 # file import from cache
                 target = cached_type_roots[import_ref.name]
@@ -449,8 +531,31 @@ class Linker:
             if cached_type_roots is not None:
                 # Already linked, skip
                 continue
-            # Trigger the file build/link
-            self._build_imported_file(graph, import_ref, build_state)
+            if import_ref.path and Path(import_ref.path).stem in self._stdlib_ato_files:
+                stdlib_name = Path(import_ref.path).stem
+                stdlib_path = self._stdlib_ato_files[stdlib_name]
+                if stdlib_path not in self._linked_modules:
+                    child_result = build_file(
+                        g=graph,
+                        tg=self._tg,
+                        import_path=str(stdlib_path),
+                        path=stdlib_path,
+                    )
+                    self._link_recursive(graph, child_result.state)
+                    from atopile.compiler.deferred_executor import DeferredExecutor
+
+                    DeferredExecutor(
+                        g=graph,
+                        tg=self._tg,
+                        state=child_result.state,
+                        visitor=child_result.visitor,
+                        stdlib=self._stdlib,
+                        file_imports=self,
+                    ).execute()
+                    self._linked_modules[stdlib_path] = child_result.state.type_roots
+            else:
+                # Trigger the file build/link
+                self._build_imported_file(graph, import_ref, build_state)
 
     @contextmanager
     def _guard_path(self, path: Path) -> Generator[None, None, None]:
