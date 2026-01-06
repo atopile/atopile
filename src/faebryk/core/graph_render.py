@@ -1,5 +1,6 @@
 import io
 import logging
+import re
 from typing import Callable
 
 import faebryk.core.faebrykpy as fbrk
@@ -9,6 +10,14 @@ logger = logging.getLogger(__name__)
 
 
 class GraphRenderer:
+    @staticmethod
+    def _strip_hex_suffix(type_name: str) -> str:
+        """Strip hex values in square brackets from type names for filtering.
+
+        Example: 'ElectricPower[0x126a]' -> 'ElectricPower'
+        """
+        return re.sub(r'\[0x[0-9a-fA-F]+\]$', '', type_name)
+
     @staticmethod
     def _node_key(bound_node: graph.BoundNode) -> int:
         """Get stable UUID for a node (used for cycle detection and caching)."""
@@ -389,23 +398,40 @@ class GraphRenderer:
 
         root_key = GraphRenderer._node_key(root)
         if filter_types:
-            type_filter_set = set(filter_types)
-            children = get_children(root)
-            matching = [c for c in children if c[2] in type_filter_set]
+            # Normalize filter types by stripping hex values in square brackets
+            type_filter_set = {
+                GraphRenderer._strip_hex_suffix(ft) for ft in filter_types
+            }
 
-            if not matching:
+            def get_filtered_children(bound_node: graph.BoundNode) -> list:
+                """Get children for a node and filter by type."""
+                children = get_children(bound_node)
+                return [
+                    c for c in children
+                    if GraphRenderer._strip_hex_suffix(c[2]) in type_filter_set
+                ]
+
+            children = get_filtered_children(root)
+
+            if not children:
+                # Count total matching nodes in subtree (including root if it matches)
+                total_count = r.count_new_nodes(root, set(), get_filtered_children)
                 print(
                     f"{r.get_node_label(root)} {root_key:x} "
-                    f"(no children matching: {filter_types})",
+                    f"({total_count}) (no children matching: {filter_types})",
                     file=r.stream,
                 )
             else:
+                # Count total matching nodes in subtree
+                total_count = r.count_new_nodes(root, set(), get_filtered_children)
                 print(
                     f"{r.get_node_label(root)} {root_key:x} "
-                    f"(filtered to {len(matching)} children)",
+                    f"({total_count}) (filtered to {len(children)} children)",
                     file=r.stream,
                 )
-                r.render_node(root, "", lambda _: matching, [], show_cycle_length=True)
+                r.render_node(
+                    root, "", get_filtered_children, [], show_cycle_length=True
+                )
         else:
             count = r.count_new_nodes(root, set(), get_children)
             print(f"{r.get_node_label(root)} {root_key:x} ({count})", file=r.stream)

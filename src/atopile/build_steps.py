@@ -233,7 +233,7 @@ def post_design_checks(
     if False:
         from faebryk.core.graph_render import GraphRenderer
 
-        print(GraphRenderer.render_interfaces(app.instance))
+        print(GraphRenderer.render(app.instance, filter_types=["ElectricPower", "Electrical"]))
 
     check_design(
         app,
