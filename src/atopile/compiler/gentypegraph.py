@@ -29,6 +29,10 @@ logger = logging.getLogger(__name__)
 LinkPath = list[str | EdgeTraversal]
 
 
+class ActionGenerationError(CompilerException):
+    pass
+
+
 @dataclass(frozen=True)
 class ImportRef:
     name: str
@@ -426,11 +430,19 @@ class ActionsFactory:
                 )
             )
 
+            try:
+                edge_attrs = fbrk.EdgePointer.build(identifier="e", index=idx)
+            except ValueError as e:
+                if str(e).startswith("Index out of range"):
+                    raise ActionGenerationError("List exceeds maximum size") from e
+                else:
+                    raise ActionGenerationError(str(e)) from e
+
             link_actions.append(
                 AddMakeLinkAction(
                     lhs_path=list(target_path.identifiers()),
                     rhs_path=list(element_path.identifiers()),
-                    edge=fbrk.EdgePointer.build(identifier="e", order=idx),
+                    edge=edge_attrs,
                 )
             )
 

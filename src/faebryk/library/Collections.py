@@ -20,9 +20,9 @@ def _get_pointer_references(
         if identifier is not None and edge_name != identifier:
             return
         target = fbrk.EdgePointer.get_referenced_node(edge=bound_edge.edge())
-        edge_order = fbrk.EdgePointer.get_order(edge=bound_edge.edge())
+        edge_index = fbrk.EdgePointer.get_index(edge=bound_edge.edge())
         node = bound_edge.g().bind(node=target)
-        ctx.append((edge_order, node))
+        ctx.append((edge_index, node))
 
     if identifier is None:
         fbrk.EdgePointer.visit_pointed_edges(
@@ -124,7 +124,7 @@ class SequenceProtocol(CollectionProtocol):
     def MakeChild(cls) -> fabll._ChildField[Self]: ...  # type: ignore[invalid-method-override]
 
     @classmethod
-    def MakeEdge(cls, seq_ref: RefPath, elem_ref: RefPath, order: int) -> EdgeField: ...
+    def MakeEdge(cls, seq_ref: RefPath, elem_ref: RefPath, index: int) -> EdgeField: ...
 
     @classmethod
     def MakeEdges(
@@ -139,7 +139,7 @@ if TYPE_CHECKING:
 
 class SequenceEdgeFactory(Protocol):
     def __call__(
-        self, identifier: str, order: int | None
+        self, identifier: str, index: int | None
     ) -> fbrk.EdgeCreationAttributes: ...
 
 
@@ -164,7 +164,7 @@ def AbstractSequence(
                 self.connect(
                     elem,
                     type(self)._edge_factory(
-                        identifier=self._elem_identifier, order=cur_len + i
+                        identifier=self._elem_identifier, index=cur_len + i
                     ),
                 )
             return self
@@ -174,12 +174,12 @@ def AbstractSequence(
 
         @classmethod
         def MakeEdge(
-            cls, seq_ref: RefPath, elem_ref: RefPath, order: int
+            cls, seq_ref: RefPath, elem_ref: RefPath, index: int
         ) -> fabll._EdgeField:
             return fabll._EdgeField(
                 seq_ref,
                 elem_ref,
-                edge=cls._edge_factory(identifier=cls._elem_identifier, order=order),
+                edge=cls._edge_factory(identifier=cls._elem_identifier, index=index),
             )
 
         @classmethod
@@ -208,7 +208,7 @@ class SetProtocol(Protocol):
 
 class SetEdgeFactory(Protocol):
     def __call__(
-        self, identifier: str, order: int | None
+        self, identifier: str, index: int | None
     ) -> fbrk.EdgeCreationAttributes: ...
 
 
@@ -231,7 +231,7 @@ def AbstractSet(
 
             for i, elem in enumerate(by_uuid.values()):
                 edge_attrs = type(self)._edge_factory(
-                    identifier=self._elem_identifier, order=cur_len + i
+                    identifier=self._elem_identifier, index=cur_len + i
                 )
                 self.connect(elem, edge_attrs)
 
@@ -242,7 +242,7 @@ def AbstractSet(
             return fabll._EdgeField(
                 set_ref,
                 elem_ref,
-                edge=cls._edge_factory(identifier=cls._elem_identifier, order=None),
+                edge=cls._edge_factory(identifier=cls._elem_identifier, index=None),
             )
 
         @classmethod
@@ -261,7 +261,7 @@ def AbstractSet(
                         elem,
                         edge=cls._edge_factory(
                             identifier=cls._elem_identifier,
-                            order=None,
+                            index=None,
                         ),
                     )
                 )
@@ -284,7 +284,7 @@ def AbstractSet(
 
 Pointer = AbstractPointer(
     edge_factory=lambda identifier: fbrk.EdgePointer.build(
-        identifier=identifier, order=None
+        identifier=identifier, index=None
     ),
     retrieval_function=lambda node: next(
         iter(_get_pointer_references(node, None)), None
@@ -293,16 +293,16 @@ Pointer = AbstractPointer(
 )
 
 PointerSequence = AbstractSequence(
-    edge_factory=lambda identifier, order: fbrk.EdgePointer.build(
-        identifier=identifier, order=order
+    edge_factory=lambda identifier, index: fbrk.EdgePointer.build(
+        identifier=identifier, index=index
     ),
     retrieval_function=_get_pointer_references,
     typename="PointerSequence",
 )
 
 PointerSet = AbstractSet(
-    edge_factory=lambda identifier, order: fbrk.EdgePointer.build(
-        identifier=identifier, order=order
+    edge_factory=lambda identifier, index: fbrk.EdgePointer.build(
+        identifier=identifier, index=index
     ),
     retrieval_function=_get_pointer_references,
     typename="PointerSet",
@@ -375,10 +375,10 @@ def test_pointer_helpers():
     right_child = parent.right.get()
 
     parent.connect(
-        left_child, fbrk.EdgePointer.build(identifier="left_ptr", order=None)
+        left_child, fbrk.EdgePointer.build(identifier="left_ptr", index=None)
     )
     parent.connect(
-        right_child, fbrk.EdgePointer.build(identifier="right_ptr", order=None)
+        right_child, fbrk.EdgePointer.build(identifier="right_ptr", index=None)
     )
 
     pointed_edges: list[str | None] = []
@@ -408,8 +408,8 @@ def test_pointer_helpers():
     assert right is not None
     assert right.node().is_same(other=right_child.instance.node())
 
-    parent.connect(left_child, fbrk.EdgePointer.build(identifier="shared", order=None))
-    parent.connect(right_child, fbrk.EdgePointer.build(identifier="shared", order=None))
+    parent.connect(left_child, fbrk.EdgePointer.build(identifier="shared", index=None))
+    parent.connect(right_child, fbrk.EdgePointer.build(identifier="shared", index=None))
 
     shared_edges: list[graph.BoundEdge] = []
 

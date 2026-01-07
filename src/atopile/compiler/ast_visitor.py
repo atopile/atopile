@@ -13,6 +13,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.compiler import CompilerException, DslException
 from atopile.compiler.gentypegraph import (
+    ActionGenerationError,
     ActionsFactory,
     AddMakeChildAction,
     AddMakeLinkAction,
@@ -784,7 +785,7 @@ class ASTVisitor:
             bound_node=type_node,
             target_node=node.instance.node(),
             identifier=AnyAtoBlock._definition_identifier,
-            order=None,
+            index=None,
         )
 
         stmts = node.scope.get().stmts.get().as_list()
@@ -975,14 +976,17 @@ class ASTVisitor:
                 import_ref=new_spec.symbol.import_ref if new_spec.symbol else None,
             )
 
-        child_actions, link_actions, _ = ActionsFactory.new_child_array_actions(
-            target_path=target_path,
-            type_identifier=not_none(new_spec.type_identifier),
-            module_type=module_fabll_type,
-            template_args=new_spec.template_args,
-            count=new_spec.count,
-            import_ref=new_spec.symbol.import_ref if new_spec.symbol else None,
-        )
+        try:
+            child_actions, link_actions, _ = ActionsFactory.new_child_array_actions(
+                target_path=target_path,
+                type_identifier=not_none(new_spec.type_identifier),
+                module_type=module_fabll_type,
+                template_args=new_spec.template_args,
+                count=new_spec.count,
+                import_ref=new_spec.symbol.import_ref if new_spec.symbol else None,
+            )
+        except ActionGenerationError as e:
+            raise DslException(str(e)) from e
 
         return [*child_actions, *link_actions]
 

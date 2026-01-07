@@ -2430,7 +2430,7 @@ fn wrap_edge_pointer_build() type {
             .doc = "Build a pointer edge creation attributes",
             .args_def = struct {
                 identifier: ?*py.PyObject = null,
-                order: *py.PyObject,
+                index: *py.PyObject,
             },
             .static = true,
         };
@@ -2445,9 +2445,12 @@ fn wrap_edge_pointer_build() type {
                 }
             }
 
-            var order: ?u7 = null;
-            if (kwarg_obj.order != py.Py_None()) {
-                order = bind.unwrap_int(u7, kwarg_obj.order) orelse return null;
+            var index: ?u16 = null;
+            if (kwarg_obj.index != py.Py_None()) {
+                index = bind.unwrap_int(u16, kwarg_obj.index) catch {
+                    py.PyErr_SetString(py.PyExc_ValueError, "Index out of range");
+                    return null;
+                } orelse return null;
             }
 
             const allocator = std.heap.c_allocator;
@@ -2456,7 +2459,7 @@ fn wrap_edge_pointer_build() type {
                 py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
                 return null;
             };
-            attributes.* = faebryk.pointer.EdgePointer.build(if (identifier_copy) |copy| copy else null, order);
+            attributes.* = faebryk.pointer.EdgePointer.build(if (identifier_copy) |copy| copy else null, index);
             return bind.wrap_obj("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, attributes);
         }
     };
@@ -2587,11 +2590,11 @@ fn wrap_edge_pointer_traverse() type {
     };
 }
 
-fn wrap_edge_pointer_get_order() type {
+fn wrap_edge_pointer_get_index() type {
     return struct {
         pub const descr = method_descr{
-            .name = "get_order",
-            .doc = "Return the order of the pointer edge",
+            .name = "get_index",
+            .doc = "Return the index of the pointer edge",
             .args_def = struct {
                 edge: *graph.EdgeReference,
 
@@ -2604,8 +2607,8 @@ fn wrap_edge_pointer_get_order() type {
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
-            const order = faebryk.pointer.EdgePointer.get_order(kwarg_obj.edge.*);
-            return bind.wrap_int(order);
+            const index = faebryk.pointer.EdgePointer.get_index(kwarg_obj.edge.*);
+            return bind.wrap_int(index orelse 0);
         }
     };
 }
@@ -2619,7 +2622,7 @@ fn wrap_edge_pointer_point_to() type {
                 bound_node: *graph.BoundNodeReference,
                 target_node: *graph.NodeReference,
                 identifier: ?*py.PyObject = null,
-                order: *py.PyObject,
+                index: *py.PyObject,
 
                 pub const fields_meta = .{
                     .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
@@ -2644,16 +2647,19 @@ fn wrap_edge_pointer_point_to() type {
                 }
             }
 
-            var order: ?u7 = null;
-            if (kwarg_obj.order != py.Py_None()) {
-                order = bind.unwrap_int(u7, kwarg_obj.order) orelse return null;
+            var index: ?u16 = null;
+            if (kwarg_obj.index != py.Py_None()) {
+                index = bind.unwrap_int(u16, kwarg_obj.index) catch {
+                    py.PyErr_SetString(py.PyExc_ValueError, "Index out of range");
+                    return null;
+                } orelse return null;
             }
 
             const bound_edge = faebryk.pointer.EdgePointer.point_to(
                 kwarg_obj.bound_node.*,
                 kwarg_obj.target_node.*,
                 if (identifier_copy) |copy| copy else null,
-                order,
+                index,
             );
             return graph_py.makeBoundEdgePyObject(bound_edge);
         }
@@ -2806,7 +2812,7 @@ fn wrap_pointer(root: *py.PyObject) void {
         wrap_edge_pointer_get_referenced_node_from_node(),
         wrap_edge_pointer_get_tid(),
         wrap_edge_pointer_traverse(),
-        wrap_edge_pointer_get_order(),
+        wrap_edge_pointer_get_index(),
         wrap_edge_pointer_visit_pointed_edges(),
         wrap_edge_pointer_visit_pointed_edges_with_identifier(),
         wrap_edge_pointer_get_pointed_node_by_identifier(),

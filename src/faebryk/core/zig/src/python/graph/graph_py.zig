@@ -588,7 +588,10 @@ fn wrap_edge_create() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const edge_type_value: graph.graph.Edge.EdgeType = bind.unwrap_int(graph.graph.Edge.EdgeType, kwarg_obj.edge_type) orelse return null;
+            const edge_type_value: graph.graph.Edge.EdgeType = bind.unwrap_int(graph.graph.Edge.EdgeType, kwarg_obj.edge_type) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "Edge type out of range");
+                return null;
+            } orelse return null;
 
             var directional_value: ?bool = null;
             if (kwarg_obj.directional) |directional_obj| {
@@ -832,7 +835,10 @@ fn wrap_bound_node_visit_edges_of_type() type {
             const wrapper = bind.castWrapper("BoundNodeReference", &bound_node_type, BoundNodeWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const edge_type_value: graph.graph.Edge.EdgeType = bind.unwrap_int(graph.graph.Edge.EdgeType, kwarg_obj.edge_type) orelse return null;
+            const edge_type_value: graph.graph.Edge.EdgeType = bind.unwrap_int(graph.graph.Edge.EdgeType, kwarg_obj.edge_type) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "Edge type out of range");
+                return null;
+            } orelse return null;
 
             var directed_value: ?bool = null;
             if (kwarg_obj.directed) |directed_obj| {

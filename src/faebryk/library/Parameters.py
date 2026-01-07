@@ -607,7 +607,7 @@ class EnumParameter(fabll.Node):
                 [out, cls.enum_domain_pointer],
                 [cls_n],
                 edge=fbrk.EdgePointer.build(
-                    identifier="enum_domain_pointer", order=None
+                    identifier="enum_domain_pointer", index=None
                 ),
             )
         )

@@ -26,10 +26,10 @@ class EdgePointer:
     ) -> EdgeReference: ...
     @staticmethod
     def build(
-        *, identifier: str | None, order: int | None
+        *, identifier: str | None, index: int | None
     ) -> EdgeCreationAttributes: ...
     @staticmethod
-    def get_order(*, edge: EdgeReference) -> int | None: ...
+    def get_index(*, edge: EdgeReference) -> int | None: ...
     @staticmethod
     def is_instance(*, edge: EdgeReference) -> bool: ...
     @staticmethod
@@ -60,7 +60,7 @@ class EdgePointer:
         bound_node: BoundNode,
         target_node: NodeReference,
         identifier: str | None = None,
-        order: int | None,
+        index: int | None,
     ) -> BoundEdge: ...
     @staticmethod
     def traverse() -> EdgeTraversal:

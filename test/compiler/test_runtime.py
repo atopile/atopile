@@ -367,25 +367,40 @@ class TestForLoopsRuntime:
         with pytest.raises(DslException, match="Invalid statement"):
             build_instance(text, "App")
 
-    # TODO Sam please FIXME!
     def test_for_loop_large(self):
         """Test for loop with large number of elements."""
-        g, tg, _, _, _ = build_instance(
-            """
-                #pragma experiment("FOR_LOOP")
-                import ElectricPower
 
-                module App:
-                    ep = new ElectricPower[100]
-                    for e in ep:
-                        e ~ ep[0]
+        template = textwrap.dedent(
+            """
+            #pragma experiment("FOR_LOOP")
+            import Resistor
+
+            module _App:
+                resistors = new Resistor[{n:d}]
+
+                for r in resistors:
+                    assert r.resistance within 100kohm +/- 10%
             """,
-            "App",
         )
-        electric_power = F.ElectricPower.bind_typegraph(tg).get_instances(g=g)
-        assert len(electric_power) == 150
-        buses_grouped = fabll.is_interface.group_into_buses(electric_power)
-        assert len(buses_grouped) == 1
+
+        for n in [
+            2**4,
+            2**7 + 1,  # > 2**7 (originally limited by 7-bit order field)
+        ]:
+            g, tg, _, _, _ = build_instance(template.format(n=n), "_App")
+            resistors = F.Resistor.bind_typegraph(tg).get_instances(g=g)
+            assert len(resistors) == n
+            for r in resistors:
+                assert (
+                    E.lit_op_range_from_center_rel((100, E.U.kohm), rel=0.1)
+                    .as_literal.force_get()
+                    .equals(r.resistance.get().force_extract_literal_subset())
+                )
+
+        # current limit is 2**16
+        with pytest.raises(DslException, match="List exceeds maximum size"):
+            build_instance(template.format(n=2**16 + 1), "App")
+
 
 def test_for_loop_over_imported_sequence(tmp_path: Path):
     """Test iterating over a sequence defined in an imported module."""
@@ -3266,3 +3281,26 @@ class TestInheritanceWithTraits:
         # If the assert failed to resolve the inherited field, this would error
         # during build or the constraint wouldn't be applied
         assert output_voltage_param is not None
+
+
+class TestCollections:
+    def test_large_collection(self):
+        template = textwrap.dedent(
+            """
+            import Resistor
+
+            module _App:
+                resistors = new Resistor[{n:d}]
+            """,
+        )
+
+        for n in [
+            2**4,
+            2**7 + 1,  # > 2**7 (originally limited by 7-bit order field)
+        ]:
+            g, tg, _, _, app_instance = build_instance(template.format(n=n), "_App")
+            resistors = F.Resistor.bind_typegraph(tg).get_instances(g=g)
+            assert len(resistors) == n
+
+        with pytest.raises(DslException, match="List exceeds maximum size"):
+            build_instance(template.format(n=2**16 + 1), "_App")

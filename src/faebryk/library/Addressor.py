@@ -215,7 +215,7 @@ class Addressor(fabll.Node):
             edge = F.Collections.PointerSequence.MakeEdge(
                 seq_ref=[address_lines_seq],
                 elem_ref=[line],
-                order=i,
+                index=i,
             )
             # Add edge as a class field so it gets processed
             ConcreteAddressor._handle_cls_attr(f"_address_line_link_{i}", edge)

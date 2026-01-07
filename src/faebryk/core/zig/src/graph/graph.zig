@@ -40,7 +40,7 @@ pub const Edge = struct {
     const Flags = packed struct {
         edge_type: Edge.EdgeType,
         directional: u1 = 0,
-        order: u7 = 0,
+        order: u7 = 0, // TODO: consider removing
         edge_specific: u16 = 0,
     };
 
@@ -334,6 +334,14 @@ pub const EdgeReference = struct {
 
     pub fn set_order(self: @This(), order: u7) void {
         Edges[self.uuid].flags.order = order;
+    }
+
+    pub fn get_edge_specific(self: @This()) ?u16 {
+        return Edges[self.uuid].flags.edge_specific;
+    }
+
+    pub fn set_edge_specific(self: @This(), edge_specific: u16) void {
+        Edges[self.uuid].flags.edge_specific = edge_specific;
     }
 
     /// Name is stored in dynamic attributes under "name" key

@@ -30,29 +30,31 @@ pub const EdgePointer = struct {
         return .{ .identifier = "", .edge_type = tid };
     }
 
-    pub fn init(from: NodeReference, to: NodeReference, identifier: ?str, order: ?u7) EdgeReference {
+    pub fn init(from: NodeReference, to: NodeReference, identifier: ?str, index: ?u16) EdgeReference {
         const edge = EdgeReference.init(from, to, tid);
-        build(identifier, order).apply_to(edge);
+        build(identifier, index).apply_to(edge);
         return edge;
     }
 
-    pub fn build(identifier: ?str, order: ?u7) EdgeCreationAttributes {
+    pub fn build(identifier: ?str, index: ?u16) EdgeCreationAttributes {
         if (!registered) {
             @branchHint(.unlikely);
             registered = true;
             Edge.register_type(tid) catch {};
         }
+
         return .{
             .edge_type = tid,
             .directional = true,
             .name = identifier,
-            .order = order orelse 0,
+            .order = 0, // not big enough to fit `index`
+            .edge_specific = index,
             .dynamic = graph.DynamicAttributes.init_on_stack(),
         };
     }
 
-    pub fn get_order(edge: EdgeReference) u7 {
-        return edge.get_order();
+    pub fn get_index(edge: EdgeReference) ?u16 {
+        return edge.get_edge_specific();
     }
 
     pub fn get_referenced_node(edge: EdgeReference) NodeReference {
@@ -63,8 +65,8 @@ pub const EdgePointer = struct {
         return E.is_instance(tid);
     }
 
-    pub fn point_to(bound_node: BoundNodeReference, target_node: NodeReference, identifier: ?str, order: ?u7) BoundEdgeReference {
-        const edge = EdgePointer.init(bound_node.node, target_node, identifier, order);
+    pub fn point_to(bound_node: BoundNodeReference, target_node: NodeReference, identifier: ?str, index: ?u16) BoundEdgeReference {
+        const edge = EdgePointer.init(bound_node.node, target_node, identifier, index);
         const bound_edge = bound_node.g.insert_edge(edge);
         return bound_edge;
     }

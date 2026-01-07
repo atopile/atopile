@@ -62,6 +62,7 @@ pub const TypeGraph = struct {
         identifier: ?[]const u8,
         make_child: BoundNodeReference,
         order: u7 = 0,
+        edge_specific: ?u16 = null,
     };
 
     pub const MakeLinkInfo = struct {
@@ -463,6 +464,9 @@ pub const TypeGraph = struct {
                     self.node.node.put("name", .{ .String = n });
                 }
                 self.node.node.put("order", .{ .Int = attributes.order });
+                if (attributes.edge_specific) |edge_specific| {
+                    self.node.node.put("edge_specific", .{ .Uint = edge_specific });
+                }
                 // TODO different API
                 self.node.node.copy_dynamic_attributes_into(&attributes.dynamic);
             }
@@ -480,6 +484,7 @@ pub const TypeGraph = struct {
                 const name = self.node.node.get("name");
                 const edge_type: Edge.EdgeType = @intCast(self.node.node.get("edge_type").?.Int);
                 const order: u7 = @intCast(self.node.node.get("order").?.Int);
+                const edge_specific = if (self.node.node.get("edge_specific")) |e| e.Uint else null;
                 var dynamic = graph.DynamicAttributes.init_on_stack();
 
                 const AttrVisitor = struct {
@@ -501,6 +506,9 @@ pub const TypeGraph = struct {
                 }
                 link_edge.set_attribute_name(if (name) |n| n.String else null);
                 link_edge.set_order(order);
+                if (edge_specific) |es| {
+                    link_edge.set_edge_specific(@intCast(es));
+                }
                 // TODO different API
                 link_edge.copy_dynamic_attributes_into(&dynamic);
 
@@ -801,6 +809,7 @@ pub const TypeGraph = struct {
                 .directional = if (link_info.make_link.node.get("directional")) |d| d.Bool else null,
                 .name = if (link_info.make_link.node.get("name")) |n| n.String else null,
                 .order = attrs.get_order(),
+                .edge_specific = if (link_info.make_link.node.get("edge_specific")) |e| @as(u16, @intCast(e.Uint)) else null,
                 .dynamic = graph.DynamicAttributes.init_on_stack(),
             };
 
@@ -1655,6 +1664,7 @@ pub const TypeGraph = struct {
                     .identifier = element_id,
                     .make_child = make_child,
                     .order = attrs.get_order(),
+                    .edge_specific = if (info.make_link.node.get("edge_specific")) |e| @as(u16, @intCast(e.Uint)) else null,
                 });
             }
         };

@@ -64,7 +64,7 @@ OperandPointer = Collections.AbstractPointer(
 )
 
 OperandSequence = Collections.AbstractSequence(
-    edge_factory=lambda identifier, order: fbrk.EdgeOperand.build(
+    edge_factory=lambda identifier, index: fbrk.EdgeOperand.build(
         operand_identifier=identifier
     ),
     retrieval_function=_retrieve_operands,
@@ -72,7 +72,7 @@ OperandSequence = Collections.AbstractSequence(
 )
 
 OperandSet = Collections.AbstractSet(
-    edge_factory=lambda identifier, order: fbrk.EdgeOperand.build(
+    edge_factory=lambda identifier, index: fbrk.EdgeOperand.build(
         operand_identifier=identifier
     ),
     retrieval_function=_retrieve_operands,

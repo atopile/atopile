@@ -2548,7 +2548,7 @@ def test_fabll_basic():
         _edge = _EdgeField(
             lhs=[tnwa1],
             rhs=[tnwa2],
-            edge=fbrk.EdgePointer.build(identifier=None, order=None),
+            edge=fbrk.EdgePointer.build(identifier=None, index=None),
         )
 
     g, tg = _make_graph_and_typegraph()
@@ -3104,8 +3104,8 @@ def test_copy_into_basic():
     m = outer.m.get()
     n = outer.n.get()
     o = outer.o.get()
-    m.connect(to=n, edge_attrs=fbrk.EdgePointer.build(identifier=None, order=None))
-    n.connect(to=o, edge_attrs=fbrk.EdgePointer.build(identifier=None, order=None))
+    m.connect(to=n, edge_attrs=fbrk.EdgePointer.build(identifier=None, index=None))
+    n.connect(to=o, edge_attrs=fbrk.EdgePointer.build(identifier=None, index=None))
 
     assert fbrk.EdgePointer.get_referenced_node_from_node(node=n.instance) == o.instance
     assert fbrk.EdgePointer.get_referenced_node_from_node(node=m.instance) == n.instance
