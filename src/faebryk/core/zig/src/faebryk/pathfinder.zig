@@ -109,6 +109,10 @@ pub const PathFinder = struct {
         bfs_paths.paths = self.path_list;
         self.path_list = std.ArrayList(*BFSPath).init(self.allocator);
 
+        std.debug.print("********* Pathfinder find_paths Summary *********\n", .{});
+        std.debug.print("Start node: {}\n", .{start_node.node.uuid});
+        std.debug.print("Paths explored: {}\tValid Paths: {}\n", .{ self.path_counter, bfs_paths.paths.items.len });
+
         return bfs_paths;
     }
 
@@ -116,6 +120,7 @@ pub const PathFinder = struct {
     pub fn visit_fn(self_ptr: *anyopaque, path: *BFSPath) visitor.VisitResult(void) {
         const self: *Self = @ptrCast(@alignCast(self_ptr));
         const result = self.run_filters(path);
+        // std.debug.print("path_counter: {} len: {}\n", .{ self.path_counter, path.traversed_edges.items.len });
         if (result == .ERROR) return result;
         if (result == .STOP) return result;
 
@@ -222,7 +227,7 @@ pub const PathFinder = struct {
     // 2. Cannot descend from starting level
     // 3. Shallow links only if at same or deeper level
     pub fn filter_hierarchy_stack(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
-        if (path.invalid_path) return visitor.VisitResult(void){ .CONTINUE = {} };
+        // if (path.invalid_path) return visitor.VisitResult(void){ .CONTINUE = {} };
 
         var stack = std.ArrayList(HierarchyElement).init(self.allocator);
         defer stack.deinit();
@@ -245,6 +250,10 @@ pub const PathFinder = struct {
                 } else if (EdgeComposition.get_parent_node(edge).is_same(start_node)) {
                     hierarchy_direction = .down;
                     depth -= 1;
+                }
+
+                if (depth < 0) {
+                    path.stop_new_path_discovery = true;
                 }
 
                 const hierarchy_element = HierarchyElement{
