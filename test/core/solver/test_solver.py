@@ -1884,10 +1884,10 @@ def test_simplify_non_terminal_manual_test_2():
             else:
                 E.is_(_inc, E.divide(_inc, increase), assert_=True)
 
-        p_lit = solver.inspect_get_known_supersets(p.as_parameter.get())
-        print(f"{p.as_parameter.get().compact_repr(context)}, lit:", p_lit)
+        p_lit = solver.inspect_get_known_supersets(p.as_parameter.force_get())
+        print(f"{p.as_parameter.force_get().compact_repr(context)}, lit:", p_lit)
         print(f"{p_lit.as_operand.get()}, {E.multiply(origin[1], _inc)}")
-        assert p_lit.is_subset_of(E.multiply(origin[1], _inc).as_literal.get())
+        assert p_lit.is_subset_of(E.multiply(origin[1], _inc).as_literal.force_get())
         E.is_(p.as_operand.get(), p_lit.as_operand.get(), assert_=True)
         solver.simplify(E.g, E.tg)
 

@@ -398,7 +398,7 @@ def test_pick_led_by_colour():
     solver.update_superset_cache(led)
     assert solver.inspect_get_known_supersets(
         led.color.get().is_parameter.get()
-    ).is_subset_of(E.lit_op_enum(color).as_literal.get())
+    ).is_subset_of(E.lit_op_enum(color).as_literal.force_get())
 
 
 @pytest.mark.usefixtures("setup_project_config")
