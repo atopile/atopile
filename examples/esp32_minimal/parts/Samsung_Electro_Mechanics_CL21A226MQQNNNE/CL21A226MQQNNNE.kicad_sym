@@ -1,7 +1,7 @@
 (kicad_symbol_lib
 	(version 20241229)
 	(generator "faebryk_convert")
-	(symbol "CL05A105KA5NQNC"
+	(symbol "CL21A226MQQNNNE"
 		(property "Reference" "C"
 			(id 0)
 			(at 0 5.08 0)
@@ -11,7 +11,7 @@
 				)
 			)
 		)
-		(property "Value" "CL05A105KA5NQNC"
+		(property "Value" "CL21A226MQQNNNE"
 			(id 1)
 			(at 0 -5.08 0)
 			(effects
@@ -20,7 +20,7 @@
 				)
 			)
 		)
-		(property "Footprint" "C52923:C0402"
+		(property "Footprint" "C5674:C0805"
 			(id 2)
 			(at 0 -7.62 0)
 			(effects
@@ -29,7 +29,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_SAMSUNG_CL05A105KA5NQNC_1uF-105-10-25V_C52923.html"
+		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_SAMSUNG_CL21A226MQQNNNE_22uF-226-20-6-3V_C5674.html"
 			(id 3)
 			(at 0 -10.16 0)
 			(effects
@@ -38,7 +38,7 @@
 				)
 			)
 		)
-		(property "LCSC Part" "C52923"
+		(property "LCSC Part" "C5674"
 			(id 5)
 			(at 0 -12.7 0)
 			(effects
@@ -49,7 +49,7 @@
 		)
 		(in_bom yes)
 		(on_board yes)
-		(symbol "CL05A105KA5NQNC_0_1"
+		(symbol "CL21A226MQQNNNE_0_1"
 			(polyline
 				(stroke
 					(width 0)
