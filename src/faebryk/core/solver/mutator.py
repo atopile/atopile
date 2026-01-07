@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import inspect
 import logging
 import sys
 from collections import Counter, defaultdict
@@ -26,14 +27,12 @@ from faebryk.core.solver.utils import (
 )
 from faebryk.libs.logging import rich_to_string
 from faebryk.libs.util import (
-    KeyErrorNotFound,
     duplicates,
     groupby,
     indented_container,
     invert_dict,
     not_none,
     once,
-    try_avoid_endless_recursion,
     unique_ref,
 )
 
@@ -900,6 +899,26 @@ class MutationMap:
         )
 
     @staticmethod
+    def _bootstrap_copy(
+        g_in: graph.GraphView, tg_in: fbrk.TypeGraph
+    ) -> tuple[graph.GraphView, fbrk.TypeGraph]:
+        # TODO move somewhere else?
+        g_out = graph.GraphView.create()
+        tg_out = tg_in.copy_into(target_graph=g_out, minimal=True)
+        for module in (F.Expressions, F.Parameters, F.Literals, F.Units):
+            for _, expr_cls in inspect.getmembers(module):
+                if not isinstance(expr_cls, type):
+                    continue
+                if not issubclass(expr_cls, fabll.Node):
+                    continue
+                fbrk.TypeGraph.copy_node_into(
+                    start_node=expr_cls.bind_typegraph(tg_in).get_or_create_type(),
+                    target_graph=g_out,
+                )
+
+        return g_out, tg_out
+
+    @staticmethod
     def bootstrap(
         tg: fbrk.TypeGraph,
         g: graph.GraphView,
@@ -909,15 +928,13 @@ class MutationMap:
         relevant: list[F.Parameters.can_be_operand] | None = None,
     ) -> "MutationMap":
         if relevant is not None:
-            g_out = graph.GraphView.create()
-            # TODO dont copy whole tg
-            tg_out = tg.copy_into(target_graph=g_out, minimal=False)
+            g_out, tg_out = MutationMap._bootstrap_copy(g, tg)
             relevant_root_predicates = MutatorUtils.get_relevant_predicates(
                 *relevant,
             )
             for root_expr in relevant_root_predicates:
                 root_expr.copy_into(g_out)
-            # tg_out = fbrk.TypeGraph.of(node=g_out.bind(node=tg.get_self_node().node()))
+
             nodes_uuids = {p.instance.node().get_uuid() for p in relevant}
             for p_out in fabll.Traits.get_implementors(
                 F.Parameters.can_be_operand.bind_typegraph(tg_out)
@@ -927,41 +944,43 @@ class MutationMap:
                 fabll.Traits.create_and_add_instance_to(p_out, solver_relevant)
 
             print_context = print_context or F.Parameters.ReprContext()
-            # print(
-            #    indented_container(
-            #        [
-            #            p.as_expression.get().compact_repr(
-            #                context=print_context,
-            #                no_lit_suffix=True,
-            #                use_name=True,
-            #            )
-            #            for p in relevant_root_predicates
-            #        ]
-            #    )
-            # )
             all_ops_out = F.Parameters.is_parameter_operatable.bind_typegraph(
                 tg_out
             ).get_instances(g=g_out)
-            # expr_count = len(
-            #    fabll.Traits.get_implementors(
-            #        F.Expressions.is_expression.bind_typegraph(tg_out)
-            #    )
-            # )
-            # param_count = len(
-            #    fabll.Traits.get_implementors(
-            #        F.Parameters.is_parameter.bind_typegraph(tg_out)
-            #    )
-            # )
-            # lit_count = len(
-            #    fabll.Traits.get_implementors(
-            #        F.Literals.is_literal.bind_typegraph(tg_out)
-            #    )
-            # )
-            # print(
-            #    f"|lits|={lit_count}"
-            #    f", |exprs|={expr_count}"
-            #    f", |params|={param_count} {g_out}"
-            # )
+            if S_LOG:
+                logger.debug(
+                    "Relevant root predicates: "
+                    + indented_container(
+                        [
+                            p.as_expression.get().compact_repr(
+                                context=print_context,
+                                no_lit_suffix=True,
+                                use_name=True,
+                            )
+                            for p in relevant_root_predicates
+                        ]
+                    )
+                )
+                expr_count = len(
+                    fabll.Traits.get_implementors(
+                        F.Expressions.is_expression.bind_typegraph(tg_out)
+                    )
+                )
+                param_count = len(
+                    fabll.Traits.get_implementors(
+                        F.Parameters.is_parameter.bind_typegraph(tg_out)
+                    )
+                )
+                lit_count = len(
+                    fabll.Traits.get_implementors(
+                        F.Literals.is_literal.bind_typegraph(tg_out)
+                    )
+                )
+                logger.debug(
+                    f"|lits|={lit_count}"
+                    f", |exprs|={expr_count}"
+                    f", |params|={param_count} {g_out}"
+                )
             return MutationMap(
                 MutationStage(
                     tg_in=tg,
@@ -2014,8 +2033,7 @@ class Mutator:
     @property
     @once
     def tg_out(self) -> fbrk.TypeGraph:
-        out = self.tg_in.copy_into(target_graph=self.G_out, minimal=False)
-        return out
+        return self.tg_in.copy_into(target_graph=self.G_out, minimal=False)
 
     @property
     @once

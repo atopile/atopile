@@ -91,6 +91,8 @@ class Addressor(fabll.Node):
             assert isinstance(solver, DefaultSolver)
             offset_op = self.offset.get().can_be_operand.get()
             offset_param = self.offset.get().is_parameter.get()
+            logger.info(f"Running solver for addressor: {self}")
+
             solver.update_superset_cache(offset_op)
             lit = solver.inspect_get_known_supersets(offset_param)
             if lit is None or not lit.is_singleton():

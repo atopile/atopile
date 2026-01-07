@@ -2080,6 +2080,25 @@ pub const TypeGraph = struct {
             }
 
             fn visit_type(ctx: *@This(), bound_node: graph.BoundNodeReference) void {
+                // type node - check if node actually has type_identifier attribute
+                const is_type_node = bound_node.node.get(TypeNodeAttributes.type_identifier) != null;
+                if (is_type_node) {
+                    if (TypeGraph.of_type(bound_node)) |tg| {
+                        if (ctx.existing_tg == null) {
+                            ctx.visit_typegraph(tg);
+                        } else if (ctx.existing_tg == true) {
+                            const collision = ctx.type_map.get(bound_node.node);
+                            // type already exists, for now just yield
+                            if (collision != null) {
+                                return;
+                            }
+                        }
+                        const parent_edge = EdgeComposition.get_parent_edge(bound_node).?.edge;
+                        ctx.raw_add_edge(parent_edge);
+                    }
+                }
+
+                // instance node
                 if (EdgeType.get_type_edge(bound_node)) |type_edge| {
                     const type_node = bound_node.g.bind(EdgeType.get_type_node(type_edge.edge));
 
