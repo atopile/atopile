@@ -120,7 +120,7 @@ class Addressor(fabll.Node):
         Uses factory() to create a concrete type with address_lines as a proper
         list of ElectricLogic children.
         """
-        logger.info(f"Addressor.MakeChild called: address_bits={address_bits}")
+        logger.debug(f"Addressor.MakeChild called: address_bits={address_bits}")
 
         # Use factory to create a concrete type with the right number of address lines
         ConcreteAddressor = cls.factory(address_bits)
@@ -376,45 +376,10 @@ def test_addressor_unresolved_offset_raises():
         check_design(app, stage=F.implements_design_check.CheckStage.POST_SOLVE)
 
 
-class ConfigurableI2CClient(fabll.Node):
-    # Use MakeChild for proper address_lines population
-    addressor = Addressor.MakeChild(address_bits=3)
-    i2c = F.I2C.MakeChild()
-    config = [F.ElectricLogic.MakeChild() for _ in range(3)]
-    ref = F.ElectricPower.MakeChild()
-
-    _single_electric_reference = fabll.Traits.MakeEdge(
-        F.has_single_electric_reference.MakeChild()
-    )
-
-    def setup(self, g, tg) -> Self:
-        F.Expressions.Is.c(
-            self.addressor.get().address.get().can_be_operand.get(),
-            self.i2c.get().address.get().can_be_operand.get(),
-            g=g,
-            tg=tg,
-            assert_=True,
-        )
-        # Set base address for this I2C client
-        self.addressor.get().base.get().alias_to_literal(g, 16.0)
-
-        # Get address lines from PointerSequence
-        address_lines = self.addressor.get().address_lines.get().as_list()
-
-        for line_node, config_field in zip(address_lines, self.config):
-            line = F.ElectricLogic.bind_instance(line_node.instance)
-            line._is_interface.get().connect_to(config_field.get())
-
-        # Connect address line references to power
-        for line_node in address_lines:
-            line = F.ElectricLogic.bind_instance(line_node.instance)
-            line.reference.get()._is_interface.get().connect_to(self.ref.get())
-
-        return self
-
-
 def test_addressor():
     from faebryk.core.solver.defaultsolver import DefaultSolver
+
+    ConfigurableI2CClient = _make_configurable_i2c_client()
 
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -474,28 +439,78 @@ def test_addressor():
     )
 
 
-class I2CBusTopology(fabll.Node):
-    server = F.I2C.MakeChild()
-    clients = [ConfigurableI2CClient.MakeChild() for _ in range(3)]
+def _make_configurable_i2c_client():
+    """Factory to create ConfigurableI2CClient class inside tests."""
 
-    def setup(self, g, tg, isolated=False) -> Self:
-        # Set up each client (connects address lines to power, sets base address)
-        for client in self.clients:
-            client.get().setup(g, tg)
+    class ConfigurableI2CClient(fabll.Node):
+        # Use MakeChild for proper address_lines population
+        addressor = Addressor.MakeChild(address_bits=3)
+        i2c = F.I2C.MakeChild()
+        config = [F.ElectricLogic.MakeChild() for _ in range(3)]
+        ref = F.ElectricPower.MakeChild()
 
-        if not isolated:
-            self.server.get()._is_interface.get().connect_to(
-                *[c.get().i2c.get() for c in self.clients]
+        _single_electric_reference = fabll.Traits.MakeEdge(
+            F.has_single_electric_reference.MakeChild()
+        )
+
+        def setup(self, g, tg) -> Self:
+            F.Expressions.Is.c(
+                self.addressor.get().address.get().can_be_operand.get(),
+                self.i2c.get().address.get().can_be_operand.get(),
+                g=g,
+                tg=tg,
+                assert_=True,
             )
-        else:
-            self.server.get()._is_interface.get().connect_shallow_to(
-                *[c.get().i2c.get() for c in self.clients]
-            )
-        return self
+            # Set base address for this I2C client
+            self.addressor.get().base.get().alias_to_literal(g, 16.0)
+
+            # Get address lines from PointerSequence
+            address_lines = self.addressor.get().address_lines.get().as_list()
+
+            for line_node, config_field in zip(address_lines, self.config):
+                line = F.ElectricLogic.bind_instance(line_node.instance)
+                line._is_interface.get().connect_to(config_field.get())
+
+            # Connect address line references to power
+            for line_node in address_lines:
+                line = F.ElectricLogic.bind_instance(line_node.instance)
+                line.reference.get()._is_interface.get().connect_to(self.ref.get())
+
+            return self
+
+    return ConfigurableI2CClient
+
+
+def _make_i2c_bus_topology():
+    """Factory to create I2CBusTopology class inside tests."""
+    ConfigurableI2CClient = _make_configurable_i2c_client()
+
+    class I2CBusTopology(fabll.Node):
+        server = F.I2C.MakeChild()
+        clients = [ConfigurableI2CClient.MakeChild() for _ in range(3)]
+
+        def setup(self, g, tg, isolated=False) -> Self:
+            # Set up each client (connects address lines to power, sets base address)
+            for client in self.clients:
+                client.get().setup(g, tg)
+
+            if not isolated:
+                self.server.get()._is_interface.get().connect_to(
+                    *[c.get().i2c.get() for c in self.clients]
+                )
+            else:
+                self.server.get()._is_interface.get().connect_shallow_to(
+                    *[c.get().i2c.get() for c in self.clients]
+                )
+            return self
+
+    return I2CBusTopology
 
 
 def test_i2c_unique_addresses():
     from faebryk.core.solver.defaultsolver import DefaultSolver
+
+    I2CBusTopology = _make_i2c_bus_topology()
 
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -516,6 +531,8 @@ def test_i2c_unique_addresses():
 )
 def test_i2c_duplicate_addresses():
     from faebryk.core.solver.defaultsolver import DefaultSolver
+
+    I2CBusTopology = _make_i2c_bus_topology()
 
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -541,6 +558,8 @@ def test_i2c_duplicate_addresses():
 )
 def test_i2c_duplicate_addresses_isolated():
     from faebryk.core.solver.defaultsolver import DefaultSolver
+
+    I2CBusTopology = _make_i2c_bus_topology()
 
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
