@@ -30,7 +30,7 @@ from atopile.compiler.gentypegraph import (
     ScopeState,
     Symbol,
 )
-from atopile.compiler.overrides import TraitOverrideRegistry
+from atopile.compiler.overrides import ReferenceOverrideRegistry, TraitOverrideRegistry
 from faebryk.core.faebrykpy import EdgeTraversal
 from faebryk.library.Units import UnitsNotCommensurableError
 from faebryk.libs.util import cast_assert, groupby, import_from_path, not_none
@@ -301,7 +301,11 @@ class _TypeContextStack:
 
     def resolve_reference(self, path: FieldPath) -> graph.BoundNode:
         type_node, _, _ = self.current()
-        identifiers: list[str | EdgeTraversal] = list(path.identifiers())
+        # Apply reference overrides (e.g., reference_shim -> trait pointer deref)
+        # This must happen before validation so virtual fields can be resolved
+        identifiers: list[str | EdgeTraversal] = (
+            ReferenceOverrideRegistry.transform_link_path(list(path.identifiers()))
+        )
         try:
             return self._tg.ensure_child_reference(
                 type_node=type_node, path=identifiers
@@ -1477,8 +1481,13 @@ class ASTVisitor:
 
         # Convert FieldPath to LinkPath (list of string identifiers)
         # Apply legacy path translations (e.g., vcc -> hv, gnd -> lv)
-        lhs_link_path = LinkPath(list(lhs_path.identifiers()))
-        rhs_link_path = LinkPath(list(rhs_path.identifiers()))
+        # and reference overrides (e.g., reference_shim -> trait pointer deref)
+        lhs_link_path = ReferenceOverrideRegistry.transform_link_path(
+            LinkPath(list(lhs_path.identifiers()))
+        )
+        rhs_link_path = ReferenceOverrideRegistry.transform_link_path(
+            LinkPath(list(rhs_path.identifiers()))
+        )
 
         link_action = AddMakeLinkAction(lhs_path=lhs_link_path, rhs_path=rhs_link_path)
         return [*lhs_actions, *rhs_actions, link_action]
@@ -1523,6 +1532,17 @@ class ASTVisitor:
             constraint_expr=self._type_stack.constraint_expr,
         )
 
+    def _field_path_to_link_path(self, field_path: FieldPath) -> LinkPath:
+        """
+        Convert a FieldPath to LinkPath with reference override transformations applied.
+
+        This applies transformations like `reference_shim` -> trait pointer dereference
+        so that virtual fields can be used in connections.
+        """
+        return ReferenceOverrideRegistry.transform_link_path(
+            LinkPath(list(field_path.identifiers()))
+        )
+
     def visit_DirectedConnectStmt(self, node: AST.DirectedConnectStmt):
         """
         `a ~> b` connects a.can_bridge.out_ to b.can_bridge.in_
@@ -1542,6 +1562,7 @@ class ASTVisitor:
 
         lhs_node = fabll.Traits(lhs).get_obj_raw()
         lhs_base_path, lhs_actions = self._resolve_connectable_with_path(lhs_node)
+        lhs_link_path = self._field_path_to_link_path(lhs_base_path)
 
         if nested_rhs := rhs.try_cast(t=AST.DirectedConnectStmt):
             nested_lhs = nested_rhs.get_lhs()
@@ -1549,9 +1570,10 @@ class ASTVisitor:
             middle_base_path, middle_actions = self._resolve_connectable_with_path(
                 nested_lhs_node
             )
+            middle_link_path = self._field_path_to_link_path(middle_base_path)
 
             link_action = ActionsFactory.directed_link_action(
-                lhs_base_path, middle_base_path, node.get_direction()
+                lhs_link_path, middle_link_path, node.get_direction()
             )
             nested_actions = self.visit_DirectedConnectStmt(nested_rhs)
 
@@ -1559,9 +1581,10 @@ class ASTVisitor:
 
         rhs_node = fabll.Traits(rhs).get_obj_raw()
         rhs_base_path, rhs_actions = self._resolve_connectable_with_path(rhs_node)
+        rhs_link_path = self._field_path_to_link_path(rhs_base_path)
 
         link_action = ActionsFactory.directed_link_action(
-            lhs_base_path, rhs_base_path, node.get_direction()
+            lhs_link_path, rhs_link_path, node.get_direction()
         )
         return [*lhs_actions, *rhs_actions, link_action]
 

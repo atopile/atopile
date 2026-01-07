@@ -329,11 +329,18 @@ class ActionsFactory:
 
     @staticmethod
     def directed_link_action(
-        lhs_path: "FieldPath",
-        rhs_path: "FieldPath",
+        lhs_link_path: LinkPath,
+        rhs_link_path: LinkPath,
         direction: AST.DirectedConnectStmt.Direction,
     ) -> "AddMakeLinkAction":
-        """Create a link action for directed (~> or <~) connections via can_bridge."""
+        """
+        Create a link action for directed (~> or <~) connections via can_bridge.
+
+        Args:
+            lhs_link_path: Pre-transformed LinkPath for left-hand side
+            rhs_link_path: Pre-transformed LinkPath for right-hand side
+            direction: Connection direction (RIGHT for ~>, LEFT for <~)
+        """
         if direction == AST.DirectedConnectStmt.Direction.RIGHT:  # ~>
             lhs_pointer = F.can_bridge.out_.get_identifier()
             rhs_pointer = F.can_bridge.in_.get_identifier()
@@ -341,22 +348,25 @@ class ActionsFactory:
             lhs_pointer = F.can_bridge.in_.get_identifier()
             rhs_pointer = F.can_bridge.out_.get_identifier()
 
-        lhs_link_path = ActionsFactory._build_bridge_path(lhs_path, lhs_pointer)
-        rhs_link_path = ActionsFactory._build_bridge_path(rhs_path, rhs_pointer)
+        lhs_bridge_path = ActionsFactory._build_bridge_path(lhs_link_path, lhs_pointer)
+        rhs_bridge_path = ActionsFactory._build_bridge_path(rhs_link_path, rhs_pointer)
 
-        return AddMakeLinkAction(lhs_path=lhs_link_path, rhs_path=rhs_link_path)
+        return AddMakeLinkAction(lhs_path=lhs_bridge_path, rhs_path=rhs_bridge_path)
 
     @staticmethod
-    def _build_bridge_path(base_path: "FieldPath", pointer: str) -> LinkPath:
+    def _build_bridge_path(base_link_path: LinkPath, pointer: str) -> LinkPath:
         """
         Build a LinkPath that traverses through the can_bridge trait.
 
-        For a base_path like "a", this builds:
+        For a base_link_path like ["a"], this builds:
         ["a", EdgeTrait(can_bridge), EdgeComposition("out_"), EdgePointer()]
+
+        Args:
+            base_link_path: Pre-transformed LinkPath (may have EdgeTraversal)
+            pointer: The pointer child in can_bridge (e.g., "out_" or "in_")
         """
-        base_identifiers = list(base_path.identifiers())
         return [
-            *base_identifiers,
+            *base_link_path,
             EdgeTrait.traverse(trait_type=can_bridge),
             EdgeComposition.traverse(identifier=pointer),
             EdgePointer.traverse(),
