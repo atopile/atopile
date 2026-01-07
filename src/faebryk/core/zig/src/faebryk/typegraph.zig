@@ -61,7 +61,7 @@ pub const TypeGraph = struct {
     pub const MakeChildInfo = struct {
         identifier: ?[]const u8,
         make_child: BoundNodeReference,
-        order: u7 = 0,
+        order: u16 = 0,
         edge_specific: ?u16 = null,
     };
 
@@ -1660,11 +1660,14 @@ pub const TypeGraph = struct {
                     return visitor.VisitResult(T){ .CONTINUE = {} };
                 };
 
+                const edge_specific_val: ?u16 = if (info.make_link.node.get("edge_specific")) |e| @as(u16, @intCast(e.Uint)) else null;
+                const effective_order: u16 = edge_specific_val orelse attrs.get_order();
+
                 return visitor_.cb(visitor_.ctx, MakeChildInfo{
                     .identifier = element_id,
                     .make_child = make_child,
-                    .order = attrs.get_order(),
-                    .edge_specific = if (info.make_link.node.get("edge_specific")) |e| @as(u16, @intCast(e.Uint)) else null,
+                    .order = effective_order,
+                    .edge_specific = edge_specific_val,
                 });
             }
         };

@@ -71,6 +71,7 @@ from faebryk.library.TestPoint import TestPoint
 from faebryk.library.Battery import Battery
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.ElectricSignal import ElectricSignal
+from faebryk.library.MultiCapacitor import MultiCapacitor
 from faebryk.library.LED import LED
 from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
 from faebryk.library.ResistorArray import ResistorArray
@@ -164,6 +165,7 @@ __all__ = [
     "Battery",
     "ElectricLogic",
     "ElectricSignal",
+    "MultiCapacitor",
     "LED",
     "Crystal_Oscillator",
     "ResistorArray",
