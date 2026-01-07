@@ -51,6 +51,7 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.BJT,
         F.CAN_TTL,
         F.Capacitor,
+        F.MultiCapacitor,
         F.Crystal_Oscillator,
         F.Crystal,
         F.DifferentialPair,
@@ -589,6 +590,12 @@ class ASTVisitor:
                 f"expected a sequence, got `{type_name}`"
             )
 
+        pointer_members = list(
+            self._tg.collect_pointer_members(
+                type_node=owning_type, container_path=[container_id]
+            )
+        )
+
         return sorted(
             [
                 FieldPath(
@@ -600,9 +607,7 @@ class ASTVisitor:
                         FieldPath.Segment(str(order), is_index=True),
                     )
                 )
-                for order, _ in self._tg.collect_pointer_members(
-                    type_node=owning_type, container_path=[container_id]
-                )
+                for order, _ in pointer_members
                 if order is not None
             ],
             key=lambda p: int(p.leaf.identifier),
