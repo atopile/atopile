@@ -1035,6 +1035,7 @@ class _UnitRegistry(Enum):
     Newton = auto()
     Pascal = auto()
     Joule = auto()
+    AmpereHour = auto()
     Watt = auto()
     Coulomb = auto()
     Volt = auto()
@@ -1132,6 +1133,7 @@ _UNIT_SYMBOLS: dict[_UnitRegistry, tuple[str, ...]] = {
     _UnitRegistry.Year: ("year",),
     _UnitRegistry.Liter: ("liter",),
     _UnitRegistry.Rpm: ("rpm", "RPM"),
+    _UnitRegistry.AmpereHour: ("Ah",),
 }
 
 
@@ -2478,7 +2480,7 @@ class AmpereHour(fabll.Node):
         is_unit_type.MakeChild((), unit_vector_arg, multiplier=3600.0)
     ).put_on_type()
     is_unit = fabll.Traits.MakeEdge(
-        is_unit.MakeChild((), unit_vector_arg, multiplier=3600.0)
+        is_unit.MakeChild(("Ah",), unit_vector_arg, multiplier=3600.0)
     )
     can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
     is_si_prefixed = fabll.Traits.MakeEdge(is_si_prefixed_unit.MakeChild())

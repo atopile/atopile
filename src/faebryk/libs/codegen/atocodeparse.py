@@ -56,7 +56,7 @@ class AtoCodeParse:
             trait: str,
         ) -> tuple[str | None, dict[str, str]]:
             trait_match = re.search(
-                rf"trait {trait}(?P<constructor>::[a-zA-Z0-9_]+)?(?P<args><.+?>)?",
+                rf"trait {trait}(?P<constructor>::[a-zA-Z0-9_]+)?(?P<args><.+?>)?(?=\s|$)",  # noqa: E501
                 self.ato_no_comments,
                 re.DOTALL,
             )

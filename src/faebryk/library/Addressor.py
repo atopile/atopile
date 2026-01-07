@@ -97,12 +97,14 @@ class Addressor(fabll.Node):
             lit = solver.inspect_get_known_supersets(offset_param)
             if lit is None or not lit.is_singleton():
                 # raise Addressor.OffsetNotResolvedError(self)
-                raise Warning(
+                logger.warning(
                     "Offset not resolved"
                 )  # TODO: make the check only valid for external use
-            # lit is an is_literal trait - get the actual node it's attached to
-            lit_node = fabll.Traits(lit).get_obj_raw()
-            offset = int(lit_node.cast(F.Literals.Numbers).get_single())
+                offset = 0  # TODO: remove this
+            else:
+                # lit is an is_literal trait - get the actual node it's attached to
+                lit_node = fabll.Traits(lit).get_obj_raw()
+                offset = int(lit_node.cast(F.Literals.Numbers).get_single())
 
         # address_lines is a PointerSequence (dynamically added by factory())
         lines = self.address_lines.get().as_list()  # type: ignore[attr-defined]
