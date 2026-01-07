@@ -10,6 +10,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core import graph
+from faebryk.libs.util import once
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ class MultiCapacitor(fabll.Node):
     )
 
     @classmethod
+    @once
     def factory(cls, count: int) -> type[Self]:
         """
         Create a concrete MultiCapacitor type with a fixed number of capacitors.
@@ -61,8 +63,9 @@ class MultiCapacitor(fabll.Node):
         if count <= 0:
             raise ValueError("At least one capacitor is required")
 
-        ConcreteMultiCapacitor = fabll.Node._copy_type(cls)
-        ConcreteMultiCapacitor.__name__ = f"MultiCapacitor<count={count}>"
+        ConcreteMultiCapacitor = fabll.Node._copy_type(
+            cls, name=f"MultiCapacitor<count={count}>"
+        )
 
         # 1. Create the PointerSequence for for-loop iteration
         capacitors_seq = F.Collections.PointerSequence.MakeChild()
@@ -148,13 +151,13 @@ def test_multicapacitor_factory(count: int):
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class App(fabll.Node):
-        pass
+    # Create unique App type per test run
+    AppType = fabll.Node._copy_type(fabll.Node, name=f"App_factory_{count}")
 
     # Dynamically add the multicap with the correct count
-    App._handle_cls_attr("multicap", MultiCapacitor.MakeChild(count=count))
+    AppType._handle_cls_attr("multicap", MultiCapacitor.MakeChild(count=count))
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = AppType.bind_typegraph(tg=tg).create_instance(g=g)
     multicap = app.multicap.get()
 
     # capacitors is a PointerSequence pointing to Capacitor children
@@ -169,10 +172,10 @@ def test_multicapacitor_make_child():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class App(fabll.Node):
+    class App_make_child(fabll.Node):
         multicap = MultiCapacitor.MakeChild(count=3)
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = App_make_child.bind_typegraph(tg=tg).create_instance(g=g)
 
     # capacitors is a PointerSequence pointing to Capacitor children
     caps = app.multicap.get().capacitors.get().as_list()
@@ -186,10 +189,10 @@ def test_multicapacitor_indexed_access():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class App(fabll.Node):
+    class App_indexed_access(fabll.Node):
         multicap = MultiCapacitor.MakeChild(count=2)
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = App_indexed_access.bind_typegraph(tg=tg).create_instance(g=g)
     multicap = app.multicap.get()
 
     # Access via PointerSequence as_list
@@ -208,10 +211,10 @@ def test_multicapacitor_parallel_connection():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class App(fabll.Node):
+    class App_parallel_connection(fabll.Node):
         multicap = MultiCapacitor.MakeChild(count=3)
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = App_parallel_connection.bind_typegraph(tg=tg).create_instance(g=g)
     multicap = app.multicap.get()
 
     # Get the unnamed interfaces
@@ -233,10 +236,10 @@ def test_multicapacitor_has_bridge_trait():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class App(fabll.Node):
+    class App_bridge_trait(fabll.Node):
         multicap = MultiCapacitor.MakeChild(count=2)
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = App_bridge_trait.bind_typegraph(tg=tg).create_instance(g=g)
     multicap = app.multicap.get()
 
     # Should have the can_bridge trait
