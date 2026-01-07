@@ -1251,6 +1251,7 @@ class TestAggregator:
 
                 class_name = ""
                 function_name = ""
+                params = ""
 
                 if len(rest) > 0:
                     if len(rest) > 1:
@@ -1432,16 +1433,30 @@ def collect_tests(pytest_args: list[str]) -> tuple[list[str], dict[str, str]]:
         "-q",
         "--no-header",
         # "--no-summary",
+        # Ensure co-located tests in `src/` are imported by package name, not by path.
+        "-p",
+        "atopile.pytest_import_by_name",
     ] + pytest_args
     _print(f"Collecting tests: {' '.join(cmd)}")
 
     # Capture output
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    env = os.environ.copy()
+    # Ensure our in-repo pytest plugins (`test.runner.*`) are importable in the process.
+    # (Workers already set PYTHONPATH similarly.)
+    env["PYTHONPATH"] = os.getcwd()
+    result = subprocess.run(cmd, capture_output=True, text=True, env=env)
     split = result.stdout.split("\n\n", maxsplit=1)
     stdout, summary = split if len(split) == 2 else (split[0], "")
     errors_clean = dict[str, str]()
     if result.returncode != 0:
         _print("Error collecting tests:")
+        if "ERRORS " not in summary:
+            if "ERRORS " in stdout:
+                summary = stdout
+            else:
+                _print(stdout)
+                _print(summary)
+                sys.exit(1)
         errors = [
             e.strip().strip("_").strip().split("____\n")
             for e in (
@@ -1509,7 +1524,7 @@ def main(
     tests_total = len(tests)
     _print(f"Collected {tests_total} tests")
 
-    if tests_total == 0:
+    if tests_total == 0 and not errors:
         _print("No tests found.")
         sys.exit(0)
 

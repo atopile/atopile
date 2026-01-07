@@ -518,12 +518,12 @@ def test_defaultsolver_basic():
     #        continue
     #    fabll.TypeNodeBoundTG.get_or_create_type_in_tg(tg=tg, E)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         A = FT.Parameters.BooleanParameter.MakeChild()
         B = FT.Parameters.BooleanParameter.MakeChild()
         C = FT.Parameters.BooleanParameter.MakeChild()
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
     app.A.get().alias_to_single(True)
     FT.Expressions.Is.c(
         FT.Expressions.Or.c(

@@ -57,14 +57,14 @@ def test_up_connect_simple_single():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class Lower(fabll.Node):
+    class _Lower(fabll.Node):
         is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    class High(fabll.Node):
+    class _High(fabll.Node):
         is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
-        lower = Lower.MakeChild()
+        lower = _Lower.MakeChild()
 
-    high = High.bind_typegraph(tg)
+    high = _High.bind_typegraph(tg)
     high1 = high.create_instance(g=g)
     high2 = high.create_instance(g=g)
 
@@ -85,15 +85,15 @@ def test_up_connect_simple_two():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class Lower(fabll.Node):
+    class _Lower(fabll.Node):
         is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    class High(fabll.Node):
+    class _High(fabll.Node):
         is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
-        lower1 = Lower.MakeChild()
-        lower2 = Lower.MakeChild()
+        lower1 = _Lower.MakeChild()
+        lower2 = _Lower.MakeChild()
 
-    high = High.bind_typegraph(tg)
+    high = _High.bind_typegraph(tg)
     high1 = high.create_instance(g=g)
     high2 = high.create_instance(g=g)
 
@@ -115,16 +115,16 @@ def test_up_connect_simple_multiple():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class Lower(fabll.Node):
+    class _Lower(fabll.Node):
         is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    class High(fabll.Node):
+    class _High(fabll.Node):
         is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
-        lower1 = Lower.MakeChild()
-        lower2 = Lower.MakeChild()
-        lower3 = Lower.MakeChild()
+        lower1 = _Lower.MakeChild()
+        lower2 = _Lower.MakeChild()
+        lower3 = _Lower.MakeChild()
 
-    high = High.bind_typegraph(tg)
+    high = _High.bind_typegraph(tg)
     high1 = high.create_instance(g=g)
     high2 = high.create_instance(g=g)
     high1.lower1.get().is_interface.get().connect_to(high2.lower1.get())
@@ -143,12 +143,12 @@ def test_up_connect_chain_simple():
     ```
     """
 
-    class High(fabll.Node):
+    class _High(fabll.Node):
         lower1: fabll.ModuleInterface
         lower2: fabll.ModuleInterface
 
-    high1 = High()
-    high2 = High()
+    high1 = _High()
+    high2 = _High()
 
     middle = fabll.ModuleInterface()
 
@@ -169,13 +169,13 @@ def test_up_connect_chain_multiple_same():
     ```
     """
 
-    class High(fabll.Node):
+    class _High(fabll.Node):
         lower1: fabll.ModuleInterface
         lower2: fabll.ModuleInterface
 
-    high1 = High()
-    high2 = High()
-    high3 = High()
+    high1 = _High()
+    high2 = _High()
+    high3 = _High()
 
     high1.lower1.connect(high2.lower1)
     high1.lower2.connect(high2.lower2)
@@ -195,13 +195,13 @@ def test_up_connect_chain_multiple_mixed():
     ```
     """
 
-    class Low(fabll.Node): ...
+    class _Low(fabll.Node): ...
 
-    class High(fabll.Node):
-        lower1: Low
-        lower2: Low
+    class _High(fabll.Node):
+        lower1: _Low
+        lower2: _Low
 
-    high1, high2, high3, high4 = times(4, High)
+    high1, high2, high3, high4 = times(4, _High)
 
     high1.lower1.connect(high2.lower1)
     high1.lower2.connect(high2.lower2)
@@ -225,13 +225,13 @@ def test_split_chain_single():
     ```
     """
 
-    class Low(fabll.Node): ...
+    class _Low(fabll.Node): ...
 
-    class High(fabll.Node):
-        lower1: Low
-        lower2: Low
+    class _High(fabll.Node):
+        lower1: _Low
+        lower2: _Low
 
-    high1, high2, high3 = times(3, High)
+    high1, high2, high3 = times(3, _High)
 
     high1.lower1.connect(high2.lower1)
     high1.lower2.connect(high3.lower2)
@@ -252,16 +252,16 @@ def test_split_chain_double_flat_no_inter():
     ```
     """
 
-    class Low(fabll.Node): ...
+    class _Low(fabll.Node): ...
 
-    class High(fabll.Node):
-        lower1: Low
-        lower2: Low
+    class _High(fabll.Node):
+        lower1: _Low
+        lower2: _Low
 
-    class App(fabll.Node):
-        high = [High.MakeChild() for _ in range(4)]
+    class _App(fabll.Node):
+        high = [_High.MakeChild() for _ in range(4)]
 
-    app = App()
+    app = _App()
 
     high1, high2, high3, high4 = app.high
 
@@ -295,16 +295,16 @@ def test_split_chain_double_flat_inter():
     ```
     """
 
-    class Low(fabll.Node): ...
+    class _Low(fabll.Node): ...
 
-    class High(fabll.Node):
-        lower1: Low
-        lower2: Low
+    class _High(fabll.Node):
+        lower1: _Low
+        lower2: _Low
 
-    class App(fabll.Node):
-        high = [High.MakeChild() for _ in range(4)]
+    class _App(fabll.Node):
+        high = [_High.MakeChild() for _ in range(4)]
 
-    app = App()
+    app = _App()
 
     high1, high2, high3, high4 = app.high
 
@@ -332,20 +332,20 @@ def test_split_chain_double_hierarchy():
     ```
     """
 
-    class Low(fabll.Node): ...
+    class _Low(fabll.Node): ...
 
-    class High(fabll.Node):
-        lower1: Low
-        lower2: Low
+    class _High(fabll.Node):
+        lower1: _Low
+        lower2: _Low
 
-    class Higher(fabll.Node):
-        high: High
+    class _Higher(fabll.Node):
+        high: _High
 
-    class App(fabll.Node):
-        high = [High.MakeChild() for _ in range(3)]
-        higher = [Higher.MakeChild() for _ in range(2)]
+    class _App(fabll.Node):
+        high = [_High.MakeChild() for _ in range(3)]
+        higher = [_Higher.MakeChild() for _ in range(2)]
 
-    app = App()
+    app = _App()
 
     high1, high2, high3 = app.high
     higher1, higher2 = app.higher
@@ -372,16 +372,16 @@ def test_split_chain_flip():
     Note: Shallowness not important, just makes it harder
     """
 
-    class Low(fabll.Node): ...
+    class _Low(fabll.Node): ...
 
-    class High(fabll.Node):
-        lower1: Low
-        lower2: Low
+    class _High(fabll.Node):
+        lower1: _Low
+        lower2: _Low
 
-    class App(fabll.Node):
-        high = [High.MakeChild() for _ in range(4)]
+    class _App(fabll.Node):
+        high = [_High.MakeChild() for _ in range(4)]
 
-    app = App()
+    app = _App()
 
     high1, high2, high3, high4 = app.high
 
@@ -405,13 +405,13 @@ def test_split_flip_negative():
     ```
     """
 
-    class Low(fabll.Node): ...
+    class _Low(fabll.Node): ...
 
-    class High(fabll.Node):
-        lower1: Low
-        lower2: Low
+    class _High(fabll.Node):
+        lower1: _Low
+        lower2: _Low
 
-    high1, high2 = times(2, High)
+    high1, high2 = times(2, _High)
 
     high1.lower1.connect(high2.lower2)
     high1.lower2.connect(high2.lower1)
@@ -429,13 +429,13 @@ def test_up_connect_chain_multiple_mixed_simulate_realworld():
     ```
     """
 
-    class Low(fabll.Node): ...
+    class _Low(fabll.Node): ...
 
-    class High(fabll.Node):
-        lower1: Low
-        lower2: Low
+    class _High(fabll.Node):
+        lower1: _Low
+        lower2: _Low
 
-    high1, high2, high3, high4 = times(4, High)
+    high1, high2, high3, high4 = times(4, _High)
 
     high1.lower1.connect(high2.lower1)
     high2.connect_shallow(high3)
@@ -483,21 +483,21 @@ def test_up_connect_chain_hierarchy():
     ```
     """
 
-    class Low(fabll.Node): ...
+    class _Low(fabll.Node): ...
 
-    class High(fabll.Node):
-        lower1: Low
-        lower2: Low
+    class _High(fabll.Node):
+        lower1: _Low
+        lower2: _Low
 
-    class Higher(fabll.Node):
-        high1: High
-        high2: High
+    class _Higher(fabll.Node):
+        high1: _High
+        high2: _High
 
-    higher_begin = Higher()
-    higher_end = Higher()
+    higher_begin = _Higher()
+    higher_end = _Higher()
 
-    high_middle1 = High()
-    high_middle2 = High()
+    high_middle1 = _High()
+    high_middle2 = _High()
 
     higher_begin.high1.lower1.connect(high_middle1.lower1)
     higher_begin.high1.lower2.connect(high_middle1.lower2)
@@ -523,16 +523,16 @@ def test_up_connect_hierarchy():
     ```
     """
 
-    class High(fabll.Node):
+    class _High(fabll.Node):
         lower1: fabll.ModuleInterface
         lower2: fabll.ModuleInterface
 
-    class Higher(fabll.Node):
-        high1: High
-        high2: High
+    class _Higher(fabll.Node):
+        high1: _High
+        high2: _High
 
-    higher1 = Higher()
-    higher2 = Higher()
+    higher1 = _Higher()
+    higher2 = _Higher()
 
     higher1.high1.lower1.connect(higher2.high1.lower1)
     higher1.high1.lower2.connect(higher2.high1.lower2)
@@ -555,18 +555,18 @@ def test_up_connect_hierarchy_mixed():
     ```
     """
 
-    class Low(fabll.Node): ...
+    class _Low(fabll.Node): ...
 
-    class High(fabll.Node):
-        lower1: Low
-        lower2: Low
+    class _High(fabll.Node):
+        lower1: _Low
+        lower2: _Low
 
-    class Higher(fabll.Node):
-        high1: High
-        high2: High
+    class _Higher(fabll.Node):
+        high1: _High
+        high2: _High
 
-    higher1 = Higher()
-    higher2 = Higher()
+    higher1 = _Higher()
+    higher2 = _Higher()
 
     higher1.high1.lower1.connect(higher2.high1.lower1)
     higher1.high1.lower2.connect(higher2.high1.lower2)
@@ -585,12 +585,12 @@ def test_up_connect_simple_two_negative():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class High(fabll.Node):
+    class _High(fabll.Node):
         _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
         lower1 = F.Electrical.MakeChild()
         lower2 = F.Electrical.MakeChild()
 
-    highType = High.bind_typegraph(tg)
+    highType = _High.bind_typegraph(tg)
     high1 = highType.create_instance(g=g)
     high2 = highType.create_instance(g=g)
 
@@ -611,13 +611,13 @@ def test_up_connect_simple_multiple_negative():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class High(fabll.Node):
+    class _High(fabll.Node):
         _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
         lower1 = F.Electrical.MakeChild()
         lower2 = F.Electrical.MakeChild()
         lower3 = F.Electrical.MakeChild()
 
-    highType = High.bind_typegraph(tg)
+    highType = _High.bind_typegraph(tg)
     high1 = highType.create_instance(g=g)
     high2 = highType.create_instance(g=g)
 
@@ -644,7 +644,7 @@ def test_up_connect():
     ```
     """
 
-    class UARTBuffer(fabll.Node):
+    class _UARTBuffer(fabll.Node):
         bus_in: F.UART_Base
         bus_out: F.UART_Base
 
@@ -653,7 +653,7 @@ def test_up_connect():
             self.bus_in.tx.line.connect(self.bus_out.tx.line)
             self.bus_in.rx.reference.connect(self.bus_out.rx.reference)
 
-    app = UARTBuffer()
+    app = _UARTBuffer()
 
     assert app.bus_in.rx.line.is_connected_to(app.bus_out.rx.line)
     assert app.bus_in.rx.reference.is_connected_to(app.bus_out.rx.reference)
@@ -833,15 +833,15 @@ def test_shallow_bridge_simple():
     ```
     """
 
-    class Low(fabll.Node): ...
+    class _Low(fabll.Node): ...
 
-    class High(fabll.Node):
-        lower1: Low
-        lower2: Low
+    class _High(fabll.Node):
+        lower1: _Low
+        lower2: _Low
 
-    class ShallowBridge(fabll.Node):
-        high_in: High
-        high_out: High
+    class _ShallowBridge(fabll.Node):
+        high_in: _High
+        high_out: _High
 
         def __preinit__(self) -> None:
             self.high_in.connect_shallow(self.high_out)
@@ -850,9 +850,9 @@ def test_shallow_bridge_simple():
         def can_bridge(self):
             return F.can_bridge(self.high_in, self.high_out)
 
-    bridge = ShallowBridge()
-    high1 = High()
-    high2 = High()
+    bridge = _ShallowBridge()
+    high1 = _High()
+    high2 = _High()
     high1.connect_via(bridge, high2)
 
     assert high1.is_connected_to(high2)
@@ -873,7 +873,7 @@ def test_shallow_bridge_partial():
     ```
     """
 
-    class Buffer(fabll.Node):
+    class _Buffer(fabll.Node):
         ins: F.Electrical
         outs: F.Electrical
 
@@ -890,7 +890,7 @@ def test_shallow_bridge_partial():
 
     l1 = F.ElectricLogic()
     l2 = F.ElectricLogic()
-    b = Buffer()
+    b = _Buffer()
 
     l1.signal.connect(b.ins)
     l2.signal.connect(b.outs)
@@ -905,7 +905,7 @@ def test_single_electric_reference_connects_children():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class WithReferences(fabll.Node):
+    class _WithReferences(fabll.Node):
         power_a = F.ElectricPower.MakeChild()
         power_b = F.ElectricPower.MakeChild()
 
@@ -913,7 +913,7 @@ def test_single_electric_reference_connects_children():
             F.has_single_electric_reference.MakeChild()
         )
 
-    app = WithReferences.bind_typegraph(tg).create_instance(g=g)
+    app = _WithReferences.bind_typegraph(tg).create_instance(g=g)
     app._single_electric_reference.get().connect_all_references()
     shared_ref = app._single_electric_reference.get().get_reference()
 
@@ -947,7 +947,7 @@ def test_shallow_bridge_full():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class Buffer(fabll.Node):
+    class _Buffer(fabll.Node):
         ins = [F.Electrical.MakeChild() for _ in range(2)]
         outs = [F.Electrical.MakeChild() for _ in range(2)]
         ins_l = [F.ElectricLogic.MakeChild() for _ in range(2)]
@@ -957,8 +957,8 @@ def test_shallow_bridge_full():
             F.has_single_electric_reference.MakeChild()
         )
 
-    class UARTBuffer(fabll.Node):
-        buf = Buffer.MakeChild()
+    class _UARTBuffer(fabll.Node):
+        buf = _Buffer.MakeChild()
         bus_in = F.UART_Base.MakeChild()
         bus_out = F.UART_Base.MakeChild()
 
@@ -966,7 +966,7 @@ def test_shallow_bridge_full():
             F.has_single_electric_reference.MakeChild()
         )
 
-    app = UARTBuffer.bind_typegraph(tg).create_instance(g=g)
+    app = _UARTBuffer.bind_typegraph(tg).create_instance(g=g)
 
     for el, lo in chain(
         zip(app.buf.get().ins, app.buf.get().ins_l),
@@ -1372,14 +1372,14 @@ def test_connect_incompatible():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class A(fabll.Node):
+    class _A(fabll.Node):
         _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    class B(fabll.Node):
+    class _B(fabll.Node):
         _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    aType = A.bind_typegraph(tg)
-    bType = B.bind_typegraph(tg)
+    aType = _A.bind_typegraph(tg)
+    bType = _B.bind_typegraph(tg)
     a = aType.create_instance(g=g)
     b = bType.create_instance(g=g)
 
@@ -1391,15 +1391,15 @@ def test_connect_incompatible_hierarchical():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class B(fabll.Node):
+    class _B(fabll.Node):
         _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    class A(fabll.Node):
+    class _A(fabll.Node):
         _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
-        b = B.MakeChild()
+        b = _B.MakeChild()
 
-    aType = A.bind_typegraph(tg)
-    bType = B.bind_typegraph(tg)
+    aType = _A.bind_typegraph(tg)
+    bType = _B.bind_typegraph(tg)
     x = aType.create_instance(g=g)
     y = bType.create_instance(g=g)
     with pytest.raises(ValueError, match="Failed to connect"):

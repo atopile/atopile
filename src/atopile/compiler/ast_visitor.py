@@ -127,6 +127,9 @@ class BuildState:
     type_aliases: dict[str, dict[str, FieldPath]] = field(default_factory=dict)
     inheritance_imports: list[ImportRef] = field(default_factory=list)
 
+    def get_type_root(self, name: str) -> graph.BoundNode:
+        return self.type_roots[name]
+
 
 class is_ato_block(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
@@ -632,7 +635,9 @@ class ASTVisitor:
 
     def visit(self, node: fabll.Node):
         # TODO: less magic dispatch
-        node_type = cast_assert(str, node.get_type_name()).removeprefix("compiler_")
+        module = "atopile.compiler.ast_types"
+        mod_suffix = "." + ".".join(reversed(module.split(".")))
+        node_type = cast_assert(str, node.get_type_name()).removesuffix(mod_suffix)
         logger.info(f"Visiting node of type {node_type}")
 
         try:
@@ -702,10 +707,15 @@ class ASTVisitor:
             str(self._state.file_path.parent) if self._state.file_path else None
         )
 
+        type_identifier = self._make_type_identifier(module_name)
+        if fabll.Node._seen_types.get(type_identifier):
+            logger.info(f"Overwriting {type_identifier}")
+            fabll.Node._seen_types.pop(type_identifier)
         match node.get_block_type():
             case AST.BlockDefinition.BlockType.MODULE:
 
                 class _Module(fabll.Node):
+                    _override_type_identifier = type_identifier
                     _is_ato_block = fabll.Traits.MakeEdge(
                         is_ato_block.MakeChild(source_dir=source_dir)
                     )
@@ -718,6 +728,7 @@ class ASTVisitor:
             case AST.BlockDefinition.BlockType.COMPONENT:
 
                 class _Component(fabll.Node):
+                    _override_type_identifier = type_identifier
                     _is_ato_block = fabll.Traits.MakeEdge(
                         is_ato_block.MakeChild(source_dir=source_dir)
                     )
@@ -732,6 +743,7 @@ class ASTVisitor:
             case AST.BlockDefinition.BlockType.INTERFACE:
 
                 class _Interface(fabll.Node):
+                    _override_type_identifier = type_identifier
                     is_ato_block = fabll.Traits.MakeEdge(
                         is_ato_block.MakeChild(source_dir=source_dir)
                     )
@@ -743,7 +755,6 @@ class ASTVisitor:
                 _Block = _Interface
                 constraint_expr = F.Expressions.IsSubset
 
-        type_identifier = self._make_type_identifier(module_name)
         _Block.__name__ = type_identifier
         _Block.__qualname__ = type_identifier
 

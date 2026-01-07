@@ -278,11 +278,11 @@ def test_load_part_info_from_pcb():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class TestApp(fabll.Node):
+    class _TestApp(fabll.Node):
         is_module_ = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         res = F.Resistor.MakeChild()
 
-    app = TestApp.bind_typegraph(tg).create_instance(g=g)
+    app = _TestApp.bind_typegraph(tg).create_instance(g=g)
     res_node = app.res.get()
 
     # Add SerializableMetadata as traits to simulate previous build

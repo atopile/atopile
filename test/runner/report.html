@@ -490,6 +490,10 @@
         document.querySelectorAll(".outcome-filter").forEach((cb) => {
           cb.addEventListener("change", filterTable);
         });
+        var regressionsOnly = document.getElementById("regressionsOnly");
+        if (regressionsOnly) {
+          regressionsOnly.addEventListener("change", filterTable);
+        }
 
         // Scale logo to match text content height
         scaleLogoToText();
@@ -572,6 +576,10 @@
         var logInput = document.getElementById("logSearchInput");
         var logFilter = logInput.value.toUpperCase();
 
+        var regressionsOnlyCb = document.getElementById("regressionsOnly");
+        var regressionsOnly =
+          regressionsOnlyCb && regressionsOnlyCb.checked ? true : false;
+
         table = document.getElementById("testTable");
         // Get all rows from tbody
         var tbody = table.getElementsByTagName("tbody")[0];
@@ -633,7 +641,12 @@
             }
           }
 
-          if (textMatch && outcomeMatch && logMatch) {
+          var regressionMatch = true;
+          if (regressionsOnly) {
+            regressionMatch = tr[i].classList.contains("row-regression");
+          }
+
+          if (textMatch && outcomeMatch && logMatch && regressionMatch) {
             tr[i].style.display = "";
           } else {
             tr[i].style.display = "none";
@@ -787,6 +800,14 @@
         placeholder="Search logs..."
         class="filter-input"
       />
+      <label
+        ><input
+          type="checkbox"
+          id="regressionsOnly"
+          onchange="filterTable()"
+        />
+        Regressions only</label
+      >
       <div class="outcome-filters">
         <label
           ><input

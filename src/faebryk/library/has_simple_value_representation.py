@@ -275,7 +275,7 @@ def test_repr_chain_basic():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class TestModule(fabll.Node):
+    class _TestModule(fabll.Node):
         param1 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
         param2 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
         param3 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
@@ -289,7 +289,7 @@ def test_repr_chain_basic():
             )
         )
 
-    m = TestModule.bind_typegraph(tg).create_instance(g=g)
+    m = _TestModule.bind_typegraph(tg).create_instance(g=g)
     m.param1.get().alias_to_literal(
         g=g,
         value=F.Literals.Numbers.bind_typegraph(tg)
@@ -335,7 +335,7 @@ def test_repr_chain_non_number():
         A = "AS"
         B = "BS"
 
-    class TestModule(fabll.Node):
+    class _TestModule(fabll.Node):
         param1 = F.Parameters.EnumParameter.MakeChild(TestEnum)
         param2 = F.Parameters.BooleanParameter.MakeChild()
 
@@ -347,7 +347,7 @@ def test_repr_chain_non_number():
             )
         )
 
-    m = TestModule.bind_typegraph(tg).create_instance(g=g)
+    m = _TestModule.bind_typegraph(tg).create_instance(g=g)
     # Use AbstractEnums directly - setup() internally uses EnumsFactory for type defs
     test_enum_lit = (
         F.Literals.AbstractEnums.bind_typegraph(tg=tg)
@@ -370,7 +370,7 @@ def test_repr_chain_no_literal():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class TestModule(fabll.Node):
+    class _TestModule(fabll.Node):
         param1 = F.Parameters.NumericParameter.MakeChild(
             unit=F.Units.Volt, domain=F.NumberDomain.Args(negative=True)
         )
@@ -390,7 +390,7 @@ def test_repr_chain_no_literal():
             )
         )
 
-    m = TestModule.bind_typegraph(tg).create_instance(g=g)
+    m = _TestModule.bind_typegraph(tg).create_instance(g=g)
 
     val = m._simple_repr.get().get_value()
     assert val == "P3: MISSING"
@@ -419,7 +419,7 @@ def test_repr_display_unit_conversion():
     tg = fbrk.TypeGraph.create(g=g)
 
     # Define Kiloohm unit with proper symbols
-    class Kiloohm(fabll.Node):
+    class _Kiloohm(fabll.Node):
         unit_vector_arg = BasisVector(kilogram=1, meter=2, second=-3, ampere=-2)
         is_unit_type_trait = fabll.Traits.MakeEdge(
             is_unit_type.MakeChild(("kΩ", "kohm"), unit_vector_arg)
@@ -430,7 +430,7 @@ def test_repr_display_unit_conversion():
         can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
 
     # Create instances
-    kohm_instance = Kiloohm.bind_typegraph(tg=tg).create_instance(g=g)
+    kohm_instance = _Kiloohm.bind_typegraph(tg=tg).create_instance(g=g)
     kohm_unit = kohm_instance.is_unit_trait.get()
 
     # Create parameter with kohm as display unit

@@ -9,7 +9,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import KeyErrorAmbiguous, not_none, times
+from faebryk.libs.util import KeyErrorAmbiguous, not_none, once, times
 
 if TYPE_CHECKING:
     import faebryk.library.Literals as Literals
@@ -803,6 +803,28 @@ class NumericParameter(fabll.Node):
         out.add_dependant(fabll.Traits.MakeEdge(waits_for_unit.MakeChild(), [out]))
         return out
 
+    @staticmethod
+    @once
+    def _make_1_0_unit(basis_vector: "F.Units.BasisVector") -> type[fabll.Node]:
+        from faebryk.library.Units import is_unit, is_unit_type
+
+        is_unit_trait_child = is_unit.MakeChild(
+            symbols=(),
+            basis_vector=basis_vector,
+            multiplier=1.0,
+            offset=0.0,
+        )
+
+        class _BaseUnit(fabll.Node):
+            _override_type_identifier = f"BaseUnit<{basis_vector}>"
+            is_unit_type_trait = fabll.Traits.MakeEdge(
+                is_unit_type.MakeChild(())
+            ).put_on_type()
+            is_unit = fabll.Traits.MakeEdge(is_unit_trait_child)
+            can_be_operand_trait = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+
+        return _BaseUnit
+
     @classmethod
     def MakeChild(  # type: ignore[invalid-method-override]
         cls,
@@ -815,8 +837,6 @@ class NumericParameter(fabll.Node):
             extract_unit_info,
             has_display_unit,
             has_unit,
-            is_unit,
-            is_unit_type,
         )
 
         if unit is Dimensionless:
@@ -843,23 +863,9 @@ class NumericParameter(fabll.Node):
                     )
                 )
             else:
-                is_unit_trait_child = is_unit.MakeChild(
-                    symbols=(),
-                    basis_vector=unit_info.basis_vector,
-                    multiplier=1.0,
-                    offset=0.0,
-                )
-
-                class _BaseUnit(fabll.Node):
-                    is_unit_type_trait = fabll.Traits.MakeEdge(
-                        is_unit_type.MakeChild(())
-                    ).put_on_type()
-                    is_unit = fabll.Traits.MakeEdge(is_unit_trait_child)
-                    can_be_operand_trait = fabll.Traits.MakeEdge(
-                        can_be_operand.MakeChild()
-                    )
-
-                base_unit_child = _BaseUnit.MakeChild()
+                base_unit_child = NumericParameter._make_1_0_unit(
+                    unit_info.basis_vector
+                ).MakeChild()
                 out.add_dependant(base_unit_child)
                 out.add_dependant(
                     fabll.Traits.MakeEdge(has_unit.MakeChild([base_unit_child]), [out])
@@ -1140,7 +1146,7 @@ def test_enum_param():
     from faebryk.library.has_usage_example import has_usage_example
     from faebryk.library.Literals import AbstractEnums, EnumsFactory
 
-    class ExampleNode(fabll.Node):
+    class _ExampleNode(fabll.Node):
         class MyEnum(Enum):
             A = "a"
             B = "b"
@@ -1157,10 +1163,10 @@ def test_enum_param():
             language=has_usage_example.Language.ato,
         ).put_on_type()
 
-    example_node = ExampleNode.bind_typegraph(tg=tg).create_instance(g=g)
+    example_node = _ExampleNode.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Enum Literal Type Node
-    atype = EnumsFactory(ExampleNode.MyEnum)
+    atype = EnumsFactory(_ExampleNode.MyEnum)
     cls_n = cast(type[fabll.NodeT], atype)
     _ = fabll.TypeNodeBoundTG.get_or_create_type_in_tg(tg=tg, t=cls_n)
 
@@ -1175,18 +1181,18 @@ def test_enum_param():
         for m in AbstractEnums.get_all_members_of_enum_type(
             node=abstract_enum_type_node, tg=tg
         )
-    ] == [(m.name, m.value) for m in ExampleNode.MyEnum]
+    ] == [(m.name, m.value) for m in _ExampleNode.MyEnum]
 
     assert AbstractEnums.get_enum_as_dict_for_type(
         node=abstract_enum_type_node, tg=tg
-    ) == {m.name: m.value for m in ExampleNode.MyEnum}
+    ) == {m.name: m.value for m in _ExampleNode.MyEnum}
 
     enum_lit = enum_param.force_extract_literal()
     assert enum_lit.get_values() == ["b", "c"]
 
     # Enum Parameter from instance graph
     enum_p_ig = EnumParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    enum_p_ig.alias_to_literal(ExampleNode.MyEnum.B, g=g)
+    enum_p_ig.alias_to_literal(_ExampleNode.MyEnum.B, g=g)
     assert enum_p_ig.force_extract_literal().get_values() == ["b"]
 
 
@@ -1199,13 +1205,13 @@ def test_string_param():
     string_p.alias_to_literal("IG constrained")
     assert string_p.force_extract_literal().get_values()[0] == "IG constrained"
 
-    class ExampleStringParameter(fabll.Node):
+    class _ExampleStringParameter(fabll.Node):
         string_p_tg = StringParameter.MakeChild()
         constraint = Strings.MakeChild_ConstrainToLiteral(
             [string_p_tg], "TG constrained"
         )
 
-    esp = ExampleStringParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    esp = _ExampleStringParameter.bind_typegraph(tg=tg).create_instance(g=g)
     assert esp.string_p_tg.get().force_extract_literal().get_value() == "TG constrained"
 
 
@@ -1218,11 +1224,11 @@ def test_boolean_param():
     boolean_p.alias_to_single(value=True, g=g)
     assert boolean_p.force_extract_literal().get_values()[0]
 
-    class ExampleBooleanParameter(fabll.Node):
+    class _ExampleBooleanParameter(fabll.Node):
         boolean_p_tg = BooleanParameter.MakeChild()
         constraint = Booleans.MakeChild_ConstrainToLiteral([boolean_p_tg], True)
 
-    ebp = ExampleBooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    ebp = _ExampleBooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
     assert ebp.boolean_p_tg.get().force_extract_literal().get_values()[0]
 
 
@@ -1909,10 +1915,10 @@ def test_copy_numeric_parameter():
     g1 = fabll.graph.GraphView.create()
     tg1 = fbrk.TypeGraph.create(g=g1)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         numeric_param = NumericParameter.MakeChild(unit=Dimensionless)
 
-    app = App.bind_typegraph(tg=tg1).create_instance(g=g1)
+    app = _App.bind_typegraph(tg=tg1).create_instance(g=g1)
 
     # numeric_param = NumericParameter.bind_typegraph(tg=tg1).create_instance(g=g1)
     # numeric_param.setup(is_unit=dl_is_unit)
@@ -2058,10 +2064,10 @@ def test_display_unit_makechild():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class TestModule(fabll.Node):
+    class _TestModule(fabll.Node):
         resistance = NumericParameter.MakeChild(unit=Ohm)
 
-    module = TestModule.bind_typegraph(tg=tg).create_instance(g=g)
+    module = _TestModule.bind_typegraph(tg=tg).create_instance(g=g)
     param = module.resistance.get()
 
     # Both traits should be present

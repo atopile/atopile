@@ -148,20 +148,20 @@ def test_bind_nets_from_electricals():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class TestPad(fabll.Node):
+    class _TestPad(fabll.Node):
         is_pad = fabll.Traits.MakeEdge(
             F.Footprints.is_pad.MakeChild(pad_name="TST_PAD", pad_number="1")
         )
 
-    class TestModule(fabll.Node):
+    class _TestModule(fabll.Node):
         elec = F.Electrical.MakeChild()
         lead = fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [elec])
         elec.add_dependant(lead)
         _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    bus_1 = [TestModule.bind_typegraph(tg).create_instance(g=g) for _ in range(2)]
+    bus_1 = [_TestModule.bind_typegraph(tg).create_instance(g=g) for _ in range(2)]
     for module in bus_1:
-        pad = TestPad.bind_typegraph(tg).create_instance(g=g)
+        pad = _TestPad.bind_typegraph(tg).create_instance(g=g)
         fabll.Traits.create_and_add_instance_to(
             node=module.elec.get().get_trait(F.Lead.is_lead),
             trait=F.Lead.has_associated_pads,
@@ -169,9 +169,9 @@ def test_bind_nets_from_electricals():
     for left, right in pairwise(bus_1):
         left.elec.get()._is_interface.get().connect_to(right.elec.get())
 
-    bus_2 = [TestModule.bind_typegraph(tg).create_instance(g=g) for _ in range(3)]
+    bus_2 = [_TestModule.bind_typegraph(tg).create_instance(g=g) for _ in range(3)]
     for module in bus_2:
-        pad = TestPad.bind_typegraph(tg).create_instance(g=g)
+        pad = _TestPad.bind_typegraph(tg).create_instance(g=g)
         fabll.Traits.create_and_add_instance_to(
             node=module.elec.get().get_trait(F.Lead.is_lead),
             trait=F.Lead.has_associated_pads,

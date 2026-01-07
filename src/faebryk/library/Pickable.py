@@ -362,10 +362,10 @@ def test_get_pickable_node():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         r1 = Resistor.MakeChild()
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Get pickable trait instance of r1
     pickable_trait = app.r1.get().get_trait(is_pickable_by_type).get_trait(is_pickable)

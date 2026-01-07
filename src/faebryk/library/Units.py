@@ -95,7 +95,7 @@ class UnitNotFoundError(UnitException):
 class UnitExpressionError(UnitException): ...
 
 
-@dataclass
+@dataclass(frozen=True)
 class BasisVector(DataClassJsonMixin):
     ampere: int = field(default=0, metadata={"display_symbol": "A"})
     second: int = field(default=0, metadata={"display_symbol": "s"})
@@ -1294,19 +1294,22 @@ class UnitExpression(fabll.Node):
         return out
 
 
-@once
 def UnitExpressionFactory(
     symbols: tuple[str, ...],
     unit_vector: UnitVectorT,
     multiplier: float = 1.0,
     offset: float = 0.0,
 ) -> type[UnitExpression]:
-    ConcreteUnitExpr = fabll.Node._copy_type(UnitExpression)
-
     unit_vector_str = "".join(
-        f"{unit.__name__}^{exponent}" for unit, exponent in unit_vector
+        f"{unit._type_identifier()}^{exponent}" for unit, exponent in unit_vector
     )
-    ConcreteUnitExpr.__name__ = f"{UnitExpression.__name__}<{unit_vector_str}>"
+    name = (
+        f"{UnitExpression.__name__}<{unit_vector_str}>x{multiplier}+{offset}|{symbols}"
+    )
+    if existing := fabll.Node._seen_types.get(name):
+        assert issubclass(existing, UnitExpression)
+        return existing
+    ConcreteUnitExpr = fabll.Node._copy_type(UnitExpression, name=name)
 
     ConcreteUnitExpr._unit_vector_arg = unit_vector
     ConcreteUnitExpr._multiplier_arg = multiplier
@@ -1375,8 +1378,11 @@ def AnonymousUnitFactory(
     this takes a BasisVector directly. Useful for creating units with computed
     dimensional properties (e.g., from unit inference).
     """
-    ConcreteUnit = fabll.Node._copy_type(_AnonymousUnit)
-    ConcreteUnit.__name__ = f"_AnonymousUnit<{vector}x{multiplier}>"
+    name = f"_AnonymousUnit<{vector}x{multiplier}+{offset}|{symbols}>"
+    if existing := fabll.Node._seen_types.get(name):
+        assert issubclass(existing, _AnonymousUnit)
+        return existing
+    ConcreteUnit = fabll.Node._copy_type(_AnonymousUnit, name=name)
 
     # Add attributes for extract_unit_info compatibility (same as base units)
     ConcreteUnit.unit_vector_arg = vector
@@ -2671,11 +2677,11 @@ class TestIsUnit(_TestWithContext):
             ("km/h", "kph"), ((KilometerExpr, 1), (Hour, -1))
         )
 
-        class App(fabll.Node):
+        class _App(fabll.Node):
             meters_per_second_expr = MetersPerSecondExpr.MakeChild()
             kilometers_per_hour_expr = KilometersPerHourExpr.MakeChild()
 
-        app = App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+        app = _App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
         meters_per_second = resolve_unit_expression(
             tg=ctx.tg, g=ctx.g, expr=app.meters_per_second_expr.get().instance
         )
@@ -2700,11 +2706,11 @@ class TestIsUnit(_TestWithContext):
         )
         MeterSecondsExpr = UnitExpressionFactory(("m*s",), ((Meter, 1), (Second, 1)))
 
-        class App(fabll.Node):
+        class _App(fabll.Node):
             meters_per_second_expr = MetersPerSecondExpr.MakeChild()
             meter_seconds_expr = MeterSecondsExpr.MakeChild()
 
-        app = App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+        app = _App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
         meters_per_second = resolve_unit_expression(
             tg=ctx.tg, g=ctx.g, expr=app.meters_per_second_expr.get().instance
         )
@@ -3156,10 +3162,10 @@ class TestUnitExpressions(_TestWithContext):
         """Test that a simple unit expression (Meter^1) resolves correctly."""
         MeterExpr = UnitExpressionFactory(("m", "meter"), ((Meter, 1),))
 
-        class App(fabll.Node):
+        class _App(fabll.Node):
             meter_expr = MeterExpr.MakeChild()
 
-        app = App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+        app = _App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
         resolved = resolve_unit_expression(
             tg=ctx.tg, g=ctx.g, expr=app.meter_expr.get().instance
         )
@@ -3172,10 +3178,10 @@ class TestUnitExpressions(_TestWithContext):
         """Test that derived units (Meter * Second^-1) resolve correctly."""
         VelocityExpr = UnitExpressionFactory(("m/s",), ((Meter, 1), (Second, -1)))
 
-        class App(fabll.Node):
+        class _App(fabll.Node):
             velocity_expr = VelocityExpr.MakeChild()
 
-        app = App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+        app = _App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
         resolved = resolve_unit_expression(
             tg=ctx.tg, g=ctx.g, expr=app.velocity_expr.get().instance
         )
@@ -3188,10 +3194,10 @@ class TestUnitExpressions(_TestWithContext):
         """Test that expressions with scaled units resolve with correct multiplier."""
         KilometerExpr = UnitExpressionFactory(("km",), ((Meter, 1),), multiplier=1000.0)
 
-        class App(fabll.Node):
+        class _App(fabll.Node):
             km_expr = KilometerExpr.MakeChild()
 
-        app = App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+        app = _App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
         resolved = resolve_unit_expression(
             tg=ctx.tg, g=ctx.g, expr=app.km_expr.get().instance
         )
@@ -3207,10 +3213,10 @@ class TestUnitExpressions(_TestWithContext):
             ("km/h", "kph"), ((KilometerExpr, 1), (Hour, -1))
         )
 
-        class App(fabll.Node):
+        class _App(fabll.Node):
             kmh_expr = KilometersPerHourExpr.MakeChild()
 
-        app = App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+        app = _App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
         resolved = resolve_unit_expression(
             tg=ctx.tg, g=ctx.g, expr=app.kmh_expr.get().instance
         )
@@ -3261,10 +3267,10 @@ class TestUnitExpressions(_TestWithContext):
             ("km",), ((Meter, 1),), multiplier=1000.0
         )
 
-        class App(fabll.Node):
+        class _App(fabll.Node):
             scaled_expr = ScaledMeterExpr.MakeChild()
 
-        app = App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+        app = _App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
         resolved = resolve_unit_expression(
             tg=ctx.tg, g=ctx.g, expr=app.scaled_expr.get().instance
         )
@@ -3275,10 +3281,10 @@ class TestUnitExpressions(_TestWithContext):
         """Test that UnitExpression with non-zero offset raises error."""
         OffsetExpr = UnitExpressionFactory(("m", "meter"), ((Meter, 1),), offset=10.0)
 
-        class App(fabll.Node):
+        class _App(fabll.Node):
             offset_expr = OffsetExpr.MakeChild()
 
-        app = App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+        app = _App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
 
         with pytest.raises(UnitExpressionError):
             resolve_unit_expression(
@@ -3311,10 +3317,10 @@ class TestUnitExpressions(_TestWithContext):
         """Test that dimensionless results (e.g., Meter / Meter) are handled."""
         MeterOverMeterExpr = UnitExpressionFactory(("m/m",), ((Meter, 1), (Meter, -1)))
 
-        class App(fabll.Node):
+        class _App(fabll.Node):
             dimensionless_expr = MeterOverMeterExpr.MakeChild()
 
-        app = App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+        app = _App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
         resolved = resolve_unit_expression(
             tg=ctx.tg, g=ctx.g, expr=app.dimensionless_expr.get().instance
         )

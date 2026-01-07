@@ -70,22 +70,22 @@ class Test:
         g = fabll.graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
 
-        class Inner(fabll.Node):
+        class _Inner(fabll.Node):
             b = F.Electrical.MakeChild()
 
-        class Outer(fabll.Node):
+        class _Outer(fabll.Node):
             a = F.Electrical.MakeChild()
-            inner = Inner.MakeChild()
+            inner = _Inner.MakeChild()
             _requires_external_usage = fabll.Traits.MakeEdge(
                 requires_external_usage.MakeChild(),
                 owner=[a],
             )
 
-        class App(fabll.Node):
-            outer1 = Outer.MakeChild()
-            outer2 = Outer.MakeChild()
+        class _App(fabll.Node):
+            outer1 = _Outer.MakeChild()
+            outer2 = _Outer.MakeChild()
 
-        app = App.bind_typegraph(tg=tg).create_instance(g=g)
+        app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
         outer1 = app.outer1.get()
         outer2 = app.outer2.get()

@@ -148,7 +148,7 @@ class TestAppDesignators:
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
 
-        class TestComponent(fabll.Node):
+        class _TestComponent(fabll.Node):
             is_module_ = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
             has_designator_prefix_ = fabll.Traits.MakeEdge(
                 F.has_designator_prefix.MakeChild(prefix="TEST")
@@ -157,7 +157,7 @@ class TestAppDesignators:
                 fabll._ChildField(F.Pickable.has_part_picked)
             )
 
-        TC = TestComponent.bind_typegraph(tg)
+        TC = _TestComponent.bind_typegraph(tg)
 
         test_component_1 = TC.create_instance(g=g)
         test_component_2 = TC.create_instance(g=g)
@@ -184,13 +184,13 @@ class TestAppDesignators:
         pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE).kicad_pcb
         fp = pcb.footprints[1]
 
-        class TestComponent(fabll.Node):
+        class _TestComponent(fabll.Node):
             is_module_ = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
-        class TestApp(fabll.Node):
-            component = TestComponent.MakeChild()
+        class _TestApp(fabll.Node):
+            component = _TestComponent.MakeChild()
 
-        test_app = TestApp.bind_typegraph(tg).create_instance(g=g)
+        test_app = _TestApp.bind_typegraph(tg).create_instance(g=g)
 
         transformer = PCB_Transformer(pcb=pcb, app=test_app)
 

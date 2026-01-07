@@ -159,10 +159,10 @@ def test_has_associated_footprint():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class TestFootprint(fabll.Node):
+    class _TestFootprint(fabll.Node):
         _is_footprint = fabll.Traits.MakeEdge(is_footprint.MakeChild())
 
-    class TestModule(fabll.Node):
+    class _TestModule(fabll.Node):
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         _has_associated_footprint = fabll.Traits.MakeEdge(
             has_associated_footprint.MakeChild()
@@ -171,8 +171,8 @@ def test_has_associated_footprint():
             can_attach_to_footprint.MakeChild()
         )
 
-    footprint_instance = TestFootprint.bind_typegraph(tg=tg).create_instance(g=g)
-    module_with_footprint = TestModule.bind_typegraph(tg=tg).create_instance(g=g)
+    footprint_instance = _TestFootprint.bind_typegraph(tg=tg).create_instance(g=g)
+    module_with_footprint = _TestModule.bind_typegraph(tg=tg).create_instance(g=g)
 
     module_with_footprint.get_trait(has_associated_footprint).setup(
         footprint_instance._is_footprint.get()
@@ -192,18 +192,18 @@ def test_is_footprint():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class TestPad(fabll.Node):
+    class _TestPad(fabll.Node):
         pass
 
-    class TestFootprint(fabll.Node):
+    class _TestFootprint(fabll.Node):
         is_footprint_ = fabll.Traits.MakeEdge(is_footprint.MakeChild())
-        pads = [TestPad.MakeChild() for _ in range(3)]
+        pads = [_TestPad.MakeChild() for _ in range(3)]
         for i, pad in enumerate(pads):
             pad.add_dependant(
                 fabll.Traits.MakeEdge(is_pad.MakeChild(f"pad_{i}", f"{i}"), [pad])
             )
 
-    footprint_node = TestFootprint.bind_typegraph(tg=tg).create_instance(g=g)
+    footprint_node = _TestFootprint.bind_typegraph(tg=tg).create_instance(g=g)
 
     pads = footprint_node.is_footprint_.get().get_pads()
     assert len(pads) == 3

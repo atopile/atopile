@@ -461,7 +461,7 @@ def test_has_associated_kicad_library_footprint():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class NodeWithAssociatedFootprint(fabll.Node):
+    class _NodeWithAssociatedFootprint(fabll.Node):
         """User defined node that can attach to a footprint"""
 
         is_module_ = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
@@ -469,7 +469,7 @@ def test_has_associated_kicad_library_footprint():
             F.Footprints.can_attach_to_footprint.MakeChild()
         )
 
-    user_node = NodeWithAssociatedFootprint.bind_typegraph(tg).create_instance(g=g)
+    user_node = _NodeWithAssociatedFootprint.bind_typegraph(tg).create_instance(g=g)
 
     # create footprint from kicad footprint file
     # node with is_kicad_footprint and is_generated_by_kicad_footprint traits

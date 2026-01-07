@@ -144,8 +144,13 @@ addopts = [
     "--import-mode=importlib",
     "--ignore=test/runtest.py",
     "--ignore=test/conftest.py",
+    # Ensure co-located tests in `src/` are imported by package name, not by path.
+    "-p",
+    "atopile.pytest_import_by_name",
 ]
 testpaths = ["test", "src"]
+# Don't treat every `src/**/*.py` file as a test module. Co-located tests are discovered
+# via `atopile.pytest_import_by_name` instead.
 python_files = ["test_*.py", "*_test.py", "*.py"]
 python_functions = ["test_*"]
 

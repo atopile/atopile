@@ -6,7 +6,6 @@ from typing import Any, Protocol
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
-import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.util import ConfigFlag
 
@@ -50,29 +49,6 @@ class Solver(Protocol):
 
         Returns:
             A SolveResultSingle object containing the chosen value.
-        """
-        ...
-
-    def try_fulfill(
-        self,
-        predicate: F.Expressions.is_assertable,
-        lock: bool,
-        allow_unknown: bool = False,
-    ) -> bool:
-        """
-        Try to fulfill the predicate.
-
-        Args:
-            predicate: The predicate to fulfill.
-            lock: If True, ensure the result is part of the solution set of
-                  the expression.
-
-        Returns:
-            True if found definite answer, False if allow_unknown and e.g Timeout or
-            no deduction possible
-        Raises:
-            TimeoutError if not allow_unknown and timeout
-            Contradiction if predicate proved false
         """
         ...
 

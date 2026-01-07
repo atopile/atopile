@@ -246,12 +246,12 @@ def test_has_designator_prefix():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class TestModule(fabll.Node):
+    class _TestModule(fabll.Node):
         has_designator_prefix = fabll.Traits.MakeEdge(
             has_designator_prefix.MakeChild("A")
         )
 
-    module = TestModule.bind_typegraph(tg).create_instance(g=g)
+    module = _TestModule.bind_typegraph(tg).create_instance(g=g)
 
     assert module.has_trait(has_designator_prefix)
     assert module.has_designator_prefix.get().get_prefix() == "A"
@@ -261,12 +261,12 @@ def test_has_designator_prefix_from_enum():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class TestModule(fabll.Node):
+    class _TestModule(fabll.Node):
         has_designator_prefix = fabll.Traits.MakeEdge(
             has_designator_prefix.MakeChild(has_designator_prefix.Prefix.B)
         )
 
-    module = TestModule.bind_typegraph(tg).create_instance(g=g)
+    module = _TestModule.bind_typegraph(tg).create_instance(g=g)
 
     assert module.has_trait(has_designator_prefix)
     assert module.has_designator_prefix.get().get_prefix() == "B"

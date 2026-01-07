@@ -1224,15 +1224,3 @@ class TraitStmt(fabll.Node):
         if (target := self.target.get().try_deref()) is None:
             return None
         return target.cast(t=FieldRef)
-
-
-import sys
-
-current_module = sys.modules[__name__]
-for name, obj in list(vars(current_module).items()):
-    if (
-        isinstance(obj, type)
-        and obj.__module__ == __name__
-        and issubclass(obj, fabll.Node)
-    ):
-        obj.__name__ = f"compiler_{obj.__name__}"

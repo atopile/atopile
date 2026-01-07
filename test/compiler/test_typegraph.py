@@ -14,7 +14,7 @@ from atopile.compiler.build import (
     build_file,
 )
 from atopile.errors import UserSyntaxError
-from faebryk.libs.util import not_none
+from faebryk.libs.util import find, not_none
 from test.compiler.conftest import build_type
 
 NULL_CONFIG = SimpleNamespace(project=None)

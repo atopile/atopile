@@ -38,7 +38,7 @@ def check_design(
 
 
 class Test:
-    class App(fabll.Node):
+    class _App(fabll.Node):
         _log_store: dict[int, list[str]] = {}
         is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
@@ -80,7 +80,7 @@ class Test:
         g = fabll.graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
 
-        app = self.App.bind_typegraph(tg)
+        app = self._App.bind_typegraph(tg)
         a1 = app.create_instance(g=g)
         a2 = app.create_instance(g=g)
 

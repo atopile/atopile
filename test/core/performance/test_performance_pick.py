@@ -43,10 +43,10 @@ def test_performance_pick_real_module():
 
     timings = Times()
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         resistors = [F.Resistor.MakeChild() for _ in range(2)]
 
-    app = App.bind_typegraph(tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg).create_instance(g=g)
     timings.add("construct")
 
     # F.is_bus_parameter.resolve_bus_parameters(app.tg)
@@ -72,7 +72,7 @@ def test_performance_pick_rc_formulas():
     INCREASE = 10 * P.percent
     TOLERANCE = 20 * P.percent
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         alias_res = [F.Resistor.MakeChild() for _ in range(_GROUPS)]
         res = [F.Resistor.MakeChild() for _ in range(_GROUPS * _GROUP_SIZE)]
 
@@ -90,7 +90,7 @@ def test_performance_pick_rc_formulas():
 
     timings = Times(multi_sample_strategy=Times.MultiSampleStrategy.ALL)
 
-    app = App()
+    app = _App()
     timings.add("construct")
 
     F.is_bus_parameter.resolve_bus_parameters(app.tg)

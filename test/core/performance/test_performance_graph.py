@@ -55,14 +55,14 @@ def test_performance_parameters(A: int, B: int, rs: int, pick: bool):
         return out
 
     def _nested_expressions():
-        class App(fabll.Node):
+        class _App(fabll.Node):
             _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
             _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
             resistors = [F.Resistor.MakeChild() for _ in range(rs)]
 
             expressions = [_build_recursive(B) for _ in range(A)]
 
-        return App
+        return _App
 
     with timings.context("setup (create graph and typegraph)"):
         g = graph.GraphView.create()
@@ -99,7 +99,7 @@ def test_performance_parameters(A: int, B: int, rs: int, pick: bool):
             with timings.context(f"setup -- {tid}"):
                 instances[tid].setup(is_unit=dimless_inst.is_unit.get())
 
-    app = instances["App"]
+    app = instances[app_type.t._type_identifier()]
 
     g_copy = graph.GraphView.create()
     g_copy2 = graph.GraphView.create()

@@ -15,7 +15,6 @@ import faebryk.library._F as F
 from atopile.errors import UserInfraError
 from faebryk.core import graph
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
-from faebryk.libs.exceptions import UserException, downgrade
 from faebryk.libs.http import RequestError
 from faebryk.libs.picker.api.api import ApiHTTPError, get_api_client
 from faebryk.libs.picker.api.models import (
@@ -320,129 +319,7 @@ def _attach(module: F.Pickable.is_pickable, c: Component):
         )
 
 
-def _get_compatible_parameters(
-    module: fabll.Node, c: "Component", solver: Solver
-) -> dict[F.Parameters.is_parameter, F.Literals.is_literal]:
-    """
-    Check if the parameters of a component are compatible with the module
-    """
-    # Nothing to check
-    if not module.has_trait(F.Pickable.is_pickable_by_type):
-        return {}
-
-    # shortcut because solving slow
-    try:
-        get_raw(c.lcsc_display)
-    except LCSC_NoDataException as e:
-        raise NotCompatibleException(module, c) from e
-
-    design_params = {
-        p.get_name(): p
-        for p in module.get_trait(F.Pickable.is_pickable_by_type).get_params()
-    }
-    component_params = c.attribute_literals(g=module.g, tg=module.tg)
-
-    if no_attr := component_params.keys() - design_params:
-        with downgrade(UserException):
-            no_attr_str = "\n".join(f"- `{a}`" for a in no_attr)
-            raise UserException(
-                f"Module `{module}` is missing attributes:\n\n"
-                f" {no_attr_str}\n\n"
-                "This likely means you could use a more precise"
-                " module/component in your design."
-            )
-
-    def _map_param(
-        name: str, param: F.Parameters.is_parameter
-    ) -> tuple[F.Parameters.is_parameter, F.Literals.is_literal]:
-        c_range = component_params.get(name)
-        if c_range is None:
-            c_range = param.domain_set()
-        return param, c_range
-
-    param_mapping = [
-        _map_param(name, param)
-        for name, param in design_params.items()
-        if not param.has_trait(does_not_require_picker_check)
-    ]
-
-    # check for any param that has few supersets whether the component's range
-    # is compatible already instead of waiting for the solver
-    for m_param, c_range in param_mapping:
-        # TODO other loglevel
-        # logger.warning(f"Checking obvious incompatibility for param {m_param}")
-        known_superset = solver.inspect_get_known_supersets(m_param)
-        if not c_range.is_subset_of(known_superset):
-            if LOG_PICK_SOLVE:
-                logger.warning(
-                    f"Known superset {c_range} is not a subset of {known_superset}"
-                    f" for part C{c.lcsc}"
-                )
-            raise NotCompatibleException(
-                module, c, m_param.as_parameter_operatable.get(), c_range
-            )
-
-    return {p: c_range for p, c_range in param_mapping}
-
-
-def _check_candidates_compatible(
-    module_candidates: list[tuple[F.Pickable.is_pickable, Component]],
-    solver: Solver,
-    allow_not_deducible: bool = False,
-):
-    """
-    Check if combination of all candidates is compatible with each other
-    Checks each candidate first for individual compatibility
-    """
-
-    if not module_candidates:
-        return
-
-    mappings = [_get_compatible_parameters(m, c, solver) for m, c in module_candidates]
-
-    if LOG_PICK_SOLVE:
-        logger.info(f"Solving for modules: {[m for m, _ in module_candidates]}")
-
-    predicates = (
-        F.Expressions.Is.from_operands(
-            m_param.as_operand.get(), c_range.as_operand.get()
-        ).can_be_operand.get()
-        for param_mapping in mappings
-        for m_param, c_range in not_none(param_mapping).items()
-    )
-
-    solver.try_fulfill(
-        F.Expressions.And.from_operands(*predicates).is_assertable.get(),
-        lock=False,
-        allow_unknown=allow_not_deducible,
-    )
-
-
 # public -------------------------------------------------------------------------------
-
-
-def check_and_attach_candidates(
-    candidates: list[tuple[F.Pickable.is_pickable, Component]],
-    solver: Solver,
-    allow_not_deducible: bool = False,
-):
-    """
-    Check if given candidates are compatible with each other
-    If so, attach them to the modules
-    Raises:
-        Contradiction
-        NotCompatibleException
-    """
-    _check_candidates_compatible(candidates, solver, allow_not_deducible)
-
-    for m, part in candidates:
-        _attach(m, part)
-
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                f"Attached {part.lcsc_display} ('{part.description}') to "
-                f"'{m.get_full_name(types=False)}'"
-            )
 
 
 def get_candidates(

@@ -3434,13 +3434,13 @@ def test_expr_makechild():
 
     E = BoundExpressions()
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         op0 = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl)
         op1 = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl)
         op2 = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl)
         expr = Subtract.MakeChild([op0], [op1], [op2])
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
     sub = app.expr.get()
     ops = [
         op.can_be_operand.get() for op in [app.op0.get(), app.op1.get(), app.op2.get()]

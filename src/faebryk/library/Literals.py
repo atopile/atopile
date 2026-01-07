@@ -623,10 +623,10 @@ class TestNumeric:
         tg = fbrk.TypeGraph.create(g=g)
         expected_value = 1.0
 
-        class App(fabll.Node):
+        class _App(fabll.Node):
             numeric = Numeric.MakeChild(value=expected_value)
 
-        app = App.bind_typegraph(tg=tg).create_instance(g=g)
+        app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
         assert app.numeric.get().get_value() == expected_value
 
@@ -1226,12 +1226,12 @@ class TestNumericInterval:
         expected_min = 1.0
         expected_max = 2.0
 
-        class App(fabll.Node):
+        class _App(fabll.Node):
             numeric_interval = NumericInterval.MakeChild(
                 min=expected_min, max=expected_max
             )
 
-        app = App.bind_typegraph(tg=tg).create_instance(g=g)
+        app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
         assert app.numeric_interval.get().get_min().get_value() == expected_min
         assert app.numeric_interval.get().get_max().get_value() == expected_max
@@ -2431,13 +2431,13 @@ class TestNumericSet:
         interval_1_min = 0.0
         interval_1_max = 1.0
 
-        class App(fabll.Node):
+        class _App(fabll.Node):
             numeric_set = NumericSet.MakeChild(
                 min=interval_1_min,
                 max=interval_1_max,
             )
 
-        app = App.bind_typegraph(tg=tg).create_instance(g=g)
+        app = _App.bind_typegraph(tg=tg).create_instance(g=g)
         intervals = app.numeric_set.get().get_intervals()
         assert len(intervals) == 1
         assert intervals[0].get_min_value() == interval_1_min
@@ -2507,10 +2507,10 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
 
-        class Container(fabll.Node):
+        class _Container(fabll.Node):
             numeric_set = NumericSet.MakeChild_Empty()
 
-        container = Container.bind_typegraph(tg=tg).create_instance(g=g)
+        container = _Container.bind_typegraph(tg=tg).create_instance(g=g)
         assert container.numeric_set.get().is_empty()
         container.numeric_set.get().setup_from_singleton(value=42.0)
         assert list(container.numeric_set.get().get_values()) == [42.0]
@@ -4510,12 +4510,12 @@ class TestNumbers:
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
 
-        class App(fabll.Node):
+        class _App(fabll.Node):
             from faebryk.library.Units import Meter
 
             quantity_set = Numbers.MakeChild(min=0.0, max=1.0, unit=Meter)
 
-        app = App.bind_typegraph(tg=tg).create_instance(g=g)
+        app = _App.bind_typegraph(tg=tg).create_instance(g=g)
         numeric_set = app.quantity_set.get().get_numeric_set()
         assert numeric_set.get_min_value() == 0.0
         assert numeric_set.get_max_value() == 1.0
@@ -4527,12 +4527,12 @@ class TestNumbers:
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
 
-        class App(fabll.Node):
+        class _App(fabll.Node):
             from faebryk.library.Units import Meter
 
             quantity_set = Numbers.MakeChild_SingleValue(value=1.0, unit=Meter)
 
-        app = App.bind_typegraph(tg=tg).create_instance(g=g)
+        app = _App.bind_typegraph(tg=tg).create_instance(g=g)
         numeric_set = app.quantity_set.get().get_numeric_set()
         assert numeric_set.get_min_value() == 1.0
         assert numeric_set.get_max_value() == 1.0
@@ -5936,10 +5936,10 @@ class TestCount:
         tg = fbrk.TypeGraph.create(g=g)
         expected_value = 1
 
-        class App(fabll.Node):
+        class _App(fabll.Node):
             count = _Count.MakeChild(value=expected_value)
 
-        app = App.bind_typegraph(tg=tg).create_instance(g=g)
+        app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
         assert app.count.get().get_value() == expected_value
 
@@ -5962,12 +5962,12 @@ class TestCount:
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
 
-        class App(fabll.Node):
+        class _App(fabll.Node):
             count1 = _Count.MakeChild(value=10)
             count2 = _Count.MakeChild(value=20)
             count3 = _Count.MakeChild(value=30)
 
-        app = App.bind_typegraph(tg=tg).create_instance(g=g)
+        app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
         assert app.count1.get().get_value() == 10
         assert app.count2.get().get_value() == 20
@@ -6204,10 +6204,10 @@ class TestCounts:
         tg = fbrk.TypeGraph.create(g=g)
         expected_values = [1, 2, 3]
 
-        class App(fabll.Node):
+        class _App(fabll.Node):
             count_set = Counts.MakeChild(*expected_values)
 
-        app = App.bind_typegraph(tg=tg).create_instance(g=g)
+        app = _App.bind_typegraph(tg=tg).create_instance(g=g)
         assert app.count_set.get().get_values() == expected_values
 
     def test_create_instance(self):
@@ -7022,7 +7022,9 @@ class AbstractEnums(fabll.Node):
             "data": {
                 "elements": [{"name": name} for name in sorted(self.get_names())],
                 "enum": {
-                    "name": self.get_type_name() or "UnknownEnum",
+                    # dont include kv pairs in serialized name because in values already
+                    "name": not_none(self.get_type_name()).split("<")[0]
+                    or "UnknownEnum",
                     "values": self.get_enum_as_dict(),
                 },
             },
@@ -7184,17 +7186,30 @@ class AbstractEnums(fabll.Node):
         return AbstractEnums.bind_instance(instance=obj.instance)
 
 
-@once
 def EnumsFactory(enum_type: type[Enum]) -> type[AbstractEnums]:
-    ConcreteEnums = fabll.Node._copy_type(AbstractEnums)
+    # cache
+    # cache_any = getattr(EnumsFactory, "_cache", None)
+    # if cache_any is None:
+    #     cache_any = {}
+    #     setattr(EnumsFactory, "_cache", cache_any)
+    # cache = cast(dict[frozenset[tuple[str, str]], type[AbstractEnums]], cache_any)
+    # cacheable = frozenset([(e_val.name, e_val.value) for e_val in enum_type])
+    # if cacheable in cache:
+    #     return cache[cacheable]
+    vals = sorted([(e_val.name, e_val.value) for e_val in enum_type])
+    name = f"{enum_type.__name__}<{vals}>"
+    if existing := fabll.Node._seen_types.get(name):
+        assert issubclass(existing, AbstractEnums)
+        return existing
 
-    ConcreteEnums.__name__ = f"{enum_type.__name__}"
-
+    # build
+    ConcreteEnums = fabll.Node._copy_type(AbstractEnums, name=name)
     for e_val in enum_type:
         ConcreteEnums._add_field(
             e_val.name,
             EnumValue.MakeChild(name=e_val.name, value=e_val.value).put_on_type(),
         )
+
     return ConcreteEnums
 
 
@@ -7370,10 +7385,10 @@ class TestStringLiterals:
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
 
-        class MyType(fabll.Node):
+        class _MyType(fabll.Node):
             string_set = Strings.MakeChild(*values)
 
-        my_instance = MyType.bind_typegraph(tg=tg).create_instance(g=g)
+        my_instance = _MyType.bind_typegraph(tg=tg).create_instance(g=g)
 
         # print(my_instance.string_set.get().get_values())
         assert my_instance.string_set.get().get_values() == values
@@ -7386,11 +7401,11 @@ class TestStringLiterals:
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
 
-        class MyType(fabll.Node):
+        class _MyType(fabll.Node):
             string_set = Strings.MakeChild(*values).put_on_type()
 
         # Bind the type to the typegraph and create the type node
-        bound_type = MyType.bind_typegraph(tg=tg)
+        bound_type = _MyType.bind_typegraph(tg=tg)
         type_node = bound_type.get_or_create_type()
 
         # Access the type-level string_set from the type node
@@ -7410,7 +7425,7 @@ class TestStringLiterals:
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
 
-        class MyType(fabll.Node):
+        class _MyType(fabll.Node):
             string_param = StringParameter.MakeChild()
 
             @classmethod
@@ -7423,10 +7438,10 @@ class TestStringLiterals:
                 )
                 return out
 
-        class MyTypeOuter(fabll.Node):
-            my_type = MyType.MakeChild(*values)
+        class _MyTypeOuter(fabll.Node):
+            my_type = _MyType.MakeChild(*values)
 
-        my_type_outer = MyTypeOuter.bind_typegraph(tg=tg).create_instance(g=g)
+        my_type_outer = _MyTypeOuter.bind_typegraph(tg=tg).create_instance(g=g)
 
         lit = is_parameter_operatable.try_get_constrained_literal(
             my_type_outer.my_type.get()

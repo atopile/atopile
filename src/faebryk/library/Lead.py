@@ -219,7 +219,7 @@ def test_can_attach_to_pad_by_name():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class TestModule(fabll.Node):
+    class _TestModule(fabll.Node):
         anode = F.Electrical.MakeChild()
         cathode = F.Electrical.MakeChild()
 
@@ -239,19 +239,19 @@ def test_can_attach_to_pad_by_name():
                 )
             )
 
-    class AnodePad(fabll.Node):
+    class _AnodePad(fabll.Node):
         _is_pad = fabll.Traits.MakeEdge(
             F.Footprints.is_pad.MakeChild(pad_name="anode", pad_number="1")
         )
 
-    class CathodePad(fabll.Node):
+    class _CathodePad(fabll.Node):
         _is_pad = fabll.Traits.MakeEdge(
             F.Footprints.is_pad.MakeChild(pad_name="cathode", pad_number="2")
         )
 
-    module = TestModule.bind_typegraph(tg).create_instance(g=g)
-    anode_pad = AnodePad.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
-    cathode_pad = CathodePad.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
+    module = _TestModule.bind_typegraph(tg).create_instance(g=g)
+    anode_pad = _AnodePad.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
+    cathode_pad = _CathodePad.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
     pads = [anode_pad, cathode_pad]
 
     assert module.anode.get().get_trait(is_lead).has_trait(can_attach_to_pad_by_name)
@@ -270,7 +270,7 @@ def test_can_attach_to_any_pad():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class TestModule(fabll.Node):
+    class _TestModule(fabll.Node):
         unnamed = [F.Electrical.MakeChild() for _ in range(3)]
 
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
@@ -282,25 +282,25 @@ def test_can_attach_to_any_pad():
                 fabll.Traits.MakeEdge(can_attach_to_any_pad.MakeChild(), [lead])
             )
 
-    class TestPad0(fabll.Node):
+    class _TestPad0(fabll.Node):
         is_pad_ = fabll.Traits.MakeEdge(
             F.Footprints.is_pad.MakeChild(pad_name="pad_0", pad_number="0")
         )
 
-    class TestPad1(fabll.Node):
+    class _TestPad1(fabll.Node):
         is_pad_ = fabll.Traits.MakeEdge(
             F.Footprints.is_pad.MakeChild(pad_name="pad_1", pad_number="1")
         )
 
-    class TestPad2(fabll.Node):
+    class _TestPad2(fabll.Node):
         is_pad_ = fabll.Traits.MakeEdge(
             F.Footprints.is_pad.MakeChild(pad_name="pad_2", pad_number="2")
         )
 
-    module = TestModule.bind_typegraph(tg).create_instance(g=g)
-    pad0 = TestPad0.bind_typegraph(tg).create_instance(g=g).is_pad_.get()
-    pad1 = TestPad1.bind_typegraph(tg).create_instance(g=g).is_pad_.get()
-    pad2 = TestPad2.bind_typegraph(tg).create_instance(g=g).is_pad_.get()
+    module = _TestModule.bind_typegraph(tg).create_instance(g=g)
+    pad0 = _TestPad0.bind_typegraph(tg).create_instance(g=g).is_pad_.get()
+    pad1 = _TestPad1.bind_typegraph(tg).create_instance(g=g).is_pad_.get()
+    pad2 = _TestPad2.bind_typegraph(tg).create_instance(g=g).is_pad_.get()
     pads = [pad0, pad1, pad2]
 
     unnamed_0_pad = module.unnamed[0].get().get_trait(is_lead).find_matching_pad(pads)
@@ -321,7 +321,7 @@ def test_can_attach_to_pad_by_lead_name():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class TestModule(fabll.Node):
+    class _TestModule(fabll.Node):
         hv = F.Electrical.MakeChild()
         lv = F.Electrical.MakeChild()
 
@@ -331,19 +331,19 @@ def test_can_attach_to_pad_by_lead_name():
             lead = is_lead.MakeChild()
             e.add_dependant(fabll.Traits.MakeEdge(lead, [e]))
 
-    class HVPad(fabll.Node):
+    class _HVPad(fabll.Node):
         _is_pad = fabll.Traits.MakeEdge(
             F.Footprints.is_pad.MakeChild(pad_name="hv", pad_number="1")
         )
 
-    class LVPad(fabll.Node):
+    class _LVPad(fabll.Node):
         _is_pad = fabll.Traits.MakeEdge(
             F.Footprints.is_pad.MakeChild(pad_name="lv", pad_number="2")
         )
 
-    module = TestModule.bind_typegraph(tg).create_instance(g=g)
-    hv_pad = HVPad.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
-    lv_pad = LVPad.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
+    module = _TestModule.bind_typegraph(tg).create_instance(g=g)
+    hv_pad = _HVPad.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
+    lv_pad = _LVPad.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
     pads = [hv_pad, lv_pad]
 
     matched_hv_pad = module.hv.get().get_trait(is_lead).find_matching_pad(pads)

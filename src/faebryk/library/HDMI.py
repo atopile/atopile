@@ -64,10 +64,10 @@ def test_hdmi():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         hdmi = HDMI.MakeChild()
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
     datapairs = [p.get() for p in app.hdmi.get().data]
     assert len(datapairs) == 3
     for index, diff_pair in enumerate(datapairs):

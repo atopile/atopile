@@ -40,7 +40,7 @@ def _create_letters(
     if units is None:
         units = E.U.dl
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         params = [
             F.Parameters.NumericParameter.MakeChild(
                 unit=units, domain=F.NumberDomain.Args(negative=True)
@@ -48,7 +48,7 @@ def _create_letters(
             for _ in range(n)
         ]
 
-    app = App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+    app = _App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
     params = [p.get().is_parameter_operatable.get() for p in app.params]
 
     return context, params
@@ -115,12 +115,12 @@ def test_solve_phase_one():
     solver = DefaultSolver()
     E = BoundExpressions()
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         voltage1 = F.Parameters.NumericParameter.MakeChild(unit=E.U.V)
         voltage2 = F.Parameters.NumericParameter.MakeChild(unit=E.U.V)
         voltage3 = F.Parameters.NumericParameter.MakeChild(unit=E.U.V)
 
-    app = App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+    app = _App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
     voltage1_op = app.voltage1.get().can_be_operand.get()
     voltage2_op = app.voltage2.get().can_be_operand.get()
     voltage3_op = app.voltage3.get().can_be_operand.get()
@@ -154,10 +154,10 @@ def test_simplify():
     """
     E = BoundExpressions()
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         ops = [F.Parameters.NumericParameter.MakeChild(unit=E.U.dl) for _ in range(10)]
 
-    app_type = App.bind_typegraph(tg=E.tg)
+    app_type = _App.bind_typegraph(tg=E.tg)
     app = app_type.create_instance(g=E.g)
 
     app_ops = [p.get().can_be_operand.get() for p in app.ops]
@@ -215,10 +215,10 @@ def test_simplify_logic_and():
     """
     E = BoundExpressions()
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         p = [F.Parameters.BooleanParameter.MakeChild() for _ in range(4)]
 
-    app_type = App.bind_typegraph(tg=E.tg)
+    app_type = _App.bind_typegraph(tg=E.tg)
     app = app_type.create_instance(g=E.g)
 
     p_ops = [p.get().can_be_operand.get() for p in app.p]
@@ -275,10 +275,10 @@ def test_shortcircuit_logic_or():
     """
     E = BoundExpressions()
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         p = [F.Parameters.BooleanParameter.MakeChild() for _ in range(4)]
 
-    app = App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+    app = _App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
     p_ops = [p.get().can_be_operand.get() for p in app.p]
 
     X = E.or_(p_ops[0], E.lit_bool(True))
@@ -1234,10 +1234,10 @@ def test_abstract_lowpass():
     """
     E = BoundExpressions()
 
-    class Lowpass(fabll.Node):
+    class _Lowpass(fabll.Node):
         pass
 
-    lowpass = Lowpass.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+    lowpass = _Lowpass.bind_typegraph(tg=E.tg).create_instance(g=E.g)
 
     Li = E.parameter_op(units=E.U.H, attach_to=(lowpass, "Li"))
     C = E.parameter_op(units=E.U.Fa, attach_to=(lowpass, "C"))
@@ -1352,11 +1352,11 @@ def test_fold_pow():
 def test_graph_split():
     E = BoundExpressions()
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         A = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl)
         B = F.Parameters.NumericParameter.MakeChild(unit=E.U.dl)
 
-    app = App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+    app = _App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
 
     Aop = app.A.get().can_be_operand.get()
     Bop = app.B.get().can_be_operand.get()

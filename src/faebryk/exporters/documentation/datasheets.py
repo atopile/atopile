@@ -139,14 +139,14 @@ def _create_app_with_datasheet(url: str):
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=graph.GraphView.create())
 
-    class ModuleWithDatasheet(fabll.Node):
+    class _ModuleWithDatasheet(fabll.Node):
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         datasheet = fabll.Traits.MakeEdge(F.has_datasheet.MakeChild(datasheet=url))
 
-    class App(fabll.Node):
-        modules_with_datasheet = [ModuleWithDatasheet.MakeChild() for _ in range(2)]
+    class _App(fabll.Node):
+        modules_with_datasheet = [_ModuleWithDatasheet.MakeChild() for _ in range(2)]
 
-    return App.bind_typegraph(tg=tg).create_instance(g=g)
+    return _App.bind_typegraph(tg=tg).create_instance(g=g)
 
 
 def test_download_datasheet(caplog, tmp_path):

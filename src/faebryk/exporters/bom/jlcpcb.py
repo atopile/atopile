@@ -200,11 +200,11 @@ def test_get_bomline():
     pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE).kicad_pcb
     k_pcb_fp = pcb.footprints[1]
 
-    class TestFootprint(fabll.Node):
+    class _TestFootprint(fabll.Node):
         is_footprint_ = fabll.Traits.MakeEdge(F.Footprints.is_footprint.MakeChild())
         pass
 
-    class TestNode(fabll.Node):
+    class _TestNode(fabll.Node):
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         _has_designator = fabll.Traits.MakeEdge(F.has_designator.MakeChild("R1"))
         _has_part_picked = fabll.Traits.MakeEdge(
@@ -219,8 +219,8 @@ def test_get_bomline():
             F.Footprints.has_associated_footprint.MakeChild()
         )
 
-    node = TestNode.bind_typegraph(tg).create_instance(g=g)
-    fp_node = TestFootprint.bind_typegraph(tg).create_instance(g=g)
+    node = _TestNode.bind_typegraph(tg).create_instance(g=g)
+    fp_node = _TestFootprint.bind_typegraph(tg).create_instance(g=g)
     node.has_associated_footprint_.get().setup(fp_node.is_footprint_.get())
 
     transformer = PCB_Transformer(pcb, node)
@@ -286,7 +286,7 @@ class JlcBomTests:
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
 
-        class TestComponent(fabll.Node):
+        class _TestComponent(fabll.Node):
             _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
             _is_pickable_by_supplier_id = fabll.Traits.MakeEdge(
@@ -300,7 +300,7 @@ class JlcBomTests:
             )
             has_designator_ = fabll.Traits.MakeEdge(F.has_designator.MakeChild("MOD"))
 
-        test_component = TestComponent.bind_typegraph(tg).create_instance(g=g)
+        test_component = _TestComponent.bind_typegraph(tg).create_instance(g=g)
         JlcBomTests._test_build(test_component)
 
         bomline = _get_bomline(test_component.get_trait(F.Pickable.has_part_picked))
@@ -315,25 +315,25 @@ class JlcBomTests:
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
 
-        class TestPad(fabll.Node):
+        class _TestPad(fabll.Node):
             is_pad_ = fabll.Traits.MakeEdge(
                 F.Footprints.is_pad.MakeChild(pad_name="", pad_number="")
             )
 
-        class TestFootprint(fabll.Node):
+        class _TestFootprint(fabll.Node):
             is_footprint_ = fabll.Traits.MakeEdge(F.Footprints.is_footprint.MakeChild())
 
-            pads_ = [TestPad.MakeChild() for _ in range(2)]
+            pads_ = [_TestPad.MakeChild() for _ in range(2)]
 
-        class TestModule(fabll.Node):
+        class _TestModule(fabll.Node):
             is_module_ = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
             can_attach_to_footprint_ = fabll.Traits.MakeEdge(
                 F.Footprints.can_attach_to_footprint.MakeChild()
             )
             has_designator_ = fabll.Traits.MakeEdge(F.has_designator.MakeChild("MOD"))
 
-        test_module = TestModule.bind_typegraph(tg).create_instance(g=g)
-        test_footprint = TestFootprint.bind_typegraph_from_instance(
+        test_module = _TestModule.bind_typegraph(tg).create_instance(g=g)
+        test_footprint = _TestFootprint.bind_typegraph_from_instance(
             instance=test_module.instance
         ).create_instance(g=g)
 

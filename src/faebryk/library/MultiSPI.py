@@ -92,10 +92,10 @@ def test_multisp():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         multisp = MultiSPI.MakeChild(data_lane_count=4)
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
     assert len(app.multisp.get().data) == 4
     for index, data_line in enumerate(app.multisp.get().data):
         suggested_name_trait = data_line.try_get_trait(F.has_net_name_suggestion)

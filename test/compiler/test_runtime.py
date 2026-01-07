@@ -1389,7 +1389,7 @@ def test_plain_trait():
 
 
 def test_unimported_trait():
-    class test_trait(fabll.Node):
+    class _test_trait(fabll.Node):
         is_trait = fabll.Traits.MakeEdge(
             fabll.ImplementsTrait.MakeChild().put_on_type()
         )
@@ -1405,7 +1405,7 @@ def test_unimported_trait():
                 trait test_trait
             """,
             "App",
-            stdlib_extra=[test_trait],
+            stdlib_extra=[_test_trait],
         )
 
 
@@ -1928,22 +1928,22 @@ def test_trait_template_enum():
     g = GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         r = F.Resistor.MakeChild()
         _trait = fabll.Traits.MakeEdge(
             F.has_package_requirements.MakeChild(size="I0805")
         )
 
-    App._handle_cls_attr(
+    _App._handle_cls_attr(
         "_link_trait",
         fabll._EdgeField(
-            [App.r],
-            [App._trait],
+            [_App.r],
+            [_App._trait],
             edge=fbrk.EdgeTrait.build(),
         ),
     )
 
-    app = App.bind_typegraph(tg).create_instance(g)
+    app = _App.bind_typegraph(tg).create_instance(g)
     r = app.r.get()
 
     # Verify the trait is attached and has correct size
@@ -1964,8 +1964,9 @@ def test_trait_template_enum_invalid():
 
 
 def test_module_template_enum():
-    class Module(fabll.Node):
+    class _Module(fabll.Node):
         size = F.Parameters.EnumParameter.MakeChild(enum_t=SMDSize)
+        _override_type_identifier = "Module"
 
         @classmethod
         def MakeChild(cls, size: str) -> fabll._ChildField:
@@ -1992,12 +1993,12 @@ def test_module_template_enum():
             r = new Module<size="I0805">
         """,
         "App",
-        stdlib_extra=[Module],
+        stdlib_extra=[_Module],
     )
 
     assert "App" in result.state.type_roots
     r = _get_child(app_instance, "r")
-    r = Module.bind_instance(r)
+    r = _Module.bind_instance(r)
     # Use get_single_value_typed for enum comparison
     assert (
         r.size.get().force_extract_literal().get_single_value_typed(SMDSize)
@@ -2006,7 +2007,7 @@ def test_module_template_enum():
 
 
 def test_module_template_enum_invalid():
-    class Module(fabll.Node):
+    class _TestModule(fabll.Node):
         size = F.Parameters.EnumParameter.MakeChild(enum_t=SMDSize)
 
         @classmethod
@@ -2024,18 +2025,20 @@ def test_module_template_enum_invalid():
             )
             return out
 
+    module_name = _TestModule._type_identifier()
+
     with pytest.raises(DslException, match="Invalid size: '<invalid size>'"):
         build_instance(
-            """
+            f"""
             #pragma experiment("MODULE_TEMPLATING")
 
-            import Module
+            import {module_name}
 
             module App:
-                r = new Module<size="<invalid size>">
+                r = new {module_name}<size="<invalid size>">
             """,
             "App",
-            stdlib_extra=[Module],
+            stdlib_extra=[_TestModule],
         )
 
 
@@ -2141,7 +2144,7 @@ def test_module_template_enum_scenarios(
 
 
 def test_module_template_multiple_enum_args():
-    class Module(fabll.Node):
+    class _TestModule(fabll.Node):
         _color = F.Parameters.EnumParameter.MakeChild(enum_t=F.LED.Color)
         _channel = F.Parameters.EnumParameter.MakeChild(enum_t=F.MOSFET.ChannelType)
         _temp_coeff = F.Parameters.EnumParameter.MakeChild(
@@ -2193,23 +2196,25 @@ def test_module_template_multiple_enum_args():
 
             return out
 
+    module_name = _TestModule._type_identifier()
+
     _, _, _, result, app_instance = build_instance(
-        """
+        f"""
         #pragma experiment("MODULE_TEMPLATING")
 
-        import Module
+        import {module_name}
 
         module App:
-            mod1 = new Module<color="BLUE", channel="N_CHANNEL">
-            mod2 = new Module<color="RED", channel="P_CHANNEL", temp_coeff="C0G">
+            mod1 = new {module_name}<color="BLUE", channel="N_CHANNEL">
+            mod2 = new {module_name}<color="RED", channel="P_CHANNEL", temp_coeff="C0G">
         """,
         "App",
-        stdlib_extra=[Module],
+        stdlib_extra=[_TestModule],
     )
     assert "App" in result.state.type_roots
 
     mod1 = _get_child(app_instance, "mod1")
-    mod1 = Module.bind_instance(mod1)
+    mod1 = _TestModule.bind_instance(mod1)
     assert (
         mod1._color.get().force_extract_literal().get_single_value_typed(F.LED.Color)
         == F.LED.Color.BLUE
@@ -2224,7 +2229,7 @@ def test_module_template_multiple_enum_args():
     assert mod1._temp_coeff.get().try_extract_constrained_literal() is None
 
     mod2 = _get_child(app_instance, "mod2")
-    mod2 = Module.bind_instance(mod2)
+    mod2 = _TestModule.bind_instance(mod2)
     assert (
         mod2._color.get().force_extract_literal().get_single_value_typed(F.LED.Color)
         == F.LED.Color.RED

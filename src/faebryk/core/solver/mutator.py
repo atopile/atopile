@@ -2245,12 +2245,12 @@ def test_mutator_basic_bootstrap():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         param_str = F.Parameters.StringParameter.MakeChild()
         param_num = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
         param_bool = F.Parameters.BooleanParameter.MakeChild()
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
     param_num_op = app.param_num.get().can_be_operand.get()
     param_bool_op = app.param_bool.get().can_be_operand.get()
 

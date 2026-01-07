@@ -854,6 +854,8 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     _type_cache: dict[tuple[int, int], graph.BoundNode] = {}
     __fields: dict[str, Field] = {}
     __proxys: list[type[_LazyProxyPerf]] = []
+    _seen_types = dict[str, type["NodeT"]]()
+    _override_type_identifier: str | None = None
 
     def __init__(self, instance: graph.BoundNode) -> None:
         self.instance = instance
@@ -931,11 +933,58 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         for name, child in attrs.items():
             cls._handle_cls_attr(name, child)
 
+        cls._register_type()
+
+    @classmethod
+    def _type_identifier(cls) -> str:
+        if cls._override_type_identifier:
+            return cls._override_type_identifier
+
+        module = cls.__module__
+        # reverse for strcmp efficiency
+        modname = ".".join(reversed(module.split(".")))
+        clsname = cls.__name__
+        # TODO dont hardcode lib name
+        # don't prefix library types, so ato can import them by name
+        if module.startswith("faebryk.library.") or not (
+            module.startswith("faebryk.") or module.startswith("atopile.")
+        ):
+            # anonymous temporary test classes can be randomized
+            if clsname.startswith("_"):
+                clsname = f"{clsname}{id(cls):X}"
+
+            return clsname
+
+        return clsname + "." + modname
+
+    @classmethod
+    def _register_type(cls) -> None:
+        t_id = cls._type_identifier()
+        if (existing_type := cls._seen_types.get(t_id)) and existing_type != cls:
+            raise FabLLException(
+                f"Type {t_id} already registered for "
+                f"{existing_type}({id(existing_type):X}) "
+                f"cannot register {cls}({id(cls):X})"
+            )
+        cls._seen_types[t_id] = cls
+
+    @classmethod
+    def _rename_type(cls, name: str) -> None:
+        # delete registration
+        old_t_id = cls._type_identifier()
+        del cls._seen_types[old_t_id]
+
+        # reregister
+        cls._override_type_identifier = name
+        cls._register_type()
+
     @staticmethod
-    def _copy_type[U: "type[NodeT]"](to_copy: U) -> U:
+    def _copy_type[U: "type[NodeT]"](to_copy: U, name: str) -> U:
         class _Copy(to_copy):
             __COPY_TYPE__ = True
-            pass
+            _override_type_identifier = name
+
+        _Copy.__name__ = name
 
         return cast(U, _Copy)
 
@@ -1009,10 +1058,6 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     @classmethod
     def _create_instance(cls, tg: fbrk.TypeGraph, g: graph.GraphView) -> Self:
         return cls.bind_typegraph(tg=tg).create_instance(g=g)
-
-    @classmethod
-    def _type_identifier(cls) -> str:
-        return cls.__name__
 
     # type construction ----------------------------------------------------------------
 
@@ -2084,6 +2129,8 @@ class ImplementsTrait(Node):
     Matched automatically because of name.
     """
 
+    _override_type_identifier = "ImplementsTrait"
+
 
 class ImplementsType(Node):
     """
@@ -2091,12 +2138,16 @@ class ImplementsType(Node):
     Matched automatically because of name.
     """
 
+    _override_type_identifier = "ImplementsType"
+
 
 class MakeChild(Node):
     """
     Wrapper around zig make child.
     Matched automatically because of name.
     """
+
+    _override_type_identifier = "MakeChild"
 
     def get_child_type(self) -> graph.BoundNode:
         # TODO expose the zig function instead
@@ -3002,14 +3053,14 @@ def test_chain_tree_with_root():
 def test_get_children_modules_simple():
     g, tg = _make_graph_and_typegraph()
 
-    class M(Node):
+    class _M(Node):
         _is_module = Traits.MakeEdge(is_module.MakeChild())
 
-    class App(Node):
+    class _App(Node):
         _is_module = Traits.MakeEdge(is_module.MakeChild())
-        m = M.MakeChild()
+        m = _M.MakeChild()
 
-    app = App.bind_typegraph(tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg).create_instance(g=g)
     m = app.m.get()
 
     mods = app.get_children(direct_only=False, types=Node, required_trait=is_module)
@@ -3022,11 +3073,11 @@ def test_get_children_modules_hard():
 
     g, tg = _make_graph_and_typegraph()
 
-    class App(Node):
+    class _App(Node):
         resistors = [F.Resistor.MakeChild() for _ in range(2)]
         _is_module = Traits.MakeEdge(is_module.MakeChild())
 
-    app = App.bind_typegraph(tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg).create_instance(g=g)
 
     rs = app.get_children(direct_only=False, types=F.Resistor)
     assert rs == [app.resistors[0].get(), app.resistors[1].get()]
@@ -3070,12 +3121,12 @@ def test_get_children_modules_tree():
         cap1 = Capacitor.MakeChild()
         cap2 = Capacitor.MakeChild()
 
-    class App(Node):
+    class _App(Node):
         _is_module = Traits.MakeEdge(is_module.MakeChild())
         container1 = CapacitorContainer.MakeChild()
         container2 = CapacitorContainer.MakeChild()
 
-    app = App.bind_typegraph(tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg).create_instance(g=g)
     container1 = app.container1.get()
     container2 = app.container2.get()
 
@@ -3103,18 +3154,18 @@ def test_copy_into_basic():
     g, tg = _make_graph_and_typegraph()
     g_new = graph.GraphView.create()
 
-    class Inner(Node):
+    class _Inner(Node):
         pass
 
-    class N(Node):
-        inner = Inner.MakeChild()
+    class _N(Node):
+        inner = _Inner.MakeChild()
 
-    class Outer(Node):
-        n = N.MakeChild()
-        m = N.MakeChild()
-        o = N.MakeChild()
+    class _Outer(Node):
+        n = _N.MakeChild()
+        m = _N.MakeChild()
+        o = _N.MakeChild()
 
-    outer = Outer.bind_typegraph(tg).create_instance(g=g)
+    outer = _Outer.bind_typegraph(tg).create_instance(g=g)
     m = outer.m.get()
     n = outer.n.get()
     o = outer.o.get()
@@ -3188,17 +3239,14 @@ def test_copy_into_basic():
     inner2 = n2.inner.get()
     assert inner2.is_same(n.inner.get(), allow_different_graph=True)
 
-    assert n2.isinstance(N)
-    assert inner2.isinstance(Inner)
+    assert n2.isinstance(_N)
+    assert inner2.isinstance(_Inner)
 
 
-@pytest.mark.skip(reason="Type name collision handling not implemented yet")
 def test_type_name_collision_raises_error():
     """
     Test that registering two different classes with the same name raises an error.
     """
-
-    import pytest
 
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -3223,10 +3271,10 @@ def test_same_class_multiple_get_or_create_type_succeeds():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class MyType(Node):
+    class _MyType(Node):
         pass
 
-    bound = MyType.bind_typegraph(tg)
+    bound = _MyType.bind_typegraph(tg)
 
     # Multiple calls should return the same type node
     type1 = bound.get_or_create_type()
@@ -3240,13 +3288,13 @@ def test_tg_merge_copy():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class MyType(Node):
+    class _MyType(Node):
         pass
 
-    class MyType2(Node):
+    class _MyType2(Node):
         pass
 
-    mytype = MyType.bind_typegraph(tg)
+    mytype = _MyType.bind_typegraph(tg)
     inst1 = mytype.create_instance(g=g)
 
     g2 = graph.GraphView.create()
@@ -3258,11 +3306,11 @@ def test_tg_merge_copy():
     print(tg2.get_type_instance_overview())
     print(GraphRenderer().render(tg2.get_self_node()))
 
-    mytype2 = MyType2.bind_typegraph(tg)
+    mytype2 = _MyType2.bind_typegraph(tg)
     inst2 = mytype2.create_instance(g=g)
 
     # this will create a new type node in the new tg that doesnt mirror the one in g
-    inst3 = MyType2.bind_typegraph(tg2).create_instance(g=g2)
+    inst3 = _MyType2.bind_typegraph(tg2).create_instance(g=g2)
     print(tg2.get_type_instance_overview())
     print(GraphRenderer().render(tg2.get_self_node()))
 
@@ -3273,7 +3321,7 @@ def test_tg_merge_copy():
     print(copy_inst2.get_type_node())
     print(GraphRenderer().render(tg2.get_self_node()))
 
-    assert dict(tg2.get_type_instance_overview())[MyType2._type_identifier()] == 2
+    assert dict(tg2.get_type_instance_overview())[_MyType2._type_identifier()] == 2
 
 
 if __name__ == "__main__":

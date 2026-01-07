@@ -103,12 +103,12 @@ def test_electric_logic_set(on: bool):
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         power = F.ElectricPower.MakeChild()
         logic = ElectricLogic.MakeChild()
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Connect the logic reference to the power rail
     app.logic.get().reference.get()._is_interface.get().connect_to(app.power.get())
@@ -143,12 +143,12 @@ def test_electric_logic_set_via_reference_child():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         power = F.ElectricPower.MakeChild()
         logic = ElectricLogic.MakeChild()
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Connect the logic reference to the power rail
     app.logic.get().reference.get()._is_interface.get().connect_to(app.power.get())
@@ -163,12 +163,12 @@ def test_electric_logic_set_via_reference_child():
     )
 
     # Create a second logic to test set(False)
-    class App2(fabll.Node):
+    class _App2(fabll.Node):
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         power = F.ElectricPower.MakeChild()
         logic = ElectricLogic.MakeChild()
 
-    app2 = App2.bind_typegraph(tg=tg).create_instance(g=g)
+    app2 = _App2.bind_typegraph(tg=tg).create_instance(g=g)
     app2.logic.get().reference.get()._is_interface.get().connect_to(app2.power.get())
     app2.logic.get().set(False)
     assert (

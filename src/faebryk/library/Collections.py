@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Callable, Protocol, Self
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
+from faebryk.libs.util import not_none
 
 RefPath = fabll.RefPath
 EdgeField = fabll._EdgeField
@@ -79,6 +80,9 @@ def AbstractPointer(
     class ConcretePointer(fabll.Node):
         _edge_factory = edge_factory
         _retrieval_function = retrieval_function
+        _override_type_identifier = (
+            typename or f"ConcretePointer_{id(retrieval_function) ^ id(edge_factory):x}"
+        )
 
         def as_list(self) -> list[fabll.NodeT]:
             return [self.deref()]
@@ -113,7 +117,7 @@ def AbstractPointer(
             out.add_dependant(cls.MakeEdge(pointer_ref, [field]))
             out.add_dependant(field, before=True)
 
-    ConcretePointer.__name__ = typename or f"ConcretePointer_{id(ConcretePointer):x}"
+    ConcretePointer.__name__ = not_none(ConcretePointer._override_type_identifier)
     return ConcretePointer  # type: ignore
 
 
@@ -157,6 +161,10 @@ def AbstractSequence(
         _elem_identifier = "e"
         _edge_factory = edge_factory
         _retrieval_function = retrieval_function
+        _override_type_identifier = (
+            typename
+            or f"ConcreteSequence_{id(retrieval_function) ^ id(edge_factory):x}"
+        )
 
         def append(self, *elems: fabll.NodeT) -> Self:
             cur_len = len(self.as_list())
@@ -188,7 +196,7 @@ def AbstractSequence(
         ) -> "list[fabll._EdgeField]":
             return [cls.MakeEdge(seq_ref, elem, i) for i, elem in enumerate(elem_ref)]
 
-    ConcreteSequence.__name__ = typename or f"ConcreteSequence_{id(ConcreteSequence):x}"
+    ConcreteSequence.__name__ = not_none(ConcreteSequence._override_type_identifier)
     return ConcreteSequence  # type: ignore
 
 
@@ -221,6 +229,9 @@ def AbstractSet(
         _elem_identifier = "e"
         _edge_factory = edge_factory
         _retrieval_function = retrieval_function
+        _override_type_identifier = (
+            typename or f"ConcreteSet_{id(retrieval_function) ^ id(edge_factory):x}"
+        )
 
         def append(self, *elems: fabll.NodeT) -> Self:
             by_uuid = {elem.instance.node().get_uuid(): elem for elem in elems}
@@ -273,7 +284,7 @@ def AbstractSet(
         def as_set(self) -> set[fabll.NodeT]:
             return set(self.as_list())
 
-    ConcreteSet.__name__ = typename or f"ConcreteSet_{id(ConcreteSet):x}"
+    ConcreteSet.__name__ = not_none(ConcreteSet._override_type_identifier)
     return ConcreteSet
 
 
@@ -433,24 +444,24 @@ def test_pointer_helpers():
 
 
 def test_pointer_fabll():
-    class Pointee(fabll.Node):
+    class _Pointee(fabll.Node):
         pass
 
-    class Holder(fabll.Node):
+    class _Holder(fabll.Node):
         pointer = Pointer.MakeChild()
 
         @classmethod
         def MakeChild(cls) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
             out = fabll._ChildField(cls)
-            Pointer.MakeEdgeForField(out, [out, cls.pointer], Pointee.MakeChild())
+            Pointer.MakeEdgeForField(out, [out, cls.pointer], _Pointee.MakeChild())
             return out
 
-    class App(fabll.Node):
-        holder = Holder.MakeChild()
+    class _App(fabll.Node):
+        holder = _Holder.MakeChild()
 
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
-    app = App.bind_typegraph(tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg).create_instance(g=g)
 
-    pointee = app.holder.get().pointer.get().deref().try_cast(Pointee)
+    pointee = app.holder.get().pointer.get().deref().try_cast(_Pointee)
     assert pointee is not None

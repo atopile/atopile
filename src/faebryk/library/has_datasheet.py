@@ -54,12 +54,12 @@ def test_makechild_sets_datasheet_on_instance():
     tg = fbrk.TypeGraph.create(g=g)
     datasheet_url = "https://example.com/another.pdf"
 
-    class ModuleWithDatasheet(fabll.Node):
+    class _ModuleWithDatasheet(fabll.Node):
         has_datasheet = fabll.Traits.MakeEdge(
             has_datasheet.MakeChild(datasheet=datasheet_url)
         )
 
-    module = ModuleWithDatasheet.bind_typegraph(tg=tg).create_instance(g=g)
+    module = _ModuleWithDatasheet.bind_typegraph(tg=tg).create_instance(g=g)
 
     assert module.has_trait(has_datasheet)
     assert module.has_datasheet.get().get_datasheet() == datasheet_url

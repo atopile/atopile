@@ -14,11 +14,6 @@ import faebryk.library._F as F
 from faebryk.core import graph
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.nullsolver import NullSolver
-from faebryk.libs.picker.api.picker_lib import (
-    NotCompatibleException,
-    check_and_attach_candidates,
-    get_candidates,
-)
 from faebryk.libs.picker.picker import PickedPart, PickError, pick_part_recursively
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.test.boundexpressions import BoundExpressions
@@ -146,11 +141,11 @@ def test_construct_pick_tree_simple():
     module = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
     fabll.Traits.create_and_add_instance_to(module, F.Pickable.is_pickable)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         r1 = F.Resistor.MakeChild()
         r2 = F.Resistor.MakeChild()
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
     tree = get_pick_tree(app)
     assert len(tree) == 2
     assert (
@@ -175,18 +170,18 @@ def test_construct_pick_tree_multiple_children():
     module = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
     fabll.Traits.create_and_add_instance_to(module, F.Pickable.is_pickable)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         r1 = F.Resistor.MakeChild()
         r2 = F.Resistor.MakeChild()
 
-        class NestedInterface(fabll.Node):
+        class _NestedInterface(fabll.Node):
             _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
             r3 = F.Resistor.MakeChild()
 
-        nested_interface = NestedInterface.MakeChild()
+        nested_interface = _NestedInterface.MakeChild()
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
     tree = get_pick_tree(app)
     assert len(tree) == 3
     print(indented_container(tree))
@@ -207,11 +202,11 @@ def test_check_missing_picks_no_footprint_no_picker(caplog):
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         r1 = F.LED.MakeChild()
         r2 = F.Resistor.MakeChild()
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Optionally set log level to capture DEBUG messages
     with caplog.at_level(logging.DEBUG):
@@ -229,10 +224,10 @@ def test_check_missing_picks_with_footprint_with_picker(caplog):
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         r1 = F.Resistor.MakeChild()
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
     fabll.Traits.create_and_add_instance_to(
         app.r1.get(), F.Footprints.has_associated_footprint
@@ -255,7 +250,7 @@ def test_pick_explicit_modules():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         r1 = F.Resistor.MakeChild()
 
         @classmethod
@@ -272,7 +267,7 @@ def test_pick_explicit_modules():
             )
             return out
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
     tree = get_pick_tree(app)
     pick_topologically(tree, solver)
     assert app.r1.get().has_trait(F.Pickable.has_part_picked)
@@ -289,13 +284,13 @@ def test_pick_resistor_by_params():
 
     E = BoundExpressions(g=g, tg=tg)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         r1 = F.Resistor.MakeChild()
         _r1_pkg = fabll.Traits.MakeEdge(
             F.has_package_requirements.MakeChild(size=SMDSize.I0805), [r1]
         )
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Constrain resistance
     resistance_op = E.lit_op_range(((100, E.U.Ohm), (110, E.U.Ohm)))
@@ -402,55 +397,17 @@ def test_pick_led_by_colour():
 
 
 @pytest.mark.usefixtures("setup_project_config")
-@pytest.mark.xfail(reason="TODO: add support for diodes")
-def test_reject_diode_for_led():
-    from faebryk.libs.picker.picker import get_pick_tree
-
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-    E = BoundExpressions(g=g, tg=tg)
-
-    led = F.LED.bind_typegraph(tg=tg).create_instance(g=g)
-    E.is_subset(
-        led.color.get().can_be_operand.get(),
-        E.lit_op_enum(F.LED.Color.YELLOW),
-        assert_=True,
-    )
-    E.is_(
-        led.diode.get().current.get().can_be_operand.get(),
-        E.lit_op_range_from_center_rel((10, E.U.mA), 0.1),
-        assert_=True,
-    )
-
-    diode = F.Diode.bind_typegraph(tg=tg).create_instance(g=g)
-    E.is_(
-        diode.current.get().can_be_operand.get(),
-        E.lit_op_range_from_center_rel((10, E.U.mA), 0.1),
-        assert_=True,
-    )
-
-    solver = DefaultSolver()
-    diode_tree = get_pick_tree(diode)
-    diode_pickable = next(iter(diode_tree.keys()))
-    candidates = get_candidates(diode_tree, solver)
-    with pytest.raises(NotCompatibleException):
-        check_and_attach_candidates(
-            [(diode_pickable, c) for c in candidates[diode_pickable]], solver
-        )
-
-
-@pytest.mark.usefixtures("setup_project_config")
 def test_pick_error_group():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     E = BoundExpressions(g=g, tg=tg)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         c1 = F.Capacitor.MakeChild()
         c2 = F.Capacitor.MakeChild()
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Good luck finding a 10 gigafarad capacitor!
     E.is_(
@@ -479,11 +436,11 @@ def test_pick_dependency_simple():
     tg = fbrk.TypeGraph.create(g=g)
     E = BoundExpressions(g=g, tg=tg)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         r1 = F.Resistor.MakeChild()
         r2 = F.Resistor.MakeChild()
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
     solver = DefaultSolver()
     r1r = app.r1.get().resistance.get().can_be_operand.get()
@@ -588,7 +545,7 @@ def test_null_solver():
     E = BoundExpressions(g=g, tg=tg)
     capacitance = E.lit_op_range_from_center_rel(center=(10**-9, E.U.Fa), rel=0.2)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         cap = F.Capacitor.MakeChild()
         cap.add_dependant(
             fabll.Traits.MakeEdge(
@@ -596,7 +553,7 @@ def test_null_solver():
             )
         )
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
     E.is_(
         app.cap.get().capacitance.get().can_be_operand.get(),
@@ -625,13 +582,13 @@ def test_pick_voltage_divider_complex():
     tg = fbrk.TypeGraph.create(g=g)
     E = BoundExpressions(g=g, tg=tg)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         supply = F.ElectricPower.MakeChild()
         rdiv = F.ResistorVoltageDivider.MakeChild()
         adc_input = F.ElectricSignal.MakeChild()
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Connect interfaces
     app.supply.get()._is_interface.get().connect_to(app.rdiv.get().power.get())

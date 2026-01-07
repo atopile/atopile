@@ -11,6 +11,7 @@ import faebryk.library._F as F
 from faebryk.core import graph
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.exceptions import UserDesignCheckException
+from faebryk.libs.util import once
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +185,7 @@ class Addressor(fabll.Node):
     )
 
     @classmethod
+    @once
     def factory(cls, address_bits: int) -> type[Self]:
         """
         Create a concrete Addressor type with a fixed number of address bits.
@@ -197,8 +199,9 @@ class Addressor(fabll.Node):
         if address_bits <= 0:
             raise ValueError("At least one address bit is required")
 
-        ConcreteAddressor = fabll.Node._copy_type(cls)
-        ConcreteAddressor.__name__ = f"Addressor<address_bits={address_bits}>"
+        ConcreteAddressor = fabll.Node._copy_type(
+            cls, name=f"Addressor<address_bits={address_bits}>"
+        )
 
         # 1. Create the PointerSequence for for-loop iteration
         address_lines_seq = F.Collections.PointerSequence.MakeChild()
@@ -229,13 +232,13 @@ def test_addressor_x_bit(address_bits: int):
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         pass
 
     # Dynamically add the addressor with the correct bit count
-    App._handle_cls_attr("addressor", Addressor.MakeChild(address_bits=address_bits))
+    _App._handle_cls_attr("addressor", Addressor.MakeChild(address_bits=address_bits))
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
     addressor = app.addressor.get()
 
     # address_lines is a PointerSequence pointing to ElectricLogic children
@@ -250,10 +253,10 @@ def test_addressor_make_child():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         addressor = Addressor.MakeChild(address_bits=3)
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Set offset and base (MakeChild only sets address_bits)
     app.addressor.get().offset.get().alias_to_literal(g, 1.0)
@@ -292,14 +295,14 @@ def test_addressor_sets_address_lines(
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         power = F.ElectricPower.MakeChild()
 
     # Dynamically add the addressor with the correct bit count via MakeChild
-    App._handle_cls_attr("addressor", Addressor.MakeChild(address_bits=address_bits))
+    _App._handle_cls_attr("addressor", Addressor.MakeChild(address_bits=address_bits))
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
     addressor = app.addressor.get()
 
     # Get address lines from PointerSequence
@@ -350,13 +353,13 @@ def test_addressor_unresolved_offset_raises():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         power = F.ElectricPower.MakeChild()
         # Use MakeChild to get proper address_lines population
         addressor = Addressor.MakeChild(address_bits=2)
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
     addressor = app.addressor.get()
 
     # Get address lines from PointerSequence and connect to power
@@ -597,10 +600,10 @@ def test_addressor_expression_propagation():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class App(fabll.Node):
+    class _App(fabll.Node):
         addressor = Addressor.MakeChild(address_bits=1)
 
-    app = App.bind_typegraph(tg).create_instance(g=g)
+    app = _App.bind_typegraph(tg).create_instance(g=g)
     addressor = app.addressor.get()
 
     # Set base = 24 (0x18) and address = 25 (0x19)

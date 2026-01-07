@@ -14,29 +14,29 @@ def graph_and_typegraph():
 def test_trait_equality():
     g, tg = graph_and_typegraph()
 
-    class Trait1(fabll.Node):
+    class _Trait1(fabll.Node):
         is_trait = fabll.Traits.MakeEdge(
             fabll.ImplementsTrait.MakeChild().put_on_type()
         )
 
-    class Trait2(fabll.Node):
+    class _Trait2(fabll.Node):
         is_trait = fabll.Traits.MakeEdge(
             fabll.ImplementsTrait.MakeChild().put_on_type()
         )
 
-    trait1_a = Trait1.bind_typegraph(tg=tg).create_instance(g=g)
-    trait1_b = Trait1.bind_typegraph(tg=tg).create_instance(g=g)
-    trait2 = Trait2.bind_typegraph(tg=tg).create_instance(g=g)
+    trait1_a = _Trait1.bind_typegraph(tg=tg).create_instance(g=g)
+    trait1_b = _Trait1.bind_typegraph(tg=tg).create_instance(g=g)
+    trait2 = _Trait2.bind_typegraph(tg=tg).create_instance(g=g)
 
     assert trait1_a != trait1_b
     assert trait1_a == trait1_a
     assert trait1_a.has_same_type_as(trait1_b)
     assert not trait1_a.has_same_type_as(trait2)
 
-    trait1_type = fabll.TypeNodeBoundTG.get_or_create_type_in_tg(tg=tg, t=Trait1)
-    trait2_type = fabll.TypeNodeBoundTG.get_or_create_type_in_tg(tg=tg, t=Trait2)
+    trait1_type = fabll.TypeNodeBoundTG.get_or_create_type_in_tg(tg=tg, t=_Trait1)
+    trait2_type = fabll.TypeNodeBoundTG.get_or_create_type_in_tg(tg=tg, t=_Trait2)
     assert trait1_type == fabll.TypeNodeBoundTG.get_or_create_type_in_tg(
-        tg=tg, t=Trait1
+        tg=tg, t=_Trait1
     )
     assert trait1_type != trait2_type
 
@@ -44,7 +44,7 @@ def test_trait_equality():
 def test_trait_basic_operations():
     g, tg = graph_and_typegraph()
 
-    class TraitWithValue(fabll.Node):
+    class _TraitWithValue(fabll.Node):
         is_trait = fabll.Traits.MakeEdge(
             fabll.ImplementsTrait.MakeChild().put_on_type()
         )
@@ -53,7 +53,7 @@ def test_trait_basic_operations():
             super().__init__(instance=instance)
             self.value: int | None = None
 
-        def setup(self, value: int = 1) -> "TraitWithValue":
+        def setup(self, value: int = 1) -> "_TraitWithValue":
             self.value = value
             return self
 
@@ -63,47 +63,47 @@ def test_trait_basic_operations():
 
     obj = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
 
-    assert not obj.has_trait(TraitWithValue)
+    assert not obj.has_trait(_TraitWithValue)
     with pytest.raises(fabll.TraitNotFound):
-        obj.get_trait(TraitWithValue)
+        obj.get_trait(_TraitWithValue)
 
-    trait_instance = fabll.Traits.create_and_add_instance_to(obj, TraitWithValue).setup(
-        1
-    )
-    assert obj.has_trait(TraitWithValue)
-    assert obj.get_trait(TraitWithValue) == trait_instance
+    trait_instance = fabll.Traits.create_and_add_instance_to(
+        obj, _TraitWithValue
+    ).setup(1)
+    assert obj.has_trait(_TraitWithValue)
+    assert obj.get_trait(_TraitWithValue) == trait_instance
     assert trait_instance.do() == 1
 
     # Adding another instance of the same trait keeps the first one as the default
-    replacement = fabll.Traits.create_and_add_instance_to(obj, TraitWithValue).setup(5)
+    replacement = fabll.Traits.create_and_add_instance_to(obj, _TraitWithValue).setup(5)
     assert replacement != trait_instance
-    assert obj.get_trait(TraitWithValue) == trait_instance
+    assert obj.get_trait(_TraitWithValue) == trait_instance
 
 
 def test_trait_object_binding():
     g, tg = graph_and_typegraph()
 
-    class TraitA(fabll.Node):
+    class _TraitA(fabll.Node):
         is_trait = fabll.Traits.MakeEdge(
             fabll.ImplementsTrait.MakeChild().put_on_type()
         )
 
-    class TraitB(fabll.Node):
+    class _TraitB(fabll.Node):
         is_trait = fabll.Traits.MakeEdge(
             fabll.ImplementsTrait.MakeChild().put_on_type()
         )
 
     obj = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
 
-    unbound_trait = TraitA.bind_typegraph(tg=tg).create_instance(g=g)
+    unbound_trait = _TraitA.bind_typegraph(tg=tg).create_instance(g=g)
     with pytest.raises(AssertionError):
         fabll.Traits(unbound_trait).get_obj_raw()
 
-    trait_a = fabll.Traits.create_and_add_instance_to(obj, TraitA)
-    trait_b = fabll.Traits.create_and_add_instance_to(obj, TraitB)
+    trait_a = fabll.Traits.create_and_add_instance_to(obj, _TraitA)
+    trait_b = fabll.Traits.create_and_add_instance_to(obj, _TraitB)
 
     assert fabll.Traits(trait_a).get_obj_raw() == obj
-    assert trait_a.get_sibling_trait(TraitB) == trait_b
+    assert trait_a.get_sibling_trait(_TraitB) == trait_b
 
 
 # TODO need to implement a test for multiple trait arbitration,
@@ -114,20 +114,20 @@ def test_trait_object_binding():
 def test_trait_first_instance_wins():
     g, tg = graph_and_typegraph()
 
-    class Trait(fabll.Node):
+    class _Trait(fabll.Node):
         is_trait = fabll.Traits.MakeEdge(
             fabll.ImplementsTrait.MakeChild().put_on_type()
         )
 
     obj = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
 
-    first = fabll.Traits.create_and_add_instance_to(obj, Trait)
-    second = fabll.Traits.create_and_add_instance_to(obj, Trait)
+    first = fabll.Traits.create_and_add_instance_to(obj, _Trait)
+    second = fabll.Traits.create_and_add_instance_to(obj, _Trait)
 
     assert first != second
     # assert obj.get_trait(Trait) == first
-    assert obj.get_trait(Trait) == second
+    assert obj.get_trait(_Trait) == second
 
-    trait_instances = Trait.bind_typegraph(tg=tg).get_instances(g=g)
+    trait_instances = _Trait.bind_typegraph(tg=tg).get_instances(g=g)
     assert len(trait_instances) == 2
     assert set(trait_instances) == {first, second}

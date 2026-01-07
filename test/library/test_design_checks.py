@@ -10,24 +10,24 @@ from faebryk.libs.smd import SMDSize
 
 @pytest.mark.skip(reason="I2C.requires_pulls not implemented yet")
 def test_i2c_requires_pulls():
-    class A(fabll.Node):
+    class _A(fabll.Node):
         i2c: F.I2C
 
-    class App(fabll.Node):
-        a: A
-        b: A
+    class _App(fabll.Node):
+        a: _A
+        b: _A
 
         def __preinit__(self):
             self.a.i2c.connect(self.b.i2c)
 
-    app = App()
+    app = _App()
 
     # no issue if no pad boundary is crossed
     check_design(app.tg, F.implements_design_check.CheckStage.POST_DESIGN)
 
-    class App2(fabll.Node):
-        a: A
-        b: A
+    class _App2(fabll.Node):
+        a: _A
+        b: _A
 
         def __preinit__(self):
             self.a.i2c.connect(self.b.i2c)
@@ -49,7 +49,7 @@ def test_i2c_requires_pulls():
                 )
             ).attach(F.SMDTwoPin(SMDSize.I0402, F.SMDTwoPin.Type.Resistor))
 
-    app2 = App2()
+    app2 = _App2()
 
     # required resistance can be customized
     app2.a.i2c.get_trait(F.requires_pulls).required_resistance = fabll.Range(
@@ -97,7 +97,7 @@ def test_electric_signal_parallel_pull_resistance():
         .setup_from_center_rel(center=30 * 1e3, rel=0.02, unit=ohm)
     )
 
-    class TestModule(fabll.Node):
+    class _TestModule(fabll.Node):
         signal = F.ElectricSignal.MakeChild()
         power = F.ElectricPower.MakeChild()
 
@@ -105,7 +105,7 @@ def test_electric_signal_parallel_pull_resistance():
         r2 = F.Resistor.MakeChild()
         r3 = F.Resistor.MakeChild()
 
-    module = TestModule.bind_typegraph(tg=tg).create_instance(g=g)
+    module = _TestModule.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Set specific resistance values for testing
     module.r1.get().resistance.get().alias_to_literal(g=g, value=r1_value)
@@ -167,13 +167,13 @@ def test_electric_signal_single_pull_resistance():
         )
     )
 
-    class TestModule(fabll.Node):
+    class _TestModule(fabll.Node):
         signal = F.ElectricSignal.MakeChild()
         power = F.ElectricPower.MakeChild()
 
         r1 = F.Resistor.MakeChild()
 
-    module = TestModule.bind_typegraph(tg=tg).create_instance(g=g)
+    module = _TestModule.bind_typegraph(tg=tg).create_instance(g=g)
 
     module.r1.get().resistance.get().alias_to_literal(g=g, value=r1_value)
 
