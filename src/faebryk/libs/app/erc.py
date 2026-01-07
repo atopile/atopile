@@ -71,30 +71,28 @@ def simple_erc(tg: fbrk.TypeGraph):
 
     - [unmapped pins for footprints]
     """
-    logger.info("Checking graph for ERC violations")
+    logger.info("Checking for ERC violations")
 
     with accumulate(ERCFault) as accumulator:
         # shorted power
         electricpower = F.ElectricPower.bind_typegraph(tg).get_instances(
             g=tg.get_graph_view()
         )
-        logger.info(f"Checking {len(electricpower)} Power")
-
-        buses_grouped = fabll.is_interface.group_into_buses(set(electricpower))
-        buses = list(buses_grouped.values())
+        ep_buses = fabll.is_interface.group_into_buses(electricpower)
 
         # We do collection both inside and outside the loop because we don't
         # want to continue the loop if we've already raised a short exception
         with accumulator.collect():
-            logger.info("Checking for hv/lv shorts")
-            for ep in electricpower:
+            logger.info("Checking for ElectricPower shorts between hv and lv")
+            for ep, ep_bus in ep_buses.items():
+                # print(f"Checking {ep.get_full_name()} - Elements: {len(ep_bus)}")
                 if path := fabll.Path.from_connection(ep.lv.get(), ep.hv.get()):
                     raise ERCFaultShortedInterfaces.from_path(path)
 
             logger.info("Checking for power source shorts")
-            for bus in buses:
+            for ep_bus in ep_buses.values():
                 with accumulator.collect():
-                    sources = {ep for ep in bus if ep.has_trait(F.is_source)}
+                    sources = {ep for ep in ep_bus if ep.has_trait(F.is_source)}
                     if len(sources) <= 1:
                         continue
 

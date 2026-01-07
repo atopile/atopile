@@ -1,5 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
+import logging
 import re
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
@@ -2161,19 +2162,18 @@ class is_interface(Node):
         }
 
     @staticmethod
-    def group_into_buses[N: NodeT](
-        nodes: set[N],
-    ) -> dict[N, set[N]]:
+    def group_into_buses[N: NodeT](nodes: Iterable[N]) -> dict[N, set[N]]:
         remaining = set(nodes)
         buses: dict[N, set[N]] = {}
 
+        logger = logging.getLogger(__name__)
+
         while remaining:
             interface = remaining.pop()
-            connected = set(
-                interface.get_trait(is_interface)
-                .get_connected(include_self=True)
-                .keys()
-            )
+            logger.info(f"Grouping bus: {interface.get_full_name()}")
+            connected = interface.get_trait(is_interface).get_connected(include_self=True).keys()
+            logger.info(f"Grouping complete. Elements: {len(connected)}")
+            logger.info({i.get_full_name() for i in connected})
             buses[interface] = connected
             remaining.difference_update(connected)
 
