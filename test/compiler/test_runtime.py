@@ -1706,9 +1706,14 @@ def test_assign_to_child_parameter():
     )
     assert "App" in result.state.type_roots
     r = F.Resistor.bind_instance(_get_child(app_instance, "r"))
-    resistance = r.resistance.get().force_extract_literal_subset()
-    assert resistance.get_values() == [135, 165]
-    assert F.Units.is_unit.get_symbols(resistance.get_is_unit()) == ["kohm"]
+    # Get values from parameter directly ensures values are in display units
+    res_param = r.resistance.get()
+    assert res_param.get_values() == [135000, 165000]
+    # Ensure that the resistance parameter display units are correct
+    assert (
+        fabll.Traits(res_param.force_get_display_units()).get_obj_raw().get_type_name()
+        == "Ohm"
+    )
 
 
 def test_slice_non_list():
