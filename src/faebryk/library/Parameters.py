@@ -702,6 +702,16 @@ class NumericParameter(fabll.Node):
         converted = lit.convert_to_unit(display_unit, g=self.g, tg=self.tg)
         return converted.pretty_str(show_tolerance=show_tolerance)
 
+    def get_values(self) -> list[float]:
+        """
+        Return values from extracted literal subset in the parameter's display units.
+        """
+        return (
+            self.force_extract_literal_subset()
+            .convert_to_unit(self.force_get_display_units(), g=self.g, tg=self.tg)
+            .get_values()
+        )
+
     def get_within(self) -> "Literals.Numbers | None":
         # TODO
         pass
@@ -2107,9 +2117,3 @@ def test_display_unit_lit_suffix_conversion():
     assert "5000" in repr_str
     # Note: decode_symbol_runtime creates anonymous units without symbol preservation
     # The basis vector representation is used instead of "mV"
-
-
-if __name__ == "__main__":
-    import typer
-
-    typer.run(test_can_be_operand_pretty_print)

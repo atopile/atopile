@@ -541,12 +541,6 @@ def test_connects_between_top_level_fields():
             left.unnamed[1] ~ right.unnamed[0]
         """
     )
-    type_node = result.state.type_roots["App"]
-    paths = {
-        (tuple(lhs_path), tuple(rhs_path))
-        for _, lhs_path, rhs_path in _collect_make_links(tg, type_node)
-    }
-    print(paths)
     # Path segments with indices are combined: unnamed + [1] -> unnamed[1]
     assert (
         _check_make_links(
@@ -2269,12 +2263,12 @@ class TestAssignments:
         # 12 mA -> 12000 uA
         literal = power.max_current.get().force_extract_literal_subset()
         assert literal is not None, "current should have an aliased literal"
-        values = literal.get_values()
+        values = power.max_current.get().get_values()
         assert len(values) == 2
         # The values are stored in the start unit (uA)
-        assert values[0] == 2.1, f"Expected start value 2.1, got {values[0]}"
-        assert values[1] == 12000.0, (
-            f"Expected end value 12000 (12mA in uA), got {values[1]}"
+        assert values[0] == 2.1e-6, f"Expected start value 2.1, got {values[0]}"
+        assert values[1] == 12.0e-3, (
+            f"Expected end value 0.012 (12mA in A), got {values[1]}"
         )
 
     def test_assert_within_constraint(self):
@@ -2346,9 +2340,9 @@ class TestAssignments:
         # Due to test order dependency, values may be stored in kV or V
         # Check the actual value in base units (value * multiplier)
         literal = r.max_voltage.get().force_extract_literal_subset()
-        values = literal.get_values()
-        multiplier = literal.get_is_unit()._extract_multiplier()
+        multiplier = not_none(literal.get_is_unit())._extract_multiplier()
 
+        values = r.max_voltage.get().get_values()
         # Convert to base units for comparison
         base_values = [v * multiplier for v in values]
         assert base_values == [99000.0, 101000.0], (
@@ -3503,8 +3497,8 @@ class TestSoftHardMakeChild:
         param = F.Parameters.NumericParameter.bind_instance(not_none(param_bnode))
         literal = param.force_extract_literal_subset()
         assert literal is not None
-        assert literal.get_values() == [10.0, 10.0]
-        assert not_none(literal.get_is_unit()).get_symbols() == ["kohm"]
+        assert param.get_values() == [10000.0, 10000.0]
+        assert param.force_get_display_units().get_symbols() == ["Ω", "ohm", "ohms"]
         assert (
             fabll.Traits(param.force_get_units()).get_obj_raw().get_type_node()
             == F.Units.Ohm.bind_typegraph(tg=tg).as_type_node().instance
