@@ -6188,28 +6188,28 @@ fn wrap_typegraph_collect_pointer_members() type {
                 const info = members[idx];
 
                 // Return order as integer (sequence elements always have order, defaults to 0)
-                const order_obj = py.PyLong_FromLong(@as(c_long, @intCast(info.order)));
-                if (order_obj == null) {
+                const index_obj = py.PyLong_FromLong(@as(c_long, @intCast(info.edge_specific.?)));
+                if (index_obj == null) {
                     py.Py_DECREF(list_obj.?);
                     return null;
                 }
 
                 const make_child_obj = graph_py.makeBoundNodePyObject(info.make_child) orelse {
-                    py.Py_DECREF(order_obj.?);
+                    py.Py_DECREF(index_obj.?);
                     py.Py_DECREF(list_obj.?);
                     return null;
                 };
 
                 const tuple_obj = py.PyTuple_New(2);
                 if (tuple_obj == null) {
-                    py.Py_DECREF(order_obj.?);
+                    py.Py_DECREF(index_obj.?);
                     py.Py_DECREF(make_child_obj);
                     py.Py_DECREF(list_obj.?);
                     return null;
                 }
 
-                if (py.PyTuple_SetItem(tuple_obj, 0, order_obj) != 0) {
-                    py.Py_DECREF(order_obj.?);
+                if (py.PyTuple_SetItem(tuple_obj, 0, index_obj) != 0) {
+                    py.Py_DECREF(index_obj.?);
                     py.Py_DECREF(make_child_obj);
                     py.Py_DECREF(tuple_obj.?);
                     py.Py_DECREF(list_obj.?);
