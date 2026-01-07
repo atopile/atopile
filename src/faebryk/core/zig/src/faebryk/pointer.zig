@@ -30,13 +30,15 @@ pub const EdgePointer = struct {
         return .{ .identifier = "", .edge_type = tid };
     }
 
-    pub fn init(from: NodeReference, to: NodeReference, identifier: ?str, index: ?u16) EdgeReference {
+    pub fn init(from: NodeReference, to: NodeReference, identifier: ?str, index: ?u15) EdgeReference {
         const edge = EdgeReference.init(from, to, tid);
         build(identifier, index).apply_to(edge);
         return edge;
     }
 
-    pub fn build(identifier: ?str, index: ?u16) EdgeCreationAttributes {
+    /// Build EdgeCreationAttributes for an EdgePointer.
+    /// The 15-bit index is split MSB-first: `order` gets high 7 bits, `edge_specific` gets low 8 bits.
+    pub fn build(identifier: ?str, index: ?u15) EdgeCreationAttributes {
         if (!registered) {
             @branchHint(.unlikely);
             registered = true;
@@ -47,14 +49,17 @@ pub const EdgePointer = struct {
             .edge_type = tid,
             .directional = true,
             .name = identifier,
-            .order = 0, // not big enough to fit `index`
-            .edge_specific = index,
+            .order = if (index) |i| @intCast(i >> 8) else 0,
+            .edge_specific = if (index) |i| @as(u16, i & 0xFF) else null,
             .dynamic = graph.DynamicAttributes.init_on_stack(),
         };
     }
 
-    pub fn get_index(edge: EdgeReference) ?u16 {
-        return edge.get_edge_specific();
+    /// Reconstruct the 15-bit index from order (high 7 bits) and edge_specific (low 8 bits).
+    pub fn get_index(edge: EdgeReference) ?u15 {
+        const low = edge.get_edge_specific() orelse return null;
+        const high: u15 = @intCast(edge.get_order());
+        return (high << 8) | @as(u15, @intCast(low & 0xFF));
     }
 
     pub fn get_referenced_node(edge: EdgeReference) NodeReference {
@@ -65,7 +70,7 @@ pub const EdgePointer = struct {
         return E.is_instance(tid);
     }
 
-    pub fn point_to(bound_node: BoundNodeReference, target_node: NodeReference, identifier: ?str, index: ?u16) BoundEdgeReference {
+    pub fn point_to(bound_node: BoundNodeReference, target_node: NodeReference, identifier: ?str, index: ?u15) BoundEdgeReference {
         const edge = EdgePointer.init(bound_node.node, target_node, identifier, index);
         const bound_edge = bound_node.g.insert_edge(edge);
         return bound_edge;

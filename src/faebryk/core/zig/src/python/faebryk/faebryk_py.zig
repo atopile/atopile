@@ -2445,9 +2445,9 @@ fn wrap_edge_pointer_build() type {
                 }
             }
 
-            var index: ?u16 = null;
+            var index: ?u15 = null;
             if (kwarg_obj.index != py.Py_None()) {
-                index = bind.unwrap_int(u16, kwarg_obj.index) catch {
+                index = bind.unwrap_int(u15, kwarg_obj.index) catch {
                     py.PyErr_SetString(py.PyExc_ValueError, "Index out of range");
                     return null;
                 } orelse return null;
@@ -2647,9 +2647,9 @@ fn wrap_edge_pointer_point_to() type {
                 }
             }
 
-            var index: ?u16 = null;
+            var index: ?u15 = null;
             if (kwarg_obj.index != py.Py_None()) {
-                index = bind.unwrap_int(u16, kwarg_obj.index) catch {
+                index = bind.unwrap_int(u15, kwarg_obj.index) catch {
                     py.PyErr_SetString(py.PyExc_ValueError, "Index out of range");
                     return null;
                 } orelse return null;
@@ -6187,8 +6187,11 @@ fn wrap_typegraph_collect_pointer_members() type {
             while (idx < members.len) : (idx += 1) {
                 const info = members[idx];
 
-                // Return order as integer (sequence elements always have order, defaults to 0)
-                const index_obj = py.PyLong_FromLong(@as(c_long, @intCast(info.edge_specific.?)));
+                // Reconstruct 15-bit index from order (high 7 bits) and edge_specific (low 8 bits)
+                const high: u15 = @intCast(info.order);
+                const low: u15 = @intCast(info.edge_specific.? & 0xFF);
+                const index: u15 = (high << 8) | low;
+                const index_obj = py.PyLong_FromLong(@as(c_long, @intCast(index)));
                 if (index_obj == null) {
                     py.Py_DECREF(list_obj.?);
                     return null;
