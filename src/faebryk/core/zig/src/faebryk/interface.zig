@@ -542,6 +542,41 @@ test "hierarchy_short" {
     try std.testing.expect(hv_to_lv.get_last_node().node.is_same(lv_pin.node));
 }
 
+test "indirect_short" {
+    // EP0 --- EP1 --- EP2
+    //  |             |
+    //  HV --------- LV
+    var g = graph.GraphView.init(a);
+    defer g.deinit();
+
+    var tg = TypeGraph.init(&g);
+    const ElectricPowerType = try tg.add_type("ElectricPower");
+    const ElectricalType = try tg.add_type("Electrical");
+
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV", null, false);
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV", null, false);
+
+    const ep0 = try tg.instantiate_node(ElectricPowerType);
+    const ep1 = try tg.instantiate_node(ElectricPowerType);
+    const ep2 = try tg.instantiate_node(ElectricPowerType);
+
+    const ep0_hv = EdgeComposition.get_child_by_identifier(ep0, "HV").?;
+    const ep1_hv = EdgeComposition.get_child_by_identifier(ep1, "HV").?;
+    const ep1_lv = EdgeComposition.get_child_by_identifier(ep1, "LV").?;
+    const ep2_lv = EdgeComposition.get_child_by_identifier(ep2, "LV").?;
+
+    _ = try EdgeInterfaceConnection.connect(ep0, ep1);
+    _ = try EdgeInterfaceConnection.connect(ep1, ep2);
+
+    try expectNoPath(a, ep1_hv, ep1_lv);
+
+    _ = try EdgeInterfaceConnection.connect(ep0_hv, ep2_lv);
+
+    var ep1_short = try EdgeInterfaceConnection.is_connected_to(a, ep1_hv, ep1_lv);
+    defer ep1_short.deinit();
+    try std.testing.expect(ep1_short.get_last_node().node.is_same(ep1_lv.node));
+}
+
 test "shallow_filter_allows_alternative_route" {
     // P1 ==> P2 (shallow)
     //  |       |
