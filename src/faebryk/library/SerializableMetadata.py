@@ -12,63 +12,55 @@ class SerializableMetadata(fabll.Node):
     Attribute that will be written to PCB footprint
     """
 
-    # TODO: this is used as trait with multi instance, but is not a trait itself.
-    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+    class MetaDataNode(fabll.Node):
+        key = F.Parameters.StringParameter.MakeChild()
+        value = F.Parameters.StringParameter.MakeChild()
 
-    key_ = F.Parameters.StringParameter.MakeChild()
-    value_ = F.Parameters.StringParameter.MakeChild()
+        @classmethod
+        def MakeChild(cls, key: str, value: str) -> fabll._ChildField[Self]:
+            out = fabll._ChildField(cls)
+            out.add_dependant(
+                F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.key], key)
+            )
+            out.add_dependant(
+                F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.value], value)
+            )
+            return out
+
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+    data = F.Collections.PointerSet.MakeChild()
 
     @classmethod
     def get_properties(cls, node: fabll.Node) -> dict[str, str]:
-        properties = {}
-        metadata_nodes = node.get_children(direct_only=True, types=cls)
-        for meta in metadata_nodes:
-            meta = SerializableMetadata.bind_instance(meta.instance)
-            properties[meta.key] = meta.value
-        return properties
+        trait_obj = node.try_get_trait(cls)
+        properties: dict[str, str] = {}
+        if trait_obj:
+            for data in trait_obj.data.get().as_list():
+                data = data.cast(cls.MetaDataNode)
+                properties[data.key.get().force_extract_literal().get_values()[0]] = (
+                    data.value.get().force_extract_literal().get_values()[0]
+                )
+        return dict(sorted(properties.items()))
 
     @classmethod
-    def get_property(cls, node: fabll.Node, key: str) -> str | None:
-        metadata_nodes = node.get_children(direct_only=True, types=cls)
-        for meta in metadata_nodes:
-            meta = SerializableMetadata.bind_instance(meta.instance)
-            if meta.key == key:
-                return None if meta.value is None else str(meta.value)
-        return None
-
-    @property
-    def key(self) -> str:
-        return self.key_.get().force_extract_literal().get_values()[0]
-
-    @property
-    def value(self) -> str:
-        return self.value_.get().force_extract_literal().get_values()[0]
-
-    # def handle_duplicate(self, old: TraitImpl, node: fabll.Node) -> bool:
-    #     if not isinstance(old, has_descriptive_properties_defined):
-    #         assert isinstance(old, F.has_descriptive_properties)
-    #         self.properties.update(old.get_properties())
-    #         return super().handle_duplicate(old, node)
-
-    #     old.properties.update(self.properties)
-    #     return False
-
-    @staticmethod
-    def get_from(node: fabll.Node, key: str) -> str | None:
-        return SerializableMetadata.get_property(node, key)
-
-    @classmethod
-    def MakeChild(cls, key: str, value: str) -> fabll._ChildField[Any]:
+    def MakeChild(cls, data: dict[str, str]) -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
-        out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.key_], key)
-        )
-        out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.value_], value)
-        )
+        for key, value in data.items():
+            meta_node = cls.MetaDataNode.MakeChild(key, value)
+            out.add_dependant(
+                F.Collections.PointerSet.MakeEdge([out, cls.data], [meta_node])
+            )
         return out
 
-    def setup(self, key: str, value: str) -> Self:
-        self.key_.get().alias_to_single(value=key)
-        self.value_.get().alias_to_single(value=value)
+    def setup(self, data: dict[str, str]) -> Self:
+        for key, value in data.items():
+            data_node = self.MetaDataNode.bind_typegraph_from_instance(
+                self.instance
+            ).create_instance(g=self.instance.g())
+            data_node.key.get().alias_to_single(value=key)
+            data_node.value.get().alias_to_single(value=value)
+            self.add_child(data_node)
+            self.data.get().append(data_node)
+
         return self

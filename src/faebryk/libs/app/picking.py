@@ -180,18 +180,11 @@ def save_part_info_to_pcb(app: fabll.Node):
             logger.warning(f"No part found for {node.get_name()}")
             continue
 
-        if isinstance(part, PickedPart):
-            fabll.Traits.create_and_add_instance_to(
-                node=node, trait=F.SerializableMetadata
-            ).setup(key=Properties.supplier_partno, value=part.supplier_partno)
-
-        fabll.Traits.create_and_add_instance_to(
-            node=node, trait=F.SerializableMetadata
-        ).setup(key=Properties.manufacturer, value=part.manufacturer)
-
-        fabll.Traits.create_and_add_instance_to(
-            node=node, trait=F.SerializableMetadata
-        ).setup(key=Properties.manufacturer_partno, value=part.partno)
+        data: dict[str, str] = {}
+        if isinstance(part, (PickedPart, PickedPartLCSC)):
+            data[Properties.supplier_partno] = part.supplier_partno
+        data[Properties.manufacturer] = part.manufacturer
+        data[Properties.manufacturer_partno] = part.partno
 
         for p in node.get_children(
             direct_only=True,
@@ -203,16 +196,15 @@ def save_part_info_to_pcb(app: fabll.Node):
             ).try_get_subset_or_alias_literal()
             if lit is None:
                 continue
-            fabll.Traits.create_and_add_instance_to(
-                node=node, trait=F.SerializableMetadata
-            ).setup(
-                key=f"{Properties.param_prefix}{p.get_name()}",
-                value=json.dumps(lit.serialize()),
+            data[f"{Properties.param_prefix}{p.get_name()}"] = json.dumps(
+                lit.serialize(), ensure_ascii=True
             )
+        fabll.Traits.create_and_add_instance_to(node, F.SerializableMetadata).setup(
+            data
+        )
 
 
 def test_save_part_info_to_pcb():
-    print("")
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
@@ -225,10 +217,8 @@ def test_save_part_info_to_pcb():
 
     save_part_info_to_pcb(res)
 
-    traits = fabll.Traits.get_implementors(F.SerializableMetadata.bind_typegraph(tg))
-
     # Convert traits to dictionary for easier checking
-    trait_dict = {trait.key: trait.value for trait in traits}
+    trait_dict = F.SerializableMetadata.get_properties(res)
 
     # Assert expected key:value pairs
     assert trait_dict.get(Properties.manufacturer.value) == "blaze-it-inc"
@@ -295,19 +285,15 @@ def test_load_part_info_from_pcb():
     app = TestApp.bind_typegraph(tg).create_instance(g=g)
     res_node = app.res.get()
 
-    # Add SerializableMetadata as children to simulate previous build
-    # Use add_child since get_properties looks for children, not traits
-    meta1 = F.SerializableMetadata.bind_typegraph(tg).create_instance(g)
-    meta1.setup(key=Properties.supplier_partno.value, value=test_lcsc)
-    res_node.add_child(meta1, f"_meta_{Properties.supplier_partno.value}")
-
-    meta2 = F.SerializableMetadata.bind_typegraph(tg).create_instance(g)
-    meta2.setup(key=Properties.manufacturer.value, value=test_mfr)
-    res_node.add_child(meta2, f"_meta_{Properties.manufacturer.value}")
-
-    meta3 = F.SerializableMetadata.bind_typegraph(tg).create_instance(g)
-    meta3.setup(key=Properties.manufacturer_partno.value, value=test_partno)
-    res_node.add_child(meta3, f"_meta_{Properties.manufacturer_partno.value}")
+    # Add SerializableMetadata as traits to simulate previous build
+    data = {
+        Properties.supplier_partno.value: test_lcsc,
+        Properties.manufacturer.value: test_mfr,
+        Properties.manufacturer_partno.value: test_partno,
+    }
+    fabll.Traits.create_and_add_instance_to(res_node, F.SerializableMetadata).setup(
+        data
+    )
 
     fp_node = fabll.Node.bind_typegraph(tg).create_instance(g=g)
     fp = fabll.Traits.create_and_add_instance_to(fp_node, F.Footprints.is_footprint)
