@@ -434,12 +434,6 @@ class ASTVisitor:
             pending_execution=[],
         )
 
-        self._pointer_sequence_type = F.Collections.PointerSequence.bind_typegraph(
-            self._tg
-        ).get_or_create_type()
-        self._electrical_type = F.Electrical.bind_typegraph(
-            self._tg
-        ).get_or_create_type()
         self._experiments: set[ASTVisitor._Experiment] = set()
         self._scope_stack = _ScopeStack()
         self._type_stack = _TypeContextStack(
