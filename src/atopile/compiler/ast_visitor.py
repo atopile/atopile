@@ -1259,8 +1259,7 @@ class ASTVisitor:
         self, node: AST.GroupExpression
     ) -> "fabll._ChildField | FieldPath | tuple[fabll._ChildField, type[fabll.Node]]":
         """Unwrap a parenthesized expression and delegate to inner expression."""
-        inner_arithmetic = node.get_expression()
-        return self.visit(fabll.Traits(inner_arithmetic).get_obj_raw())
+        return self.visit(node.get_expression().switch_cast())
 
     def visit_BoundedQuantity(
         self, node: AST.BoundedQuantity

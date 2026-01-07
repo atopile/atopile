@@ -53,6 +53,26 @@ class is_arithmetic(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     as_assignable = fabll.Traits.ImpliedTrait(is_assignable)
 
+    def switch_cast(
+        self,
+    ) -> "FieldRef | Quantity | BilateralQuantity | BoundedQuantity | BinaryExpression | GroupExpression":  # noqa: E501
+        types = [
+            FieldRef,
+            Quantity,
+            BilateralQuantity,
+            BoundedQuantity,
+            BinaryExpression,
+            GroupExpression,
+        ]
+        obj = fabll.Traits(self).get_obj_raw()
+        for t in types:
+            if obj.isinstance(t):
+                return obj.cast(t)
+
+        raise ValueError(
+            f"Cannot cast is_arithmetic {self} of type {obj} to any of {types}"
+        )
+
 
 class is_arithmetic_atom(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
