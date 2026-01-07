@@ -1,3 +1,4 @@
+import itertools
 import logging
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -442,7 +443,7 @@ class ASTVisitor:
             type_._type_identifier(): type_
             for type_ in stdlib_allowlist or STDLIB_ALLOWLIST.copy()
         }
-        self._expr_counter = 0
+        self._expr_counter = itertools.count()
 
     @staticmethod
     def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]]:
@@ -1163,8 +1164,7 @@ class ASTVisitor:
 
         # Generate unique identifier for this assertion to avoid collisions
         # when multiple assertions target the same LHS
-        expr_id = self._expr_counter
-        self._expr_counter += 1
+        expr_id = next(self._expr_counter)
 
         expr = expr_type.MakeChild(lhs_refpath, rhs_refpath, assert_=True)
         expr.add_dependant(

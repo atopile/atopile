@@ -35,6 +35,22 @@ from faebryk.libs.util import (
 if TYPE_CHECKING:
     from faebryk.core.solver.solver import Solver
 
+
+class _UniqueKey:
+    """Globally-unique key generator to prevent locator / identifier collisions."""
+
+    # TODO: consider using UUIDs instead
+    _counter: ClassVar[Iterator[int]] = itertools.count()
+
+    @classmethod
+    def get(cls) -> int:
+        return next(cls._counter)
+
+    @classmethod
+    def get_str(cls) -> str:
+        return f"{cls.get():04x}"
+
+
 # Exceptions ---------------------------------------------------------------------------
 
 
@@ -102,8 +118,6 @@ class PLACEHOLDER:
 
 
 class Field:
-    _anon_counter: ClassVar[Iterator[int]] = itertools.count()
-
     def __init__(self, identifier: str | None | PLACEHOLDER = PLACEHOLDER()):
         self.identifier: str | PLACEHOLDER = PLACEHOLDER()
         if not isinstance(identifier, PLACEHOLDER):
@@ -122,9 +136,9 @@ class Field:
                     else self.nodetype.__name__
                 )
                 if isinstance(self, _ChildField)
-                else f"{id(self):x}"
+                else f"{_UniqueKey.get():x}"
             )
-            identifier = f"anon{next(self._anon_counter):04x}_{_t_id}"
+            identifier = f"anon{_UniqueKey.get_str()}_{_t_id}"
         self.identifier = identifier
 
     def get_identifier(self) -> str:
@@ -224,7 +238,7 @@ class _ChildField[T: NodeT](Field, ChildAccessor[T]):
                 True  # Mark as dependant to prevent duplicate registration
             )
             if identifier is not None:
-                d._set_locator(f"{identifier}_{id(d):04x}")
+                d._set_locator(f"{identifier}_{_UniqueKey.get_str()}")
             else:
                 d._set_locator(None)
             if before:
@@ -1098,7 +1112,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         fbrk.EdgeComposition.add_child(
             bound_node=self.instance,
             child=node.instance.node(),
-            child_identifier=identifier or f"{id(node)}",
+            child_identifier=identifier or f"{_UniqueKey.get():x}",
         )
 
     # TODO this is soooo slow
