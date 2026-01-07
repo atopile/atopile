@@ -109,9 +109,9 @@ pub const PathFinder = struct {
         bfs_paths.paths = self.path_list;
         self.path_list = std.ArrayList(*BFSPath).init(self.allocator);
 
-        std.debug.print("********* Pathfinder find_paths Summary *********\n", .{});
-        std.debug.print("Start node: {}\n", .{start_node.node.uuid});
-        std.debug.print("Paths explored: {}\tValid Paths: {}\n", .{ self.path_counter, bfs_paths.paths.items.len });
+        // std.debug.print("********* Pathfinder find_paths Summary *********\n", .{});
+        // std.debug.print("Start node: {}\n", .{start_node.node.uuid});
+        // std.debug.print("Paths explored: {}\tValid Paths: {}\n", .{ self.path_counter, bfs_paths.paths.items.len });
 
         return bfs_paths;
     }
