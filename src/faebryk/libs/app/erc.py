@@ -78,6 +78,7 @@ def simple_erc(tg: fbrk.TypeGraph):
         electricpower = F.ElectricPower.bind_typegraph(tg).get_instances(
             g=tg.get_graph_view()
         )
+        print(f"Grouping {len(electricpower)} ElectricPowers into buses")
         ep_buses = fabll.is_interface.group_into_buses(electricpower)
 
         # We do collection both inside and outside the loop because we don't
@@ -85,7 +86,7 @@ def simple_erc(tg: fbrk.TypeGraph):
         with accumulator.collect():
             logger.info("Checking for ElectricPower shorts between hv and lv")
             for ep, ep_bus in ep_buses.items():
-                # print(f"Checking {ep.get_full_name()} - Elements: {len(ep_bus)}")
+                print(f"Checking {ep.get_full_name()} - Elements: {len(ep_bus)}")
                 if path := fabll.Path.from_connection(ep.lv.get(), ep.hv.get()):
                     raise ERCFaultShortedInterfaces.from_path(path)
 
