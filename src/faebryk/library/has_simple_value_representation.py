@@ -61,7 +61,7 @@ class has_simple_value_representation(fabll.Node):
             ).try_extract_constrained_literal()
             return "" if literal is None else literal.get_values()[0]
 
-        def _get_value(self) -> str:
+        def _get_value(self, show_tolerance: bool = True) -> str:
             lit = self.param.get_trait(
                 F.Parameters.is_parameter_operatable
             ).try_get_subset_or_alias_literal()
@@ -71,20 +71,21 @@ class has_simple_value_representation(fabll.Node):
             show_tolerance_lit = F.Parameters.BooleanParameter.bind_instance(
                 self.tolerance_.get().instance
             ).try_extract_constrained_literal()
-            show_tolerance = (
-                show_tolerance_lit is None or show_tolerance_lit.get_values()[0]
-            )
+            _show_tolerance = (
+                show_tolerance_lit is not None and show_tolerance_lit.get_values()[0]
+            ) and show_tolerance
 
             # NumericParameter handles display unit conversion (e.g., kohm not ohm)
             numeric_param = self.param.try_cast(F.Parameters.NumericParameter)
-            if numeric_param and (numbers_lit := lit.try_cast(F.Literals.Numbers)):
+            numbers_lit = lit.switch_cast().try_cast(F.Literals.Numbers)
+            if numeric_param and numbers_lit:
                 return numeric_param.format_literal_for_display(
-                    numbers_lit, show_tolerance=show_tolerance
+                    numbers_lit, show_tolerance=_show_tolerance
                 )
 
             # Numbers literal without NumericParameter context
-            if numbers_lit := lit.try_cast(F.Literals.Numbers):
-                return numbers_lit.pretty_str(show_tolerance=show_tolerance)
+            if numbers_lit:
+                return numbers_lit.pretty_str(show_tolerance=_show_tolerance)
 
             return lit.pretty_str()
 
@@ -132,9 +133,9 @@ class has_simple_value_representation(fabll.Node):
 
             # raise NotImplementedError(f"No support for {domain}")
 
-        def get_value(self) -> str:
+        def get_value(self, show_tolerance: bool = True) -> str:
             try:
-                value = self._get_value()
+                value = self._get_value(show_tolerance=show_tolerance)
             except Exception as e:
                 if not self.default:
                     logger.debug(f"No value or default for `{self.param}`: {e}")
@@ -408,17 +409,9 @@ def test_repr_chain_no_literal():
     assert val == "10.0V P3: MISSING"
 
 
-def test_repr_display_unit_conversion():
-    """
-    Test that values are converted to display unit (e.g., kΩ instead of Ω).
-    """
-    import faebryk.library._F as F
+def _make_kiloohm_unit(g: graph.GraphView, tg: fbrk.TypeGraph) -> "F.Units.is_unit":
     from faebryk.library.Units import BasisVector, is_unit, is_unit_type
 
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-
-    # Define Kiloohm unit with proper symbols
     class _Kiloohm(fabll.Node):
         unit_vector_arg = BasisVector(kilogram=1, meter=2, second=-3, ampere=-2)
         is_unit_type_trait = fabll.Traits.MakeEdge(
@@ -429,9 +422,21 @@ def test_repr_display_unit_conversion():
         )
         can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
 
-    # Create instances
     kohm_instance = _Kiloohm.bind_typegraph(tg=tg).create_instance(g=g)
-    kohm_unit = kohm_instance.is_unit_trait.get()
+    return kohm_instance.is_unit_trait.get()
+
+
+def test_repr_display_unit_conversion():
+    """
+    Test that values are converted to display unit (e.g., kΩ instead of Ω).
+    """
+    import faebryk.library._F as F
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    # Define Kiloohm unit with proper symbols
+    kohm_unit = _make_kiloohm_unit(g=g, tg=tg)
 
     # Create parameter with kohm as display unit
     param = F.Parameters.NumericParameter.bind_typegraph(tg).create_instance(g=g)
@@ -451,3 +456,46 @@ def test_repr_display_unit_conversion():
 
     # Should show 47.0kΩ (converted from 47000Ω)
     assert formatted == "47.0kΩ", f"Expected '47.0kΩ', got '{formatted}'"
+
+
+def test_resistor_value_representation():
+    import faebryk.library._F as F
+    from faebryk.library.Resistor import Resistor
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    resistor = Resistor.bind_typegraph(tg=tg).create_instance(g=g)
+    resistor.resistance.get().alias_to_literal(
+        g=g,
+        value=F.Literals.Numbers.bind_typegraph(tg)
+        .create_instance(g=g)
+        .setup_from_center_rel(
+            center=10.0,
+            rel=0.01,
+            unit=_make_kiloohm_unit(g=g, tg=tg),
+        ),
+    )
+    resistor.max_power.get().alias_to_literal(
+        g=g,
+        value=F.Literals.Numbers.bind_typegraph(tg)
+        .create_instance(g=g)
+        .setup_from_singleton(
+            value=0.125,
+            unit=F.Units.Watt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
+        ),
+    )
+    resistor.max_voltage.get().alias_to_literal(
+        g=g,
+        value=F.Literals.Numbers.bind_typegraph(tg)
+        .create_instance(g=g)
+        .setup_from_singleton(
+            value=10.0,
+            unit=F.Units.Volt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
+        ),
+    )
+    assert (
+        resistor._simple_repr.get().get_specs()[0].get_value(show_tolerance=False)
+        == "10.0kΩ"
+    )
+    assert resistor._simple_repr.get().get_value() == "10.0kΩ±1.0% 0.125W 10.0V"

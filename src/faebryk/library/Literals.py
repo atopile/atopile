@@ -4492,11 +4492,14 @@ class Numbers(fabll.Node):
         interval_strs = [format_interval(iv) for iv in intervals]
         # If suppressing tolerance and we have a single interval formatted as center v
         # format as singleton (no braces)
+        # Also don't wrap braces around single intervals with percentage tolerance
         if (
-            not show_tolerance
-            and len(interval_strs) == 1
-            and "±" not in interval_strs[0]
+            len(interval_strs) == 1
             and ".." not in interval_strs[0]
+            and (
+                not show_tolerance
+                or ("±" in interval_strs[0] and "%" in interval_strs[0])
+            )
         ):
             return f"{interval_strs[0]}{unit_symbol}"
 

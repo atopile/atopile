@@ -1791,7 +1791,7 @@ def test_can_be_operand_pretty_print():
     assert discrete_set.can_be_operand.get().pretty() == "{1.0, 2.0, 3.0, 4.0}Ω"
     assert continuous_set.can_be_operand.get().pretty() == "{5.0..10.0}Ω"
     assert inf_set.can_be_operand.get().pretty() == "{ℝ}Ω"
-    assert continuous_set_rel.can_be_operand.get().pretty() == "{5.0±0.5%}Ω"
+    assert continuous_set_rel.can_be_operand.get().pretty() == "5.0±0.5%Ω"
     assert disjoint_union.can_be_operand.get().pretty() == "{5.0..10.0, 15.0..20.0}Ω"
 
 

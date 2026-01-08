@@ -390,5 +390,5 @@ class TestJLCBom:
         assert bomline.Footprint == "UNI_ROYAL_0603WAF4701T5E"
         assert bomline.Manufacturer == "UNI-ROYAL(Uniroyal Elec)"
         assert bomline.Partnumber == "0603WAF4701T5E"
-        assert bomline.Value == "{4700.0±1.0%}Ω 0.1W 75.0V"
+        assert bomline.Value == "4700.0±1.0%Ω 0.1W 75.0V"
         assert bomline.Designator == "R1"

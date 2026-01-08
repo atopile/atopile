@@ -663,7 +663,7 @@ class PartLifecycle:
                 if specs:
                     # First spec goes into the standard "Value" field
                     first_spec = specs[0]
-                    first_value = first_spec.get_value()
+                    first_value = first_spec.get_value(show_tolerance=False)
                     Property.set_property(pcb_fp, _prop_factory("Value", first_value))
 
                     # Additional specs become separate properties

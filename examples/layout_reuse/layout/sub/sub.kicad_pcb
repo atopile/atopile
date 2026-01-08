@@ -101,7 +101,7 @@
 				)
 			)
 		)
-		(property "Value" "{1000.0±1.0%}Ω"
+		(property "Value" "1000.0Ω"
 			(at 0 4)
 			(layer "F.Fab")
 			(uuid "f26799ab-8d58-47a6-8669-f6c84d23b86e")
@@ -118,7 +118,7 @@
 			(hide yes)
 			(uuid "acf45864-ff8b-47d0-817f-978a4642524b")
 		)
-		(property "resistance" "{1000.0±1.0%}Ω"
+		(property "resistance" "1000.0±1.0%Ω"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -178,7 +178,7 @@
 			(hide yes)
 			(uuid "94a05d05-7e24-4132-a0da-5bbb4642524b")
 		)
-		(property "PARAM_resistance" "{\"type\": \"Quantity_Interval_Disjoint\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 990.0000002235174, \"max\": 1009.9999997764826}}]}}, \"unit\": \"\u03a9\"}}"
+		(property "PARAM_resistance" "{\"type\": \"Quantity_Interval_Disjoint\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 990.0000002235174, \"max\": 1009.9999997764826}}]}}, \"unit\": \"Ω\"}}"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -327,7 +327,7 @@
 				)
 			)
 		)
-		(property "Value" "{1000.0±1.0%}Ω"
+		(property "Value" "1000.0Ω"
 			(at 0 4)
 			(layer "F.Fab")
 			(uuid "f26799ab-8d58-47a6-8669-f6c84d23b86e")
@@ -344,7 +344,7 @@
 			(hide yes)
 			(uuid "1ff88fc7-e783-40d1-9082-1b814642524b")
 		)
-		(property "resistance" "{1000.0±1.0%}Ω"
+		(property "resistance" "1000.0±1.0%Ω"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -404,7 +404,7 @@
 			(hide yes)
 			(uuid "6400f6f9-3dc4-4a55-a857-24f24642524b")
 		)
-		(property "PARAM_resistance" "{\"type\": \"Quantity_Interval_Disjoint\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 990.0000002235174, \"max\": 1009.9999997764826}}]}}, \"unit\": \"\u03a9\"}}"
+		(property "PARAM_resistance" "{\"type\": \"Quantity_Interval_Disjoint\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 990.0000002235174, \"max\": 1009.9999997764826}}]}}, \"unit\": \"Ω\"}}"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -553,7 +553,7 @@
 				)
 			)
 		)
-		(property "Value" "{1000.0±1.0%}Ω"
+		(property "Value" "1000.0Ω"
 			(at 0 4)
 			(layer "F.Fab")
 			(uuid "f26799ab-8d58-47a6-8669-f6c84d23b86e")
@@ -570,7 +570,7 @@
 			(hide yes)
 			(uuid "1020f97f-2556-4432-a78f-6b9e4642524b")
 		)
-		(property "resistance" "{1000.0±1.0%}Ω"
+		(property "resistance" "1000.0±1.0%Ω"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -630,7 +630,7 @@
 			(hide yes)
 			(uuid "a1a83756-378b-439f-9479-524f4642524b")
 		)
-		(property "PARAM_resistance" "{\"type\": \"Quantity_Interval_Disjoint\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 990.0000002235174, \"max\": 1009.9999997764826}}]}}, \"unit\": \"\u03a9\"}}"
+		(property "PARAM_resistance" "{\"type\": \"Quantity_Interval_Disjoint\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 990.0000002235174, \"max\": 1009.9999997764826}}]}}, \"unit\": \"Ω\"}}"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
