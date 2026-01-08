@@ -189,58 +189,69 @@ def _get_bomline(
     return out
 
 
-def test_get_bomline():
-    from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
-    from faebryk.libs.kicad.fileformats import kicad
-    from faebryk.libs.test.fileformats import PCBFILE
+# TODO: move to global fixtures
+@pytest.fixture()
+def setup_project_config(tmp_path):
+    from atopile.config import ProjectConfig, ProjectPaths, config
 
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
+    config.project = ProjectConfig.skeleton(
+        entry="", paths=ProjectPaths(build=tmp_path / "build", root=tmp_path)
+    )
+    yield
 
-    pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE).kicad_pcb
-    k_pcb_fp = pcb.footprints[1]
 
-    class _TestFootprint(fabll.Node):
-        is_footprint_ = fabll.Traits.MakeEdge(F.Footprints.is_footprint.MakeChild())
-        pass
+class TestJLCBom:
+    @staticmethod
+    def test_get_bomline():
+        from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+        from faebryk.libs.kicad.fileformats import kicad
+        from faebryk.libs.test.fileformats import PCBFILE
 
-    class _TestNode(fabll.Node):
-        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
-        _has_designator = fabll.Traits.MakeEdge(F.has_designator.MakeChild("R1"))
-        _has_part_picked = fabll.Traits.MakeEdge(
-            F.Pickable.has_part_picked.MakeChild(
-                manufacturer="Amazing manufacturer",
-                partno="ABC-Part",
-                supplier_partno="C12345",
-                supplier_id="lcsc",
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE).kicad_pcb
+        k_pcb_fp = pcb.footprints[1]
+
+        class _TestFootprint(fabll.Node):
+            is_footprint_ = fabll.Traits.MakeEdge(F.Footprints.is_footprint.MakeChild())
+            pass
+
+        class _TestNode(fabll.Node):
+            _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+            _has_designator = fabll.Traits.MakeEdge(F.has_designator.MakeChild("R1"))
+            _has_part_picked = fabll.Traits.MakeEdge(
+                F.Pickable.has_part_picked.MakeChild(
+                    manufacturer="Amazing manufacturer",
+                    partno="ABC-Part",
+                    supplier_partno="C12345",
+                    supplier_id="lcsc",
+                )
             )
-        )
-        has_associated_footprint_ = fabll.Traits.MakeEdge(
-            F.Footprints.has_associated_footprint.MakeChild()
-        )
+            has_associated_footprint_ = fabll.Traits.MakeEdge(
+                F.Footprints.has_associated_footprint.MakeChild()
+            )
 
-    node = _TestNode.bind_typegraph(tg).create_instance(g=g)
-    fp_node = _TestFootprint.bind_typegraph(tg).create_instance(g=g)
-    node.has_associated_footprint_.get().setup(fp_node.is_footprint_.get())
+        node = _TestNode.bind_typegraph(tg).create_instance(g=g)
+        fp_node = _TestFootprint.bind_typegraph(tg).create_instance(g=g)
+        node.has_associated_footprint_.get().setup(fp_node.is_footprint_.get())
 
-    transformer = PCB_Transformer(pcb, node)
+        transformer = PCB_Transformer(pcb, node)
 
-    fabll.Traits.create_and_add_instance_to(
-        node=node.has_associated_footprint_.get().get_footprint(),
-        trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint,
-    ).setup(k_pcb_fp, transformer)
+        fabll.Traits.create_and_add_instance_to(
+            node=node.has_associated_footprint_.get().get_footprint(),
+            trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint,
+        ).setup(k_pcb_fp, transformer)
 
-    bomline = _get_bomline(node.get_trait(F.Pickable.has_part_picked))
+        bomline = _get_bomline(node.get_trait(F.Pickable.has_part_picked))
 
-    assert bomline is not None
-    assert bomline.Designator == "R1"
-    assert bomline.Footprint == "lcsc:LED0603-RD-YELLOW"
-    assert bomline.Value == ""
-    assert bomline.Manufacturer == "Amazing manufacturer"
-    assert bomline.Partnumber == "ABC-Part"
+        assert bomline is not None
+        assert bomline.Designator == "R1"
+        assert bomline.Footprint == "lcsc:LED0603-RD-YELLOW"
+        assert bomline.Value == ""
+        assert bomline.Manufacturer == "Amazing manufacturer"
+        assert bomline.Partnumber == "ABC-Part"
 
-
-class JlcBomTests:
     @staticmethod
     def _test_build(app: fabll.Node):
         from faebryk.core.solver.defaultsolver import DefaultSolver
@@ -275,7 +286,7 @@ class JlcBomTests:
         )
         r.resistance.get().alias_to_literal(g=g, value=r1_value)
 
-        JlcBomTests._test_build(r)
+        TestJLCBom._test_build(r)
 
         bomline = _get_bomline(r.get_trait(F.Pickable.has_part_picked))
         assert bomline is not None
@@ -301,7 +312,7 @@ class JlcBomTests:
             has_designator_ = fabll.Traits.MakeEdge(F.has_designator.MakeChild("MOD"))
 
         test_component = _TestComponent.bind_typegraph(tg).create_instance(g=g)
-        JlcBomTests._test_build(test_component)
+        TestJLCBom._test_build(test_component)
 
         bomline = _get_bomline(test_component.get_trait(F.Pickable.has_part_picked))
         assert bomline is not None
@@ -352,7 +363,7 @@ class JlcBomTests:
             )
         )
 
-        JlcBomTests._test_build(test_module)
+        TestJLCBom._test_build(test_module)
 
         bomline = _get_bomline(test_module.get_trait(F.Pickable.has_part_picked))
         assert bomline is None
@@ -371,7 +382,7 @@ class JlcBomTests:
             supplier_part_id="C23162",
             supplier=F.Pickable.is_pickable_by_supplier_id.Supplier.LCSC,
         )
-        JlcBomTests._test_build(test_module)
+        TestJLCBom._test_build(test_module)
 
         bomline = _get_bomline(test_module.get_trait(F.Pickable.has_part_picked))
         assert bomline is not None
@@ -379,5 +390,5 @@ class JlcBomTests:
         assert bomline.Footprint == "UNI_ROYAL_0603WAF4701T5E"
         assert bomline.Manufacturer == "UNI-ROYAL(Uniroyal Elec)"
         assert bomline.Partnumber == "0603WAF4701T5E"
-        # assert bomline.Value == "4.7kΩ ± 1%" #TODO
+        assert bomline.Value == "{4700.0±1.0%}Ω 0.1W 75.0V"
         assert bomline.Designator == "R1"
