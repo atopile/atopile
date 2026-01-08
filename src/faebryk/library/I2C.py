@@ -25,8 +25,6 @@ class I2C(fabll.Node):
     scl = F.ElectricLogic.MakeChild()
     sda = F.ElectricLogic.MakeChild()
 
-    reference_shim = F.ElectricPower.MakeChild()
-
     address = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Bit,
         domain=F.NumberDomain.Args(negative=False, integer=True),
