@@ -11,7 +11,7 @@ import faebryk.libs.exceptions
 from atopile.address import AddrStr
 from atopile.compiler.ast_visitor import is_ato_module
 from atopile.config import ProjectConfig, config
-from faebryk.libs.util import DefaultFactoryDict, KeyErrorNotFound, find, not_none
+from faebryk.libs.util import KeyErrorNotFound, find, not_none
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class SubPCB(fabll.Node):
         return out
 
     def get_path(self) -> Path:
-        return Path(self.path.get().force_extract_literal(str))
+        return Path(self.path.get().force_extract_literal().get_single())
 
 
 class has_subpcb(fabll.Node):
@@ -92,14 +92,16 @@ class in_sub_pcb(fabll.Node):
         return False
 
 
-def _index_module_layouts(tg: fbrk.TypeGraph) -> "dict[graph.BoundNode, set[SubPCB]]":
-    """Find, tag and return a set of all the modules with layouts."""
+def _index_module_layouts(tg: fbrk.TypeGraph) -> "dict[graph.BoundNode, set[Path]]":
+    """Find and return a mapping from type nodes to their layout file paths.
+
+    This function scans for modules with the is_ato_module trait and matches them
+    against build targets to find associated PCB layout files.
+    """
     from atopile.compiler import ast_types as AST
     from atopile.compiler.ast_visitor import AnyAtoBlock
 
-    pcbs: dict[Path, SubPCB] = DefaultFactoryDict(lambda _: SubPCB)  # type: ignore[arg-type]
-    entries: "dict[graph.BoundNode, set[SubPCB]]" = defaultdict(set)
-
+    entries: "dict[graph.BoundNode, set[Path]]" = defaultdict(set)
     modules_by_address: "dict[AddrStr, graph.BoundNode]" = {}
 
     modules = fabll.Traits.get_implementor_objects(
@@ -125,7 +127,12 @@ def _index_module_layouts(tg: fbrk.TypeGraph) -> "dict[graph.BoundNode, set[SubP
         file_path = (
             Path(path_trait.get_path()).resolve().relative_to(config.project.paths.root)
         )
-        module_name = not_none(module.get_type_name())
+        # get_type_name() returns "file.ato::ModuleName", but build addresses are
+        # "file.ato:ModuleName". Extract just the module name to match correctly.
+        full_type_name = not_none(module.get_type_name())
+        module_name = (
+            full_type_name.split("::")[-1] if "::" in full_type_name else full_type_name
+        )
         modules_by_address[AddrStr.from_parts(file_path, module_name)] = type_node
 
     # scan project and all dependencies
@@ -141,18 +148,33 @@ def _index_module_layouts(tg: fbrk.TypeGraph) -> "dict[graph.BoundNode, set[SubP
 
             for build in project_config.builds.values():
                 with faebryk.libs.exceptions.downgrade(Exception, logger=logger):
-                    pcb = pcbs[build.paths.layout]
                     if type_node := modules_by_address.get(AddrStr(build.address)):
-                        entries[type_node].add(pcb)
+                        entries[type_node].add(build.paths.layout)
 
     return entries
 
 
 def attach_sub_pcbs_to_entry_points(app: fabll.Node):
+    """Attach SubPCB traits to modules that have associated layout files."""
     module_index = _index_module_layouts(app.tg)
+    if not module_index:
+        return
+
     has_pcb_bound = has_subpcb.bind_typegraph_from_instance(app.instance)
+    tg = app.tg
     g = app.instance.g()
-    for type_node, pcbs in module_index.items():
+
+    # Cache SubPCB instances to avoid creating duplicates for the same path
+    subpcb_cache: dict[Path, SubPCB] = {}
+
+    def get_or_create_subpcb(path: Path) -> SubPCB:
+        if path not in subpcb_cache:
+            out = SubPCB._create_instance(tg, g)
+            out.path.get().alias_to_single(g=g, value=str(path))
+            subpcb_cache[path] = out
+        return subpcb_cache[path]
+
+    for type_node, pcb_paths in module_index.items():
         # Find all instances of this type by visiting instance edges
         instances: list[graph.BoundNode] = []
         fbrk.EdgeType.visit_instance_edges(
@@ -165,25 +187,32 @@ def attach_sub_pcbs_to_entry_points(app: fabll.Node):
             # Only attach to modules that are descendants of app
             if not module.is_descendant_of(app):
                 continue
-            for pcb in pcbs:
-                fabll.Traits.add_to(
-                    module,
-                    has_pcb_bound.create_instance(g=g).setup(subpcb=pcb),
-                )
+            for pcb_path in pcb_paths:
+                subpcb = get_or_create_subpcb(pcb_path)
+                trait_instance = has_pcb_bound.create_instance(g=g)
+                trait_instance.setup(subpcb=subpcb)
+                # Use add_instance_to for trait instances, not add_to
+                fabll.Traits.add_instance_to(module, trait_instance)
 
 
 def attach_subaddresses_to_modules(app: fabll.Node):
-    pcb_modules = fabll.Traits.get_implementor_objects(
-        has_subpcb.bind_typegraph(app.tg), g=app.g
+    """Attach in_sub_pcb traits to footprint children of modules with has_subpcb."""
+    pcb_modules = list(
+        fabll.Traits.get_implementor_objects(has_subpcb.bind_typegraph(app.tg), g=app.g)
     )
+    if not pcb_modules:
+        return
     in_sub_pcb_bound = in_sub_pcb.bind_typegraph_from_instance(app.instance)
     g = app.instance.g()
     for module in pcb_modules:
-        for footprint_child in module.get_children(
+        footprint_children = module.get_children(
             direct_only=False,
             types=fabll.Node,
             required_trait=F.Footprints.has_associated_footprint,
-        ):
-            footprint_child.add_child(
-                in_sub_pcb_bound.create_instance(g=g).setup(sub_root_module=module)
+        )
+        for footprint_child in footprint_children:
+            trait_instance = in_sub_pcb_bound.create_instance(g=g).setup(
+                sub_root_module=module
             )
+            # Use add_instance_to for trait instances, not add_to
+            fabll.Traits.add_instance_to(footprint_child, trait_instance)
