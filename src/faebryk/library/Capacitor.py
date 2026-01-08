@@ -39,12 +39,12 @@ class Capacitor(fabll.Node):
     # Alias for backwards compatibility
     power = F.ElectricPower.MakeChild()
     # Connect power to unnamed[0] and unnamed[1]
-    _ = fabll.MakeEdge(
+    _power_hv_to_unnamed0 = fabll.MakeEdge(
         [power, "hv"],
         [unnamed[0]],
         edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
     )
-    _ = fabll.MakeEdge(
+    _power_lv_to_unnamed1 = fabll.MakeEdge(
         [power, "lv"],
         [unnamed[1]],
         edge=fbrk.EdgeInterfaceConnection.build(shallow=False),

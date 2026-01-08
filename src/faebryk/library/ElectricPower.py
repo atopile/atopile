@@ -23,12 +23,13 @@ class ElectricPower(fabll.Node):
     gnd = F.Electrical.MakeChild()
 
     # Connect deprecated aliases to the actual rails
-    _ = fabll.MakeEdge(
+    # @raytallen: bug, we seem to be filtering out siblings
+    _vcc_to_hv = fabll.MakeEdge(
         [vcc],
         [hv],
         edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
     )
-    _ = fabll.MakeEdge(
+    _gnd_to_lv = fabll.MakeEdge(
         [gnd],
         [lv],
         edge=fbrk.EdgeInterfaceConnection.build(shallow=False),

@@ -67,8 +67,8 @@ class Addressor(fabll.Node):
                 nodes=[addressor],
             )
 
-    @F.implements_design_check.register_post_solve_check
-    def __check_post_solve__(self):
+    @F.implements_design_check.register_post_design_check
+    def __check_post_design__(self):
         """Set address lines based on the solved offset value."""
 
         # Try direct constraint first (returns Numbers)

@@ -1417,3 +1417,21 @@ def test_connect_incompatible_hierarchical_regression():
 
     with pytest.raises(ValueError, match="Failed to connect"):
         x._is_interface.get().connect_to(y)
+
+
+def test_sibling_connected():
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _TestIf(fabll.Node):
+        _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+        if1 = F.Electrical.MakeChild()
+        if2 = F.Electrical.MakeChild()
+
+    test_if = _TestIf.bind_typegraph(tg).create_instance(g=g)
+
+    assert not test_if.if1.get()._is_interface.get().is_connected_to(test_if.if2.get())
+
+    test_if.if1.get()._is_interface.get().connect_to(test_if.if2.get())
+
+    assert test_if.if1.get()._is_interface.get().is_connected_to(test_if.if2.get())

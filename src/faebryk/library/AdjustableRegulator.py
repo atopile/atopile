@@ -65,12 +65,12 @@ class AdjustableRegulator(fabll.Node):
     # to power_in.voltage and power_out.voltage respectively
     v_in = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
     v_out = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
-    _ = fabll.MakeEdge(
+    _v_in_to_power_in_voltage = fabll.MakeEdge(
         [v_in],
         ["power_in", "voltage"],
         edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
     )
-    _ = fabll.MakeEdge(
+    _v_out_to_power_out_voltage = fabll.MakeEdge(
         [v_out],
         ["power_out", "voltage"],
         edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
