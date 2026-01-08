@@ -3,6 +3,7 @@
 
 
 import logging
+import operator
 from collections import defaultdict
 from dataclasses import dataclass
 from itertools import combinations
@@ -16,8 +17,10 @@ from typing import (
     cast,
 )
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.core import graph
 from faebryk.core.solver.solver import LOG_PICK_SOLVE
 from faebryk.libs.logging import rich_to_string
 from faebryk.libs.util import (
@@ -318,7 +321,7 @@ class MutatorUtils:
             assert_=True,
             # already checked for uncorrelated lit, op needs to be correlated
             allow_uncorrelated=False,
-            check_exists=False,
+            check_redundant=False,
             _relay=False,
         )
         if terminate:
@@ -375,7 +378,7 @@ class MutatorUtils:
                 assert_=True,
                 # already checked for uncorrelated lit, op needs to be correlated
                 allow_uncorrelated=False,
-                check_exists=False,
+                check_redundant=False,
                 _relay=False,
             ),
         )
@@ -384,7 +387,7 @@ class MutatorUtils:
         self,
         po: F.Parameters.can_be_operand,
         to: F.Parameters.can_be_operand,
-        check_existing: bool = True,
+        check_redundant: bool = True,
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
         terminate: bool = False,
     ) -> F.Expressions.is_expression | F.Literals.is_literal:
@@ -426,7 +429,7 @@ class MutatorUtils:
         po_po = po.as_parameter_operatable.force_get()
         from_ops = [po_po] + list(from_ops)
         if to_is_lit:
-            assert check_existing
+            assert check_redundant
             to_lit = to.as_literal.force_get()
             return self.alias_is_literal(
                 po_po, to_lit, from_ops=from_ops, terminate=terminate
@@ -441,7 +444,7 @@ class MutatorUtils:
             po_po.as_expression.try_get()
             and (to_po := to.as_parameter_operatable.try_get())
             and (to_exp := to_po.as_expression.try_get())
-            and check_existing
+            and check_redundant
         ):
             if overlap := (
                 po_po.get_operations(F.Expressions.Is, predicates_only=True)
@@ -457,7 +460,7 @@ class MutatorUtils:
             to,
             from_ops=from_ops,
             assert_=True,
-            check_exists=check_existing,
+            check_redundant=check_redundant,
             allow_uncorrelated=True,
             _relay=False,
         )
@@ -466,7 +469,7 @@ class MutatorUtils:
         self,
         po: F.Parameters.can_be_operand,
         to: F.Parameters.can_be_operand,
-        check_existing: bool = True,
+        check_redundant: bool = True,
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
     ) -> F.Expressions.is_expression | F.Literals.is_literal:
         from faebryk.core.solver.symbolic.pure_literal import (
@@ -509,13 +512,13 @@ class MutatorUtils:
             return self.mutator.make_lit(True).is_literal.get()
 
         if to_lit:
-            assert check_existing
+            assert check_redundant
             return self.subset_literal(
                 po.as_parameter_operatable.force_get(),
                 to_lit,
                 from_ops=from_ops,
             )
-        if po_lit and check_existing:
+        if po_lit and check_redundant:
             # TODO implement
             pass
 
@@ -525,7 +528,7 @@ class MutatorUtils:
             and po_po.as_expression.try_get()
             and (to_po := to.as_parameter_operatable.try_get())
             and to_po.as_expression.try_get()
-            and check_existing
+            and check_redundant
         ):
             if overlap := (
                 po.as_parameter_operatable.force_get().get_operations(
@@ -543,7 +546,7 @@ class MutatorUtils:
             to,
             from_ops=from_ops,
             assert_=True,
-            check_exists=check_existing,
+            check_redundant=check_redundant,
             allow_uncorrelated=True,
             _relay=False,
         )
@@ -665,6 +668,261 @@ class MutatorUtils:
             ):
                 return c
         return None
+
+    # Subsumption checking -------------------------------------------------------------
+
+    @staticmethod
+    def _get_potentially_subsuming_types(
+        expr_factory: type[fabll.NodeT],
+    ) -> tuple[type[fabll.NodeT], ...]:
+        """
+        Get all expression types that could potentially subsume the given type.
+        Includes the type itself plus any stronger types.
+
+        Cross-type subsumption (candidate → new):
+        - Is → IsSubset, GreaterThan, GreaterOrEqual
+        - IsSubset → GreaterThan, GreaterOrEqual
+        - GreaterThan ↔ GreaterOrEqual
+        """
+        return {
+            F.Expressions.IsSubset: (
+                F.Expressions.IsSubset,
+                F.Expressions.Is,
+            ),
+            F.Expressions.GreaterThan: (
+                F.Expressions.GreaterThan,
+                F.Expressions.GreaterOrEqual,
+                F.Expressions.Is,
+                F.Expressions.IsSubset,
+            ),
+            F.Expressions.GreaterOrEqual: (
+                F.Expressions.GreaterOrEqual,
+                F.Expressions.GreaterThan,
+                F.Expressions.Is,
+                F.Expressions.IsSubset,
+            ),
+            F.Expressions.Or: (F.Expressions.Or,),
+        }.get(expr_factory, (expr_factory,))
+
+    @staticmethod
+    def _compatible_expr_types(
+        new_factory: type[fabll.NodeT],
+        candidate_obj: fabll.Node,
+    ) -> bool:
+        """Can the candidate expression potentially subsume the new expression?"""
+        return any(
+            candidate_obj.isinstance(t)
+            for t in MutatorUtils._get_potentially_subsuming_types(new_factory)
+        )
+
+    @staticmethod
+    def _operands_structurally_match(
+        new_operands: Sequence[F.Parameters.can_be_operand],
+        candidate_operands: Sequence[F.Parameters.can_be_operand],
+    ) -> bool:
+        """
+        Check that non-literal operands refer to the same parameter/expression.
+        Literals can differ (semantic check will compare values).
+        """
+        for new_op, cand_op in zip(new_operands, candidate_operands):
+            new_po = new_op.as_parameter_operatable.try_get()
+            cand_po = cand_op.as_parameter_operatable.try_get()
+
+            # Both literals - skip (semantic check will compare values)
+            if new_po is None and cand_po is None:
+                continue
+
+            # One literal, one not - no match
+            if new_po is None or cand_po is None:
+                return False
+
+            # Both operatables - must be same node (allow different graphs since
+            # the mutator operates across input and output graphs)
+            if not new_po.is_same(cand_po, allow_different_graph=True):
+                return False
+
+        return True
+
+    @staticmethod
+    def _operands_are_subset(
+        candidate_operands: Sequence[F.Parameters.can_be_operand],
+        new_operands: Sequence[F.Parameters.can_be_operand],
+    ) -> bool:
+        """
+        Check if candidate operands are a subset of new operands (by identity).
+        Used for Or subsumption: Or(A, B) subsumes Or(A, B, C).
+        """
+        if len(candidate_operands) > len(new_operands):
+            return False
+
+        def _get_uuid(op: F.Parameters.can_be_operand) -> int | None:
+            if (po := op.as_parameter_operatable.try_get()) is not None:
+                return po.instance.node().get_uuid()
+            if (lit := op.as_literal.try_get()) is not None:
+                return lit.instance.node().get_uuid()
+            return None
+
+        new_uuids = {_get_uuid(op) for op in new_operands}
+        return all(_get_uuid(op) in new_uuids for op in candidate_operands)
+
+    @staticmethod
+    def _structural_match(
+        new_factory: type[fabll.NodeT],
+        new_operands: Sequence[F.Parameters.can_be_operand],
+        candidate: F.Expressions.is_predicate,
+    ) -> bool:
+        """
+        Quick structural check - does this candidate have compatible shape?
+        e.g., same operand(s) in same position(s), compatible expression type
+        """
+        # TODO: find a more efficient way to do structural-match searches
+        # (log(N) in number of exprs?)
+        candidate_expr = candidate.as_expression.get()
+        candidate_operands = candidate_expr.get_operands()
+
+        # Same/compatible expression type?
+        candidate_obj = fabll.Traits(candidate).get_obj_raw()
+        if not MutatorUtils._compatible_expr_types(new_factory, candidate_obj):
+            return False
+
+        # Or: quick filter - candidate must have <= operands (subset check in semantic)
+        if new_factory is F.Expressions.Or:
+            return len(candidate_operands) <= len(new_operands)
+
+        # Same arity?
+        if len(candidate_operands) != len(new_operands):
+            return False
+
+        # Operands match (considering the non-literal operand)?
+        return MutatorUtils._operands_structurally_match(
+            new_operands, candidate_operands
+        )
+
+    @staticmethod
+    def _is_subsumed_by(
+        new_factory: type[fabll.NodeT],
+        new_operands: Sequence[F.Parameters.can_be_operand],
+        candidate: F.Expressions.is_predicate,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+    ) -> bool:
+        """
+        Semantic subsumption check — assumes structural match already passed.
+
+        Predicate types with no subsumption cases:
+        - Is: same values would be congruent (not subsuming), different don't subsume
+        - IsBitSet: same bit+value would be congruent, different bits don't subsume
+
+        Valid but expensive/complex cases intentionally skipped:
+        - Or:
+            - Non-Or P subsumes Or(A, B, ...) if P subsumes any operand (recursive)
+            - Or(A, B) subsumes non-Or P if all operands subsume P (recursive)
+        - Not:
+            - Not(A) subsumes Not(B) if B subsumes A (contraposition, recursive)
+            - P subsumes Not(Q) when P implies ~Q (requires negation semantics)
+            - Not(P) subsumes Q when ~P implies Q (requires negation semantics)
+        - Nested logical expressions:
+            - Not(Not(X)) ≡ X (handled by is_involutory normalization elsewhere)
+            - De Morgan's laws for Not(Or(...))
+        """
+
+        def _compare_operand_literals(
+            operand_index: int,
+            comparator: Callable[[F.Literals.is_literal, F.Literals.is_literal], bool],
+        ) -> bool:
+            """
+            Generic comparison of literal operands at a given index.
+            Returns True if comparator(candidate_lit, new_lit) is True.
+            """
+            new_lit = new_operands[operand_index].as_literal.try_get()
+            cand_lit = (
+                candidate.as_expression.get()
+                .get_operands()[operand_index]
+                .as_literal.try_get()
+            )
+
+            if new_lit is None or cand_lit is None:
+                return False
+
+            try:
+                return comparator(cand_lit, new_lit)
+            except F.Literals.IncompatibleTypesError:
+                return False
+
+        def _get_singleton_value(lit: F.Literals.is_literal) -> float | None:
+            """Extract singleton numeric value from a literal."""
+            nums = fabll.Traits(lit).get_obj_raw().try_cast(F.Literals.Numbers)
+            if nums is None:
+                return None
+            return nums.try_get_single()
+
+        def _get_min_value(lit: F.Literals.is_literal) -> float | None:
+            """Extract minimum value from a numeric literal (range or singleton)."""
+            nums = fabll.Traits(lit).get_obj_raw().try_cast(F.Literals.Numbers)
+            if nums is None or nums.is_empty():
+                return None
+            return nums.get_min_value()
+
+        def _make_numeric_comparator(
+            cand_extractor: Callable[[F.Literals.is_literal], float | None],
+            op: Callable[[float, float], bool],
+        ) -> Callable[[F.Literals.is_literal, F.Literals.is_literal], bool]:
+            def comparator(
+                cand_lit: F.Literals.is_literal, new_lit: F.Literals.is_literal
+            ) -> bool:
+                cand_val = cand_extractor(cand_lit)
+                new_val = _get_singleton_value(new_lit)
+                if cand_val is None or new_val is None:
+                    return False
+                return op(cand_val, new_val)
+
+            return comparator
+
+        _numeric_ge = _make_numeric_comparator(_get_singleton_value, operator.ge)
+        _numeric_gt = _make_numeric_comparator(_get_singleton_value, operator.gt)
+        _min_ge_singleton = _make_numeric_comparator(_get_min_value, operator.ge)
+        _min_gt_singleton = _make_numeric_comparator(_get_min_value, operator.gt)
+
+        def _is_subset_of(c: F.Literals.is_literal, n: F.Literals.is_literal) -> bool:
+            return c.is_subset_of(n, g=g, tg=tg)
+
+        c = fabll.Traits(candidate).get_obj_raw()
+        E = F.Expressions
+
+        match new_factory:
+            # IsSubset ← Is, IsSubset
+            case E.IsSubset if c.isinstance(E.Is) or c.isinstance(E.IsSubset):
+                return _compare_operand_literals(1, _is_subset_of)
+            # GreaterThan ← Is (value > bound)
+            case E.GreaterThan if c.isinstance(E.Is):
+                return _compare_operand_literals(1, _numeric_gt)
+            # GreaterThan ← IsSubset (min > bound)
+            case E.GreaterThan if c.isinstance(E.IsSubset):
+                return _compare_operand_literals(1, _min_gt_singleton)
+            # GreaterThan ← GT, GE (bound comparison)
+            case E.GreaterThan if c.isinstance(E.GreaterThan):
+                return _compare_operand_literals(1, _numeric_ge)
+            case E.GreaterThan if c.isinstance(E.GreaterOrEqual):
+                return _compare_operand_literals(1, _numeric_gt)
+            # GreaterOrEqual ← Is (value >= bound)
+            case E.GreaterOrEqual if c.isinstance(E.Is):
+                return _compare_operand_literals(1, _numeric_ge)
+            # GreaterOrEqual ← IsSubset (min >= bound)
+            case E.GreaterOrEqual if c.isinstance(E.IsSubset):
+                return _compare_operand_literals(1, _min_ge_singleton)
+            # GreaterOrEqual ← GT, GE (bound comparison)
+            case E.GreaterOrEqual if c.isinstance(E.GreaterThan):
+                return _compare_operand_literals(1, _numeric_ge)
+            case E.GreaterOrEqual if c.isinstance(E.GreaterOrEqual):
+                return _compare_operand_literals(1, _numeric_ge)
+            # Or ← Or (operand subset check)
+            case E.Or if c.isinstance(E.Or):
+                candidate_operands = candidate.as_expression.get().get_operands()
+                return MutatorUtils._operands_are_subset(
+                    candidate_operands, new_operands
+                )
+            case _:
+                return False
 
     def get_all_aliases(self) -> set[F.Expressions.Is]:
         return set(

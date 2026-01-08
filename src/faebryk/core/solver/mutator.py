@@ -1603,11 +1603,75 @@ class Mutator:
 
         assert False
 
+    def _get_candidate_predicates(
+        self, expr_factory: type[fabll.NodeT]
+    ) -> Iterable[F.Expressions.is_predicate]:
+        """
+        Find all predicates that could potentially subsume a new predicate of the
+        given expression type. Includes terminated predicates since they still constrain
+        the solution space.
+
+        TODO: filter to exprs involving same parameter(s) (fast)
+        """
+
+        for candidate_type in MutatorUtils._get_potentially_subsuming_types(
+            expr_factory
+        ):
+            # All predicate expressions of this type in input graph
+            yield from (
+                pred
+                for inst in candidate_type.bind_typegraph(self.tg_in).get_instances(
+                    self.G_in
+                )
+                if (pred := inst.try_get_trait(F.Expressions.is_predicate))
+            )
+
+            # And all predicate expressions of this type added in the current stage
+            yield from (
+                pred
+                for created_po in self.transformations.created
+                if (
+                    pred := created_po.try_get_sibling_trait(F.Expressions.is_predicate)
+                )
+                and fabll.Traits(created_po).get_obj_raw().isinstance(candidate_type)
+            )
+
+    def find_subsuming_expression(
+        self,
+        expr_factory: type[fabll.NodeT],
+        operands: Sequence[F.Parameters.can_be_operand],
+    ) -> F.Expressions.is_predicate | None:
+        for candidate in self._get_candidate_predicates(expr_factory):
+            # Fast path: structural filter
+            if not MutatorUtils._structural_match(expr_factory, operands, candidate):
+                continue
+
+            # Slow path: semantic subsumption
+            # TODO: consider G_in / G_out
+            if MutatorUtils._is_subsumed_by(
+                expr_factory, operands, candidate, self.G_transient, self.tg_in
+            ):
+                logger.debug(
+                    "Redundant predicate: %s(%s) subsumed by %s",
+                    expr_factory.__name__,
+                    ", ".join(
+                        op_po.compact_repr(self.output_print_context)
+                        if (op_po := op.as_parameter_operatable.try_get())
+                        else str(op)
+                        for op in operands
+                    ),
+                    candidate.as_expression.get().compact_repr(
+                        self.output_print_context
+                    ),
+                )
+
+                return candidate
+
     def create_expression(
         self,
         expr_factory: type[fabll.NodeT],
         *operands: F.Parameters.can_be_operand,
-        check_exists: bool = True,
+        check_redundant: bool = True,
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
         assert_: bool = False,
         allow_uncorrelated: bool = False,
@@ -1644,13 +1708,16 @@ class Mutator:
                 return res
 
         expr = None
-        if check_exists:
+        if check_redundant:
             # TODO look in old & new graph
             expr = self.utils.find_congruent_expression(
                 expr_factory,
                 *operands,
                 allow_uncorrelated=allow_uncorrelated,
             )
+            # Check for semantic subsumption (only for predicates)
+            if expr is None and assert_:  # TODO: is it correct to condition on assert_?
+                expr = self.find_subsuming_expression(expr_factory, operands)
 
         if expr is None:
             expr = self._create_expression(

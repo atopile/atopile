@@ -87,6 +87,10 @@ class NotSingletonError(Exception):
     pass
 
 
+class IncompatibleTypesError(ValueError):
+    pass
+
+
 class is_literal(fabll.Node):
     from faebryk.library.Parameters import can_be_operand
 
@@ -129,7 +133,7 @@ class is_literal(fabll.Node):
                 g=g,
                 tg=tg,
             )
-        raise ValueError("incompatible types")
+        raise IncompatibleTypesError()
 
     def op_intersect_intervals(
         self: "is_literal | LiteralNodes",
@@ -141,7 +145,7 @@ class is_literal(fabll.Node):
         tg = tg or self.tg
         objs = is_literal._to_nodes(self, *others)
         if len(set(type(obj) for obj in objs)) != 1:
-            raise ValueError("incompatible types")
+            raise IncompatibleTypesError()
         if len(objs) == 1:
             return is_literal._to_lits(*objs)[0]
         return (
@@ -164,7 +168,7 @@ class is_literal(fabll.Node):
         tg = tg or self.tg
         objs = is_literal._to_nodes(self, *others)
         if len(set(type(obj) for obj in objs)) != 1:
-            raise ValueError("incompatible types")
+            raise IncompatibleTypesError()
         if len(objs) == 1:
             return is_literal._to_lits(*objs)[0]
         return (
@@ -196,7 +200,7 @@ class is_literal(fabll.Node):
                 )
                 .is_literal.get()
             )
-        raise ValueError("incompatible types")
+        raise IncompatibleTypesError()
 
     def in_container(
         self,

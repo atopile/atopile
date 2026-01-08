@@ -2355,6 +2355,426 @@ def test_solve_voltage_divider_complex():
     # assert solver_total_current == res_total_current
 
 
+class TestSubsumptionDetection:
+    """
+    Test subsumption detection for predicates.
+
+    Subsumption means: if predicate A is true, predicate B is automatically true.
+    A "subsumes" B, making B redundant.
+
+    Same-type subsumptions:
+    - IsSubset: X ⊆ [0,10] subsumes X ⊆ [0,20] (tighter range)
+    - GreaterThan: X > 20 subsumes X > 10 (tighter lower bound)
+    - GreaterOrEqual: X >= 20 subsumes X >= 10 (tighter lower bound)
+
+    Cross-type subsumptions:
+    - Is → IsSubset: X is 5 subsumes X ⊆ [0,10] when 5 ∈ [0,10]
+    - Is → GreaterThan: X is 5 subsumes X > 3 when 5 > 3
+    - IsSubset → GreaterThan: X ⊆ [10,20] subsumes X > 5 when min >= 5
+    """
+
+    PRED_FACTORIES = {
+        "IsSubset": F.Expressions.IsSubset,
+        "Is": F.Expressions.Is,
+        "GreaterThan": F.Expressions.GreaterThan,
+        "GreaterOrEqual": F.Expressions.GreaterOrEqual,
+    }
+
+    @staticmethod
+    def _run_in_mutator(E, callback, force_copy=True):
+        """Run callback within a mutator context, returning its result."""
+        from faebryk.core.solver.algorithm import algorithm
+        from faebryk.core.solver.mutator import MutationMap, Mutator
+
+        mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
+        result = None
+
+        @algorithm("test", force_copy=force_copy)
+        def test_algo(mutator: Mutator):
+            nonlocal result
+            result = callback(mutator)
+
+        Mutator(mutation_map=mut_map, algo=test_algo, iteration=0, terminal=True).run()
+        return result
+
+    @staticmethod
+    def _make_pred(E, pred_spec, operand, assert_=True):
+        pred_type, value = pred_spec
+        match pred_type:
+            case "IsSubset":
+                return E.is_subset(operand, E.lit_op_range(value), assert_=assert_)
+            case "Is":
+                return E.is_(operand, E.lit_op_single(value), assert_=assert_)
+            case "GreaterThan":
+                return F.Expressions.GreaterThan.from_operands(
+                    operand, E.lit_op_single(value), g=E.g, tg=E.tg, assert_=assert_
+                )
+            case "GreaterOrEqual":
+                return F.Expressions.GreaterOrEqual.from_operands(
+                    operand, E.lit_op_single(value), g=E.g, tg=E.tg, assert_=assert_
+                )
+            case _:
+                raise ValueError(f"Unknown predicate type: {pred_type}")
+
+    @staticmethod
+    def _make_operands(E, pred_spec, operand):
+        """Create operands list for find_subsuming_expression."""
+        pred_type, value = pred_spec
+        literal = (
+            E.lit_op_range(value) if pred_type == "IsSubset" else E.lit_op_single(value)
+        )
+        return [operand, literal]
+
+    @pytest.mark.parametrize(
+        "existing_pred, new_pred, expect_subsumed",
+        [
+            # Same-type: IsSubset with Numbers
+            pytest.param(
+                ("IsSubset", (0, 10)),
+                ("IsSubset", (0, 20)),
+                True,
+                id="ss_subsumes_ss_positive_tighter_range",
+            ),
+            pytest.param(
+                ("IsSubset", (0, 20)),
+                ("IsSubset", (0, 10)),
+                False,
+                id="ss_subsumes_ss_negative_looser_range",
+            ),
+            pytest.param(
+                ("IsSubset", (5, 15)),
+                ("IsSubset", (0, 20)),
+                True,
+                id="ss_subsumes_ss_positive_inner_range",
+            ),
+            pytest.param(
+                ("IsSubset", (0, 10)),
+                ("IsSubset", (5, 15)),
+                False,
+                id="ss_subsumes_ss_negative_partial_overlap",
+            ),
+            # Same-type: GreaterThan
+            pytest.param(
+                ("GreaterThan", 20),
+                ("GreaterThan", 10),
+                True,
+                id="gt_subsumes_gt_positive_higher_bound",
+            ),
+            pytest.param(
+                ("GreaterThan", 10),
+                ("GreaterThan", 20),
+                False,
+                id="gt_subsumes_gt_negative_lower_bound",
+            ),
+            # Same-type: GreaterOrEqual
+            pytest.param(
+                ("GreaterOrEqual", 20),
+                ("GreaterOrEqual", 10),
+                True,
+                id="ge_subsumes_ge_positive_higher_bound",
+            ),
+            pytest.param(
+                ("GreaterOrEqual", 10),
+                ("GreaterOrEqual", 20),
+                False,
+                id="ge_subsumes_ge_negative_lower_bound",
+            ),
+            # Cross-type: Is → IsSubset
+            pytest.param(
+                ("Is", 5),
+                ("IsSubset", (0, 10)),
+                True,
+                id="is_subsumes_ss_positive_value_in_range",
+            ),
+            pytest.param(
+                ("Is", 15),
+                ("IsSubset", (0, 10)),
+                False,
+                id="is_subsumes_ss_negative_value_outside_range",
+            ),
+            # Cross-type: Is → GreaterThan
+            pytest.param(
+                ("Is", 10),
+                ("GreaterThan", 5),
+                True,
+                id="is_subsumes_gt_positive_value_above_bound",
+            ),
+            pytest.param(
+                ("Is", 5),
+                ("GreaterThan", 10),
+                False,
+                id="is_subsumes_gt_negative_value_below_bound",
+            ),
+            # Cross-type: Is → GreaterOrEqual
+            pytest.param(
+                ("Is", 10),
+                ("GreaterOrEqual", 10),
+                True,
+                id="is_subsumes_ge_positive_value_equal_bound",
+            ),
+            pytest.param(
+                ("Is", 5),
+                ("GreaterOrEqual", 10),
+                False,
+                id="is_subsumes_ge_negative_value_below_bound",
+            ),
+            # Cross-type: IsSubset → GreaterThan
+            pytest.param(
+                ("IsSubset", (10, 20)),
+                ("GreaterThan", 5),
+                True,
+                id="ss_subsumes_gt_positive_range_min_above_bound",
+            ),
+            pytest.param(
+                ("IsSubset", (0, 20)),
+                ("GreaterThan", 5),
+                False,
+                id="ss_subsumes_gt_negative_range_min_below_bound",
+            ),
+            # Cross-type: IsSubset → GreaterOrEqual
+            pytest.param(
+                ("IsSubset", (10, 20)),
+                ("GreaterOrEqual", 10),
+                True,
+                id="ss_subsumes_ge_positive_range_min_equal_bound",
+            ),
+            pytest.param(
+                ("IsSubset", (0, 20)),
+                ("GreaterOrEqual", 10),
+                False,
+                id="ss_subsumes_ge_negative_range_min_below_bound",
+            ),
+            # Cross-type: GreaterThan → GreaterOrEqual
+            pytest.param(
+                ("GreaterThan", 10),
+                ("GreaterOrEqual", 10),
+                True,
+                id="gt_subsumes_ge_positive_same_bound",
+            ),
+            pytest.param(
+                ("GreaterThan", 10),
+                ("GreaterOrEqual", 15),
+                False,
+                id="gt_subsumes_ge_negative_higher_bound",
+            ),
+            # Cross-type: GreaterOrEqual → GreaterThan
+            pytest.param(
+                ("GreaterOrEqual", 20),
+                ("GreaterThan", 10),
+                True,
+                id="ge_subsumes_gt_positive_higher_bound",
+            ),
+            pytest.param(
+                ("GreaterOrEqual", 10),
+                ("GreaterThan", 10),
+                False,
+                id="ge_subsumes_gt_negative_equal_bound",
+            ),
+        ],
+    )
+    def test_subsumption_detection(self, existing_pred, new_pred, expect_subsumed):
+        E = BoundExpressions()
+        X = E.parameter_op()
+        self._make_pred(E, existing_pred, X, assert_=True)
+
+        new_type, _ = new_pred
+        new_operands = self._make_operands(E, new_pred, X)
+        result = self._run_in_mutator(
+            E,
+            lambda m: m.find_subsuming_expression(
+                self.PRED_FACTORIES[new_type], new_operands
+            ),
+        )
+
+        assert result is not None if expect_subsumed else result is None
+
+    @pytest.mark.parametrize(
+        "existing_pred, new_pred, same_param, assert_existing",
+        [
+            # Different parameter - should never match
+            pytest.param(
+                ("IsSubset", (0, 10)),
+                ("IsSubset", (0, 20)),
+                False,
+                True,
+                id="different_param_ss",
+            ),
+            pytest.param(
+                ("GreaterThan", 20),
+                ("GreaterThan", 10),
+                False,
+                True,
+                id="different_param_gt",
+            ),
+            # Non-predicate (not asserted) - should not be found
+            pytest.param(
+                ("IsSubset", (0, 10)),
+                ("IsSubset", (0, 20)),
+                True,
+                False,
+                id="non_predicate_ss",
+            ),
+            # Disjoint ranges - no subsumption
+            pytest.param(
+                ("IsSubset", (0, 10)),
+                ("IsSubset", (20, 30)),
+                True,
+                True,
+                id="disjoint_ranges",
+            ),
+        ],
+    )
+    def test_false_positives(
+        self, existing_pred, new_pred, same_param, assert_existing
+    ):
+        E = BoundExpressions()
+        X = E.parameter_op()
+        Y = E.parameter_op() if not same_param else X
+
+        self._make_pred(E, existing_pred, X, assert_=assert_existing)
+        new_type = new_pred[0]
+        new_operands = self._make_operands(E, new_pred, Y)
+        result = self._run_in_mutator(
+            E,
+            lambda m: m.find_subsuming_expression(
+                self.PRED_FACTORIES[new_type], new_operands
+            ),
+        )
+
+        assert result is None, f"Should NOT detect subsumption, but found: {result}"
+
+    def test_terminated_predicate_still_found(self):
+        """
+        Terminated predicates SHOULD still be found as subsuming.
+        Termination means the solver is done processing the predicate,
+        but it still constrains the solution space.
+        """
+        from faebryk.core.solver.mutator import is_terminated
+
+        E = BoundExpressions()
+        X = E.parameter_op()
+        existing = E.is_subset(X, E.lit_op_range((0, 10)), assert_=True)
+        fabll.Traits.create_and_add_instance_to(
+            node=fabll.Traits(existing).get_obj_raw(),
+            trait=is_terminated,
+        )
+        new_operands = [X, E.lit_op_range((0, 20))]
+        result = self._run_in_mutator(
+            E,
+            lambda m: m.find_subsuming_expression(F.Expressions.IsSubset, new_operands),
+        )
+        assert result is not None
+
+    def test_finds_correct_among_multiple(self):
+        E = BoundExpressions()
+        X = E.parameter_op()
+        Y = E.parameter_op()
+
+        E.is_subset(Y, E.lit_op_range((0, 5)), assert_=True)  # wrong param
+        E.is_subset(X, E.lit_op_range((50, 60)), assert_=True)  # disjoint
+        E.is_subset(X, E.lit_op_range((0, 10)), assert_=True)  # subsumes
+
+        new_operands = [X, E.lit_op_range((0, 20))]
+        result = self._run_in_mutator(
+            E,
+            lambda m: m.find_subsuming_expression(F.Expressions.IsSubset, new_operands),
+        )
+        assert result is not None
+
+    def test_finds_predicate_created_during_algo(self):
+        E = BoundExpressions()
+        X = E.parameter_op()
+        lit_tight = E.lit_op_range((0, 10))
+        lit_loose = E.lit_op_range((0, 20))
+
+        def create_and_find(mutator):
+            # Create a predicate during the algorithm
+            mutator.create_expression(
+                F.Expressions.IsSubset, X, lit_tight, assert_=True
+            )
+            # Now try to find subsumption for a looser range
+            return mutator.find_subsuming_expression(
+                F.Expressions.IsSubset, [X, lit_loose]
+            )
+
+        result = self._run_in_mutator(E, create_and_find, force_copy=False)
+        assert result is not None
+
+    def test_or_subsumption_subset_operands(self):
+        """Or(A, B) subsumes Or(A, B, C) - smaller Or is tighter."""
+        E = BoundExpressions()
+        X = E.parameter_op()
+
+        # Create predicates A, B, C (as can_be_operand)
+        pred_a = E.is_subset(X, E.lit_op_range((0, 10)), assert_=False)
+        pred_b = E.is_subset(X, E.lit_op_range((20, 30)), assert_=False)
+        pred_c = E.is_subset(X, E.lit_op_range((40, 50)), assert_=False)
+
+        # Create Or(A, B) as existing predicate
+        F.Expressions.Or.from_operands(pred_a, pred_b, g=E.g, tg=E.tg, assert_=True)
+
+        # Try to find subsumption for Or(A, B, C)
+        new_operands = [pred_a, pred_b, pred_c]
+        result = self._run_in_mutator(
+            E, lambda m: m.find_subsuming_expression(F.Expressions.Or, new_operands)
+        )
+        assert result is not None
+
+    def test_or_subsumption_same_operands(self):
+        """Or(A, B) subsumes Or(A, B) - same operands."""
+        E = BoundExpressions()
+        X = E.parameter_op()
+
+        pred_a = E.is_subset(X, E.lit_op_range((0, 10)), assert_=False)
+        pred_b = E.is_subset(X, E.lit_op_range((20, 30)), assert_=False)
+
+        F.Expressions.Or.from_operands(pred_a, pred_b, g=E.g, tg=E.tg, assert_=True)
+
+        new_operands = [pred_a, pred_b]
+        result = self._run_in_mutator(
+            E, lambda m: m.find_subsuming_expression(F.Expressions.Or, new_operands)
+        )
+        assert result is not None
+
+    def test_or_subsumption_negative_superset(self):
+        """Or(A, B, C) does NOT subsume Or(A, B) - larger Or is looser."""
+        E = BoundExpressions()
+        X = E.parameter_op()
+
+        pred_a = E.is_subset(X, E.lit_op_range((0, 10)), assert_=False)
+        pred_b = E.is_subset(X, E.lit_op_range((20, 30)), assert_=False)
+        pred_c = E.is_subset(X, E.lit_op_range((40, 50)), assert_=False)
+
+        # Create Or(A, B, C) as existing predicate
+        F.Expressions.Or.from_operands(
+            pred_a, pred_b, pred_c, g=E.g, tg=E.tg, assert_=True
+        )
+
+        # Try to find subsumption for Or(A, B)
+        new_operands = [pred_a, pred_b]
+        result = self._run_in_mutator(
+            E, lambda m: m.find_subsuming_expression(F.Expressions.Or, new_operands)
+        )
+        assert result is None
+
+    def test_or_subsumption_negative_different_operands(self):
+        """Or(A, B) does NOT subsume Or(A, C) - different operands."""
+        E = BoundExpressions()
+        X = E.parameter_op()
+
+        pred_a = E.is_subset(X, E.lit_op_range((0, 10)), assert_=False)
+        pred_b = E.is_subset(X, E.lit_op_range((20, 30)), assert_=False)
+        pred_c = E.is_subset(X, E.lit_op_range((40, 50)), assert_=False)
+
+        F.Expressions.Or.from_operands(pred_a, pred_b, g=E.g, tg=E.tg, assert_=True)
+
+        new_operands = [pred_a, pred_c]
+        result = self._run_in_mutator(
+            E, lambda m: m.find_subsuming_expression(F.Expressions.Or, new_operands)
+        )
+        assert result is None
+
+
 if __name__ == "__main__":
     import typer
 
