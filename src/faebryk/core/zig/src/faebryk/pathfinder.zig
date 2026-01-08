@@ -332,7 +332,7 @@ pub const PathFinder = struct {
                     depth -= 1;
                 }
 
-                if (depth <= 0) {
+                if (depth < 0) {
                     path.stop_new_path_discovery = true;
                 }
 
