@@ -159,7 +159,7 @@ _ASSIGNMENT_OVERRIDES: dict[str, TraitOverrideSpec] = {
 _TRAIT_OVERRIDES: dict[str, TraitOverrideSpec] = {
     "can_bridge_by_name": TraitOverrideSpec(
         trait_class=F.can_bridge,
-        make_trait_field=lambda args: F.can_bridge.MakeEdge(
+        make_trait_field=lambda args: F.can_bridge.MakeChild(
             [args.get("input_name", "input")],
             [args.get("output_name", "output")],
         ),

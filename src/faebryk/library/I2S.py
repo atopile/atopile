@@ -28,7 +28,7 @@ class I2S(fabll.Node):
         F.has_single_electric_reference.MakeChild()
     )
 
-    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeEdge(in_=[""], out_=[""]))
+    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(in_=[""], out_=[""]))
 
     # ----------------------------------------
     #                WIP

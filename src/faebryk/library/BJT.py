@@ -48,7 +48,7 @@ class BJT(fabll.Node):
     )
 
     _can_bridge = fabll.Traits.MakeEdge(
-        F.can_bridge.MakeEdge(["collector"], ["emitter"])
+        F.can_bridge.MakeChild(["collector"], ["emitter"])
     )
 
     emitter_attachable = fabll.Traits.MakeEdge(

@@ -43,7 +43,7 @@ class Diode(fabll.Node):
         [cathode_lead],
     )
 
-    _can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeEdge(["anode"], ["cathode"]))
+    _can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(["anode"], ["cathode"]))
 
     S = F.has_simple_value_representation.Spec
     _simple_repr = fabll.Traits.MakeEdge(

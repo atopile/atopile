@@ -45,7 +45,7 @@ class ElectricPower(fabll.Node):
     )
     max_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
 
-    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeEdge(in_=[""], out_=[""]))
+    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(in_=[""], out_=[""]))
 
     net_names = [
         fabll.Traits.MakeEdge(

@@ -61,7 +61,7 @@ class FilterElectricalRC(fabll.Node):
 
     _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
 
-    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeEdge(["in_"], ["out"]))
+    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(["in_"], ["out"]))
 
     # @classmethod
     # def hardcoded_rc(cls, resistance: Quantity_Set, capacitance: Quantity_Set):

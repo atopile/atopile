@@ -44,7 +44,7 @@ class MultiCapacitor(fabll.Node):
 
     # Bridge-connect support: unnamed[0] ~> multicap ~> unnamed[1]
     _can_bridge = fabll.Traits.MakeEdge(
-        F.can_bridge.MakeEdge(["unnamed[0]"], ["unnamed[1]"])
+        F.can_bridge.MakeChild(["unnamed[0]"], ["unnamed[1]"])
     )
 
     @classmethod

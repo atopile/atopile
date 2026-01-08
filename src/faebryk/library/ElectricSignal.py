@@ -29,7 +29,7 @@ class ElectricSignal(fabll.Node):
         can_be_pulled.can_be_pulled.MakeChild(line, reference)
     )
 
-    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeEdge(in_=[""], out_=[""]))
+    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(in_=[""], out_=[""]))
 
     @property
     def pull_resistance(self):

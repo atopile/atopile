@@ -58,7 +58,7 @@ class AdjustableRegulator(fabll.Node):
 
     # Mark as bridgeable between power_in and power_out
     _can_bridge = fabll.Traits.MakeEdge(
-        F.can_bridge.MakeEdge(["power_in"], ["power_out"])
+        F.can_bridge.MakeChild(["power_in"], ["power_out"])
     )
 
     # Backwards compatibility aliases - v_in and v_out are aliases

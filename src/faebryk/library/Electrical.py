@@ -13,7 +13,7 @@ class Electrical(fabll.Node):
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
     # points to itself, so can do electrical ~> electrical ~> electrical
-    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeEdge(in_=[""], out_=[""]))
+    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(in_=[""], out_=[""]))
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

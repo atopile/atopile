@@ -47,7 +47,7 @@ class Crystal_Oscillator(fabll.Node):
         )
         self.crystal.unnamed[1].connect(self.xtal_if.xin)
 
-        _can_bridge = F.can_bridge.MakeEdge(
+        _can_bridge = F.can_bridge.MakeChild(
             [self.xtal_if.get().xin], [self.xtal_if.get().xout]
         )
 

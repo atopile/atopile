@@ -31,7 +31,7 @@ class can_bridge(fabll.Node):
         return out_
 
     @classmethod
-    def MakeEdge(cls, in_: fabll.RefPath, out_: fabll.RefPath):
+    def MakeChild(cls, in_: fabll.RefPath, out_: fabll.RefPath):
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Collections.Pointer.MakeEdge(

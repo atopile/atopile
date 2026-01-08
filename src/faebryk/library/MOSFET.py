@@ -67,7 +67,7 @@ class MOSFET(fabll.Node):
         F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.Q)
     )
 
-    _can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeEdge(["source"], ["drain"]))
+    _can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(["source"], ["drain"]))
 
     S = F.has_simple_value_representation.Spec
     _simple_repr = fabll.Traits.MakeEdge(

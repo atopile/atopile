@@ -18,4 +18,4 @@ class USB2_0(fabll.Node):
 
     # can_bridge allows USB2_0 to be used with ~> operator
     # Points to usb_if for both in and out (passthrough)
-    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeEdge(in_=[""], out_=[""]))
+    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(in_=[""], out_=[""]))
