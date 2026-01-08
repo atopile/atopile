@@ -197,7 +197,7 @@ def save_part_info_to_pcb(app: fabll.Node):
             if lit is None:
                 continue
             data[f"{Properties.param_prefix}{p.get_name()}"] = json.dumps(
-                lit.serialize(), ensure_ascii=True
+                lit.serialize(), ensure_ascii=False
             )
         fabll.Traits.create_and_add_instance_to(node, F.SerializableMetadata).setup(
             data
