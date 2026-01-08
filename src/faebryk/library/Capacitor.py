@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from enum import StrEnum
+from enum import IntEnum, auto
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
@@ -15,16 +15,15 @@ class Capacitor(fabll.Node):
     # ----------------------------------------
     #                 enums
     # ----------------------------------------
-    # Updated to match the backend enum format
-    class TemperatureCoefficient(StrEnum):
-        Y5V = "1"
-        Z5U = "2"
-        X7S = "3"
-        X5R = "4"
-        X6R = "5"
-        X7R = "6"
-        X8R = "7"
-        C0G = "8"
+    class TemperatureCoefficient(IntEnum):
+        Y5V = auto()
+        Z5U = auto()
+        X7S = auto()
+        X5R = auto()
+        X6R = auto()
+        X7R = auto()
+        X8R = auto()
+        C0G = auto()
 
     # ----------------------------------------
     #     modules, interfaces, parameters
