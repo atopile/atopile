@@ -1368,6 +1368,25 @@ def test_direct_shallow_instance():
     assert electrical1._is_interface.get().is_connected_to(electrical3)
 
 
+def test_is_interface_filter_requires_trait_on_target():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _Plain(fabll.Node):
+        pass
+
+    plain_type = _Plain.bind_typegraph(tg)
+    with_trait = plain_type.create_instance(g=g)
+    without_trait = plain_type.create_instance(g=g)
+
+    with_trait_interface = fabll.Traits.create_and_add_instance_to(
+        with_trait, fabll.is_interface
+    )
+    with_trait_interface.connect_to(without_trait)
+
+    assert not with_trait_interface.is_connected_to(without_trait)
+
+
 def test_connect_incompatible():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)

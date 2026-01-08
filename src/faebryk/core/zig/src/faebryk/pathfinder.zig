@@ -3,6 +3,8 @@ const graph_mod = @import("graph");
 const composition_mod = @import("composition.zig");
 const interface_mod = @import("interface.zig");
 const type_mod = @import("node_type.zig");
+const typegraph_mod = @import("typegraph.zig");
+const trait_mod = @import("trait.zig");
 
 const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
@@ -19,6 +21,10 @@ const NodeRefMap = graph.NodeRefMap;
 const EdgeComposition = composition_mod.EdgeComposition;
 const EdgeInterfaceConnection = interface_mod.EdgeInterfaceConnection;
 const EdgeType = type_mod.EdgeType;
+const TypeNodeAttributes = typegraph_mod.TypeGraph.TypeNodeAttributes;
+const EdgeTrait = trait_mod.EdgeTrait;
+
+const debug_pathfinder = false;
 
 const HierarchyTraverseDirection = enum {
     up, // Child to parent
@@ -109,9 +115,11 @@ pub const PathFinder = struct {
         bfs_paths.paths = self.path_list;
         self.path_list = std.ArrayList(*BFSPath).init(self.allocator);
 
-        // std.debug.print("********* Pathfinder find_paths Summary *********\n", .{});
-        // std.debug.print("Start node: {}\n", .{start_node.node.uuid});
-        // std.debug.print("Paths explored: {}\tValid Paths: {}\n", .{ self.path_counter, bfs_paths.paths.items.len });
+        if (comptime debug_pathfinder) {
+            std.debug.print("********* Pathfinder find_paths Summary *********\n", .{});
+            std.debug.print("Start node: {}\n", .{start_node.node.uuid});
+            std.debug.print("Paths explored: {}\tValid Paths: {}\n", .{ self.path_counter, bfs_paths.paths.items.len });
+        }
 
         return bfs_paths;
     }
@@ -120,6 +128,7 @@ pub const PathFinder = struct {
     pub fn visit_fn(self_ptr: *anyopaque, path: *BFSPath) visitor.VisitResult(void) {
         const self: *Self = @ptrCast(@alignCast(self_ptr));
         const result = self.run_filters(path);
+        _ = self.print_paths(path);
         // std.debug.print("path_counter: {} len: {}\n", .{ self.path_counter, path.traversed_edges.items.len });
         if (result == .ERROR) return result;
         if (result == .STOP) return result;
@@ -167,6 +176,7 @@ pub const PathFinder = struct {
         func: *const fn (*Self, *BFSPath) visitor.VisitResult(void),
     }{
         .{ .name = "count_paths", .func = Self.count_paths },
+        .{ .name = "filter_path_by_is_interface", .func = Self.filter_path_by_is_interface },
         .{ .name = "filter_path_by_same_node_type", .func = Self.filter_path_by_same_node_type },
         .{ .name = "filter_siblings", .func = Self.filter_siblings },
         .{ .name = "filter_hierarchy_stack", .func = Self.filter_hierarchy_stack },
@@ -174,6 +184,74 @@ pub const PathFinder = struct {
 
     pub fn count_paths(self: *Self, _: *BFSPath) visitor.VisitResult(void) {
         self.path_counter += 1;
+        return visitor.VisitResult(void){ .CONTINUE = {} };
+    }
+
+    fn try_get_node_type_name(g: *GraphView, node: NodeReference) ?graph.str {
+        if (EdgeType.get_type_edge(g.bind(node))) |type_edge| {
+            const type_node = EdgeType.get_type_node(type_edge.edge);
+            return TypeNodeAttributes.of(type_node).get_type_name();
+        }
+        return null;
+    }
+
+    fn print_node_uuid_and_type(g: *GraphView, node: NodeReference) void {
+        if (try_get_node_type_name(g, node)) |type_name| {
+            std.debug.print("{}:{s}", .{ node.get_uuid(), type_name });
+        } else std.debug.print("{}:<no_type>", .{node.get_uuid()});
+    }
+
+    pub fn print_paths(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
+        if (comptime !debug_pathfinder) return visitor.VisitResult(void){ .CONTINUE = {} };
+        const g = path.start_node.g;
+        std.debug.print("Path {}: ", .{self.path_counter});
+        print_node_uuid_and_type(g, path.start_node.node);
+        for (path.traversed_edges.items) |traversed_edge| {
+            std.debug.print(" -> ", .{});
+            const end_node = traversed_edge.get_end_node();
+            print_node_uuid_and_type(g, end_node);
+        }
+        if (!path.invalid_path) {
+            std.debug.print(" (VALID)", .{});
+        }
+        std.debug.print("\n", .{});
+        return visitor.VisitResult(void){ .CONTINUE = {} };
+    }
+
+    pub fn filter_path_by_is_interface(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
+        _ = self;
+
+        // Get the end node from the path
+        const end_node = path.get_last_node();
+
+        // Get the TypeGraph to lookup the is_interface trait type
+        const tg = typegraph_mod.TypeGraph.of_instance(end_node) orelse {
+            // Node has no type, mark as invalid
+            path.invalid_path = true;
+            path.stop_new_path_discovery = true;
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        };
+
+        // Look up the is_interface trait type by name
+        // Note: Core traits have fully qualified names like "is_interface.node.core.faebryk"
+        // We need to try the full name since that's what's registered in the TypeGraph
+        const is_interface_type = tg.get_type_by_name("is_interface.node.core.faebryk") orelse {
+            // is_interface type not found in this TypeGraph - this shouldn't happen
+            // but we'll treat it as "no trait" and invalidate the path
+            path.invalid_path = true;
+            path.stop_new_path_discovery = true;
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        };
+
+        // Check if the end node instance has the is_interface trait using the proper API
+        const has_is_interface = EdgeTrait.try_get_trait_instance_of_type(end_node, is_interface_type.node);
+
+        if (has_is_interface == null) {
+            // No is_interface trait found - mark path as invalid and stop discovery
+            path.invalid_path = true;
+            path.stop_new_path_discovery = true;
+        }
+
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
@@ -252,7 +330,7 @@ pub const PathFinder = struct {
                     depth -= 1;
                 }
 
-                if (depth < 0) {
+                if (depth <= 0) {
                     path.stop_new_path_discovery = true;
                 }
 
