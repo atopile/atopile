@@ -691,130 +691,174 @@ def setup_project_config(tmp_path):
     yield
 
 
-@pytest.mark.usefixtures("setup_project_config")
-def test_attach_resistor():
-    import faebryk.core.faebrykpy as fbrk
-    import faebryk.core.node as fabll
+class TestLCSCattach:
+    @pytest.mark.usefixtures("setup_project_config")
+    def test_attach_resistor(self):
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.core.node as fabll
 
-    LCSC_ID = "C21190"
+        LCSC_ID = "C21190"
 
-    g = fabll.graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
 
-    component = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
+        component = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
 
-    # Before attach: no kicad footprint should be linked yet
-    associated_footprint = component.try_get_trait(
-        F.Footprints.has_associated_footprint
-    )
-
-    assert associated_footprint is None
-
-    component_with_fp = component.get_trait(F.Footprints.can_attach_to_footprint)
-    attach(component_with_fp=component_with_fp, partno=LCSC_ID)
-
-    associated_footprint = component.try_get_trait(
-        F.Footprints.has_associated_footprint
-    )
-
-    assert associated_footprint is not None
-
-    # After attach: footprint should now be linked
-    footprint = associated_footprint.get_footprint()
-
-    # there should also be a kicad library footprint linked
-    kicad_library_footprint = footprint.try_get_trait(
-        F.KiCadFootprints.has_associated_kicad_library_footprint
-    )
-    assert kicad_library_footprint is not None
-
-    assert kicad_library_footprint.kicad_identifier == "UNI_ROYAL_0603WAF1001T5E:R0603"
-    assert kicad_library_footprint.library_name == "UNI_ROYAL_0603WAF1001T5E"
-    assert kicad_library_footprint.pad_names == ["2", "1"]
-    assert (
-        "src/parts/UNI_ROYAL_0603WAF1001T5E/R0603.kicad_mod"
-        in kicad_library_footprint.kicad_footprint_file_path
-    )
-
-
-@pytest.mark.usefixtures("setup_project_config")
-def test_attach_mosfet():
-    import faebryk.core.faebrykpy as fbrk
-    import faebryk.core.node as fabll
-
-    LCSC_ID = "C8545"
-
-    g = fabll.graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-
-    component = F.MOSFET.bind_typegraph(tg=tg).create_instance(g=g)
-
-    component_with_fp = component.get_trait(F.Footprints.can_attach_to_footprint)
-    attach(component_with_fp=component_with_fp, partno=LCSC_ID)
-
-    associated_footprint = component.try_get_trait(
-        F.Footprints.has_associated_footprint
-    )
-
-    assert associated_footprint is not None
-
-    # After attach: footprint should now be linked
-    footprint = associated_footprint.get_footprint()
-    # TODO: check footrpint pad names assert footrpint.pad_names == ["G", "S", "D"]
-
-    # there should also be a kicad footprint linked
-    kicad_library_footprint = footprint.get_trait(
-        F.KiCadFootprints.has_associated_kicad_library_footprint
-    )
-
-    assert (
-        kicad_library_footprint.kicad_identifier
-        == "Changjiang_Electronics_Tech_2N7002:SOT-23-3_L2.9-W1.3-P1.90-LS2.4-BR"
-    )
-    assert kicad_library_footprint.library_name == "Changjiang_Electronics_Tech_2N7002"
-    assert kicad_library_footprint.pad_names == ["1", "2", "3"]
-    assert (
-        "src/parts/Changjiang_Electronics_Tech_2N7002/SOT-23-3_L2.9-W1.3-P1.90-LS2.4-BR.kicad_mod"
-        in kicad_library_footprint.kicad_footprint_file_path
-    )
-
-
-@pytest.mark.usefixtures("setup_project_config")
-def test_attach_failure():
-    import faebryk.core.faebrykpy as fbrk
-    import faebryk.core.node as fabll
-
-    RESISTOR_LCSC_ID = "C21190"
-    MOSFET_LCSC_ID = "C8545"
-
-    g = fabll.graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-
-    component = F.MOSFET.bind_typegraph(tg=tg).create_instance(g=g)
-
-    component_with_fp = component.get_trait(F.Footprints.can_attach_to_footprint)
-    with pytest.raises(LCSC_PinmapException):
-        attach(
-            component_with_fp=component_with_fp,
-            partno=RESISTOR_LCSC_ID,
-            check_only=True,
+        # Before attach: no kicad footprint should be linked yet
+        associated_footprint = component.try_get_trait(
+            F.Footprints.has_associated_footprint
         )
 
-    attach(component_with_fp=component_with_fp, partno=MOSFET_LCSC_ID)
+        assert associated_footprint is None
 
-    associated_footprint = component.try_get_trait(
-        F.Footprints.has_associated_footprint
-    )
+        component_with_fp = component.get_trait(F.Footprints.can_attach_to_footprint)
+        attach(component_with_fp=component_with_fp, partno=LCSC_ID)
 
-    assert associated_footprint is not None
+        associated_footprint = component.try_get_trait(
+            F.Footprints.has_associated_footprint
+        )
 
-    footprint = associated_footprint.get_footprint()
+        assert associated_footprint is not None
 
-    kicad_library_footprint = footprint.try_get_trait(
-        F.KiCadFootprints.has_associated_kicad_library_footprint
-    )
-    assert kicad_library_footprint is not None
-    assert kicad_library_footprint.pad_names == ["1", "2", "3"]
+        # After attach: footprint should now be linked
+        footprint = associated_footprint.get_footprint()
+
+        # there should also be a kicad library footprint linked
+        kicad_library_footprint = footprint.try_get_trait(
+            F.KiCadFootprints.has_associated_kicad_library_footprint
+        )
+        assert kicad_library_footprint is not None
+
+        assert (
+            kicad_library_footprint.kicad_identifier == "UNI_ROYAL_0603WAF1001T5E:R0603"
+        )
+        assert kicad_library_footprint.library_name == "UNI_ROYAL_0603WAF1001T5E"
+        assert kicad_library_footprint.pad_names == ["2", "1"]
+        assert (
+            "src/parts/UNI_ROYAL_0603WAF1001T5E/R0603.kicad_mod"
+            in kicad_library_footprint.kicad_footprint_file_path
+        )
+
+    @pytest.mark.usefixtures("setup_project_config")
+    def test_attach_mosfet(self):
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.core.node as fabll
+
+        LCSC_ID = "C8545"
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        component = F.MOSFET.bind_typegraph(tg=tg).create_instance(g=g)
+
+        component_with_fp = component.get_trait(F.Footprints.can_attach_to_footprint)
+        attach(component_with_fp=component_with_fp, partno=LCSC_ID)
+
+        associated_footprint = component.try_get_trait(
+            F.Footprints.has_associated_footprint
+        )
+
+        assert associated_footprint is not None
+
+        # After attach: footprint should now be linked
+        footprint = associated_footprint.get_footprint()
+
+        assert [pad.pad_name for pad in footprint.get_pads()] == ["D", "G", "S"]
+
+        # there should also be a kicad footprint linked
+        kicad_library_footprint = footprint.get_trait(
+            F.KiCadFootprints.has_associated_kicad_library_footprint
+        )
+
+        assert (
+            kicad_library_footprint.kicad_identifier
+            == "Changjiang_Electronics_Tech_2N7002:SOT-23-3_L2.9-W1.3-P1.90-LS2.4-BR"
+        )
+        assert (
+            kicad_library_footprint.library_name == "Changjiang_Electronics_Tech_2N7002"
+        )
+        assert kicad_library_footprint.pad_names == ["1", "2", "3"]
+        assert (
+            "src/parts/Changjiang_Electronics_Tech_2N7002/SOT-23-3_L2.9-W1.3-P1.90-LS2.4-BR.kicad_mod"
+            in kicad_library_footprint.kicad_footprint_file_path
+        )
+
+    @pytest.mark.usefixtures("setup_project_config")
+    def test_attach_mosfet_multiple_pads_match(self):
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.core.node as fabll
+        from faebryk.library.MOSFET import MOSFET
+
+        LCSC_ID = "C471913"
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        mosfet = MOSFET.bind_typegraph(tg=tg).create_instance(g=g)
+
+        mosfet_with_fp = mosfet.get_trait(F.Footprints.can_attach_to_footprint)
+        attach(component_with_fp=mosfet_with_fp, partno=LCSC_ID)
+
+        associated_footprint = mosfet.try_get_trait(
+            F.Footprints.has_associated_footprint
+        )
+
+        assert associated_footprint is not None
+
+        footprint = associated_footprint.get_footprint()
+
+        kicad_library_footprint = footprint.try_get_trait(
+            F.KiCadFootprints.has_associated_kicad_library_footprint
+        )
+        assert kicad_library_footprint is not None
+        assert (
+            kicad_library_footprint.kicad_identifier
+            == "ALLPOWER_AP30P30Q:PDFN3333-8_L3.1-W3.2-P0.65-LS3.4-BL"
+        )
+
+        # there should be 1 G pad, 5 D pads, and 3 S pads
+        pads = associated_footprint.get_footprint().get_pads()
+        assert len(pads) == 9
+        assert len([p for p in pads if p.pad_name == "G"]) == 1
+        assert len([p for p in pads if p.pad_name == "D"]) == 5
+        assert len([p for p in pads if p.pad_name == "S"]) == 3
+
+    @pytest.mark.usefixtures("setup_project_config")
+    def test_attach_failure(self):
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.core.node as fabll
+
+        RESISTOR_LCSC_ID = "C21190"
+        MOSFET_LCSC_ID = "C8545"
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        component = F.MOSFET.bind_typegraph(tg=tg).create_instance(g=g)
+
+        component_with_fp = component.get_trait(F.Footprints.can_attach_to_footprint)
+        with pytest.raises(LCSC_PinmapException):
+            attach(
+                component_with_fp=component_with_fp,
+                partno=RESISTOR_LCSC_ID,
+                check_only=True,
+            )
+
+        attach(component_with_fp=component_with_fp, partno=MOSFET_LCSC_ID)
+
+        associated_footprint = component.try_get_trait(
+            F.Footprints.has_associated_footprint
+        )
+
+        assert associated_footprint is not None
+
+        footprint = associated_footprint.get_footprint()
+
+        kicad_library_footprint = footprint.try_get_trait(
+            F.KiCadFootprints.has_associated_kicad_library_footprint
+        )
+        assert kicad_library_footprint is not None
+        assert kicad_library_footprint.pad_names == ["1", "2", "3"]
 
 
 """
