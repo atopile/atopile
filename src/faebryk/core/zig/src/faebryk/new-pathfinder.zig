@@ -57,14 +57,18 @@ const BoundNodeRefMap = struct {
     }
 };
 
-pub const StackElement = struct {
+const StackElement = struct {
     // Pair of node and named child identifier
     bound_node: BoundNodeReference,
     child_identifier: []const u8,
 
     pub fn print_element(self: *const @This()) void {
         print_node_uuid_and_type(self.bound_node);
-        std.debug.print(".{s}", .{self.child_identifier});
+        if (self.child_identifier.len == 0) {
+            std.debug.print(".<null>", .{});
+        } else {
+            std.debug.print(".{s}", .{self.child_identifier});
+        }
     }
 };
 
@@ -179,8 +183,22 @@ pub const PathFinder = struct {
                 const last_node = path.get_last_node();
                 StackElementMap.add_node(&self.stack_element_nodes, self.allocator, stack_element, last_node);
             }
+
             if (comptime debug_pathfinder) {
                 StackElementMap.print_key_value(&self.stack_element_nodes, stack_element);
+            }
+
+            // For each connected interface, see if we can go down according to the child identifier
+            if (self.stack_element_nodes.getPtr(stack_element)) |node_set| {
+                var it = node_set.keyIterator();
+                while (it.next()) |node_ptr| {
+                    const child_node = EdgeComposition.get_child_by_identifier(node_ptr.*, stack_element.child_identifier);
+                    if (child_node != null) {
+                        std.debug.print("Found child node!!!!\t", .{});
+                        print_node_uuid_and_type(node_ptr.*);
+                        std.debug.print("\n", .{});
+                    }
+                }
             }
 
             // For each connected interface, add parent stack element to BFS queue
@@ -200,6 +218,7 @@ pub const PathFinder = struct {
                 }
             }
 
+            // Clean up current_bfs_paths for next iteration
             for (self.current_bfs_paths.items) |path| {
                 path.deinit();
             }
@@ -207,6 +226,7 @@ pub const PathFinder = struct {
             self.current_bfs_paths = std.ArrayList(*BFSPath).init(self.allocator);
         }
 
+        // TODO this stuff below isn't going to yield all the paths because we're discarding each bfs iteration
         // Transfer ownership to BFSPaths
         var bfs_paths = graph.BFSPaths.init(self.allocator);
         bfs_paths.paths = self.current_bfs_paths;
@@ -255,9 +275,6 @@ fn try_get_node_type_name(bound_node: BoundNodeReference) ?graph.str {
 }
 
 fn print_node_uuid_and_type(bound_node: BoundNodeReference) void {
-    if (try_get_node_type_name(bound_node)) |type_name| {
-        std.debug.print("{}:{s}", .{ bound_node.node.get_uuid(), type_name });
-    } else {
-        std.debug.print("{}:<no_type>", .{bound_node.node.get_uuid()});
-    }
+    const type_name = try_get_node_type_name(bound_node) orelse @panic("Missing type");
+    std.debug.print("{}:{s}", .{ bound_node.node.get_uuid(), type_name });
 }
