@@ -183,6 +183,18 @@
         border-left: 3px solid var(--ctp-red);
       }
 
+      /* New test highlighting */
+      tr.row-new {
+        background-color: rgba(137, 180, 250, 0.3) !important;
+        border-left: 3px solid var(--ctp-blue);
+      }
+
+      /* Fixed test highlighting */
+      tr.row-fixed {
+        background-color: rgba(166, 227, 161, 0.3) !important;
+        border-left: 3px solid var(--ctp-green);
+      }
+
       .controls {
         margin-bottom: 5px;
         display: flex;
@@ -490,9 +502,9 @@
         document.querySelectorAll(".outcome-filter").forEach((cb) => {
           cb.addEventListener("change", filterTable);
         });
-        var regressionsOnly = document.getElementById("regressionsOnly");
-        if (regressionsOnly) {
-          regressionsOnly.addEventListener("change", filterTable);
+        var deltaOnly = document.getElementById("deltaOnly");
+        if (deltaOnly) {
+          deltaOnly.addEventListener("change", filterTable);
         }
 
         // Scale logo to match text content height
@@ -576,9 +588,8 @@
         var logInput = document.getElementById("logSearchInput");
         var logFilter = logInput.value.toUpperCase();
 
-        var regressionsOnlyCb = document.getElementById("regressionsOnly");
-        var regressionsOnly =
-          regressionsOnlyCb && regressionsOnlyCb.checked ? true : false;
+        var deltaOnlyCb = document.getElementById("deltaOnly");
+        var deltaOnly = deltaOnlyCb && deltaOnlyCb.checked ? true : false;
 
         table = document.getElementById("testTable");
         // Get all rows from tbody
@@ -641,12 +652,15 @@
             }
           }
 
-          var regressionMatch = true;
-          if (regressionsOnly) {
-            regressionMatch = tr[i].classList.contains("row-regression");
+          var deltaMatch = true;
+          if (deltaOnly) {
+            deltaMatch =
+              tr[i].classList.contains("row-regression") ||
+              tr[i].classList.contains("row-new") ||
+              tr[i].classList.contains("row-fixed");
           }
 
-          if (textMatch && outcomeMatch && logMatch && regressionMatch) {
+          if (textMatch && outcomeMatch && logMatch && deltaMatch) {
             tr[i].style.display = "";
           } else {
             tr[i].style.display = "none";
@@ -801,12 +815,8 @@
         class="filter-input"
       />
       <label
-        ><input
-          type="checkbox"
-          id="regressionsOnly"
-          onchange="filterTable()"
-        />
-        Regressions only</label
+        ><input type="checkbox" id="deltaOnly" onchange="filterTable()" /> Delta
+        only</label
       >
       <div class="outcome-filters">
         <label

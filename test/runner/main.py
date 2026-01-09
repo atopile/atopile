@@ -1090,8 +1090,10 @@ class TestAggregator:
                     row_class += " row-regression"
                 elif cmp == CompareStatus.FIXED:
                     compare_cell = '<td class="compare-fixed">fixed</td>'
+                    row_class += " row-fixed"
                 elif cmp == CompareStatus.NEW:
                     compare_cell = '<td class="compare-new">new</td>'
+                    row_class += " row-new"
                 elif cmp == CompareStatus.SAME:
                     compare_cell = '<td class="compare-same">-</td>'
                 else:
