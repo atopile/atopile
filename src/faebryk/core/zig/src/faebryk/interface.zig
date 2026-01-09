@@ -378,25 +378,31 @@ test "is_connected_to" {
 }
 
 test "simple_electric_power_hierarchy" {
-    // P1 --> P2
-    //  |      |
-    // HV     HV
-    // LV     LV
-    // Just instantiate and verify the hierarchy exists
+    // ElectricPower (EP_1)
+    //   |
+    //   +--(ref)--> ElectricSignal (signal_1) --(iface)--> ElectricSignal (signal_2)
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
     var tg = TypeGraph.init(&g);
     const test_types = try init_test_types(&tg);
 
+    const electric_signal = try tg.add_type("ElectricSignal");
+
     _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "HV", null, false);
     _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "LV", null, false);
+    _ = try tg.add_make_child(electric_signal, test_types.electrical, "line", null, false);
+    _ = try tg.add_make_child(electric_signal, test_types.electric_power, "reference", null, false);
 
     const EP_1 = try instantiate_interface(&tg, test_types.electric_power);
-    const EP_2 = try instantiate_interface(&tg, test_types.electric_power);
-    _ = try EdgeInterfaceConnection.connect(EP_1, EP_2);
-
     const HV_1 = EdgeComposition.get_child_by_identifier(EP_1, "HV").?;
+    const signal_1 = try instantiate_interface(&tg, electric_signal);
+    const signal_2 = try instantiate_interface(&tg, electric_signal);
+
+    const signal_1_reference = EdgeComposition.get_child_by_identifier(signal_1, "reference").?;
+
+    _ = try EdgeInterfaceConnection.connect(EP_1, signal_1_reference);
+    _ = try EdgeInterfaceConnection.connect(signal_1, signal_2);
 
     var paths = try EdgeInterfaceConnection.get_connected(a, HV_1, true);
     defer {

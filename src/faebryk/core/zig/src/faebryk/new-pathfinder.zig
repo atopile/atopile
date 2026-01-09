@@ -26,20 +26,31 @@ const EdgeTrait = trait_mod.EdgeTrait;
 
 const debug_pathfinder = true;
 
+pub const StackElement = struct {
+    // Pair of node and named child identifier
+    bound_node: BoundNodeReference,
+    child_identifier: []const u8,
+
+    pub fn print_element(self: *const @This()) void {
+        print_node_uuid_and_type(self.bound_node);
+        std.debug.print(".{s}\n", .{self.child_identifier});
+    }
+};
+
 pub const PathFinder = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
     visited_path_counter: u64,
     current_bfs_paths: std.ArrayList(*BFSPath),
-    nodes_to_bfs: std.ArrayList(BoundNodeReference),
+    stack_elements_to_bfs: std.ArrayList(StackElement),
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
             .allocator = allocator,
             .visited_path_counter = 0,
             .current_bfs_paths = std.ArrayList(*BFSPath).init(allocator),
-            .nodes_to_bfs = std.ArrayList(BoundNodeReference).init(allocator),
+            .stack_elements_to_bfs = std.ArrayList(StackElement).init(allocator),
         };
     }
 
@@ -48,7 +59,7 @@ pub const PathFinder = struct {
             path.deinit();
         }
         self.current_bfs_paths.deinit();
-        self.nodes_to_bfs.deinit();
+        self.stack_elements_to_bfs.deinit();
     }
 
     pub fn find_paths(
@@ -57,22 +68,30 @@ pub const PathFinder = struct {
     ) !graph.BFSPaths {
         std.debug.print("Finding paths from {}\n", .{start_node.node.get_uuid()});
 
-        self.nodes_to_bfs.append(start_node) catch @panic("OOM");
+        self.stack_elements_to_bfs.append(.{ .bound_node = start_node, .child_identifier = "" }) catch @panic("OOM");
 
-        while (self.nodes_to_bfs.pop()) |node| {
-            _ = node.g.visit_paths_bfs(
-                node,
+        while (self.stack_elements_to_bfs.pop()) |stack_element| {
+
+            // Find all connected interfaces in current hierarchy level
+            _ = stack_element.bound_node.g.visit_paths_bfs(
+                stack_element.bound_node,
                 void,
                 self,
                 Self.bfs_visit_fn,
                 &[_]graph.Edge.EdgeType{EdgeInterfaceConnection.tid},
             );
 
+            // For each connected interface, add stack element to BFS queue
             for (self.current_bfs_paths.items) |path| {
-                const parent_node = EdgeComposition.get_parent_node_of(path.get_last_node()) orelse continue;
-                print_node_uuid_and_type(parent_node);
-                std.debug.print("\n", .{});
-                self.nodes_to_bfs.append(parent_node) catch @panic("OOM");
+                const bound_node = EdgeComposition.get_parent_node_of(path.get_last_node()) orelse continue;
+                const parent_edge = EdgeComposition.get_parent_edge(path.get_last_node()) orelse continue;
+                const child_identifier = EdgeComposition.get_name(parent_edge.edge) catch continue;
+                const stack_element_to_append = StackElement{ .bound_node = bound_node, .child_identifier = child_identifier };
+                self.stack_elements_to_bfs.append(stack_element_to_append) catch @panic("OOM");
+                if (comptime debug_pathfinder) {
+                    std.debug.print("Adding stack element: ", .{});
+                    stack_element_to_append.print_element();
+                }
             }
 
             for (self.current_bfs_paths.items) |path| {
@@ -106,20 +125,6 @@ pub const PathFinder = struct {
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
-    fn try_get_node_type_name(bound_node: BoundNodeReference) ?graph.str {
-        if (EdgeType.get_type_edge(bound_node)) |type_edge| {
-            const type_node = EdgeType.get_type_node(type_edge.edge);
-            return TypeNodeAttributes.of(type_node).get_type_name();
-        }
-        return null;
-    }
-
-    fn print_node_uuid_and_type(bound_node: BoundNodeReference) void {
-        if (try_get_node_type_name(bound_node)) |type_name| {
-            std.debug.print("{}:{s}", .{ bound_node.node.get_uuid(), type_name });
-        } else std.debug.print("{}:<no_type>", .{bound_node.node.get_uuid()});
-    }
-
     pub fn print_path(self: *Self, path: *BFSPath) void {
         std.debug.print("Path {}: ", .{self.visited_path_counter});
 
@@ -134,3 +139,17 @@ pub const PathFinder = struct {
         std.debug.print("\n", .{});
     }
 };
+
+fn try_get_node_type_name(bound_node: BoundNodeReference) ?graph.str {
+    if (EdgeType.get_type_edge(bound_node)) |type_edge| {
+        const type_node = EdgeType.get_type_node(type_edge.edge);
+        return TypeNodeAttributes.of(type_node).get_type_name();
+    }
+    return null;
+}
+
+fn print_node_uuid_and_type(bound_node: BoundNodeReference) void {
+    if (try_get_node_type_name(bound_node)) |type_name| {
+        std.debug.print("{}:{s}", .{ bound_node.node.get_uuid(), type_name });
+    } else std.debug.print("{}:<no_type>", .{bound_node.node.get_uuid()});
+}
