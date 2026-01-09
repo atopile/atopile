@@ -26,6 +26,37 @@ const EdgeTrait = trait_mod.EdgeTrait;
 
 const debug_pathfinder = true;
 
+const BoundNodeRefMap = struct {
+    pub fn eql(_: @This(), a: BoundNodeReference, b: BoundNodeReference) bool {
+        return a.g == b.g and a.node.is_same(b.node);
+    }
+
+    pub fn hash(_: @This(), key: BoundNodeReference) u64 {
+        var h: u64 = 0;
+        var uuid = key.node.get_uuid();
+        h = std.hash.Wyhash.hash(h, std.mem.asBytes(&uuid));
+        var g_ptr: usize = @intFromPtr(key.g);
+        h = std.hash.Wyhash.hash(h, std.mem.asBytes(&g_ptr));
+        return h;
+    }
+
+    pub fn T(V: type) type {
+        return std.HashMap(BoundNodeReference, V, BoundNodeRefMap, std.hash_map.default_max_load_percentage);
+    }
+
+    pub fn print_set(set: *const BoundNodeRefMap.T(void)) void {
+        var it = set.keyIterator();
+        var first = true;
+        std.debug.print("[", .{});
+        while (it.next()) |bn_ptr| {
+            if (!first) std.debug.print(", ", .{});
+            first = false;
+            print_node_uuid_and_type(bn_ptr.*);
+        }
+        std.debug.print("]", .{});
+    }
+};
+
 pub const StackElement = struct {
     // Pair of node and named child identifier
     bound_node: BoundNodeReference,
@@ -33,9 +64,66 @@ pub const StackElement = struct {
 
     pub fn print_element(self: *const @This()) void {
         print_node_uuid_and_type(self.bound_node);
-        std.debug.print(".{s}\n", .{self.child_identifier});
+        std.debug.print(".{s}", .{self.child_identifier});
     }
 };
+
+const StackElementMap = struct {
+    pub fn eql(_: @This(), a: StackElement, b: StackElement) bool {
+        return a.bound_node.g == b.bound_node.g and
+            a.bound_node.node.is_same(b.bound_node.node) and
+            std.mem.eql(u8, a.child_identifier, b.child_identifier);
+    }
+
+    pub fn hash(_: @This(), key: StackElement) u64 {
+        var h: u64 = 0;
+        var uuid = key.bound_node.node.get_uuid();
+        h = std.hash.Wyhash.hash(h, std.mem.asBytes(&uuid));
+        var g_ptr: usize = @intFromPtr(key.bound_node.g);
+        h = std.hash.Wyhash.hash(h, std.mem.asBytes(&g_ptr));
+        h = std.hash.Wyhash.hash(h, key.child_identifier);
+        return h;
+    }
+
+    pub fn T(V: type) type {
+        return std.HashMap(StackElement, V, StackElementMap, std.hash_map.default_max_load_percentage);
+    }
+
+    pub fn add_node(
+        map: *StackElementMap.T(BoundNodeRefSet),
+        allocator: std.mem.Allocator,
+        key: StackElement,
+        node: BoundNodeReference,
+    ) void {
+        const gop = map.getOrPut(key) catch @panic("OOM");
+        if (!gop.found_existing) {
+            gop.value_ptr.* = BoundNodeRefSet.init(allocator);
+        }
+        gop.value_ptr.put(node, {}) catch @panic("OOM");
+    }
+
+    pub fn print_key_value(map: *StackElementMap.T(BoundNodeRefSet), key: StackElement) void {
+        const value = map.getPtr(key) orelse return;
+        std.debug.print("Stack element: ", .{});
+        key.print_element();
+        std.debug.print(" - ", .{});
+        BoundNodeRefMap.print_set(value);
+        std.debug.print("\n", .{});
+    }
+
+    pub fn remove_node(
+        map: *StackElementMap.T(BoundNodeRefSet),
+        key: StackElement,
+        node: BoundNodeReference,
+    ) bool {
+        if (map.getPtr(key)) |set_ptr| {
+            return set_ptr.remove(node);
+        }
+        return false;
+    }
+};
+
+const BoundNodeRefSet = BoundNodeRefMap.T(void);
 
 pub const PathFinder = struct {
     const Self = @This();
@@ -44,6 +132,7 @@ pub const PathFinder = struct {
     visited_path_counter: u64,
     current_bfs_paths: std.ArrayList(*BFSPath),
     stack_elements_to_bfs: std.ArrayList(StackElement),
+    stack_element_nodes: StackElementMap.T(BoundNodeRefSet),
 
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
@@ -51,6 +140,7 @@ pub const PathFinder = struct {
             .visited_path_counter = 0,
             .current_bfs_paths = std.ArrayList(*BFSPath).init(allocator),
             .stack_elements_to_bfs = std.ArrayList(StackElement).init(allocator),
+            .stack_element_nodes = StackElementMap.T(BoundNodeRefSet).init(allocator),
         };
     }
 
@@ -60,14 +150,17 @@ pub const PathFinder = struct {
         }
         self.current_bfs_paths.deinit();
         self.stack_elements_to_bfs.deinit();
+        var it = self.stack_element_nodes.valueIterator();
+        while (it.next()) |set_ptr| {
+            set_ptr.deinit();
+        }
+        self.stack_element_nodes.deinit();
     }
 
     pub fn find_paths(
         self: *Self,
         start_node: BoundNodeReference,
     ) !graph.BFSPaths {
-        std.debug.print("Finding paths from {}\n", .{start_node.node.get_uuid()});
-
         self.stack_elements_to_bfs.append(.{ .bound_node = start_node, .child_identifier = "" }) catch @panic("OOM");
 
         while (self.stack_elements_to_bfs.pop()) |stack_element| {
@@ -81,16 +174,29 @@ pub const PathFinder = struct {
                 &[_]graph.Edge.EdgeType{EdgeInterfaceConnection.tid},
             );
 
-            // For each connected interface, add stack element to BFS queue
+            // Add connected interfaces for a given stack element to the stack element nodes
+            for (self.current_bfs_paths.items) |path| {
+                const last_node = path.get_last_node();
+                StackElementMap.add_node(&self.stack_element_nodes, self.allocator, stack_element, last_node);
+            }
+            if (comptime debug_pathfinder) {
+                StackElementMap.print_key_value(&self.stack_element_nodes, stack_element);
+            }
+
+            // For each connected interface, add parent stack element to BFS queue
             for (self.current_bfs_paths.items) |path| {
                 const bound_node = EdgeComposition.get_parent_node_of(path.get_last_node()) orelse continue;
                 const parent_edge = EdgeComposition.get_parent_edge(path.get_last_node()) orelse continue;
                 const child_identifier = EdgeComposition.get_name(parent_edge.edge) catch continue;
-                const stack_element_to_append = StackElement{ .bound_node = bound_node, .child_identifier = child_identifier };
+                const stack_element_to_append = StackElement{
+                    .bound_node = bound_node,
+                    .child_identifier = child_identifier,
+                };
                 self.stack_elements_to_bfs.append(stack_element_to_append) catch @panic("OOM");
                 if (comptime debug_pathfinder) {
-                    std.debug.print("Adding stack element: ", .{});
+                    std.debug.print("Adding parent stack element to bfs queue: ", .{});
                     stack_element_to_append.print_element();
+                    std.debug.print("\n", .{});
                 }
             }
 
@@ -151,5 +257,7 @@ fn try_get_node_type_name(bound_node: BoundNodeReference) ?graph.str {
 fn print_node_uuid_and_type(bound_node: BoundNodeReference) void {
     if (try_get_node_type_name(bound_node)) |type_name| {
         std.debug.print("{}:{s}", .{ bound_node.node.get_uuid(), type_name });
-    } else std.debug.print("{}:<no_type>", .{bound_node.node.get_uuid()});
+    } else {
+        std.debug.print("{}:<no_type>", .{bound_node.node.get_uuid()});
+    }
 }
