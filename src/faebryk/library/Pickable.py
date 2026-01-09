@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Self
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.util import not_none
 
 if TYPE_CHECKING:
@@ -263,6 +262,8 @@ class has_part_picked(fabll.Node):
         return not_none(self.try_get_part())
 
     def try_get_part(self) -> "PickedPart | None":
+        from faebryk.libs.picker.lcsc import PickedPartLCSC
+
         if manufacturer := self.manufacturer.get().try_extract_constrained_literal():
             manufacturer = manufacturer.get_values()[0]
         else:
