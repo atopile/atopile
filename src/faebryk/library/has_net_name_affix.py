@@ -42,14 +42,12 @@ class has_net_name_affix(fabll.Node):
             )
         return out
 
-    @property
-    def prefix(self) -> F.Literals.Strings | None:
+    def get_prefix(self) -> str | None:
         if prefix := self.required_prefix_.get().try_extract_constrained_literal():
             return prefix.get_values()[0]
         return None
 
-    @property
-    def suffix(self) -> F.Literals.Strings | None:
+    def get_suffix(self) -> str | None:
         if suffix := self.required_suffix_.get().try_extract_constrained_literal():
             return suffix.get_values()[0]
         return None
