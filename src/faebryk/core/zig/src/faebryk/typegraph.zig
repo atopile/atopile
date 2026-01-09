@@ -1661,12 +1661,11 @@ pub const TypeGraph = struct {
                 };
 
                 const edge_specific_val: ?u16 = if (info.make_link.node.get("edge_specific")) |e| @as(u16, @intCast(e.Uint)) else null;
-                const effective_order: u16 = edge_specific_val orelse attrs.get_order();
 
                 return visitor_.cb(visitor_.ctx, MakeChildInfo{
                     .identifier = element_id,
                     .make_child = make_child,
-                    .order = effective_order,
+                    .order = attrs.get_order(),
                     .edge_specific = edge_specific_val,
                 });
             }
