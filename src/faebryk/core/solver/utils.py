@@ -723,7 +723,11 @@ class MutatorUtils:
         """
         Check that non-literal operands refer to the same parameter/expression.
         Literals can differ (semantic check will compare values).
+
+        IMPORTANT: Depends on remove_congruent_expressions having already unified
+        equivalent expressions in order for identity comparison to be valid.
         """
+
         for new_op, cand_op in zip(new_operands, candidate_operands):
             new_po = new_op.as_parameter_operatable.try_get()
             cand_po = cand_op.as_parameter_operatable.try_get()

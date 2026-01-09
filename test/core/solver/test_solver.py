@@ -2774,6 +2774,33 @@ class TestSubsumptionDetection:
         )
         assert result is None
 
+    def test_subsumption_check_e2e(self):
+        solver = DefaultSolver()
+        E = BoundExpressions()
+
+        class _App(fabll.Node):
+            param = F.Parameters.NumericParameter.MakeChild(unit=E.U.V)
+
+        app = _App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
+        A = app.param.get().can_be_operand.get()
+
+        # Create tighter constraint first: X ⊆ [0, 10]
+        tight = E.is_subset(A, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
+
+        # Create looser constraint: X ⊆ [0, 20]
+        loose = E.is_subset(A, E.lit_op_range(((0, E.U.V), (20, E.U.V))), assert_=True)
+
+        repr_map = solver.simplify(E.tg, E.g).data.mutation_map
+
+        tight_mapped = repr_map.map_forward(tight.as_parameter_operatable.force_get())
+        loose_mapped = repr_map.map_forward(loose.as_parameter_operatable.force_get())
+
+        assert tight_mapped is not None
+        assert loose_mapped is not None
+        assert tight_mapped.maps_to is not None
+        assert loose_mapped.maps_to is not None
+        assert tight_mapped.maps_to.is_same(loose_mapped.maps_to)
+
 
 if __name__ == "__main__":
     import typer
