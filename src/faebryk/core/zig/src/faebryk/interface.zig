@@ -2,7 +2,7 @@ const graph_import = @import("graph");
 const graph = graph_import.graph;
 const visitor = graph_import.visitor;
 const std = @import("std");
-const PathFinder = @import("pathfinder.zig").PathFinder;
+const PathFinder = @import("new-pathfinder.zig").PathFinder;
 const EdgeComposition = @import("composition.zig").EdgeComposition;
 const edgebuilder_mod = @import("edgebuilder.zig");
 const TypeGraph = @import("typegraph.zig").TypeGraph;
@@ -375,6 +375,37 @@ test "is_connected_to" {
     var path = try EdgeInterfaceConnection.is_connected_to(a, bn1, bn2);
     defer path.deinit();
     try std.testing.expect(path.get_last_node().node.is_same(bn2.node));
+}
+
+test "simple_electric_power_hierarchy" {
+    // P1 --> P2
+    //  |      |
+    // HV     HV
+    // LV     LV
+    // Just instantiate and verify the hierarchy exists
+    var g = graph.GraphView.init(a);
+    defer g.deinit();
+
+    var tg = TypeGraph.init(&g);
+    const test_types = try init_test_types(&tg);
+
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "HV", null, false);
+    _ = try tg.add_make_child(test_types.electric_power, test_types.electrical, "LV", null, false);
+
+    const EP_1 = try instantiate_interface(&tg, test_types.electric_power);
+    const EP_2 = try instantiate_interface(&tg, test_types.electric_power);
+    _ = try EdgeInterfaceConnection.connect(EP_1, EP_2);
+
+    const HV_1 = EdgeComposition.get_child_by_identifier(EP_1, "HV").?;
+
+    var paths = try EdgeInterfaceConnection.get_connected(a, HV_1, true);
+    defer {
+        var it = paths.iterator();
+        while (it.next()) |entry| {
+            entry.value_ptr.*.deinit();
+        }
+        paths.deinit();
+    }
 }
 
 test "down_connect" {

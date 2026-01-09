@@ -957,7 +957,7 @@ pub const GraphView = struct {
         comptime T: type,
         ctx: *anyopaque,
         f: fn (*anyopaque, *BFSPath) visitor.VisitResult(T),
-        edge_type_filter: ?[]Edge.EdgeType,
+        edge_type_filter: ?[]const Edge.EdgeType,
     ) visitor.VisitResult(T) {
         // Use C allocator for path metadata to avoid Arena ballooning.
         // Paths are manually deinitialized when popped from the queue.

@@ -99,7 +99,7 @@ pub const PathFinder = struct {
             void,
             self,
             Self.visit_fn,
-            @constCast(&allowed_edges),
+            &allowed_edges,
         );
 
         switch (result) {
