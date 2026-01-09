@@ -55,6 +55,9 @@ class Addressor(fabll.Node):
         F.has_single_electric_reference.MakeChild()
     )
 
+    # PointerSequence for address lines - elements are added dynamically by factory()
+    address_lines = F.Collections.PointerSequence.MakeChild()
+
     # Design check trait for post-solve address line configuration
     design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
 
@@ -195,10 +198,10 @@ class Addressor(fabll.Node):
         Create a concrete Addressor type with a fixed number of address bits.
 
         This creates:
-        1. A PointerSequence named `address_lines` for for-loop iteration in ato
-        2. ElectricLogic children named `address_lines[0]`, `address_lines[1]`, etc.
+        1. ElectricLogic children named `address_lines[0]`, `address_lines[1]`, etc.
            for direct indexed access
-        3. MakeLink edges from the PointerSequence to each ElectricLogic element
+        2. MakeLink edges from the inherited `address_lines` PointerSequence to each
+           ElectricLogic element for for-loop iteration in ato
         """
         if address_bits <= 0:
             raise ValueError("At least one address bit is required")
@@ -207,20 +210,16 @@ class Addressor(fabll.Node):
             cls, name=f"Addressor<address_bits={address_bits}>"
         )
 
-        # 1. Create the PointerSequence for for-loop iteration
-        address_lines_seq = F.Collections.PointerSequence.MakeChild()
-        ConcreteAddressor._handle_cls_attr("address_lines", address_lines_seq)
-
-        # 2. Create ElectricLogic children with indexed names
-        # These become direct children: address_lines[0], address_lines[1], etc.
+        # Create ElectricLogic children with indexed names and link to PointerSequence
+        # The address_lines PointerSequence is inherited from the base Addressor class
         for i in range(address_bits):
             line = F.ElectricLogic.MakeChild()
             ConcreteAddressor._handle_cls_attr(f"address_lines[{i}]", line)
 
-            # 3. Create MakeLink edge from PointerSequence to element
+            # Create MakeLink edge from inherited PointerSequence to element
             # This allows iteration: for line in addressor.address_lines
             edge = F.Collections.PointerSequence.MakeEdge(
-                seq_ref=[address_lines_seq],
+                seq_ref=[cls.address_lines],
                 elem_ref=[line],
                 index=i,
             )
@@ -326,8 +325,8 @@ def test_addressor_sets_address_lines(
     solver.simplify(g, tg)
     fabll.Traits.create_and_add_instance_to(app, F.has_solver).setup(solver)
 
-    # Run post-solve checks (this triggers address line setting)
-    check_design(app, stage=F.implements_design_check.CheckStage.POST_SOLVE)
+    # Run post-design checks (this triggers address line setting)
+    check_design(app, stage=F.implements_design_check.CheckStage.POST_DESIGN)
 
     # Get fresh address_lines after solve
     address_lines = addressor.address_lines.get().as_list()
@@ -380,7 +379,7 @@ def test_addressor_unresolved_offset_raises():
 
     # Should raise because offset is neither directly constrained nor deducible
     with pytest.raises(UserDesignCheckException, match="offset must be constrained"):
-        check_design(app, stage=F.implements_design_check.CheckStage.POST_SOLVE)
+        check_design(app, stage=F.implements_design_check.CheckStage.POST_DESIGN)
 
 
 def test_addressor():
@@ -407,9 +406,9 @@ def test_addressor():
     solver = DefaultSolver()
     solver.simplify(g, tg)
 
-    # Attach solver and run post-solve design checks (which sets address lines)
+    # Attach solver and run post-design checks (which sets address lines)
     fabll.Traits.create_and_add_instance_to(app, F.has_solver).setup(solver)
-    check_design(app, stage=F.implements_design_check.CheckStage.POST_SOLVE)
+    check_design(app, stage=F.implements_design_check.CheckStage.POST_DESIGN)
 
     assert solver.inspect_get_known_supersets(
         app.i2c.get().address.get().is_parameter.get()
@@ -446,6 +445,7 @@ def test_addressor():
     )
 
 
+@once
 def _make_configurable_i2c_client():
     """Factory to create ConfigurableI2CClient class inside tests."""
 
@@ -488,6 +488,7 @@ def _make_configurable_i2c_client():
     return ConfigurableI2CClient
 
 
+@once
 def _make_i2c_bus_topology():
     """Factory to create I2CBusTopology class inside tests."""
     ConfigurableI2CClient = _make_configurable_i2c_client()
@@ -530,7 +531,7 @@ def test_i2c_unique_addresses():
     solver.simplify(g, tg)
     fabll.Traits.create_and_add_instance_to(app, F.has_solver).setup(solver)
 
-    check_design(app, stage=F.implements_design_check.CheckStage.POST_SOLVE)
+    check_design(app, stage=F.implements_design_check.CheckStage.POST_DESIGN)
 
 
 @pytest.mark.skip(
@@ -554,7 +555,7 @@ def test_i2c_duplicate_addresses():
 
     # with pytest.raises(F.I2C.requires_unique_addresses.DuplicateAddressException):
     with pytest.raises(ExceptionGroup) as e:
-        check_design(app, stage=F.implements_design_check.CheckStage.POST_SOLVE)
+        check_design(app, stage=F.implements_design_check.CheckStage.POST_DESIGN)
     assert e.group_contains(
         UserDesignCheckException, match="Duplicate I2C addresses found on the bus:"
     )
@@ -585,7 +586,7 @@ def test_i2c_duplicate_addresses_isolated():
 
     # with pytest.raises(F.I2C.requires_unique_addresses.DuplicateAddressException):
     with pytest.raises(ExceptionGroup) as e:
-        check_design(app, stage=F.implements_design_check.CheckStage.POST_SOLVE)
+        check_design(app, stage=F.implements_design_check.CheckStage.POST_DESIGN)
     assert e.group_contains(
         UserDesignCheckException, match="Duplicate I2C addresses found on the bus:"
     )
