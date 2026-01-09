@@ -800,6 +800,40 @@ class is_unit(fabll.Node):
 
         return out
 
+    def serialize_for_api(self: "is_unit | None") -> str | dict | None:
+        """
+        Serialize unit for the component API backend.
+
+        Returns the pint-compatible lowercase unit name (e.g., "volt", "farad", "ohm")
+        for compatibility with the backend's deserialization which uses pint.
+
+        This is separate from serialize() which returns the display symbol.
+        """
+        if self is None:
+            return None
+
+        if symbols := is_unit._extract_symbols(self):
+            # Find the lowercase pint-compatible name in symbols list
+            # e.g., for Volt: ["V", "volt", "voltage"] -> "volt"
+            for symbol in symbols:
+                if symbol.islower() and symbol.isalpha():
+                    return symbol
+            # Fallback to first symbol if no lowercase name found
+            return symbols[0]
+
+        # For anonymous/complex units, return the full structure
+        out = {}
+        basis_vector = is_unit._extract_basis_vector(self)
+        multiplier = is_unit._extract_multiplier(self)
+        offset = is_unit._extract_offset(self)
+
+        out["symbols"] = symbols
+        out["basis_vector"] = basis_vector.to_dict()
+        out["multiplier"] = multiplier
+        out["offset"] = offset
+
+        return out
+
 
 class is_si_unit(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
@@ -2984,9 +3018,15 @@ class TestIsUnit(_TestWithContext):
         assert is_unit.compact_repr(scaled_offset_unit) == "(0.5×K+100)"
 
     def test_is_unit_serialize_named_unit(self, ctx: BoundUnitsContext):
-        """Test that is_unit.serialize() returns the expected API format."""
+        """Test that is_unit.serialize() returns the display symbol."""
         serialized = ctx.Ohm.is_unit.get().serialize()
         expected = "Ω"
+        assert serialized == expected
+
+    def test_is_unit_serialize_for_api(self, ctx: BoundUnitsContext):
+        """Test that is_unit.serialize_for_api() returns the pint-compatible name."""
+        serialized = ctx.Ohm.is_unit.get().serialize_for_api()
+        expected = "ohm"
         assert serialized == expected
 
     def test_is_unit_serialize_anonymous_unit(self, ctx: BoundUnitsContext):

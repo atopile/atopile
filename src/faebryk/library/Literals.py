@@ -4306,9 +4306,8 @@ class Numbers(fabll.Node):
         return {
             "type": type_name,
             "data": {
-                # Both values and unit string are in base SI
                 "intervals": numeric_set.serialize(),
-                "unit": is_unit.serialize(base_unit),
+                "unit": is_unit.serialize_for_api(base_unit),
             },
         }
 
@@ -5534,7 +5533,11 @@ class TestNumbers:
         assert not qs1.equals(qs2, g=g, tg=tg)
 
     def test_serialize_api_format(self):
-        """Test serialization to API format (Quantity_Interval_Disjoint)."""
+        """Test serialization to API format (Quantity_Interval_Disjoint).
+
+        Note: serialize() uses serialize_for_api() for the unit, which returns
+        pint-compatible names like "ohm" instead of display symbols like "Ω".
+        """
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Ohm
@@ -5561,12 +5564,16 @@ class TestNumbers:
                         ]
                     },
                 },
-                "unit": "Ω",
+                "unit": "ohm",
             },
         }
 
     def test_serialize_singleton_as_discrete(self):
-        """Test that singleton values serialize as Quantity_Set_Discrete."""
+        """Test that singleton values serialize as Quantity_Set_Discrete.
+
+        Note: serialize() uses serialize_for_api() for the unit, which returns
+        pint-compatible names like "watt" instead of display symbols like "W".
+        """
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Watt
@@ -5592,7 +5599,7 @@ class TestNumbers:
                         ]
                     },
                 },
-                "unit": "W",
+                "unit": "watt",
             },
         }
 
