@@ -135,7 +135,7 @@ pub const PathFinder = struct {
     allocator: std.mem.Allocator,
     visited_path_counter: u64,
     current_bfs_paths: std.ArrayList(*BFSPath),
-    stack_elements_to_bfs: std.ArrayList(StackElement),
+    nodes_to_bfs: std.ArrayList(BoundNodeReference),
     stack_element_nodes: StackElementMap.T(BoundNodeRefSet),
 
     pub fn init(allocator: std.mem.Allocator) Self {
@@ -143,7 +143,7 @@ pub const PathFinder = struct {
             .allocator = allocator,
             .visited_path_counter = 0,
             .current_bfs_paths = std.ArrayList(*BFSPath).init(allocator),
-            .stack_elements_to_bfs = std.ArrayList(StackElement).init(allocator),
+            .nodes_to_bfs = std.ArrayList(BoundNodeReference).init(allocator),
             .stack_element_nodes = StackElementMap.T(BoundNodeRefSet).init(allocator),
         };
     }
@@ -153,7 +153,7 @@ pub const PathFinder = struct {
             path.deinit();
         }
         self.current_bfs_paths.deinit();
-        self.stack_elements_to_bfs.deinit();
+        self.nodes_to_bfs.deinit();
         var it = self.stack_element_nodes.valueIterator();
         while (it.next()) |set_ptr| {
             set_ptr.deinit();
@@ -165,13 +165,13 @@ pub const PathFinder = struct {
         self: *Self,
         start_node: BoundNodeReference,
     ) !graph.BFSPaths {
-        self.stack_elements_to_bfs.append(.{ .bound_node = start_node, .child_identifier = "" }) catch @panic("OOM");
+        self.nodes_to_bfs.append(start_node) catch @panic("OOM");
 
-        while (self.stack_elements_to_bfs.pop()) |stack_element| {
+        while (self.nodes_to_bfs.pop()) |bound_node| {
 
             // Find all connected interfaces in current hierarchy level
-            _ = stack_element.bound_node.g.visit_paths_bfs(
-                stack_element.bound_node,
+            _ = bound_node.g.visit_paths_bfs(
+                bound_node,
                 void,
                 self,
                 Self.bfs_visit_fn,
@@ -179,41 +179,14 @@ pub const PathFinder = struct {
             );
 
             // Add connected interfaces for a given stack element to the stack element nodes
+
+            // For each connected interface, add parent node to BFS queue
             for (self.current_bfs_paths.items) |path| {
-                const last_node = path.get_last_node();
-                StackElementMap.add_node(&self.stack_element_nodes, self.allocator, stack_element, last_node);
-            }
-
-            if (comptime debug_pathfinder) {
-                StackElementMap.print_key_value(&self.stack_element_nodes, stack_element);
-            }
-
-            // For each connected interface, see if we can go down according to the child identifier
-            if (self.stack_element_nodes.getPtr(stack_element)) |node_set| {
-                var it = node_set.keyIterator();
-                while (it.next()) |node_ptr| {
-                    const child_node = EdgeComposition.get_child_by_identifier(node_ptr.*, stack_element.child_identifier);
-                    if (child_node != null) {
-                        std.debug.print("Found child node!!!!\t", .{});
-                        print_node_uuid_and_type(node_ptr.*);
-                        std.debug.print("\n", .{});
-                    }
-                }
-            }
-
-            // For each connected interface, add parent stack element to BFS queue
-            for (self.current_bfs_paths.items) |path| {
-                const bound_node = EdgeComposition.get_parent_node_of(path.get_last_node()) orelse continue;
-                const parent_edge = EdgeComposition.get_parent_edge(path.get_last_node()) orelse continue;
-                const child_identifier = EdgeComposition.get_name(parent_edge.edge) catch continue;
-                const stack_element_to_append = StackElement{
-                    .bound_node = bound_node,
-                    .child_identifier = child_identifier,
-                };
-                self.stack_elements_to_bfs.append(stack_element_to_append) catch @panic("OOM");
+                const parent_node = EdgeComposition.get_parent_node_of(path.get_last_node()) orelse continue;
+                self.nodes_to_bfs.append(parent_node) catch @panic("OOM");
                 if (comptime debug_pathfinder) {
-                    std.debug.print("Adding parent stack element to bfs queue: ", .{});
-                    stack_element_to_append.print_element();
+                    std.debug.print("Adding parent node to bfs queue: ", .{});
+                    print_node_uuid_and_type(parent_node);
                     std.debug.print("\n", .{});
                 }
             }
