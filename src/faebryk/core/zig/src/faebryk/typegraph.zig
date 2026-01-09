@@ -441,7 +441,7 @@ pub const TypeGraph = struct {
             const next_reference = EdgeNext.get_next_node_from_node(reference);
             if (next_reference) |_next_reference| {
                 const next_ref = reference.g.bind(_next_reference);
-                target = ChildReferenceNode.resolve(next_ref, target).?;
+                target = ChildReferenceNode.resolve(next_ref, target) orelse return null;
             }
             return target;
         }

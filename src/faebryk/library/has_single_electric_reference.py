@@ -13,25 +13,27 @@ if TYPE_CHECKING:
 class has_single_electric_reference(fabll.Node):
     """
     Connect all electric references of a module into a single reference.
+
+    The trait provides a `reference` (ElectricPower) that can be accessed via
+    `reference_shim` at compile time.
     """
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
-    reference_ptr_ = F.Collections.Pointer.MakeChild()
+    # The actual ElectricPower reference that all children will share
+    reference = F.ElectricPower.MakeChild()
+
     ground_only_ = F.Parameters.BooleanParameter.MakeChild()
     exclude_ = F.Collections.PointerSet.MakeChild()
 
     def get_reference(self) -> "ElectricPower":
-        reference = self.reference_ptr_.get().deref()
-        if reference is None:
-            raise ValueError("has_single_electric_reference has no reference")
-        return reference.cast(F.ElectricPower)
+        """Get the shared ElectricPower reference."""
+        return self.reference.get()
 
     def connect_all_references(self, ground_only: bool = False):
         parent_node = self.get_parent_force()[0]
-        reference = F.ElectricPower.bind_typegraph(self.tg).create_instance(g=self.g)
-        self.reference_ptr_.get().point(reference)
-
+        # Use the existing reference child instead of creating a new one
+        reference = self.reference.get()
 
         children_with_trait = parent_node.get_children(
             direct_only=True,
@@ -48,7 +50,9 @@ class has_single_electric_reference(fabll.Node):
                 child_trait.connect_all_references(ground_only=ground_only)
 
             if ground_only:
-                child_trait.get_reference().lv.get()._is_interface.get().connect_to(reference.lv.get())
+                child_trait.get_reference().lv.get()._is_interface.get().connect_to(
+                    reference.lv.get()
+                )
             else:
                 child_trait.get_reference()._is_interface.get().connect_to(reference)
 
@@ -78,7 +82,6 @@ class has_single_electric_reference(fabll.Node):
         cls, ground_only: bool = False, exclude: list[fabll._ChildField] = []
     ) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
-        # Reference pointer does not exist yet. Created when added to obj
         out.add_dependant(
             F.Literals.Booleans.MakeChild_ConstrainToLiteral(
                 [out, cls.ground_only_], ground_only

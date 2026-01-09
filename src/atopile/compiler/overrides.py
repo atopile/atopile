@@ -4,8 +4,8 @@ Assignment and trait overrides for the ato DSL compiler.
 This module provides declarative specifications for converting legacy sugar syntax
 and aliased trait names to their actual trait implementations.
 
-Reference overrides allow virtual fields that dereference trait-owned pointers,
-such as `reference_shim` which resolves to the ElectricPower from
+Reference overrides allow virtual fields that access trait-owned children,
+such as `reference_shim` which resolves to the ElectricPower `reference` from
 has_single_electric_reference.
 """
 
@@ -27,7 +27,7 @@ from atopile.compiler.gentypegraph import (
     LinkPath,
     NoOpAction,
 )
-from faebryk.core.faebrykpy import EdgeComposition, EdgePointer, EdgeTrait
+from faebryk.core.faebrykpy import EdgeComposition, EdgeTrait
 from faebryk.libs.exceptions import DeprecatedException, downgrade
 from faebryk.libs.smd import SMDSize
 
@@ -340,26 +340,26 @@ class TraitOverrideRegistry:
 @dataclass
 class ReferenceOverrideSpec:
     """
-    Specification for transforming a field reference into a trait-pointer dereference.
+    Specification for transforming a field reference into a trait child access.
 
     When a field path ends with the specified name (e.g., `reference_shim`),
-    the path is transformed to traverse through the specified trait and dereference
-    its pointer child.
+    the path is transformed to traverse through the specified trait and access
+    its child.
 
     For example, `i2c.reference_shim` becomes:
         ["i2c", EdgeTrait(has_single_electric_reference),
-         EdgeComposition("reference_ptr_"), EdgePointer()]
+         EdgeComposition("reference")]
     """
 
     trait_class: type[fabll.Node]
-    pointer_child_name: str
+    child_name: str
 
 
-# Reference overrides: virtual fields that dereference trait-owned pointers
+# Reference overrides: virtual fields that access trait-owned children
 _REFERENCE_OVERRIDES: dict[str, ReferenceOverrideSpec] = {
     "reference_shim": ReferenceOverrideSpec(
         trait_class=F.has_single_electric_reference,
-        pointer_child_name="reference_ptr_",
+        child_name="reference",
     ),
 }
 
@@ -369,9 +369,9 @@ class ReferenceOverrideRegistry:
     Registry for reference overrides that transform field paths into trait lookups.
 
     Reference overrides handle virtual fields like `reference_shim` which resolve
-    to a pointer dereference through a trait. When `i2c.reference_shim` is used
-    in a connection, it's transformed to traverse the `has_single_electric_reference`
-    trait and dereference its `reference_ptr_` to get the actual ElectricPower.
+    to a child of a trait. When `i2c.reference_shim` is used in a connection, it's
+    transformed to traverse the `has_single_electric_reference` trait and access
+    its `reference` child to get the actual ElectricPower.
 
     This allows connections like `i2c.reference_shim ~ power` to work on any module
     that has the `has_single_electric_reference` trait, without requiring an explicit
@@ -405,14 +405,12 @@ class ReferenceOverrideRegistry:
 
         spec = _REFERENCE_OVERRIDES[last]
 
-        # Build the new path: base path + trait traversal + pointer dereference
+        # Build the new path: base path + trait traversal + child access
         # Original: ["i2c", "reference_shim"]
-        # Becomes: ["i2c", EdgeTrait(trait), EdgeComposition("reference_ptr_"),
-        #           EdgePointer()]
+        # Becomes: ["i2c", EdgeTrait(trait), EdgeComposition("reference")]
         base_path = path[:-1]  # Everything except the override identifier
         return [
             *base_path,
             EdgeTrait.traverse(trait_type=spec.trait_class),
-            EdgeComposition.traverse(identifier=spec.pointer_child_name),
-            EdgePointer.traverse(),
+            EdgeComposition.traverse(identifier=spec.child_name),
         ]

@@ -2,7 +2,7 @@ import math
 from bisect import bisect
 from collections.abc import Generator
 from dataclasses import dataclass
-from enum import Enum, StrEnum
+from enum import Enum, IntEnum, StrEnum
 from operator import ge
 from typing import TYPE_CHECKING, Iterable, Self, cast
 from warnings import deprecated
@@ -7081,10 +7081,26 @@ class AbstractEnums(fabll.Node):
                 f"Expected 'enum.values' to be a dict, got {type(enum_values)}"
             )
 
-        # Create a dynamic enum type preserving the original values.
-        # Convert values to strings since StrEnum requires string values.
-        string_enum_values = {k: str(v) for k, v in enum_values.items()}
-        DynamicEnum: type[Enum] = StrEnum(enum_name, string_enum_values)  # type: ignore[assignment]
+        # Create a dynamic enum type preserving the original value types.
+        # If all values are integers (or string representations of integers),
+        # create an IntEnum to match the original type (e.g., auto() enums).
+        # Otherwise, create a StrEnum.
+        def _try_parse_int(v: str | int) -> int | str:
+            if isinstance(v, int):
+                return v
+            try:
+                return int(v)
+            except (ValueError, TypeError):
+                return str(v)
+
+        parsed_values = {k: _try_parse_int(v) for k, v in enum_values.items()}
+        all_ints = all(isinstance(v, int) for v in parsed_values.values())
+
+        if all_ints:
+            DynamicEnum: type[Enum] = IntEnum(enum_name, parsed_values)  # type: ignore[assignment]
+        else:
+            string_enum_values = {k: str(v) for k, v in enum_values.items()}
+            DynamicEnum = StrEnum(enum_name, string_enum_values)  # type: ignore[assignment]
 
         # Get the concrete enum type using EnumsFactory
         ConcreteEnumType = EnumsFactory(DynamicEnum)
@@ -7092,12 +7108,14 @@ class AbstractEnums(fabll.Node):
         # Create an instance
         enum_instance = ConcreteEnumType.bind_typegraph(tg=tg).create_instance(g=g)
 
-        # Constrain to the selected element values (use string-converted values)
+        # Constrain to the selected element values
         # elements contains [{"name": "NAME"}, ...] where NAME is the enum member name
+        # Use the DynamicEnum to get the actual value for each member name
+        enum_member_values = {m.name: m.value for m in DynamicEnum}
         selected_values = [
-            string_enum_values[element.get("name")]
+            enum_member_values[element.get("name")]
             for element in elements
-            if element.get("name") in string_enum_values
+            if element.get("name") in enum_member_values
         ]
 
         if selected_values:
