@@ -41,27 +41,37 @@ class BJT(fabll.Node):
         F.Footprints.can_attach_to_footprint.MakeChild()
     )
 
-    emitter.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [emitter]))
-    base.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [base]))
-    collector.add_dependant(
-        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [collector])
+    # Create named lead fields so we can attach can_attach_to_pad_by_name to them
+    emitter_lead = F.Lead.is_lead.MakeChild()
+    base_lead = F.Lead.is_lead.MakeChild()
+    collector_lead = F.Lead.is_lead.MakeChild()
+
+    emitter.add_dependant(fabll.Traits.MakeEdge(emitter_lead, [emitter]))
+    base.add_dependant(fabll.Traits.MakeEdge(base_lead, [base]))
+    collector.add_dependant(fabll.Traits.MakeEdge(collector_lead, [collector]))
+
+    # Attach pad name matchers to the lead fields (not to the Electrical nodes)
+    emitter_lead.add_dependant(
+        fabll.Traits.MakeEdge(
+            F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"e|emitter"),
+            [emitter_lead],
+        )
+    )
+    base_lead.add_dependant(
+        fabll.Traits.MakeEdge(
+            F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"b|base"),
+            [base_lead],
+        )
+    )
+    collector_lead.add_dependant(
+        fabll.Traits.MakeEdge(
+            F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"c|collector"),
+            [collector_lead],
+        )
     )
 
     _can_bridge = fabll.Traits.MakeEdge(
         F.can_bridge.MakeChild(["collector"], ["emitter"])
-    )
-
-    emitter_attachable = fabll.Traits.MakeEdge(
-        F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"e|emitter"),
-        [emitter],
-    )
-    base_attachable = fabll.Traits.MakeEdge(
-        F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"b|base"),
-        [base],
-    )
-    collector_attachable = fabll.Traits.MakeEdge(
-        F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"c|collector"),
-        [collector],
     )
 
     designator_prefix = fabll.Traits.MakeEdge(

@@ -39,7 +39,7 @@ def build_project(prj_path: Path, request: pytest.FixtureRequest):
     try:
         ato_build_args = [
             # "--keep-picked-parts", # not supported on new core yet
-            "--keep-net-names",
+            # "--keep-net-names",
         ]
         ato_build_env = {"NONINTERACTIVE": "1"}
 

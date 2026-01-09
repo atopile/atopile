@@ -32,18 +32,54 @@ class OpAmp(fabll.Node):
         F.Footprints.can_attach_to_footprint.MakeChild()
     )
 
-    power.add_dependant(
-        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [power, "hv"])
-    )
-    power.add_dependant(
-        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [power, "lv"])
-    )
-    output.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [output]))
+    # Create named lead fields so we can attach can_attach_to_pad_by_name to them
+    power_hv_lead = F.Lead.is_lead.MakeChild()
+    power_lv_lead = F.Lead.is_lead.MakeChild()
+    output_lead = F.Lead.is_lead.MakeChild()
+    non_inverting_input_lead = F.Lead.is_lead.MakeChild()
+    inverting_input_lead = F.Lead.is_lead.MakeChild()
+
+    # Attach leads to their respective nodes
+    power.add_dependant(fabll.Traits.MakeEdge(power_hv_lead, [power, "hv"]))
+    power.add_dependant(fabll.Traits.MakeEdge(power_lv_lead, [power, "lv"]))
+    output.add_dependant(fabll.Traits.MakeEdge(output_lead, [output]))
     input.add_dependant(
-        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [input, "p", "line"])
+        fabll.Traits.MakeEdge(non_inverting_input_lead, [input, "p", "line"])
     )
     input.add_dependant(
-        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [input, "n", "line"])
+        fabll.Traits.MakeEdge(inverting_input_lead, [input, "n", "line"])
+    )
+
+    # Attach pad name matchers to the lead fields (not to unrelated nodes)
+    non_inverting_input_lead.add_dependant(
+        fabll.Traits.MakeEdge(
+            F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"\+|IN\+"),
+            [non_inverting_input_lead],
+        )
+    )
+    inverting_input_lead.add_dependant(
+        fabll.Traits.MakeEdge(
+            F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"\-|IN\-"),
+            [inverting_input_lead],
+        )
+    )
+    output_lead.add_dependant(
+        fabll.Traits.MakeEdge(
+            F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"OUT"),
+            [output_lead],
+        )
+    )
+    power_hv_lead.add_dependant(
+        fabll.Traits.MakeEdge(
+            F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"V\+|Vcc|Vdd|Vcc\+"),
+            [power_hv_lead],
+        )
+    )
+    power_lv_lead.add_dependant(
+        fabll.Traits.MakeEdge(
+            F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"V\-|Vee|Vss|GND|Vcc\-"),
+            [power_lv_lead],
+        )
     )
 
     S = F.has_simple_value_representation.Spec
@@ -56,24 +92,6 @@ class OpAmp(fabll.Node):
             S(output_current, prefix="Iout"),
             S(slew_rate, prefix="SR"),
         )
-    )
-
-    non_inverting_input_attatchable = fabll.Traits.MakeEdge(
-        F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"+|IN+"), [input, "p"]
-    )
-    inverting_input_attatchable = fabll.Traits.MakeEdge(
-        F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"-|IN-"), [input, "n"]
-    )
-    output_attatchable = fabll.Traits.MakeEdge(
-        F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"OUT"), [output]
-    )
-    power_positive_attatchable = fabll.Traits.MakeEdge(
-        F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"V\+|Vcc|Vdd|Vcc\+"),
-        [power, "hv"],
-    )
-    power_negative_attatchable = fabll.Traits.MakeEdge(
-        F.Lead.can_attach_to_pad_by_name.MakeChild(regex=r"V\-|Vee|Vss|GND|Vcc\-"),
-        [power, "lv"],
     )
 
     designator_prefix = fabll.Traits.MakeEdge(

@@ -32,26 +32,32 @@ class is_lead(fabll.Node):
         self, pads: list[F.Footprints.is_pad], associate: bool = True
     ) -> F.Footprints.is_pad:
         """
-        Find a matching pad for this lead based on the available attach_to_pad traits.
+        Find matching pads for this lead based on the available attach_to_pad traits.
         Defaults to matching the lead instance name to the pad name.
+        Returns the first matched pad, but associates all matched pads to the lead.
         """
         pads = sorted(pads, key=lambda x: x.pad_name)
-        pad = None
+        matched_pads: list[F.Footprints.is_pad] = []
+
         if self.has_trait(can_attach_to_pad_by_name):
-            pad = self.get_trait(can_attach_to_pad_by_name).find_matching_pad(pads)
+            matched_pads = self.get_trait(can_attach_to_pad_by_name).find_matching_pad(
+                pads
+            )
         elif self.has_trait(can_attach_to_any_pad):
             pad = self.get_trait(can_attach_to_any_pad).find_matching_pad(pads)
+            matched_pads = [pad] if pad else []
         else:
             for pad in pads:
                 if self.get_lead_name() == pad.pad_name:
+                    matched_pads.append(pad)
                     break
 
-        if pad is not None:
+        if matched_pads:
             if associate:
                 fabll.Traits.create_and_add_instance_to(
                     node=self, trait=has_associated_pads
-                ).setup(pad=pad)
-            return pad
+                ).setup(pads=matched_pads)
+            return matched_pads[0]
 
         raise LeadPadMatchException(
             f"No matching pad found for lead: {self.get_lead_name()}"
@@ -133,9 +139,12 @@ class can_attach_to_pad_by_name(fabll.Node):
         self.case_sensitive_.get().alias_to_single(value=case_sensitive)
         return self
 
-    def find_matching_pad(self, pads: list[F.Footprints.is_pad]) -> F.Footprints.is_pad:
+    def find_matching_pad(
+        self, pads: list[F.Footprints.is_pad]
+    ) -> list[F.Footprints.is_pad]:
         """
-        Find a pad for this lead based on name match by regex.
+        Find matching pads for this lead based on name match by regex.
+        Returns all matching pads (supports multi-pad leads like power MOSFETs).
         """
         regex = self.compiled_regex
         matched_pads: list[F.Footprints.is_pad] = []
@@ -148,15 +157,8 @@ class can_attach_to_pad_by_name(fabll.Node):
                 if regex.match(pad.pad_number):
                     matched_pads.append(pad)
 
-        if len(matched_pads) == 1:
-            return matched_pads[0]
-        if len(matched_pads) > 1:
-            return matched_pads[0]
-            # TODO: this is many leads to one pad mapping
-            # raise LeadPadMatchException(
-            #     f"Matched {len(matched_pads)} out of {len(pads)} pads for lead "
-            #     f"[{self.get_name()}] with regex [{regex.pattern}]"
-            # )
+        if matched_pads:
+            return matched_pads
         raise LeadPadMatchException(
             f"No matching pad found for lead [{self.get_name()}] "
             f"with regex [{regex.pattern}]"
@@ -165,18 +167,20 @@ class can_attach_to_pad_by_name(fabll.Node):
 
 class has_associated_pads(fabll.Node):
     """
-    A node that has an associated pad.
+    A node that has associated pads (one or more).
+    Supports multi-pad leads like power MOSFETs where multiple pads
+    connect to the same electrical lead (e.g., multiple drain pads).
     """
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
 
-    pad_ptr_ = F.Collections.Pointer.MakeChild()
+    # Use PointerSequence to support multiple pads per lead
+    pad_ptrs_ = F.Collections.PointerSequence.MakeChild()
 
-    # TODO make get_pads to handle one to many connections
     def get_pads(self) -> set[F.Footprints.is_pad]:
-        """The pad associated with this node"""
+        """Get all pads associated with this node"""
         return set(
-            pad.cast(F.Footprints.is_pad) for pad in self.pad_ptr_.get().as_list()
+            pad.cast(F.Footprints.is_pad) for pad in self.pad_ptrs_.get().as_list()
         )
 
     @classmethod
@@ -185,8 +189,16 @@ class has_associated_pads(fabll.Node):
         out.add_dependant(pad)
         return out
 
-    def setup(self, pad: F.Footprints.is_pad) -> Self:
-        self.pad_ptr_.get().point(pad)
+    def setup(
+        self,
+        pad: F.Footprints.is_pad | None = None,
+        pads: list[F.Footprints.is_pad] | None = None,
+    ) -> Self:
+        """Associate one or more pads with this lead."""
+        if pad is not None:
+            self.pad_ptrs_.get().append(pad)
+        if pads is not None:
+            self.pad_ptrs_.get().append(*pads)
         return self
 
 
@@ -260,6 +272,7 @@ def test_can_attach_to_pad_by_name():
     assert module.anode.get().get_trait(is_lead).has_trait(can_attach_to_pad_by_name)
     assert module.cathode.get().get_trait(is_lead).has_trait(can_attach_to_pad_by_name)
 
+    # find_matching_pad returns the first matched pad (but associates all matches)
     matched_anode_pad = module.anode.get().get_trait(is_lead).find_matching_pad(pads)
     matched_cathode_pad = (
         module.cathode.get().get_trait(is_lead).find_matching_pad(pads)
@@ -267,6 +280,65 @@ def test_can_attach_to_pad_by_name():
 
     assert matched_anode_pad.is_same(anode_pad)
     assert matched_cathode_pad.is_same(cathode_pad)
+
+
+def test_can_attach_to_multiple_pads_by_name():
+    """Test that a lead can match multiple pads (e.g., power MOSFET drain pads)."""
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _TestModule(fabll.Node):
+        drain = F.Electrical.MakeChild()
+
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+        lead = is_lead.MakeChild()
+        drain.add_dependant(fabll.Traits.MakeEdge(lead, [drain]))
+        lead.add_dependant(
+            fabll.Traits.MakeEdge(
+                can_attach_to_pad_by_name.MakeChild(r"drain|d"), [lead]
+            )
+        )
+
+    # Create multiple drain pads (like a power MOSFET)
+    class _DrainPad1(fabll.Node):
+        _is_pad = fabll.Traits.MakeEdge(
+            F.Footprints.is_pad.MakeChild(pad_name="D1", pad_number="1")
+        )
+
+    class _DrainPad2(fabll.Node):
+        _is_pad = fabll.Traits.MakeEdge(
+            F.Footprints.is_pad.MakeChild(pad_name="D2", pad_number="2")
+        )
+
+    class _DrainPad3(fabll.Node):
+        _is_pad = fabll.Traits.MakeEdge(
+            F.Footprints.is_pad.MakeChild(pad_name="D3", pad_number="3")
+        )
+
+    class _GatePad(fabll.Node):
+        _is_pad = fabll.Traits.MakeEdge(
+            F.Footprints.is_pad.MakeChild(pad_name="G", pad_number="4")
+        )
+
+    module = _TestModule.bind_typegraph(tg).create_instance(g=g)
+    drain_pad1 = _DrainPad1.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
+    drain_pad2 = _DrainPad2.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
+    drain_pad3 = _DrainPad3.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
+    gate_pad = _GatePad.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
+    pads = [drain_pad1, drain_pad2, drain_pad3, gate_pad]
+
+    # Should match all 3 drain pads, return the first one
+    matched_pad = module.drain.get().get_trait(is_lead).find_matching_pad(pads)
+    assert matched_pad.is_same(drain_pad1)
+
+    # All 3 drain pads should be associated (on the is_lead trait)
+    lead_trait = module.drain.get().get_trait(is_lead)
+    associated_pads = lead_trait.get_trait(has_associated_pads).get_pads()
+    assert len(associated_pads) == 3
+    assert drain_pad1 in associated_pads
+    assert drain_pad2 in associated_pads
+    assert drain_pad3 in associated_pads
 
 
 def test_can_attach_to_any_pad():

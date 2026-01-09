@@ -376,15 +376,21 @@ class ReferenceOverrideRegistry:
     This allows connections like `i2c.reference_shim ~ power` to work on any module
     that has the `has_single_electric_reference` trait, without requiring an explicit
     `reference_shim` field to be defined.
+
+    Also handles suffixes like `i2c.reference_shim.hv` by keeping the suffix after
+    the trait/reference expansion.
     """
 
     @classmethod
     def transform_link_path(cls, path: LinkPath) -> LinkPath:
         """
-        Transform a LinkPath if it ends with a reference override identifier.
+        Transform a LinkPath if it contains a reference override identifier.
 
         Currently supports:
         - `reference_shim`: resolves to ElectricPower from has_single_electric_reference
+
+        Handles both terminal usage (i2c.reference_shim) and suffixed usage
+        (i2c.reference_shim.hv).
 
         Args:
             path: The original LinkPath (list of string identifiers or EdgeTraversal)
@@ -395,22 +401,30 @@ class ReferenceOverrideRegistry:
         if not path:
             return path
 
-        # Get the last identifier (reference overrides only apply to string identifiers)
-        last = path[-1]
-        if not isinstance(last, str):
-            return path
+        # Scan through path looking for reference override identifiers
+        for i, element in enumerate(path):
+            if not isinstance(element, str):
+                continue
 
-        if last not in _REFERENCE_OVERRIDES:
-            return path
+            if element not in _REFERENCE_OVERRIDES:
+                continue
 
-        spec = _REFERENCE_OVERRIDES[last]
+            spec = _REFERENCE_OVERRIDES[element]
 
-        # Build the new path: base path + trait traversal + child access
-        # Original: ["i2c", "reference_shim"]
-        # Becomes: ["i2c", EdgeTrait(trait), EdgeComposition("reference")]
-        base_path = path[:-1]  # Everything except the override identifier
-        return [
-            *base_path,
-            EdgeTrait.traverse(trait_type=spec.trait_class),
-            EdgeComposition.traverse(identifier=spec.child_name),
-        ]
+            # Build the new path:
+            # - prefix: everything before the override identifier
+            # - middle: trait traversal + child access
+            # - suffix: everything after the override identifier
+            #
+            # Original: ["i2c", "reference_shim", "hv"]
+            # Becomes: ["i2c", EdgeTrait(trait), EdgeComposition("reference"), "hv"]
+            prefix = list(path[:i])
+            suffix = list(path[i + 1 :])
+            return [
+                *prefix,
+                EdgeTrait.traverse(trait_type=spec.trait_class),
+                EdgeComposition.traverse(identifier=spec.child_name),
+                *suffix,
+            ]
+
+        return path

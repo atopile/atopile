@@ -62,6 +62,10 @@ class Crystal(fabll.Node):
         F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.XTAL)
     )
 
+    can_bridge = fabll.Traits.MakeEdge(
+        F.can_bridge.MakeChild(["unnamed[0]"], ["unnamed[1]"])
+    )
+
     S = F.has_simple_value_representation.Spec
     _simple_repr = fabll.Traits.MakeEdge(
         F.has_simple_value_representation.MakeChild(

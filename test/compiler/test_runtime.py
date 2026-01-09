@@ -3314,3 +3314,189 @@ class TestCollections:
 
         with pytest.raises(DslException, match="List exceeds maximum size"):
             build_instance(template.format(n=2**16 + 1), "_App")
+
+
+# =============================================================================
+# Reference Override Tests
+# Tests for ReferenceOverrideRegistry which handles virtual fields like
+# `reference_shim` that resolve to trait-owned children
+# =============================================================================
+
+
+class TestReferenceOverrides:
+    """
+    Tests for ReferenceOverrideRegistry.
+
+    Reference overrides allow virtual fields that access trait-owned children,
+    such as `reference_shim` which resolves to the ElectricPower `reference`
+    from has_single_electric_reference trait.
+    """
+
+    def test_reference_shim_at_end_of_path(self):
+        """
+        Test reference_shim used at the end of a field path.
+
+        When `i2c.reference_shim` is used, it should resolve to the ElectricPower
+        reference from the has_single_electric_reference trait and allow connecting
+        it to another ElectricPower interface.
+        """
+        _, _, _, _, app_instance = build_instance(
+            """
+            import I2C
+            import ElectricPower
+
+            module App:
+                i2c = new I2C
+                power = new ElectricPower
+
+                # Connect the I2C's internal reference to an external power rail
+                i2c.reference_shim ~ power
+            """,
+            "App",
+        )
+        i2c = _get_child(app_instance, "i2c")
+        power = F.ElectricPower.bind_instance(_get_child(app_instance, "power"))
+
+        # Get the I2C's has_single_electric_reference trait and its reference
+        i2c_bound = fabll.Node.bind_instance(i2c)
+        trait = i2c_bound.get_trait(F.has_single_electric_reference)
+        trait_reference = trait.reference.get()
+
+        # The trait's reference should be connected to the external power
+        assert _check_connected(trait_reference, power)
+        assert _check_connected(trait_reference.hv.get(), power.hv.get())
+        assert _check_connected(trait_reference.lv.get(), power.lv.get())
+
+    def test_reference_shim_in_middle_of_path(self):
+        """
+        Test reference_shim used in the middle of a field path.
+
+        When `i2c.reference_shim.hv` is used, it should resolve to the hv pin
+        of the ElectricPower reference from has_single_electric_reference trait.
+        """
+        _, _, _, _, app_instance = build_instance(
+            """
+            import I2C
+            import ElectricPower
+            import Electrical
+
+            module App:
+                i2c = new I2C
+                power = new ElectricPower
+                hv_only = new Electrical
+
+                # Connect just the hv pin of the I2C's internal reference
+                i2c.reference_shim.hv ~ hv_only
+            """,
+            "App",
+        )
+        i2c = _get_child(app_instance, "i2c")
+        hv_only = _get_child(app_instance, "hv_only")
+
+        # Get the I2C's has_single_electric_reference trait and its reference
+        i2c_bound = fabll.Node.bind_instance(i2c)
+        trait = i2c_bound.get_trait(F.has_single_electric_reference)
+        trait_reference = trait.reference.get()
+
+        # The trait's reference.hv should be connected to hv_only
+        assert _check_connected(trait_reference.hv.get(), hv_only)
+
+    def test_reference_shim_in_middle_with_lv(self):
+        """
+        Test reference_shim with lv suffix.
+
+        When `i2c.reference_shim.lv` is used, it should resolve to the lv pin
+        of the ElectricPower reference from has_single_electric_reference trait.
+        """
+        _, _, _, _, app_instance = build_instance(
+            """
+            import I2C
+            import Electrical
+
+            module App:
+                i2c = new I2C
+                gnd = new Electrical
+
+                # Connect just the lv (ground) pin of the I2C's internal reference
+                i2c.reference_shim.lv ~ gnd
+            """,
+            "App",
+        )
+        i2c = _get_child(app_instance, "i2c")
+        gnd = _get_child(app_instance, "gnd")
+
+        # Get the I2C's has_single_electric_reference trait and its reference
+        i2c_bound = fabll.Node.bind_instance(i2c)
+        trait = i2c_bound.get_trait(F.has_single_electric_reference)
+        trait_reference = trait.reference.get()
+
+        # The trait's reference.lv should be connected to gnd
+        assert _check_connected(trait_reference.lv.get(), gnd)
+
+    def test_reference_shim_nested_module(self):
+        """
+        Test reference_shim on a nested module's interface.
+
+        When `sensor.i2c.reference_shim` is used, it should resolve through
+        the nested module and connect properly.
+        """
+        _, _, _, _, app_instance = build_instance(
+            """
+            import I2C
+            import ElectricPower
+
+            module Sensor:
+                i2c = new I2C
+
+            module App:
+                sensor = new Sensor
+                power = new ElectricPower
+
+                # Connect nested module's I2C reference to external power
+                sensor.i2c.reference_shim ~ power
+            """,
+            "App",
+        )
+        sensor = _get_child(app_instance, "sensor")
+        sensor_i2c = _get_child(sensor, "i2c")
+        power = F.ElectricPower.bind_instance(_get_child(app_instance, "power"))
+
+        # Get the I2C's has_single_electric_reference trait and its reference
+        i2c_bound = fabll.Node.bind_instance(sensor_i2c)
+        trait = i2c_bound.get_trait(F.has_single_electric_reference)
+        trait_reference = trait.reference.get()
+
+        # The trait's reference should be connected to the external power
+        assert _check_connected(trait_reference, power)
+
+    def test_reference_shim_with_electric_logic(self):
+        """
+        Test reference_shim on ElectricLogic interface.
+
+        ElectricLogic also has has_single_electric_reference trait,
+        so reference_shim should work on it too.
+        """
+        _, _, _, _, app_instance = build_instance(
+            """
+            import ElectricLogic
+            import ElectricPower
+
+            module App:
+                logic = new ElectricLogic
+                power = new ElectricPower
+
+                # Connect the ElectricLogic's internal reference to power
+                logic.reference_shim ~ power
+            """,
+            "App",
+        )
+        logic = _get_child(app_instance, "logic")
+        power = F.ElectricPower.bind_instance(_get_child(app_instance, "power"))
+
+        # Get the ElectricLogic's has_single_electric_reference trait reference
+        logic_bound = fabll.Node.bind_instance(logic)
+        trait = logic_bound.get_trait(F.has_single_electric_reference)
+        trait_reference = trait.reference.get()
+
+        # The trait's reference should be connected to the external power
+        assert _check_connected(trait_reference, power)
