@@ -61,7 +61,7 @@ pub const TypeGraph = struct {
     pub const MakeChildInfo = struct {
         identifier: ?[]const u8,
         make_child: BoundNodeReference,
-        order: u16 = 0,
+        order: u7 = 0,
         edge_specific: ?u16 = null,
     };
 
@@ -2391,21 +2391,9 @@ test "typegraph iterators and mount chains" {
     const container_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("members")});
     const element0_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("0")});
     const element1_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{EdgeComposition.traverse("1")});
-    const ptr_link_attrs_0 = EdgeCreationAttributes{
-        .edge_type = EdgePointer.tid,
-        .directional = true,
-        .name = null,
-        .order = 0,
-        .dynamic = graph.DynamicAttributes.init_on_stack(),
-    };
+    const ptr_link_attrs_0 = EdgePointer.build(null, 0);
     _ = try tg.add_make_link(top, container_reference, element0_reference, ptr_link_attrs_0);
-    const ptr_link_attrs_1 = EdgeCreationAttributes{
-        .edge_type = EdgePointer.tid,
-        .directional = true,
-        .name = null,
-        .order = 1,
-        .dynamic = graph.DynamicAttributes.init_on_stack(),
-    };
+    const ptr_link_attrs_1 = EdgePointer.build(null, 1);
     _ = try tg.add_make_link(top, container_reference, element1_reference, ptr_link_attrs_1);
 
     const children = tg.collect_make_children(a, top);
