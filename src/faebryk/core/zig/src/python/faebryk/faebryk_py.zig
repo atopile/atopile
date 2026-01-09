@@ -6190,7 +6190,7 @@ fn wrap_typegraph_collect_pointer_members() type {
                 // Reconstruct 15-bit index from order (high 7 bits) and edge_specific (low 8 bits)
                 // Pointer sequence members should always have an index
                 const es = info.edge_specific orelse {
-                    py.PyErr_SetString(py.PyExc_RuntimeError, "Pointer sequence member missing index (edge_specific is null)");
+                    py.PyErr_SetString(py.PyExc_ValueError, "Pointer sequence member missing index (edge_specific is null)");
                     py.Py_DECREF(list_obj.?);
                     return null;
                 };
