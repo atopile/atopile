@@ -36,6 +36,7 @@ class is_lead(fabll.Node):
         Defaults to matching the lead instance name to the pad name.
         """
         pads = sorted(pads, key=lambda x: x.pad_name)
+        pad = None
         if self.has_trait(can_attach_to_pad_by_name):
             pad = self.get_trait(can_attach_to_pad_by_name).find_matching_pad(pads)
         elif self.has_trait(can_attach_to_any_pad):
@@ -150,10 +151,12 @@ class can_attach_to_pad_by_name(fabll.Node):
         if len(matched_pads) == 1:
             return matched_pads[0]
         if len(matched_pads) > 1:
-            raise LeadPadMatchException(
-                f"Matched {len(matched_pads)} out of {len(pads)} pads for lead "
-                f"[{self.get_name()}] with regex [{regex.pattern}]"
-            )
+            return matched_pads[0]
+            # TODO: this is many leads to one pad mapping
+            # raise LeadPadMatchException(
+            #     f"Matched {len(matched_pads)} out of {len(pads)} pads for lead "
+            #     f"[{self.get_name()}] with regex [{regex.pattern}]"
+            # )
         raise LeadPadMatchException(
             f"No matching pad found for lead [{self.get_name()}] "
             f"with regex [{regex.pattern}]"
