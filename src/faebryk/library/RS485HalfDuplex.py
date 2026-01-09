@@ -16,10 +16,10 @@ class RS485HalfDuplex(fabll.Node):
 
     baudrate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.BitsPerSecond)
 
-    impedance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
-    impedance_constraint = F.Literals.Numbers.MakeChild_ConstrainToLiteral(
-        [impedance], min=110.0, max=130.0, unit=F.Units.Ohm
-    )
+    # impedance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+    # _impedance_constraint = F.Literals.Numbers.MakeChild_ConstrainToSubsetLiteral(
+    #    [impedance], min=110.0, max=130.0, unit=F.Units.Ohm
+    # )
 
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 

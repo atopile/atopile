@@ -16,7 +16,7 @@ class has_package_requirements(fabll.Node):
     size = F.Parameters.EnumParameter.MakeChild(enum_t=SMDSize)
 
     def get_sizes(self) -> list[SMDSize]:
-        return self.size.get().force_extract_literal().get_values_typed(SMDSize)
+        return self.size.get().force_extract_superset().get_values_typed(SMDSize)
 
     @classmethod
     def MakeChild(cls, size: SMDSize | str):  # type: ignore[invalid-method-override]
@@ -33,7 +33,7 @@ class has_package_requirements(fabll.Node):
                 )
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+            F.Literals.AbstractEnums.MakeChild_SetSuperset(
                 [out, cls.size],
                 size,
             )

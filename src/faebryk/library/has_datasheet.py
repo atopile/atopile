@@ -15,20 +15,18 @@ class has_datasheet(fabll.Node):
     datasheet_ = F.Parameters.StringParameter.MakeChild()
 
     def get_datasheet(self) -> str:
-        return self.datasheet_.get().force_extract_literal().get_values()[0]
+        return self.datasheet_.get().extract_singleton()
 
     @classmethod
     def MakeChild(cls, datasheet: str) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.datasheet_], datasheet
-            )
+            F.Literals.Strings.MakeChild_SetSuperset([out, cls.datasheet_], datasheet)
         )
         return out
 
     def setup(self, datasheet: str) -> Self:
-        self.datasheet_.get().alias_to_single(value=datasheet)
+        self.datasheet_.get().set_singleton(value=datasheet)
         return self
 
 
@@ -44,9 +42,7 @@ def test_setup_populates_datasheet_literal():
 
     assert module.get_trait(has_datasheet) == trait
     assert trait.get_datasheet() == datasheet_url
-    assert trait.datasheet_.get().force_extract_literal().get_values() == [
-        datasheet_url
-    ]
+    assert trait.datasheet_.get().extract_singleton() == datasheet_url
 
 
 def test_makechild_sets_datasheet_on_instance():

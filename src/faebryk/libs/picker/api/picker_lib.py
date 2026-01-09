@@ -29,10 +29,21 @@ from faebryk.libs.picker.lcsc import (
     LCSC_PinmapException,
     attach,
     check_attachable,
+<<<<<<< HEAD
 )
 from faebryk.libs.picker.picker import (
     PickError,
+||||||| parent of 19551e320 (WIP)
+    get_raw,
 )
+from faebryk.libs.picker.picker import (
+    NotCompatibleException,
+    PickError,
+    does_not_require_picker_check,
+=======
+>>>>>>> 19551e320 (WIP)
+)
+from faebryk.libs.picker.picker import PickError
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
@@ -138,7 +149,7 @@ def _prepare_query(
         params_t = make_params_for_type(module_node)
 
         if pkg_t := module_node.try_get_trait(F.has_package_requirements):
-            package_constraint = solver.inspect_get_known_supersets(
+            package_constraint = solver.extract_superset(
                 pkg_t.size.get().is_parameter.get(), g=g, tg=tg
             )
             package = (
@@ -163,7 +174,7 @@ def _prepare_query(
             trait.get_params(),
         )
         cmp_params = {
-            fabll.Traits(p).get_obj_raw(): solver.inspect_get_known_supersets(
+            fabll.Traits(p).get_obj_raw().get_name(): solver.extract_superset(
                 # FIXME g
                 p  # , g=g, tg=tg
             )

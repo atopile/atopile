@@ -42,8 +42,7 @@ def test_ato_pick_resistor():
     assert (
         r1.get_trait(F.has_package_requirements)
         .size.get()
-        .force_extract_literal()
-        .get_single_value_typed(SMDSize)
+        .force_extract_singleton_typed(SMDSize)
         == SMDSize.I0805
     )
 
@@ -70,8 +69,7 @@ def test_ato_pick_capacitor():
     assert (
         r1.get_trait(F.has_package_requirements)
         .size.get()
-        .force_extract_literal()
-        .get_single_value_typed(SMDSize)
+        .force_extract_singleton_typed(SMDSize)
         == SMDSize.I0402
     )
 
@@ -121,8 +119,7 @@ def test_ato_pick_inductor(
     assert (
         inductor.get_trait(F.has_package_requirements)
         .size.get()
-        .force_extract_literal()
-        .get_single_value_typed(SMDSize)
+        .force_extract_singleton_typed(SMDSize)
         == package
     )
 
@@ -131,7 +128,7 @@ def test_ato_pick_inductor(
     assert inductor.has_trait(F.Pickable.has_part_picked)
 
     # Verify the picked part has an inductance value
-    picked_inductance = inductor.inductance.get().try_extract_aliased_literal()
+    picked_inductance = inductor.inductance.get().try_extract_subset()
     assert picked_inductance is not None, "Picked part should have inductance value"
 
 

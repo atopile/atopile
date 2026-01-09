@@ -32,30 +32,26 @@ class is_pad(fabll.Node):
 
     @property
     def pad_name(self) -> str:
-        return self.pad_name_.get().force_extract_literal().get_values()[0]
+        return self.pad_name_.get().extract_singleton()
 
     @property
     def pad_number(self) -> str:
-        return self.pad_number_.get().force_extract_literal().get_values()[0]
+        return self.pad_number_.get().extract_singleton()
 
     @classmethod
     def MakeChild(cls, pad_name: str, pad_number: str) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.pad_name_], pad_name
-            )
+            F.Literals.Strings.MakeChild_SetSuperset([out, cls.pad_name_], pad_name)
         )
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.pad_number_], pad_number
-            )
+            F.Literals.Strings.MakeChild_SetSuperset([out, cls.pad_number_], pad_number)
         )
         return out
 
     def setup(self, pad_name: str, pad_number: str):
-        self.pad_name_.get().alias_to_single(value=pad_name)
-        self.pad_number_.get().alias_to_single(value=pad_number)
+        self.pad_name_.get().set_singleton(value=pad_name)
+        self.pad_number_.get().set_singleton(value=pad_number)
         return self
 
 

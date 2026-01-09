@@ -165,7 +165,7 @@ class is_ato_block(fabll.Node):
         field = fabll._ChildField(cls)
         if source_dir is not None:
             field.add_dependant(
-                F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                F.Literals.Strings.MakeChild_SetSuperset(
                     [field, cls.source_dir], source_dir
                 )
             )
@@ -173,7 +173,7 @@ class is_ato_block(fabll.Node):
 
     def get_source_dir(self) -> str:
         """Get the source directory path where the .ato file is located."""
-        return self.source_dir.get().force_extract_literal().get_single()
+        return self.source_dir.get().extract_singleton()
 
 
 class is_ato_module(fabll.Node):
@@ -840,7 +840,7 @@ class ASTVisitor:
                     is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
                 _Block = _Component
-                constraint_expr = F.Expressions.Is
+                constraint_expr = F.Expressions.IsSuperset
 
             case AST.BlockDefinition.BlockType.INTERFACE:
 

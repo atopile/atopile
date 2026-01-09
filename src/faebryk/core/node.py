@@ -246,6 +246,15 @@ class _ChildField[T: NodeT](Field, ChildAccessor[T]):
             else:
                 self._dependants.append(d)
 
+    def add_as_dependant(
+        self,
+        to: "_ChildField[Any]",
+        identifier: str | None = None,
+        before: bool = False,
+    ) -> Self:
+        to.add_dependant(to, identifier=identifier, before=before)
+        return self
+
     def __repr__(self) -> str:
         return (
             f"ChildField(nodetype={self.nodetype.__qualname__},"
@@ -1548,7 +1557,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
         def _to_str(p: NodeT) -> str:
             return (
-                solver.inspect_get_known_supersets(
+                solver.extract_superset(
                     p.get_trait(Parameters.is_parameter)
                 ).pretty_str()
                 if solver
@@ -2940,20 +2949,17 @@ def test_string_param():
     ctx = F.Parameters.BoundParameterContext(tg=tg, g=g)
 
     string_p = ctx.StringParameter
-    string_p.alias_to_single(value="IG constrained")
-    assert string_p.force_extract_literal().get_values()[0] == "IG constrained"
+    string_p.set_singleton(value="IG constrained")
+    assert string_p.extract_singleton() == "IG constrained"
 
     class ExampleStringParameter(Node):
         string_p_tg = F.Parameters.StringParameter.MakeChild()
-        constraint = F.Literals.Strings.MakeChild_ConstrainToLiteral(
+        constraint = F.Literals.Strings.MakeChild_SetSuperset(
             [string_p_tg], "TG constrained"
         )
 
     esp = ExampleStringParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    assert (
-        esp.string_p_tg.get().force_extract_literal().get_values()[0]
-        == "TG constrained"
-    )
+    assert esp.string_p_tg.get().extract_singleton() == "TG constrained"
 
 
 def test_boolean_param():
@@ -2961,17 +2967,15 @@ def test_boolean_param():
     import faebryk.library._F as F
 
     boolean_p = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    boolean_p.alias_to_single(value=True)
-    assert boolean_p.force_extract_literal().get_values()
+    boolean_p.set_singleton(value=True)
+    assert boolean_p.force_extract_superset().get_values()
 
     class ExampleBooleanParameter(Node):
         boolean_p_tg = F.Parameters.BooleanParameter.MakeChild()
-        constraint = F.Literals.Booleans.MakeChild_ConstrainToLiteral(
-            [boolean_p_tg], True
-        )
+        constraint = F.Literals.Booleans.MakeChild_SetSuperset([boolean_p_tg], True)
 
     ebp = ExampleBooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    assert ebp.boolean_p_tg.get().force_extract_literal().get_values()
+    assert ebp.boolean_p_tg.get().force_extract_superset().get_values()
 
 
 def test_node_equality():

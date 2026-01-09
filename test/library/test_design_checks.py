@@ -108,9 +108,9 @@ def test_electric_signal_parallel_pull_resistance():
     module = _TestModule.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Set specific resistance values for testing
-    module.r1.get().resistance.get().alias_to_literal(g=g, value=r1_value)
-    module.r2.get().resistance.get().alias_to_literal(g=g, value=r2_value)
-    module.r3.get().resistance.get().alias_to_literal(g=g, value=r3_value)
+    module.r1.get().resistance.get().set_superset(g=g, value=r1_value)
+    module.r2.get().resistance.get().set_superset(g=g, value=r2_value)
+    module.r3.get().resistance.get().set_superset(g=g, value=r3_value)
 
     # Connect signal reference
     module.signal.get().reference.get()._is_interface.get().connect_to(
@@ -175,7 +175,7 @@ def test_electric_signal_single_pull_resistance():
 
     module = _TestModule.bind_typegraph(tg=tg).create_instance(g=g)
 
-    module.r1.get().resistance.get().alias_to_literal(g=g, value=r1_value)
+    module.r1.get().resistance.get().set_superset(g=g, value=r1_value)
 
     terminals = module.r1.get().get_children(
         direct_only=True, include_root=False, types=F.Electrical

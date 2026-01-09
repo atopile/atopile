@@ -1279,7 +1279,7 @@ class Log(fabll.Node):
         self.operand.get().point(operand)
         if base is None:
             base = (
-                F.Literals.make_simple_lit_singleton(g=self.g, tg=self.tg, value=math.e)
+                F.Literals.make_singleton(g=self.g, tg=self.tg, value=math.e)
                 .is_literal.get()
                 .as_operand.get()
             )
@@ -2909,6 +2909,12 @@ class IsSubset(fabll.Node):
     subset = OperandPointer.MakeChild()
     superset = OperandPointer.MakeChild()
 
+    def get_subset_operand(self) -> "F.Parameters.can_be_operand":
+        return self.subset.get().deref().cast(F.Parameters.can_be_operand)
+
+    def get_superset_operand(self) -> "F.Parameters.can_be_operand":
+        return self.superset.get().deref().cast(F.Parameters.can_be_operand)
+
     @classmethod
     def MakeChild(
         cls, subset: fabll.RefPath, superset: fabll.RefPath, assert_: bool = False
@@ -3129,6 +3135,9 @@ class Is(fabll.Node):
         *operands: "F.Parameters.can_be_operand",
         assert_: bool = False,
     ) -> Self:
+        if any(op.try_get_sibling_trait(Literals.is_literal) for op in operands):
+            raise ValueError("Is expression cannot have literal operands")
+
         self.operands.get().append(*operands)
         if assert_:
             self.is_assertable.get().assert_()
@@ -3148,18 +3157,6 @@ class Is(fabll.Node):
                 OperandSet.MakeEdge([out, cls.operands], get_operand_path(operand)),
             )
         return out
-
-    def get_other_operand(
-        self, operand: "F.Parameters.can_be_operand"
-    ) -> "F.Parameters.can_be_operand | None":
-        return next(
-            (
-                op
-                for op in self.is_expression.get().get_operands()
-                if not op.is_same(operand)
-            ),
-            None,
-        )
 
     @classmethod
     def from_operands(

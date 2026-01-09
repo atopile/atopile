@@ -717,7 +717,7 @@ class PartLifecycle:
                 # Get size enum and format as string (e.g., "0402", "M1608")
                 from faebryk.libs.smd import SMDSize
 
-                sizes = pkg_t.size.get().try_extract_constrained_literal()
+                sizes = pkg_t.size.get().try_extract_superset()
                 if sizes:
                     size_values = sizes.get_values_typed(SMDSize)
                     # Strip I prefix from imperial sizes (default), keep M for metric

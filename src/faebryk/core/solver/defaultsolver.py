@@ -73,7 +73,6 @@ class DefaultSolver(Solver):
             structural.empty_set,
             structural.transitive_subset,
             structural.isolate_lone_params,
-            structural.uncorrelated_alias_fold,
             structural.upper_estimation_of_expressions_with_subsets,
         ]
 
@@ -340,6 +339,7 @@ class DefaultSolver(Solver):
             pre_algos = [a for a in pre_algos if not a.terminal]
             it_algos = [a for a in it_algos if not a.terminal]
 
+        iterno = 0
         for iterno in count():
             first_iter = iterno == 0
 
@@ -395,14 +395,7 @@ class DefaultSolver(Solver):
 
         return self.state
 
-    def update_superset_cache(self, *ops: F.Parameters.can_be_operand):
-        if not ops:
-            return
-        tg = ops[0].tg
-        g = ops[0].g
-        self.simplify(tg, g, terminal=True, relevant=list(ops))
-
-    def inspect_get_known_supersets(
+    def extract_superset(
         self,
         value: F.Parameters.is_parameter,
         g: graph.GraphView | None = None,
@@ -415,60 +408,18 @@ class DefaultSolver(Solver):
         tg = tg or value.tg
         value_po = value.as_parameter_operatable.get()
 
-        is_lit = value_po.try_get_aliased_literal()
-        if is_lit is not None:
-            return is_lit
-
         if self.state is not None:
-            is_solver_lit = self.state.data.mutation_map.try_get_literal(
-                value_po, allow_subset=False, domain_default=False
+            return not_none(
+                # TODO should take g, tg
+                self.state.data.mutation_map.try_extract_superset(
+                    value_po, domain_default=True
+                )
             )
-            if is_solver_lit is not None:
-                return is_solver_lit
-
-        ss_lit = value_po.try_get_subset_or_alias_literal()
-        if ss_lit is None:
-            ss_lit = value.domain_set(g=g, tg=tg)
-
-        solver_lit = None
-        if self.state is not None:
-            solver_lit = self.state.data.mutation_map.try_get_literal(
-                value_po, allow_subset=True, domain_default=False
-            )
-
-        if solver_lit is None:
+        else:
+            ss_lit = value_po.try_extract_superset()
+            if ss_lit is None:
+                return value.domain_set(g=g, tg=tg)
             return ss_lit
-
-        return F.Literals.is_literal.op_intersect_intervals(
-            ss_lit, solver_lit, g=g, tg=tg
-        )
-
-    @override
-    def get_any_single(
-        self,
-        operatable: F.Parameters.is_parameter,
-        lock: bool,
-        suppose_predicate: F.Expressions.is_assertable | None = None,
-        minimize: F.Expressions.is_expression | None = None,
-    ) -> Any:
-        # TODO
-        if suppose_predicate is not None:
-            raise NotImplementedError()
-
-        # TODO
-        if minimize is not None:
-            raise NotImplementedError()
-
-        lit = self.inspect_get_known_supersets(operatable)
-        out = lit.any()
-        singleton_lit = F.Literals.make_simple_lit_singleton(lit.g, lit.tg, out)
-        if lock:
-            F.Expressions.Is.from_operands(
-                operatable.as_operand.get(),
-                singleton_lit.can_be_operand.get(),
-                assert_=True,
-            )
-        return out
 
 
 # Tests --------------------------------------------------------------------------------
@@ -492,10 +443,10 @@ def test_defaultsolver_super_basic():
     #    fabll.TypeNodeBoundTG.get_or_create_type_in_tg(tg=tg, E)
 
     P = FT.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    P.alias_to_single(True)
+    P.set_singleton(True)
     solver = DefaultSolver()
     res = solver.simplify(tg, g, terminal=True)
-    lit = res.data.mutation_map.try_get_literal(P.is_parameter_operatable.get())
+    lit = res.data.mutation_map.try_extract_superset(P.is_parameter_operatable.get())
     assert lit
     print(lit.pretty_str())
     assert lit.equals_singleton(True)
@@ -524,7 +475,7 @@ def test_defaultsolver_basic():
         C = FT.Parameters.BooleanParameter.MakeChild()
 
     app = _App.bind_typegraph(tg=tg).create_instance(g=g)
-    app.A.get().alias_to_single(True)
+    app.A.get().set_singleton(True)
     FT.Expressions.Is.c(
         FT.Expressions.Or.c(
             app.A.get().can_be_operand.get(),
@@ -537,10 +488,8 @@ def test_defaultsolver_basic():
 
     solver = DefaultSolver()
     res = solver.simplify(tg, g, terminal=True)
-    C_lit = res.data.mutation_map.try_get_literal(
-        app.C.get().is_parameter_operatable.get(),
-        # TODO should not be needed
-        allow_subset=True,
+    C_lit = res.data.mutation_map.try_extract_superset(
+        app.C.get().is_parameter_operatable.get()
     )
     assert C_lit
     assert C_lit.equals_singleton(True)

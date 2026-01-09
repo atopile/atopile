@@ -37,8 +37,9 @@ def check_literal_contradiction(mutator: Mutator):
     """
     Check if a literal is contradictory
     """
+    # TODO should be invariant
 
-    mutator.get_literal_mappings(new_only=False, allow_subset=True)
+    pass
 
 
 @algorithm("Convert inequality with literal to subset", terminal=False)
@@ -89,8 +90,12 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
                         involved=[param.as_parameter_operatable.force_get()],
                         mutator=mutator,
                     )
-                mutator.utils.alias_is_literal_and_check_predicate_eval(
-                    ge_e, mutator.make_lit(False).is_literal.get()
+                mutator.create_expression(
+                    F.Expressions.IsSubset,
+                    ge_e.as_operand.get(),
+                    mutator.make_singleton(False).can_be_operand.get(),
+                    terminate=True,
+                    assert_=True,
                 )
                 continue
             interval = mutator.utils.make_number_literal_from_range(boundary, math.inf)
@@ -106,8 +111,12 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
                         involved=[param.as_parameter_operatable.force_get()],
                         mutator=mutator,
                     )
-                mutator.utils.alias_is_literal_and_check_predicate_eval(
-                    ge_e, mutator.make_lit(False).is_literal.get()
+                mutator.create_expression(
+                    F.Expressions.IsSubset,
+                    ge_e.as_operand.get(),
+                    mutator.make_singleton(False).can_be_operand.get(),
+                    terminate=True,
+                    assert_=True,
                 )
                 continue
             interval = mutator.utils.make_number_literal_from_range(-math.inf, boundary)
@@ -267,7 +276,11 @@ def resolve_alias_classes(mutator: Mutator):
     # -> [{A, B, C}, {D, E}, {F}, {G, (A+B)}]
     param_ops = mutator.get_parameter_operatables()
     full_eq = EquivalenceClasses[F.Parameters.is_parameter_operatable](param_ops)
-    is_exprs = mutator.utils.get_all_aliases()
+    is_exprs = mutator.get_typed_expressions(
+        F.Expressions.Is,
+        include_terminated=True,
+        required_traits=(F.Expressions.is_predicate,),
+    )
     for is_expr in is_exprs:
         ops: set[F.Parameters.is_parameter_operatable] = {
             # Literal expressions are basically literals
@@ -365,24 +378,27 @@ def resolve_alias_classes(mutator: Mutator):
             mutator.soft_replace(e_po, representative)
             if mutator.utils.are_aliased(e_po, *eq_class_params):
                 continue
-            mutator.utils.alias_to(
+            mutator.create_expression(
+                F.Expressions.Is,
                 e.as_operand.get(),
                 representative.as_operand.get(),
                 from_ops=list(eq_class),
+                assert_=True,
+                terminate=True,
             )
 
 
 @algorithm("Merge intersecting subsets", terminal=False)
 def merge_intersect_subsets(mutator: Mutator):
     """
-    A subset L1
-    A subset L2
-    -> A subset (L1 & L2)
+    A ss! L1
+    A ss! L2
+    -> A ss! (L1 & L2)
 
-    x = A subset L1
-    y = A subset L2
+    x = A ss! L1
+    y = A ss! L2
     Z = x and y -> Z = x & y
-    -> A subset (L1 & L2)
+    -> A ss! (L1 & L2)
     """
 
     # TODO use Intersection/Union expr
@@ -400,8 +416,8 @@ def merge_intersect_subsets(mutator: Mutator):
 
     for po in pos:
         ss_lits = {
-            lit: vs
-            for k, vs in mutator.utils.get_supersets(po).items()
+            lit: v
+            for k, v in mutator.utils.get_op_supersets(po).items()
             if (lit := mutator.utils.is_literal(k))
         }
         if len(ss_lits) <= 1:
@@ -426,18 +442,20 @@ def merge_intersect_subsets(mutator: Mutator):
                 constraint_expr_pairs=constraint_pairs,
             )
 
-        old_sss = [old_ss for old_ss_it in ss_lits.values() for old_ss in old_ss_it]
+        old_sss = list(ss_lits.values())
 
         # already exists
         if contained := intersected.multi_equals(
             *ss_lits.keys(), g=mutator.G_transient, tg=mutator.tg_out
         ):
-            new_ss = ss_lits[contained[1]][0].is_expression.get()
+            new_ss = ss_lits[contained[1]].is_expression.get()
         else:
-            new_ss = mutator.utils.subset_to(
+            new_ss = mutator.create_expression(
+                F.Expressions.IsSubset,
                 po.as_operand.get(),
                 intersected.as_operand.get(),
                 from_ops=[old_ss.is_parameter_operatable.get() for old_ss in old_sss],
+                assert_=True,
             )
             new_ss_obj = fabll.Traits(new_ss).get_obj_raw()
             assert new_ss_obj.isinstance(F.Expressions.IsSubset, F.Expressions.Is)
@@ -455,23 +473,23 @@ def merge_intersect_subsets(mutator: Mutator):
 @algorithm("Empty set", terminal=False)
 def empty_set(mutator: Mutator):
     """
-    A is {} -> False
     A ss {} -> False
     """
+    # TODO should be invariant
 
-    # A is {} -> False
-    for e in mutator.get_typed_expressions(Is):
+    for e in mutator.get_typed_expressions(IsSubset):
         e_expr = e.is_expression.get()
         lits = e_expr.get_operand_literals()
         if not lits:
             continue
-        if any(lit.is_empty() for lit in lits.values()):
-            mutator.utils.alias_is_literal_and_check_predicate_eval(
-                e_expr, mutator.make_lit(False).is_literal.get()
+        if any(lit.is_empty() for k, lit in lits.items() if k > 0):
+            mutator.create_expression(
+                F.Expressions.IsSubset,
+                e_expr.as_operand.get(),
+                mutator.make_singleton(False).can_be_operand.get(),
+                terminate=True,
+                assert_=True,
             )
-
-    # A ss {} -> False
-    # Converted by literal_folding
 
 
 @algorithm("Transitive subset", terminal=False)
@@ -479,11 +497,14 @@ def transitive_subset(mutator: Mutator):
     """
     ```
     A ss! B, B ss! C -> new A ss! C
-    A ss! B, B is! X -> new A ss! X
     ```
     """
     # for all A ss! B | B not lit
-    for ss_op in mutator.utils.get_all_subsets():
+    for ss_op in mutator.get_typed_expressions(
+        F.Expressions.IsSubset,
+        include_terminated=True,
+        required_traits=(F.Expressions.is_predicate,),
+    ):
         ss_op_e = ss_op.is_expression.get()
         ss_op_po = ss_op.is_parameter_operatable.get()
         A, B = ss_op_e.get_operands()
@@ -491,24 +512,32 @@ def transitive_subset(mutator: Mutator):
             continue
 
         # all B ss! C | C not A
-        for C, es in mutator.utils.get_supersets(B_po).items():
-            if C is A:
+        for C, e in mutator.utils.get_op_supersets(B_po).items():
+            if C.is_same(A):
                 continue
             # create A ss! C/X
-            mutator.utils.subset_to(
+            mutator.create_expression(
+                F.Expressions.IsSubset,
                 A,
                 C,
                 from_ops=[
                     ss_op_po,
-                    *(e.is_parameter_operatable.get() for e in es),
+                    e.is_parameter_operatable.get(),
                 ],
+                assert_=True,
             )
 
-        # all B is! X, X lit
+        # all B ss! X, X lit
         # for non-lits done by eq classes
-        X = mutator.utils.try_extract_literal(B_po)
+        X = mutator.utils.try_extract_superset(B_po)
         if X is not None:
-            mutator.utils.subset_to(A, X.as_operand.get(), from_ops=[ss_op_po, B_po])
+            mutator.create_expression(
+                F.Expressions.IsSubset,
+                A,
+                X.as_operand.get(),
+                from_ops=[ss_op_po, B_po],
+                assert_=True,
+            )
 
 
 @algorithm("Predicate flat terminate", terminal=False)
@@ -528,7 +557,7 @@ def predicate_flat_terminate(mutator: Mutator):
             continue
 
         # only (dis)proven
-        if mutator.utils.try_extract_literal(p_po) is None:
+        if mutator.utils.try_extract_superset(p_po) is None:
             continue
 
         mutator.predicate_terminate(p_e.get_sibling_trait(F.Expressions.is_predicate))
@@ -565,8 +594,8 @@ def predicate_terminated_is_true(mutator: Mutator):
 @algorithm("Convert aliased singletons into literals", terminal=False)
 def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
     """
-    A is! ([5]), A + B -> ([5]) + B
-    A is! [True], A ^ B -> [True] ^ B
+    A ss! ([5]), A + B -> ([5]) + B
+    A ss! [True], A ^ B -> [True] ^ B
     """
 
     # TODO explore alt strat:
@@ -581,10 +610,8 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
         if mutator.utils.is_pure_literal_expression(e_op):
             continue
         e_po = e.as_parameter_operatable.get()
-        # handled in _todo
-        if mutator.utils.is_alias_is_literal(e_po) or mutator.utils.is_subset_literal(
-            e_po
-        ):
+        # A{S|Xs} ss! Xs
+        if mutator.utils.is_set_literal_expression(e_po, allow_superset_exprs=False):
             continue
         # not handling here
         if (
@@ -671,7 +698,9 @@ def isolate_lone_params(mutator: Mutator):
                         op_or_create_expr(
                             Multiply,
                             op,
-                            mutator.make_lit(-1).is_literal.get().as_operand.get(),
+                            mutator.make_singleton(-1)
+                            .is_literal.get()
+                            .as_operand.get(),
                         )
                         for op in moved_ops
                     ],
@@ -686,7 +715,7 @@ def isolate_lone_params(mutator: Mutator):
                     op_or_create_expr(
                         Power,
                         op_or_create_expr(Multiply, *moved_ops),
-                        mutator.make_lit(-1).is_literal.get().as_operand.get(),
+                        mutator.make_singleton(-1).is_literal.get().as_operand.get(),
                     ),
                 ),
             )
@@ -696,7 +725,7 @@ def isolate_lone_params(mutator: Mutator):
                 op_or_create_expr(
                     Power,
                     op_without_param,
-                    mutator.make_lit(-1).is_literal.get().as_operand.get(),
+                    mutator.make_singleton(-1).is_literal.get().as_operand.get(),
                 ),  # TODO: fix exponent
             )
         else:
@@ -748,7 +777,7 @@ def isolate_lone_params(mutator: Mutator):
     for expr in exprs:
         expr_e = expr.is_expression.get()
         expr_po = expr.is_expression.get().as_parameter_operatable.get()
-        if mutator.utils.try_extract_literal(expr_po) is None:
+        if mutator.utils.try_extract_superset(expr_po) is None:
             continue
 
         # TODO why? are we trying to do only arithmetic?
@@ -761,7 +790,7 @@ def isolate_lone_params(mutator: Mutator):
         unaliased_params = {
             p
             for p in mutator.utils.find_unique_params(expr_po.as_operand.get())
-            if mutator.utils.try_extract_literal(p) is None
+            if mutator.utils.try_extract_superset(p) is None
         }
 
         # only handle single free var
@@ -788,34 +817,43 @@ def distribute_literals_across_alias_classes(mutator: Mutator):
     """
     Distribute literals across alias classes
 
-    E is A, A is Lit -> E is Lit
-    E is A, A ss Lit -> E ss Lit
+    E is! A, Lit ss! A -> E ss! Lit
+    E is! A, A ss! Lit -> Lit ss! E
 
     """
     for p in mutator.get_parameter_operatables():
-        lit, is_alias = mutator.utils.try_extract_literal_info(p)
-        if lit is None:
+        superset = mutator.utils.try_extract_superset(p)
+        subset = mutator.utils.try_extract_subset(p)
+        if superset is None and subset is None:
             continue
 
         non_lit_aliases = {
             e: other_p
             for e in p.get_operations(Is, predicates_only=True)
             if not e.is_expression.get().get_operand_literals()
-            and (other_p := e.get_other_operand(p.as_operand.get()))
+            for other_p in e.is_expression.get().get_operand_operatables()
+            if not other_p.is_same(p)
         }
-        for alias_expr, alias in non_lit_aliases.items():
+        for alias_expr, po in non_lit_aliases.items():
             alias_expr_po = alias_expr.is_expression.get().as_parameter_operatable.get()
-            if is_alias:
-                mutator.utils.alias_to(
-                    alias,
-                    lit.as_operand.get(),
+            po_op = po.as_operand.get()
+            if superset is not None:
+                superset_op = superset.as_operand.get()
+                mutator.create_expression(
+                    F.Expressions.IsSubset,
+                    po_op,
+                    superset_op,
                     from_ops=[p, alias_expr_po],
+                    assert_=True,
                 )
-            else:
-                mutator.utils.subset_to(
-                    alias,
-                    lit.as_operand.get(),
+            if subset is not None:
+                subset_op = subset.as_operand.get()
+                mutator.create_expression(
+                    F.Expressions.IsSubset,
+                    subset_op,
+                    po_op,
                     from_ops=[p, alias_expr_po],
+                    assert_=True,
                 )
 
 
@@ -825,27 +863,31 @@ def distribute_literals_across_alias_classes(mutator: Mutator):
 @algorithm("Predicate unconstrained operands deduce", terminal=True)
 def predicate_unconstrained_operands_deduce(mutator: Mutator):
     """
-    A op! B | A or B unconstrained -> A op!! B
+    A op! B | A or B unconstrained -> A op!$ B
     """
 
     preds = mutator.get_expressions(required_traits=(F.Expressions.is_predicate,))
-    for p in preds:
-        if mutator.is_predicate_terminated(
-            p.get_sibling_trait(F.Expressions.is_predicate)
-        ):
+    for p_e in preds:
+        p = p_e.get_sibling_trait(F.Expressions.is_predicate)
+        if mutator.is_predicate_terminated(p):
             continue
-        if mutator.utils.is_literal_expression(p.as_operand.get()):
+        if mutator.utils.is_literal_expression(p_e.as_operand.get()):
             continue
 
-        for op in p.get_operand_operatables():
+        for op in p_e.get_operand_operatables():
             if mutator.utils.no_other_predicates(
                 op,
-                p.as_assertable.force_get(),
+                p_e.as_assertable.force_get(),
                 unfulfilled_only=True,
             ):
-                mutator.utils.alias_is_literal_and_check_predicate_eval(
-                    p, mutator.make_lit(True).is_literal.get()
+                mutator.create_expression(
+                    F.Expressions.IsSubset,
+                    p_e.as_operand.get(),
+                    mutator.make_singleton(True).can_be_operand.get(),
+                    terminate=True,
+                    assert_=True,
                 )
+                mutator.predicate_terminate(p)
                 break
 
 
@@ -857,23 +899,31 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
     we can add a subset to the expression.
 
     ```
-    A + B | B is [1,5] -> (A + B) , (A + B) subset (A + [1,5])
-    A + B | B subset [1,5] -> (A + B) , (A + B) subset (A + [1,5])
+    A + B{S|{1..5}} -> (A + B{S|{1..5}}) , (A + B{S|{1..5}}) ss! (A + {1..5})
+    TODO supersets (check correlation)
     ```
 
     No need to check:
     ```
     A + B | A alias B ; never happens (after eq classes)
-    A + B | B alias ([0]); never happens (after aliased_single_into_literal)
+    A + B | B ss! singleton; never happens (after aliased_single_into_literal)
+    TODO: A ss! B{S|X}
+    TODO: A{S|Y} ss! B
     ```
     """
 
-    new_literal_mappings = mutator.get_literal_mappings(
-        new_only=True, allow_subset=True
-    )
+    return  # TODO
+
+    new_literal_supersets = {
+        (
+            op.get_subset_operand().as_parameter_operatable.force_get()
+        ): op.get_superset_operand().as_literal.force_get()
+        for op in mutator.utils.get_literal_subsets(new_only=True)
+    }
+
     new_exprs = {
         k: v
-        for k, v in new_literal_mappings.items()
+        for k, v in new_literal_supersets.items()
         if not mutator.utils.is_correlatable_literal(v)
     }
 
@@ -883,7 +933,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
 
     for expr in exprs:
         # In Is automatically by eq classes
-        if expr.isinstance(F.Expressions.Is):
+        if expr.isinstance(F.Expressions.Is, F.Expressions.IsSubset):
             continue
         expr_e = expr.get_trait(F.Expressions.is_expression)
         # Taken care of by singleton fold
@@ -892,132 +942,37 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
             for op in expr_e.get_operands()
         ):
             continue
-        # optimization: don't take away from uncorrelated_alias_fold
-        if (
-            mutator.terminal
-            # not (expr in new_subsets and expr not in new_aliases)
-            and not any(mutator.utils.get_correlations(expr_e))
-            and mutator.utils.map_extract_literals(expr_e)[1]
-        ):
-            continue
-        # In subset useless to look at subset lits
-        no_allow_subset_lit = expr.isinstance(F.Expressions.IsSubset)
-
-        operands, any_lit = mutator.utils.map_extract_literals(
-            expr_e, allow_subset=not no_allow_subset_lit
+        mapped_ops, operands_with_superset = (
+            mutator.utils.map_operands_extracted_supersets(expr_e)
         )
-        if not any_lit:
+        if not operands_with_superset:
             continue
 
         # TODO make this more efficient (include in extract)
-        lit_alias_origins: set[F.Parameters.is_parameter_operatable] = {
+        lit_ss_origins = {
             e.is_expression.get().as_parameter_operatable.get()
-            for p in any_lit
-            for e in p.get_operations(Is, predicates_only=True)
+            for p in operands_with_superset
+            for e in p.get_operations(IsSubset, predicates_only=True)
             if e.is_expression.get().get_operand_literals()
         }
-        if not no_allow_subset_lit:
-            lit_ss_origins = {
-                e.is_expression.get().as_parameter_operatable.get()
-                for p in any_lit
-                for e in p.get_operations(IsSubset, predicates_only=True)
-                if e.is_expression.get().get_operand_literals()
-            }
-            lit_alias_origins.update(lit_ss_origins)
 
         expr_po = expr.get_trait(F.Parameters.is_parameter_operatable)
+        from_ops = [
+            expr_po,
+            *lit_ss_origins,
+        ]
+
         # Make new expr with subset literals
-        mutator.mutate_expression(
-            expr_e,
-            operands=operands,
-            soft_mutate=IsSubset,
-            from_ops=[
-                expr_po,
-                *lit_alias_origins,
-            ],
+        new_expr = mutator.create_expression(
+            mutator.utils.hack_get_expr_type(expr),
+            *mapped_ops,
+            from_ops=from_ops,
         )
 
-
-@algorithm("Uncorrelated alias fold", terminal=True)
-def uncorrelated_alias_fold(mutator: Mutator):
-    """
-    If an operation contains only operands that are not correlated with each other,
-    we can replace the operands with their corresponding literals.
-    ```
-    op(As), no correlations in As outside of op, len(A is Lit in As) > 0
-    -> op(As) is! op(As replaced by corresponding lits)
-    ```
-
-    Terminal because relies on missing correlations.
-    """
-
-    new_literal_mappings = mutator.get_literal_mappings(new_only=True)
-
-    # bool expr always map to singles
-    new_literal_mappings_filtered = {
-        k: v
-        for k, v in new_literal_mappings.items()
-        if not mutator.utils.is_correlatable_literal(v)
-    }
-    exprs = {
-        e for alias in new_literal_mappings_filtered for e in alias.get_operations()
-    }
-    # Include mutated since last run
-    exprs.update(fabll.Traits(e).get_obj_raw() for e in mutator.non_copy_mutated)
-    exprs = F.Expressions.is_expression.sort_by_depth(exprs, ascending=True)
-
-    for expr in exprs:
-        expr_e = expr.get_trait(F.Expressions.is_expression)
-        # Taken care of by singleton fold
-        if any(
-            mutator.utils.is_replacable_by_literal(op) is not None
-            for op in expr_e.get_operands()
-        ):
-            continue
-        if expr.isinstance(F.Expressions.Is) and expr.try_get_trait(
-            F.Expressions.is_predicate
-        ):
-            # TODO: definitely need to do something
-            # just not the same what we do with the other types
-            continue
-        # TODO: we can weaken this to not replace correlated operands instead of
-        #   skipping the whole expression
-        # check if any correlations
-        if any(mutator.utils.get_correlations(expr_e)):
-            continue
-
-        operands, any_lit = mutator.utils.map_extract_literals(expr_e)
-        if not any_lit:
-            continue
-
-        # TODO make this more efficient (include in extract)
-        lit_alias_origins = {
-            e.is_expression.get().as_parameter_operatable.get()
-            for p in any_lit
-            for e in p.get_operations(Is, predicates_only=True)
-            if e.is_expression.get().get_operand_literals()
-        }
-
-        # no point in op! is op! (always true)
-        if expr.try_get_trait(F.Expressions.is_predicate):
-            mutator.create_expression(
-                mutator.utils.hack_get_expr_type(expr_e),
-                *operands,
-                assert_=True,
-                allow_uncorrelated=True,
-                from_ops=[
-                    expr.get_trait(F.Parameters.is_parameter_operatable),
-                    *lit_alias_origins,
-                ],
-            )
-            continue
-
-        mutator.mutate_expression(
+        # Subset old expr to subset estimated one
+        mutator.create_expression(
+            F.Expressions.IsSubset,
             expr_e,
-            operands=operands,
-            soft_mutate=Is,
-            from_ops=[
-                expr.get_trait(F.Parameters.is_parameter_operatable),
-                *lit_alias_origins,
-            ],
+            new_expr.as_operand.get(),
+            from_ops=from_ops,
         )

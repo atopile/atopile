@@ -9,6 +9,7 @@ import pytest
 from rich.console import Console
 
 from faebryk.libs.test.times import Times
+from faebryk.libs.util import not_none
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
     "A,B,rs,pick",
     [
         # (10, 7, 100, False),
+        # (10, 7, 1000, False),
         # (1, 1, 5000, False),
         # (1, 1, 1, False),
         (1, 1, 2, True),
@@ -229,7 +231,7 @@ def test_performance_parameters(A: int, B: int, rs: int, pick: bool):
         *([app.resistors[0].get()] if rs > 0 else []),
     ):
         n = cast(fabll.Node, n)
-        name = n.get_type_name()
+        name = not_none(n.get_type_name()).removeprefix("_")
         timings.add_seperator()
 
         with timings.context(f"{name:<10} -- get_node_children_all"):

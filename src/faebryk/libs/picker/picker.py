@@ -8,8 +8,6 @@ from dataclasses import dataclass
 from textwrap import indent
 from typing import TYPE_CHECKING, Iterable
 
-import faebryk.core.faebrykpy as fbrk
-import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.solver import Solver
@@ -22,7 +20,6 @@ from faebryk.libs.util import (
     KeyErrorAmbiguous,  # noqa: F401
     Tree,
     debug_perf,
-    groupby,
     indented_container,
 )
 
@@ -93,30 +90,6 @@ class PickErrorChildren(PickError):
             if isinstance(v, PickErrorChildren)
             for module, v2 in v.get_all_children().items()
         }
-
-
-class NotCompatibleException(Exception):
-    def __init__(
-        self,
-        module: fabll.Node,
-        component: "Component",
-        param: F.Parameters.is_parameter_operatable | None = None,
-        c_range: F.Literals.is_literal | None = None,
-    ):
-        self.module = module
-        self.component = component
-        self.param = param
-        self.c_range = c_range
-
-        if param is None or c_range is None:
-            msg = f"{component.lcsc_display} is not compatible with `{module}`"
-        else:
-            msg = (
-                f"`{param}` ({param.force_extract_literal().pretty_repr()}) is not "
-                f"compatible with {component.lcsc_display} ({c_range.pretty_repr()})"
-            )
-
-        super().__init__(msg)
 
 
 class does_not_require_picker_check(fabll.Node):
@@ -243,18 +216,13 @@ def find_independent_groups(
         .as_operand.get()
         .get_operations(recursive=True, predicates_only=True)
     ]
-    # add related parameters for non-aliased paramops
+    # add related parameters
+    # TODO consider not adding parameters under special conditions
+    # (e.g used to be if they had literal aliases)
     for root_pred in root_preds:
         pred_e = root_pred.as_expression.get()
         leaves = pred_e.get_operand_leaves_operatable()
-        p_cliques.add_eq(
-            *[
-                p
-                for leaf in leaves
-                if (p := leaf.as_parameter.try_get())
-                and leaf.try_get_aliased_literal() is None
-            ]
-        )
+        p_cliques.add_eq(*[p for leaf in leaves if (p := leaf.as_parameter.try_get())])
 
     # partition modules into cliques by parameter clique membership
     module_cliques = EquivalenceClasses[F.Pickable.is_pickable](unique_modules)
@@ -282,15 +250,6 @@ def find_independent_groups(
         )
     )
     return out
-
-
-def _get_graph(*nodes: fabll.Node) -> tuple[graph.GraphView, fbrk.TypeGraph]:
-    gs = groupby(nodes, key=lambda m: m.g.get_self_node().node().get_uuid())
-    assert len(gs) == 1
-    m = next(iter(gs.values()))[0]
-    g = m.g
-    tg = m.tg
-    return g, tg
 
 
 def pick_topologically(

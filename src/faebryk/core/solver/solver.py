@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from typing import Any, Protocol
+from typing import Protocol
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -28,31 +28,7 @@ class NotDeducibleException(Exception):
 
 
 class Solver(Protocol):
-    def get_any_single(
-        self,
-        operatable: F.Parameters.is_parameter,
-        lock: bool,
-        suppose_predicate: F.Expressions.is_predicate | None = None,
-        minimize: F.Expressions.is_expression | None = None,
-    ) -> Any:
-        """
-        Solve for a single value for the given expression.
-
-        Args:
-            operatable: The expression or parameter to solve.
-            suppose_predicate: An optional predicate that can be added to make solving
-                                easier. It is only in effect for the duration of the
-                                solve call.
-            minimize: An optional expression to minimize while solving.
-            lock: If True, ensure the result is part of the solution set of
-                              the expression.
-
-        Returns:
-            A SolveResultSingle object containing the chosen value.
-        """
-        ...
-
-    def inspect_get_known_supersets(
+    def extract_superset(
         self,
         value: F.Parameters.is_parameter,
         g: graph.GraphView | None = None,
@@ -66,3 +42,29 @@ class Solver(Protocol):
         terminal: bool = False,
         relevant: list[F.Parameters.can_be_operand] | None = None,
     ): ...
+
+    def simplify_for(
+        self,
+        *ops: F.Parameters.can_be_operand,
+        terminal: bool = False,
+    ):
+        g = ops[0].g
+        tg = ops[0].tg
+        relevant = list(ops)
+        return self.simplify(
+            g=g,
+            tg=tg,
+            terminal=terminal,
+            relevant=relevant,
+        )
+
+    def simplify_and_extract_superset(
+        self,
+        value: F.Parameters.is_parameter,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+    ) -> F.Literals.is_literal:
+        g = g or value.g
+        tg = tg or value.tg
+        self.simplify(g=g, tg=tg, terminal=False, relevant=[value.as_operand.get()])
+        return self.extract_superset(value, g=g, tg=tg)

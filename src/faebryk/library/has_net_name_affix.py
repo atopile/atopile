@@ -30,27 +30,23 @@ class has_net_name_affix(fabll.Node):
         out = fabll._ChildField(cls)
         if prefix:
             out.add_dependant(
-                F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                F.Literals.Strings.MakeChild_SetSuperset(
                     [out, cls.required_prefix_], prefix
                 )
             )
         if suffix:
             out.add_dependant(
-                F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                F.Literals.Strings.MakeChild_SetSuperset(
                     [out, cls.required_suffix_], suffix
                 )
             )
         return out
 
     def get_prefix(self) -> str | None:
-        if prefix := self.required_prefix_.get().try_extract_constrained_literal():
-            return prefix.get_values()[0]
-        return None
+        return self.required_prefix_.get().try_extract_singleton()
 
     def get_suffix(self) -> str | None:
-        if suffix := self.required_suffix_.get().try_extract_constrained_literal():
-            return suffix.get_values()[0]
-        return None
+        return self.required_suffix_.get().try_extract_singleton()
 
     # TODO: Implement this
     # def handle_duplicate(self, old: TraitImpl, node: fabll.Node) -> bool:

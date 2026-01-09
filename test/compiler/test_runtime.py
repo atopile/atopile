@@ -400,7 +400,7 @@ class TestForLoopsRuntime:
                 assert (
                     E.lit_op_range_from_center_rel((100, E.U.kohm), rel=0.1)
                     .as_literal.force_get()
-                    .equals(r.resistance.get().force_extract_literal_subset())
+                    .equals(r.resistance.get().force_extract_superset())
                 )
 
         # current limit is 2**16
@@ -484,7 +484,7 @@ def test_assign_to_enum_param():
     )
     cap = _get_child(app_instance, "cap")
     temp_coeff = F.Capacitor.bind_instance(cap).temperature_coefficient.get()
-    lit = temp_coeff.is_parameter_operatable.get().try_get_constrained_literal(
+    lit = temp_coeff.is_parameter_operatable.get().try_extract_superset(
         pred_type=F.Expressions.IsSubset
     )
     assert lit is not None
@@ -507,7 +507,7 @@ def test_assert_is():
                 e: dimensionless
                 f: dimensionless
 
-                assert a is 2mV +/- 10%
+                assert a within 2mV +/- 10%
                 assert b is c
                 # assert d is e is f
             """,
@@ -526,7 +526,7 @@ def test_assert_is():
     assert (
         E.lit_op_range_from_center_rel((2, E.U.mV), rel=0.1)
         .as_literal.force_get()
-        .equals(a.force_extract_literal().is_literal.get())
+        .equals(a.force_extract_superset().is_literal.get())
     )
     # TODO: check b is c; d is e is f
 
@@ -549,42 +549,42 @@ def test_numeric_literals():
     assert (
         E.lit_op_single(1)
         .as_literal.force_get()
-        .equals(not_none(a.force_extract_literal_subset()))
+        .equals(not_none(a.force_extract_superset()))
     )
 
     b = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "b"))
     assert (
         E.lit_op_single((1, E.U.V))
         .as_literal.force_get()
-        .equals(not_none(b.force_extract_literal_subset()))
+        .equals(not_none(b.force_extract_superset()))
     )
 
     c = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "c"))
     assert (
         E.lit_op_single((5, E.U.V))
         .as_literal.force_get()
-        .equals(not_none(c.force_extract_literal_subset()))
+        .equals(not_none(c.force_extract_superset()))
     )
 
     d = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "d"))
     assert (
         E.lit_op_ranges(((5, E.U.V), (8, E.U.V)))
         .as_literal.force_get()
-        .equals(not_none(d.force_extract_literal_subset()))
+        .equals(not_none(d.force_extract_superset()))
     )
 
     e = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "e"))
     assert (
         E.lit_op_range_from_center_rel((100, E.U.mV), rel=0.1)
         .as_literal.force_get()
-        .equals(not_none(e.force_extract_literal_subset()))
+        .equals(not_none(e.force_extract_superset()))
     )
 
     f = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "f"))
     assert (
         E.lit_op_range_from_center((3.3, E.U.V), (0.05, E.U.V))
         .as_literal.force_get()
-        .equals(not_none(f.force_extract_literal_subset()))
+        .equals(not_none(f.force_extract_superset()))
     )
 
 
@@ -612,7 +612,7 @@ def test_basic_arithmetic():
         .as_literal.force_get()
         .equals(
             not_none(
-                repr_map.try_get_literal(
+                repr_map.try_extract_superset(
                     a.is_parameter_operatable.get(), allow_subset=True
                 )
             )
@@ -623,7 +623,7 @@ def test_basic_arithmetic():
         .as_literal.force_get()
         .equals(
             not_none(
-                repr_map.try_get_literal(
+                repr_map.try_extract_superset(
                     b.is_parameter_operatable.get(), allow_subset=True
                 )
             )
@@ -692,7 +692,7 @@ def test_simple_module_build():
     assert (
         E.lit_op_single(1)
         .as_literal.force_get()
-        .equals(not_none(a.force_extract_literal_subset()))
+        .equals(not_none(a.force_extract_superset()))
     )
 
 
@@ -740,8 +740,7 @@ def test_multiple_new():
             assert (
                 r.get_trait(F.has_package_requirements)
                 .size.get()
-                .force_extract_literal()
-                .get_single_value_typed(SMDSize)
+                .force_extract_singleton_typed(SMDSize)
                 == SMDSize.I0402
             )
         else:
@@ -887,8 +886,7 @@ def test_reserved_attrs(import_stmt: str, class_name: str, pkg_str: str, pkg: SM
         fabll.Node.bind_instance(a)
         .get_trait(F.has_package_requirements)
         .size.get()
-        .force_extract_literal()
-        .get_single_value_typed(SMDSize)
+        .force_extract_singleton_typed(SMDSize)
         == pkg
     )
     is_pbpn = F.Pickable.is_pickable_by_part_number.try_check_or_convert(a_module)
@@ -1228,7 +1226,7 @@ def test_list_literal_basic():
             r2 = new Resistor
             r3 = new Resistor
             for r in [r1, r3]:
-                assert r.resistance is 100kohm
+                assert r.resistance within 100kohm
         """,
         "App",
     )
@@ -1240,13 +1238,13 @@ def test_list_literal_basic():
     assert (
         E.lit_op_single((100, E.U.kohm))
         .as_literal.force_get()
-        .equals(not_none(r1.resistance.get().try_extract_aliased_literal()))
+        .equals(not_none(r1.resistance.get().try_extract_superset()))
     )
 
     r2_node = _get_child(app_instance, "r2")
     assert fabll.Node.bind_instance(r2_node).isinstance(F.Resistor)
     r2 = F.Resistor.bind_instance(r2_node)
-    assert r2.resistance.get().try_extract_aliased_literal() is None
+    assert r2.resistance.get().try_extract_superset() is None
 
     r3_node = _get_child(app_instance, "r3")
     assert fabll.Node.bind_instance(r3_node).isinstance(F.Resistor)
@@ -1254,7 +1252,7 @@ def test_list_literal_basic():
     assert (
         E.lit_op_single((100, E.U.kohm))
         .as_literal.force_get()
-        .equals(not_none(r3.resistance.get().try_extract_aliased_literal()))
+        .equals(not_none(r3.resistance.get().try_extract_superset()))
     )
 
 
@@ -1272,7 +1270,7 @@ def test_list_literal_nested():
         module App:
             nested = new Nested
             for r in [nested.r1, nested.r3]:
-                assert r.resistance is 100kohm
+                assert r.resistance within 100kohm
         """,
         "App",
     )
@@ -1283,17 +1281,17 @@ def test_list_literal_nested():
     assert (
         E.lit_op_single((100, E.U.kohm))
         .as_literal.force_get()
-        .equals(not_none(r1.resistance.get().try_extract_aliased_literal()))
+        .equals(not_none(r1.resistance.get().try_extract_superset()))
     )
 
     r2 = F.Resistor.bind_instance(_get_child(nested_node, "r2"))
-    assert r2.resistance.get().try_extract_aliased_literal() is None
+    assert r2.resistance.get().try_extract_superset() is None
 
     r3 = F.Resistor.bind_instance(_get_child(nested_node, "r3"))
     assert (
         E.lit_op_single((100, E.U.kohm))
         .as_literal.force_get()
-        .equals(not_none(r3.resistance.get().try_extract_aliased_literal()))
+        .equals(not_none(r3.resistance.get().try_extract_superset()))
     )
 
 
@@ -1311,7 +1309,7 @@ def test_list_literal_long():
                 r1,
                 r3,
             ]:
-                assert r.resistance is 100kohm
+                assert r.resistance within 100kohm
         """,
         "App",
     )
@@ -1321,15 +1319,15 @@ def test_list_literal_long():
     assert (
         E.lit_op_single((100, E.U.kohm))
         .as_literal.force_get()
-        .equals(not_none(r1.resistance.get().try_extract_aliased_literal()))
+        .equals(not_none(r1.resistance.get().try_extract_superset()))
     )
     r2 = F.Resistor.bind_instance(_get_child(app_instance, "r2"))
-    assert r2.resistance.get().try_extract_aliased_literal() is None
+    assert r2.resistance.get().try_extract_superset() is None
     r3 = F.Resistor.bind_instance(_get_child(app_instance, "r3"))
     assert (
         E.lit_op_single((100, E.U.kohm))
         .as_literal.force_get()
-        .equals(not_none(r3.resistance.get().try_extract_aliased_literal()))
+        .equals(not_none(r3.resistance.get().try_extract_superset()))
     )
 
 
@@ -1342,13 +1340,13 @@ def test_list_literal_empty():
         module App:
             r1 = new Resistor
             for r in []:
-                assert r.resistance is 100kohm
+                assert r.resistance within 100kohm
         """,
         "App",
     )
     assert "App" in result.state.type_roots
     r1 = F.Resistor.bind_instance(_get_child(app_instance, "r1"))
-    assert r1.resistance.get().try_extract_aliased_literal() is None
+    assert r1.resistance.get().try_extract_superset() is None
 
 
 def test_list_literal_invalid():
@@ -1463,7 +1461,7 @@ def test_parameterised_trait_no_params():
     # Trait is created but with no constraint on datasheet
     trait = fabll.Node.bind_instance(app_instance).get_trait(F.has_datasheet)
     # datasheet_ parameter exists but is unconstrained
-    assert trait.datasheet_.get().try_extract_constrained_literal() is None
+    assert trait.datasheet_.get().try_extract_singleton() is None
 
 
 def test_nested_trait_access():
@@ -1528,10 +1526,8 @@ def test_alternate_trait_constructor_with_params():
     assert "App" in result.state.type_roots
 
     trait = fabll.Node.bind_instance(app_instance).get_trait(F.Pickable.has_part_picked)
-    assert trait.supplier_id.get().force_extract_literal().get_values()[0] == "lcsc"
-    assert (
-        trait.supplier_partno.get().force_extract_literal().get_values()[0] == "C123456"
-    )
+    assert trait.supplier_id.get().extract_singleton() == "lcsc"
+    assert trait.supplier_partno.get().extract_singleton() == "C123456"
 
 
 def test_parameterised_trait_with_pos_args():
@@ -1582,13 +1578,10 @@ def test_trait_alternate_constructor_precedence():
     )
     assert "App" in result.state.type_roots
     trait = fabll.Node.bind_instance(app_instance).get_trait(F.Pickable.has_part_picked)
-    assert trait.supplier_id.get().force_extract_literal().get_values()[0] == "1234"
-    assert trait.supplier_partno.get().force_extract_literal().get_values()[0] == "2345"
-    assert (
-        trait.manufacturer.get().force_extract_literal().get_values()[0]
-        == "good_company"
-    )
-    assert trait.partno.get().force_extract_literal().get_values()[0] == "amazing_part"
+    assert trait.supplier_id.get().extract_singleton() == "1234"
+    assert trait.supplier_partno.get().extract_singleton() == "2345"
+    assert trait.manufacturer.get().extract_singleton() == "good_company"
+    assert trait.partno.get().extract_singleton() == "amazing_part"
 
 
 def test_parameterised_trait_no_params_net_name():
@@ -1607,7 +1600,7 @@ def test_parameterised_trait_no_params_net_name():
     assert "App" in result.state.type_roots
     # Trait is created but with no constraints
     trait = fabll.Node.bind_instance(app_instance).get_trait(F.has_net_name_suggestion)
-    assert trait.name_.get().try_extract_constrained_literal() is None
+    assert trait.name_.get().try_extract_singleton() is None
 
 
 def test_nested_override_trait():
@@ -1635,16 +1628,16 @@ def test_slice_for_loop():
             resistors = new Resistor[10]
             resistors2 = new Resistor[2]
             for r in resistors[0:3]:
-                assert r.resistance is 100kohm
+                assert r.resistance within 100kohm
 
             for r in resistors[-3:-1]:
-                assert r.resistance is 200kohm
+                assert r.resistance within 200kohm
 
             for r in resistors[3:6:2]:
-                assert r.resistance is 150kohm
+                assert r.resistance within 150kohm
 
             for r in resistors2[:]:
-                assert r.resistance is 250kohm
+                assert r.resistance within 250kohm
         """,
         "App",
     )
@@ -1662,7 +1655,7 @@ def test_slice_for_loop():
         assert (
             E.lit_op_single((100, E.U.kohm))
             .as_literal.force_get()
-            .equals(r.resistance.get().force_extract_literal())
+            .equals(r.resistance.get().force_extract_superset())
         )
 
     for r_node in resistors.as_list()[-3:-1]:
@@ -1670,7 +1663,7 @@ def test_slice_for_loop():
         assert (
             E.lit_op_single((200, E.U.kohm))
             .as_literal.force_get()
-            .equals(r.resistance.get().force_extract_literal())
+            .equals(r.resistance.get().force_extract_superset())
         )
 
     for r_node in resistors.as_list()[3:6:2]:
@@ -1678,20 +1671,20 @@ def test_slice_for_loop():
         assert (
             E.lit_op_single((150, E.U.kohm))
             .as_literal.force_get()
-            .equals(r.resistance.get().force_extract_literal())
+            .equals(r.resistance.get().force_extract_superset())
         )
 
     # Check that other resistors weren't assigned a value in the loop
     for r_node in resistors.as_list()[6:-3]:
         r = r_node.cast(F.Resistor)
-        assert r.resistance.get().try_extract_aliased_literal() is None
+        assert r.resistance.get().try_extract_superset() is None
 
     for r_node in resistors2.as_list()[:]:
         r = r_node.cast(F.Resistor)
         assert (
             E.lit_op_single((250, E.U.kohm))
             .as_literal.force_get()
-            .equals(r.resistance.get().force_extract_literal())
+            .equals(r.resistance.get().force_extract_superset())
         )
 
 
@@ -1765,7 +1758,7 @@ def test_slice_bigger_start_than_end():
         module App:
             resistors = new Resistor[5]
             for r in resistors[3:1]:
-                assert r.resistance is 100kohm
+                assert r.resistance within 100kohm
         """,
         "App",
     )
@@ -1779,12 +1772,12 @@ def test_slice_bigger_start_than_end():
         assert (
             E.lit_op_single((100, E.U.kohm))
             .as_literal.force_get()
-            .equals(r_node.cast(F.Resistor).resistance.get().force_extract_literal())
+            .equals(r_node.cast(F.Resistor).resistance.get().force_extract_superset())
         )
 
     for r_node in set(resistor_list) - set(resistor_list[3:1]):
         r = r_node.cast(F.Resistor)
-        assert r.resistance.get().try_extract_aliased_literal() is None
+        assert r.resistance.get().try_extract_superset() is None
 
 
 def test_directed_connect_reverse_signals():
@@ -1959,10 +1952,7 @@ def test_trait_template_enum():
 
     # Verify the trait is attached and has correct size
     trait = r.get_trait(F.has_package_requirements)
-    assert (
-        trait.size.get().force_extract_literal().get_single_value_typed(SMDSize)
-        == SMDSize.I0805
-    )
+    assert trait.size.get().force_extract_singleton_typed(SMDSize) == SMDSize.I0805
 
 
 def test_trait_template_enum_invalid():
@@ -1988,7 +1978,7 @@ def test_module_template_enum():
             except KeyError:
                 raise DslException(f"Invalid size: '{size}'")
             out.add_dependant(
-                F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+                F.Literals.AbstractEnums.MakeChild_SetSuperset(
                     [out, cls.size], size_enum
                 )
             )
@@ -2011,10 +2001,7 @@ def test_module_template_enum():
     r = _get_child(app_instance, "r")
     r = _Module.bind_instance(r)
     # Use get_single_value_typed for enum comparison
-    assert (
-        r.size.get().force_extract_literal().get_single_value_typed(SMDSize)
-        == SMDSize.I0805
-    )
+    assert r.size.get().force_extract_singleton_typed(SMDSize) == SMDSize.I0805
 
 
 def test_module_template_enum_invalid():
@@ -2030,7 +2017,7 @@ def test_module_template_enum_invalid():
             except KeyError:
                 raise DslException(f"Invalid size: '{size}'")
             out.add_dependant(
-                F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+                F.Literals.AbstractEnums.MakeChild_SetSuperset(
                     [out, cls.size], size_enum
                 )
             )
@@ -2081,7 +2068,7 @@ class ModuleWithIntEnum(fabll.Node):
         except ValueError:
             raise DslException(f"Invalid value: '{value}'")
         out.add_dependant(
-            F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+            F.Literals.AbstractEnums.MakeChild_SetSuperset(
                 [out, cls._value], value_enum
             )
         )
@@ -2100,9 +2087,7 @@ class ModuleWithStrEnum(fabll.Node):
         except KeyError:
             raise DslException(f"Invalid mode: '{mode}'")
         out.add_dependant(
-            F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
-                [out, cls._value], mode_enum
-            )
+            F.Literals.AbstractEnums.MakeChild_SetSuperset([out, cls._value], mode_enum)
         )
         return out
 
@@ -2178,7 +2163,7 @@ def test_module_template_multiple_enum_args():
                 except KeyError:
                     raise DslException(f"Invalid color: '{color}'")
                 out.add_dependant(
-                    F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+                    F.Literals.AbstractEnums.MakeChild_SetSuperset(
                         [out, cls._color], color_enum
                     )
                 )
@@ -2189,7 +2174,7 @@ def test_module_template_multiple_enum_args():
                 except KeyError:
                     raise DslException(f"Invalid channel: '{channel}'")
                 out.add_dependant(
-                    F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+                    F.Literals.AbstractEnums.MakeChild_SetSuperset(
                         [out, cls._channel], channel_enum
                     )
                 )
@@ -2200,7 +2185,7 @@ def test_module_template_multiple_enum_args():
                 except KeyError:
                     raise DslException(f"Invalid temp_coeff: '{temp_coeff}'")
                 out.add_dependant(
-                    F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+                    F.Literals.AbstractEnums.MakeChild_SetSuperset(
                         [out, cls._temp_coeff], temp_coeff_enum
                     )
                 )
@@ -2227,34 +2212,28 @@ def test_module_template_multiple_enum_args():
     mod1 = _get_child(app_instance, "mod1")
     mod1 = _TestModule.bind_instance(mod1)
     assert (
-        mod1._color.get().force_extract_literal().get_single_value_typed(F.LED.Color)
-        == F.LED.Color.BLUE
+        mod1._color.get().force_extract_singleton_typed(F.LED.Color) == F.LED.Color.BLUE
     )
     assert (
-        mod1._channel.get()
-        .force_extract_literal()
-        .get_single_value_typed(F.MOSFET.ChannelType)
+        mod1._channel.get().force_extract_singleton_typed(F.MOSFET.ChannelType)
         == F.MOSFET.ChannelType.N_CHANNEL
     )
     # temp_coeff not constrained - check it returns None
-    assert mod1._temp_coeff.get().try_extract_constrained_literal() is None
+    assert mod1._temp_coeff.get().try_extract_superset() is None
 
     mod2 = _get_child(app_instance, "mod2")
     mod2 = _TestModule.bind_instance(mod2)
     assert (
-        mod2._color.get().force_extract_literal().get_single_value_typed(F.LED.Color)
-        == F.LED.Color.RED
+        mod2._color.get().force_extract_singleton_typed(F.LED.Color) == F.LED.Color.RED
     )
     assert (
-        mod2._channel.get()
-        .force_extract_literal()
-        .get_single_value_typed(F.MOSFET.ChannelType)
+        mod2._channel.get().force_extract_singleton_typed(F.MOSFET.ChannelType)
         == F.MOSFET.ChannelType.P_CHANNEL
     )
     assert (
-        mod2._temp_coeff.get()
-        .force_extract_literal()
-        .get_single_value_typed(F.Capacitor.TemperatureCoefficient)
+        mod2._temp_coeff.get().force_extract_singleton_typed(
+            F.Capacitor.TemperatureCoefficient
+        )
         == F.Capacitor.TemperatureCoefficient.C0G
     )
 
@@ -2283,9 +2262,7 @@ def test_literals(value: str, literal: F.Parameters.can_be_operand):
     )
     a_node = _get_child(app_instance, "a")
     a = F.Parameters.NumericParameter.bind_instance(a_node)
-    assert literal.as_literal.force_get().equals(
-        not_none(a.force_extract_literal_subset())
-    )
+    assert literal.as_literal.force_get().equals(not_none(a.force_extract_superset()))
 
 
 class TestInheritanceRuntime:
@@ -2950,15 +2927,11 @@ class TestParameterConstraintTypes:
         assert (
             E.lit_op_single((5, E.U.V))
             .as_literal.force_get()
-            .equals(
-                not_none(
-                    voltage_param.try_extract_aliased_literal_subset()
-                ).is_literal.get()
-            )
+            .equals(not_none(voltage_param.try_extract_superset()).is_literal.get())
         )
 
         # Should NOT find literal via exact Is extraction (modules use IsSubset)
-        assert voltage_param.try_extract_aliased_literal() is None
+        assert voltage_param.try_extract_subset() is None
 
     def test_component_uses_is_for_parameter_constraint(self):
         """Components should use Is for parameter constraints (exact)."""
@@ -2976,17 +2949,13 @@ class TestParameterConstraintTypes:
         assert (
             E.lit_op_single((5, E.U.V))
             .as_literal.force_get()
-            .equals(not_none(voltage_param.try_extract_aliased_literal()))
+            .equals(not_none(voltage_param.try_extract_subset()))
         )
         # Should NOT find literal via subset extraction
         assert (
             E.lit_op_ranges(((0, E.U.V), (math.inf, E.U.V)))
             .as_literal.force_get()
-            .equals(
-                not_none(
-                    voltage_param.try_extract_aliased_literal_subset()
-                ).is_literal.get()
-            )
+            .equals(not_none(voltage_param.try_extract_superset()).is_literal.get())
         )
 
     def test_module_with_toleranced_value_uses_issubset(self):
@@ -3004,10 +2973,10 @@ class TestParameterConstraintTypes:
         assert (
             E.lit_op_range_from_center_rel((10000, E.U.Ohm), rel=0.05)
             .as_literal.force_get()
-            .equals(not_none(resistance_param.try_extract_aliased_literal_subset()))
+            .equals(not_none(resistance_param.try_extract_superset()))
         )
         # Should NOT find literal via exact Is extraction (modules use IsSubset)
-        assert resistance_param.try_extract_aliased_literal() is None
+        assert resistance_param.try_extract_subset() is None
 
     def test_component_with_toleranced_value_uses_is(self):
         """Component with toleranced value should use Is."""
@@ -3024,20 +2993,12 @@ class TestParameterConstraintTypes:
         assert (
             E.lit_op_range_from_center_rel((10000, E.U.Ohm), rel=0.05)
             .as_literal.force_get()
-            .equals(
-                not_none(
-                    resistance_param.try_extract_aliased_literal()
-                ).is_literal.get()
-            )
+            .equals(not_none(resistance_param.try_extract_subset()).is_literal.get())
         )
         assert (
             E.lit_op_ranges(((0, E.U.Ohm), (math.inf, E.U.Ohm)))
             .as_literal.force_get()
-            .equals(
-                not_none(
-                    resistance_param.try_extract_aliased_literal_subset()
-                ).is_literal.get()
-            )
+            .equals(not_none(resistance_param.try_extract_superset()).is_literal.get())
         )
 
     def test_nested_module_in_component_uses_issubset(self):
@@ -3060,14 +3021,10 @@ class TestParameterConstraintTypes:
         assert (
             E.lit_op_single((3, E.U.V))
             .as_literal.force_get()
-            .equals(
-                not_none(
-                    value_param.try_extract_aliased_literal_subset()
-                ).is_literal.get()
-            )
+            .equals(not_none(value_param.try_extract_superset()).is_literal.get())
         )
         # Should NOT find literal via exact Is extraction (modules use IsSubset)
-        assert value_param.try_extract_aliased_literal() is None
+        assert value_param.try_extract_subset() is None
 
     def test_nested_component_in_module_uses_is(self):
         """Component nested inside module should still use Is."""
@@ -3089,16 +3046,12 @@ class TestParameterConstraintTypes:
         assert (
             E.lit_op_single((3, E.U.V))
             .as_literal.force_get()
-            .equals(not_none(value_param.try_extract_aliased_literal()))
+            .equals(not_none(value_param.try_extract_subset()))
         )
         assert (
             E.lit_op_ranges(((0, E.U.V), (math.inf, E.U.V)))
             .as_literal.force_get()
-            .equals(
-                not_none(
-                    value_param.try_extract_aliased_literal_subset()
-                ).is_literal.get()
-            )
+            .equals(not_none(value_param.try_extract_superset()).is_literal.get())
         )
 
     def test_module_range_value_uses_issubset(self):
@@ -3116,10 +3069,10 @@ class TestParameterConstraintTypes:
         assert (
             E.lit_op_ranges(((3, E.U.V), (5, E.U.V)))
             .as_literal.force_get()
-            .equals(not_none(voltage_param.try_extract_aliased_literal_subset()))
+            .equals(not_none(voltage_param.try_extract_superset()))
         )
         # Should NOT find literal via exact Is extraction (modules use IsSubset)
-        assert voltage_param.try_extract_aliased_literal() is None
+        assert voltage_param.try_extract_subset() is None
 
     def test_component_range_value_uses_is(self):
         """Component with range value should use Is."""
@@ -3136,14 +3089,12 @@ class TestParameterConstraintTypes:
         assert (
             E.lit_op_ranges(((3, E.U.V), (5, E.U.V)))
             .as_literal.force_get()
-            .equals(
-                not_none(voltage_param.try_extract_aliased_literal()).is_literal.get()
-            )
+            .equals(not_none(voltage_param.try_extract_subset()).is_literal.get())
         )
         assert (
             E.lit_op_ranges(((0, E.U.V), (math.inf, E.U.V)))
             .as_literal.force_get()
-            .equals(not_none(voltage_param.try_extract_aliased_literal_subset()))
+            .equals(not_none(voltage_param.try_extract_superset()))
         )
 
 

@@ -310,7 +310,7 @@ def test_pick_resistor_by_params():
     assert (
         app.r1.get()
         .resistance.get()
-        .force_extract_literal()
+        .force_extract_subset()
         .is_subset_of(
             F.Literals.Numbers(resistance_op.get_raw_obj().instance),
             g=g,
@@ -396,8 +396,7 @@ def test_pick_led_by_colour():
     pick_part_recursively(led, solver)
 
     assert led.has_trait(F.Pickable.has_part_picked)
-    solver.update_superset_cache(led)
-    assert solver.inspect_get_known_supersets(
+    assert solver.simplify_and_extract_superset(
         led.color.get().is_parameter.get()
     ).is_subset_of(E.lit_op_enum(color).as_literal.force_get())
 
@@ -576,7 +575,7 @@ def test_null_solver():
     ]
     assert (
         (solver)
-        .inspect_get_known_supersets(app.cap.get().capacitance.get().is_parameter.get())
+        .extract_superset(app.cap.get().capacitance.get().is_parameter.get())
         .is_subset_of(capacitance.as_literal.force_get())
     )
 
@@ -636,7 +635,7 @@ def test_pick_capacitor_temperature_coefficient():
     tg = fbrk.TypeGraph.create(g=g)
 
     cap = F.Capacitor.bind_typegraph(tg=tg).create_instance(g=g)
-    cap.temperature_coefficient.get().alias_to_literal(
+    cap.temperature_coefficient.get().set_superset(
         F.Capacitor.TemperatureCoefficient.X7R
     )
 

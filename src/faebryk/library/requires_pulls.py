@@ -148,7 +148,7 @@ class requires_pulls(fabll.Node):
             for signal in signals
             if not_none(
                 signal.get_trait(F.can_be_pulled).pull_resistance
-            ).try_extract_aliased_literal
+            ).try_extract_alias()
             is not None
         }
 
@@ -157,7 +157,7 @@ class requires_pulls(fabll.Node):
             for signal in signals
             if signal.pull_resistance is not None
             and not self.required_resistance.get()
-            .force_extract_literal()
+            .force_extract_alias()
             .is_superset_of(g=signal.g, tg=signal.tg, other=signal.pull_resistance)
         }
 

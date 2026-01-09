@@ -183,68 +183,6 @@ class is_parameter_operatable(fabll.Node):
         fabll.Traits.OptionalImpliedTrait(_get_is_expression)
     )
 
-    def try_get_constrained_literal[T: "fabll.NodeT" = "Literals.is_literal"](
-        self,
-        lit_type: type[T] | None = None,
-        pred_type: type[fabll.NodeT] | None = None,
-    ) -> T | None:
-        # 1. find all Is! expressions parameter is involved in
-        # 2. for each of those check if they have a literal operand of the correct type
-        from faebryk.library.Expressions import Is, IsSubset, is_commutative
-        from faebryk.library.Literals import is_literal
-
-        if pred_type is None:
-            pred_type = Is
-
-        # TODO: this is quite a hack
-        if pred_type is not Is and pred_type is not IsSubset:
-            raise ValueError(f"Invalid predicate type: {pred_type}")
-
-        exprs = self.get_operations(types=pred_type, predicates_only=True)
-        lits = []
-        for expr in exprs:
-            if expr.has_trait(is_commutative):
-                if lit_vs := expr.is_expression.get().get_operand_literals().values():
-                    lits.extend(lit_vs)
-            else:
-                ops = expr.is_expression.get().get_operands()
-                for op in ops[1:]:
-                    if lit := op.as_literal.try_get():
-                        lits.append(lit)
-
-        if not lits:
-            return None
-        lit_merged = F.Literals.is_literal.op_intersect_intervals(*lits)
-
-        if lit_type is None or lit_type is is_literal:
-            return cast(T, lit_merged)
-        return fabll.Traits(lit_merged).get_obj(lit_type)
-
-        return None
-
-    def force_extract_literal[T: "fabll.NodeT" = "Literals.is_literal"](
-        self,
-        lit_type: type[T] | None = None,
-        pred_type: type[fabll.NodeT] | None = None,
-    ) -> T:
-        lit = self.try_get_constrained_literal(lit_type=lit_type, pred_type=pred_type)
-        if lit is None:
-            raise ParameterIsNotConstrainedToLiteral(parameter=self)
-        return lit
-
-    def alias_to_literal(
-        self, g: graph.GraphView, value: "Literals.LiteralNodes"
-    ) -> None:
-        node = self.instance
-        tg = not_none(fbrk.TypeGraph.of_instance(instance_node=node))
-        from faebryk.library.Expressions import Is
-
-        Is.bind_typegraph(tg=tg).create_instance(g=g).setup(
-            self.as_operand.get(),
-            value.is_literal.get().as_operand.get(),
-            assert_=True,
-        )
-
     def compact_repr(
         self,
         context: "ReprContext | None" = None,
@@ -276,34 +214,6 @@ class is_parameter_operatable(fabll.Node):
             return expr.get_depth()
         return 0
 
-    def try_get_aliased_literal(self) -> "Literals.is_literal | None":
-        return self.try_get_constrained_literal()
-
-    def try_get_subset_or_alias_literal(self) -> "Literals.is_literal | None":
-        from faebryk.library.Expressions import Is, IsSubset
-
-        is_lit = self.try_get_constrained_literal(pred_type=Is)
-        ss_lit = self.try_get_constrained_literal(pred_type=IsSubset)
-        lits = [lit for lit in [is_lit, ss_lit] if lit is not None]
-        if not lits:
-            return None
-        if len(lits) == 1:
-            return next(iter(lits))
-        g = graph.GraphView.create()
-        tg = fbrk.TypeGraph.create(g=g)
-        if not not_none(is_lit).is_subset_of(not_none(ss_lit), g=g, tg=tg):
-            g.destroy()
-            raise ContradictingLiterals(lits)
-        g.destroy()
-        return is_lit
-
-    def try_extract_literal(
-        self, allow_subset: bool = False
-    ) -> "Literals.is_literal | None":
-        if allow_subset:
-            return self.try_get_subset_or_alias_literal()
-        return self.try_get_aliased_literal()
-
     def get_operations[T: "fabll.NodeT"](
         self,
         types: type[T] = fabll.Node,
@@ -332,12 +242,90 @@ class is_parameter_operatable(fabll.Node):
             )
         return False
 
+    def set_superset(self, g: graph.GraphView, value: "Literals.LiteralNodes") -> None:
+        node = self.instance
+        tg = not_none(fbrk.TypeGraph.of_instance(instance_node=node))
+        from faebryk.library.Expressions import IsSubset
+
+        IsSubset.bind_typegraph(tg=tg).create_instance(g=g).setup(
+            self.as_operand.get(),
+            value.is_literal.get().as_operand.get(),
+            assert_=True,
+        )
+
+    def set_subset(self, g: graph.GraphView, value: "Literals.LiteralNodes") -> None:
+        node = self.instance
+        tg = not_none(fbrk.TypeGraph.of_instance(instance_node=node))
+        from faebryk.library.Expressions import IsSuperset
+
+        IsSuperset.bind_typegraph(tg=tg).create_instance(g=g).setup(
+            self.as_operand.get(),
+            value.is_literal.get().as_operand.get(),
+            assert_=True,
+        )
+
+    # literal extraction ---------------------------------------------------------------
+    def _try_extract_set[T: "fabll.NodeT" = "Literals.is_literal"](
+        self,
+        superset: bool,
+        lit_type: type[T] | None = None,
+    ) -> T | None:
+        from faebryk.library.Expressions import IsSubset, IsSuperset
+        from faebryk.library.Literals import is_literal
+
+        l_op, r_op = (IsSubset, IsSuperset) if superset else (IsSuperset, IsSubset)
+
+        lits = []
+        for expr in self.get_operations(types=l_op, predicates_only=True):
+            ops = expr.is_expression.get().get_operands()
+            if not ops[0].is_same(self.as_operand.get()):
+                continue
+            for op in ops[1:]:
+                if lit := op.as_literal.try_get():
+                    lits.append(lit)
+        for expr in self.get_operations(types=r_op, predicates_only=True):
+            ops = expr.is_expression.get().get_operands()
+            op = ops[0]
+            if lit := op.as_literal.try_get():
+                lits.append(lit)
+
+        if not lits:
+            return None
+        lit_merged = F.Literals.is_literal.op_intersect_intervals(*lits)
+
+        if lit_type is None or lit_type is is_literal:
+            return cast(T, lit_merged)
+        return fabll.Traits(lit_merged).get_obj(lit_type)
+
+    # new
+    def try_extract_superset[T: "Literals.LiteralNodes"](
+        self, lit_type: type[T] | None = None
+    ) -> T | None:
+        return self._try_extract_set(lit_type=lit_type, superset=True)
+
+    def force_extract_superset[T: "Literals.LiteralNodes"](
+        self, lit_type: type[T] | None = None
+    ) -> T:
+        lit = self.try_extract_superset(lit_type=lit_type)
+        if lit is None:
+            raise ParameterIsNotConstrainedToLiteral(parameter=self)
+        return lit
+
+    def try_extract_subset[T: "Literals.LiteralNodes"](
+        self, lit_type: type[T] | None = None
+    ) -> T | None:
+        return self._try_extract_set(lit_type=lit_type, superset=False)
+
+    def force_extract_subset[T: "Literals.LiteralNodes"](
+        self, lit_type: type[T] | None = None
+    ) -> T:
+        lit = self.try_extract_subset(lit_type=lit_type)
+        if lit is None:
+            raise ParameterIsNotConstrainedToLiteral(parameter=self)
+        return lit
+
     def _get_lit_suffix(self) -> str:
         out = ""
-        try:
-            lit = self.try_get_aliased_literal()
-        except KeyErrorAmbiguous as e:
-            return f"{{AMBIGUOUS_I: {e.duplicates}}}"
 
         def format_lit(literal: "F.Literals.is_literal") -> str:
             if param := self.as_parameter.try_get():
@@ -351,14 +339,24 @@ class is_parameter_operatable(fabll.Node):
                         return numeric_param.format_literal_for_display(numbers_lit)
             return literal.pretty_str()
 
-        if lit is not None:
-            out = f"{{I|{format_lit(lit)}}}"
-        elif (lit := self.try_get_subset_or_alias_literal()) is not None:
-            out = f"{{S|{format_lit(lit)}}}"
-        if lit and lit.equals_singleton(True):
-            out = "✓"
-        elif lit and lit.equals_singleton(False):
-            out = "✗"
+        try:
+            superset = self.try_extract_superset()
+            if superset is not None:
+                out = f"{{⊆|{format_lit(superset)}}}"
+                if superset.equals_singleton(True):
+                    out = "✓"
+                elif superset.equals_singleton(False):
+                    out = "✗"
+        except KeyErrorAmbiguous as e:
+            return f"{{AMBIGUOUS ⊆: {e.duplicates}}}"
+
+        try:
+            subset = self.try_extract_subset()
+            if subset is not None:
+                out = f"{{⊇|{format_lit(subset)}}}"
+        except KeyErrorAmbiguous as e:
+            return f"{{AMBIGUOUS ⊇: {e.duplicates}}}"
+
         return out
 
 
@@ -459,29 +457,38 @@ class StringParameter(fabll.Node):
     is_parameter_operatable = fabll.Traits.MakeEdge(is_parameter_operatable.MakeChild())
     can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
-    def try_extract_constrained_literal(self) -> "Literals.Strings | None":
+    def try_extract_superset(self) -> "Literals.Strings | None":
         from faebryk.library.Literals import Strings
 
-        return self.is_parameter_operatable.get().try_get_constrained_literal(
+        return self.is_parameter_operatable.get().try_extract_superset(lit_type=Strings)
+
+    def force_extract_superset(self) -> "Literals.Strings":
+        from faebryk.library.Literals import Strings
+
+        return self.is_parameter_operatable.get().force_extract_superset(
             lit_type=Strings
         )
 
-    def force_extract_literal(self) -> "Literals.Strings":
-        from faebryk.library.Literals import Strings
+    def extract_singleton(self) -> str:
+        return self.force_extract_superset().get_single()
 
-        return self.is_parameter_operatable.get().force_extract_literal(
-            lit_type=Strings
-        )
+    def try_extract_singleton(self) -> str | None:
+        lit = self.try_extract_superset()
+        if lit is None:
+            return None
+        if not lit.is_singleton():
+            return None
+        return lit.get_single()
 
-    # TODO get rid of this and replace with alias_to_literal
-    def alias_to_single(self, value: str, g: graph.GraphView | None = None) -> None:
-        return self.alias_to_literal(value, g=g)
+    # TODO get rid of this and replace with superset_to_literal
+    def set_singleton(self, value: str, g: graph.GraphView | None = None) -> None:
+        return self.set_superset(value, g=g)
 
-    def alias_to_literal(self, *values: str, g: graph.GraphView | None = None) -> None:
+    def set_superset(self, *values: str, g: graph.GraphView | None = None) -> None:
         g = g or self.instance.g()
         from faebryk.library.Literals import Strings
 
-        self.is_parameter_operatable.get().alias_to_literal(
+        self.is_parameter_operatable.get().set_superset(
             g=g,
             value=Strings.bind_typegraph(tg=self.tg)
             .create_instance(g=g)
@@ -499,24 +506,32 @@ class BooleanParameter(fabll.Node):
     is_parameter_operatable = fabll.Traits.MakeEdge(is_parameter_operatable.MakeChild())
     can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
-    def try_extract_constrained_literal(self) -> "Literals.Booleans | None":
+    def try_extract_superset(self) -> "Literals.Booleans | None":
         from faebryk.library.Literals import Booleans
 
-        return self.is_parameter_operatable.get().try_get_constrained_literal(
+        return self.is_parameter_operatable.get().try_extract_superset(
             lit_type=Booleans
         )
 
-    def force_extract_literal(self) -> "Literals.Booleans":
+    def force_extract_superset(self) -> "Literals.Booleans":
         from faebryk.library.Literals import Booleans
 
-        return self.is_parameter_operatable.get().force_extract_literal(
+        return self.is_parameter_operatable.get().force_extract_superset(
             lit_type=Booleans
         )
 
-    def extract_single(self) -> bool:
-        return self.force_extract_literal().get_single()
+    def force_extract_singleton(self) -> bool:
+        return self.force_extract_superset().get_single()
 
-    def alias_to_single(self, value: bool, g: graph.GraphView | None = None) -> None:
+    def try_extract_singleton(self) -> bool | None:
+        lit = self.try_extract_superset()
+        if lit is None:
+            return None
+        if not lit.is_singleton():
+            return None
+        return lit.get_single()
+
+    def set_singleton(self, value: bool, g: graph.GraphView | None = None) -> None:
         g = g or self.instance.g()
         from faebryk.library.Literals import Booleans
 
@@ -526,7 +541,7 @@ class BooleanParameter(fabll.Node):
             .setup_from_values(value)
         )
 
-        self.is_parameter_operatable.get().alias_to_literal(g=g, value=lit)
+        self.is_parameter_operatable.get().set_superset(g=g, value=lit)
 
     def domain_set(
         self, *, g: graph.GraphView, tg: fbrk.TypeGraph
@@ -549,19 +564,33 @@ class EnumParameter(fabll.Node):
             instance=self.enum_domain_pointer.get().deref().instance
         )
 
-    def try_extract_constrained_literal[T: "F.Literals.AbstractEnums"](
+    def try_extract_superset[T: "F.Literals.AbstractEnums"](
         self,
     ) -> "F.Literals.AbstractEnums | None":
-        return self.is_parameter_operatable.get().try_get_constrained_literal(
+        return self.is_parameter_operatable.get().try_extract_superset(
             lit_type=F.Literals.AbstractEnums
         )
 
-    def force_extract_literal(self) -> "F.Literals.AbstractEnums":
+    def force_extract_superset(self) -> "F.Literals.AbstractEnums":
         return (
-            fabll.Traits(self.is_parameter_operatable.get().force_extract_literal())
+            fabll.Traits(self.is_parameter_operatable.get().force_extract_superset())
             .get_obj_raw()
             .cast(F.Literals.AbstractEnums, check=False)
         )
+
+    def force_extract_singleton(self) -> str:
+        return self.force_extract_superset().get_single()
+
+    def force_extract_singleton_typed[T: Enum](self, enum_type: type[T]) -> T:
+        return self.force_extract_superset().get_single_value_typed(enum_type)
+
+    def try_extract_singleton_typed[T: Enum](self, enum_type: type[T]) -> T | None:
+        lit = self.try_extract_superset()
+        if lit is None:
+            return None
+        if not lit.is_singleton():
+            return None
+        return lit.get_single_value_typed(enum_type)
 
     def setup(self, enum: type[Enum]) -> Self:  # type: ignore[invalid-method-override]
         atype = F.Literals.EnumsFactory(enum)
@@ -573,7 +602,7 @@ class EnumParameter(fabll.Node):
         )
         return self
 
-    def alias_to_literal(
+    def set_superset(
         self, *enum_members: Enum, g: graph.GraphView | None = None
     ) -> None:
         g = g or self.instance.g()
@@ -593,7 +622,7 @@ class EnumParameter(fabll.Node):
             .setup(*enum_members)
         )
 
-        self.is_parameter_operatable.get().alias_to_literal(g=g, value=lit)
+        self.is_parameter_operatable.get().set_superset(g=g, value=lit)
 
     @classmethod
     def MakeChild(cls, enum_t: type[Enum]) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
@@ -635,9 +664,7 @@ class EnumParameter(fabll.Node):
         enum_lit = AbstractEnums(
             tg.instantiate_node(type_node=enum_type_node.instance, attributes={})
         )
-        enum_lit.constrain_to_values(
-            *[enum_value.value for enum_value in all_enum_values]
-        )
+        enum_lit.set_superset(*[enum_value.value for enum_value in all_enum_values])
 
         return enum_lit
 
@@ -707,7 +734,7 @@ class NumericParameter(fabll.Node):
         Return values from extracted literal subset in the parameter's display units.
         """
         return (
-            self.force_extract_literal_subset()
+            self.force_extract_superset()
             .convert_to_unit(self.force_get_display_units(), g=self.g, tg=self.tg)
             .get_values()
         )
@@ -728,7 +755,7 @@ class NumericParameter(fabll.Node):
         # TODO
         pass
 
-    def alias_to_literal(
+    def set_superset(
         self, g: graph.GraphView, value: "float | F.Literals.Numbers"
     ) -> None:
         match value:
@@ -745,7 +772,7 @@ class NumericParameter(fabll.Node):
             case _:
                 raise ValueError(f"Invalid value type: {type(value)}")
 
-        self.is_parameter_operatable.get().alias_to_literal(g=g, value=lit)
+        self.is_parameter_operatable.get().set_superset(g=g, value=lit)
 
     def setup(  # type: ignore[invalid-method-override]
         self,
@@ -877,46 +904,42 @@ class NumericParameter(fabll.Node):
             # TODO other domain constraints
             if not domain.negative:
                 out.add_dependant(
-                    F.Literals.Numbers.MakeChild_ConstrainToSubsetLiteral(
+                    F.Literals.Numbers.MakeChild_SetSuperset(
                         param_ref=[out], min=0, max=math.inf, unit=unit
                     )
                 )
 
         return out
 
-    def try_extract_aliased_literal(self) -> "Literals.Numbers | None":
-        from faebryk.library.Expressions import Is
+    def try_extract_subset(self) -> "Literals.Numbers | None":
         from faebryk.library.Literals import Numbers
 
-        return self.is_parameter_operatable.get().try_get_constrained_literal(
-            lit_type=Numbers, pred_type=Is
-        )
+        return self.is_parameter_operatable.get().try_extract_subset(lit_type=Numbers)
 
-    def force_extract_literal(self) -> "Literals.Numbers":
-        from faebryk.library.Expressions import Is
+    def force_extract_subset(self) -> "Literals.Numbers":
         from faebryk.library.Literals import Numbers
 
-        return self.is_parameter_operatable.get().force_extract_literal(
-            lit_type=Numbers,
-            pred_type=Is,
-        )
+        return self.is_parameter_operatable.get().force_extract_subset(lit_type=Numbers)
 
-    def try_extract_aliased_literal_subset(self) -> "Literals.Numbers | None":
-        from faebryk.library.Expressions import IsSubset
+    def try_extract_superset(self) -> "Literals.Numbers | None":
         from faebryk.library.Literals import Numbers
 
-        return self.is_parameter_operatable.get().try_get_constrained_literal(
-            lit_type=Numbers, pred_type=IsSubset
-        )
+        return self.is_parameter_operatable.get().try_extract_superset(lit_type=Numbers)
 
-    def force_extract_literal_subset(self) -> "Literals.Numbers":
-        from faebryk.library.Expressions import IsSubset
+    def force_extract_superset(self) -> "Literals.Numbers":
         from faebryk.library.Literals import Numbers
 
-        return self.is_parameter_operatable.get().force_extract_literal(
-            lit_type=Numbers,
-            pred_type=IsSubset,
+        return self.is_parameter_operatable.get().force_extract_superset(
+            lit_type=Numbers
         )
+
+    def try_extract_singleton(self) -> float | None:
+        lit = self.try_extract_subset()
+        if lit is None:
+            return None
+        if not lit.is_singleton():
+            return None
+        return lit.get_single()
 
     def domain_set(
         self, *, g: graph.GraphView, tg: fbrk.TypeGraph
@@ -1106,10 +1129,10 @@ def test_try_get():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     p1 = StringParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    p1.alias_to_literal("a", "b")
+    p1.set_superset("a", "b")
     p1_po = p1.is_parameter_operatable.get()
 
-    assert not_none(p1.try_extract_constrained_literal()).get_values() == ["a", "b"]
+    assert not_none(p1.try_extract_superset()).get_values() == ["a", "b"]
 
     ss_lit = (
         Strings.bind_typegraph(tg=tg)
@@ -1122,17 +1145,8 @@ def test_try_get():
         assert_=True,
     )
 
-    ss_lit_get = p1_po.try_get_constrained_literal(pred_type=IsSubset)
-    assert ss_lit_get is not None
+    ss_lit_get = p1_po.force_extract_superset()
     assert fabll.Traits(ss_lit_get).get_obj(Strings).get_values() == [
-        "a",
-        "b",
-        "c",
-    ]
-
-    ss_is_lit = p1_po.try_get_subset_or_alias_literal()
-    assert ss_is_lit is not None
-    assert fabll.Traits(ss_is_lit).get_obj(Strings).get_values() == [
         "a",
         "b",
     ]
@@ -1154,7 +1168,7 @@ def test_enum_param():
             D = "d"
 
         enum_p_tg = EnumParameter.MakeChild(enum_t=MyEnum)
-        constraint = AbstractEnums.MakeChild_ConstrainToLiteral(
+        constraint = AbstractEnums.MakeChild_SetSuperset(
             [enum_p_tg], MyEnum.B, MyEnum.C
         )
 
@@ -1187,13 +1201,13 @@ def test_enum_param():
         node=abstract_enum_type_node, tg=tg
     ) == {m.name: m.value for m in _ExampleNode.MyEnum}
 
-    enum_lit = enum_param.force_extract_literal()
+    enum_lit = enum_param.force_extract_superset()
     assert enum_lit.get_values() == ["b", "c"]
 
     # Enum Parameter from instance graph
     enum_p_ig = EnumParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    enum_p_ig.alias_to_literal(_ExampleNode.MyEnum.B, g=g)
-    assert enum_p_ig.force_extract_literal().get_values() == ["b"]
+    enum_p_ig.set_superset(_ExampleNode.MyEnum.B, g=g)
+    assert enum_p_ig.force_extract_superset().get_values() == ["b"]
 
 
 def test_string_param():
@@ -1202,17 +1216,15 @@ def test_string_param():
     from faebryk.library.Literals import Strings
 
     string_p = StringParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    string_p.alias_to_literal("IG constrained")
-    assert string_p.force_extract_literal().get_values()[0] == "IG constrained"
+    string_p.set_superset("IG constrained")
+    assert string_p.extract_singleton() == "IG constrained"
 
     class _ExampleStringParameter(fabll.Node):
         string_p_tg = StringParameter.MakeChild()
-        constraint = Strings.MakeChild_ConstrainToLiteral(
-            [string_p_tg], "TG constrained"
-        )
+        constraint = Strings.MakeChild_SetSuperset([string_p_tg], "TG constrained")
 
     esp = _ExampleStringParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    assert esp.string_p_tg.get().force_extract_literal().get_value() == "TG constrained"
+    assert esp.string_p_tg.get().extract_singleton() == "TG constrained"
 
 
 def test_boolean_param():
@@ -1221,15 +1233,15 @@ def test_boolean_param():
     from faebryk.library.Literals import Booleans
 
     boolean_p = BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    boolean_p.alias_to_single(value=True, g=g)
-    assert boolean_p.force_extract_literal().get_values()[0]
+    boolean_p.set_singleton(value=True, g=g)
+    assert boolean_p.force_extract_singleton()
 
     class _ExampleBooleanParameter(fabll.Node):
         boolean_p_tg = BooleanParameter.MakeChild()
-        constraint = Booleans.MakeChild_ConstrainToLiteral([boolean_p_tg], True)
+        constraint = Booleans.MakeChild_SetSuperset([boolean_p_tg], True)
 
     ebp = _ExampleBooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    assert ebp.boolean_p_tg.get().force_extract_literal().get_values()[0]
+    assert ebp.boolean_p_tg.get().force_extract_singleton()
 
 
 def test_get_operations():
@@ -1846,10 +1858,10 @@ def test_copy_into_enum_parameter():
     enum_param.setup(enum=MyEnum)
 
     # Alias to a specific value - this creates an Is expression
-    enum_param.alias_to_literal(MyEnum.A, MyEnum.B, g=g1)
+    enum_param.set_superset(MyEnum.A, MyEnum.B, g=g1)
 
     # Verify original works
-    original_lit = enum_param.force_extract_literal()
+    original_lit = enum_param.force_extract_superset()
     original_values = original_lit.get_values()
     assert sorted(original_values) == ["a", "b"]
 
@@ -1895,14 +1907,14 @@ def test_copy_into_enum_parameter():
     print(f"Copied parameter has {len(copied_ops)} operations")
     assert len(copied_ops) == 1, f"Expected 1 operation, got {len(copied_ops)}"
 
-    copied_lit = copied_param.force_extract_literal()
+    copied_lit = copied_param.force_extract_superset()
     copied_values = copied_lit.get_values()
     assert sorted(copied_values) == ["a", "b"], (
         f"Expected ['a', 'b'] but got {copied_values}"
     )
 
     # Verify we can still read the original
-    assert sorted(enum_param.force_extract_literal().get_values()) == ["a", "b"]
+    assert sorted(enum_param.force_extract_superset().get_values()) == ["a", "b"]
 
     # Verify the enum type can still be accessed
     copied_enum_type = copied_param.get_enum_type()
@@ -2024,7 +2036,7 @@ def test_display_unit_literal_conversion():
     )
 
     # Alias the parameter to the literal
-    param.alias_to_literal(g=g, value=literal)
+    param.set_superset(g=g, value=literal)
 
     # Format the literal using the parameter's display unit
     formatted = param.format_literal_for_display(literal)
@@ -2112,7 +2124,7 @@ def test_display_unit_lit_suffix_conversion():
     )
 
     # Alias the parameter to the literal
-    param.alias_to_literal(g=g, value=literal)
+    param.set_superset(g=g, value=literal)
 
     # Get the compact repr with lit suffix
     is_param = param.is_parameter.get()

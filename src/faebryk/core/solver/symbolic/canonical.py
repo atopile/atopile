@@ -56,9 +56,11 @@ def alias_predicates_to_true(mutator: Mutator):
 
     for predicate in mutator.get_expressions(required_traits=(is_predicate,)):
         new_predicate = mutator.mutate_expression(predicate)
-        mutator.utils.alias_to(
+        mutator.create_expression(
+            F.Expressions.IsSubset,
             new_predicate.as_operand.get(),
-            mutator.make_lit(True).can_be_operand.get(),
+            mutator.make_singleton(True).can_be_operand.get(),
+            assert_=True,
         )
 
 
@@ -113,7 +115,7 @@ def convert_to_canonical_operations(mutator: Mutator):
     def curry(e_type: type[fabll.NodeT]):
         def _(*operands: F.Parameters.can_be_operand | F.Literals.LiteralValues):
             _operands = [
-                mutator.make_lit(o).can_be_operand.get()
+                mutator.make_singleton(o).can_be_operand.get()
                 if not isinstance(o, fabll.Node)
                 else o
                 for o in operands
@@ -202,7 +204,7 @@ def convert_to_canonical_operations(mutator: Mutator):
             Sqrt,
             lambda operands: [
                 *operands,
-                mutator.make_lit(0.5).can_be_operand.get(),
+                mutator.make_singleton(0.5).can_be_operand.get(),
             ],
         ),
         (
@@ -333,7 +335,7 @@ def convert_to_canonical_operations(mutator: Mutator):
                 F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
                 .create_instance(mutator.G_out)
                 .setup(
-                    is_unit=mutator.utils.dimensionless(),
+                    is_unit=None,
                     domain=F.Parameters.NumericParameter.DOMAIN_SKIP,
                 )
             )

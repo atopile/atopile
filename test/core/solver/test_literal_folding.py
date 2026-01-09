@@ -94,7 +94,7 @@ def eval_pure_literal_expression(
             operands_literals.append(num)
         # Check if it's a NumericParameter - extract its literal value
         elif param := obj.try_cast(F.Parameters.NumericParameter):
-            operands_literals.append(param.force_extract_literal())
+            operands_literals.append(param.force_extract_superset())
         # Check if it's a nested expression - recursively evaluate
         elif expr_trait := obj.try_get_trait(F.Expressions.is_expression):
             nested_result = eval_pure_literal_expression(
@@ -290,7 +290,7 @@ class Filters(Namespace):
         obj = fabll.Traits(value).get_obj_raw()
         if np := obj.try_cast(F.Parameters.NumericParameter):
             try:
-                return np.force_extract_literal()
+                return np.force_extract_superset()
             except Exception as e:
                 raise Filters._EvaluationError(e) from e
         elif expr := obj.try_get_trait(F.Expressions.is_expression):
@@ -620,7 +620,7 @@ def evaluate_e_p_l(
         return np
 
     if p := obj.try_cast(F.Parameters.NumericParameter):
-        return p.force_extract_literal()
+        return p.force_extract_superset()
 
     expr = operand.get_sibling_trait(F.Expressions.is_expression).switch_cast()
 
@@ -756,8 +756,7 @@ def test_discover_literal_folding_local(expr: F.Parameters.can_be_operand):
     assert isinstance(evaluated_expr, F.Literals.Numbers)
 
     # Run the solver
-    solver.update_superset_cache(root)
-    solver_result = solver.inspect_get_known_supersets(
+    solver_result = solver.simplify_and_extract_superset(
         root.get_sibling_trait(F.Parameters.is_parameter)
     )
     solver_result_num = fabll.Traits(solver_result).get_obj(F.Literals.Numbers)
@@ -828,8 +827,7 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
     evaluated_expr = evaluate_e_p_l(test_expr)
     logger.info(f"evaluated_expr: {evaluated_expr}")
 
-    solver.update_superset_cache(root)
-    solver_result = solver.inspect_get_known_supersets(
+    solver_result = solver.simplify_and_extract_superset(
         root.get_sibling_trait(F.Parameters.is_parameter)
     )
 
@@ -1043,8 +1041,7 @@ def test_regression_literal_folding(
     assert isinstance(evaluated_expr, F.Literals.Numbers)
 
     # Run the solver
-    solver.update_superset_cache(root)
-    solver_result = solver.inspect_get_known_supersets(
+    solver_result = solver.simplify_and_extract_superset(
         root.get_sibling_trait(F.Parameters.is_parameter)
     )
     solver_result_num = fabll.Traits(solver_result).get_obj(F.Literals.Numbers)
@@ -1202,8 +1199,7 @@ def test_folding_statistics(expr: F.Expressions.is_expression):
     assert isinstance(evaluated_expr, F.Literals.Numbers)
 
     try:
-        solver.update_superset_cache(root)
-        solver_result = solver.inspect_get_known_supersets(
+        solver_result = solver.simplify_and_extract_superset(
             root.get_sibling_trait(F.Parameters.is_parameter)
         )
         assert isinstance(solver_result, F.Literals.Numbers)

@@ -8,34 +8,13 @@ from faebryk.core.solver.solver import Solver
 
 class NullSolver(Solver):
     @override
-    def get_any_single(
-        self,
-        operatable: F.Parameters.is_parameter,
-        lock: bool,
-        suppose_predicate: F.Expressions.is_assertable | None = None,
-        minimize: F.Expressions.is_expression | None = None,
-    ) -> Any:
-        return operatable.domain_set().any()
-
-    @override
-    def try_fulfill(
-        self,
-        predicate: F.Expressions.is_assertable,
-        lock: bool,
-        allow_unknown: bool = False,
-    ) -> bool:
-        if lock:
-            predicate.assert_()
-        return True
-
-    @override
-    def inspect_get_known_supersets(
+    def extract_superset(
         self,
         value: F.Parameters.is_parameter,
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> F.Literals.is_literal:
-        lit = value.as_parameter_operatable.get().try_get_subset_or_alias_literal()
+        lit = value.as_parameter_operatable.get().try_extract_superset()
         if lit is None:
             lit = value.domain_set()
         return lit

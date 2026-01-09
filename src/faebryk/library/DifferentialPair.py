@@ -42,9 +42,10 @@ class DifferentialPair(fabll.Node):
         ]
 
         for r in rs:
-            r.resistance.get().alias_to_literal(
-                g=self.g,
-                value=self.impedance.get().force_extract_literal(),
+            F.Expressions.IsSubset.c(
+                subset=r.resistance.get().can_be_operand.get(),
+                superset=self.impedance.get().can_be_operand.get(),
+                assert_=True,
             )
 
         rs[0].can_bridge.get().bridge(terminated_bus.p.get(), self.p.get())

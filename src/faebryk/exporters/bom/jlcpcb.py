@@ -284,7 +284,7 @@ class TestJLCBom:
                 .is_unit.get(),
             )
         )
-        r.resistance.get().alias_to_literal(g=g, value=r1_value)
+        r.resistance.get().set_superset(g=g, value=r1_value)
 
         TestJLCBom._test_build(r)
 

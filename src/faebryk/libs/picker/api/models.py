@@ -272,9 +272,11 @@ class Component:
                 param_operand = param.as_operand.get()
 
                 # Create Is expression to alias parameter to the literal value
-                from faebryk.library.Expressions import Is
+                from faebryk.library.Expressions import IsSuperset
 
-                Is.bind_typegraph(tg=module.tg).create_instance(g=module.g).setup(
+                IsSuperset.bind_typegraph(tg=module.tg).create_instance(
+                    g=module.g
+                ).setup(
                     param_operand,
                     literal.as_operand.get(),
                     assert_=True,

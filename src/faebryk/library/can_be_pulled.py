@@ -134,7 +134,7 @@ class can_be_pulled(fabll.Node):
             resistance_params.append(param)
             lit_trait = param.get_trait(
                 F.Parameters.is_parameter_operatable
-            ).try_get_subset_or_alias_literal()
+            ).try_extract_superset()
             resistances.append(
                 None
                 if lit_trait is None
@@ -166,7 +166,7 @@ class can_be_pulled(fabll.Node):
                 .create_instance(g=self.g)
                 .setup(is_unit=resistance_params[0].force_get_units())
             )
-            eff_param.alias_to_literal(g=self.g, value=eff_literal)
+            eff_param.set_superset(g=self.g, value=eff_literal)
             return eff_param
         except ZeroDivisionError:
             return None

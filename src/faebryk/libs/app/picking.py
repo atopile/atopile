@@ -122,7 +122,7 @@ def load_part_info_from_pcb(tg: fbrk.TypeGraph):
             if not key.startswith(Properties.param_prefix):
                 logger.warning(
                     f"Skipping {key} because it doesn't start with "
-                    "{Properties.param_prefix}"
+                    f"{Properties.param_prefix}"
                 )
                 continue
 
@@ -146,7 +146,7 @@ def load_part_info_from_pcb(tg: fbrk.TypeGraph):
                 param_value, g=node.g, tg=node.tg
             )
             # Alias the parameter to the deserialized literal
-            param.get_trait(F.Parameters.is_parameter_operatable).alias_to_literal(
+            param.get_trait(F.Parameters.is_parameter_operatable).set_subset(
                 g=node.g, value=param_lit.switch_cast()
             )
 
@@ -193,9 +193,7 @@ def save_part_info_to_pcb(app: fabll.Node):
             types=fabll.Node,
             required_trait=F.Parameters.is_parameter,
         ):
-            lit = p.get_trait(
-                F.Parameters.is_parameter_operatable
-            ).try_get_subset_or_alias_literal()
+            lit = p.get_trait(F.Parameters.is_parameter_operatable).try_extract_subset()
             if lit is None:
                 continue
             data[f"{Properties.param_prefix}{p.get_name()}"] = json.dumps(

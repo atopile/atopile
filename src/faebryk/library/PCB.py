@@ -36,38 +36,36 @@ class PCB(fabll.Node):
 
     def setup(self, path: str, app: fabll.Node) -> Self:
         self.app_.get().point(app)
-        self.path_.get().alias_to_single(path)
+        self.path_.get().set_singleton(path)
         return self
 
     def run_transformer(self) -> Self:
         from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
         pcbfile = kicad.loads(kicad.pcb.PcbFile, self.path)
-        self.pcb_file_.get().alias_to_single(value=str(id(pcbfile)))
+        self.pcb_file_.get().set_singleton(value=str(id(pcbfile)))
         transformer = PCB_Transformer(pcbfile.kicad_pcb, self.app)
-        self.transformer_.get().alias_to_single(value=str(id(transformer)))
+        self.transformer_.get().set_singleton(value=str(id(transformer)))
         self._transformer_registry[id(transformer)] = transformer
         return self
 
     @property
     def transformer(self) -> "PCB_Transformer":
-        transformer_id = int(
-            self.transformer_.get().force_extract_literal().get_single()
-        )
+        transformer_id = int(self.transformer_.get().extract_singleton())
 
         return ctypes.cast(transformer_id, ctypes.py_object).value
 
     @property
     def pcb_file(self) -> kicad.pcb.PcbFile:
-        pcb_file_id = int(self.pcb_file_.get().force_extract_literal().get_single())
+        pcb_file_id = int(self.pcb_file_.get().extract_singleton())
         return ctypes.cast(pcb_file_id, ctypes.py_object).value
 
     @property
     def path(self) -> Path:
-        literal = self.path_.get().try_extract_constrained_literal()
+        literal = self.path_.get().try_extract_singleton()
         if literal is None:
             raise ValueError("PCB path is not set")
-        return Path(literal.get_single())
+        return Path(literal)
 
     @property
     def app(self) -> fabll.Node:
@@ -167,7 +165,7 @@ class PCB(fabll.Node):
         def MakeChild(cls, pcb: "PCB") -> fabll._ChildField[Self]:
             out = fabll._ChildField(cls)
             out.add_dependant(
-                F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                F.Literals.Strings.MakeChild_SetSuperset(
                     [out, cls.pcb_ptr_], str(id(pcb))
                 )
             )
@@ -175,12 +173,12 @@ class PCB(fabll.Node):
 
         @property
         def pcbs(self) -> set["PCB"]:
-            pcb_id = int(self.pcb_ptr_.get().force_extract_literal().get_value())
+            pcb_id = int(self.pcb_ptr_.get().extract_singleton())
             return {ctypes.cast(pcb_id, ctypes.py_object).value}
 
         def get_pcb_by_path(self, path: Path) -> "PCB":
             return find(self.pcbs, lambda pcb: pcb.path == path)
 
         def setup(self, pcb: "PCB") -> Self:
-            self.pcb_ptr_.get().alias_to_single(value=str(id(pcb)))
+            self.pcb_ptr_.get().set_singleton(value=str(id(pcb)))
             return self

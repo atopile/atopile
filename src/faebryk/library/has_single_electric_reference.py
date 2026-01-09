@@ -85,7 +85,7 @@ class has_single_electric_reference(fabll.Node):
     ) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Literals.Booleans.MakeChild_ConstrainToLiteral(
+            F.Literals.Booleans.MakeChild_SetSuperset(
                 [out, cls.ground_only_], ground_only
             )
         )

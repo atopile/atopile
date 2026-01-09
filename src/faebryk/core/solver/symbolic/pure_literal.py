@@ -28,14 +28,14 @@ class _Multi:
         self, *args: F.Literals.LiteralNodes, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> F.Literals.is_literal:
         if not args and self.default_arg is not None:
-            init_lit = F.Literals.make_simple_lit_singleton(g, tg, self.default_arg)
+            init_lit = F.Literals.make_singleton(g, tg, self.default_arg)
             args = (init_lit,)
 
         out = self.f(*args, g=g, tg=tg)
 
         # TODO: remove hack for equals returning bool
         if isinstance(out, F.Literals.LiteralValues):
-            out = F.Literals.make_simple_lit_singleton(g, tg, out)
+            out = F.Literals.make_singleton(g, tg, out)
         return out if isinstance(out, F.Literals.is_literal) else out.is_literal.get()
 
 
@@ -144,7 +144,23 @@ def fold_pure_literal_expressions(mutator: Mutator):
         )
         if result is None:
             continue
-        mutator.utils.alias_is_literal_and_check_predicate_eval(expr, result)
+        result_op = result.as_operand.get()
+        mutator.create_expression(
+            F.Expressions.IsSubset,
+            expr.as_operand.get(),
+            result_op,
+            terminate=True,
+            assert_=True,
+        )
+        mutator.create_expression(
+            F.Expressions.IsSubset,
+            result_op,
+            expr.as_operand.get(),
+            terminate=True,
+            assert_=True,
+        )
+        if pred := expr.try_get_sibling_trait(F.Expressions.is_predicate):
+            mutator.predicate_terminate(pred)
 
 
 def test_fold_simple_literal_expressions_single():
@@ -168,7 +184,9 @@ def test_fold_simple_literal_expressions_single():
     res0.mutation_stage.print_mutation_table()
     mut_map = mut_map.extend(res0.mutation_stage)
 
-    lit = not_none(mut_map.try_get_literal(expr.as_parameter_operatable.force_get()))
+    lit = not_none(
+        mut_map.try_extract_superset(expr.as_parameter_operatable.force_get())
+    )
     assert lit.equals_singleton(3.0)
 
 

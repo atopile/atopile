@@ -4,7 +4,7 @@
 import logging
 import math
 from itertools import pairwise
-from typing import Callable
+from typing import Callable, cast
 
 import pytest
 
@@ -57,18 +57,16 @@ def _create_letters(
 def _extract(
     op: F.Parameters.can_be_operand,
     res: MutationMap | Solver,
-    allow_subset: bool = False,
     domain_default: bool = False,
 ) -> F.Literals.is_literal:
     if not isinstance(res, MutationMap):
-        assert not allow_subset and not domain_default
-        return res.inspect_get_known_supersets(
+        assert domain_default
+        return res.simplify_and_extract_superset(
             op.as_parameter_operatable.force_get().as_parameter.force_get()
         )
     return not_none(
-        res.try_get_literal(
+        res.try_extract_superset(
             op.as_parameter_operatable.force_get(),
-            allow_subset=allow_subset,
             domain_default=domain_default,
         )
     )
@@ -81,12 +79,9 @@ def _extract_and_check(
     | F.Literals.LiteralValues
     | F.Literals.LiteralNodes
     | F.Literals.is_literal,
-    allow_subset: bool = False,
     domain_default: bool = False,
 ) -> bool:
-    extracted = _extract(
-        op, res, allow_subset=allow_subset, domain_default=domain_default
-    )
+    extracted = _extract(op, res, domain_default=domain_default)
     if isinstance(expected, F.Literals.is_literal):
         expected = expected.as_operand.get()
     if isinstance(expected, F.Literals.LiteralNodes):
@@ -297,7 +292,6 @@ def test_inequality_to_set():
     E.less_than(p0, E.lit_op_single((2, E.U.dl)), assert_=True)
     E.greater_than(p0, E.lit_op_single((1, E.U.dl)), assert_=True)
     solver = DefaultSolver()
-    solver.update_superset_cache(p0)
     assert _extract_and_check(p0, solver, E.lit_op_range((1, 2)))
 
 
@@ -346,7 +340,7 @@ def test_subset_of_literal():
     E.is_(p1, p2, assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(p0, p1, p2)
+    solver.simplify(E.g, E.tg, relevant=[p0, p1, p2])
 
     # for p in (p0, p1, p2):
     #     assert solver.inspect_get_known_supersets(
@@ -445,7 +439,6 @@ def test_inspect_known_superranges():
         assert_=True,
     )
     solver = DefaultSolver()
-    solver.update_superset_cache(p0)
     assert _extract_and_check(p0, solver, E.lit_op_range(((5, E.U.V), (9, E.U.V))))
 
 
@@ -846,7 +839,6 @@ def test_combined_add_and_multiply_with_ranges():
     E.is_(C, E.add(E.multiply(E.lit_op_single(2), A), B), assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(A, B, C)
     assert _extract_and_check(
         C, solver, E.lit_op_range_from_center_rel((4, E.U.dl), 0.01)
     )
@@ -874,7 +866,6 @@ def test_voltage_divider_find_v_out_no_division():
     # dependency problem prevents finding precise solution of [9/11, 100/11]
     # TODO: automatically rearrange expression to match
     # v_out.alias_is(v_in * (1 / (1 + (r_top / r_bottom))))
-    solver.update_superset_cache(v_in, v_out, r_top, r_bottom)
     assert _extract_and_check(v_out, solver, E.lit_op_range((0.45, 50)))
 
 
@@ -895,7 +886,6 @@ def test_voltage_divider_find_v_out_with_division():
     )
 
     solver = DefaultSolver()
-    solver.update_superset_cache(v_in, v_out, r_top, r_bottom)
     assert _extract_and_check(v_out, solver, E.lit_op_range((0.45, 50)))
 
 
@@ -921,7 +911,6 @@ def test_voltage_divider_find_v_out_single_variable_occurrences():
     )
 
     solver = DefaultSolver()
-    solver.update_superset_cache(v_in, v_out, r_top, r_bottom)
     assert _extract_and_check(v_out, solver, E.lit_op_range((9 / 11, 100 / 11)))
 
 
@@ -944,7 +933,6 @@ def test_voltage_divider_find_v_in():
     solver = DefaultSolver()
 
     # TODO: should find [9.9, 100]
-    solver.update_superset_cache(v_in, v_out, r_top, r_bottom)
     assert _extract_and_check(v_in, solver, E.lit_op_range((1.8, 200)))
 
 
@@ -968,7 +956,6 @@ def test_voltage_divider_find_resistances():
 
     solver = DefaultSolver()
     # FIXME: this test looks funky
-    solver.update_superset_cache(v_in, v_out, r_top, r_bottom, r_total)
     assert _extract_and_check(v_out, solver, E.lit_op_range(((0.9, E.U.V), (1, E.U.V))))
 
     # TODO: specify r_top (with tolerance), finish solving to find r_bottom
@@ -995,7 +982,6 @@ def test_voltage_divider_find_r_top(request: pytest.FixtureRequest):
     # r_top = (v_in * r_bottom) / v_out - r_bottom
 
     solver = DefaultSolver()
-    solver.update_superset_cache(v_in, v_out, r_top, r_bottom)
     assert _extract_and_check(
         r_top,
         solver,
@@ -1072,7 +1058,6 @@ def test_inspect_enum_simple():
     E.is_subset(A, E.lit_op_enum(F.LED.Color.EMERALD), assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(A)
     assert _extract_and_check(A, solver, F.LED.Color.EMERALD)
 
 
@@ -1087,7 +1072,6 @@ def test_inspect_enum_led():
     )
 
     solver = DefaultSolver()
-    solver.update_superset_cache(led.color.get().can_be_operand.get())
     assert _extract_and_check(
         led.color.get().can_be_operand.get(),
         solver,
@@ -1220,8 +1204,6 @@ def test_simple_parameter_isolation():
     E.is_(Y, y, assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(X, Y)
-
     assert _extract_and_check(X, solver, x_expected)
 
 
@@ -1259,7 +1241,6 @@ def test_abstract_lowpass():
 
     # solve
     solver = DefaultSolver()
-    solver.update_superset_cache(Li, C, fc)
 
     assert _extract_and_check(
         C,
@@ -1277,7 +1258,6 @@ def test_param_isolation():
     E.is_(Y, E.lit_op_range_from_center_rel((1, E.U.dl), 0.01), assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(X, Y)
 
     assert _extract_and_check(
         X, solver, E.lit_op_range_from_center_rel((2, E.U.dl), 0.02)
@@ -1321,8 +1301,6 @@ def test_extracted_literal_folding(
     E.is_(op(A, B), C, assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(A, B, C)
-
     assert _extract_and_check(C, solver, lito)
 
 
@@ -1475,7 +1453,6 @@ def test_can_add_parameters():
     E.is_(C, E.add(A, B), assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(A, B, C)
 
     assert _extract_and_check(C, solver, E.lit_op_range((20, 200)))
 
@@ -1508,7 +1485,6 @@ def test_fold_mul_zero():
     E.is_(C, E.multiply(A, B), assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(A, B, C)
 
     assert _extract_and_check(C, solver, 0)
 
@@ -1524,7 +1500,6 @@ def test_fold_or_true():
     E.is_(E.or_(A, B), C, assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(A, B, C)
     assert _extract_and_check(C, solver, True)
 
 
@@ -1537,7 +1512,6 @@ def test_fold_not():
     E.is_(E.not_(A), B, assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(A, B)
     assert _extract_and_check(B, solver, True)
 
 
@@ -1552,7 +1526,6 @@ def test_fold_ss_transitive():
     E.is_subset(A, B, assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(A, B, C)
     assert _extract_and_check(A, solver, E.lit_op_range((0, 10)))
 
 
@@ -1568,7 +1541,6 @@ def test_ss_intersect():
     E.is_subset(C, B, assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(A, B, C)
     assert _extract_and_check(C, solver, E.lit_op_range((10, 15)))
 
 
@@ -1665,7 +1637,6 @@ def test_fold_literals():
     E.is_(A, E.add(E.lit_op_range((0, 10)), E.lit_op_range((0, 10))), assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(A)
     assert _extract_and_check(A, solver, E.lit_op_range((0, 20)))
 
 
@@ -1697,7 +1668,6 @@ def test_implication():
     E.is_subset(A, E.lit_op_single(10), assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(A, B)
     assert _extract_and_check(
         B, solver, E.lit_op_range_from_center_rel((500, E.U.dl), 0.1)
     )
@@ -1724,9 +1694,9 @@ def test_mapping(A_value: int):
     E.is_subset(A, E.lit_op_single(A_value), assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(A, B)
-    assert _extract_and_check(A, solver, A_value)
-    assert _extract_and_check(B, solver, mapping[A_value])
+    res = cast(DefaultSolver.SolverState, solver.simplify_for(A, B))
+    assert _extract_and_check(A, res.data.mutation_map, A_value)
+    assert _extract_and_check(B, res.data.mutation_map, mapping[A_value])
 
 
 @pytest.mark.parametrize("op", [F.Expressions.Subtract.c, F.Expressions.Add.c])
@@ -1737,7 +1707,6 @@ def test_subtract_zero(op):
     E.is_(A, (op(E.lit_op_single(1), E.lit_op_single(0))), assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(A)
     assert _extract_and_check(A, solver, 1)
 
 
@@ -1759,9 +1728,9 @@ def test_canonical_subtract_zero():
     )
 
     solver = DefaultSolver()
-    solver.update_superset_cache(A, B)
-    assert _extract_and_check(A, solver, 0)
-    assert _extract_and_check(B, solver, 1)
+    res = cast(DefaultSolver.SolverState, solver.simplify_for(A, B))
+    assert _extract_and_check(A, res.data.mutation_map, 0)
+    assert _extract_and_check(B, res.data.mutation_map, 1)
 
 
 def test_nested_fold_scalar():
@@ -1775,7 +1744,6 @@ def test_nested_fold_scalar():
     )
 
     solver = DefaultSolver()
-    solver.update_superset_cache(A)
     assert _extract_and_check(A, solver, 7)
 
 
@@ -1794,7 +1762,6 @@ def test_regression_lit_mul_fold_powers():
     )
 
     solver = DefaultSolver()
-    solver.update_superset_cache(A)
     assert _extract_and_check(A, solver, 2**-0.5)
 
 
@@ -1816,7 +1783,6 @@ def test_nested_fold_interval():
     )
 
     solver = DefaultSolver()
-    solver.update_superset_cache(A)
     assert _extract_and_check(A, solver, E.lit_op_range((5.76, 8.36)))
 
 
@@ -1873,7 +1839,7 @@ def test_simplify_non_terminal_manual_test_2():
     E.is_(ps[origin[0]].as_operand.get(), (origin[1]), assert_=True)
     solver.simplify(E.g, E.tg)
 
-    solver.update_superset_cache(*[p.as_operand.get() for p in ps])
+    solver.simplify_for(*[p.as_operand.get() for p in ps])
     for i, p in enumerate(ps):
         # _inc = increase ** (i - origin[0])
         _inc = E.lit_op_single(1)
@@ -1884,7 +1850,7 @@ def test_simplify_non_terminal_manual_test_2():
             else:
                 E.is_(_inc, E.divide(_inc, increase), assert_=True)
 
-        p_lit = solver.inspect_get_known_supersets(p.as_parameter.force_get())
+        p_lit = solver.extract_superset(p.as_parameter.force_get())
         print(f"{p.as_parameter.force_get().compact_repr(context)}, lit:", p_lit)
         print(f"{p_lit.as_operand.get()}, {E.multiply(origin[1], _inc)}")
         assert p_lit.is_subset_of(E.multiply(origin[1], _inc).as_literal.force_get())
@@ -1941,7 +1907,6 @@ def test_abstract_lowpass_ss():
         )
     )
 
-    solver.update_superset_cache(Li, C, fc)
     assert _extract_and_check(C, solver, C_expected)
 
 
@@ -1962,7 +1927,6 @@ def test_voltage_divider_find_r_bottom():
     E.is_(r_top, E.lit_op_range_from_center_rel((9, E.U.Ohm), 0.01), assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(v_in, v_out, r_top)
     assert _extract_and_check(
         r_bottom, solver, E.lit_op_range_from_center_rel((1, E.U.Ohm), 0.01)
     )
@@ -1978,7 +1942,6 @@ def test_min_max_single():
     E.is_(p1, E.max(p0), assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(p0, p1)
     assert _extract_and_check(p1, solver, E.lit_op_single((10, E.U.V)))
 
 
@@ -1994,7 +1957,6 @@ def test_min_max_multi():
     E.is_(p1, E.max(p0, p3), assert_=True)
 
     solver = DefaultSolver()
-    solver.update_superset_cache(p0, p1, p3)
     assert _extract_and_check(p1, solver, E.lit_op_single((15, E.U.V)))
 
 
@@ -2028,7 +1990,7 @@ def test_symmetric_inequality_uncorrelated():
 def test_fold_correlated():
     """
     ```
-    A is [5, 10], B is [10, 15]
+    A ss! [5, 10], B ss! [10, 15]
     B is A + 5
     B - A | [10, 15] - [5, 10] = [0, 10] BUT SHOULD BE 5
     ```
@@ -2050,8 +2012,8 @@ def test_fold_correlated():
     lit2_n = op[1](lit1_n, lit_operand_n, g=E.g, tg=E.tg)
     lit2 = lit2_n.can_be_operand.get()
 
-    E.is_(A, lit1, assert_=True)  # A is [5,10]
-    E.is_(B, lit2, assert_=True)  # B is [10,15]
+    E.is_subset(A, lit1, assert_=True)  # A ss! [5,10]
+    E.is_subset(B, lit2, assert_=True)  # B ss! [10,15]
     # correlate A and B
     E.is_(B, op[0](A, lit_operand), assert_=True)  # B is A + 5
     E.is_(C, op_inv[0](B, A), assert_=True)  # C is B - A
@@ -2063,10 +2025,7 @@ def test_fold_correlated():
     solver = DefaultSolver()
     repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
 
-    is_lit = repr_map.try_get_literal(
-        C.as_parameter_operatable.force_get(), allow_subset=False
-    )
-    ss_lit = repr_map.try_get_literal(
+    ss_lit = repr_map.try_extract_superset(
         C.as_parameter_operatable.force_get(), allow_subset=True
     )
     assert ss_lit is not None
@@ -2074,10 +2033,6 @@ def test_fold_correlated():
     # Test for ss estimation
     assert ss_lit.is_subset_of(op_inv[1](lit2_n, lit1_n, g=E.g, tg=E.tg))
     # C ss [10, 15] - 5 == [5, 10]
-    # Test for not wrongful is estimation
-    assert not is_lit or not is_lit.equals(
-        op_inv[1](lit2_n, lit1_n, g=E.g, tg=E.tg)
-    )  # C not is [5, 10]
 
     # Test for correct is estimation
     try:
@@ -2229,13 +2184,13 @@ def test_exec_pure_literal_expressions(
     expected = expected_factory(E)
 
     lits_converted = [
-        F.Literals.make_simple_lit_singleton(E.g, E.tg, lit).can_be_operand.get()
+        F.Literals.make_singleton(E.g, E.tg, lit).can_be_operand.get()
         if not isinstance(lit, fabll.Node)
         else lit
         for lit in lits
     ]
     expected_converted = (
-        F.Literals.make_simple_lit_singleton(E.g, E.tg, expected).can_be_operand.get()
+        F.Literals.make_singleton(E.g, E.tg, expected).can_be_operand.get()
         if not isinstance(expected, fabll.Node)
         else expected
     ).as_literal.force_get()

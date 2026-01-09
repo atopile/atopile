@@ -4,10 +4,11 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from enum import Enum, IntEnum, StrEnum
 from operator import ge
-from typing import TYPE_CHECKING, Iterable, Self, cast
+from typing import TYPE_CHECKING, Iterable, Self, cast, overload
 from warnings import deprecated
 
 import pytest
+from shapely import force_2d
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -407,24 +408,13 @@ class Strings(fabll.Node):
         return out
 
     @classmethod
-    def MakeChild_ConstrainToLiteralSubset(
+    def MakeChild_SetSuperset(
         cls, ref: fabll.RefPath, *values: str
     ) -> fabll._ChildField[Self]:
         from faebryk.library.Expressions import IsSubset
 
         lit = cls.MakeChild(*values)
         out = IsSubset.MakeChild(ref, [lit], assert_=True)
-        out.add_dependant(lit, before=True)
-        return out
-
-    @classmethod
-    def MakeChild_ConstrainToLiteral(
-        cls, ref: fabll.RefPath, *values: str
-    ) -> fabll._ChildField[Self]:
-        from faebryk.library.Expressions import Is
-
-        lit = cls.MakeChild(*values)
-        out = Is.MakeChild(ref, [lit], assert_=True)
         out.add_dependant(lit, before=True)
         return out
 
@@ -3052,7 +3042,18 @@ class Numbers(fabll.Node):
         return cls.MakeChild(min=value, max=value, unit=unit)
 
     @classmethod
-    def MakeChild_ConstrainToSubsetLiteral(
+    def MakeChild_FromCenterRel(
+        cls,
+        center: float,
+        rel: float,
+        unit: type[fabll.Node] | None = None,
+    ) -> fabll._ChildField[Self]:
+        return cls.MakeChild(
+            min=center - rel * center, max=center + rel * center, unit=unit
+        )
+
+    @classmethod
+    def MakeChild_SetSuperset(
         cls,
         param_ref: fabll.RefPath,
         min: float,
@@ -3067,51 +3068,12 @@ class Numbers(fabll.Node):
         return out
 
     @classmethod
-    def MakeChild_ConstrainToLiteral(
-        cls,
-        param_ref: fabll.RefPath,
-        min: float,
-        max: float,
-        unit: type[fabll.Node] | None = None,
-    ) -> fabll._ChildField["F.Expressions.Is"]:
-        """
-        Create a Numbers literal and constrain a parameter to it.
-        Works at type definition time (no g/tg needed).
-
-        Args:
-            param_ref: Reference path to the parameter to constrain
-            min: Minimum value of the interval (or the singleton value if max is None)
-            max: Maximum value of the interval (if None, uses min for singleton)
-            unit: Unit type for the quantity (if None, no has_unit trait is added)
-
-        Returns:
-            A _ChildField representing the Is constraint expression
-        """
-        from faebryk.library.Expressions import Is
-
-        lit = cls.MakeChild(min=min, max=max, unit=unit)
-        out = Is.MakeChild(param_ref, [lit], assert_=True)
-        out.add_dependant(lit, before=True)
-        return out
-
-    @classmethod
-    def MakeChild_FromCenterRel(
-        cls,
-        center: float,
-        rel: float,
-        unit: type[fabll.Node] | None = None,
-    ) -> fabll._ChildField[Self]:
-        return cls.MakeChild(
-            min=center - rel * center, max=center + rel * center, unit=unit
-        )
-
-    @classmethod
-    def MakeChild_ConstrainToSingleton(
+    def MakeChild_SetSingleton(
         cls,
         param_ref: fabll.RefPath,
         value: float,
         unit: type[fabll.Node] | None = None,
-    ) -> fabll._ChildField["F.Expressions.Is"]:
+    ) -> fabll._ChildField["F.Expressions.IsSubset"]:
         """
         Create a singleton Numbers literal and constrain a parameter to it.
         Works at type definition time (no g/tg needed).
@@ -3124,7 +3086,7 @@ class Numbers(fabll.Node):
         Returns:
             A _ChildField representing the Is constraint expression
         """
-        return cls.MakeChild_ConstrainToLiteral(
+        return cls.MakeChild_SetSuperset(
             param_ref=param_ref, min=value, max=value, unit=unit
         )
 
@@ -6568,13 +6530,13 @@ class Booleans(fabll.Node):
         return out
 
     @classmethod
-    def MakeChild_ConstrainToLiteral(
+    def MakeChild_SetSuperset(
         cls, ref: fabll.RefPath, *values: bool
     ) -> fabll._ChildField:
-        from faebryk.library.Expressions import Is
+        from faebryk.library.Expressions import IsSubset
 
         lit = cls.MakeChild(*values)
-        out = Is.MakeChild(ref, [lit], assert_=True)
+        out = IsSubset.MakeChild(ref, [lit], assert_=True)
         out.add_dependant(lit, before=True)
         return out
 
@@ -6921,18 +6883,20 @@ class AbstractEnums(fabll.Node):
     def is_singleton(self) -> bool:
         return len(self.get_values()) == 1
 
-    def get_single(self) -> str | None:
+    def get_single(self) -> str:
         vals = self.get_values()
         if len(vals) != 1:
-            return None
+            raise ValueError("AbstractEnums is not a singleton")
         return next(iter(vals))
 
     def get_values_typed[T: Enum](self, EnumType: type[T]) -> list[T]:
         return [EnumType(value) for value in self.get_values()]
 
-    def get_single_value_typed[T: Enum](self, EnumType: type[T]) -> T | None:
+    def get_single_value_typed[T: Enum](self, EnumType: type[T]) -> T:
         values = self.get_values()
-        return None if len(values) == 0 else EnumType(values[0])
+        if len(values) != 1:
+            raise ValueError("AbstractEnums is not a singleton")
+        return EnumType(values[0])
 
     @staticmethod
     def get_all_members_of_enum_type(
@@ -6952,7 +6916,7 @@ class AbstractEnums(fabll.Node):
             tg=self.tg,
         )
 
-    def constrain_to_values(self, *values: str) -> Self:
+    def set_superset(self, *values: str) -> Self:
         enum_type_node = AbstractEnums(not_none(self.get_type_node()))
         for value in values:
             self.values.get().append(
@@ -6997,15 +6961,15 @@ class AbstractEnums(fabll.Node):
         return out
 
     @classmethod
-    def MakeChild_ConstrainToLiteral(
+    def MakeChild_SetSuperset(
         cls,
         enum_parameter_ref: fabll.RefPath,
         *enum_members: Enum,
-    ) -> fabll._ChildField["F.Expressions.Is"]:
-        from faebryk.library.Expressions import Is
+    ) -> fabll._ChildField["F.Expressions.IsSubset"]:
+        from faebryk.library.Expressions import IsSubset
 
         lit = cls.MakeChild(*enum_members)
-        out = Is.MakeChild(enum_parameter_ref, [lit], assert_=True)
+        out = IsSubset.MakeChild(enum_parameter_ref, [lit], assert_=True)
         out.add_dependant(lit, before=True)
         return out
 
@@ -7128,7 +7092,7 @@ class AbstractEnums(fabll.Node):
         ]
 
         if selected_values:
-            enum_instance.constrain_to_values(*selected_values)
+            enum_instance.set_superset(*selected_values)
 
         return enum_instance
 
@@ -7170,7 +7134,7 @@ class AbstractEnums(fabll.Node):
 
         # Constrain the new enum literal to the result
         result_enum_lit = AbstractEnums(self.create_instance_of_same_type())
-        result_enum_lit.constrain_to_values(*result)
+        result_enum_lit.set_superset(*result)
 
         return result_enum_lit
 
@@ -7259,7 +7223,29 @@ LiteralNodesPair = (
 LiteralLike = LiteralValues | LiteralNodes | is_literal
 
 
-def make_simple_lit_singleton(
+@overload
+def make_singleton(
+    g: graph.GraphView, tg: fbrk.TypeGraph, value: bool
+) -> "Booleans": ...
+
+
+@overload
+def make_singleton(
+    g: graph.GraphView, tg: fbrk.TypeGraph, value: float
+) -> "Numbers": ...
+
+
+@overload
+def make_singleton(
+    g: graph.GraphView, tg: fbrk.TypeGraph, value: Enum
+) -> "AbstractEnums": ...
+
+
+@overload
+def make_singleton(g: graph.GraphView, tg: fbrk.TypeGraph, value: str) -> "Strings": ...
+
+
+def make_singleton(
     g: graph.GraphView, tg: fbrk.TypeGraph, value: LiteralValues
 ) -> LiteralNodes:
     if value is True or value is False:
@@ -7453,7 +7439,7 @@ class TestStringLiterals:
         assert type_level_string_set.get_values() == values
 
     def test_string_literal_alias_to_literal(self):
-        from faebryk.library.Parameters import StringParameter, is_parameter_operatable
+        from faebryk.library.Parameters import StringParameter
 
         values = ["a", "b", "c"]
         g = graph.GraphView.create()
@@ -7466,9 +7452,7 @@ class TestStringLiterals:
             def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
                 out = fabll._ChildField(cls)
                 out.add_dependant(
-                    Strings.MakeChild_ConstrainToLiteral(
-                        [out, cls.string_param], *values
-                    )
+                    Strings.MakeChild_SetSuperset([out, cls.string_param], *values)
                 )
                 return out
 
@@ -7477,13 +7461,7 @@ class TestStringLiterals:
 
         my_type_outer = _MyTypeOuter.bind_typegraph(tg=tg).create_instance(g=g)
 
-        lit = is_parameter_operatable.try_get_constrained_literal(
-            my_type_outer.my_type.get()
-            .string_param.get()
-            .is_parameter_operatable.get(),
-            Strings,
-        )
-        assert lit
+        lit = my_type_outer.my_type.get().string_param.get().force_extract_superset()
         assert lit.get_values() == values
 
     def test_string_literal_is_singleton(self):
