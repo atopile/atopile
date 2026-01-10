@@ -33,7 +33,7 @@ const TypeElement = struct {
     child_identifier: ?[]const u8,
 
     fn equals(self: *const @This(), other: *const @This()) bool {
-        if (!self.type_node.is_same(other.type_node)) return false;
+        if (!self.type_node.node.is_same(other.type_node.node)) return false;
         if (self.child_identifier == null) return other.child_identifier == null;
         if (other.child_identifier == null) return false;
         return std.mem.eql(u8, self.child_identifier.?, other.child_identifier.?);
@@ -44,7 +44,7 @@ const TypeElementList = struct {
     elements: std.ArrayList(TypeElement),
 
     fn equals(self: *const @This(), other: *const @This()) bool {
-        if (self.elements.len != other.elements.len) return false;
+        if (self.elements.items.len != other.elements.items.len) return false;
         for (self.elements.items, 0..) |element, i| {
             if (!element.equals(&other.elements.items[i])) return false;
         }
@@ -54,15 +54,59 @@ const TypeElementList = struct {
 
 const BoundNodeReferenceList = struct {
     elements: std.ArrayList(BoundNodeReference),
+
+    fn add_element(self: *@This(), bound_node: BoundNodeReference) void {
+        for (self.elements.items) |existing| {
+            if (existing.g == bound_node.g and existing.node.is_same(bound_node.node)) {
+                return;
+            }
+        }
+        self.elements.append(bound_node) catch @panic("OOM");
+    }
+
+    fn add_elements(self: *@This(), other: @This()) void {
+        for (other.elements.items) |bound_node| {
+            self.add_element(bound_node);
+        }
+    }
 };
 
 const VisitedLevel = struct {
     type_element_list: TypeElementList,
     bound_node_reference_list: BoundNodeReferenceList,
+
+    fn print(self: *const @This()) void {
+        std.debug.print("VisitedLevel: ", .{});
+        for (self.type_element_list.elements.items) |type_element| {
+            std.debug.print("{}:{s} ", .{ type_element.type_node.node.get_uuid(), type_element.child_identifier orelse "<null>" });
+        }
+        std.debug.print("\n", .{});
+        for (self.bound_node_reference_list.elements.items) |bound_node| {
+            std.debug.print("  {}\n", .{bound_node.node.get_uuid()});
+        }
+    }
 };
 
 const VisitedLevelList = struct {
     elements: std.ArrayList(VisitedLevel),
+
+    fn add_element(self: *@This(), key: TypeElementList, value: BoundNodeReferenceList) void {
+        for (self.elements.items) |*visited_level| {
+            if (!visited_level.type_element_list.equals(&key)) continue;
+            visited_level.bound_node_reference_list.add_elements(value);
+            return;
+        }
+
+        var deduped = BoundNodeReferenceList{
+            .elements = std.ArrayList(BoundNodeReference).init(value.elements.allocator),
+        };
+        deduped.add_elements(value);
+
+        self.elements.append(.{
+            .type_element_list = key,
+            .bound_node_reference_list = deduped,
+        }) catch @panic("OOM");
+    }
 };
 
 pub const PathFinder = struct {
@@ -76,17 +120,20 @@ pub const PathFinder = struct {
     visited_level_list: VisitedLevelList,
 
     pub fn init(allocator: std.mem.Allocator) Self {
-        var arena = std.heap.ArenaAllocator.init(allocator);
-        return .{
+        var self = Self{
             .allocator = allocator,
-            .arena = arena,
+            .arena = std.heap.ArenaAllocator.init(allocator),
             .visited_path_counter = 0,
-            .current_bfs_paths = std.ArrayList(*BFSPath).init(allocator),
-            .nodes_to_bfs = std.ArrayList(BoundNodeReference).init(allocator),
-            .visited_level_list = VisitedLevelList{
-                .elements = std.ArrayList(VisitedLevel).init(arena.allocator()),
-            },
+            .current_bfs_paths = undefined,
+            .nodes_to_bfs = undefined,
+            .visited_level_list = undefined,
         };
+        self.current_bfs_paths = std.ArrayList(*BFSPath).init(allocator);
+        self.nodes_to_bfs = std.ArrayList(BoundNodeReference).init(allocator);
+        self.visited_level_list = VisitedLevelList{
+            .elements = std.ArrayList(VisitedLevel).init(self.arena.allocator()),
+        };
+        return self;
     }
 
     pub fn deinit(self: *Self) void {
@@ -108,6 +155,30 @@ pub const PathFinder = struct {
                 Self.bfs_visit_fn,
                 &[_]graph.Edge.EdgeType{EdgeInterfaceConnection.tid},
             );
+
+            // on first iteration, handle this a bit differently
+            if (bound_node.node.is_same(start_node.node)) {
+                std.debug.print("First!\n", .{});
+                const type_edge = EdgeType.get_type_edge(bound_node) orelse @panic("Missing type edge");
+                const type_node = bound_node.g.bind(EdgeType.get_type_node(type_edge.edge));
+                const type_element = TypeElement{
+                    .type_node = type_node,
+                    .child_identifier = null,
+                };
+                var type_element_list = TypeElementList{
+                    .elements = std.ArrayList(TypeElement).init(self.arena.allocator()),
+                };
+                type_element_list.elements.append(type_element) catch @panic("OOM");
+                var bound_node_reference_list = BoundNodeReferenceList{
+                    .elements = std.ArrayList(BoundNodeReference).init(self.arena.allocator()),
+                };
+                bound_node_reference_list.elements.append(bound_node) catch @panic("OOM");
+                self.visited_level_list.add_element(type_element_list, bound_node_reference_list);
+            }
+
+            for (self.visited_level_list.elements.items) |visited_level| {
+                visited_level.print();
+            }
 
             // Clean up current_bfs_paths for next iteration
             for (self.current_bfs_paths.items) |path| {
