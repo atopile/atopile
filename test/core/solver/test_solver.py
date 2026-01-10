@@ -123,8 +123,8 @@ def test_solve_phase_one():
     E.is_(voltage1_op, voltage2_op, assert_=True)
     E.is_(voltage3_op, E.add(voltage1_op, voltage2_op), assert_=True)
 
-    E.is_(voltage1_op, E.lit_op_range(((1, E.U.V), (3, E.U.V))), assert_=True)
-    E.is_(voltage3_op, E.lit_op_range(((2, E.U.V), (6, E.U.V))), assert_=True)
+    E.is_subset(voltage1_op, E.lit_op_range(((1, E.U.V), (3, E.U.V))), assert_=True)
+    E.is_subset(voltage3_op, E.lit_op_range(((2, E.U.V), (6, E.U.V))), assert_=True)
 
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
@@ -451,8 +451,8 @@ def test_obvious_contradiction_by_literal():
     E = BoundExpressions()
     p0, p1 = [E.parameter_op(units=E.U.V) for _ in range(2)]
 
-    E.is_(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
-    E.is_(p1, E.lit_op_range(((5, E.U.V), (10, E.U.V))), assert_=True)
+    E.is_subset(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
+    E.is_subset(p1, E.lit_op_range(((5, E.U.V), (10, E.U.V))), assert_=True)
 
     E.is_(p0, p1, assert_=True)
 
@@ -471,7 +471,7 @@ def test_subset_is():
     E = BoundExpressions()
     A, B = [E.parameter_op() for _ in range(2)]
 
-    E.is_(A, E.lit_op_range((0, 15)), assert_=True)
+    E.is_subset(A, E.lit_op_range((0, 15)), assert_=True)
     E.is_subset(B, E.lit_op_range((5, 20)), assert_=True)
     E.is_(A, B, assert_=True)
 
@@ -493,7 +493,7 @@ def test_subset_is_expr():
         p.as_parameter_operatable.force_get().compact_repr(context)
 
     D = E.add(A, B)
-    E.is_(C, E.lit_op_range((0, 15)), assert_=True)
+    E.is_subset(C, E.lit_op_range((0, 15)), assert_=True)
 
     E.is_subset(D, E.lit_op_range((5, 20)), assert_=True)
 
@@ -526,7 +526,7 @@ def test_very_simple_alias_class():
     A, B, C = params = (E.parameter_op(units=E.U.V) for _ in range(3))
     E.is_(A, B, assert_=True)
     E.is_(B, C, assert_=True)
-    E.is_(A, E.lit_op_range(((1, E.U.V), (2, E.U.V))), assert_=True)
+    E.is_subset(A, E.lit_op_range(((1, E.U.V), (2, E.U.V))), assert_=True)
 
     context = F.Parameters.ReprContext()
     for p in params:
@@ -555,7 +555,7 @@ def test_domain():
             F.Literals.Numbers
         ),
     )
-    E.is_(p0, E.lit_op_range(((15, E.U.V), (20, E.U.V))), assert_=True)
+    E.is_subset(p0, E.lit_op_range(((15, E.U.V), (20, E.U.V))), assert_=True)
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
@@ -568,10 +568,10 @@ def test_less_obvious_contradiction_by_literal():
     B = E.parameter_op(units=E.U.V)
     C = E.parameter_op(units=E.U.V)
 
-    E.is_(A, E.lit_op_range(((0.0, E.U.V), (10.0, E.U.V))), assert_=True)
-    E.is_(B, E.lit_op_range(((5.0, E.U.V), (10.0, E.U.V))), assert_=True)
+    E.is_subset(A, E.lit_op_range(((0.0, E.U.V), (10.0, E.U.V))), assert_=True)
+    E.is_subset(B, E.lit_op_range(((5.0, E.U.V), (10.0, E.U.V))), assert_=True)
     E.is_(C, E.add(A, B), assert_=True)
-    E.is_(E.lit_op_range(((0.0, E.U.V), (15.0, E.U.V))), C, assert_=True)
+    E.is_subset(E.lit_op_range(((0.0, E.U.V), (15.0, E.U.V))), C, assert_=True)
 
     print_context = F.Parameters.ReprContext()
     for p in (A, B, C):
@@ -588,7 +588,7 @@ def test_symmetric_inequality_correlated():
     p1 = E.parameter_op(units=E.U.V)
 
     lit = E.lit_op_range(((0, E.U.V), (10, E.U.V)))
-    E.is_(p0, lit, assert_=True)
+    E.is_subset(p0, lit, assert_=True)
     E.is_(p1, p0, assert_=True)
 
     E.greater_or_equal(p0, p1, assert_=True)
@@ -622,8 +622,8 @@ def test_simple_literal_folds_arithmetic(
     p0 = E.parameter_op(units=E.U.dl)
     p1 = E.parameter_op(units=E.U.dl)
 
-    E.is_(p0, E.lit_op_single(operands[0]), assert_=True)
-    E.is_(p1, E.lit_op_single(operands[1]), assert_=True)
+    E.is_subset(p0, E.lit_op_single(operands[0]), assert_=True)
+    E.is_subset(p1, E.lit_op_single(operands[1]), assert_=True)
 
     expr = expr_type(p0, p1)
     E.less_or_equal(expr, E.lit_op_single(100.0), assert_=True)
@@ -800,7 +800,7 @@ def test_transitive_subset():
     for p in (A, B, C):
         p.as_parameter_operatable.force_get().compact_repr(context)
 
-    E.is_(C, E.lit_op_range((0, 10)), assert_=True)
+    E.is_subset(C, E.lit_op_range((0, 10)), assert_=True)
 
     solver = DefaultSolver()
     repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
@@ -814,8 +814,8 @@ def test_nested_additions():
     C = E.parameter_op()
     D = E.parameter_op()
 
-    E.is_(A, E.lit_op_single(1), assert_=True)
-    E.is_(B, E.lit_op_single(1), assert_=True)
+    E.is_subset(A, E.lit_op_single(1), assert_=True)
+    E.is_subset(B, E.lit_op_single(1), assert_=True)
     E.is_(C, E.add(A, B), assert_=True)
     E.is_(D, E.add(C, A), assert_=True)
 
@@ -834,8 +834,8 @@ def test_combined_add_and_multiply_with_ranges():
     B = E.parameter_op()
     C = E.parameter_op()
 
-    E.is_(A, E.lit_op_range_from_center_rel((1, E.U.dl), 0.01), assert_=True)
-    E.is_(B, E.lit_op_range_from_center_rel((2, E.U.dl), 0.01), assert_=True)
+    E.is_subset(A, E.lit_op_range_from_center_rel((1, E.U.dl), 0.01), assert_=True)
+    E.is_subset(B, E.lit_op_range_from_center_rel((2, E.U.dl), 0.01), assert_=True)
     E.is_(C, E.add(E.multiply(E.lit_op_single(2), A), B), assert_=True)
 
     solver = DefaultSolver()
@@ -851,9 +851,9 @@ def test_voltage_divider_find_v_out_no_division():
     v_in = E.parameter_op()
     v_out = E.parameter_op()
 
-    E.is_(v_in, E.lit_op_range((9, 10)), assert_=True)
-    E.is_(r_top, E.lit_op_range((10, 100)), assert_=True)
-    E.is_(r_bottom, E.lit_op_range((10, 100)), assert_=True)
+    E.is_subset(v_in, E.lit_op_range((9, 10)), assert_=True)
+    E.is_subset(r_top, E.lit_op_range((10, 100)), assert_=True)
+    E.is_subset(r_bottom, E.lit_op_range((10, 100)), assert_=True)
     E.is_(
         v_out,
         E.multiply(
@@ -876,9 +876,9 @@ def test_voltage_divider_find_v_out_with_division():
     v_in = E.parameter_op()
     v_out = E.parameter_op()
 
-    E.is_(v_in, E.lit_op_range((9, 10)), assert_=True)
-    E.is_(r_top, E.lit_op_range((10, 100)), assert_=True)
-    E.is_(r_bottom, E.lit_op_range((10, 100)), assert_=True)
+    E.is_subset(v_in, E.lit_op_range((9, 10)), assert_=True)
+    E.is_subset(r_top, E.lit_op_range((10, 100)), assert_=True)
+    E.is_subset(r_bottom, E.lit_op_range((10, 100)), assert_=True)
     E.is_(
         v_out,
         E.divide(E.multiply(v_in, r_bottom), E.add(r_top, r_bottom)),
@@ -896,9 +896,9 @@ def test_voltage_divider_find_v_out_single_variable_occurrences():
     v_in = E.parameter_op()
     v_out = E.parameter_op()
 
-    E.is_(v_in, E.lit_op_range((9, 10)), assert_=True)
-    E.is_(r_top, E.lit_op_range((10, 100)), assert_=True)
-    E.is_(r_bottom, E.lit_op_range((10, 100)), assert_=True)
+    E.is_subset(v_in, E.lit_op_range((9, 10)), assert_=True)
+    E.is_subset(r_top, E.lit_op_range((10, 100)), assert_=True)
+    E.is_subset(r_bottom, E.lit_op_range((10, 100)), assert_=True)
     E.is_(
         v_out,
         E.multiply(
@@ -921,9 +921,9 @@ def test_voltage_divider_find_v_in():
     v_in = E.parameter_op()
     v_out = E.parameter_op()
 
-    E.is_(v_out, E.lit_op_range((9, 10)), assert_=True)
-    E.is_(r_top, E.lit_op_range((10, 100)), assert_=True)
-    E.is_(r_bottom, E.lit_op_range((10, 100)), assert_=True)
+    E.is_subset(v_out, E.lit_op_range((9, 10)), assert_=True)
+    E.is_subset(r_top, E.lit_op_range((10, 100)), assert_=True)
+    E.is_subset(r_bottom, E.lit_op_range((10, 100)), assert_=True)
     E.is_(
         v_out,
         E.divide(E.multiply(v_in, r_bottom), E.add(r_top, r_bottom)),
@@ -944,9 +944,11 @@ def test_voltage_divider_find_resistances():
     v_out = E.parameter_op(units=E.U.V)
     r_total = E.parameter_op(units=E.U.Ohm)
 
-    E.is_(v_in, E.lit_op_range(((9, E.U.V), (10, E.U.V))), assert_=True)
-    E.is_(v_out, E.lit_op_range(((0.9, E.U.V), (1, E.U.V))), assert_=True)
-    E.is_(r_total, E.lit_op_range_from_center_rel((100, E.U.Ohm), 0.01), assert_=True)
+    E.is_subset(v_in, E.lit_op_range(((9, E.U.V), (10, E.U.V))), assert_=True)
+    E.is_subset(v_out, E.lit_op_range(((0.9, E.U.V), (1, E.U.V))), assert_=True)
+    E.is_subset(
+        r_total, E.lit_op_range_from_center_rel((100, E.U.Ohm), 0.01), assert_=True
+    )
     E.is_(r_total, E.add(r_top, r_bottom), assert_=True)
     E.is_(
         v_out,
@@ -971,9 +973,11 @@ def test_voltage_divider_find_r_top(request: pytest.FixtureRequest):
     v_in = E.parameter_op(units=E.U.V)
     v_out = E.parameter_op(units=E.U.V)
 
-    E.is_(v_in, E.lit_op_range_from_center_rel((10, E.U.V), 0.01), assert_=True)
-    E.is_(v_out, E.lit_op_range_from_center_rel((1, E.U.V), 0.01), assert_=True)
-    E.is_(r_bottom, E.lit_op_range_from_center_rel((1, E.U.Ohm), 0.01), assert_=True)
+    E.is_subset(v_in, E.lit_op_range_from_center_rel((10, E.U.V), 0.01), assert_=True)
+    E.is_subset(v_out, E.lit_op_range_from_center_rel((1, E.U.V), 0.01), assert_=True)
+    E.is_subset(
+        r_bottom, E.lit_op_range_from_center_rel((1, E.U.Ohm), 0.01), assert_=True
+    )
     E.is_(
         v_out,
         E.divide(E.multiply(v_in, r_bottom), E.add(r_top, r_bottom)),
@@ -996,16 +1000,20 @@ def test_voltage_divider_reject_invalid_r_top():
     v_in = E.parameter_op(units=E.U.V)
     v_out = E.parameter_op(units=E.U.V)
 
-    E.is_(v_in, E.lit_op_range_from_center_rel((10, E.U.V), 0.01), assert_=True)
-    E.is_(v_out, E.lit_op_range_from_center_rel((1, E.U.V), 0.01), assert_=True)
+    E.is_subset(v_in, E.lit_op_range_from_center_rel((10, E.U.V), 0.01), assert_=True)
+    E.is_subset(v_out, E.lit_op_range_from_center_rel((1, E.U.V), 0.01), assert_=True)
     E.is_(
         v_out,
         E.divide(E.multiply(v_in, r_bottom), E.add(r_top, r_bottom)),
         assert_=True,
     )
 
-    E.is_(r_bottom, E.lit_op_range_from_center_rel((1, E.U.Ohm), 0.01), assert_=True)
-    E.is_(r_top, E.lit_op_range_from_center_rel((999, E.U.Ohm), 0.01), assert_=True)
+    E.is_subset(
+        r_bottom, E.lit_op_range_from_center_rel((1, E.U.Ohm), 0.01), assert_=True
+    )
+    E.is_subset(
+        r_top, E.lit_op_range_from_center_rel((999, E.U.Ohm), 0.01), assert_=True
+    )
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
@@ -1016,7 +1024,7 @@ def test_base_unit_switch():
     # TODO this should use mAh not Ah
     E = BoundExpressions()
     A = E.parameter_op(units=E.U.As)
-    E.is_(A, E.lit_op_range(((0.100, E.U.As), (0.600, E.U.As))), assert_=True)
+    E.is_subset(A, E.lit_op_range(((0.100, E.U.As), (0.600, E.U.As))), assert_=True)
     E.greater_or_equal(A, E.lit_op_single((0.100, E.U.As)), assert_=True)
 
     solver = DefaultSolver()
@@ -1030,7 +1038,7 @@ def test_congruence_filter():
     E = BoundExpressions()
 
     A = E.bool_parameter_op()
-    x = E.is_(A, E.lit_bool(True))
+    x = E.is_subset(A, E.lit_bool(True))
 
     y1 = E.not_(x, assert_=True)
     y2 = E.not_(x, assert_=True)
@@ -1200,8 +1208,8 @@ def test_simple_parameter_isolation():
     Y = E.parameter_op()
 
     add = op.c(X, Y)
-    E.is_(add, x_op_y, assert_=True)
-    E.is_(Y, y, assert_=True)
+    E.is_subset(add, x_op_y, assert_=True)
+    E.is_subset(Y, y, assert_=True)
 
     solver = DefaultSolver()
     assert _extract_and_check(X, solver, x_expected)
@@ -1236,8 +1244,8 @@ def test_abstract_lowpass():
     )
 
     # input
-    E.is_(Li, E.lit_op_range_from_center_rel((1e-6, E.U.H), 0.01), assert_=True)
-    E.is_(fc, E.lit_op_range_from_center_rel((1000, E.U.Hz), 0.01), assert_=True)
+    E.is_subset(Li, E.lit_op_range_from_center_rel((1e-6, E.U.H), 0.01), assert_=True)
+    E.is_subset(fc, E.lit_op_range_from_center_rel((1000, E.U.Hz), 0.01), assert_=True)
 
     # solve
     solver = DefaultSolver()
@@ -1254,8 +1262,10 @@ def test_param_isolation():
     X = E.parameter_op()
     Y = E.parameter_op()
 
-    E.is_(E.add(X, Y), E.lit_op_range_from_center_rel((3, E.U.dl), 0.01), assert_=True)
-    E.is_(Y, E.lit_op_range_from_center_rel((1, E.U.dl), 0.01), assert_=True)
+    E.is_subset(
+        E.add(X, Y), E.lit_op_range_from_center_rel((3, E.U.dl), 0.01), assert_=True
+    )
+    E.is_subset(Y, E.lit_op_range_from_center_rel((1, E.U.dl), 0.01), assert_=True)
 
     solver = DefaultSolver()
 
@@ -1296,8 +1306,8 @@ def test_extracted_literal_folding(
         )
     )
 
-    E.is_(A, lit1, assert_=True)
-    E.is_(B, lit2, assert_=True)
+    E.is_subset(A, lit1, assert_=True)
+    E.is_subset(B, lit2, assert_=True)
     E.is_(op(A, B), C, assert_=True)
 
     solver = DefaultSolver()
@@ -1314,7 +1324,7 @@ def test_fold_pow():
     lit_op = lit.can_be_operand.get()
     lit_operand_op = lit_operand.can_be_operand.get()
 
-    E.is_(A, lit_op, assert_=True)
+    E.is_subset(A, lit_op, assert_=True)
     E.is_(B, E.power(A, lit_operand_op), assert_=True)
 
     solver = DefaultSolver()
@@ -1370,7 +1380,7 @@ def test_ss_single_into_alias():
     A = E.parameter_op()
     B = E.parameter_op()
 
-    E.is_(A, E.lit_op_range((5, 10)), assert_=True)
+    E.is_subset(A, E.lit_op_range((5, 10)), assert_=True)
     E.is_subset(B, E.lit_op_single(5), assert_=True)
     _ = E.add(A, B)
 
@@ -1409,8 +1419,8 @@ def test_find_contradiction_by_predicate(
     A = E.parameter_op()
     B = E.parameter_op()
 
-    E.is_(A, E.lit_op_range((0, 10)), assert_=True)
-    E.is_(B, E.lit_op_range((20, 30)), assert_=True)
+    E.is_subset(A, E.lit_op_range((0, 10)), assert_=True)
+    E.is_subset(B, E.lit_op_range((20, 30)), assert_=True)
 
     if invert:
         op(
@@ -1432,8 +1442,8 @@ def test_find_contradiction_by_gt():
     A = E.parameter_op()
     B = E.parameter_op()
 
-    E.is_(A, E.lit_op_range((0, 10)), assert_=True)
-    E.is_(B, E.lit_op_range((20, 30)), assert_=True)
+    E.is_subset(A, E.lit_op_range((0, 10)), assert_=True)
+    E.is_subset(B, E.lit_op_range((20, 30)), assert_=True)
 
     E.greater_than(A, B, assert_=True)
 
@@ -1448,8 +1458,8 @@ def test_can_add_parameters():
     B = E.parameter_op()
     C = E.parameter_op()
 
-    E.is_(A, E.lit_op_range((10, 100)), assert_=True)
-    E.is_(B, E.lit_op_range((10, 100)), assert_=True)
+    E.is_subset(A, E.lit_op_range((10, 100)), assert_=True)
+    E.is_subset(B, E.lit_op_range((10, 100)), assert_=True)
     E.is_(C, E.add(A, B), assert_=True)
 
     solver = DefaultSolver()
@@ -1479,8 +1489,8 @@ def test_fold_mul_zero():
     B = E.parameter_op()
     C = E.parameter_op()
 
-    E.is_(A, E.lit_op_single(0), assert_=True)
-    E.is_(B, E.lit_op_range((10, 20)), assert_=True)
+    E.is_subset(A, E.lit_op_single(0), assert_=True)
+    E.is_subset(B, E.lit_op_range((10, 20)), assert_=True)
 
     E.is_(C, E.multiply(A, B), assert_=True)
 
@@ -1495,7 +1505,7 @@ def test_fold_or_true():
     B = E.bool_parameter_op()
     C = E.bool_parameter_op()
 
-    E.is_(A, E.lit_bool(True), assert_=True)
+    E.is_subset(A, E.lit_bool(True), assert_=True)
 
     E.is_(E.or_(A, B), C, assert_=True)
 
@@ -1508,7 +1518,7 @@ def test_fold_not():
     A = E.bool_parameter_op()
     B = E.bool_parameter_op()
 
-    E.is_(A, E.lit_bool(False), assert_=True)
+    E.is_subset(A, E.lit_bool(False), assert_=True)
     E.is_(E.not_(A), B, assert_=True)
 
     solver = DefaultSolver()
@@ -1535,8 +1545,8 @@ def test_ss_intersect():
     B = E.parameter_op()
     C = E.parameter_op()
 
-    E.is_(A, E.lit_op_range((0, 15)), assert_=True)
-    E.is_(B, E.lit_op_range((10, 20)), assert_=True)
+    E.is_subset(A, E.lit_op_range((0, 15)), assert_=True)
+    E.is_subset(B, E.lit_op_range((10, 20)), assert_=True)
     E.is_subset(C, A, assert_=True)
     E.is_subset(C, B, assert_=True)
 
@@ -1799,7 +1809,7 @@ def test_simplify_non_terminal_manual_test_1():
     solver = DefaultSolver()
     solver.simplify(E.g, E.tg)
     _ = E.add(B, A)
-    E.is_(A, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
+    E.is_subset(A, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
 
     solver.simplify(E.g, E.tg)
 
@@ -1854,7 +1864,7 @@ def test_simplify_non_terminal_manual_test_2():
         print(f"{p.as_parameter.force_get().compact_repr(context)}, lit:", p_lit)
         print(f"{p_lit.as_operand.get()}, {E.multiply(origin[1], _inc)}")
         assert p_lit.is_subset_of(E.multiply(origin[1], _inc).as_literal.force_get())
-        E.is_(p.as_operand.get(), p_lit.as_operand.get(), assert_=True)
+        E.is_subset(p.as_operand.get(), p_lit.as_operand.get(), assert_=True)
         solver.simplify(E.g, E.tg)
 
 
@@ -1884,8 +1894,8 @@ def test_abstract_lowpass_ss():
     # input
     Li_const = E.numbers().setup_from_center_rel(1e-6, 0.01, unit=E.u.make_H())
     fc_const = E.numbers().setup_from_center_rel(1000, 0.01, unit=E.u.make_Hz())
-    E.is_(Li, Li_const.can_be_operand.get(), assert_=True)
-    E.is_(fc, fc_const.can_be_operand.get(), assert_=True)
+    E.is_subset(Li, Li_const.can_be_operand.get(), assert_=True)
+    E.is_subset(fc, fc_const.can_be_operand.get(), assert_=True)
 
     # solve
     solver = DefaultSolver()
@@ -1922,9 +1932,9 @@ def test_voltage_divider_find_r_bottom():
     E.is_(v_out, E.divide(E.multiply(v_in, r_bottom), E.add(r_top, r_bottom)))
 
     # input
-    E.is_(v_in, E.lit_op_range_from_center_rel((10, E.U.V), 0.01), assert_=True)
-    E.is_(v_out, E.lit_op_range_from_center_rel((1, E.U.V), 0.01), assert_=True)
-    E.is_(r_top, E.lit_op_range_from_center_rel((9, E.U.Ohm), 0.01), assert_=True)
+    E.is_subset(v_in, E.lit_op_range_from_center_rel((10, E.U.V), 0.01), assert_=True)
+    E.is_subset(v_out, E.lit_op_range_from_center_rel((1, E.U.V), 0.01), assert_=True)
+    E.is_subset(r_top, E.lit_op_range_from_center_rel((9, E.U.Ohm), 0.01), assert_=True)
 
     solver = DefaultSolver()
     assert _extract_and_check(
@@ -1936,7 +1946,7 @@ def test_voltage_divider_find_r_bottom():
 def test_min_max_single():
     E = BoundExpressions()
     p0 = E.parameter_op(units=E.U.V)
-    E.is_(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
+    E.is_subset(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
 
     p1 = E.parameter_op(units=E.U.V)
     E.is_(p1, E.max(p0), assert_=True)
@@ -1949,9 +1959,9 @@ def test_min_max_single():
 def test_min_max_multi():
     E = BoundExpressions()
     p0 = E.parameter_op(units=E.U.V)
-    E.is_(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
+    E.is_subset(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
     p3 = E.parameter_op(units=E.U.V)
-    E.is_(p3, E.lit_op_range(((4, E.U.V), (15, E.U.V))), assert_=True)
+    E.is_subset(p3, E.lit_op_range(((4, E.U.V), (15, E.U.V))), assert_=True)
 
     p1 = E.parameter_op(units=E.U.V)
     E.is_(p1, E.max(p0, p3), assert_=True)
@@ -1968,8 +1978,8 @@ def test_symmetric_inequality_uncorrelated():
     p0 = E.parameter_op(units=E.U.V)
     p1 = E.parameter_op(units=E.U.V)
 
-    E.is_(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
-    E.is_(p1, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
+    E.is_subset(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
+    E.is_subset(p1, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
 
     E.greater_or_equal(p0, p1, assert_=True)
     E.less_or_equal(p0, p1, assert_=True)

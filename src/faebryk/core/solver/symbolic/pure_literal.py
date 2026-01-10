@@ -11,10 +11,6 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.solver.algorithm import algorithm
-from faebryk.core.solver.mutator import Mutator
-from faebryk.libs.test.boundexpressions import BoundExpressions
-from faebryk.libs.util import not_none
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +56,10 @@ _CanonicalExpressions: dict[type[fabll.NodeT], _Multi] = {
     F.Expressions.Not: _Multi(F.Literals.Booleans.op_not),
     F.Expressions.Intersection: _Multi(F.Literals.is_literal.op_intersect_intervals),
     F.Expressions.Union: _Multi(F.Literals.is_literal.op_union_intervals),
+    # TODO wtf
     F.Expressions.LessThan: _Multi(F.Literals.Numbers.op_mul_intervals),
     F.Expressions.GreaterThan: _Multi(F.Literals.Numbers.op_mul_intervals),
+    #
     F.Expressions.Floor: _Multi(F.Literals.Numbers.op_floor),
     F.Expressions.Ceil: _Multi(F.Literals.Numbers.op_ceil),
     F.Expressions.Min: _Multi(F.Literals.Numbers.min_elem),
@@ -79,121 +77,39 @@ _CanonicalExpressions: dict[type[fabll.NodeT], _Multi] = {
 # Pure literal folding -----------------------------------------------------------------
 
 
-def _exec_pure_literal_operands(
+def _get_type(expr_type: "fabll.ImplementsType" | type[fabll.NodeT]) -> _Multi | None:
+    if isinstance(expr_type, type):
+        return _CanonicalExpressions[expr_type]
+    else:
+        _map = {
+            fabll.TypeNodeBoundTG.get_or_create_type_in_tg(expr_type.tg, k)
+            .node()
+            .get_uuid(): v
+            for k, v in _CanonicalExpressions.items()
+        }
+        expr_type_node = fabll.Traits(expr_type).get_obj_raw().instance.node()
+        if expr_type_node.get_uuid() not in _map:
+            return None
+        return _map[expr_type_node.get_uuid()]
+
+
+def exec_pure_literal_operands(
     g: graph.GraphView,
     tg: fbrk.TypeGraph,
-    expr_type: "fabll.ImplementsType",
+    expr_type: "fabll.ImplementsType" | type[fabll.NodeT],
     operands: Iterable[F.Parameters.can_be_operand],
 ) -> F.Literals.is_literal | None:
     operands = list(operands)
-    _map = {
-        fabll.TypeNodeBoundTG.get_or_create_type_in_tg(expr_type.tg, k)
-        .node()
-        .get_uuid(): v
-        for k, v in _CanonicalExpressions.items()
-    }
-    expr_type_node = fabll.Traits(expr_type).get_obj_raw().instance.node()
-    if expr_type_node.get_uuid() not in _map:
+    expr_type_ = _get_type(expr_type)
+    if expr_type_ is None:
         return None
+
     lits = [o.as_literal.try_get() for o in operands]
     if not all(lits):
         return None
     lits = cast(list[F.Literals.is_literal], lits)
     lits_nodes = [o.switch_cast() for o in lits]
     try:
-        return _map[expr_type_node.get_uuid()].run(g=g, tg=tg, *lits_nodes)
+        return expr_type_.run(g=g, tg=tg, *lits_nodes)
     except (ValueError, NotImplementedError, ZeroDivisionError, TypeError):
         return None
-
-
-def _exec_pure_literal_expressions(
-    g: graph.GraphView,
-    tg: fbrk.TypeGraph,
-    expr: F.Expressions.is_expression,
-) -> F.Literals.is_literal | None:
-    return _exec_pure_literal_operands(
-        g,
-        tg,
-        not_none(
-            fabll.TypeNodeBoundTG.try_get_trait_of_type(
-                fabll.ImplementsType,
-                not_none(fabll.Traits(expr).get_obj_raw().get_type_node()),
-            )
-        ),
-        # FIXME: there is no guarantee that this will return them in the correct order
-        expr.get_operands(),
-    )
-
-
-@algorithm("Fold pure literal expressions", terminal=False)
-def fold_pure_literal_expressions(mutator: Mutator):
-    exprs = mutator.get_expressions(sort_by_depth=True)
-
-    for expr in exprs:
-        expr_po = expr.as_parameter_operatable.get()
-        # TODO is this needed?
-        if mutator.has_been_mutated(expr_po) or mutator.is_removed(expr_po):
-            continue
-
-        # if expression is not evaluatable that's fine
-        # just means we can't say anything about the result
-        result = _exec_pure_literal_expressions(
-            mutator.G_transient,
-            mutator.tg_in,
-            expr,
-        )
-        if result is None:
-            continue
-        result_op = result.as_operand.get()
-        mutator.create_expression(
-            F.Expressions.IsSubset,
-            expr.as_operand.get(),
-            result_op,
-            terminate=True,
-            assert_=True,
-        )
-        mutator.create_expression(
-            F.Expressions.IsSubset,
-            result_op,
-            expr.as_operand.get(),
-            terminate=True,
-            assert_=True,
-        )
-        if pred := expr.try_get_sibling_trait(F.Expressions.is_predicate):
-            mutator.predicate_terminate(pred)
-
-
-def test_fold_simple_literal_expressions_single():
-    """Test that Add(1, 2) folds to 3."""
-    from faebryk.core.solver.mutator import MutationMap
-
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-
-    E = BoundExpressions(g=g, tg=tg)
-    expr = E.add(E.lit_op_single(1.0), E.lit_op_single(2.0))
-
-    mut_map = MutationMap.bootstrap(tg=tg, g=g)
-    mutator0 = Mutator(
-        mutation_map=mut_map,
-        algo=fold_pure_literal_expressions,
-        iteration=0,
-        terminal=True,
-    )
-    res0 = mutator0.run()
-    res0.mutation_stage.print_mutation_table()
-    mut_map = mut_map.extend(res0.mutation_stage)
-
-    lit = not_none(
-        mut_map.try_extract_superset(expr.as_parameter_operatable.force_get())
-    )
-    assert lit.equals_singleton(3.0)
-
-
-if __name__ == "__main__":
-    import typer
-
-    from faebryk.libs.logging import setup_basic_logging
-
-    setup_basic_logging()
-    typer.run(test_fold_simple_literal_expressions_single)

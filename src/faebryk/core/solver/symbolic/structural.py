@@ -13,7 +13,7 @@ import faebryk.library._F as F
 import faebryk.library.Expressions as Expressions
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
-from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral
+from faebryk.core.solver.utils import Contradiction
 from faebryk.libs.util import (
     EquivalenceClasses,
     groupby,
@@ -42,92 +42,6 @@ def check_literal_contradiction(mutator: Mutator):
     pass
 
 
-@algorithm("Convert inequality with literal to subset", terminal=False)
-def convert_inequality_with_literal_to_subset(mutator: Mutator):
-    # TODO if not! A <= x it can be replaced by A intersect [-inf, a] is {}
-    """
-    This only works for inequalities we know cannot evaluate to {True, False}
-    A >=! 5 -> A ss! [5, inf)
-    5 >=! A -> A ss! (-inf, 5]
-
-    A >=! [1, 10] -> A ss! [10, inf)
-    [1, 10] >=! A -> A ss! (-inf, 1]
-    """
-
-    ge_exprs = {
-        e
-        for e in mutator.get_typed_expressions(
-            GreaterOrEqual,
-            sort_by_depth=True,
-            required_traits=(F.Expressions.is_predicate,),
-        )
-        # Look for expressions with only one non-literal operand
-        if len(
-            [
-                op
-                for op in e.is_expression.get().get_operands()
-                if op.as_parameter_operatable.try_get()
-            ]
-        )
-        == 1
-    }
-
-    for ge in ge_exprs:
-        ge_e = ge.is_expression.get()
-        op_0 = ge_e.get_operands()[0]
-        op_1 = ge_e.get_operands()[1]
-        is_left = op_0.as_parameter_operatable.try_get()
-
-        if is_left:
-            param = op_0
-            lit = op_1.as_literal.force_get()
-            lit_n = fabll.Traits(lit).get_obj(F.Literals.Numbers)
-            boundary = lit_n.get_max_value()
-            if boundary >= math.inf:
-                if ge.try_get_trait(F.Expressions.is_predicate):
-                    raise Contradiction(
-                        "GreaterEqual inf not possible",
-                        involved=[param.as_parameter_operatable.force_get()],
-                        mutator=mutator,
-                    )
-                mutator.create_expression(
-                    F.Expressions.IsSubset,
-                    ge_e.as_operand.get(),
-                    mutator.make_singleton(False).can_be_operand.get(),
-                    terminate=True,
-                    assert_=True,
-                )
-                continue
-            interval = mutator.utils.make_number_literal_from_range(boundary, math.inf)
-        else:
-            param = op_1
-            lit = op_0.as_literal.force_get()
-            lit_n = fabll.Traits(lit).get_obj(F.Literals.Numbers)
-            boundary = lit_n.get_min_value()
-            if boundary <= -math.inf:
-                if ge.try_get_trait(F.Expressions.is_predicate):
-                    raise Contradiction(
-                        "LessEqual -inf not possible",
-                        involved=[param.as_parameter_operatable.force_get()],
-                        mutator=mutator,
-                    )
-                mutator.create_expression(
-                    F.Expressions.IsSubset,
-                    ge_e.as_operand.get(),
-                    mutator.make_singleton(False).can_be_operand.get(),
-                    terminate=True,
-                    assert_=True,
-                )
-                continue
-            interval = mutator.utils.make_number_literal_from_range(-math.inf, boundary)
-
-        mutator.mutate_expression(
-            ge_e,
-            operands=[param, interval.can_be_operand.get()],
-            expression_factory=IsSubset,
-        )
-
-
 @algorithm("Remove unconstrained", terminal=True)
 def remove_unconstrained(mutator: Mutator):
     """
@@ -149,103 +63,6 @@ def remove_unconstrained(mutator: Mutator):
         ):
             continue
         mutator.remove(obj_po)
-
-
-# TODO move mutator util
-def _get_congruent_expressions(
-    exprs: list[F.Expressions.is_expression],
-    g_transient: graph.GraphView,
-    tg_in: fbrk.TypeGraph,
-):
-    # optimization: can't be congruent if they have uncorrelated literals
-    all_exprs = [e for e in exprs if not e.get_uncorrelatable_literals()]
-    # TODO is this fully correct?
-    # optimization: Is, IsSubset already handled
-    all_exprs = [
-        e
-        for e in all_exprs
-        if not (
-            e.expr_isinstance(F.Expressions.Is, F.Expressions.IsSubset)
-            and e.try_get_sibling_trait(F.Expressions.is_predicate)
-            and e.get_operand_literals()
-        )
-    ]
-    exprs_by_type = groupby(
-        all_exprs,
-        lambda e: (
-            not_none(fabll.Traits(e).get_obj_raw().get_type_node()).node().get_uuid(),
-            len(e.get_operands()),
-            None
-            if not e.as_assertable.try_get()
-            else bool(e.try_get_trait(F.Expressions.is_predicate)),
-        ),
-    )
-    full_eq = EquivalenceClasses[fabll.NodeT](all_exprs)
-
-    for exprs in exprs_by_type.values():
-        if len(exprs) <= 1:
-            continue
-        # TODO use hash to speed up comparisons
-        for e1, e2 in combinations(exprs, 2):
-            # no need for recursive, since subexpr already merged if congruent
-            if not full_eq.is_eq(e1, e2) and e1.is_congruent_to(
-                e2, recursive=False, g=g_transient, tg=tg_in
-            ):
-                full_eq.add_eq(e1, e2)
-
-    return full_eq
-
-
-@algorithm("Remove congruent expressions", terminal=False)
-def remove_congruent_expressions(mutator: Mutator):
-    """
-    Remove expressions that are congruent to other expressions
-
-    ```
-    X1 := A + B, X2 := A + B -> [{X1, X2}, {A}, {B}]
-    ```
-    """
-    # X1 = A + B, X2 = A + B -> X1 is X2
-    # No (Invalid): X1 = A + [0, 10], X2 = A + [0, 10]
-    # No (Automatic): X1 = A + C, X2 = A + B, C ~ B -> X1 ~ X2
-
-    all_exprs = mutator.get_expressions(sort_by_depth=True)
-    full_eq = _get_congruent_expressions(
-        cast(list[F.Expressions.is_expression], all_exprs),
-        mutator.G_transient,
-        mutator.tg_in,
-    )
-
-    repres = {}
-    for expr in all_exprs:
-        eq_class = full_eq.classes[expr]
-        if len(eq_class) <= 1:
-            continue
-        e_po = expr.as_parameter_operatable.get()
-
-        eq_id = id(eq_class)
-        if eq_id not in repres:
-            representative = mutator.mutate_expression(expr)
-            repres[eq_id] = representative.as_parameter_operatable.get()
-
-            # propagate constrained & terminate
-            if assertable := representative.try_get_sibling_trait(
-                F.Expressions.is_assertable
-            ):
-                any_pred = any(
-                    e.try_get_sibling_trait(F.Expressions.is_predicate)
-                    for e in eq_class
-                )
-                if any_pred:
-                    any_terminated = any(
-                        mutator.is_predicate_terminated(
-                            e.get_sibling_trait(F.Expressions.is_predicate)
-                        )
-                        for e in eq_class
-                    )
-                    mutator.assert_(assertable, terminate=any_terminated)
-
-        mutator._mutate(e_po, repres[eq_id])
 
 
 @algorithm("Alias classes", terminal=False)
@@ -378,117 +195,13 @@ def resolve_alias_classes(mutator: Mutator):
             mutator.soft_replace(e_po, representative)
             if mutator.utils.are_aliased(e_po, *eq_class_params):
                 continue
-            mutator.create_expression(
+            mutator.create_check_and_insert_expression(
                 F.Expressions.Is,
                 e.as_operand.get(),
                 representative.as_operand.get(),
                 from_ops=list(eq_class),
                 assert_=True,
                 terminate=True,
-            )
-
-
-@algorithm("Merge intersecting subsets", terminal=False)
-def merge_intersect_subsets(mutator: Mutator):
-    """
-    A ss! L1
-    A ss! L2
-    -> A ss! (L1 & L2)
-
-    x = A ss! L1
-    y = A ss! L2
-    Z = x and y -> Z = x & y
-    -> A ss! (L1 & L2)
-    """
-
-    # TODO use Intersection/Union expr
-    # A ss B, A ss C -> A ss (B & C)
-    # and then use literal folding
-    # should also work for others:
-    #   A < B, A < C -> A < (B | C)
-    # Got to consider when to Intersect/Union is more useful than the associative
-
-    # this merge is already done implicitly by try_extract_literal
-    # but it's still needed to create the explicit subset op
-
-    # TODO is it not better to iterate through all IsSubset?
-    pos = mutator.get_parameter_operatables(sort_by_depth=True)
-
-    for po in pos:
-        ss_lits = {
-            lit: v
-            for k, v in mutator.utils.get_op_supersets(po).items()
-            if (lit := mutator.utils.is_literal(k))
-        }
-        if len(ss_lits) <= 1:
-            continue
-
-        intersected = F.Literals.is_literal.op_intersect_intervals(
-            *ss_lits.keys(), g=mutator.G_transient, tg=mutator.tg_out
-        )
-
-        # short-cut, would be detected by subset_to
-        if intersected.is_empty():
-            constraint_pairs = [
-                (lit, ss_expr)
-                for lit, ss_exprs in ss_lits.items()
-                for ss_expr in ss_exprs
-            ]
-            raise ContradictionByLiteral(
-                "Intersection of literals is empty",
-                involved=[po],
-                literals=list(ss_lits.keys()),
-                mutator=mutator,
-                constraint_expr_pairs=constraint_pairs,
-            )
-
-        old_sss = list(ss_lits.values())
-
-        # already exists
-        if contained := intersected.multi_equals(
-            *ss_lits.keys(), g=mutator.G_transient, tg=mutator.tg_out
-        ):
-            new_ss = ss_lits[contained[1]].is_expression.get()
-        else:
-            new_ss = mutator.create_expression(
-                F.Expressions.IsSubset,
-                po.as_operand.get(),
-                intersected.as_operand.get(),
-                from_ops=[old_ss.is_parameter_operatable.get() for old_ss in old_sss],
-                assert_=True,
-            )
-            new_ss_obj = fabll.Traits(new_ss).get_obj_raw()
-            assert new_ss_obj.isinstance(F.Expressions.IsSubset, F.Expressions.Is)
-
-        # Merge
-        for old_ss in old_sss:
-            old_ss_po = old_ss.is_parameter_operatable.get()
-            new_ss_po = new_ss.get_sibling_trait(F.Parameters.is_parameter_operatable)
-            mutator._mutate(
-                old_ss_po,
-                mutator.get_copy_po(new_ss_po),
-            )
-
-
-@algorithm("Empty set", terminal=False)
-def empty_set(mutator: Mutator):
-    """
-    A ss {} -> False
-    """
-    # TODO should be invariant
-
-    for e in mutator.get_typed_expressions(IsSubset):
-        e_expr = e.is_expression.get()
-        lits = e_expr.get_operand_literals()
-        if not lits:
-            continue
-        if any(lit.is_empty() for k, lit in lits.items() if k > 0):
-            mutator.create_expression(
-                F.Expressions.IsSubset,
-                e_expr.as_operand.get(),
-                mutator.make_singleton(False).can_be_operand.get(),
-                terminate=True,
-                assert_=True,
             )
 
 
@@ -516,7 +229,7 @@ def transitive_subset(mutator: Mutator):
             if C.is_same(A):
                 continue
             # create A ss! C/X
-            mutator.create_expression(
+            mutator.create_check_and_insert_expression(
                 F.Expressions.IsSubset,
                 A,
                 C,
@@ -531,7 +244,7 @@ def transitive_subset(mutator: Mutator):
         # for non-lits done by eq classes
         X = mutator.utils.try_extract_superset(B_po)
         if X is not None:
-            mutator.create_expression(
+            mutator.create_check_and_insert_expression(
                 F.Expressions.IsSubset,
                 A,
                 X.as_operand.get(),
@@ -666,11 +379,11 @@ def isolate_lone_params(mutator: Mutator):
             if len(operands) == 1:
                 return operands[0]
 
-            return mutator.create_expression(
+            return mutator.create_check_and_insert_expression(
                 operation,
                 *operands,
                 from_ops=[from_expr.as_parameter_operatable.get()],
-            ).as_operand.get()
+            ).out_operand
 
         retained_ops = [
             op
@@ -839,7 +552,7 @@ def distribute_literals_across_alias_classes(mutator: Mutator):
             po_op = po.as_operand.get()
             if superset is not None:
                 superset_op = superset.as_operand.get()
-                mutator.create_expression(
+                mutator.create_check_and_insert_expression(
                     F.Expressions.IsSubset,
                     po_op,
                     superset_op,
@@ -848,7 +561,7 @@ def distribute_literals_across_alias_classes(mutator: Mutator):
                 )
             if subset is not None:
                 subset_op = subset.as_operand.get()
-                mutator.create_expression(
+                mutator.create_check_and_insert_expression(
                     F.Expressions.IsSubset,
                     subset_op,
                     po_op,
@@ -880,7 +593,7 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
                 p_e.as_assertable.force_get(),
                 unfulfilled_only=True,
             ):
-                mutator.create_expression(
+                mutator.create_check_and_insert_expression(
                     F.Expressions.IsSubset,
                     p_e.as_operand.get(),
                     mutator.make_singleton(True).can_be_operand.get(),
@@ -963,14 +676,14 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
         ]
 
         # Make new expr with subset literals
-        new_expr = mutator.create_expression(
+        new_expr = mutator.create_check_and_insert_expression(
             mutator.utils.hack_get_expr_type(expr),
             *mapped_ops,
             from_ops=from_ops,
         )
 
         # Subset old expr to subset estimated one
-        mutator.create_expression(
+        mutator.create_check_and_insert_expression(
             F.Expressions.IsSubset,
             expr_e,
             new_expr.as_operand.get(),

@@ -305,7 +305,7 @@ def test_get_correlations_shared_predicates():
     )
     assert not correlations
 
-    E2 = E.is_(E.multiply(A, B), E.lit_op_range((0, 10)))
+    E2 = E.is_subset(E.multiply(A, B), E.lit_op_range((0, 10)))
 
     correlations = list(
         MutatorUtils.get_correlations(
@@ -336,11 +336,11 @@ def test_get_correlations_correlated_regression():
     A = E.parameter_op()
     B = E.parameter_op()
 
-    E.is_(A, E.lit_op_range((5, 10)), assert_=True)
-    E.is_(B, E.lit_op_range((10, 15)), assert_=True)
+    E.is_subset(A, E.lit_op_range((5, 10)), assert_=True)
+    E.is_subset(B, E.lit_op_range((10, 15)), assert_=True)
 
     # correlate
-    o = E.is_(B, E.add(A, E.lit_op_single(5)), assert_=True)
+    o = E.is_subset(B, E.add(A, E.lit_op_single(5)), assert_=True)
 
     a_neg = E.multiply(A, E.lit_op_single(-1))
     Ex = E.add(B, a_neg)
@@ -613,7 +613,7 @@ def test_contradiction_message_subset():
     (A,) = variables
 
     E.is_subset(A.as_operand.get(), E.lit_op_range((6, 7)), assert_=True)
-    E.is_(A.as_operand.get(), E.lit_op_range((4, 5)), assert_=True)
+    E.is_subset(A.as_operand.get(), E.lit_op_range((4, 5)), assert_=True)
 
     solver = DefaultSolver()
 
@@ -627,7 +627,7 @@ def test_contradiction_message_superset():
     (A,) = variables
 
     E.is_superset(A.as_operand.get(), E.lit_op_range((0, 10)), assert_=True)
-    E.is_(A.as_operand.get(), E.lit_op_range((4, 5)), assert_=True)
+    E.is_subset(A.as_operand.get(), E.lit_op_range((4, 5)), assert_=True)
 
     solver = DefaultSolver()
 

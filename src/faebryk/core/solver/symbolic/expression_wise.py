@@ -163,12 +163,12 @@ def fold_add(expr: F.Expressions.Add, mutator: Mutator):
         return
 
     factored_operands = [
-        mutator.create_expression(
+        mutator.create_check_and_insert_expression(
             F.Expressions.Multiply,
             n.as_operand.get(),
             m.can_be_operand.get(),
             from_ops=[expr.is_parameter_operatable.get()],
-        ).as_operand.get()
+        ).out_operand
         for n, m in new_factors.items()
     ]
 
@@ -186,7 +186,7 @@ def fold_add(expr: F.Expressions.Add, mutator: Mutator):
     if len(new_operands) == 1 and (
         no_po := new_operands[0].as_parameter_operatable.try_get()
     ):
-        mutator.mutate_unpack_expression(e, [no_po])
+        mutator.utils.mutate_unpack_expression(e, [no_po])
         return
 
     new_expr = mutator.mutate_expression(
@@ -194,7 +194,7 @@ def fold_add(expr: F.Expressions.Add, mutator: Mutator):
     )
     # if only one literal operand, equal to it
     if len(new_operands) == 1:
-        mutator.create_expression(
+        mutator.create_check_and_insert_expression(
             F.Expressions.IsSubset,
             new_expr.as_operand.get(),
             new_operands[0],
@@ -245,12 +245,12 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
     ):
         # Careful, modifying old graph, but should be ok
         powered_operands = [
-            mutator.create_expression(
+            mutator.create_check_and_insert_expression(
                 F.Expressions.Power,
                 n.as_operand.get(),
                 m.can_be_operand.get(),
                 from_ops=[e_po],
-            ).as_operand.get()
+            ).out_operand
             for n, m in new_powers.items()
         ]
 
@@ -274,7 +274,7 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
         if len(new_operands) == 1 and (
             no_po := new_operands[0].as_parameter_operatable.try_get()
         ):
-            mutator.mutate_unpack_expression(e, [no_po])
+            mutator.utils.mutate_unpack_expression(e, [no_po])
             return
 
         if new_operands != expr.operands:
@@ -284,7 +284,7 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
 
             # if only one literal operand, equal to it
             if len(new_operands) == 1:
-                mutator.create_expression(
+                mutator.create_check_and_insert_expression(
                     F.Expressions.IsSubset,
                     new_expr.as_operand.get(),
                     new_operands[0],
@@ -349,12 +349,12 @@ def fold_pow(expr: F.Expressions.Power, mutator: Mutator):
 
     if exp_lit := mutator.utils.is_literal(exp):
         if exp_lit.equals_singleton(1):
-            mutator.mutate_unpack_expression(e)
+            mutator.utils.mutate_unpack_expression(e)
             return
 
         # in python 0**0 is also 1
         if exp_lit.equals_singleton(0):
-            mutator.create_expression(
+            mutator.create_check_and_insert_expression(
                 F.Expressions.IsSubset,
                 e_op,
                 mutator.make_singleton(1).can_be_operand.get(),
@@ -364,7 +364,7 @@ def fold_pow(expr: F.Expressions.Power, mutator: Mutator):
             return
     if base_lit := mutator.utils.is_literal(base):
         if base_lit.equals_singleton(0):
-            mutator.create_expression(
+            mutator.create_check_and_insert_expression(
                 F.Expressions.IsSubset,
                 e_op,
                 mutator.make_singleton(0).can_be_operand.get(),
@@ -374,7 +374,7 @@ def fold_pow(expr: F.Expressions.Power, mutator: Mutator):
             # FIXME: exp >! 0
             return
         if base_lit.equals_singleton(1):
-            mutator.create_expression(
+            mutator.create_check_and_insert_expression(
                 F.Expressions.IsSubset,
                 e_op,
                 mutator.make_singleton(1).can_be_operand.get(),
@@ -419,7 +419,7 @@ def fold_sin(expr: F.Expressions.Sin, mutator: Mutator):
     #TODO Sin(A + 2*pi) -> Sin(A)
     #TODO Sin(A+B) -> Sin(A)*Cos(B) + Cos(A)*Sin(B)
     """
-    mutator.create_expression(
+    mutator.create_check_and_insert_expression(
         F.Expressions.IsSubset,
         expr.is_expression.get().as_operand.get(),
         mutator.utils.make_number_literal_from_range(-1, 1).can_be_operand.get(),
@@ -484,7 +484,7 @@ def fold_or(expr: F.Expressions.Or, mutator: Mutator):
 
     # Or(A, B, C, True) -> True
     if any(lit.equals_singleton(True) for lit in lits.values()):
-        mutator.create_expression(
+        mutator.create_check_and_insert_expression(
             F.Expressions.IsSubset,
             e.as_operand.get(),
             mutator.make_singleton(True).can_be_operand.get(),
@@ -533,7 +533,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                 involved=[op_po],
                 mutator=mutator,
             )
-        mutator.create_expression(
+        mutator.create_check_and_insert_expression(
             F.Expressions.IsSubset,
             e.as_operand.get(),
             mutator.make_singleton(False).can_be_operand.get(),
@@ -555,7 +555,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                 # TODO this should not be needed
                 # ¬!Or() -> True
                 if not op_or_e.get_operands():
-                    mutator.create_expression(
+                    mutator.create_check_and_insert_expression(
                         F.Expressions.IsSubset,
                         e.as_operand.get(),
                         mutator.make_singleton(True).can_be_operand.get(),
@@ -593,7 +593,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                             for n in parent_nots:
                                 mutator.assert_(n.is_assertable.get())
                         else:
-                            mutator.create_expression(
+                            mutator.create_check_and_insert_expression(
                                 F.Expressions.Not,
                                 inner_op_e.as_operand.get(),
                                 from_ops=[expr_po],
@@ -606,7 +606,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
         negated = superset.cast(F.Literals.Booleans).op_not(
             g=mutator.G_transient, tg=mutator.tg_in
         )
-        mutator.create_expression(
+        mutator.create_check_and_insert_expression(
             F.Expressions.IsSubset,
             op,
             negated.can_be_operand.get(),
@@ -674,7 +674,7 @@ def fold_subset(expr: F.Expressions.IsSubset, mutator: Mutator):
             )
         # P ss! False -> ¬!P
         if B_lit.equals_singleton(False):
-            mutator.create_expression(
+            mutator.create_check_and_insert_expression(
                 F.Expressions.Not,
                 A,
                 from_ops=[expr.is_parameter_operatable.get()],

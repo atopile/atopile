@@ -227,7 +227,7 @@ class Builders(Namespace):
         # print("literal: ", literal.as_literal.force_get().pretty_str())
         E = BoundExpressions(g=global_g, tg=global_tg)
         p = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
-        E.is_(p, literal, assert_=True)
+        E.is_subset(p, literal, assert_=True)
 
         return p
 

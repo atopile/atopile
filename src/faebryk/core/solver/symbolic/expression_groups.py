@@ -37,7 +37,7 @@ def reflexive_predicates(mutator: Mutator):
         if len(operands) >= 2 and operands[0] is not operands[1]:
             continue
 
-        mutator.create_expression(
+        mutator.create_check_and_insert_expression(
             F.Expressions.IsSubset,
             reflexive_e.as_operand.get(),
             mutator.make_singleton(True).can_be_operand.get(),
@@ -81,7 +81,7 @@ def idempotent_unpack(mutator: Mutator):
         inner = expr.get_operands()[0]
         if inner.get_obj_type_node() != expr.get_type_node():
             continue
-        mutator.mutate_unpack_expression(expr)
+        mutator.utils.mutate_unpack_expression(expr)
 
 
 @algorithm("Unary identity unpack", terminal=False)
@@ -100,7 +100,7 @@ def unary_identity_unpack(mutator: Mutator):
             continue
         inner = expr.get_operands()[0]
         if mutator.utils.is_literal(inner):
-            mutator.create_expression(
+            mutator.create_check_and_insert_expression(
                 F.Expressions.IsSubset,
                 expr.as_operand.get(),
                 inner,
@@ -108,7 +108,7 @@ def unary_identity_unpack(mutator: Mutator):
                 terminate=True,
             )
         else:
-            mutator.mutate_unpack_expression(expr)
+            mutator.utils.mutate_unpack_expression(expr)
 
 
 @algorithm("Involutory fold", terminal=False)
@@ -132,7 +132,7 @@ def involutory_fold(mutator: Mutator):
             .get_operands()[0]
         )
         if mutator.utils.is_literal(innest):
-            mutator.create_expression(
+            mutator.create_check_and_insert_expression(
                 F.Expressions.IsSubset,
                 expr.as_operand.get(),
                 innest,
@@ -140,7 +140,7 @@ def involutory_fold(mutator: Mutator):
                 terminate=True,
             )
         else:
-            mutator.mutator_neutralize_expressions(expr)
+            mutator.utils.mutator_neutralize_expressions(expr)
 
 
 @algorithm("Associative expressions", terminal=False)

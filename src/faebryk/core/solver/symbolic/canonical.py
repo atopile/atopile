@@ -56,7 +56,7 @@ def alias_predicates_to_true(mutator: Mutator):
 
     for predicate in mutator.get_expressions(required_traits=(is_predicate,)):
         new_predicate = mutator.mutate_expression(predicate)
-        mutator.create_expression(
+        mutator.create_check_and_insert_expression(
             F.Expressions.IsSubset,
             new_predicate.as_operand.get(),
             mutator.make_singleton(True).can_be_operand.get(),
@@ -106,11 +106,11 @@ def convert_to_canonical_operations(mutator: Mutator):
     def c(
         op: type[fabll.NodeT], *operands: F.Parameters.can_be_operand
     ) -> F.Parameters.can_be_operand:
-        return mutator.create_expression(
+        return mutator.create_check_and_insert_expression(
             op,
             *operands,
             from_ops=getattr(c, "from_ops", None),
-        ).as_operand.get()
+        ).out_operand
 
     def curry(e_type: type[fabll.NodeT]):
         def _(*operands: F.Parameters.can_be_operand | F.Literals.LiteralValues):
@@ -348,7 +348,7 @@ def convert_to_canonical_operations(mutator: Mutator):
                 .create_instance(mutator.G_out)
                 .setup(*[mutator.get_copy(o) for o in operands])
             )
-            mutator.create_expression(
+            mutator.create_check_and_insert_expression(
                 IsSubset,
                 p_op,
                 union.is_expression.get().as_operand.get(),
@@ -356,14 +356,14 @@ def convert_to_canonical_operations(mutator: Mutator):
                 assert_=True,
             )
             if e.isinstance(F.Expressions.Min):
-                mutator.create_expression(
+                mutator.create_check_and_insert_expression(
                     GreaterOrEqual,
                     union.is_expression.get().as_operand.get(),
                     p_op,
                     from_ops=from_ops,
                 )
             else:
-                mutator.create_expression(
+                mutator.create_check_and_insert_expression(
                     GreaterOrEqual,
                     p_op,
                     union.is_expression.get().as_operand.get(),

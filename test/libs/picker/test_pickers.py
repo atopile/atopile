@@ -415,12 +415,12 @@ def test_pick_error_group():
     app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Good luck finding a 10 gigafarad capacitor!
-    E.is_(
+    E.is_subset(
         app.c1.get().capacitance.get().can_be_operand.get(),
         E.lit_op_range_from_center_rel((10, E.U.GF), 0.1),
         assert_=True,
     )
-    E.is_(
+    E.is_subset(
         app.c2.get().capacitance.get().can_be_operand.get(),
         E.lit_op_range_from_center_rel((20, E.U.GF), 0.1),
         assert_=True,
@@ -494,7 +494,7 @@ def test_pick_dependency_advanced_2():
 
     rdiv = F.ResistorVoltageDivider.bind_typegraph(tg=tg).create_instance(g=g)
 
-    E.is_(
+    E.is_subset(
         rdiv.v_in.get().can_be_operand.get(),
         E.lit_op_range_from_center_rel((10, E.U.V), 0.1),
         assert_=True,
@@ -523,7 +523,7 @@ def test_pick_dependency_div_negative():
 
     rdiv = F.ResistorVoltageDivider.bind_typegraph(tg=tg).create_instance(g=g)
 
-    E.is_(
+    E.is_subset(
         rdiv.v_in.get().can_be_operand.get(),
         E.lit_op_range(((-10, E.U.V), (-9, E.U.V))),
         assert_=True,
@@ -560,7 +560,7 @@ def test_null_solver():
 
     app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
-    E.is_(
+    E.is_subset(
         app.cap.get().capacitance.get().can_be_operand.get(),
         capacitance,
         assert_=True,
@@ -600,7 +600,7 @@ def test_pick_voltage_divider_complex():
     app.rdiv.get().output.get()._is_interface.get().connect_to(app.adc_input.get())
 
     # Set constraints
-    E.is_(
+    E.is_subset(
         app.supply.get().voltage.get().can_be_operand.get(),
         E.lit_op_range(((9.9, E.U.V), (10.1, E.U.V))),
         assert_=True,

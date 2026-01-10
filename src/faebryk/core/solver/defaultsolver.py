@@ -5,7 +5,7 @@ import logging
 import time
 from dataclasses import dataclass
 from itertools import count
-from typing import Any, override
+from typing import override
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -23,7 +23,6 @@ from faebryk.core.solver.symbolic import (
     canonical,
     expression_groups,
     expression_wise,
-    pure_literal,
     structural,
 )
 from faebryk.core.solver.utils import (
@@ -56,21 +55,16 @@ class DefaultSolver(Solver):
             structural.convert_operable_aliased_to_single_into_literal,
             structural.resolve_alias_classes,
             structural.distribute_literals_across_alias_classes,
-            structural.remove_congruent_expressions,
-            structural.convert_inequality_with_literal_to_subset,
             expression_groups.associative_flatten,
             expression_groups.reflexive_predicates,
             expression_groups.idempotent_deduplicate,
             expression_groups.idempotent_unpack,
             expression_groups.involutory_fold,
             expression_groups.unary_identity_unpack,
-            pure_literal.fold_pure_literal_expressions,
             *expression_wise.fold_algorithms,
-            structural.merge_intersect_subsets,
             structural.predicate_flat_terminate,
             structural.predicate_unconstrained_operands_deduce,
             structural.predicate_terminated_is_true,
-            structural.empty_set,
             structural.transitive_subset,
             structural.isolate_lone_params,
             structural.upper_estimation_of_expressions_with_subsets,
