@@ -38,6 +38,13 @@ const TypeElement = struct {
         if (other.child_identifier == null) return false;
         return std.mem.eql(u8, self.child_identifier.?, other.child_identifier.?);
     }
+
+    fn print(self: *const @This()) void {
+        print_type_node(self.type_node);
+        std.debug.print(":{s} ", .{
+            self.child_identifier orelse "<null>",
+        });
+    }
 };
 
 const TypeElementList = struct {
@@ -69,6 +76,13 @@ const BoundNodeReferenceList = struct {
             self.add_element(bound_node);
         }
     }
+
+    fn print(self: *const @This()) void {
+        for (self.elements.items) |bound_node| {
+            print_instance_node(bound_node);
+            std.debug.print(" ", .{});
+        }
+    }
 };
 
 const VisitedLevel = struct {
@@ -78,12 +92,10 @@ const VisitedLevel = struct {
     fn print(self: *const @This()) void {
         std.debug.print("VisitedLevel: ", .{});
         for (self.type_element_list.elements.items) |type_element| {
-            std.debug.print("{}:{s} ", .{ type_element.type_node.node.get_uuid(), type_element.child_identifier orelse "<null>" });
+            type_element.print();
         }
         std.debug.print("\n", .{});
-        for (self.bound_node_reference_list.elements.items) |bound_node| {
-            std.debug.print("  {}\n", .{bound_node.node.get_uuid()});
-        }
+        self.bound_node_reference_list.print();
     }
 };
 
@@ -178,6 +190,7 @@ pub const PathFinder = struct {
 
             for (self.visited_level_list.elements.items) |visited_level| {
                 visited_level.print();
+                std.debug.print("\n", .{});
             }
 
             // Clean up current_bfs_paths for next iteration
@@ -213,12 +226,12 @@ pub const PathFinder = struct {
     pub fn print_path(self: *Self, path: *BFSPath) void {
         std.debug.print("Path {}: ", .{self.visited_path_counter});
 
-        print_node_uuid_and_type(path.start_node);
+        print_instance_node(path.start_node);
 
         for (path.traversed_edges.items) |traversed_edge| {
             std.debug.print(" -> ", .{});
             const end_node = traversed_edge.get_end_node();
-            print_node_uuid_and_type(path.start_node.g.bind(end_node));
+            print_instance_node(path.start_node.g.bind(end_node));
         }
 
         std.debug.print("\n", .{});
@@ -233,7 +246,15 @@ fn try_get_node_type_name(bound_node: BoundNodeReference) ?graph.str {
     return null;
 }
 
-fn print_node_uuid_and_type(bound_node: BoundNodeReference) void {
+fn print_instance_node(bound_node: BoundNodeReference) void {
     const type_name = try_get_node_type_name(bound_node) orelse @panic("Missing type");
     std.debug.print("{}:{s}", .{ bound_node.node.get_uuid(), type_name });
+}
+
+fn print_type_node(bound_node: BoundNodeReference) void {
+    const type_name = TypeNodeAttributes.of(bound_node.node).get_type_name();
+    std.debug.print("{}:{s}", .{
+        bound_node.node.get_uuid(),
+        type_name,
+    });
 }
