@@ -26,139 +26,72 @@ const EdgeTrait = trait_mod.EdgeTrait;
 
 const debug_pathfinder = true;
 
-const BoundNodeRefMap = struct {
-    pub fn eql(_: @This(), a: BoundNodeReference, b: BoundNodeReference) bool {
-        return a.g == b.g and a.node.is_same(b.node);
-    }
+const BoundNodeRefMap = struct {};
 
-    pub fn hash(_: @This(), key: BoundNodeReference) u64 {
-        var h: u64 = 0;
-        var uuid = key.node.get_uuid();
-        h = std.hash.Wyhash.hash(h, std.mem.asBytes(&uuid));
-        var g_ptr: usize = @intFromPtr(key.g);
-        h = std.hash.Wyhash.hash(h, std.mem.asBytes(&g_ptr));
-        return h;
-    }
+const TypeElement = struct {
+    type_node: BoundNodeReference,
+    child_identifier: ?[]const u8,
 
-    pub fn T(V: type) type {
-        return std.HashMap(BoundNodeReference, V, BoundNodeRefMap, std.hash_map.default_max_load_percentage);
-    }
-
-    pub fn print_set(set: *const BoundNodeRefMap.T(void)) void {
-        var it = set.keyIterator();
-        var first = true;
-        std.debug.print("[", .{});
-        while (it.next()) |bn_ptr| {
-            if (!first) std.debug.print(", ", .{});
-            first = false;
-            print_node_uuid_and_type(bn_ptr.*);
-        }
-        std.debug.print("]", .{});
+    fn equals(self: *const @This(), other: *const @This()) bool {
+        if (!self.type_node.is_same(other.type_node)) return false;
+        if (self.child_identifier == null) return other.child_identifier == null;
+        if (other.child_identifier == null) return false;
+        return std.mem.eql(u8, self.child_identifier.?, other.child_identifier.?);
     }
 };
 
-const StackElement = struct {
-    // Pair of node and named child identifier
-    bound_node: BoundNodeReference,
-    child_identifier: []const u8,
+const TypeElementList = struct {
+    elements: std.ArrayList(TypeElement),
 
-    pub fn print_element(self: *const @This()) void {
-        print_node_uuid_and_type(self.bound_node);
-        if (self.child_identifier.len == 0) {
-            std.debug.print(".<null>", .{});
-        } else {
-            std.debug.print(".{s}", .{self.child_identifier});
+    fn equals(self: *const @This(), other: *const @This()) bool {
+        if (self.elements.len != other.elements.len) return false;
+        for (self.elements.items, 0..) |element, i| {
+            if (!element.equals(&other.elements.items[i])) return false;
         }
+        return true;
     }
 };
 
-const StackElementMap = struct {
-    pub fn eql(_: @This(), a: StackElement, b: StackElement) bool {
-        return a.bound_node.g == b.bound_node.g and
-            a.bound_node.node.is_same(b.bound_node.node) and
-            std.mem.eql(u8, a.child_identifier, b.child_identifier);
-    }
-
-    pub fn hash(_: @This(), key: StackElement) u64 {
-        var h: u64 = 0;
-        var uuid = key.bound_node.node.get_uuid();
-        h = std.hash.Wyhash.hash(h, std.mem.asBytes(&uuid));
-        var g_ptr: usize = @intFromPtr(key.bound_node.g);
-        h = std.hash.Wyhash.hash(h, std.mem.asBytes(&g_ptr));
-        h = std.hash.Wyhash.hash(h, key.child_identifier);
-        return h;
-    }
-
-    pub fn T(V: type) type {
-        return std.HashMap(StackElement, V, StackElementMap, std.hash_map.default_max_load_percentage);
-    }
-
-    pub fn add_node(
-        map: *StackElementMap.T(BoundNodeRefSet),
-        allocator: std.mem.Allocator,
-        key: StackElement,
-        node: BoundNodeReference,
-    ) void {
-        const gop = map.getOrPut(key) catch @panic("OOM");
-        if (!gop.found_existing) {
-            gop.value_ptr.* = BoundNodeRefSet.init(allocator);
-        }
-        gop.value_ptr.put(node, {}) catch @panic("OOM");
-    }
-
-    pub fn print_key_value(map: *StackElementMap.T(BoundNodeRefSet), key: StackElement) void {
-        const value = map.getPtr(key) orelse return;
-        std.debug.print("Stack element: ", .{});
-        key.print_element();
-        std.debug.print(" - ", .{});
-        BoundNodeRefMap.print_set(value);
-        std.debug.print("\n", .{});
-    }
-
-    pub fn remove_node(
-        map: *StackElementMap.T(BoundNodeRefSet),
-        key: StackElement,
-        node: BoundNodeReference,
-    ) bool {
-        if (map.getPtr(key)) |set_ptr| {
-            return set_ptr.remove(node);
-        }
-        return false;
-    }
+const BoundNodeReferenceList = struct {
+    elements: std.ArrayList(BoundNodeReference),
 };
 
-const BoundNodeRefSet = BoundNodeRefMap.T(void);
+const VisitedLevel = struct {
+    type_element_list: TypeElementList,
+    bound_node_reference_list: BoundNodeReferenceList,
+};
+
+const VisitedLevelList = struct {
+    elements: std.ArrayList(VisitedLevel),
+};
 
 pub const PathFinder = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
+    arena: std.heap.ArenaAllocator,
     visited_path_counter: u64,
     current_bfs_paths: std.ArrayList(*BFSPath),
     nodes_to_bfs: std.ArrayList(BoundNodeReference),
-    stack_element_nodes: StackElementMap.T(BoundNodeRefSet),
+    visited_level_list: VisitedLevelList,
 
     pub fn init(allocator: std.mem.Allocator) Self {
+        var arena = std.heap.ArenaAllocator.init(allocator);
         return .{
             .allocator = allocator,
+            .arena = arena,
             .visited_path_counter = 0,
             .current_bfs_paths = std.ArrayList(*BFSPath).init(allocator),
             .nodes_to_bfs = std.ArrayList(BoundNodeReference).init(allocator),
-            .stack_element_nodes = StackElementMap.T(BoundNodeRefSet).init(allocator),
+            .visited_level_list = VisitedLevelList{
+                .elements = std.ArrayList(VisitedLevel).init(arena.allocator()),
+            },
         };
     }
 
     pub fn deinit(self: *Self) void {
-        for (self.current_bfs_paths.items) |path| {
-            path.deinit();
-        }
-        self.current_bfs_paths.deinit();
+        self.arena.deinit();
         self.nodes_to_bfs.deinit();
-        var it = self.stack_element_nodes.valueIterator();
-        while (it.next()) |set_ptr| {
-            set_ptr.deinit();
-        }
-        self.stack_element_nodes.deinit();
     }
 
     pub fn find_paths(
@@ -168,8 +101,6 @@ pub const PathFinder = struct {
         self.nodes_to_bfs.append(start_node) catch @panic("OOM");
 
         while (self.nodes_to_bfs.pop()) |bound_node| {
-
-            // Find all connected interfaces in current hierarchy level
             _ = bound_node.g.visit_paths_bfs(
                 bound_node,
                 void,
@@ -177,19 +108,6 @@ pub const PathFinder = struct {
                 Self.bfs_visit_fn,
                 &[_]graph.Edge.EdgeType{EdgeInterfaceConnection.tid},
             );
-
-            // Add connected interfaces for a given stack element to the stack element nodes
-
-            // For each connected interface, add parent node to BFS queue
-            for (self.current_bfs_paths.items) |path| {
-                const parent_node = EdgeComposition.get_parent_node_of(path.get_last_node()) orelse continue;
-                self.nodes_to_bfs.append(parent_node) catch @panic("OOM");
-                if (comptime debug_pathfinder) {
-                    std.debug.print("Adding parent node to bfs queue: ", .{});
-                    print_node_uuid_and_type(parent_node);
-                    std.debug.print("\n", .{});
-                }
-            }
 
             // Clean up current_bfs_paths for next iteration
             for (self.current_bfs_paths.items) |path| {
@@ -203,9 +121,6 @@ pub const PathFinder = struct {
         // Transfer ownership to BFSPaths
         var bfs_paths = graph.BFSPaths.init(self.allocator);
         bfs_paths.paths = self.current_bfs_paths;
-
-        //required else we can get a double free seg-fault from the transferred ownership
-        self.current_bfs_paths = std.ArrayList(*BFSPath).init(self.allocator);
         return bfs_paths;
     }
 
