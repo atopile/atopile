@@ -13,7 +13,7 @@ from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     Contradiction,
 )
-from faebryk.libs.util import partition_as_list
+from faebryk.libs.util import not_none, partition_as_list
 
 logger = logging.getLogger(__name__)
 
@@ -163,12 +163,14 @@ def fold_add(expr: F.Expressions.Add, mutator: Mutator):
         return
 
     factored_operands = [
-        mutator.create_check_and_insert_expression(
-            F.Expressions.Multiply,
-            n.as_operand.get(),
-            m.can_be_operand.get(),
-            from_ops=[expr.is_parameter_operatable.get()],
-        ).out_operand
+        not_none(
+            mutator.create_check_and_insert_expression(
+                F.Expressions.Multiply,
+                n.as_operand.get(),
+                m.can_be_operand.get(),
+                from_ops=[expr.is_parameter_operatable.get()],
+            ).out_operand
+        )
         for n, m in new_factors.items()
     ]
 
@@ -189,18 +191,9 @@ def fold_add(expr: F.Expressions.Add, mutator: Mutator):
         mutator.utils.mutate_unpack_expression(e, [no_po])
         return
 
-    new_expr = mutator.mutate_expression(
+    mutator.mutate_expression(
         e, operands=new_operands, expression_factory=F.Expressions.Add
     )
-    # if only one literal operand, equal to it
-    if len(new_operands) == 1:
-        mutator.create_check_and_insert_expression(
-            F.Expressions.IsSubset,
-            new_expr.as_operand.get(),
-            new_operands[0],
-            assert_=True,
-            terminate=True,
-        )
 
 
 @expression_wise_algorithm(F.Expressions.Multiply)
@@ -245,13 +238,16 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
     ):
         # Careful, modifying old graph, but should be ok
         powered_operands = [
-            mutator.create_check_and_insert_expression(
-                F.Expressions.Power,
-                n.as_operand.get(),
-                m.can_be_operand.get(),
-                from_ops=[e_po],
-            ).out_operand
+            pe
             for n, m in new_powers.items()
+            if (
+                pe := mutator.create_check_and_insert_expression(
+                    F.Expressions.Power,
+                    n.as_operand.get(),
+                    m.can_be_operand.get(),
+                    from_ops=[e_po],
+                ).out_operand
+            )
         ]
 
         new_operands: list[F.Parameters.can_be_operand] = [
@@ -278,19 +274,10 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
             return
 
         if new_operands != expr.operands:
-            new_expr = mutator.mutate_expression(
+            mutator.mutate_expression(
                 e, operands=new_operands, expression_factory=F.Expressions.Multiply
             )
 
-            # if only one literal operand, equal to it
-            if len(new_operands) == 1:
-                mutator.create_check_and_insert_expression(
-                    F.Expressions.IsSubset,
-                    new_expr.as_operand.get(),
-                    new_operands[0],
-                    assert_=True,
-                    terminate=True,
-                )
             return
 
     # if len(expr.operands) == 2:
@@ -578,12 +565,13 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                                     F.Expressions.is_predicate
                                 )
                             ):
-                                mutator.assert_(
-                                    mutator.get_copy(not_op)
-                                    .as_parameter_operatable.force_get()
-                                    .as_expression.force_get()
-                                    .as_assertable.force_get()
-                                )
+                                copy = mutator.get_copy(not_op)
+                                if copy:
+                                    mutator.assert_(
+                                        copy.as_parameter_operatable.force_get()
+                                        .as_expression.force_get()
+                                        .as_assertable.force_get()
+                                    )
 
                     # ¬!(A v ...)
                     elif inner_op_e.as_assertable.try_get():

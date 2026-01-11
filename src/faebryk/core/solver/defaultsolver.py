@@ -47,7 +47,6 @@ class DefaultSolver(Solver):
         # and types from decorator
         pre = [
             canonical.convert_to_canonical_operations,
-            canonical.alias_predicates_to_true,
         ]
         iterative = [
             structural.check_literal_contradiction,

@@ -24,6 +24,7 @@ from faebryk.core.solver.utils import (
 from faebryk.libs.logging import rich_to_string
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+from faebryk.libs.util import not_none
 from test.core.solver.test_solver import BoundExpressions, _create_letters
 
 logger = logging.getLogger(__name__)
@@ -109,8 +110,10 @@ def test_mutator_no_graph_merge():
         iteration=0,
         terminal=True,
     )
-    p0_new = mutator.get_copy(p0)
-    alias_new = fabll.Traits(mutator.get_copy(alias)).get_obj(F.Expressions.Is)
+    p0_new = not_none(mutator.get_copy(p0))
+    alias_new = fabll.Traits(not_none(mutator.get_copy(alias))).get_obj(
+        F.Expressions.Is
+    )
 
     G = p0.tg
     G_new = p0_new.tg

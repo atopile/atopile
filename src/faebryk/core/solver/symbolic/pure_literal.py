@@ -77,7 +77,7 @@ _CanonicalExpressions: dict[type[fabll.NodeT], _Multi] = {
 # Pure literal folding -----------------------------------------------------------------
 
 
-def _get_type(expr_type: "fabll.ImplementsType" | type[fabll.NodeT]) -> _Multi | None:
+def _get_type(expr_type: "fabll.ImplementsType | type[fabll.NodeT]") -> _Multi | None:
     if isinstance(expr_type, type):
         return _CanonicalExpressions[expr_type]
     else:
@@ -96,7 +96,7 @@ def _get_type(expr_type: "fabll.ImplementsType" | type[fabll.NodeT]) -> _Multi |
 def exec_pure_literal_operands(
     g: graph.GraphView,
     tg: fbrk.TypeGraph,
-    expr_type: "fabll.ImplementsType" | type[fabll.NodeT],
+    expr_type: "fabll.ImplementsType | type[fabll.NodeT]",
     operands: Iterable[F.Parameters.can_be_operand],
 ) -> F.Literals.is_literal | None:
     operands = list(operands)

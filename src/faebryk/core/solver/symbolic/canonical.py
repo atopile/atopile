@@ -45,25 +45,6 @@ logger = logging.getLogger(__name__)
 # NumericLiteralR = (*QuantityLikeR, Quantity_Interval_Disjoint, Quantity_Interval)
 
 
-@algorithm("Alias predicates to true", single=True, terminal=False)
-def alias_predicates_to_true(mutator: Mutator):
-    """
-    Alias predicates to True since we need to assume they are true.
-    """
-
-    # TODO do we need this? can this go into mutator for all predicates?
-    # or alternatively move it to the canonicalize
-
-    for predicate in mutator.get_expressions(required_traits=(is_predicate,)):
-        new_predicate = mutator.mutate_expression(predicate)
-        mutator.create_check_and_insert_expression(
-            F.Expressions.IsSubset,
-            new_predicate.as_operand.get(),
-            mutator.make_singleton(True).can_be_operand.get(),
-            assert_=True,
-        )
-
-
 @algorithm("Canonicalize", single=True, terminal=False)
 def convert_to_canonical_operations(mutator: Mutator):
     """
@@ -105,7 +86,7 @@ def convert_to_canonical_operations(mutator: Mutator):
 
     def c(
         op: type[fabll.NodeT], *operands: F.Parameters.can_be_operand
-    ) -> F.Parameters.can_be_operand:
+    ) -> F.Parameters.can_be_operand | None:
         return mutator.create_check_and_insert_expression(
             op,
             *operands,
@@ -113,12 +94,13 @@ def convert_to_canonical_operations(mutator: Mutator):
         ).out_operand
 
     def curry(e_type: type[fabll.NodeT]):
-        def _(*operands: F.Parameters.can_be_operand | F.Literals.LiteralValues):
+        def _(*operands: F.Parameters.can_be_operand | F.Literals.LiteralValues | None):
             _operands = [
                 mutator.make_singleton(o).can_be_operand.get()
                 if not isinstance(o, fabll.Node)
                 else o
                 for o in operands
+                if o is not None
             ]
             return c(e_type, *_operands)
 
@@ -153,7 +135,8 @@ def convert_to_canonical_operations(mutator: Mutator):
             type[fabll.NodeT],
             type[fabll.NodeT],
             Callable[
-                [list[F.Parameters.can_be_operand]], list[F.Parameters.can_be_operand]
+                [list[F.Parameters.can_be_operand]],
+                list[F.Parameters.can_be_operand | None],
             ],
         ]
     ] = [
@@ -346,7 +329,7 @@ def convert_to_canonical_operations(mutator: Mutator):
             union = (
                 Union.bind_typegraph(mutator.tg_out)
                 .create_instance(mutator.G_out)
-                .setup(*[mutator.get_copy(o) for o in operands])
+                .setup(*[copy for o in operands if (copy := mutator.get_copy(o))])
             )
             mutator.create_check_and_insert_expression(
                 IsSubset,
@@ -381,9 +364,10 @@ def convert_to_canonical_operations(mutator: Mutator):
         Target, Converter = lookup[e_type_uuid]
 
         setattr(c, "from_ops", from_ops)
+        converted = [op for op in Converter(operands) if op]
         mutator.mutate_expression(
             e,
-            Converter(operands),
+            converted,
             expression_factory=Target,
             # TODO: copy-pasted this from convert_to_canonical_literals
             # need to ignore existing because non-canonical literals

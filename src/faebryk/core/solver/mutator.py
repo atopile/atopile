@@ -1294,11 +1294,17 @@ class Mutator:
 
         # map operands to mutated
         new_operands = [
-            self.get_copy(
-                op,
-                accept_soft=not (expr_factory is F.Expressions.IsSubset and assert_),
-            )
+            copy
             for op in operands
+            if (
+                copy := self.get_copy(
+                    op,
+                    accept_soft=not (
+                        expr_factory is F.Expressions.IsSubset and assert_
+                    ),
+                )
+            )
+            is not None
         ]
 
         new_expr = (
@@ -1314,8 +1320,12 @@ class Mutator:
         if terminate:
             self.predicate_terminate(new_expr.get_trait(F.Expressions.is_predicate))
 
-        op_graphs = {op.g for op in new_operands}
-        assert op_graphs == {self.G_out}, f"Graph mismatch: {op_graphs} != {self.G_out}"
+        op_graphs = {
+            op.g.get_self_node().node().get_uuid(): op.g for op in new_operands
+        }
+        assert set(op_graphs.keys()) == {
+            self.G_out.get_self_node().node().get_uuid()
+        }, f"Graph mismatch: {op_graphs} != {self.G_out}"
 
         return new_expr
 
@@ -1333,15 +1343,19 @@ class Mutator:
 
         res = invariants.insert_expression(
             self,
-            expr_factory,
-            *operands,
-            assert_=assert_,
-            terminate=terminate,
+            invariants.ExpressionBuilder(
+                expr_factory,
+                list(operands),
+                assert_=assert_,
+                terminate=terminate,
+            ),
         )
 
         if res.is_new:
-            expr_po = res.expr.get_sibling_trait(F.Parameters.is_parameter_operatable)
-            self.transformations.created[expr_po] = from_ops
+            out_po = not_none(res.out_operand).get_sibling_trait(
+                F.Parameters.is_parameter_operatable
+            )
+            self.transformations.created[out_po] = from_ops
 
         return res
 
@@ -1350,7 +1364,7 @@ class Mutator:
         expr: F.Expressions.is_expression,
         operands: Iterable[F.Parameters.can_be_operand] | None = None,
         expression_factory: type[fabll.NodeT] | None = None,
-    ) -> F.Expressions.is_canonical:
+    ) -> F.Expressions.is_canonical | None:
         expr_obj = fabll.Traits(expr).get_obj_raw()
         if expression_factory is None:
             expression_factory = self.utils.hack_get_expr_type(expr)
@@ -1395,6 +1409,8 @@ class Mutator:
                     terminate=terminate,
                 ),
             )
+            if res.out_operand is None:
+                return None
             if (
                 new_expr := res.out_operand.try_get_sibling_trait(
                     F.Expressions.is_expression
@@ -1434,7 +1450,7 @@ class Mutator:
         self,
         current: F.Parameters.is_parameter_operatable,
         new: F.Parameters.is_parameter_operatable,
-    ) -> F.Parameters.is_parameter_operatable:
+    ):
         """
         Replace A in all operations with B, but keep A in the graph.
         Except for A ss! X
@@ -1447,11 +1463,11 @@ class Mutator:
             # assert all(isinstance(o, (Is, IsSubset)) and o.constrained for o in exps)
 
         self.transformations.soft_replaced[current] = new
-        return self.get_copy_po(current, accept_soft=False)
+        self.get_copy_po(current, accept_soft=False)
 
     def get_copy(
         self, obj: F.Parameters.can_be_operand, accept_soft: bool = True
-    ) -> F.Parameters.can_be_operand:
+    ) -> F.Parameters.can_be_operand | None:
         # TODO is this ok?
         if (
             obj.g.get_self_node()
@@ -1460,7 +1476,10 @@ class Mutator:
         ):
             return obj
         if obj_po := obj.as_parameter_operatable.try_get():
-            return self.get_copy_po(obj_po, accept_soft).as_operand.get()
+            copied = self.get_copy_po(obj_po, accept_soft)
+            if copied is None:
+                return None
+            return copied.as_operand.get()
         if obj_lit := obj.as_literal.try_get():
             self.tg_out
             return obj_lit.copy_into(self.G_out).as_operand.get()
@@ -1472,7 +1491,7 @@ class Mutator:
 
     def get_copy_po(
         self, obj_po: F.Parameters.is_parameter_operatable, accept_soft: bool = True
-    ) -> F.Parameters.is_parameter_operatable:
+    ) -> F.Parameters.is_parameter_operatable | None:
         if accept_soft and obj_po in self.transformations.soft_replaced:
             return self.transformations.soft_replaced[obj_po]
 
@@ -1492,7 +1511,10 @@ class Mutator:
 
         if expr := obj_po.as_expression.try_get():
             # TODO consider using copy here instead of recreating expr
-            return self.mutate_expression(expr).as_parameter_operatable.get()
+            mutated = self.mutate_expression(expr)
+            if not mutated:
+                return None
+            return mutated.as_parameter_operatable.get()
         elif p := obj_po.as_parameter.try_get():
             return self.mutate_parameter(p).as_parameter_operatable.get()
 
@@ -1531,13 +1553,6 @@ class Mutator:
     ):
         for p in po:
             p.assert_()
-            self.create_check_and_insert_expression(
-                F.Expressions.IsSubset,
-                p.as_operand.get(),
-                self.make_singleton(True).can_be_operand.get(),
-                terminate=True,
-                assert_=True,
-            )
             if terminate:
                 self.predicate_terminate(
                     p.get_sibling_trait(F.Expressions.is_predicate)
