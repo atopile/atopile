@@ -117,7 +117,8 @@ pub const EdgeInterfaceConnection = struct {
     }
 
     pub fn is_connected_to(allocator: std.mem.Allocator, source: BoundNodeReference, target: BoundNodeReference) !*graph.BFSPath {
-        var pf = PathFinder.init(allocator);
+        var pf: PathFinder = undefined;
+        pf.init(allocator);
         defer pf.deinit();
 
         var paths = try pf.find_paths(source);
@@ -136,7 +137,8 @@ pub const EdgeInterfaceConnection = struct {
 
     // TODO - A visitor would be nice instead of just returning a list don't ya think?
     pub fn get_connected(allocator: std.mem.Allocator, source: BoundNodeReference, include_self: bool) !graph.NodeRefMap.T(*graph.BFSPath) {
-        var pf = PathFinder.init(allocator);
+        var pf: PathFinder = undefined;
+        pf.init(allocator);
         defer pf.deinit();
 
         var paths = try pf.find_paths(source);

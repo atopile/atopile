@@ -57,6 +57,14 @@ const TypeElementList = struct {
         }
         return true;
     }
+
+    fn print(self: *const @This()) void {
+        std.debug.print("[", .{});
+        for (self.elements.items) |element| {
+            element.print();
+        }
+        std.debug.print("]", .{});
+    }
 };
 
 const BoundNodeReferenceList = struct {
@@ -78,10 +86,12 @@ const BoundNodeReferenceList = struct {
     }
 
     fn print(self: *const @This()) void {
+        std.debug.print("[", .{});
         for (self.elements.items) |bound_node| {
             print_instance_node(bound_node);
             std.debug.print(" ", .{});
         }
+        std.debug.print("]", .{});
     }
 };
 
@@ -90,11 +100,10 @@ const VisitedLevel = struct {
     bound_node_reference_list: BoundNodeReferenceList,
 
     fn print(self: *const @This()) void {
-        std.debug.print("VisitedLevel: ", .{});
-        for (self.type_element_list.elements.items) |type_element| {
-            type_element.print();
-        }
-        std.debug.print("\n", .{});
+        std.debug.print("VisitedLevel", .{});
+        std.debug.print("\tType Path: ", .{});
+        self.type_element_list.print();
+        std.debug.print("\tInstances: ", .{});
         self.bound_node_reference_list.print();
     }
 };
@@ -131,8 +140,8 @@ pub const PathFinder = struct {
     nodes_to_bfs: std.ArrayList(BoundNodeReference),
     visited_level_list: VisitedLevelList,
 
-    pub fn init(allocator: std.mem.Allocator) Self {
-        var self = Self{
+    pub fn init(self: *Self, allocator: std.mem.Allocator) void {
+        self.* = .{
             .allocator = allocator,
             .arena = std.heap.ArenaAllocator.init(allocator),
             .visited_path_counter = 0,
@@ -145,7 +154,6 @@ pub const PathFinder = struct {
         self.visited_level_list = VisitedLevelList{
             .elements = std.ArrayList(VisitedLevel).init(self.arena.allocator()),
         };
-        return self;
     }
 
     pub fn deinit(self: *Self) void {
@@ -168,9 +176,8 @@ pub const PathFinder = struct {
                 &[_]graph.Edge.EdgeType{EdgeInterfaceConnection.tid},
             );
 
-            // on first iteration, handle this a bit differently
+            // on first iteration, boostrap the algorithm
             if (bound_node.node.is_same(start_node.node)) {
-                std.debug.print("First!\n", .{});
                 const type_edge = EdgeType.get_type_edge(bound_node) orelse @panic("Missing type edge");
                 const type_node = bound_node.g.bind(EdgeType.get_type_node(type_edge.edge));
                 const type_element = TypeElement{
@@ -184,13 +191,34 @@ pub const PathFinder = struct {
                 var bound_node_reference_list = BoundNodeReferenceList{
                     .elements = std.ArrayList(BoundNodeReference).init(self.arena.allocator()),
                 };
-                bound_node_reference_list.elements.append(bound_node) catch @panic("OOM");
+
+                for (self.current_bfs_paths.items) |path| {
+                    const last_node = path.get_last_node();
+                    bound_node_reference_list.elements.append(last_node) catch @panic("OOM");
+                }
+
                 self.visited_level_list.add_element(type_element_list, bound_node_reference_list);
             }
+
+            // populate the parents
+            // for (self.current_bfs_paths.items) |path| {
+            //     const last_node = path.get_last_node();
+            //     const parent_node = EdgeComposition.get_parent_node_of(last_node) orelse continue;
+            //     const child_identifier = last_
+            // }
 
             for (self.visited_level_list.elements.items) |visited_level| {
                 visited_level.print();
                 std.debug.print("\n", .{});
+            }
+
+            // Add parents to bfs queue
+            for (self.current_bfs_paths.items) |path| {
+                const last_node = path.get_last_node();
+
+                if (EdgeComposition.get_parent_node_of(last_node)) |parent_node| {
+                    self.nodes_to_bfs.append(parent_node) catch @panic("OOM");
+                }
             }
 
             // Clean up current_bfs_paths for next iteration
