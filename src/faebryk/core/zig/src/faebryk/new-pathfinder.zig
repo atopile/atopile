@@ -127,6 +127,16 @@ const TypePathList = struct {
             .bound_node_reference_list = deduped,
         }) catch @panic("OOM");
     }
+
+    fn get_nodes(self: @This(), key: TypeElementList) ?*BoundNodeReferenceList {
+        for (self.elements.items) |*type_path| {
+            if (type_path.type_element_list.equals(&key)) {
+                return &type_path.bound_node_reference_list;
+            }
+        }
+
+        return null;
+    }
 };
 
 pub const PathFinder = struct {
@@ -185,11 +195,47 @@ pub const PathFinder = struct {
         };
         self.bfs_type_element_stack.elements.append(first_type_element) catch @panic("OOM");
 
-        const first_bound_node_reference_list = BoundNodeReferenceList{
+        self.visited_list.add_element(self.bfs_type_element_stack, BoundNodeReferenceList{
+            .elements = std.ArrayList(BoundNodeReference).init(self.arena.allocator()),
+        });
+
+        var first_bound_node_reference_list = BoundNodeReferenceList{
             .elements = std.ArrayList(BoundNodeReference).init(self.arena.allocator()),
         };
+        first_bound_node_reference_list.add_element(start_node);
+        self.to_visit_list.add_element(self.bfs_type_element_stack, first_bound_node_reference_list);
 
-        self.visited_list.add_element(self.bfs_type_element_stack, first_bound_node_reference_list);
+        var nodes_to_visit_remaining = true;
+        var type_paths_to_visit_remaining = true;
+
+        while (type_paths_to_visit_remaining) {
+            if (self.to_visit_list.elements.getLastOrNull()) |type_path| {
+                if (self.to_visit_list.get_nodes(type_path.type_element_list)) |node_list_ptr| {
+                    std.debug.print("To visit: ", .{});
+                    type_path.print();
+                    std.debug.print("\n", .{});
+                    while (nodes_to_visit_remaining) {
+                        if (node_list_ptr.*.elements.getLastOrNull()) |node_to_bfs| {
+                            std.debug.print("doing bfs on", .{});
+                            print_instance_node(node_to_bfs);
+                            std.debug.print("\n", .{});
+                        }
+
+                        if (node_list_ptr.*.elements.pop()) |_| {
+                            nodes_to_visit_remaining = true;
+                        } else {
+                            nodes_to_visit_remaining = false;
+                        }
+                    }
+                }
+            }
+
+            if (self.to_visit_list.elements.pop()) |_| {
+                type_paths_to_visit_remaining = true;
+            } else {
+                type_paths_to_visit_remaining = false;
+            }
+        }
 
         while (self.nodes_to_bfs.pop()) |bound_node| {
 

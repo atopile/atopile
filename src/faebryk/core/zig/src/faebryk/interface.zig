@@ -402,10 +402,10 @@ test "simple_electric_power_hierarchy" {
     const signal_2 = try instantiate_interface(&tg, electric_signal);
     const signal_1_reference = EdgeComposition.get_child_by_identifier(signal_1, "reference").?;
 
-    // const extra_electric_signal = try instantiate_interface(&tg, electric_signal);
-    // const extra_electrical = EdgeComposition.get_child_by_identifier(extra_electric_signal, "line").?;
+    const extra_electric_signal = try instantiate_interface(&tg, electric_signal);
+    const extra_electrical = EdgeComposition.get_child_by_identifier(extra_electric_signal, "line").?;
 
-    const extra_electrical = try instantiate_interface(&tg, test_types.electrical);
+    // const extra_electrical = try instantiate_interface(&tg, test_types.electrical);
 
     _ = try EdgeInterfaceConnection.connect(EP_1, signal_1_reference);
     _ = try EdgeInterfaceConnection.connect(signal_1, signal_2);
