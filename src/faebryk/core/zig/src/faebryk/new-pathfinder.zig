@@ -138,6 +138,7 @@ pub const PathFinder = struct {
     visited_path_counter: u64,
     current_bfs_paths: std.ArrayList(*BFSPath),
     nodes_to_bfs: std.ArrayList(BoundNodeReference),
+    bfs_type_element_stack: TypeElementList,
     visited_level_list: VisitedLevelList,
 
     pub fn init(self: *Self, allocator: std.mem.Allocator) void {
@@ -147,10 +148,14 @@ pub const PathFinder = struct {
             .visited_path_counter = 0,
             .current_bfs_paths = undefined,
             .nodes_to_bfs = undefined,
+            .bfs_type_element_stack = undefined,
             .visited_level_list = undefined,
         };
         self.current_bfs_paths = std.ArrayList(*BFSPath).init(allocator);
         self.nodes_to_bfs = std.ArrayList(BoundNodeReference).init(allocator);
+        self.bfs_type_element_stack = TypeElementList{
+            .elements = std.ArrayList(TypeElement).init(self.arena.allocator()),
+        };
         self.visited_level_list = VisitedLevelList{
             .elements = std.ArrayList(VisitedLevel).init(self.arena.allocator()),
         };
@@ -168,6 +173,8 @@ pub const PathFinder = struct {
         self.nodes_to_bfs.append(start_node) catch @panic("OOM");
 
         while (self.nodes_to_bfs.pop()) |bound_node| {
+
+            // Horizontal traverse
             _ = bound_node.g.visit_paths_bfs(
                 bound_node,
                 void,
@@ -175,6 +182,15 @@ pub const PathFinder = struct {
                 Self.bfs_visit_fn,
                 &[_]graph.Edge.EdgeType{EdgeInterfaceConnection.tid},
             );
+
+            var bound_node_reference_list = BoundNodeReferenceList{
+                .elements = std.ArrayList(BoundNodeReference).init(self.arena.allocator()),
+            };
+
+            for (self.current_bfs_paths.items) |path| {
+                const last_node = path.get_last_node();
+                bound_node_reference_list.elements.append(last_node) catch @panic("OOM");
+            }
 
             // on first iteration, bootstrap the algorithm
             if (bound_node.node.is_same(start_node.node)) {
@@ -188,9 +204,7 @@ pub const PathFinder = struct {
                     .elements = std.ArrayList(TypeElement).init(self.arena.allocator()),
                 };
                 type_element_list.elements.append(type_element) catch @panic("OOM");
-                var bound_node_reference_list = BoundNodeReferenceList{
-                    .elements = std.ArrayList(BoundNodeReference).init(self.arena.allocator()),
-                };
+                self.bfs_type_element_stack.elements.append(type_element) catch @panic("OOM");
 
                 for (self.current_bfs_paths.items) |path| {
                     const last_node = path.get_last_node();
@@ -198,6 +212,8 @@ pub const PathFinder = struct {
                 }
 
                 self.visited_level_list.add_element(type_element_list, bound_node_reference_list);
+            } else {
+                self.visited_level_list.add_element(self.bfs_type_element_stack, bound_node_reference_list);
             }
 
             // populate the parents
@@ -216,12 +232,13 @@ pub const PathFinder = struct {
                         .elements = std.ArrayList(TypeElement).init(self.arena.allocator()),
                     };
                     type_element_list.elements.append(type_element) catch @panic("OOM");
+                    self.bfs_type_element_stack.elements.append(type_element) catch @panic("OOM");
 
-                    const bound_node_reference_list = BoundNodeReferenceList{
+                    const blank_list = BoundNodeReferenceList{
                         .elements = std.ArrayList(BoundNodeReference).init(self.arena.allocator()),
                     };
 
-                    self.visited_level_list.add_element(type_element_list, bound_node_reference_list);
+                    self.visited_level_list.add_element(self.bfs_type_element_stack, blank_list);
                 }
             }
 
@@ -299,8 +316,6 @@ fn print_instance_node(bound_node: BoundNodeReference) void {
 
 fn print_type_node(bound_node: BoundNodeReference) void {
     const type_name = TypeNodeAttributes.of(bound_node.node).get_type_name();
-    std.debug.print("{}:{s}", .{
-        bound_node.node.get_uuid(),
-        type_name,
-    });
+    std.debug.print("type:", .{});
+    std.debug.print("{s}", .{type_name});
 }
