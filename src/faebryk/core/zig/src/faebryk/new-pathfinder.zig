@@ -176,7 +176,7 @@ pub const PathFinder = struct {
                 &[_]graph.Edge.EdgeType{EdgeInterfaceConnection.tid},
             );
 
-            // on first iteration, boostrap the algorithm
+            // on first iteration, bootstrap the algorithm
             if (bound_node.node.is_same(start_node.node)) {
                 const type_edge = EdgeType.get_type_edge(bound_node) orelse @panic("Missing type edge");
                 const type_node = bound_node.g.bind(EdgeType.get_type_node(type_edge.edge));
@@ -201,11 +201,29 @@ pub const PathFinder = struct {
             }
 
             // populate the parents
-            // for (self.current_bfs_paths.items) |path| {
-            //     const last_node = path.get_last_node();
-            //     const parent_node = EdgeComposition.get_parent_node_of(last_node) orelse continue;
-            //     const child_identifier = last_
-            // }
+            for (self.current_bfs_paths.items) |path| {
+                const last_node = path.get_last_node();
+                if (EdgeComposition.get_parent_node_of(last_node)) |parent_node| {
+                    const parent_edge = EdgeComposition.get_parent_edge(last_node).?;
+                    const child_identifier = EdgeComposition.get_name(parent_edge.edge) catch @panic("corrupt edge");
+                    const parent_type_edge = EdgeType.get_type_edge(parent_node).?;
+                    const parent_type_node = parent_node.g.bind(EdgeType.get_type_node(parent_type_edge.edge));
+                    const type_element = TypeElement{
+                        .type_node = parent_type_node,
+                        .child_identifier = child_identifier,
+                    };
+                    var type_element_list = TypeElementList{
+                        .elements = std.ArrayList(TypeElement).init(self.arena.allocator()),
+                    };
+                    type_element_list.elements.append(type_element) catch @panic("OOM");
+
+                    const bound_node_reference_list = BoundNodeReferenceList{
+                        .elements = std.ArrayList(BoundNodeReference).init(self.arena.allocator()),
+                    };
+
+                    self.visited_level_list.add_element(type_element_list, bound_node_reference_list);
+                }
+            }
 
             for (self.visited_level_list.elements.items) |visited_level| {
                 visited_level.print();
