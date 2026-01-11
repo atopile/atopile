@@ -242,15 +242,18 @@ def test(
     sys.path.insert(0, str(repo_root()))
 
     if direct:
+        from test.runtest import TestNotFound, run
         from test.runtest import logger as runtest_logger
-        from test.runtest import run
 
         runtest_logger.setLevel(logging.INFO)
 
         if not test_name:
             raise ValueError("Test name is required when running directly")
 
-        run(test_name=test_name, filepaths=test_paths)
+        try:
+            run(test_name=test_name, filepaths=test_paths)
+        except TestNotFound as e:
+            print(e)
         return
 
     from test.runner.main import main

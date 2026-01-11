@@ -8,6 +8,7 @@ import sys
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from textwrap import indent
 from typing import Any, Callable
 
 import typer
@@ -56,10 +57,11 @@ def discover_tests(
     Note: This does NOT discover parametrized test variants.
     """
     matches = []
+    import_errors = {}
     for fp in filepaths:
+        if not re.search(test_pattern, fp.read_text(encoding="utf-8")):
+            continue
         try:
-            if not re.search(test_pattern, fp.read_text(encoding="utf-8")):
-                continue
             spec = importlib.util.spec_from_file_location("test_module", fp)
             if spec is None:
                 continue
@@ -71,7 +73,10 @@ def discover_tests(
             #   with redirect_stderr(open(os.devnull, "w")):
             spec.loader.exec_module(module)
         except Exception:
-            print("Error importing", fp)
+            from rich import traceback
+
+            # TODO suppress doesn't seem to work
+            import_errors[fp] = traceback.Traceback(suppress=[__name__])
             continue
         for v in vars(module).values():
             if not hasattr(v, "__name__"):
@@ -103,6 +108,12 @@ def discover_tests(
             elif callable(v):
                 if re.search(test_pattern, v.__name__):
                     matches.append((fp, v))
+    if not matches:
+        for fp, tb in import_errors.items():
+            from rich import print
+
+            print(f"Error importing {fp}")
+            print(tb)
     return matches
 
 
@@ -192,6 +203,18 @@ def run_tests(matches: list[tuple[Path, Callable]]) -> None:
         typer.run(fn)
 
 
+class TestNotFound(Exception):
+    pass
+
+
+class TestFileNotFound(TestNotFound):
+    pass
+
+
+class TestCaseNotFound(TestNotFound):
+    pass
+
+
 def run(
     test_name: str,
     filepaths: list[Path],
@@ -199,7 +222,7 @@ def run(
     test_files: list[Path] = []
     for filepath in filepaths:
         if not filepath.exists():
-            raise ValueError(f"Filepath {filepath} does not exist")
+            raise TestFileNotFound(f"Filepath {filepath} does not exist")
         if not filepath.is_dir():
             test_files.append(filepath)
         else:
@@ -207,7 +230,7 @@ def run(
 
     matches = discover_tests(test_files, test_name)
     if not matches:
-        raise ValueError(f"Test function '{test_name}' not found in {filepaths}")
+        raise TestCaseNotFound(f"Test function '{test_name}' not found in {filepaths}")
     run_tests(matches)
 
 
