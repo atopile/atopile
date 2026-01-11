@@ -1351,10 +1351,9 @@ class Mutator:
             ),
         )
 
-        if res.is_new:
-            out_po = not_none(res.out_operand).get_sibling_trait(
-                F.Parameters.is_parameter_operatable
-            )
+        if res.is_new and (
+            out_po := not_none(res.out_operand).as_parameter_operatable.try_get()
+        ):
             self.transformations.created[out_po] = from_ops
 
         return res
@@ -1411,35 +1410,7 @@ class Mutator:
             )
             if res.out_operand is None:
                 return None
-            if (
-                new_expr := res.out_operand.try_get_sibling_trait(
-                    F.Expressions.is_expression
-                )
-            ) is None:
-                # expr was foldable to literal
-                # -> terminate old expression and set superset/subset
-                lit_op = res.out_operand.as_literal.get().as_operand.get()
-                new_expr = self._create_and_insert_expression(
-                    expression_factory,
-                    *operands,
-                    assert_=assert_,
-                    terminate=terminate,
-                )
-                new_expr_op = new_expr.get_trait(F.Parameters.can_be_operand)
-                self.create_check_and_insert_expression(
-                    F.Expressions.IsSubset,
-                    new_expr_op,
-                    lit_op,
-                    terminate=True,
-                    assert_=True,
-                )
-                self.create_check_and_insert_expression(
-                    F.Expressions.IsSubset,
-                    lit_op,
-                    new_expr_op,
-                    terminate=True,
-                    assert_=True,
-                )
+            new_expr = res.out_operand.get_raw_obj()
 
         new_expr_po = new_expr.get_trait(F.Parameters.is_parameter_operatable)
 
