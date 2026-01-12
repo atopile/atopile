@@ -3,9 +3,7 @@
 
 
 import logging
-import operator
 from collections import defaultdict
-from dataclasses import dataclass
 from itertools import combinations
 from typing import (
     TYPE_CHECKING,
@@ -26,17 +24,8 @@ from faebryk.libs.util import (
     ConfigFlag,
     ConfigFlagFloat,
     ConfigFlagInt,
-    duplicates,
-    groupby,
     not_none,
-    partition,
-<<<<<<< HEAD
-    unique,
     unique_ref,
-||||||| parent of a913a6461 (WIP)
-    unique,
-=======
->>>>>>> a913a6461 (WIP)
 )
 
 if TYPE_CHECKING:
