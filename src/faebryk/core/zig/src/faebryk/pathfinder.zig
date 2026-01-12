@@ -128,7 +128,9 @@ pub const PathFinder = struct {
     pub fn visit_fn(self_ptr: *anyopaque, path: *BFSPath) visitor.VisitResult(void) {
         const self: *Self = @ptrCast(@alignCast(self_ptr));
         const result = self.run_filters(path);
-        _ = self.print_paths(path);
+        if (comptime debug_pathfinder) {
+            _ = self.print_paths(path);
+        }
         // std.debug.print("path_counter: {} len: {}\n", .{ self.path_counter, path.traversed_edges.items.len });
         if (result == .ERROR) return result;
         if (result == .STOP) return result;
