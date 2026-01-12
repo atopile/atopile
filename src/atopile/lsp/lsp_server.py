@@ -1722,6 +1722,10 @@ def _get_instance_type_name(field_path: str, state: DocumentState) -> str | None
     For example, if `ldo_3V3 = new TLV75901_driver`, returns "TLV75901_driver".
     """
     if state.type_graph is None or state.graph_view is None:
+        logger.info(
+            f"Instance type lookup early return: tg={state.type_graph is not None}, "
+            f"g={state.graph_view is not None}"
+        )
         return None
 
     try:
@@ -1768,7 +1772,7 @@ def _get_instance_type_name(field_path: str, state: DocumentState) -> str | None
                             pass
 
                 except Exception as e:
-                    logger.debug(f"Error checking assignment for type: {e}")
+                    logger.info(f"Error checking assignment for type: {e}")
                     continue
 
     except Exception as e:
@@ -1969,8 +1973,9 @@ def _find_member_in_external_type(
 
     try:
         # First find the external type's file
+        # Format: (type_ref, import_ref, node, traceback_stack)
         external_refs = state.build_result.state.external_type_refs
-        for _node_ref, import_ref in external_refs:
+        for _type_ref, import_ref, _node, _traceback in external_refs:
             if import_ref.name != type_name:
                 continue
 
@@ -2344,8 +2349,13 @@ def _find_external_type_definition(
         return None
 
     # Look through external_type_refs for the import
+    # Format: (type_ref, import_ref, node, traceback_stack)
     external_refs = state.build_result.state.external_type_refs
-    for _node_ref, import_ref in external_refs:
+    logger.info(
+        f"External type lookup: looking for {type_name}, "
+        f"refs={[ref.name for _, ref, _, _ in external_refs]}"
+    )
+    for _type_ref, import_ref, _node, _traceback in external_refs:
         if import_ref.name != type_name:
             continue
 
@@ -2454,13 +2464,13 @@ def _get_type_source_location(type_obj: type) -> lsp.Location | None:
 @LSP_SERVER.feature(
     lsp.TEXT_DOCUMENT_CODE_ACTION,
     lsp.CodeActionOptions(
-        code_action_kinds=[lsp.CodeActionKind.QuickFix],
+        code_action_kinds=[lsp.CodeActionKind.QuickFix, lsp.CodeActionKind.Source],
     ),
 )
 def on_code_action(
     params: lsp.CodeActionParams,
 ) -> list[lsp.CodeAction] | None:
-    """Handle code action request (e.g., auto-import)."""
+    """Handle code action request (e.g., auto-import, open datasheet)."""
     try:
         uri = params.text_document.uri
         document = LSP_SERVER.workspace.get_text_document(uri)
@@ -2487,6 +2497,11 @@ def on_code_action(
                 )
                 if import_action and import_action not in actions:
                     actions.append(import_action)
+
+        # Check for datasheet action
+        datasheet_action = _create_datasheet_action(uri, position)
+        if datasheet_action:
+            actions.append(datasheet_action)
 
         return actions if actions else None
 
@@ -2600,6 +2615,109 @@ def _find_import_insert_line(source: str) -> int:
             return i
 
     return 0
+
+
+def _create_datasheet_action(uri: str, position: lsp.Position) -> lsp.CodeAction | None:
+    """Create a code action to open the datasheet for a component."""
+    try:
+        uri_path = uris.to_fs_path(uri)
+        if uri_path is None:
+            return None
+        current_file = Path(uri_path)
+
+        # If we're in a parts/ folder file, extract LCSC ID directly
+        lcsc_id = _extract_lcsc_id_from_file(current_file)
+
+        # If not in a parts file, try to find the type at cursor and follow it
+        if not lcsc_id:
+            document = LSP_SERVER.workspace.get_text_document(uri)
+            state = get_document_state(uri)
+
+            # Get word at cursor - could be a type name or field
+            word = _get_word_at_position(document.source, position)
+            if word:
+                type_location = None
+
+                # First, try as a type name (e.g., "Texas_Instruments_MAX3243CDBR")
+                type_location = _find_type_definition(word, state, uri)
+
+                # If not found, try as an instance name (e.g., "package")
+                # and look up what type it was assigned
+                if not type_location:
+                    type_location = _find_instance_type_definition(word, state, uri)
+
+                if type_location:
+                    type_uri_path = uris.to_fs_path(type_location.uri)
+                    if type_uri_path:
+                        type_path = Path(type_uri_path)
+                        lcsc_id = _extract_lcsc_id_from_file(type_path)
+
+        if not lcsc_id:
+            return None
+
+        # Try to find local datasheet file first
+        project_dir = find_project_dir(current_file)
+        if project_dir:
+            # Check both possible locations
+            search_paths = [
+                project_dir / "build" / "documentation" / "datasheets",
+                project_dir / "build",
+            ]
+            for search_path in search_paths:
+                if search_path.exists():
+                    # Search for PDF with LCSC ID in filename
+                    for pdf in search_path.rglob(f"*{lcsc_id}*.pdf"):
+                        file_uri = uris.from_fs_path(str(pdf))
+                        return lsp.CodeAction(
+                            title=f"📄 Open Datasheet ({lcsc_id})",
+                            kind=lsp.CodeActionKind.QuickFix,
+                            command=lsp.Command(
+                                title="Open Datasheet",
+                                command="vscode.open",
+                                arguments=[file_uri],
+                            ),
+                        )
+
+        # Fallback: open LCSC product page
+        lcsc_url = f"https://www.lcsc.com/product-detail/{lcsc_id}.html"
+        return lsp.CodeAction(
+            title=f"🔗 View on LCSC ({lcsc_id})",
+            kind=lsp.CodeActionKind.QuickFix,
+            command=lsp.Command(
+                title="View on LCSC",
+                command="vscode.open",
+                arguments=[lcsc_url],
+            ),
+        )
+
+    except Exception as e:
+        logger.debug(f"Datasheet action error: {e}")
+
+    return None
+
+
+def _extract_lcsc_id_from_file(file_path: Path) -> str | None:
+    """Extract LCSC ID from a part file by parsing the has_part_picked trait."""
+    try:
+        if not file_path.exists():
+            return None
+
+        content = file_path.read_text()
+
+        # Look for supplier_partno="CXXXXX" pattern in has_part_picked trait
+        match = re.search(r'supplier_partno\s*=\s*["\']([Cc]\d+)["\']', content)
+        if match:
+            return match.group(1)
+
+        # Also check for lcsc = "CXXXXX" assignment
+        match = re.search(r'\blcsc\s*=\s*["\']([Cc]\d+)["\']', content)
+        if match:
+            return match.group(1)
+
+    except Exception as e:
+        logger.debug(f"Error extracting LCSC ID from {file_path}: {e}")
+
+    return None
 
 
 # -----------------------------------------------------------------------------
