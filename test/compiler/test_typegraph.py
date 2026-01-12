@@ -180,7 +180,7 @@ def test_new_with_count_children_are_created():
 def test_new_with_count_rejects_out_of_range_index():
     with pytest.raises(
         DslException,
-        match=r"Field `members\[(2|2\.0)\]` with index can not be assigned with new",
+        match=r"Field `members\[(2|2\.0)\]` with index cannot be assigned with new",
     ):
         build_type(
             """
