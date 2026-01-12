@@ -257,7 +257,12 @@ pub const PathFinder = struct {
                     const last_node = path.get_last_node();
                     const child_type_element = type_path.type_element_list.elements.getLast();
                     if (child_type_element.child_identifier) |child_identifier| {
-                        const child_node = EdgeComposition.get_child_by_identifier(last_node, child_identifier) orelse @panic("child node not found");
+                        const child_node = EdgeComposition.get_child_by_identifier(last_node, child_identifier) orelse {
+                            dbg_print("Skipping missing child '{s}' on node ", .{child_identifier});
+                            print_instance_node(last_node);
+                            dbg_print("\n", .{});
+                            continue;
+                        };
                         const child_edge = EdgeComposition.get_parent_edge(child_node) orelse @panic("child edge not found");
                         const child_path = self.extend_path(path, last_node, child_edge);
                         // dbg_print("CHILD NODE: ", .{});
