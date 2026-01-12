@@ -483,6 +483,7 @@ def _fold_pure_literal_operands(
 ) -> InsertExpressionResult | None:
     """
     Fold pure literal operands: E(X, Y) -> E{S/P|...}(X, Y)
+    No pure P!
     """
     from faebryk.core.solver.symbolic.pure_literal import exec_pure_literal_operands
 
@@ -498,8 +499,15 @@ def _fold_pure_literal_operands(
     )
     if builder.assert_:
         # P!{S|True} -> P!$
-        if lit_fold.equals_singleton(True):
-            builder = ExpressionBuilder(builder.factory, builder.operands, True, True)
+        if lit_fold.equals_singleton(False):
+            raise Contradiction(
+                "P!{S|False}",
+                involved=[],
+                mutator=mutator,
+            )
+        else:
+            # True / {False,True}
+            return InsertExpressionResult(None, False)
 
     new_expr = mutator._create_and_insert_expression(
         builder.factory,
@@ -508,22 +516,21 @@ def _fold_pure_literal_operands(
         terminate=builder.terminate,
     )
     new_expr_op = new_expr.get_trait(F.Parameters.can_be_operand)
-    if not builder.assert_:
-        lit_op = lit_fold.as_operand.get()
-        mutator.create_check_and_insert_expression(
-            F.Expressions.IsSubset,
-            new_expr_op,
-            lit_op,
-            terminate=True,
-            assert_=True,
-        )
-        mutator.create_check_and_insert_expression(
-            F.Expressions.IsSubset,
-            lit_op,
-            new_expr_op,
-            terminate=True,
-            assert_=True,
-        )
+    lit_op = lit_fold.as_operand.get()
+    mutator.create_check_and_insert_expression(
+        F.Expressions.IsSubset,
+        new_expr_op,
+        lit_op,
+        terminate=True,
+        assert_=True,
+    )
+    mutator.create_check_and_insert_expression(
+        F.Expressions.IsSubset,
+        lit_op,
+        new_expr_op,
+        terminate=True,
+        assert_=True,
+    )
     return InsertExpressionResult(new_expr_op, True)
 
 
@@ -586,6 +593,7 @@ def insert_expression(
     * ✓ - intersected supersets (single superset)
     * ✓ no empty supersets
     * ✓ fold pure literal expressions: E(X, Y) -> E{S/P|...}(X, Y)
+    * - no pure P!
     * ✓ canonical
     * no A is X(single) => A ss! X
     """

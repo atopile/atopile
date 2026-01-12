@@ -321,7 +321,7 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
     for e in exprs:
         e_po = e.as_parameter_operatable.get()
         # A{S|Xs} ss! Xs
-        if mutator.utils.is_set_literal_expression(e_po, allow_superset_exprs=False):
+        if mutator.utils.is_set_literal_expression(e_po, allow_superset_exprs=True):
             continue
 
         e_ops = e.get_operands()

@@ -342,22 +342,22 @@ class is_parameter_operatable(fabll.Node):
             return literal.pretty_str()
 
         try:
+            subset = self.try_extract_subset()
+            if subset is not None:
+                out += f"{{⊇|{format_lit(subset)}}}"
+        except KeyErrorAmbiguous as e:
+            return f"{{AMBIGUOUS ⊇: {e.duplicates}}}"
+
+        try:
             superset = self.try_extract_superset()
             if superset is not None:
-                out = f"{{⊆|{format_lit(superset)}}}"
+                out += f"{{⊆|{format_lit(superset)}}}"
                 if superset.equals_singleton(True):
                     out = "✓"
                 elif superset.equals_singleton(False):
                     out = "✗"
         except KeyErrorAmbiguous as e:
             return f"{{AMBIGUOUS ⊆: {e.duplicates}}}"
-
-        try:
-            subset = self.try_extract_subset()
-            if subset is not None:
-                out = f"{{⊇|{format_lit(subset)}}}"
-        except KeyErrorAmbiguous as e:
-            return f"{{AMBIGUOUS ⊇: {e.duplicates}}}"
 
         return out
 
