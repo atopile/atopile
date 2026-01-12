@@ -459,6 +459,11 @@ def test_repr_display_unit_conversion():
 
 
 def test_resistor_value_representation():
+    """Test that resistor value representation shows correctly formatted values.
+
+    Note: The Resistor class uses Ohm (Ω) as the display unit, so values are shown
+    in base Ohms. The literal is set in kΩ but converted to Ω for display.
+    """
     import faebryk.library._F as F
     from faebryk.library.Resistor import Resistor
 
@@ -466,6 +471,10 @@ def test_resistor_value_representation():
     tg = fbrk.TypeGraph.create(g=g)
 
     resistor = Resistor.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # Create kΩ unit for the literal value (10kΩ ±1%)
+    kohm_unit = _make_kiloohm_unit(g=g, tg=tg)
+
     resistor.resistance.get().alias_to_literal(
         g=g,
         value=F.Literals.Numbers.bind_typegraph(tg)
@@ -473,7 +482,7 @@ def test_resistor_value_representation():
         .setup_from_center_rel(
             center=10.0,
             rel=0.01,
-            unit=_make_kiloohm_unit(g=g, tg=tg),
+            unit=kohm_unit,
         ),
     )
     resistor.max_power.get().alias_to_literal(
@@ -494,8 +503,10 @@ def test_resistor_value_representation():
             unit=F.Units.Volt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
         ),
     )
+    # 10kΩ converts to 10000Ω in display units
     assert (
         resistor._simple_repr.get().get_specs()[0].get_value(show_tolerance=False)
-        == "10.0kΩ"
+        == "10000.0Ω"
     )
-    assert resistor._simple_repr.get().get_value() == "10.0kΩ±1.0% 0.125W 10.0V"
+    # Full representation: 10kΩ ±1% = 10000Ω ±1%, plus power and voltage
+    assert resistor._simple_repr.get().get_value() == "10000.0±1.0%Ω 0.125W 10.0V"

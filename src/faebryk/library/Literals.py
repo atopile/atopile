@@ -4478,16 +4478,18 @@ class Numbers(fabll.Node):
                     return "ℝ-"
                 return f"≤{f(max_val)}"
 
-            # Use center±tolerance format if center is non-zero and tolerance < 1%
-            if (
-                center != 0
-                and (tolerance_rel := abs((max_val - min_val) / 2 / center) * 100) < 1
-            ):
-                if show_tolerance:
-                    return f"{f(center)}±{tolerance_rel:.1f}%"
-                else:
-                    # Just center value, no tolerance notation
-                    return f"{f(center)}"
+            # Calculate relative tolerance for finite, non-zero-centered intervals
+            tolerance_rel = (
+                abs((max_val - min_val) / 2 / center) * 100 if center != 0 else None
+            )
+
+            # When show_tolerance=False, just show center value (for finite intervals)
+            if not show_tolerance:
+                return f"{f(center)}"
+
+            # Use center±tolerance format for small tolerances (< 25%)
+            if tolerance_rel is not None and tolerance_rel < 25:
+                return f"{f(center)}±{tolerance_rel:.1f}%"
 
             # For larger intervals, show as range
             return f"{f(min_val)}..{f(max_val)}"
