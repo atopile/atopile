@@ -235,6 +235,23 @@ pub const PathFinder = struct {
 
                 self.visited_list.add_element(type_path.type_element_list, visited_node_list);
 
+                // Down traverse
+                for (self.current_bfs_paths.items) |path| {
+                    std.debug.print("GOING DOWNNNN: ", .{});
+                    const last_node = path.get_last_node();
+                    const child_type_element = type_path.type_element_list.elements.getLast();
+                    if (child_type_element.child_identifier) |child_identifier| {
+                        child_type_element.print();
+
+                        print_instance_node(last_node);
+                        std.debug.print("CHILD IDENTIFIER:{s}", .{child_identifier});
+
+                        std.debug.print("\n", .{});
+                    } else {
+                        std.debug.print("NADA\n", .{});
+                    }
+                }
+
                 // Up traverse
                 for (self.current_bfs_paths.items) |path| {
                     const last_node = path.get_last_node();
