@@ -326,16 +326,6 @@ class ExpressionBuilder(NamedTuple):
     assert_: bool
     terminate: bool
 
-    def pretty(self, mutator: Mutator):
-        _str = _pretty_factory(
-            mutator.print_ctx,
-            self.factory,
-            self.operands,
-            assert_=self.assert_,
-            terminate=self.terminate,
-        )
-        return _str
-
 
 def _no_empty_superset(
     mutator: Mutator,
@@ -397,9 +387,7 @@ def _no_predicate_literals(
     if any(lit.equals_singleton(True) for lit in lits.values()):
         # P!{S/P|True} -> P!
         if any(op.try_get_sibling_trait(F.Expressions.is_predicate) for op in operands):
-            logger.debug(
-                f"Remove predicate literal {_pretty_factory(mutator.print_ctx, factory, operands)}"
-            )
+            logger.debug(f"Remove predicate literal {pretty_expr(builder, mutator)}")
             return None
         # P {S|True} -> P!
         if pred := operands[0].try_get_sibling_trait(F.Expressions.is_assertable):
@@ -456,16 +444,13 @@ def _no_literal_inequalities(
         )
 
     new_operands = [po_operand, new_superset.can_be_operand.get()]
+    new_builder = ExpressionBuilder(IsSubset, new_operands, assert_, terminate)
+
     logger.debug(
-        f"Converting {_pretty_factory(mutator.print_ctx, factory, operands)} ->"
-        f" {_pretty_factory(mutator.print_ctx, IsSubset, new_operands)}"
+        f"Converting {pretty_expr(builder, mutator)} ->"
+        f" {pretty_expr(new_builder, mutator)}"
     )
-    return ExpressionBuilder(
-        IsSubset,
-        new_operands,
-        assert_,
-        terminate,
-    )
+    return new_builder
 
 
 def _no_predicate_operands(
@@ -496,38 +481,6 @@ def _no_predicate_operands(
         )
 
     return new_builder
-
-
-def _pretty_factory(
-    context: F.Parameters.ReprContext,
-    factory: type[fabll.Node],
-    operands: Sequence[F.Parameters.can_be_operand] | None = None,
-    assert_: bool = False,
-    terminate: bool = False,
-) -> str:
-    if operands:
-        tg = operands[0].tg
-    else:
-        g = graph.GraphView.create()
-        tg = fbrk.TypeGraph.create(g=g)
-
-    factory_type = fabll.TypeNodeBoundTG(tg, factory)
-    is_expr_type = factory_type.try_get_type_trait(F.Expressions.is_expression_type)
-    if is_expr_type is None:
-        raise ValueError(f"Factory {factory} has no is_expression_type trait")
-    repr_style = is_expr_type.get_repr_style()
-
-    return F.Expressions.is_expression._compact_repr(
-        context,
-        repr_style,
-        repr_style.symbol if repr_style.symbol is not None else factory.__name__,
-        bool(assert_),
-        bool(terminate),
-        "",
-        False,
-        factory_type.get_type_name(),
-        operands or [],
-    )
 
 
 def insert_expression(
@@ -704,7 +657,7 @@ def wrap_insert_expression(
             target_dbg = f"`{op.pretty(context=ctx)}`"
     # TODO debug
     if target_dbg != "COPY":
-        logger.warning(f"{builder.pretty(mutator)} -> {target_dbg}")
+        logger.warning(f"{pretty_expr(builder, mutator)} -> {target_dbg}")
 
     return res
 

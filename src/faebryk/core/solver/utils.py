@@ -41,6 +41,8 @@ from faebryk.libs.util import (
 
 if TYPE_CHECKING:
     from faebryk.core.solver.mutator import Mutator
+    from faebryk.core.solver.symbolic.invariants import ExpressionBuilder
+
 
 logger = logging.getLogger(__name__)
 
@@ -833,10 +835,6 @@ class MutatorUtils:
         return out
 
 
-if TYPE_CHECKING:
-    from faebryk.core.solver.symbolic.invariants import ExpressionBuilder
-
-
 def pretty_expr(
     expr: "F.Expressions.is_expression | ExpressionBuilder",
     mutator: "Mutator",
@@ -849,10 +847,35 @@ def pretty_expr(
     context = context or mutator.print_ctx
     match expr:
         case ExpressionBuilder():
-            from faebryk.core.solver.symbolic.invariants import _pretty_factory
+            if expr.operands:
+                tg = expr.operands[0].tg
+            else:
+                g = graph.GraphView.create()
+                tg = fbrk.TypeGraph.create(g=g)
 
-            assert context is not None, "Context is required for ExpressionBuilder"
-            return _pretty_factory(context, expr.factory)
+            factory_type = fabll.TypeNodeBoundTG(tg, expr.factory)
+            is_expr_type = factory_type.try_get_type_trait(
+                F.Expressions.is_expression_type
+            )
+            if is_expr_type is None:
+                raise ValueError(
+                    f"Factory {expr.factory} has no is_expression_type trait"
+                )
+            repr_style = is_expr_type.get_repr_style()
+
+            return F.Expressions.is_expression._compact_repr(
+                context,
+                repr_style,
+                repr_style.symbol
+                if repr_style.symbol is not None
+                else expr.factory.__name__,
+                bool(expr.assert_),
+                bool(expr.terminate),
+                "",
+                False,
+                factory_type.get_type_name(),
+                expr.operands or [],
+            )
         case F.Expressions.is_expression():
             return expr.compact_repr(
                 context,
