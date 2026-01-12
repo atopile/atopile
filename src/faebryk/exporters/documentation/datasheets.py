@@ -39,8 +39,8 @@ def export_datasheets(
     # Create directories if they don't exist
     path.mkdir(parents=True, exist_ok=True)
 
-    # First pass: collect all URLs and their associated module names
-    url_to_modules: dict[str, list[str]] = {}
+    # Collect unique datasheet URLs
+    unique_urls: set[str] = set()
     logger.info(f"Exporting datasheets to: {path}")
     for m in fabll.Traits.get_implementor_objects(
         F.has_datasheet.bind_typegraph(tg=app.tg)
@@ -53,29 +53,38 @@ def export_datasheets(
         if not url:
             logger.warning(f"Missing datasheet URL for {m.get_name()}")
             continue
-        module_name = m.get_name()
-        if url not in url_to_modules:
-            url_to_modules[url] = []
-        url_to_modules[url].append(module_name)
+        unique_urls.add(url)
 
-    # Second pass: download each unique URL with combined module names as filename
-    for url, module_names in url_to_modules.items():
-        base_name = "_".join(sorted(module_names))
-        if len(base_name) > MAX_FILE_NAME_CHARACTERS:
-            base_name = base_name[: MAX_FILE_NAME_CHARACTERS - 2] + "__"
-        filename = base_name + ".pdf"
+    # Download each unique URL, using a cleaned filename from the URL
+    for url in unique_urls:
+        # Extract filename from URL
+        url_filename = Path(url).name
+        # If URL doesn't end in .pdf or has no valid filename, create one from URL
+        if not url_filename or not url_filename.endswith(".pdf"):
+            # Fallback: use a hash of the URL
+            import hashlib
+
+            url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
+            url_filename = f"datasheet_{url_hash}.pdf"
+
+        # Clean up LCSC filenames: remove "lcsc_datasheet_NNNNNNNNNN_" prefix
+        if url_filename.startswith("lcsc_datasheet_"):
+            parts = url_filename.split("_", 3)  # Split into max 4 parts
+            if len(parts) >= 4:
+                # ["lcsc", "datasheet", "date", "MFR-PART_CXXXXX.pdf"]
+                url_filename = parts[3]
+
+        filename = url_filename
         file_path = path / filename
         if file_path.exists() and not overwrite:
-            logger.debug(
-                f"Datasheet for {module_names} already exists, skipping download"
-            )
+            logger.debug(f"Datasheet {filename} already exists, skipping download")
             continue
         try:
             _download_datasheet(url, file_path)
         except DatasheetDownloadException as e:
-            logger.error(f"Failed to download datasheet for {module_names}: {e}")
+            logger.error(f"Failed to download datasheet {filename}: {e}")
             continue
-        logger.debug(f"Downloaded datasheet for {module_names}")
+        logger.debug(f"Downloaded datasheet {filename}")
 
 
 def _download_datasheet(url: str, path: Path):
@@ -167,10 +176,10 @@ def test_download_datasheet(caplog, tmp_path):
 
     # check that exactly one datasheet file was downloaded
     # (both modules share the same URL, so deduplication should result in one file)
-    # filename should be both module names joined with underscore
+    # filename should be the original filename from the URL
     pdf_files = list(DEFAULT_PATH.glob("*.pdf"))
     assert len(pdf_files) == 1, f"Expected 1 PDF, got: {pdf_files}"
-    expected_name = "modules_with_datasheet[0]_modules_with_datasheet[1].pdf"
+    expected_name = "lm555.pdf"  # filename from URL
     assert (DEFAULT_PATH / expected_name).exists(), (
         f"Expected {expected_name}, got: {[f.name for f in pdf_files]}"
     )

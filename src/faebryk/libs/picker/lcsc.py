@@ -37,7 +37,7 @@ from faebryk.libs.util import ConfigFlag, call_with_file_capture, not_none, once
 logger = logging.getLogger(__name__)
 
 CRAWL_DATASHEET = ConfigFlag(
-    "LCSC_DATASHEET", default=True, descr="Crawl for datasheet on LCSC"
+    "LCSC_DATASHEET", default=False, descr="Crawl for datasheet on LCSC"
 )
 
 WORKAROUND_SMD_3D_MODEL_FIX = True
@@ -118,6 +118,10 @@ class EasyEDAAPIResponse:
     _atopile_manufacturer: str | None = field(
         default=None,
         metadata=dataclasses_json_config(field_name="atopile_manufacturer"),
+    )
+    _atopile_datasheet_url: str | None = field(
+        default=None,
+        metadata=dataclasses_json_config(field_name="atopile_datasheet_url"),
     )
     unknown: CatchAll = None
 
@@ -383,13 +387,18 @@ class EasyEDAPart:
             mfn_pn=data.mfn_pn,
             footprint=EasyEDAFootprint.from_api(easyeda_footprint, kicad_model_path),
             symbol=EasyEDASymbol.from_api(easyeda_symbol),
+            # Use direct datasheet URL from atopile API if available
+            datasheet_url=data._atopile_datasheet_url,
         )
         part._pre_model = easyeda_model
-        part._pre_datasheet = easyeda_symbol.info.datasheet
+        # Only set _pre_datasheet for crawling fallback if no direct URL available
+        if not data._atopile_datasheet_url:
+            part._pre_datasheet = easyeda_symbol.info.datasheet
 
         if download_model and part._pre_model is not None:
             part.load_model()
 
+        # Only crawl for datasheet if no direct URL was provided
         if part._pre_datasheet is not None:
             part.load_datasheet()
 
@@ -497,6 +506,7 @@ def get_raw(lcsc_id: str) -> EasyEDAAPIResponse:
         get_api_client().fetch_part_by_lcsc(int(lcsc_id.removeprefix("C"))), None
     ):
         response._atopile_manufacturer = api_part.manufacturer_name
+        response._atopile_datasheet_url = api_part.datasheet_url
 
     return lifecycle.easyeda_api.ingest(lcsc_id, response)
 
