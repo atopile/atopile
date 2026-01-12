@@ -2340,18 +2340,12 @@ class TestAssignments:
         )
         r = F.Resistor.bind_instance(not_none(r_bnode))
 
-        # 100kV +/- 1% = [99000, 101000] V in base SI units
-        # Due to test order dependency, values may be stored in kV or V
-        # Check the actual value in base units (value * multiplier)
-        literal = r.max_voltage.get().force_extract_literal_subset()
-        multiplier = not_none(literal.get_is_unit())._extract_multiplier()
-
+        # 100kV +/- 1% = [99kV, 101kV] = [99000V, 101000V] in base SI units
+        # NumericParameter.get_values() returns values in display units (Volts for
+        # max_voltage), so values are already in base SI units.
         values = r.max_voltage.get().get_values()
-        # Convert to base units for comparison
-        base_values = [v * multiplier for v in values]
-        assert base_values == [99000.0, 101000.0], (
-            f"Expected [99000.0, 101000.0] V, got {base_values} V "
-            f"(raw values={values}, multiplier={multiplier})"
+        assert values == [99000.0, 101000.0], (
+            f"Expected [99000.0, 101000.0] V, got {values} V"
         )
 
     def test_component_parameter_uses_is_constraint(self):
