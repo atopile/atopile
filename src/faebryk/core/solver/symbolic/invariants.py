@@ -506,9 +506,7 @@ def _pretty_factory(
 ) -> str:
     # TODO: merge this with compact repr
     if operands is not None:
-        ops = ", ".join(
-            op.pretty(context=mutator.output_print_context) for op in operands
-        )
+        ops = ", ".join(op.pretty(context=mutator.print_ctx) for op in operands)
     else:
         ops = ""
     if factory:
@@ -625,7 +623,7 @@ def insert_expression(
         )
         if subsuming_expr := subsume_res.expr:
             logger.debug(
-                f"Subsume replaced: {builder.pretty(mutator)} -> {subsuming_expr.compact_repr(mutator.output_print_context)}"
+                f"Subsume replaced: {builder.pretty(mutator)} -> {subsuming_expr.compact_repr(mutator.print_ctx)}"
             )
             return InsertExpressionResult(subsuming_expr.as_operand.get(), False)
         elif subsume_res.discard:
@@ -685,12 +683,11 @@ def wrap_insert_expression(
     if res.out_operand is None:
         target_dbg = "Dropped"
     else:
-        target_dbg = res.out_operand.pretty(
-            context=mutator.mutation_map.last_stage.get_print_context_for_op(
-                res.out_operand.as_parameter_operatable.force_get()
-            )
-        )
-    logger.info(f"    {builder.pretty(mutator)} -> {target_dbg}")
+        op = res.out_operand
+        ctx = mutator.mutation_map.print_ctx
+        g_id = hex(op.g.get_self_node().node().get_uuid())
+        target_dbg = f"`{op.pretty(context=ctx)}` g:{g_id}"
+    logger.info(f"{builder.pretty(mutator)} -> {target_dbg}")
 
     return res
 

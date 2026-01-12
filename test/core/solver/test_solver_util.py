@@ -402,9 +402,9 @@ def test_mutation_map_compressed_mapping_backwards_copy():
             G_out=E2.g,
             algorithm="Test",
             iteration=0,
-            print_context=mapping.output_print_context,
+            print_ctx=mapping.print_ctx,
             transformations=Transformations(
-                input_print_context=mapping.output_print_context,
+                print_ctx=mapping.print_ctx,
                 mutated=dict(zip(variables, variables_new)),
                 copied=set(variables),
             ),
@@ -435,9 +435,9 @@ def test_mutation_map_compressed_mapping_backwards_mutate():
             G_out=E2.g,
             algorithm="Test",
             iteration=0,
-            print_context=mapping.output_print_context,
+            print_ctx=mapping.print_ctx,
             transformations=Transformations(
-                input_print_context=mapping.output_print_context,
+                print_ctx=mapping.print_ctx,
                 mutated=dict(zip(variables, variables_new)),
             ),
         )
@@ -477,9 +477,9 @@ def test_mutation_map_non_copy_mutated_mutate():
             G_out=E2.g,
             algorithm="Test",
             iteration=0,
-            print_context=mapping.output_print_context,
+            print_ctx=mapping.print_ctx,
             transformations=Transformations(
-                input_print_context=mapping.output_print_context,
+                print_ctx=mapping.print_ctx,
                 mutated=dict(zip(variables, variables_new)),
             ),
         )
@@ -508,9 +508,9 @@ def test_mutation_map_non_copy_mutated_mutate_expression():
             G_out=E2.g,
             algorithm="Test",
             iteration=0,
-            print_context=mapping.output_print_context,
+            print_ctx=mapping.print_ctx,
             transformations=Transformations(
-                input_print_context=mapping.output_print_context,
+                print_ctx=mapping.print_ctx,
                 mutated=dict(zip(variables, variables_new)) | {op: op_new},  # type: ignore
             ),
         )
@@ -539,11 +539,11 @@ def test_mutation_map_submap():
             G_out=E2.g,
             algorithm="Test",
             iteration=0,
-            print_context=mapping.output_print_context,
+            print_ctx=mapping.print_ctx,
             transformations=Transformations.identity(
                 E.tg,
                 E.g,
-                input_print_context=mapping.output_print_context,
+                input_print_context=mapping.print_ctx,
             ),
         )
     )
@@ -555,9 +555,9 @@ def test_mutation_map_submap():
             G_out=E2.g,
             algorithm="Test",
             iteration=0,
-            print_context=mapping.output_print_context,
+            print_ctx=mapping.print_ctx,
             transformations=Transformations(
-                input_print_context=mapping.output_print_context,
+                print_ctx=mapping.print_ctx,
                 mutated=dict(zip(variables, variables_new)) | {op: op_new},  # type: ignore
             ),
         )

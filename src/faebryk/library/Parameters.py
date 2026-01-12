@@ -9,7 +9,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import KeyErrorAmbiguous, not_none, once, times
+from faebryk.libs.util import KeyErrorAmbiguous, find_or, not_none, once, times
 
 if TYPE_CHECKING:
     import faebryk.library.Literals as Literals
@@ -392,11 +392,13 @@ class is_parameter(fabll.Node):
         else:
             if context is None:
                 context = ReprContext()
-            if self not in context.variable_mapping.mapping:
+            if context.variable_mapping.try_get_id(self) is None:
                 next_id = context.variable_mapping.next_id
-                context.variable_mapping.mapping[self] = next_id
+                context.variable_mapping.set_id(self, next_id)
                 context.variable_mapping.next_id += 1
-            letter = _param_id_to_human_str(context.variable_mapping.mapping[self])
+            letter = _param_id_to_human_str(
+                not_none(context.variable_mapping.try_get_id(self))
+            )
 
         unitstr = ""
         if numeric_param := obj.try_cast(NumericParameter):
@@ -442,8 +444,15 @@ class ParameterIsNotConstrainedToLiteral(Exception):
 class ReprContext:
     @dataclass
     class VariableMapping:
-        mapping: dict[is_parameter, int] = field(default_factory=dict)
+        # maps is_parameter.uuid to int
+        mapping: dict[int, int] = field(default_factory=dict)
         next_id: int = 0
+
+        def try_get_id(self, param: "is_parameter") -> int | None:
+            return self.mapping.get(param.instance.node().get_uuid())
+
+        def set_id(self, param: "is_parameter", id: int) -> None:
+            self.mapping[param.instance.node().get_uuid()] = id
 
     variable_mapping: VariableMapping = field(default_factory=VariableMapping)
 

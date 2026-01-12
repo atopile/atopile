@@ -82,9 +82,9 @@ def _extract_and_check(
 ) -> bool:
     extracted = _extract(op, res, domain_default=domain_default)
     ctx = (
-        res.input_print_context
+        res.print_ctx
         if isinstance(res, MutationMap)
-        else not_none(res.state).data.mutation_map.input_print_context
+        else not_none(res.state).data.mutation_map.print_ctx
     )
     if isinstance(expected, F.Literals.is_literal):
         expected = expected.as_operand.get()
@@ -701,7 +701,7 @@ def test_literal_folding_add_multiplicative_1():
     assert rep_A is not None
     assert rep_B is not None
 
-    context = repr_map.output_print_context
+    context = repr_map.print_ctx
     operands = (
         fabll.Traits(rep_add)
         .get_obj(F.Expressions.Add)

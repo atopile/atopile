@@ -89,7 +89,7 @@ class Contradiction(Exception):
         tracebacks = {
             p: self.mutator.mutation_map.get_traceback(p) for p in self.involved_exprs
         }
-        print_ctx = self.mutator.mutation_map.input_print_context
+        print_ctx = self.mutator.mutation_map.print_ctx
 
         def _get_origins(
             p: F.Parameters.is_parameter_operatable,

@@ -285,7 +285,7 @@ class DefaultSolver(Solver):
                         "resume_state",
                         iteration=0,
                         transformations=transforms,
-                        print_context=mutation_map.output_print_context,
+                        print_ctx=mutation_map.output_print_context,
                         G_in=G_in,
                         G_out=G_out,
                     )
