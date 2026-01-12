@@ -29,12 +29,9 @@ from faebryk.libs.picker.lcsc import (
     LCSC_PinmapException,
     attach,
     check_attachable,
-    get_raw,
 )
 from faebryk.libs.picker.picker import (
-    NotCompatibleException,
     PickError,
-    does_not_require_picker_check,
 )
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.test.times import Times
@@ -42,7 +39,6 @@ from faebryk.libs.util import (
     Tree,
     cast_assert,
     groupby,
-    not_none,
 )
 
 logger = logging.getLogger(__name__)
@@ -167,9 +163,7 @@ def _prepare_query(
             trait.get_params(),
         )
         cmp_params = {
-            fabll.Traits(p)
-            .get_obj_raw()
-            .get_name(): solver.inspect_get_known_supersets(
+            fabll.Traits(p).get_obj_raw(): solver.inspect_get_known_supersets(
                 # FIXME g
                 p  # , g=g, tg=tg
             )
@@ -178,7 +172,26 @@ def _prepare_query(
         if all(superset is None for superset in cmp_params.values()):
             logger.warning(f"Module `{module_node}` has no constrained parameters")
 
-        return params_t(package=package, qty=qty, **cmp_params)  # type: ignore
+        # TODO: More robust validation against API contract
+        # Check for singleton literals
+        for param, is_lit in cmp_params.items():
+            literal_node = is_lit.switch_cast()
+            if literal_node.isinstance(F.Literals.Numbers):
+                if literal_node.is_singleton():
+                    from atopile.compiler import DslRichException, DslValueError
+
+                    raise DslRichException(
+                        message=(
+                            f"Parameter `{param.pretty_repr()}` is assigned to an "
+                            f"exact value ({literal_node.pretty_str()}) "
+                            "instead of being constrained to an interval. "
+                        ),
+                        original=DslValueError(),
+                    )
+
+        return params_t(
+            package=package, qty=qty, **{k.get_name(): v for k, v in cmp_params.items()}
+        )  # type: ignore
 
     raise NotImplementedError(
         # f"Unsupported pickable trait: {module_node.get_trait(F.Pickable.is_pickable)}"

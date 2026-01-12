@@ -33,6 +33,7 @@ import atopile
 import faebryk
 import faebryk.libs
 import faebryk.libs.logging
+from atopile.compiler import DslRichException
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
 from faebryk.libs.logging import FLOG_FMT
 from faebryk.libs.util import Advancable, ConfigFlag
@@ -72,6 +73,7 @@ class LogHandler(RichHandler):
         tracebacks_unwrap: list[type[BaseException]] | None = [UserPythonModuleError],
         hide_traceback_types: tuple[type[BaseException], ...] = (
             _BaseBaseUserException,
+            DslRichException,
         ),
         always_show_traceback_types: tuple[type[BaseException], ...] = (
             UserPythonModuleError,

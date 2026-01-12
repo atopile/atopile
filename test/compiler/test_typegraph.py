@@ -6,11 +6,11 @@ import pytest
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
+from atopile.compiler import DslRichException, DslUndefinedSymbolError
 from atopile.compiler.ast_visitor import DslException
 from atopile.compiler.build import (
     Linker,
     StdlibRegistry,
-    UndefinedSymbolError,
     build_file,
 )
 from atopile.errors import UserSyntaxError
@@ -884,7 +884,7 @@ def test_forward_reference():
     )
 
     # no defintion later -> error
-    with pytest.raises(UndefinedSymbolError):
+    with pytest.raises(DslRichException) as e:
         build_type(
             """
             module App:
@@ -892,6 +892,8 @@ def test_forward_reference():
             """,
             link=True,
         )
+
+    assert isinstance(e.value.original, DslUndefinedSymbolError)
 
     # out-of-order (forward reference)
     _, tg, _, result = build_type(
@@ -1175,6 +1177,7 @@ class TestCanBridgeByNameShim:
             #pragma experiment("TRAITS")
             #pragma experiment("BRIDGE_CONNECT")
 
+            import ElectricPower
             import ElectricLogic
             import can_bridge_by_name
 
@@ -1184,11 +1187,11 @@ class TestCanBridgeByNameShim:
                 trait can_bridge_by_name<input_name="data_in", output_name="data_out">
 
             module App:
-                a = new ElectricLogic
+                a = new ElectricPower
                 b = new BridgeableModule
                 c = new ElectricLogic
 
-                a ~> b ~> c
+                a.hv ~> b ~> c
             """,
             link=True,
         )
@@ -1204,7 +1207,7 @@ class TestCanBridgeByNameShim:
         # a.can_bridge.out_ -> b.can_bridge.in_ (which points to b.data_in)
         # b.can_bridge.out_ (which points to b.data_out) -> c.can_bridge.in_
         expected = {
-            (("a", "can_bridge", "out_", ""), ("b", "can_bridge", "in_", "")),
+            (("a", "hv", "can_bridge", "out_", ""), ("b", "can_bridge", "in_", "")),
             (("b", "can_bridge", "out_", ""), ("c", "can_bridge", "in_", "")),
         }
         assert link_paths == expected, f"Expected {expected}, got {link_paths}"
@@ -3218,14 +3221,17 @@ class TestBlockInheritance:
         g, tg, stdlib, result = build_type(
             """
             import Electrical
+            import Resistor
 
             module Base:
                 a = new Electrical
+                r = new Resistor
                 b = new Electrical
                 a ~ b
+                a ~> r ~> b
 
             module Derived from Base:
-                c = new Electrical
+                pass
             """,
             link=True,
         )
@@ -3240,6 +3246,36 @@ class TestBlockInheritance:
 
         assert (("a",), ("b",)) in link_paths or (("b",), ("a",)) in link_paths, (
             "Connection a ~ b from Base should be inherited"
+        )
+        assert (
+            ("a", "can_bridge", "out_", ""),
+            ("r", "can_bridge", "in_", ""),
+        ) in link_paths, "Connection a ~> r ~> b from Base should be inherited"
+        assert (
+            ("r", "can_bridge", "out_", ""),
+            ("b", "can_bridge", "in_", ""),
+        ) in link_paths, "Connection a ~> r ~> b from Base should be inherited"
+
+        instance = tg.instantiate_node(type_node=derived_type, attributes={})
+        from faebryk.library._F import Electrical, Resistor
+
+        r = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=instance, child_identifier="r"
+        )
+        a = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=instance, child_identifier="a"
+        )
+        b = fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=instance, child_identifier="b"
+        )
+        r_bound = Resistor.bind_instance(not_none(r))
+        a_bound = Electrical.bind_instance(not_none(a))
+        b_bound = Electrical.bind_instance(not_none(b))
+        assert a_bound._is_interface.get().is_connected_to(b_bound), (
+            "Connection a ~ b from Base should be inherited"
+        )
+        assert r_bound.unnamed[0].get()._is_interface.get().is_connected_to(a_bound), (
+            "Connection a ~> r ~> b from Base should be inherited"
         )
 
     def test_interface_inheritance(self):
@@ -3378,7 +3414,7 @@ class TestRetypeOperator:
 
     def test_retype_to_unknown_type_errors(self):
         """Retype to an unknown type raises an error during linking."""
-        with pytest.raises(UndefinedSymbolError, match="not defined"):
+        with pytest.raises(DslRichException, match="not defined") as e:
             build_type(
                 """
                 import Resistor
@@ -3389,6 +3425,8 @@ class TestRetypeOperator:
                 """,
                 link=True,
             )
+
+        assert isinstance(e.value.original, DslUndefinedSymbolError)
 
 
 class TestSoftHardMakeChild:

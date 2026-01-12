@@ -11,7 +11,11 @@ from typing import Iterable
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
-from atopile.compiler import DslException
+from atopile.compiler import (
+    DslException,
+    DslRichException,
+    DslUndefinedSymbolError,
+)
 from atopile.compiler import ast_types as AST
 from atopile.compiler.antlr_visitor import ANTLRVisitor
 from atopile.compiler.ast_visitor import (
@@ -326,6 +330,15 @@ class Linker:
             return self._linked_modules[source_path].get(name)
         return None
 
+    def _find_import_node_for_ref(
+        self, import_ref: ImportRef, build_state: BuildState
+    ) -> fabll.Node | None:
+        """Find the AST node that triggered this import."""
+        for _, ref, node, _ in build_state.external_type_refs:
+            if ref == import_ref:
+                return node
+        return None
+
     def _build_imported_file(
         self, graph: graph.GraphView, import_ref: ImportRef, build_state: BuildState
     ) -> graph.BoundNode:
@@ -357,27 +370,45 @@ class Linker:
             self._linked_modules[source_path][import_ref.name] = type_node
             return type_node
 
-        child_result = build_file(
-            g=graph,
-            tg=self._tg,
-            import_path=import_ref.path,
-            path=source_path,
-        )
-        self._link_recursive(graph, child_result.state)
-        # Execute deferred operations (inheritance, retypes, for-loops) for the
-        # dependency file. This is critical for dependencies that use inheritance
-        # (e.g., `module X from Y:`), as the parent structure must be copied into
-        # derived types before their fields can be resolved.
-        from atopile.compiler.deferred_executor import DeferredExecutor
+        try:
+            child_result = build_file(
+                g=graph,
+                tg=self._tg,
+                import_path=import_ref.path,
+                path=source_path,
+            )
+            self._link_recursive(graph, child_result.state)
+            # Execute deferred operations (inheritance, retypes, for-loops) for the
+            # dependency file. This is critical for dependencies that use inheritance
+            # (e.g., `module X from Y:`), as the parent structure must be copied into
+            # derived types before their fields can be resolved.
+            from atopile.compiler.deferred_executor import DeferredExecutor
 
-        DeferredExecutor(
-            g=graph,
-            tg=self._tg,
-            state=child_result.state,
-            visitor=child_result.visitor,
-            stdlib=self._stdlib,
-            file_imports=self,  # Pass self as file import resolver
-        ).execute()
+            DeferredExecutor(
+                g=graph,
+                tg=self._tg,
+                state=child_result.state,
+                visitor=child_result.visitor,
+                stdlib=self._stdlib,
+                file_imports=self,  # Pass self as file import resolver
+            ).execute()
+        except DslRichException as ex:
+            # Add import frame showing where this import was triggered
+            import_node = self._find_import_node_for_ref(import_ref, build_state)
+            if import_node and build_state.file_path:
+                ex.add_import_frame(import_node, build_state.file_path)
+            raise
+        except DslException as ex:
+            # Bare exception from child — wrap with import context
+            import_node = self._find_import_node_for_ref(import_ref, build_state)
+            raise DslRichException(
+                str(ex),
+                traceback=[],
+                original=ex,
+                source_node=import_node,
+                file_path=build_state.file_path,
+            ) from ex
+
         self._linked_modules[source_path] = child_result.state.type_roots
         return child_result.state.type_roots[import_ref.name]
 
@@ -430,7 +461,12 @@ class Linker:
         build_state: BuildState,
         cached_type_roots: dict[str, graph.BoundNode] | None = None,
     ) -> None:
-        for type_reference, import_ref in build_state.external_type_refs:
+        for (
+            type_reference,
+            import_ref,
+            source_node,
+            traceback_stack,
+        ) in build_state.external_type_refs:
             if import_ref is None:
                 # Local type reference — look up in type_roots
                 type_id = fbrk.TypeGraph.get_type_reference_identifier(
@@ -438,8 +474,14 @@ class Linker:
                 )
                 target = build_state.type_roots.get(type_id)
                 if target is None:
-                    raise UndefinedSymbolError(
-                        f"Symbol `{type_id}` is not defined in this scope"
+                    from atopile.compiler import DslRichException
+
+                    raise DslRichException(
+                        f"Symbol `{type_id}` is not defined in this scope",
+                        original=DslUndefinedSymbolError(),
+                        source_node=source_node,
+                        file_path=build_state.file_path,
+                        traceback=traceback_stack,
                     )
             elif import_ref.path is None:
                 # stdlib import - first check Python types, then .ato files
@@ -647,7 +689,31 @@ def build_stage_2(
 
     if validate:
         with accumulate() as accumulator:
-            for _, type_node in result.state.type_roots.items():
-                for _, message in tg.validate_type(type_node=type_node):
+            types_to_validate: list[tuple[Path | None, graph.BoundNode]] = []
+
+            # 1. Add types from imported files
+            for file_path, types in linker._linked_modules.items():
+                for _, type_node in types.items():
+                    types_to_validate.append((file_path, type_node))
+
+            # 2. Add types from the entry file if not already covered
+            entry_file_path = (
+                linker._resolver._normalize_path(result.state.file_path)
+                if result.state.file_path
+                else None
+            )
+            if entry_file_path is None or entry_file_path not in linker._linked_modules:
+                for _, type_node in result.state.type_roots.items():
+                    types_to_validate.append((entry_file_path, type_node))
+
+            for file_path, type_node in types_to_validate:
+                for error_node, message in tg.validate_type(type_node=type_node):
                     with accumulator.collect():
-                        raise DslException(message)
+                        source_chunk = ASTVisitor.get_source_chunk(error_node)
+                        raise DslRichException(
+                            message,
+                            original=DslException(message),
+                            source_node=source_chunk,
+                            file_path=file_path,
+                            traceback=[],
+                        )

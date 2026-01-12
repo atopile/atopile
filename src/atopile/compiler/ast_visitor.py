@@ -5,14 +5,28 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Callable, ClassVar
+from typing import Any, Callable, ClassVar, NoReturn
 
 import atopile.compiler.ast_types as AST
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.compiler import CompilerException, DslException
+from atopile.compiler import (
+    CompilerException,
+    DslException,
+    DslFeatureNotEnabledError,
+    DslImportError,
+    DslKeyError,
+    DslNotImplementedError,
+    DslRichException,
+    DslSyntaxError,
+    DSLTracebackFrame,
+    DSLTracebackStack,
+    DslTypeError,
+    DslUndefinedSymbolError,
+    DslValueError,
+)
 from atopile.compiler.gentypegraph import (
     ActionGenerationError,
     ActionsFactory,
@@ -117,7 +131,14 @@ PIN_ID_PREFIX = ""
 @dataclass
 class BuildState:
     type_roots: dict[str, graph.BoundNode]
-    external_type_refs: list[tuple[graph.BoundNode, ImportRef | None]]
+    external_type_refs: list[
+        tuple[
+            graph.BoundNode,
+            ImportRef | None,
+            fabll.Node | None,
+            list[DSLTracebackFrame],
+        ]
+    ]  # [Type Reference Node, Import Reference, Source Chunk, Traceback Stack]
     file_path: Path | None
     import_path: str | None
     pending_execution: list[DeferredForLoop] = field(default_factory=list)
@@ -191,7 +212,7 @@ class _ScopeStack:
     def add_symbol(self, symbol: Symbol) -> None:
         current_state = self.current
         if symbol.name in current_state.symbols:
-            raise DslException(f"Symbol `{symbol.name}` already defined in scope")
+            raise DslKeyError(f"Symbol `{symbol.name}` already defined in scope")
 
         current_state.symbols[symbol.name] = symbol
 
@@ -225,7 +246,12 @@ class _TypeContextStack:
     """
 
     def __init__(
-        self, *, g: graph.GraphView, tg: fbrk.TypeGraph, state: BuildState
+        self,
+        *,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+        state: BuildState,
+        traceback_stack: "DSLTracebackStack",
     ) -> None:
         self._stack: list[
             tuple[graph.BoundNode, fabll.TypeNodeBoundTG, str, type[fabll.Node]]
@@ -233,6 +259,7 @@ class _TypeContextStack:
         self._g = g
         self._tg = tg
         self._state = state
+        self._traceback_stack = traceback_stack
 
     @contextmanager
     def enter(
@@ -311,7 +338,7 @@ class _TypeContextStack:
                 type_node=type_node, path=identifiers
             )
         except fbrk.TypeGraphPathError as exc:
-            raise DslException(self._format_path_error(path, exc)) from exc
+            raise DslUndefinedSymbolError(self._format_path_error(path, exc)) from exc
 
     @staticmethod
     def _format_path_error(
@@ -349,7 +376,11 @@ class _TypeContextStack:
 
         action.child_field._set_locator(action.get_identifier())
         action.child_field._soft_create = action.soft_create
-        fabll.Node._exec_field(t=bound_tg, field=action.child_field)
+        fabll.Node._exec_field(
+            t=bound_tg,
+            field=action.child_field,
+            source_chunk_node=action.source_chunk_node,
+        )
 
         # Track unresolved type references (both imports and local forward refs)
         if isinstance(action.child_field.nodetype, str):
@@ -358,7 +389,12 @@ class _TypeContextStack:
                 type_node=type_node, identifier=action.child_field.identifier
             )
             self._state.external_type_refs.append(
-                (not_none(type_ref), action.import_ref)
+                (
+                    not_none(type_ref),
+                    action.import_ref,
+                    action.source_chunk_node,
+                    self._traceback_stack.get_frames(),
+                )
             )
 
     # TODO FIXME: no type checking for is_interface trait on connected nodes.
@@ -369,15 +405,19 @@ class _TypeContextStack:
         bound_tg: fabll.TypeNodeBoundTG,
         action: AddMakeLinkAction,
     ) -> None:
-        bound_tg.MakeEdge(
+        ml = bound_tg.MakeEdge(
             lhs_reference_path=action.lhs_path,
             rhs_reference_path=action.rhs_path,
             edge=action.edge or fbrk.EdgeInterfaceConnection.build(shallow=False),
         )
 
+        if action.source_chunk_node and ml:
+            fabll.Node(ml).point_to_source_chunk(action.source_chunk_node)
+
 
 class AnyAtoBlock(fabll.Node):
     _definition_identifier: ClassVar[str] = "definition"
+    _source_identifier: ClassVar[str] = "source"
 
 
 class ASTVisitor:
@@ -434,12 +474,14 @@ class ASTVisitor:
             pending_execution=[],
         )
 
+        self._traceback_stack = DSLTracebackStack(file_path=file_path)
         self._experiments: set[ASTVisitor._Experiment] = set()
         self._scope_stack = _ScopeStack()
         self._type_stack = _TypeContextStack(
             g=self._graph,
             tg=self._tg,
             state=self._state,
+            traceback_stack=self._traceback_stack,
         )
         self._stdlib_allowlist = {
             type_._type_identifier(): type_
@@ -447,8 +489,32 @@ class ASTVisitor:
         }
         self._expr_counter = itertools.count()
 
-    @staticmethod
-    def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]]:
+    def _raise(
+        self,
+        exc_type: type[DslException],
+        message: str,
+        source_node: fabll.Node | None = None,
+    ) -> NoReturn:
+        """Raise a DslRichException with current context."""
+        raise DslRichException(
+            message,
+            original=exc_type(message),
+            source_node=source_node,
+            file_path=self._state.file_path,
+            traceback=self._traceback_stack.get_frames(),
+        )
+
+    def _decode_unit(self, node: AST.Quantity) -> type[fabll.Node]:
+        if (symbol := node.try_get_unit_symbol()) is None:
+            return F.Units.Dimensionless
+        try:
+            return F.Units.decode_symbol(self._graph, self._tg, symbol)
+        except F.Units.UnitNotFoundError as e:
+            self._raise(DslValueError, str(e), node)
+
+    def _parse_pragma(
+        self, pragma_text: str
+    ) -> tuple[str, list[str | int | float | bool]]:
         """
         pragma_stmt: '#pragma' function_call
         function_call: NAME '(' argument (',' argument)* ')'
@@ -472,7 +538,7 @@ class ASTVisitor:
         match = pragma_syntax.match(pragma_text)
 
         if match is None:
-            raise DslException(f"Malformed pragma: '{pragma_text}'")
+            self._raise(DslSyntaxError, f"Malformed pragma: '{pragma_text}'")
 
         data = match.groupdict()
         name = data["function_name"]
@@ -489,7 +555,9 @@ class ASTVisitor:
 
     def ensure_experiment(self, experiment: _Experiment) -> None:
         if experiment not in self._experiments:
-            raise DslException(f"Experiment {experiment} is not enabled")
+            self._raise(
+                DslFeatureNotEnabledError, f"Experiment {experiment} is not enabled"
+            )
 
     def _make_type_identifier(self, name: str) -> str:
         """Create namespaced identifier for ato types."""
@@ -523,11 +591,11 @@ class ASTVisitor:
     def _temporary_alias(self, name: str, path: FieldPath):
         """Install a temporary alias, checking for conflicts in both namespaces."""
         if self._scope_stack.symbol_exists(name):
-            raise DslException(
+            raise DslKeyError(
                 f"Loop variable `{name}` conflicts with an existing symbol in scope"
             )
         if self._type_stack.field_exists(name):
-            raise DslException(
+            raise DslKeyError(
                 f"Loop variable `{name}` conflicts with an existing field in scope"
             )
 
@@ -583,7 +651,7 @@ class ASTVisitor:
             not (type_name := fbrk.TypeGraph.get_type_name(type_node=resolved_node))
             == F.Collections.PointerSequence._type_identifier()
         ):
-            raise DslException(
+            raise DslTypeError(
                 f"Cannot iterate over `{'.'.join(loop.container_path)}`: "
                 f"expected a sequence, got `{type_name}`"
             )
@@ -649,7 +717,10 @@ class ASTVisitor:
             raise NotImplementedError(f"No handler for node type: {node_type}")
 
         bound_node = getattr(AST, node_type).bind_instance(node.instance)
-        return handler(bound_node)
+
+        # Automatically handle tracebacks for all visitor methods
+        with self._traceback_stack.enter(bound_node):
+            return handler(bound_node)
 
     def visit_File(self, node: AST.File):
         self.visit(node.scope.get())
@@ -661,15 +732,19 @@ class ASTVisitor:
 
     def visit_PragmaStmt(self, node: AST.PragmaStmt):
         if (pragma := node.get_pragma()) is None:
-            raise DslException(f"Pragma statement has no pragma text: {node}")
+            self._raise(
+                DslSyntaxError, f"Pragma statement has no pragma text: {node}", node
+            )
 
         pragma_func_name, pragma_args = self._parse_pragma(pragma)
 
         match pragma_func_name:
             case ASTVisitor._Pragma.EXPERIMENT.value:
                 if len(pragma_args) != 1:
-                    raise DslException(
-                        f"Experiment pragma takes exactly one argument: `{pragma}`"
+                    self._raise(
+                        DslSyntaxError,
+                        f"Experiment pragma takes exactly one argument: `{pragma}`",
+                        node,
                     )
 
                 (experiment_name,) = pragma_args
@@ -677,13 +752,17 @@ class ASTVisitor:
                 try:
                     experiment = ASTVisitor._Experiment(experiment_name)
                 except ValueError:
-                    raise DslException(
-                        f"Experiment not recognized: `{experiment_name}`"
+                    self._raise(
+                        DslValueError,
+                        f"Experiment not recognized: `{experiment_name}`",
+                        node,
                     )
 
                 self.enable_experiment(experiment)
             case _:
-                raise DslException(f"Pragma function not recognized: `{pragma}`")
+                self._raise(
+                    DslSyntaxError, f"Pragma function not recognized: `{pragma}`", node
+                )
 
     def visit_ImportStmt(self, node: AST.ImportStmt):
         type_ref_name = node.get_type_ref_name()
@@ -693,18 +772,28 @@ class ASTVisitor:
         is_stdlib = type_ref_name in self._stdlib_allowlist
         is_trait_shim = TraitOverrideRegistry.matches_trait_override(type_ref_name)
         if path is None and not is_stdlib and not is_trait_shim:
-            raise DslException(f"Standard library import not found: {type_ref_name}")
+            self._raise(
+                DslImportError,
+                f"Standard library import not found: {type_ref_name}",
+                node,
+            )
 
         self._scope_stack.add_symbol(Symbol(name=type_ref_name, import_ref=import_ref))
 
     def visit_BlockDefinition(self, node: AST.BlockDefinition):
         if self._scope_stack.depth != 1:
-            raise DslException("Nested block definitions are not permitted")
+            self._raise(
+                DslSyntaxError, "Nested block definitions are not permitted", node
+            )
 
         module_name = node.get_type_ref_name()
 
         if self._scope_stack.symbol_exists(module_name):
-            raise DslException(f"Symbol `{module_name}` already defined in scope")
+            self._raise(
+                DslKeyError,
+                f"Symbol `{module_name}` already defined in scope",
+                node,
+            )
 
         source_dir = (
             str(self._state.file_path.parent) if self._state.file_path else None
@@ -792,6 +881,7 @@ class ASTVisitor:
                     parent_ref=(import_ref if import_ref else super_type_name),
                     source_order=len(self._state.pending_inheritance),
                     auto_generated_ids=auto_generated_ids,
+                    source_node=node,
                 )
             )
 
@@ -802,6 +892,7 @@ class ASTVisitor:
             identifier=AnyAtoBlock._definition_identifier,
             index=None,
         )
+        fabll.Node(type_node).point_to_source_chunk(node.source.get())
 
         stmts = node.scope.get().stmts.get().as_list()
         with self._scope_stack.enter():
@@ -863,12 +954,13 @@ class ASTVisitor:
                 nodetype=F.Electrical,
                 identifier=signal_name,
             ),
+            source_chunk_node=node.source.get(),
         )
 
     def visit_PinDeclaration(self, node: AST.PinDeclaration):
         pin_label = node.get_label()
         if pin_label is None:
-            raise DslException("Pin declaration has no label")
+            self._raise(DslSyntaxError, "Pin declaration has no label", node)
 
         if isinstance(pin_label, float) and pin_label.is_integer():
             pin_label_str = str(int(pin_label))
@@ -884,6 +976,7 @@ class ASTVisitor:
         return AddMakeChildAction(
             target_path=target_path,
             child_field=ActionsFactory.pin_child_field(pin_label_str, identifier),
+            source_chunk_node=node.source.get(),
         )
 
     def visit_FieldRef(self, node: AST.FieldRef) -> FieldPath:
@@ -901,7 +994,7 @@ class ASTVisitor:
             segments.append(FieldPath.Segment(identifier=f"{PIN_ID_PREFIX}{pin}"))
 
         if not segments:
-            raise DslException("Empty field reference encountered")
+            self._raise(DslSyntaxError, "Empty field reference encountered", node)
 
         (root, *other) = segments
         if (
@@ -918,6 +1011,7 @@ class ASTVisitor:
         self,
         target_path: FieldPath,
         new_spec: NewChildSpec,
+        source_chunk_node: AST.SourceChunk | None = None,
     ) -> list[AddMakeChildAction | AddMakeLinkAction] | AddMakeChildAction:
         # FIXME: linker should handle this
         # Check if module type is in stdlib or an imported python module
@@ -938,9 +1032,10 @@ class ASTVisitor:
             if raw_path.suffix == ".py" and raw_path.exists():
                 obj = import_from_path(raw_path, new_spec.symbol.import_ref.name)
                 if not isinstance(obj, type) or not issubclass(obj, fabll.Node):
-                    raise DslException(
+                    self._raise(
+                        DslTypeError,
                         f"Symbol `{new_spec.symbol.import_ref.name}` in `{raw_path}` "
-                        "is not a fabll.Node"
+                        "is not a fabll.Node",
                     )
                 module_fabll_type = obj
 
@@ -954,9 +1049,10 @@ class ASTVisitor:
                         container_path=list(container_path.identifiers()),
                     )
                 except fbrk.TypeGraphPathError as exc:
-                    raise DslException(
-                        self._type_stack._format_path_error(container_path, exc)
-                    ) from exc
+                    self._raise(
+                        DslUndefinedSymbolError,
+                        self._type_stack._format_path_error(container_path, exc),
+                    )
 
                 member_identifiers = {
                     identifier
@@ -965,7 +1061,10 @@ class ASTVisitor:
                 }
 
                 if target_path.leaf.identifier not in member_identifiers:
-                    raise DslException(f"Field `{target_path}` is not defined in scope")
+                    self._raise(
+                        DslUndefinedSymbolError,
+                        f"Field `{target_path}` is not defined in scope",
+                    )
 
             # Check if field exists for non-indexed assignments with parent segments
             elif target_path.parent_segments:
@@ -976,10 +1075,12 @@ class ASTVisitor:
                         type_node=type_node,
                         container_path=list(parent_path.identifiers()),
                     )
-                except fbrk.TypeGraphPathError as exc:
-                    raise DslException(
-                        f"Field `{parent_path}` could not be resolved"
-                    ) from exc
+                except fbrk.TypeGraphPathError:
+                    self._raise(
+                        DslUndefinedSymbolError,
+                        f"Field `{parent_path}` could not be resolved",
+                        source_chunk_node,
+                    )
 
             assert new_spec.type_identifier is not None
 
@@ -989,6 +1090,7 @@ class ASTVisitor:
                 module_type=module_fabll_type,
                 template_args=new_spec.template_args,
                 import_ref=new_spec.symbol.import_ref if new_spec.symbol else None,
+                source_chunk_node=source_chunk_node,
             )
 
         try:
@@ -999,16 +1101,17 @@ class ASTVisitor:
                 template_args=new_spec.template_args,
                 count=new_spec.count,
                 import_ref=new_spec.symbol.import_ref if new_spec.symbol else None,
+                source_chunk_node=source_chunk_node,
             )
         except ActionGenerationError as e:
-            raise DslException(str(e)) from e
+            self._raise(DslValueError, str(e), source_chunk_node)
 
         return [*child_actions, *link_actions]
 
     def visit_Slice(self, node: AST.Slice) -> tuple[int | None, int | None, int | None]:
         start, stop, step = node.get_values()
         if step == 0:
-            raise DslException("Slice step cannot be zero")
+            self._raise(DslValueError, "Slice step cannot be zero", node)
         return start, stop, step
 
     def visit_Assignment(self, node: AST.Assignment):
@@ -1035,10 +1138,14 @@ class ASTVisitor:
         match assignable:
             case NewChildSpec() as new_spec:
                 if target_path.leaf.is_index:
-                    raise DslException(
-                        f"Field `{target_path}` with index can not be assigned with new"
+                    self._raise(
+                        DslSyntaxError,
+                        f"Field `{target_path}` with index cannot be assigned with new",
+                        node,
                     )
-                return self._handle_new_child(target_path, new_spec)
+                return self._handle_new_child(
+                    target_path, new_spec, source_chunk_node=node.source.get()
+                )
             case ParameterSpec() as param_spec:
                 # If index, check if path is defined in scope
                 if target_path.leaf.is_index and target_path.parent_segments:
@@ -1052,9 +1159,11 @@ class ASTVisitor:
                             container_path=list(container_path.identifiers()),
                         )
                     except fbrk.TypeGraphPathError as exc:
-                        raise DslException(
-                            self._type_stack._format_path_error(container_path, exc)
-                        ) from exc
+                        self._raise(
+                            DslUndefinedSymbolError,
+                            self._type_stack._format_path_error(container_path, exc),
+                            node,
+                        )
 
                     member_identifiers = {
                         identifier
@@ -1063,8 +1172,10 @@ class ASTVisitor:
                     }
 
                     if target_path.leaf.identifier not in member_identifiers:
-                        raise DslException(
-                            f"Field `{target_path}` is not defined in scope"
+                        self._raise(
+                            DslUndefinedSymbolError,
+                            f"Field `{target_path}` is not defined in scope",
+                            node,
                         )
                 return ActionsFactory.parameter_actions(
                     target_path=target_path,
@@ -1074,6 +1185,7 @@ class ASTVisitor:
                     # parameter assignment implicitly creates the parameter, if it
                     # doesn't exist already
                     soft_create=True,
+                    source_chunk_node=node.source.get(),
                 )
             case _:
                 raise NotImplementedError(f"Unhandled assignable type: {assignable}")
@@ -1140,8 +1252,10 @@ class ASTVisitor:
                 # Quantity with unit tuple (child_field, unit_type)
                 return [child_field]
 
-        raise DslException(
-            f"Unknown arithmetic: {fabll.Traits(node).get_obj_raw().get_type_name()}"
+        self._raise(
+            DslSyntaxError,
+            f"Unknown arithmetic: {fabll.Traits(node).get_obj_raw().get_type_name()}",
+            node,
         )
 
     def visit_AssertStmt(self, node: AST.AssertStmt) -> AddMakeChildAction:
@@ -1153,8 +1267,10 @@ class ASTVisitor:
         rhs_refpath = self.to_expression_tree(root_comparison_clause.get_rhs())
 
         if len(comparison_clauses) > 1:
-            raise NotImplementedError(
-                "Assert statement must have exactly one comparison clause (operator)"
+            self._raise(
+                DslNotImplementedError,
+                "Assert statement must have exactly one comparison clause (operator)",
+                node,
             )
             # TODO: handle multiple clauses
 
@@ -1174,7 +1290,9 @@ class ASTVisitor:
             case AST.ComparisonClause.ComparisonOperator.IS:
                 expr_type = F.Expressions.Is
             case _:
-                raise DslException(f"Unknown comparison operator: {operator}")
+                self._raise(
+                    DslSyntaxError, f"Unknown comparison operator: {operator}", node
+                )
 
         # Generate unique identifier for this assertion to avoid collisions
         # when multiple assertions target the same LHS
@@ -1205,16 +1323,13 @@ class ASTVisitor:
         return AddMakeChildAction(
             target_path=FieldPath(segments=(FieldPath.Segment(unique_id),)),
             child_field=expr,
+            source_chunk_node=node.source.get(),
         )
 
     def visit_Quantity(
         self, node: AST.Quantity
     ) -> tuple["fabll._ChildField[F.Literals.Numbers]", type[fabll.Node]]:
-        unit_t = (
-            F.Units.Dimensionless
-            if (symbol := node.try_get_unit_symbol()) is None
-            else F.Units.decode_symbol(self._graph, self._tg, symbol)
-        )
+        unit_t = self._decode_unit(node)
         operand = F.Literals.Numbers.MakeChild_SingleValue(
             value=node.get_value(), unit=unit_t
         )
@@ -1240,7 +1355,9 @@ class ASTVisitor:
                 AST.BinaryExpression.BinaryOperator.OR
                 | AST.BinaryExpression.BinaryOperator.AND
             ):
-                raise DslException(f"Unsupported binary operator: {operator}")
+                self._raise(
+                    DslSyntaxError, f"Unsupported binary operator: {operator}", node
+                )
 
         expr = expr_t.MakeChild(lhs_refpath, rhs_refpath)
         expr.add_dependant(
@@ -1274,32 +1391,24 @@ class ASTVisitor:
             case [None, None]:
                 unit_t = F.Units.Dimensionless
             case [None, _]:
-                unit_t = F.Units.decode_symbol(
-                    self._graph, self._tg, not_none(end_unit_symbol)
-                )
+                unit_t = self._decode_unit(node.end.get())
             case [_, None]:
-                unit_t = F.Units.decode_symbol(
-                    self._graph, self._tg, not_none(start_unit_symbol)
-                )
+                unit_t = self._decode_unit(node.start.get())
             case [_, _] if start_unit_symbol != end_unit_symbol:
-                unit_t = F.Units.decode_symbol(
-                    self._graph, self._tg, not_none(start_unit_symbol)
-                )
-                end_unit_t = F.Units.decode_symbol(
-                    self._graph, self._tg, not_none(end_unit_symbol)
-                )
+                unit_t = self._decode_unit(node.start.get())
+                end_unit_t = self._decode_unit(node.end.get())
 
                 unit_info = F.Units.extract_unit_info(unit_t)
                 end_unit_info = F.Units.extract_unit_info(end_unit_t)
                 if not unit_info.is_commensurable_with(end_unit_info):
-                    raise DslException(
-                        "Bounded quantity start and end units must be commensurable"
+                    self._raise(
+                        DslTypeError,
+                        "Bounded quantity start and end units must be commensurable",
+                        node,
                     )
                 end_value = unit_info.convert_value(end_value, end_unit_info)
             case [_, _]:
-                unit_t = F.Units.decode_symbol(
-                    self._graph, self._tg, not_none(start_unit_symbol)
-                )
+                unit_t = self._decode_unit(node.start.get())
             case _:
                 raise CompilerException(
                     "Unexpected bounded quantity start and end units"
@@ -1319,9 +1428,6 @@ class ASTVisitor:
         tol_value = node.tolerance.get().get_value()
         tol_unit_symbol = node.tolerance.get().try_get_unit_symbol()
 
-        def _decode_symbol(symbol: str) -> type[fabll.Node]:
-            return F.Units.decode_symbol(self._graph, self._tg, symbol)
-
         match [quantity_unit_symbol, tol_unit_symbol]:
             case [None, None]:
                 rel = False
@@ -1331,33 +1437,37 @@ class ASTVisitor:
                 unit_t = F.Units.Dimensionless
             case [_, F.Units.PERCENT_SYMBOL]:
                 rel = True
-                unit_t = _decode_symbol(not_none(quantity_unit_symbol))
+                unit_t = self._decode_unit(node.quantity.get())
             case [_, None]:
                 rel = False
-                unit_t = _decode_symbol(not_none(quantity_unit_symbol))
+                unit_t = self._decode_unit(node.quantity.get())
             case [None, _]:
                 rel = False
-                unit_t = _decode_symbol(not_none(tol_unit_symbol))
+                unit_t = self._decode_unit(node.tolerance.get())
             case [_, _] if quantity_unit_symbol == tol_unit_symbol:
                 rel = False
-                unit_t = _decode_symbol(not_none(quantity_unit_symbol))
+                unit_t = self._decode_unit(node.quantity.get())
             case [_, _]:
                 rel = False
-                unit_t = _decode_symbol(not_none(quantity_unit_symbol))
-                tol_unit_t = _decode_symbol(not_none(tol_unit_symbol))
+                unit_t = self._decode_unit(node.quantity.get())
+                tol_unit_t = self._decode_unit(node.tolerance.get())
 
                 q_info = F.Units.extract_unit_info(unit_t)
                 tol_info = F.Units.extract_unit_info(tol_unit_t)
 
                 try:
                     tol_value = q_info.convert_value(tol_value, tol_info)
-                except UnitsNotCommensurableError as e:
-                    raise DslException(
+                except UnitsNotCommensurableError:
+                    self._raise(
+                        DslTypeError,
                         f"Tolerance unit `{tol_unit_symbol}` is not commensurable "
-                        f"with quantity unit `{quantity_unit_symbol}`"
-                    ) from e
+                        f"with quantity unit `{quantity_unit_symbol}`",
+                        node,
+                    )
             case _:
-                raise DslException("Unexpected quantity and tolerance units")
+                self._raise(
+                    DslSyntaxError, "Unexpected quantity and tolerance units", node
+                )
 
         operand = (
             F.Literals.Numbers.MakeChild_FromCenterRel(
@@ -1450,7 +1560,7 @@ class ASTVisitor:
             pin_node = node.cast(t=AST.PinDeclaration)
             pin_label = pin_node.get_label()
             if pin_label is None:
-                raise DslException("Pin declaration has no label")
+                self._raise(DslSyntaxError, "Pin declaration has no label", node)
 
             if isinstance(pin_label, float) and pin_label.is_integer():
                 pin_label_str = str(int(pin_label))
@@ -1482,7 +1592,11 @@ class ASTVisitor:
             LinkPath(list(rhs_path.identifiers()))
         )
 
-        link_action = AddMakeLinkAction(lhs_path=lhs_link_path, rhs_path=rhs_link_path)
+        link_action = AddMakeLinkAction(
+            lhs_path=lhs_link_path,
+            rhs_path=rhs_link_path,
+            source_chunk_node=node.source.get(),
+        )
         return [*lhs_actions, *rhs_actions, link_action]
 
     def visit_RetypeStmt(self, node: AST.RetypeStmt):
@@ -1502,13 +1616,16 @@ class ASTVisitor:
         # Linker will resolve this later
         new_type_ref = self._tg.add_type_reference(type_identifier=new_type_name)
 
-        self._state.external_type_refs.append((new_type_ref, import_ref))
+        self._state.external_type_refs.append(
+            (new_type_ref, import_ref, node, self._traceback_stack.get_frames())
+        )
         self._state.pending_retypes.append(
             PendingRetype(
                 containing_type=type_node,
                 target_path=target_path,
                 new_type_ref=new_type_ref,
                 source_order=len(self._state.pending_retypes),
+                source_node=node,
             )
         )
 
@@ -1516,13 +1633,17 @@ class ASTVisitor:
 
     def visit_DeclarationStmt(self, node: AST.DeclarationStmt):
         unit_symbol = node.unit_symbol.get().symbol.get().get_single()
-        unit_t = F.Units.decode_symbol(self._graph, self._tg, not_none(unit_symbol))
+        try:
+            unit_t = F.Units.decode_symbol(self._graph, self._tg, not_none(unit_symbol))
+        except F.Units.UnitNotFoundError as e:
+            self._raise(DslValueError, str(e), node)
         target_path = self.visit_FieldRef(node.get_field_ref())
         return ActionsFactory.parameter_actions(
             target_path=target_path,
             param_child=F.Parameters.NumericParameter.MakeChild(unit=unit_t),
             constraint_operand=None,
             constraint_expr=self._type_stack.constraint_expr,
+            source_chunk_node=node.source.get(),
         )
 
     def _field_path_to_link_path(self, field_path: FieldPath) -> LinkPath:
@@ -1581,14 +1702,13 @@ class ASTVisitor:
         )
         return [*lhs_actions, *rhs_actions, link_action]
 
-    @staticmethod
     def _select_elements(
-        iterable_field: AST.IterableFieldRef, sequence_elements: list[FieldPath]
+        self, iterable_field: AST.IterableFieldRef, sequence_elements: list[FieldPath]
     ) -> list[FieldPath]:
         start_idx, stop_idx, step_idx = iterable_field.slice.get().get_values()
 
         if step_idx == 0:
-            raise DslException("Slice step cannot be zero")
+            self._raise(DslValueError, "Slice step cannot be zero")
 
         return (
             sequence_elements
@@ -1598,18 +1718,14 @@ class ASTVisitor:
 
     def visit_ForStmt(self, node: AST.ForStmt):
         def validate_stmts(stmts: list[fabll.Node]) -> None:
-            def error(node: fabll.Node) -> None:
-                # FiXME: make this less fragile
-                source_node = AST.SourceChunk.bind_instance(
-                    not_none(
-                        fbrk.EdgeComposition.get_child_by_identifier(
-                            bound_node=node.instance, child_identifier="source"
-                        )
-                    )
+            def error(stmt_node: fabll.Node) -> None:
+                source = self.get_source_chunk(stmt_node.instance)
+                source_text = source.get_text().split(" ")[0] if source else ""
+                self._raise(
+                    DslSyntaxError,
+                    (f"Invalid statement in for loop: {source_text}"),
+                    node,
                 )
-                source_text = source_node.get_text()
-                stmt_str = source_text.split(" ")[0]
-                raise DslException(f"Invalid statement in for loop: {stmt_str}")
 
             for stmt in stmts:
                 for illegal_type in (
@@ -1707,7 +1823,11 @@ class ASTVisitor:
         (trait_type_name,) = node.type_ref.get().name.get().get_values()
 
         if not self._scope_stack.symbol_exists(trait_type_name):
-            raise DslException(f"Trait `{trait_type_name}` must be imported before use")
+            self._raise(
+                DslImportError,
+                f"Trait `{trait_type_name}` must be imported before use",
+                node,
+            )
 
         target_path_list: LinkPath = []
         if (target_field_ref := node.get_target()) is not None:
@@ -1724,12 +1844,44 @@ class ASTVisitor:
             try:
                 trait_fabll_type = self._stdlib_allowlist[trait_type_name]
             except KeyError:
-                raise DslException(f"External trait `{trait_type_name}` not supported")
+                self._raise(
+                    DslImportError,
+                    f"External trait `{trait_type_name}` not supported",
+                    node,
+                )
 
             if not fabll.Traits.is_trait_type(trait_fabll_type):
-                raise DslException(f"`{trait_type_name}` is not a valid trait")
+                self._raise(
+                    DslTypeError, f"`{trait_type_name}` is not a valid trait", node
+                )
 
             return ActionsFactory.trait_from_field(
                 ActionsFactory.trait_field(trait_fabll_type, template_args),
                 target_path_list,
+                source_chunk_node=node.source.get(),
             )
+
+    @staticmethod
+    def get_source_chunk(
+        type_graph_node: graph.BoundNode,
+    ) -> AST.SourceChunk | None:
+        """
+        Get corresponding SourceChunk for a given node in the typegraph.
+        """
+
+        source_chunk_bnode = None
+        if fabll.Node(type_graph_node).isinstance(AST.SourceChunk):
+            source_chunk_bnode = type_graph_node
+        if source_chunk_bnode is None:
+            source_chunk_bnode = fbrk.EdgePointer.get_pointed_node_by_identifier(
+                bound_node=type_graph_node,
+                identifier=AnyAtoBlock._source_identifier,
+            )
+        if source_chunk_bnode is None:
+            source_chunk_bnode = fbrk.EdgeComposition.get_child_by_identifier(
+                bound_node=type_graph_node,
+                child_identifier="source",
+            )
+        if source_chunk_bnode is None:
+            return None
+        return AST.SourceChunk.bind_instance(source_chunk_bnode)

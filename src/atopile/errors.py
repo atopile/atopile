@@ -29,11 +29,8 @@ def _render_tokens(
     )
     src_path, src_line, src_col = get_src_info_from_token(start_token)
 
-    # Make the path relative to the current working directory, if possible
-    try:
-        src_path = Path(src_path).relative_to(Path.cwd())
-    except ValueError:
-        pass
+    # Use absolute path for clickability in terminals/IDEs
+    src_path = Path(src_path).resolve()
     source_info = str(src_path)
     if src_line := src_line:
         source_info += f":{src_line}"
@@ -158,7 +155,7 @@ class _BaseUserException(_BaseBaseUserException):
         renderables: list["ConsoleRenderable"] = []
 
         if self.title:
-            renderables += [Text(self.title, style="bold")]
+            renderables += [Text(self.title, style="bold red")]
 
         renderables += [
             _markdown(self.message)

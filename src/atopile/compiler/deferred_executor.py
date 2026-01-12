@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Protocol
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
-from atopile.compiler import DslException
+from atopile.compiler import DslException, DslRichException
 from atopile.compiler.ast_visitor import BuildState
 from atopile.compiler.gentypegraph import ImportRef
 from faebryk.libs.util import DAG
@@ -124,7 +124,10 @@ class DeferredExecutor:
         try:
             sorted_types = dag.topologically_sorted()
         except ValueError as e:
-            raise DslException("Circular inheritance detected") from e
+            raise DslRichException(
+                "Circular inheritance detected",
+                file_path=self._base_file,
+            ) from e
 
         for type_name in sorted_types:
             if type_name not in pending_by_name:
@@ -155,48 +158,59 @@ class DeferredExecutor:
         3. Update the type reference to point to the new type
         """
         for retype in sorted(self._pending_retypes, key=lambda r: r.source_order):
-            target_path = retype.target_path
-            path_ids = target_path.identifiers()
+            try:
+                target_path = retype.target_path
+                path_ids = target_path.identifiers()
 
-            if target_path.is_singleton():
-                parent_path = None
-                (leaf_id,) = path_ids
-            else:
-                *parent_path, leaf_id = path_ids
+                if target_path.is_singleton():
+                    parent_path = None
+                    (leaf_id,) = path_ids
+                else:
+                    *parent_path, leaf_id = path_ids
 
-            if parent_path is not None:
+                if parent_path is not None:
+                    if (
+                        owning_type := self._tg.resolve_child_path(
+                            start_type=retype.containing_type, path=parent_path
+                        )
+                    ) is None:
+                        raise DslException(
+                            (
+                                f"Cannot resolve path `{'.'.join(parent_path)}`",
+                                " for retyping",
+                            )
+                        )
+                else:
+                    owning_type = retype.containing_type
+
                 if (
-                    owning_type := self._tg.resolve_child_path(
-                        start_type=retype.containing_type, path=parent_path
+                    type_ref := self._tg.get_make_child_type_reference_by_identifier(
+                        type_node=owning_type, identifier=leaf_id
                     )
                 ) is None:
                     raise DslException(
-                        f"Cannot resolve path `{'.'.join(parent_path)}` for retyping"
+                        f"Cannot retype `{target_path}`: field does not exist"
                     )
-            else:
-                owning_type = retype.containing_type
 
-            if (
-                type_ref := self._tg.get_make_child_type_reference_by_identifier(
-                    type_node=owning_type, identifier=leaf_id
-                )
-            ) is None:
-                raise DslException(
-                    f"Cannot retype `{target_path}`: field does not exist"
-                )
+                # linker should by now have resolved the type reference
+                if (
+                    new_type := fbrk.Linker.get_resolved_type(
+                        type_reference=retype.new_type_ref
+                    )
+                ) is None:
+                    type_id = fbrk.TypeGraph.get_type_reference_identifier(
+                        type_reference=retype.new_type_ref
+                    )
+                    raise DslException(f"Cannot retype to `{type_id}`: type not linked")
 
-            # linker should by now have resolved the type reference
-            if (
-                new_type := fbrk.Linker.get_resolved_type(
-                    type_reference=retype.new_type_ref
+                # Apply retyping
+                fbrk.Linker.update_type_reference(
+                    g=self._g, type_reference=type_ref, target_type_node=new_type
                 )
-            ) is None:
-                type_id = fbrk.TypeGraph.get_type_reference_identifier(
-                    type_reference=retype.new_type_ref
-                )
-                raise DslException(f"Cannot retype to `{type_id}`: type not linked")
-
-            # Apply retyping
-            fbrk.Linker.update_type_reference(
-                g=self._g, type_reference=type_ref, target_type_node=new_type
-            )
+            except DslException as ex:
+                raise DslRichException(
+                    str(ex),
+                    original=ex,
+                    source_node=retype.source_node,
+                    file_path=self._base_file,
+                ) from ex

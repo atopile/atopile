@@ -24,7 +24,7 @@ from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.test.boundexpressions import BoundExpressions
 from faebryk.libs.util import cast_assert, not_none
-from test.compiler.conftest import build_instance
+from test.compiler.conftest import build_instance, build_type
 
 E = BoundExpressions()
 
@@ -3500,3 +3500,113 @@ class TestReferenceOverrides:
 
         # The trait's reference should be connected to the external power
         assert _check_connected(trait_reference, power)
+
+
+class TestDSLExceptionTracebacks:
+    def test_get_source_chunk(self):
+        _, tg, _, result = build_type(
+            """
+            import Resistor
+
+            module _App:
+                r = new Resistor
+
+                r2 = new Resistor
+                r2.resistance = 1kohm +/-5%
+            """,
+            "A",
+        )
+        app_type = result.state.type_roots["_App"]
+
+        r = _get_child(app_type, "r")
+        r2 = _get_child(app_type, "r2")
+        make_children = tg.collect_make_children(type_node=app_type)
+
+        source_chunk_r1 = ASTVisitor.get_source_chunk(r)
+        assert source_chunk_r1 is not None
+        assert source_chunk_r1.loc.get().get_start_line() == 5
+        assert source_chunk_r1.loc.get().get_end_line() == 5
+
+        source_chunk_r2 = ASTVisitor.get_source_chunk(r2)
+        assert source_chunk_r2 is not None
+        assert source_chunk_r2.loc.get().get_start_line() == 7
+        assert source_chunk_r2.loc.get().get_end_line() == 7
+
+        # Directly grab the constraint node for r2.resistance
+        # It's named constraint_r2_resistance_<unique_id>
+        r2_res_constraint = next(
+            node
+            for id_, node in make_children
+            if id_ is not None and id_.startswith("constraint_r2_resistance")
+        )
+        source_chunk_is = ASTVisitor.get_source_chunk(r2_res_constraint)
+        assert source_chunk_is is not None
+        assert source_chunk_is.loc.get().get_start_line() == 8
+        assert source_chunk_is.loc.get().get_end_line() == 8
+
+    def test_traceback_from_dsl_exception(self):
+        with pytest.raises(DslException) as e:
+            build_instance(
+                """
+            module C:
+                pass
+
+            module B:
+                Bs = new C[2]
+
+            module A:
+                b = new B
+                b[5] = 5V
+
+            module App:
+                a = new A
+            """,
+                "App",
+            )
+
+        assert e.value.message == "Field `b[5]` is not defined in scope"
+
+    def test_traceback_from_invalid_pragma(self):
+        with pytest.raises(DslException) as e:
+            build_instance(
+                """
+            #pragma experiment("INVALID_EXPERIMENT")
+
+            module App:
+                pass
+            """,
+                "App",
+            )
+        assert e.value.message == "Experiment not recognized: `INVALID_EXPERIMENT`"
+
+    def test_traceback_from_validation_error(self):
+        with pytest.raises(DslException) as e:
+            build_instance(
+                """
+            module App:
+                signal s1
+                power.missing = 5V
+                # s1 ~ power.missing
+            """,
+                "App",
+            )
+        assert (
+            e.value.message
+            == "Field `power.missing.can_be_operand` could not be resolved"
+        )
+
+    def test_missing_field_in_make_link(self):
+        with pytest.raises(DslException) as e:
+            build_instance(
+                """
+            import Resistor
+            import LED
+
+            module _App from LED:
+                resistor = new Resistor
+                diode.anode ~ resistor.unnamed[0]
+                dcathode ~ resistor.unnamed[1]
+            """,
+                "_App",
+            )
+        assert e.value.message == "Field `dcathode` could not be resolved"

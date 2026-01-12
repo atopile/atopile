@@ -286,13 +286,13 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
                 f" {nodetype.Attributes} but got {type(attributes)}"
             )
 
-    def _add_to_typegraph(self) -> None:
+    def _add_to_typegraph(self) -> graph.BoundNode:
         identifier = self.identifier
         if isinstance(identifier, PLACEHOLDER):
             raise FabLLException("Placeholder identifier not allowed")
 
         if isinstance(self.nodetype, str):
-            self.t.tg.add_make_child_deferred(
+            mc = self.t.tg.add_make_child_deferred(
                 type_node=self.t.get_or_create_type(),
                 child_type_identifier=self.nodetype,
                 identifier=identifier,
@@ -305,7 +305,7 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
             child_type_node = self.nodetype.bind_typegraph(
                 self.t.tg
             ).get_or_create_type()
-            self.t.tg.add_make_child(
+            mc = self.t.tg.add_make_child(
                 type_node=self.t.get_or_create_type(),
                 child_type=child_type_node,
                 identifier=identifier,
@@ -314,6 +314,7 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
                 else None,
                 soft_create=self._soft_create,
             )
+        return mc
 
     def get(self) -> T:
         raise InvalidState(
@@ -990,7 +991,11 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
     @classmethod
     def _exec_field(
-        cls, t: "TypeNodeBoundTG[Self, T]", field: Field, type_field: bool = False
+        cls,
+        t: "TypeNodeBoundTG[Self, T]",
+        field: Field,
+        type_field: bool = False,
+        source_chunk_node: "Node | None" = None,
     ) -> None:
         type_field = type_field or field._type_child
         if isinstance(field, _ChildField):
@@ -1012,6 +1017,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     child=child_instance.instance.node(),
                     child_identifier=identifier,
                 )
+                child_instance.point_to_source_chunk(source_chunk_node)
             else:
                 mc = t.MakeChild(
                     nodetype=field.nodetype,
@@ -1019,12 +1025,23 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     attributes=cast(NodeAttributes, field.attributes),
                     soft_create=field._soft_create,
                 )
-                mc._add_to_typegraph()
+                makechild = mc._add_to_typegraph()
+                cls(makechild).point_to_source_chunk(source_chunk_node)
             for dependant in field._dependants:
-                cls._exec_field(t=t, field=dependant, type_field=type_field)
+                cls._exec_field(
+                    t=t,
+                    field=dependant,
+                    type_field=type_field,
+                    source_chunk_node=source_chunk_node,
+                )
         elif isinstance(field, ListField):
             for nested_field in field.get_fields():
-                cls._exec_field(t=t, field=nested_field, type_field=type_field)
+                cls._exec_field(
+                    t=t,
+                    field=nested_field,
+                    type_field=type_field,
+                    source_chunk_node=source_chunk_node,
+                )
         elif isinstance(field, _EdgeField):
             if type_field:
                 type_node = t.get_or_create_type()
@@ -1038,11 +1055,12 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                 )
                 type_node.g().insert_edge(edge=edge_instance)
             else:
-                t.MakeEdge(
+                ml = t.MakeEdge(
                     lhs_reference_path=field.lhs_resolved(),
                     rhs_reference_path=field.rhs_resolved(),
                     edge=field.edge,
                 )
+                cls(ml).point_to_source_chunk(source_chunk_node)
 
     @classmethod
     def _create_type(cls, t: "TypeNodeBoundTG[Self, T]") -> None:
@@ -1722,6 +1740,17 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             return None
         return TypeNodeBoundTG.try_get_trait_of_type(trait=trait, type_node=type_node)
 
+    def point_to_source_chunk(self, source_chunk_node: "Node | None") -> None:
+        from atopile.compiler.ast_visitor import AnyAtoBlock
+
+        if source_chunk_node is not None:
+            fbrk.EdgePointer.point_to(
+                bound_node=self.instance,
+                target_node=source_chunk_node.instance.node(),
+                identifier=AnyAtoBlock._source_identifier,
+                index=None,
+            )
+
 
 type NodeT = Node[Any]
 RefPath = list[str | _ChildField[Any] | type[NodeT]]
@@ -1874,7 +1903,7 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         lhs_reference_path: list[str | fbrk.EdgeTraversal],
         rhs_reference_path: list[str | fbrk.EdgeTraversal],
         edge: fbrk.EdgeCreationAttributes,
-    ) -> None:
+    ) -> graph.BoundNode:
         tg = self.tg
         type_node = self.get_or_create_type()
 
@@ -1902,7 +1931,7 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
             type_node=type_node, path=rhs_path, validate=False
         )
 
-        tg.add_make_link(
+        return tg.add_make_link(
             type_node=type_node,
             lhs_reference=lhs_ref,
             rhs_reference=rhs_ref,
