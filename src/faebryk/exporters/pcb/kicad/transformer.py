@@ -220,9 +220,14 @@ class PCB_Transformer:
                 fp_node = fabll.Traits.bind(g_fp).get_obj_raw()
                 g = module.instance.g()
                 tg = module.tg
+                created_pad_names: set[str] = set()
 
                 for pad in lib_fp.footprint.pads:
                     if any("Cu" in layer for layer in pad.layers):
+                        if pad.name in created_pad_names:
+                            continue
+                        created_pad_names.add(pad.name)
+
                         pad_node = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
                         fabll.Traits.create_and_add_instance_to(
                             node=pad_node, trait=F.Footprints.is_pad
@@ -316,7 +321,6 @@ class PCB_Transformer:
         NOTE: Pad nodes should already exist in the graph (created by attach()).
         This only creates the link between graph pads and PCB pads.
         """
-        import faebryk.core.faebrykpy as fbrk
         import faebryk.library._F as F
 
         # By now, the node being bound MUST have a footprint
