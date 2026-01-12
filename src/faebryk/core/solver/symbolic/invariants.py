@@ -3,7 +3,7 @@
 
 import logging
 from functools import reduce
-from typing import NamedTuple, Sequence
+from typing import NamedTuple, Sequence, cast
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -245,22 +245,17 @@ def find_congruent_expression[T: F.Expressions.ExpressionNodes](
     """
     Careful: Disregards whether asserted in root expression!
     """
-    return
-    # TODO look in old & new graph
-
-    non_lits = [
-        op_po for op in operands if (op_po := op.as_parameter_operatable.try_get())
-    ]
+    non_lits = list(builder.indexed_pos().values())
     literal_expr = all(
         mutator.utils.is_literal(op) or mutator.utils.is_literal_expression(op)
-        for op in operands
+        for op in builder.operands
     )
     dont_match_set = set(dont_match or [])
     if literal_expr:
         lit_ops = {
             op
-            for op in mutator.get_typed_expressions(
-                expr_factory, created_only=False, include_terminated=True
+            for op in builder.factory.bind_typegraph(mutator.tg_in).get_instances(
+                mutator.G_out
             )
             if op.get_trait(F.Expressions.is_expression) not in dont_match_set
             and mutator.utils.is_literal_expression(
@@ -269,7 +264,7 @@ def find_congruent_expression[T: F.Expressions.ExpressionNodes](
             # check congruence
             and F.Expressions.is_expression.are_pos_congruent(
                 op.get_trait(F.Expressions.is_expression).get_operands(),
-                operands,
+                builder.operands,
                 g=mutator.G_transient,
                 tg=mutator.tg_in,
                 allow_uncorrelated=allow_uncorrelated,
@@ -283,14 +278,14 @@ def find_congruent_expression[T: F.Expressions.ExpressionNodes](
     candidates = [
         expr_t
         for expr in non_lits[0].get_operations()
-        if (expr_t := expr.try_cast(expr_factory))
+        if (expr_t := expr.try_cast(builder.factory))
         and expr_t.get_trait(F.Expressions.is_expression) not in dont_match_set
     ]
 
     for c in candidates:
         if c.get_trait(F.Expressions.is_expression).is_congruent_to_factory(
-            expr_factory,
-            operands,
+            builder.factory,
+            builder.operands,
             g=mutator.G_transient,
             tg=mutator.tg_in,
             allow_uncorrelated=allow_uncorrelated,
@@ -308,7 +303,9 @@ class InsertExpressionResult(NamedTuple):
     is_new: bool
 
 
-class ExpressionBuilder[T: F.Expressions.ExpressionNodes](NamedTuple):
+class ExpressionBuilder[
+    T: F.Expressions.ExpressionNodes = F.Expressions.ExpressionNodes
+](NamedTuple):
     factory: type[T]
     operands: list[F.Parameters.can_be_operand]
     assert_: bool
@@ -400,8 +397,7 @@ def _no_predicate_literals(
 
 
 def _no_literal_inequalities(
-    mutator: Mutator,
-    builder: ExpressionBuilder,
+    mutator: Mutator, builder: ExpressionBuilder
 ) -> ExpressionBuilder:
     """
     Convert GreaterOrEqual expressions with literals to IsSubset constraints:
@@ -441,7 +437,9 @@ def _no_literal_inequalities(
         )
 
     new_operands = [po_operand, new_superset.can_be_operand.get()]
-    new_builder = ExpressionBuilder(IsSubset, new_operands, assert_, terminate)
+    new_builder = cast(
+        ExpressionBuilder, ExpressionBuilder(IsSubset, new_operands, assert_, terminate)
+    )  # TODO fuck you pyright
 
     logger.debug(
         f"Converting {pretty_expr(builder, mutator)} ->"
@@ -480,6 +478,99 @@ def _no_predicate_operands(
     return new_builder
 
 
+def _fold_pure_literal_operands(
+    mutator: Mutator, builder: ExpressionBuilder
+) -> InsertExpressionResult | None:
+    """
+    Fold pure literal operands: E(X, Y) -> E{S/P|...}(X, Y)
+    """
+    from faebryk.core.solver.symbolic.pure_literal import exec_pure_literal_operands
+
+    if not (
+        lit_fold := exec_pure_literal_operands(
+            mutator.G_transient, mutator.tg_in, builder.factory, builder.operands
+        )
+    ):
+        return None
+
+    logger.debug(
+        f"Folded ({pretty_expr(builder, mutator)}) to literal {lit_fold.pretty_str()}"
+    )
+    if builder.assert_:
+        # P!{S|True} -> P!$
+        if lit_fold.equals_singleton(True):
+            builder = ExpressionBuilder(builder.factory, builder.operands, True, True)
+
+    new_expr = mutator._create_and_insert_expression(
+        builder.factory,
+        *builder.operands,
+        assert_=builder.assert_,
+        terminate=builder.terminate,
+    )
+    new_expr_op = new_expr.get_trait(F.Parameters.can_be_operand)
+    if not builder.assert_:
+        lit_op = lit_fold.as_operand.get()
+        mutator.create_check_and_insert_expression(
+            F.Expressions.IsSubset,
+            new_expr_op,
+            lit_op,
+            terminate=True,
+            assert_=True,
+        )
+        mutator.create_check_and_insert_expression(
+            F.Expressions.IsSubset,
+            lit_op,
+            new_expr_op,
+            terminate=True,
+            assert_=True,
+        )
+    return InsertExpressionResult(new_expr_op, True)
+
+
+def _no_literal_aliases(
+    mutator: Mutator,
+    builder: ExpressionBuilder,
+) -> ExpressionBuilder:
+    """
+    no literal aliases: A is! X(singleton) => A ss! X
+    A is! X in general not allowed
+    """
+    if builder.factory is not F.Expressions.Is or not (lits := builder.indexed_lits()):
+        return builder
+
+    correlatable = {
+        i: lit for i, lit in lits.items() if mutator.utils.is_correlatable_literal(lit)
+    }
+    has_non_correlatable = len(correlatable) < len(lits)
+    if has_non_correlatable:
+        raise ValueError(
+            f"Is with literal not allowed: {pretty_expr(builder, mutator)}"
+        )
+    if len(correlatable) > 1:
+        raise ValueError(
+            f"Is with multiple literals not allowed: {pretty_expr(builder, mutator)}"
+        )
+    assert len(correlatable) == 1
+    lit = next(iter(correlatable.values()))
+
+    # TODO handle lit,lit; op,lit, lit,op etc, multi lit
+    non_lit = [op for op in builder.operands if op.as_parameter_operatable.try_get()]
+    if len(non_lit) > 1:
+        raise NotImplementedError(
+            f"Is with multiple operands not allowed: {pretty_expr(builder, mutator)}"
+        )
+    assert len(non_lit) == 1
+
+    builder = ExpressionBuilder(
+        F.Expressions.IsSubset,
+        non_lit + [lit.as_operand.get()],
+        builder.assert_,
+        builder.terminate,
+    )
+
+    return builder
+
+
 def insert_expression(
     mutator: Mutator,
     builder: ExpressionBuilder,
@@ -488,68 +579,26 @@ def insert_expression(
     Invariants
     Sequencing sensitive!
     * ✓ don't use predicates as operands: Op(P!, ...) -> Op(True, ...)
-    * ✓ fold pure literal expressions: E(X, Y) -> E{S/P|...}(X, Y)
     * ✓ P{S|True} -> P!, P!{S/P|False} -> Contradiction, P!{S|True} -> P!
     * ✓ no A >! X or X >! A (create A ss! X or X ss! A)
     * ✓ no congruence (function is kinda shit, TODO)
     * ✓ minimal subsumption
     * ✓ - intersected supersets (single superset)
     * ✓ no empty supersets
+    * ✓ fold pure literal expressions: E(X, Y) -> E{S/P|...}(X, Y)
     * ✓ canonical
     * no A is X(single) => A ss! X
     """
 
-    from faebryk.core.solver.symbolic.pure_literal import exec_pure_literal_operands
+    # TODO: congruence check is running on new graph only,
+    #  thus expression might be incorrectly marked as new
 
     assert not builder.terminate or builder.assert_, "terminate ⟹ assert"
 
     # * Op(P!, ...) -> Op(True, ...)
     builder = _no_predicate_operands(mutator, builder)
 
-    # * fold pure literal expressions
-    # folding to literal will result in ss/sup in mutator.mutate_expression
-    if lit_fold := exec_pure_literal_operands(
-        mutator.G_transient, mutator.tg_in, builder.factory, builder.operands
-    ):
-        logger.debug(
-            f"Folded ({pretty_expr(builder, mutator)}) to "
-            f"literal {lit_fold.pretty_str()}"
-        )
-        if builder.assert_:
-            # P!{S|True} -> P!$
-            if lit_fold.equals_singleton(True):
-                builder = ExpressionBuilder(
-                    builder.factory, builder.operands, True, True
-                )
-
-        new_expr = mutator._create_and_insert_expression(
-            builder.factory,
-            *builder.operands,
-            assert_=builder.assert_,
-            terminate=builder.terminate,
-        )
-        new_expr_op = new_expr.get_trait(F.Parameters.can_be_operand)
-        if not builder.assert_:
-            lit_op = lit_fold.as_operand.get()
-            mutator.create_check_and_insert_expression(
-                F.Expressions.IsSubset,
-                new_expr_op,
-                lit_op,
-                terminate=True,
-                assert_=True,
-            )
-            mutator.create_check_and_insert_expression(
-                F.Expressions.IsSubset,
-                lit_op,
-                new_expr_op,
-                terminate=True,
-                assert_=True,
-            )
-        return InsertExpressionResult(new_expr_op, True)
-
-    # P!{S/P|False} -> Contradiction
-    # P {S|True} -> P!
-    # P!{P|True} -> P!
+    # P!{S/P|False} -> Contradiction, P!{P|True} -> P!, P {S|True} -> P!
     builder_ = _no_predicate_literals(mutator, builder)
     if builder_ is None:
         return InsertExpressionResult(None, False)
@@ -568,12 +617,13 @@ def insert_expression(
             mutator.predicate_terminate(congruent_predicate)
         congruent_op = congruent.get_trait(F.Parameters.can_be_operand)
         logger.debug(
-            f"Found congruent expression for {pretty_expr(builder, mutator)}: {congruent_op.pretty()}"
+            f"Found congruent expression for {pretty_expr(builder, mutator)}:"
+            f" {congruent_op.pretty()}"
         )
         return InsertExpressionResult(congruent_op, False)
 
     # * minimal subsumption
-    # Check for semantic subsumption (only for predicates)
+    # Check for semantic subsumption (only for assertable)
     if builder.assert_ or builder.factory.bind_typegraph(
         mutator.tg_in
     ).check_if_instance_of_type_has_trait(F.Expressions.is_assertable):
@@ -596,28 +646,14 @@ def insert_expression(
     # * no empty supersets
     _no_empty_superset(mutator, builder)
 
-    # no A is! X(singleton)
-    # A is! X in general not allowed
-    if builder.factory is F.Expressions.Is and (lits := builder.indexed_lits()):
-        correlatable = {
-            i: lit
-            for i, lit in lits.items()
-            if mutator.utils.is_correlatable_literal(lit)
-        }
-        if len(correlatable) < len(lits):
-            raise ValueError(
-                f"Is with literal not allowed: {pretty_expr(builder, mutator)}"
-            )
-        # TODO handle lit,lit; op,lit, lit,op etc, multi lit
-        non_lit = [
-            op for op in builder.operands if op.as_parameter_operatable.try_get()
-        ]
-        builder = ExpressionBuilder(
-            F.Expressions.IsSubset,
-            non_lit + [correlatable[0].as_operand.get()],
-            builder.assert_,
-            builder.terminate,
-        )
+    # no A is! X
+    builder = _no_literal_aliases(mutator, builder)
+
+    # * fold pure literal expressions
+    # needs to run last since it creates new expressions
+    # folding to literal will result in ss/sup in mutator.mutate_expression
+    if lit_fold := _fold_pure_literal_operands(mutator, builder):
+        return lit_fold
 
     # * canonical (covered by create)
     expr = mutator._create_and_insert_expression(
