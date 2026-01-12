@@ -844,6 +844,8 @@ def pretty_expr(
     use_name: bool = False,
     no_lit_suffix: bool = False,
 ) -> str:
+    from faebryk.core.solver.symbolic.invariants import ExpressionBuilder
+
     context = context or mutator.print_ctx
     match expr:
         case ExpressionBuilder():

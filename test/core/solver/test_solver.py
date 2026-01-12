@@ -2219,7 +2219,10 @@ def test_exec_pure_literal_expressions(
         exec_pure_literal_operands(
             E.g,
             E.tg,
-            expr_e,
+            fabll.Node.bind_instance(
+                not_none(fabll.Traits(expr_e).get_obj_raw().get_type_node())
+            ).get_trait(fabll.ImplementsType),
+            expr_e.get_operands(),
         )
     ).equals(expected_converted, g=E.g, tg=E.tg)
 

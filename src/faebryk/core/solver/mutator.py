@@ -88,6 +88,7 @@ class Transformations:
     ] = field(default_factory=lambda: defaultdict(list))
     # TODO make api for contraining
     terminated: set[F.Expressions.is_predicate] = field(default_factory=set)
+    asserted: set[F.Expressions.is_assertable] = field(default_factory=set)
     soft_replaced: dict[
         F.Parameters.is_parameter_operatable, F.Parameters.is_parameter_operatable
     ] = field(default_factory=dict)
@@ -99,7 +100,11 @@ class Transformations:
         )
 
         return bool(
-            self.removed or non_no_op_mutations or self.created or self.terminated
+            self.removed
+            or non_no_op_mutations
+            or self.created
+            or self.terminated
+            or self.asserted
         )
 
     @property
@@ -462,7 +467,8 @@ class MutationStage:
 
         if not nodes:
             return
-        log(f"Graph {len(nodes)}/{len(pre_nodes)} [{out}\n]")
+        g_uuid = self.G_out.get_self_node().node().get_uuid()
+        log(f"{self.G_out} {len(nodes)}/{len(pre_nodes)} [{out}\n]")
 
     def map_forward(
         self, param: F.Parameters.is_parameter_operatable
@@ -1482,7 +1488,9 @@ class Mutator:
         terminate: bool = False,
     ):
         for p in po:
-            p.assert_()
+            if not p.is_asserted():
+                p.assert_()
+                self.transformations.asserted.add(p)
             if terminate:
                 self.predicate_terminate(
                     p.get_sibling_trait(F.Expressions.is_predicate)

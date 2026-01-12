@@ -403,10 +403,10 @@ def _no_predicate_literals(
             return None
         # P {S|True} -> P!
         if pred := operands[0].try_get_sibling_trait(F.Expressions.is_assertable):
-            before = pred.as_expression.get().compact_repr()
+            before = pred.as_expression.get().compact_repr(mutator.print_ctx)
             mutator.assert_(pred)
-            after = pred.as_expression.get().compact_repr()
-            logger.debug(f"Assert implicit predicate {before} -> {after}")
+            after = pred.as_expression.get().compact_repr(mutator.print_ctx)
+            logger.debug(f"Assert implicit predicate `{before}` -> `{after}`")
             return None
 
     return builder
@@ -693,10 +693,18 @@ def wrap_insert_expression(
         target_dbg = "Dropped"
     else:
         op = res.out_operand
-        ctx = mutator.mutation_map.print_ctx
-        g_id = hex(op.g.get_self_node().node().get_uuid())
-        target_dbg = f"`{op.pretty(context=ctx)}` g:{g_id}"
-    logger.info(f"{pretty_expr(builder, mutator)} -> {target_dbg}")
+        if (
+            (op_e := op.try_get_sibling_trait(F.Expressions.is_expression))
+            and fabll.Traits(op_e).get_obj_raw().isinstance(builder.factory)
+            and op_e.get_operands() == builder.operands
+        ):
+            target_dbg = "COPY"
+        else:
+            ctx = mutator.mutation_map.print_ctx
+            target_dbg = f"`{op.pretty(context=ctx)}`"
+    # TODO debug
+    if target_dbg != "COPY":
+        logger.warning(f"{builder.pretty(mutator)} -> {target_dbg}")
 
     return res
 
