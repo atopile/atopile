@@ -614,7 +614,7 @@ def insert_expression(
         ]
         builder = ExpressionBuilder(
             F.Expressions.IsSubset,
-            non_lit + [correlatable[1].as_operand.get()],
+            non_lit + [correlatable[0].as_operand.get()],
             builder.assert_,
             builder.terminate,
         )
