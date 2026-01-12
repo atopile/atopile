@@ -236,6 +236,7 @@ def find_subsuming_expression(
     operands: Sequence[F.Parameters.can_be_operand],
     is_predicate: bool,
 ) -> SubsumptionCheck.Result:
+    # TODO use right graph
     match expr_factory:
         case F.Expressions.IsSubset:
             return SubsumptionCheck.subset(mutator, operands, is_predicate)
@@ -255,6 +256,7 @@ def find_congruent_expression[T: fabll.NodeT](
     """
     Careful: Disregards whether asserted in root expression!
     """
+    return
     # TODO look in old & new graph
 
     non_lits = [
@@ -323,8 +325,9 @@ class ExpressionBuilder(NamedTuple):
     assert_: bool
     terminate: bool
 
-    def __str__(self):
+    def pretty(self, mutator: Mutator):
         _str = _pretty_factory(
+            mutator,
             self.factory,
             self.operands,
             assert_=self.assert_,
@@ -394,13 +397,15 @@ def _no_predicate_literals(
         # P!{S/P|True} -> P!
         if any(op.try_get_sibling_trait(F.Expressions.is_predicate) for op in operands):
             logger.debug(
-                f"Remove predicate literal {_pretty_factory(factory, operands)}"
+                f"Remove predicate literal {_pretty_factory(mutator, factory, operands)}"
             )
             return None
         # P {S|True} -> P!
         if pred := operands[0].try_get_sibling_trait(F.Expressions.is_assertable):
-            logger.debug(f"Assert implicit predicate {pred}")
+            before = pred.as_expression.get().compact_repr()
             mutator.assert_(pred)
+            after = pred.as_expression.get().compact_repr()
+            logger.debug(f"Assert implicit predicate {before} -> {after}")
             return None
 
     return builder
@@ -451,8 +456,8 @@ def _no_literal_inequalities(
 
     new_operands = [po_operand, new_superset.can_be_operand.get()]
     logger.debug(
-        f"Converting {_pretty_factory(factory, operands)} ->"
-        f" {_pretty_factory(IsSubset, new_operands)}"
+        f"Converting {_pretty_factory(mutator, factory, operands)} ->"
+        f" {_pretty_factory(mutator, IsSubset, new_operands)}"
     )
     return ExpressionBuilder(
         IsSubset,
@@ -479,19 +484,21 @@ def _no_predicate_operands(
         for op in operands
     ]
 
+    new_builder = ExpressionBuilder(
+        builder.factory, new_operands, builder.assert_, builder.terminate
+    )
+
     if new_operands != operands:
         logger.debug(
-            f"Predicate operands: {_pretty_factory(builder.factory, operands)}) ->"
-            f" {_pretty_factory(builder.factory, new_operands)})"
+            f"Predicate operands: {builder.pretty(mutator)}) ->"
+            f" {new_builder.pretty(mutator)})"
         )
-    operands = new_operands
 
-    return ExpressionBuilder(
-        builder.factory, operands, builder.assert_, builder.terminate
-    )
+    return new_builder
 
 
 def _pretty_factory(
+    mutator: Mutator,
     factory: type[fabll.Node] | None = None,
     operands: Sequence[F.Parameters.can_be_operand] | None = None,
     assert_: bool = False,
@@ -499,7 +506,9 @@ def _pretty_factory(
 ) -> str:
     # TODO: merge this with compact repr
     if operands is not None:
-        ops = ", ".join(op.pretty() for op in operands)
+        ops = ", ".join(
+            op.pretty(context=mutator.output_print_context) for op in operands
+        )
     else:
         ops = ""
     if factory:
@@ -532,11 +541,14 @@ def insert_expression(
     * ✓ - intersected supersets (single superset)
     * ✓ no empty supersets
     * ✓ canonical
+    * no A is X(single) => A ss! X
     """
 
     from faebryk.core.solver.symbolic.pure_literal import exec_pure_literal_operands
 
     assert not builder.terminate or builder.assert_, "terminate ⟹ assert"
+    orig_builder = builder  # for debug
+    # logger.warning(builder.pretty(mutator))
 
     # * Op(P!, ...) -> Op(True, ...)
     builder = _no_predicate_operands(mutator, builder)
@@ -546,7 +558,9 @@ def insert_expression(
     if lit_fold := exec_pure_literal_operands(
         mutator.G_transient, mutator.tg_in, builder.factory, builder.operands
     ):
-        logger.debug(f"Folded ({builder}) to literal {lit_fold.pretty_str()}")
+        logger.debug(
+            f"Folded ({builder.pretty(mutator)}) to literal {lit_fold.pretty_str()}"
+        )
         # TODO terminate expression
         new_expr = mutator._create_and_insert_expression(
             builder.factory,
@@ -597,7 +611,7 @@ def insert_expression(
             mutator.predicate_terminate(congruent_predicate)
         congruent_op = congruent.get_trait(F.Parameters.can_be_operand)
         logger.debug(
-            f"Found congruent expressionf for {builder}: {congruent_op.pretty()}"
+            f"Found congruent expression for {builder.pretty(mutator)}: {congruent_op.pretty()}"
         )
         return InsertExpressionResult(congruent_op, False)
 
@@ -610,20 +624,49 @@ def insert_expression(
             mutator, builder.factory, builder.operands, is_predicate=builder.assert_
         )
         if subsuming_expr := subsume_res.expr:
-            logger.debug(f"Subsume replaced: {subsuming_expr.pretty_repr()}")
+            logger.debug(
+                f"Subsume replaced: {builder.pretty(mutator)} -> {subsuming_expr.compact_repr(mutator.output_print_context)}"
+            )
             return InsertExpressionResult(subsuming_expr.as_operand.get(), False)
         elif subsume_res.discard:
-            logger.debug(f"Subsume discard: {builder}")
+            logger.debug(f"Subsume discard: {builder.pretty(mutator)}")
             return InsertExpressionResult(None, False)
         elif subsume_res.builder:
             factory, operands = subsume_res.builder
             builder = ExpressionBuilder(
                 factory, operands, builder.assert_, builder.terminate
             )
-            logger.debug(f"Subsume adjust {builder}")
+            logger.debug(f"Subsume adjust {builder.pretty(mutator)}")
 
     # * no empty supersets
     _no_empty_superset(mutator, builder)
+
+    # no A is! X(singleton)
+    # A is! X in general not allowed
+    if builder.factory is F.Expressions.Is and (
+        lits := {
+            i: lit
+            for i, op in enumerate(builder.operands)
+            if (lit := op.as_literal.try_get())
+        }
+    ):
+        correlatable = {
+            i: lit
+            for i, lit in lits.items()
+            if mutator.utils.is_correlatable_literal(lit)
+        }
+        if len(correlatable) < len(lits):
+            raise ValueError(f"Is with literal not allowed: {builder.pretty(mutator)}")
+        # TODO handle lit,lit; op,lit, lit,op etc, multi lit
+        non_lit = [
+            op for op in builder.operands if op.as_parameter_operatable.try_get()
+        ]
+        builder = ExpressionBuilder(
+            F.Expressions.IsSubset,
+            non_lit + [correlatable[0].as_operand.get()],
+            builder.assert_,
+            builder.terminate,
+        )
 
     # * canonical (covered by create)
     expr = mutator._create_and_insert_expression(
@@ -632,6 +675,24 @@ def insert_expression(
         assert_=builder.assert_,
     )
     return InsertExpressionResult(expr.get_trait(F.Parameters.can_be_operand), True)
+
+
+def wrap_insert_expression(
+    mutator: Mutator,
+    builder: ExpressionBuilder,
+) -> InsertExpressionResult:
+    res = insert_expression(mutator, builder)
+    if res.out_operand is None:
+        target_dbg = "Dropped"
+    else:
+        target_dbg = res.out_operand.pretty(
+            context=mutator.mutation_map.last_stage.get_print_context_for_op(
+                res.out_operand.as_parameter_operatable.force_get()
+            )
+        )
+    logger.info(f"    {builder.pretty(mutator)} -> {target_dbg}")
+
+    return res
 
 
 class TestInvariantsSimple:

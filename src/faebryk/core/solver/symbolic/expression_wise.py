@@ -627,8 +627,6 @@ def fold_subset(expr: F.Expressions.IsSubset, mutator: Mutator):
     """
     ```
     A is B, A ss B | B non(ex)literal -> repr(B, A)
-    A ss ([X]) -> A is ([X])
-    A ss {} -> A is {}
     # predicates
     P ss! True -> P!
     P ss! False -> ¬!P
@@ -644,12 +642,6 @@ def fold_subset(expr: F.Expressions.IsSubset, mutator: Mutator):
     A, B = e.get_operands()
 
     if not (B_lit := B.as_literal.try_get()):
-        return
-
-    # A ss ([X]) -> A is ([X])
-    # A ss {} -> A is {}
-    if B_lit.is_singleton() or B_lit.is_empty():
-        mutator.mutate_expression(e, expression_factory=F.Expressions.Is)
         return
 
     if e.try_get_trait(F.Expressions.is_predicate):

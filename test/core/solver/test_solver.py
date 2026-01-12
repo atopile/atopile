@@ -13,7 +13,6 @@ import faebryk.library._F as F
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.mutator import MutationMap
 from faebryk.core.solver.solver import Solver
-from faebryk.core.solver.symbolic.pure_literal import _exec_pure_literal_expressions
 from faebryk.core.solver.utils import (
     Contradiction,
     ContradictionByLiteral,
@@ -74,14 +73,19 @@ def _extract(
 
 def _extract_and_check(
     op: F.Parameters.can_be_operand,
-    res: MutationMap | Solver,
+    res: MutationMap | DefaultSolver,
     expected: F.Parameters.can_be_operand
     | F.Literals.LiteralValues
     | F.Literals.LiteralNodes
     | F.Literals.is_literal,
-    domain_default: bool = False,
+    domain_default: bool = True,
 ) -> bool:
     extracted = _extract(op, res, domain_default=domain_default)
+    ctx = (
+        res.input_print_context
+        if isinstance(res, MutationMap)
+        else not_none(res.state).data.mutation_map.input_print_context
+    )
     if isinstance(expected, F.Literals.is_literal):
         expected = expected.as_operand.get()
     if isinstance(expected, F.Literals.LiteralNodes):
@@ -92,7 +96,7 @@ def _extract_and_check(
             print(
                 f"Expected {expected}"
                 f" but got {extracted.pretty_str()}"
-                f"\nfor op: {op.pretty()}"
+                f"\nfor op: {op.as_parameter_operatable.force_get().compact_repr(ctx)}"
             )
         return matches
 
@@ -1500,6 +1504,10 @@ def test_fold_mul_zero():
 
 
 def test_fold_or_true():
+    """
+    A{S|True} v B is! C
+    => C{S|True}
+    """
     E = BoundExpressions()
     A = E.bool_parameter_op()
     B = E.bool_parameter_op()
@@ -2186,7 +2194,7 @@ def test_exec_pure_literal_expressions(
 ):
     E = BoundExpressions()
     from faebryk.core.solver.symbolic.pure_literal import (
-        _exec_pure_literal_expressions,
+        exec_pure_literal_operands,
     )
 
     op = op_factory(E)
@@ -2208,7 +2216,7 @@ def test_exec_pure_literal_expressions(
     expr = op(*lits_converted)
     expr_e = expr.as_parameter_operatable.force_get().as_expression.force_get()
     assert not_none(
-        _exec_pure_literal_expressions(
+        exec_pure_literal_operands(
             E.g,
             E.tg,
             expr_e,

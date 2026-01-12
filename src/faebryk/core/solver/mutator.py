@@ -522,6 +522,14 @@ class MutationStage:
             return self.input_print_context
         return self.transformations.output_print_context
 
+    def get_print_context_for_op(
+        self, op: F.Parameters.is_parameter_operatable
+    ) -> F.Parameters.ReprContext:
+        new = (
+            op.g.get_self_node().node().is_same(other=self.G_out.get_self_node().node())
+        )
+        return self.output_print_context if new else self.input_print_context
+
     def print_mutation_table(self):
         if not self.transformations:
             return
@@ -535,18 +543,10 @@ class MutationStage:
             if not logger.isEnabledFor(logging.DEBUG):
                 return
 
-        context_old = self.input_print_context
-        context_new = self.output_print_context
-
         created_ops = self.transformations.created
 
         def ___repr_op(op: F.Parameters.is_parameter_operatable) -> str:
-            new = (
-                op.g.get_self_node()
-                .node()
-                .is_same(other=self.G_out.get_self_node().node())
-            )
-            return op.compact_repr(context_new if new else context_old)
+            return op.compact_repr(self.get_print_context_for_op(op))
 
         rows: list[tuple[str, str]] = []
 
@@ -1340,16 +1340,16 @@ class Mutator:
         import faebryk.core.solver.symbolic.invariants as invariants
 
         from_ops = list(set(from_ops or []))
+        c_operands = [o for op in operands if (o := self.get_copy(op))]
 
-        res = invariants.insert_expression(
-            self,
-            invariants.ExpressionBuilder(
-                expr_factory,
-                list(operands),
-                assert_=assert_,
-                terminate=terminate,
-            ),
+        builder = invariants.ExpressionBuilder(
+            expr_factory,
+            c_operands,
+            assert_=assert_,
+            terminate=terminate,
         )
+
+        res = invariants.wrap_insert_expression(self, builder)
 
         if res.is_new and (
             out_po := not_none(res.out_operand).as_parameter_operatable.try_get()
@@ -1364,7 +1364,8 @@ class Mutator:
         operands: Iterable[F.Parameters.can_be_operand] | None = None,
         expression_factory: type[fabll.NodeT] | None = None,
     ) -> F.Expressions.is_canonical | None:
-        expr_obj = fabll.Traits(expr).get_obj_raw()
+        import faebryk.core.solver.symbolic.invariants as invariants
+
         if expression_factory is None:
             expression_factory = self.utils.hack_get_expr_type(expr)
 
@@ -1386,31 +1387,42 @@ class Mutator:
         assert_ = expr_pred is not None
         terminate = assert_ and self.is_predicate_terminated(expr_pred)
 
-        copy_only = (
-            expr_obj.isinstance(expression_factory) and operands == expr.get_operands()
-        )
-        if copy_only:
-            new_expr = self._create_and_insert_expression(
-                expression_factory,
-                *operands,
-                assert_=assert_,
-                terminate=terminate,
-            )
-        else:
-            import faebryk.core.solver.symbolic.invariants as invariants
+        # expr_obj = fabll.Traits(expr).get_obj_raw()
+        # copy_only = (
+        #    expr_obj.isinstance(expression_factory) and operands == expr.get_operands()
+        # )
+        # TODO
+        # copy_only = False
+        # if copy_only:
+        #     new_expr = self._create_and_insert_expression(
+        #         expression_factory,
+        #         *operands,
+        #         assert_=assert_,
+        #         terminate=terminate,
+        #     )
+        # else:
 
-            res = invariants.insert_expression(
-                self,
-                invariants.ExpressionBuilder(
-                    factory=expression_factory,
-                    operands=list(operands),
-                    assert_=assert_,
-                    terminate=terminate,
-                ),
-            )
-            if res.out_operand is None:
-                return None
-            new_expr = res.out_operand.get_raw_obj()
+        c_operands = [o for op in operands if (o := self.get_copy(op))]
+
+        expr_po = expr.as_parameter_operatable.get()
+        expr_repr = expr.compact_repr(
+            self.mutation_map.last_stage.get_print_context_for_op(expr_po)
+        )
+        g_id = expr.g.get_self_node().node().get_uuid()
+        logger.info(
+            f"Mutating expression {expr_repr}: {g_id} (G_out: {self.G_out}, G_in: {self.G_in})"
+        )
+        builder = invariants.ExpressionBuilder(
+            factory=expression_factory,
+            operands=c_operands,
+            assert_=assert_,
+            terminate=terminate,
+        )
+        res = invariants.wrap_insert_expression(self, builder)
+        if res.out_operand is None:
+            return None
+
+        new_expr = res.out_operand.get_raw_obj()
 
         new_expr_po = new_expr.get_trait(F.Parameters.is_parameter_operatable)
 
@@ -1748,7 +1760,7 @@ class Mutator:
     def _run(self):
         self.algo(self)
 
-    def _copy_unmutated(self):
+    def _copy_unmutated_optimized(self):
         # TODO we might have new types in tg_in that haven't been copied over yet
         # but we can't just blindly copy over because tg_out might be modified (pretty
         # likely)
@@ -1877,6 +1889,22 @@ class Mutator:
 
         # TODO optimization: if just new_ops, no need to copy
         # just pass through untouched graphs
+
+    def _copy_unmutated(self):
+        touched = self.transformations.mutated.keys() | self.transformations.removed
+        to_copy = F.Expressions.is_expression.sort_by_depth(
+            (
+                fabll.Traits(p).get_obj_raw()
+                for p in (
+                    set(self.get_parameter_operatables(include_terminated=True))
+                    - touched
+                )
+            ),
+            ascending=True,
+        )
+        logger.warning("Copying unmutated expressions")
+        for p in to_copy:
+            self.get_copy_po(p.get_trait(F.Parameters.is_parameter_operatable))
 
     def check_no_illegal_mutations(self):
         # TODO should only run during dev

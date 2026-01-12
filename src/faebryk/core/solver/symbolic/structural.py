@@ -307,8 +307,8 @@ def predicate_terminated_is_true(mutator: Mutator):
 @algorithm("Convert aliased singletons into literals", terminal=False)
 def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
     """
-    A ss! ([5]), A + B -> ([5]) + B
-    A ss! [True], A ^ B -> [True] ^ B
+    A{S|5} + B -> ([5]) + B
+    A{S|True} ^ B -> [True] ^ B
     """
 
     # TODO explore alt strat:
@@ -319,34 +319,22 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
 
     exprs = mutator.get_expressions(sort_by_depth=True)
     for e in exprs:
-        e_op = e.as_operand.get()
-        if mutator.utils.is_pure_literal_expression(e_op):
-            continue
         e_po = e.as_parameter_operatable.get()
         # A{S|Xs} ss! Xs
         if mutator.utils.is_set_literal_expression(e_po, allow_superset_exprs=False):
             continue
-        # not handling here
-        if (
-            e.expr_isinstance(F.Expressions.Is, F.Expressions.IsSubset)
-            and e.try_get_trait(F.Expressions.is_predicate)
-            and any(e.get_operands_with_trait(F.Expressions.is_predicate))
-        ):
-            continue
 
-        ops = []
-        found_literal = False
-        for op in e.get_operands():
-            lit = mutator.utils.is_replacable_by_literal(op)
-            # preserve non-replaceable operands
-            # A + B + C + [10] | A is! ([5]) -> B, C, [10]
-            if lit is None:
-                ops.append(op)
-                continue
-            ops.append(lit.as_operand.get())
-            found_literal = True
+        e_ops = e.get_operands()
+        # preserve non-replaceable operands
+        # A{S|5} + B + C + 10 -> 5, B, C, 10
+        ops = [
+            lit.as_operand.get()
+            if (lit := mutator.utils.is_replacable_by_literal(op))
+            else op
+            for op in e_ops
+        ]
 
-        if not found_literal:
+        if ops == e_ops:
             continue
 
         mutator.mutate_expression(e, operands=ops)
