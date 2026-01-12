@@ -389,7 +389,10 @@ pub const TypeGraph = struct {
             var target = instance;
             const child_identifier = ChildReferenceNode.Attributes.of(reference.node).get_child_identifier();
             const edge_type = ChildReferenceNode.Attributes.of(reference.node).get_edge_type();
-            const tg = TypeGraph.of_instance(reference).?;
+            const tg = TypeGraph.of_instance(reference) orelse {
+                std.debug.print("ChildReferenceNode.resolve: Failed to get TypeGraph from reference node\n", .{});
+                return null;
+            };
 
             // TODO: Implement typesafe alternative, escape character just proof of concept
             if (std.mem.startsWith(u8, child_identifier, "<<")) {
@@ -399,7 +402,8 @@ pub const TypeGraph = struct {
                 if (type_node) |_type_node| {
                     target = _type_node;
                 } else {
-                    @panic("Type Node not found for enum type");
+                    std.debug.print("ChildReferenceNode.resolve: Type node not found for enum type '{s}'\n", .{up_str});
+                    return null;
                 }
             } else {
                 // Dispatch based on edge type to traverse different edge kinds
@@ -409,32 +413,42 @@ pub const TypeGraph = struct {
                     const child = EdgeComposition.get_child_by_identifier(target, child_identifier);
                     if (child) |_child| {
                         target = _child;
+                    } else if (child_identifier.len > 0) {
+                        // Only fail if identifier is non-empty - empty identifier means "self"
+                        std.debug.print("ChildReferenceNode.resolve: Composition child '{s}' not found\n", .{child_identifier});
+                        return null;
                     }
+                    // Empty identifier with composition = self-reference, keep target unchanged
                 } else if (edge_type == EdgeTrait.tid) {
                     // Traverse trait edges by looking up the trait type, then finding an instance.
-                    if (tg.get_type_by_name(child_identifier)) |trait_type| {
-                        const trait_instance = EdgeTrait.try_get_trait_instance_of_type(target, trait_type.node);
-                        if (trait_instance) |_trait_instance| {
-                            target = _trait_instance;
-                        }
-                    }
+                    const trait_type = tg.get_type_by_name(child_identifier) orelse {
+                        std.debug.print("ChildReferenceNode.resolve: Trait type '{s}' not found in TypeGraph\n", .{child_identifier});
+                        return null;
+                    };
+                    const trait_instance = EdgeTrait.try_get_trait_instance_of_type(target, trait_type.node) orelse {
+                        std.debug.print("ChildReferenceNode.resolve: No trait instance of type '{s}' found on target node\n", .{child_identifier});
+                        return null;
+                    };
+                    target = trait_instance;
                 } else if (edge_type == EdgePointer.tid) {
                     // Pointer traversal: dereference the current node.
                     // The current node should be a Pointer node - follow its EdgePointer edge.
                     // No identifier needed - we just dereference whatever the current node points to.
-                    const dereferenced = EdgePointer.get_referenced_node_from_node(target);
-                    if (dereferenced) |_dereferenced| {
-                        target = _dereferenced;
-                    } else {
-                        // Dereference failed - the node is not a valid Pointer or has no target
+                    const dereferenced = EdgePointer.get_referenced_node_from_node(target) orelse {
+                        std.debug.print("ChildReferenceNode.resolve: Pointer dereference failed - node has no target\n", .{});
                         return null;
-                    }
+                    };
+                    target = dereferenced;
                 } else if (edge_type == EdgeOperand.tid) {
                     // Operand traversal: find operand by identifier (e.g., "lhs", "rhs")
-                    const operand = EdgeOperand.get_operand_by_identifier(target, child_identifier);
-                    if (operand) |_operand| {
-                        target = _operand;
-                    }
+                    const operand = EdgeOperand.get_operand_by_identifier(target, child_identifier) orelse {
+                        std.debug.print("ChildReferenceNode.resolve: Operand '{s}' not found\n", .{child_identifier});
+                        return null;
+                    };
+                    target = operand;
+                } else {
+                    std.debug.print("ChildReferenceNode.resolve: Unknown edge type {d}\n", .{edge_type});
+                    return null;
                 }
             }
 
@@ -1442,8 +1456,9 @@ pub const TypeGraph = struct {
     /// Walk a Reference chain and return the individual identifiers. Reference
     /// nodes are linked together via EdgeNext; higher layers should not need to
     /// reason about the internals of that representation.
-    /// An empty identifier with no successor is treated as a self-reference and
-    /// returns an empty path (consistent with ChildReferenceNode.resolve).
+    /// An empty identifier with Composition edge type and no successor is treated
+    /// as a self-reference and returns an empty path.
+    /// Pointer edges have empty identifiers but are valid path segments.
     /// Returns EdgeTraversal segments preserving both identifier and edge type.
     pub fn get_reference_path(
         self: *@This(),
@@ -1463,14 +1478,20 @@ pub const TypeGraph = struct {
             const next_node = EdgeNext.get_next_node_from_node(current);
 
             if (identifier.len == 0) {
-                if (next_node == null) {
-                    // Self-reference (empty identifier, no successor) - return empty path
+                // Empty identifier is valid for Pointer edges (dereference operation)
+                if (edge_type == EdgePointer.tid) {
+                    // Pointer dereference - append the segment with empty identifier
+                    segments.append(.{ .identifier = identifier, .edge_type = edge_type }) catch @panic("OOM");
+                } else if (next_node == null) {
+                    // Self-reference (empty identifier, Composition edge, no successor) - return empty path
                     return segments.toOwnedSlice() catch @panic("OOM");
+                } else {
+                    // Empty identifier in middle of chain for non-Pointer edge is invalid
+                    return error.InvalidReference;
                 }
-                // Empty identifier in middle of chain is invalid
-                return error.InvalidReference;
+            } else {
+                segments.append(.{ .identifier = identifier, .edge_type = edge_type }) catch @panic("OOM");
             }
-            segments.append(.{ .identifier = identifier, .edge_type = edge_type }) catch @panic("OOM");
 
             if (next_node) |_next| {
                 current = reference.g.bind(_next);
