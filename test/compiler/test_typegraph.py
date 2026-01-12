@@ -14,7 +14,7 @@ from atopile.compiler.build import (
     build_file,
 )
 from atopile.errors import UserSyntaxError
-from faebryk.libs.util import find, not_none
+from faebryk.libs.util import not_none
 from test.compiler.conftest import build_type
 
 NULL_CONFIG = SimpleNamespace(project=None)
@@ -651,7 +651,9 @@ def test_directed_connect():
         _check_make_links(
             tg=tg,
             type_node=result.state.type_roots["App"],
-            expected=[(["left", "can_bridge", "out_"], ["right", "can_bridge", "in_"])],
+            expected=[
+                (["left", "can_bridge", "out_", ""], ["right", "can_bridge", "in_", ""])
+            ],
         )
         is True
     )
@@ -1039,11 +1041,12 @@ class TestEdgeTraversalPathResolution:
         tg.validate_type(type_node=Resistor)
 
         # Verify we can get the reference path back
-        # Note: get_reference_path only returns non-empty identifiers
+        # Includes empty string "" for pointer dereference
         path = tg.get_reference_path(reference=ref)
-        assert len(path) == 2
+        assert len(path) == 3
         assert path[0] == "can_bridge"
         assert path[1] == "in_"
+        assert path[2] == ""  # Pointer dereference
 
     def test_composition_and_traversal_path(self):
         """Test creating reference chains with composition followed by EdgeTraversal.
@@ -1077,12 +1080,13 @@ class TestEdgeTraversalPathResolution:
         assert ref is not None
 
         # Verify the path was stored correctly
-        # Note: get_reference_path only returns non-empty identifiers
+        # Includes empty string "" for pointer dereference
         path = tg.get_reference_path(reference=ref)
-        assert len(path) == 3
+        assert len(path) == 4
         assert path[0] == "r"
         assert path[1] == "can_bridge"
         assert path[2] == "in_"
+        assert path[3] == ""  # Pointer dereference
 
 
 def _filter_directed_connect_links(make_links):
@@ -1200,8 +1204,8 @@ class TestCanBridgeByNameShim:
         # a.can_bridge.out_ -> b.can_bridge.in_ (which points to b.data_in)
         # b.can_bridge.out_ (which points to b.data_out) -> c.can_bridge.in_
         expected = {
-            (("a", "can_bridge", "out_"), ("b", "can_bridge", "in_")),
-            (("b", "can_bridge", "out_"), ("c", "can_bridge", "in_")),
+            (("a", "can_bridge", "out_", ""), ("b", "can_bridge", "in_", "")),
+            (("b", "can_bridge", "out_", ""), ("c", "can_bridge", "in_", "")),
         }
         assert link_paths == expected, f"Expected {expected}, got {link_paths}"
 
@@ -1405,9 +1409,9 @@ class TestDirectedConnectStmt:
 
         _, lhs_path, rhs_path = make_links[0]
         # LHS should be: r1 -> can_bridge -> out_
-        assert lhs_path == ["r1", "can_bridge", "out_"]
+        assert lhs_path == ["r1", "can_bridge", "out_", ""]
         # RHS should be: r2 -> can_bridge -> in_
-        assert rhs_path == ["r2", "can_bridge", "in_"]
+        assert rhs_path == ["r2", "can_bridge", "in_", ""]
 
     def test_simple_directed_connect_left_arrow(self):
         """Test a <~ b (Direction.LEFT) creates correct links.
@@ -1433,8 +1437,8 @@ class TestDirectedConnectStmt:
 
         _, lhs_path, rhs_path = make_links[0]
         # Direction LEFT: LHS gets in_, RHS gets out_
-        assert lhs_path == ["r1", "can_bridge", "in_"]
-        assert rhs_path == ["r2", "can_bridge", "out_"]
+        assert lhs_path == ["r1", "can_bridge", "in_", ""]
+        assert rhs_path == ["r2", "can_bridge", "out_", ""]
 
     def test_chained_directed_connect(self):
         """Test a ~> b ~> c creates two connections.
@@ -1465,14 +1469,14 @@ class TestDirectedConnectStmt:
 
         # First link: r1.out -> r2.in
         assert (
-            ("r1", "can_bridge", "out_"),
-            ("r2", "can_bridge", "in_"),
+            ("r1", "can_bridge", "out_", ""),
+            ("r2", "can_bridge", "in_", ""),
         ) in link_paths
 
         # Second link: r2.out -> r3.in
         assert (
-            ("r2", "can_bridge", "out_"),
-            ("r3", "can_bridge", "in_"),
+            ("r2", "can_bridge", "out_", ""),
+            ("r3", "can_bridge", "in_", ""),
         ) in link_paths
 
     def test_longer_chain(self):
@@ -1499,9 +1503,9 @@ class TestDirectedConnectStmt:
 
         # Verify all expected connections exist
         expected = [
-            (("r1", "can_bridge", "out_"), ("r2", "can_bridge", "in_")),
-            (("r2", "can_bridge", "out_"), ("r3", "can_bridge", "in_")),
-            (("r3", "can_bridge", "out_"), ("r4", "can_bridge", "in_")),
+            (("r1", "can_bridge", "out_", ""), ("r2", "can_bridge", "in_", "")),
+            (("r2", "can_bridge", "out_", ""), ("r3", "can_bridge", "in_", "")),
+            (("r3", "can_bridge", "out_", ""), ("r4", "can_bridge", "in_", "")),
         ]
         for lhs_expected, rhs_expected in expected:
             assert (lhs_expected, rhs_expected) in link_paths
@@ -1731,8 +1735,8 @@ class TestSignalsAndPins:
         assert len(make_links) == 1
 
         _, lhs_path, rhs_path = make_links[0]
-        assert lhs_path == ["a", "can_bridge", "out_"]
-        assert rhs_path == ["b", "can_bridge", "in_"]
+        assert lhs_path == ["a", "can_bridge", "out_", ""]
+        assert rhs_path == ["b", "can_bridge", "in_", ""]
 
     def test_inline_pin_in_directed_connect(self):
         """Inline pins work in directed connect statements."""
@@ -1758,8 +1762,8 @@ class TestSignalsAndPins:
         assert len(make_links) == 1
 
         _, lhs_path, rhs_path = make_links[0]
-        assert lhs_path == ["1", "can_bridge", "out_"]
-        assert rhs_path == ["2", "can_bridge", "in_"]
+        assert lhs_path == ["1", "can_bridge", "out_", ""]
+        assert rhs_path == ["2", "can_bridge", "in_", ""]
 
     def test_chained_directed_connect_with_inline_signal(self):
         """Chained directed connect with inline signal in the middle works.
@@ -1791,8 +1795,8 @@ class TestSignalsAndPins:
 
         link_paths = {(tuple(lhs), tuple(rhs)) for _, lhs, rhs in make_links}
         expected = {
-            (("r1", "can_bridge", "out_"), ("mid", "can_bridge", "in_")),
-            (("mid", "can_bridge", "out_"), ("r2", "can_bridge", "in_")),
+            (("r1", "can_bridge", "out_", ""), ("mid", "can_bridge", "in_", "")),
+            (("mid", "can_bridge", "out_", ""), ("r2", "can_bridge", "in_", "")),
         }
         assert link_paths == expected
 
