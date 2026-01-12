@@ -140,6 +140,14 @@ const TypePathList = struct {
 
         return null;
     }
+
+    fn contains_node(self: *const @This(), key: TypeElementList, node: BoundNodeReference) bool {
+        const nodes = self.get_nodes(key) orelse return false;
+        for (nodes.elements.items) |existing| {
+            if (existing.g == node.g and existing.node.is_same(node.node)) return true;
+        }
+        return false;
+    }
 };
 
 pub const PathFinder = struct {
@@ -237,18 +245,38 @@ pub const PathFinder = struct {
 
                 // Down traverse
                 for (self.current_bfs_paths.items) |path| {
-                    std.debug.print("GOING DOWNNNN: ", .{});
                     const last_node = path.get_last_node();
                     const child_type_element = type_path.type_element_list.elements.getLast();
                     if (child_type_element.child_identifier) |child_identifier| {
-                        child_type_element.print();
+                        const child_node = EdgeComposition.get_child_by_identifier(last_node, child_identifier) orelse @panic("child node not found");
+                        // std.debug.print("CHILD NODE: ", .{});
+                        // print_instance_node(child_node);
+                        // std.debug.print("\n", .{});
+                        // std.debug.print("PARENT TYPE ELEMENT LIST: ", .{});
+                        // type_path.type_element_list.print();
+                        // std.debug.print("\n", .{});
+                        var child_type_element_list = TypeElementList{
+                            .elements = std.ArrayList(TypeElement).init(self.arena.allocator()),
+                        };
+                        const type_items = type_path.type_element_list.elements.items;
+                        if (type_items.len > 0) {
+                            child_type_element_list.elements.appendSlice(type_items[0 .. type_items.len - 1]) catch @panic("OOM");
+                        }
+                        // std.debug.print("CHILD TYPE ELEMENT LIST: ", .{});
+                        // child_type_element_list.print();
+                        // std.debug.print("\n", .{});
 
-                        print_instance_node(last_node);
-                        std.debug.print("CHILD IDENTIFIER:{s}", .{child_identifier});
+                        var child_node_list = BoundNodeReferenceList{
+                            .elements = std.ArrayList(BoundNodeReference).init(self.arena.allocator()),
+                        };
+                        child_node_list.add_element(child_node);
 
-                        std.debug.print("\n", .{});
-                    } else {
-                        std.debug.print("NADA\n", .{});
+                        if (!self.visited_list.contains_node(child_type_element_list, child_node) and
+                            !self.to_visit_list.contains_node(child_type_element_list, child_node))
+                        {
+                            self.to_visit_list.add_element(child_type_element_list, child_node_list);
+                            self.visited_list.add_element(child_type_element_list, child_node_list);
+                        }
                     }
                 }
 
@@ -286,8 +314,12 @@ pub const PathFinder = struct {
                         };
                         parent_node_list.add_element(parent_node);
 
-                        self.to_visit_list.add_element(type_element_list, parent_node_list);
-                        self.visited_list.add_element(type_element_list, parent_node_list);
+                        if (!self.visited_list.contains_node(type_element_list, parent_node) and
+                            !self.to_visit_list.contains_node(type_element_list, parent_node))
+                        {
+                            self.to_visit_list.add_element(type_element_list, parent_node_list);
+                            self.visited_list.add_element(type_element_list, parent_node_list);
+                        }
 
                         for (self.to_visit_list.elements.items) |to_visit| {
                             std.debug.print("To visit: ", .{});
@@ -305,10 +337,15 @@ pub const PathFinder = struct {
                 self.current_bfs_paths = std.ArrayList(*BFSPath).init(self.allocator);
             }
         }
-
+        std.debug.print("RESULTING VISITED LIST\n", .{});
         for (self.visited_list.elements.items) |visited| {
-            std.debug.print("Visited: ", .{});
             visited.print();
+            std.debug.print("\n", .{});
+        }
+
+        std.debug.print("RESULTING TO VISIT LIST\n", .{});
+        for (self.to_visit_list.elements.items) |to_visit_list| {
+            to_visit_list.print();
             std.debug.print("\n", .{});
         }
 
