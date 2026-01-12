@@ -14,6 +14,7 @@ from faebryk.core.solver.mutator import MutationMap, Mutator
 from faebryk.core.solver.utils import (
     S_LOG,
     Contradiction,
+    pretty_expr,
 )
 from faebryk.libs.util import not_none
 
@@ -327,7 +328,7 @@ class ExpressionBuilder(NamedTuple):
 
     def pretty(self, mutator: Mutator):
         _str = _pretty_factory(
-            mutator,
+            mutator.print_ctx,
             self.factory,
             self.operands,
             assert_=self.assert_,
@@ -397,7 +398,7 @@ def _no_predicate_literals(
         # P!{S/P|True} -> P!
         if any(op.try_get_sibling_trait(F.Expressions.is_predicate) for op in operands):
             logger.debug(
-                f"Remove predicate literal {_pretty_factory(mutator, factory, operands)}"
+                f"Remove predicate literal {_pretty_factory(mutator.print_ctx, factory, operands)}"
             )
             return None
         # P {S|True} -> P!
@@ -456,8 +457,8 @@ def _no_literal_inequalities(
 
     new_operands = [po_operand, new_superset.can_be_operand.get()]
     logger.debug(
-        f"Converting {_pretty_factory(mutator, factory, operands)} ->"
-        f" {_pretty_factory(mutator, IsSubset, new_operands)}"
+        f"Converting {_pretty_factory(mutator.print_ctx, factory, operands)} ->"
+        f" {_pretty_factory(mutator.print_ctx, IsSubset, new_operands)}"
     )
     return ExpressionBuilder(
         IsSubset,
@@ -490,37 +491,43 @@ def _no_predicate_operands(
 
     if new_operands != operands:
         logger.debug(
-            f"Predicate operands: {builder.pretty(mutator)}) ->"
-            f" {new_builder.pretty(mutator)})"
+            f"Predicate operands: {pretty_expr(builder, mutator)} ->"
+            f" {pretty_expr(new_builder, mutator)}"
         )
 
     return new_builder
 
 
 def _pretty_factory(
-    mutator: Mutator,
-    factory: type[fabll.Node] | None = None,
+    context: F.Parameters.ReprContext,
+    factory: type[fabll.Node],
     operands: Sequence[F.Parameters.can_be_operand] | None = None,
     assert_: bool = False,
     terminate: bool = False,
 ) -> str:
-    # TODO: merge this with compact repr
-    if operands is not None:
-        ops = ", ".join(op.pretty(context=mutator.print_ctx) for op in operands)
+    if operands:
+        tg = operands[0].tg
     else:
-        ops = ""
-    if factory:
-        fac = f"{factory.__name__}"
-        if assert_:
-            fac += "!"
-        if terminate:
-            fac += "$"
-        if operands is not None:
-            return f"{fac}({ops})"
-        else:
-            return fac
-    else:
-        return ops
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+    factory_type = fabll.TypeNodeBoundTG(tg, factory)
+    is_expr_type = factory_type.try_get_type_trait(F.Expressions.is_expression_type)
+    if is_expr_type is None:
+        raise ValueError(f"Factory {factory} has no is_expression_type trait")
+    repr_style = is_expr_type.get_repr_style()
+
+    return F.Expressions.is_expression._compact_repr(
+        context,
+        repr_style,
+        repr_style.symbol if repr_style.symbol is not None else factory.__name__,
+        bool(assert_),
+        bool(terminate),
+        "",
+        False,
+        factory_type.get_type_name(),
+        operands or [],
+    )
 
 
 def insert_expression(
@@ -557,7 +564,7 @@ def insert_expression(
         mutator.G_transient, mutator.tg_in, builder.factory, builder.operands
     ):
         logger.debug(
-            f"Folded ({builder.pretty(mutator)}) to literal {lit_fold.pretty_str()}"
+            f"Folded ({pretty_expr(builder, mutator)}) to literal {lit_fold.pretty_str()}"
         )
         # TODO terminate expression
         new_expr = mutator._create_and_insert_expression(
@@ -609,7 +616,7 @@ def insert_expression(
             mutator.predicate_terminate(congruent_predicate)
         congruent_op = congruent.get_trait(F.Parameters.can_be_operand)
         logger.debug(
-            f"Found congruent expression for {builder.pretty(mutator)}: {congruent_op.pretty()}"
+            f"Found congruent expression for {pretty_expr(builder, mutator)}: {congruent_op.pretty()}"
         )
         return InsertExpressionResult(congruent_op, False)
 
@@ -622,19 +629,19 @@ def insert_expression(
             mutator, builder.factory, builder.operands, is_predicate=builder.assert_
         )
         if subsuming_expr := subsume_res.expr:
-            logger.debug(
-                f"Subsume replaced: {builder.pretty(mutator)} -> {subsuming_expr.compact_repr(mutator.print_ctx)}"
-            )
+            orig = pretty_expr(builder, mutator)
+            new = pretty_expr(subsuming_expr, mutator)
+            logger.debug(f"Subsume replaced: {orig} -> {new}")
             return InsertExpressionResult(subsuming_expr.as_operand.get(), False)
         elif subsume_res.discard:
-            logger.debug(f"Subsume discard: {builder.pretty(mutator)}")
+            logger.debug(f"Subsume discard: {pretty_expr(builder, mutator)}")
             return InsertExpressionResult(None, False)
         elif subsume_res.builder:
             factory, operands = subsume_res.builder
             builder = ExpressionBuilder(
                 factory, operands, builder.assert_, builder.terminate
             )
-            logger.debug(f"Subsume adjust {builder.pretty(mutator)}")
+            logger.debug(f"Subsume adjust {pretty_expr(builder, mutator)}")
 
     # * no empty supersets
     _no_empty_superset(mutator, builder)
@@ -654,7 +661,9 @@ def insert_expression(
             if mutator.utils.is_correlatable_literal(lit)
         }
         if len(correlatable) < len(lits):
-            raise ValueError(f"Is with literal not allowed: {builder.pretty(mutator)}")
+            raise ValueError(
+                f"Is with literal not allowed: {pretty_expr(builder, mutator)}"
+            )
         # TODO handle lit,lit; op,lit, lit,op etc, multi lit
         non_lit = [
             op for op in builder.operands if op.as_parameter_operatable.try_get()
@@ -687,7 +696,7 @@ def wrap_insert_expression(
         ctx = mutator.mutation_map.print_ctx
         g_id = hex(op.g.get_self_node().node().get_uuid())
         target_dbg = f"`{op.pretty(context=ctx)}` g:{g_id}"
-    logger.info(f"{builder.pretty(mutator)} -> {target_dbg}")
+    logger.info(f"{pretty_expr(builder, mutator)} -> {target_dbg}")
 
     return res
 

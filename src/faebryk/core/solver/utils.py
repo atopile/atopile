@@ -831,3 +831,29 @@ class MutatorUtils:
                     terminate=True,
                 )
         return out
+
+
+if TYPE_CHECKING:
+    from faebryk.core.solver.symbolic.invariants import ExpressionBuilder
+
+
+def pretty_expr(
+    expr: "F.Expressions.is_expression | ExpressionBuilder",
+    mutator: "Mutator",
+    context: "F.Parameters.ReprContext | None" = None,
+    use_name: bool = False,
+    no_lit_suffix: bool = False,
+) -> str:
+    context = context or mutator.print_ctx
+    match expr:
+        case ExpressionBuilder():
+            from faebryk.core.solver.symbolic.invariants import _pretty_factory
+
+            assert context is not None, "Context is required for ExpressionBuilder"
+            return _pretty_factory(context, expr.factory)
+        case F.Expressions.is_expression():
+            return expr.compact_repr(
+                context,
+                use_name=use_name,
+                no_lit_suffix=no_lit_suffix,
+            )

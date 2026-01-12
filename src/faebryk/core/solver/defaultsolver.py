@@ -200,7 +200,7 @@ class DefaultSolver(Solver):
         transforms = Transformations.identity(
             tg,
             mutation_map.last_stage.G_out,
-            input_print_context=mutation_map.output_print_context,
+            input_print_context=mutation_map.print_ctx,
         )
 
         # inject new parameters
@@ -285,7 +285,7 @@ class DefaultSolver(Solver):
                         "resume_state",
                         iteration=0,
                         transformations=transforms,
-                        print_ctx=mutation_map.output_print_context,
+                        print_ctx=mutation_map.print_ctx,
                         G_in=G_in,
                         G_out=G_out,
                     )
