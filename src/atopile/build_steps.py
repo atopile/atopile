@@ -230,6 +230,11 @@ def prepare_build(
 def post_design_checks(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
+    if False:
+        from faebryk.core.graph_render import GraphRenderer
+
+        print(GraphRenderer.render(app.instance, filter_types=["ElectricPower", "Electrical"]))
+
     check_design(
         app,
         stage=F.implements_design_check.CheckStage.POST_DESIGN,
