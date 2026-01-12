@@ -247,6 +247,9 @@ pub const PathFinder = struct {
 
                 for (self.current_bfs_paths.items) |path| {
                     const combined_path = self.concat_paths(path_to_bfs, path);
+                    if (!has_is_interface_trait(combined_path.get_last_node())) {
+                        continue;
+                    }
                     visited_path_list.add_path(combined_path);
                 }
 
@@ -428,6 +431,12 @@ fn try_get_node_type_name(bound_node: BoundNodeReference) ?graph.str {
 fn print_instance_node(bound_node: BoundNodeReference) void {
     const type_name = try_get_node_type_name(bound_node) orelse @panic("Missing type");
     dbg_print("{}:{s}", .{ bound_node.node.get_uuid(), type_name });
+}
+
+fn has_is_interface_trait(bound_node: BoundNodeReference) bool {
+    const tg = typegraph_mod.TypeGraph.of_instance(bound_node) orelse return false;
+    const is_interface_type = tg.get_type_by_name("is_interface.node.core.faebryk") orelse return false;
+    return EdgeTrait.try_get_trait_instance_of_type(bound_node, is_interface_type.node) != null;
 }
 
 fn print_instance_path(path: *const BFSPath) void {
