@@ -56,31 +56,29 @@ class SubsumptionCheck:
         """
 
         expr: F.Expressions.is_expression | None = None
-        builder: tuple[type[fabll.NodeT], list[F.Parameters.can_be_operand]] | None = (
-            None
-        )
+        builder: (
+            tuple[
+                type[F.Expressions.ExpressionNodes], list[F.Parameters.can_be_operand]
+            ]
+            | None
+        ) = None
         discard: bool = False
 
     @staticmethod
     def subset(
         mutator: Mutator,
-        new_operands: Sequence[F.Parameters.can_be_operand],
-        is_predicate: bool,
+        builder: "ExpressionBuilder",
     ) -> Result:
         """
         A ss! X, A ss! Y -> A ss! X ∩ Y
         X ss! A, Y ss! A -> X ∪ Y ss! A
         """
 
-        if not is_predicate:
+        if not builder.assert_:
             # TODO properly implement
             return SubsumptionCheck.Result()
 
-        ops = {
-            i: op
-            for i, v in enumerate(new_operands)
-            if (op := v.as_parameter_operatable.try_get())
-        }
+        ops = builder.indexed_pos()
 
         if len(ops) != 1:
             return SubsumptionCheck.Result()
@@ -102,7 +100,7 @@ class SubsumptionCheck:
 
             assert len(superset_ss) == 1
             superset_ss, superset_lit = superset_ss[0]
-            new_superset = new_operands[1].as_literal.force_get()
+            new_superset = builder.operands[1].as_literal.force_get()
             merged_superset = superset_lit.op_intersect_intervals(
                 new_superset, g=mutator.G_transient, tg=mutator.tg_in
             )
@@ -133,7 +131,7 @@ class SubsumptionCheck:
 
             assert len(subset_ss) == 1
             subset_ss, subset_lit = subset_ss[0]
-            new_subset = new_operands[0].as_literal.force_get()
+            new_subset = builder.operands[0].as_literal.force_get()
             merged_subset = subset_lit.op_union_intervals(
                 new_subset, g=mutator.G_transient, tg=mutator.tg_in
             )
@@ -152,8 +150,7 @@ class SubsumptionCheck:
     @staticmethod
     def or_(
         mutator: Mutator,
-        new_operands: Sequence[F.Parameters.can_be_operand],
-        is_predicate: bool,
+        builder: "ExpressionBuilder",
     ) -> Result:
         """
         Or!(A, B, C), Or!(A, B) -> Or!(A, B)
@@ -161,21 +158,15 @@ class SubsumptionCheck:
         Or!(A, B, True) -> discard (no information)
         """
 
-        if any(
-            lit.equals_singleton(True)
-            for op in new_operands
-            if (lit := op.as_literal.try_get())
-        ):
-            if is_predicate:
+        if any(lit.equals_singleton(True) for lit in builder.indexed_lits().values()):
+            if builder.assert_:
                 return SubsumptionCheck.Result(discard=True)
             else:
                 # other algorithm will deal with this (no invariant)
                 return SubsumptionCheck.Result()
 
         # filter out False/{True, False}
-        new_operands = [
-            op for op in new_operands if not (lit := op.as_literal.try_get())
-        ]
+        new_operands = [po.as_operand.get() for po in builder.indexed_pos().values()]
 
         def _operands_are_subset(
             candidate_operands: Sequence[F.Parameters.can_be_operand],
@@ -208,7 +199,7 @@ class SubsumptionCheck:
         ]
         could_be_subsumed = reduce(lambda x, y: x & y, ors)
 
-        if is_predicate:
+        if builder.assert_:
             for candidate in could_be_subsumed:
                 if _operands_are_subset(
                     candidate.get_trait(F.Expressions.is_expression).get_operands(),
@@ -233,24 +224,21 @@ class SubsumptionCheck:
 
 def find_subsuming_expression(
     mutator: Mutator,
-    expr_factory: type[fabll.NodeT],
-    operands: Sequence[F.Parameters.can_be_operand],
-    is_predicate: bool,
+    builder: "ExpressionBuilder",
 ) -> SubsumptionCheck.Result:
     # TODO use right graph
-    match expr_factory:
+    match builder.factory:
         case F.Expressions.IsSubset:
-            return SubsumptionCheck.subset(mutator, operands, is_predicate)
+            return SubsumptionCheck.subset(mutator, builder)
         case F.Expressions.Or:
-            return SubsumptionCheck.or_(mutator, operands, is_predicate)
+            return SubsumptionCheck.or_(mutator, builder)
         case _:
             return SubsumptionCheck.Result()
 
 
-def find_congruent_expression[T: fabll.NodeT](
+def find_congruent_expression[T: F.Expressions.ExpressionNodes](
     mutator: Mutator,
-    expr_factory: type[T],
-    *operands: F.Parameters.can_be_operand,
+    builder: "ExpressionBuilder[T]",
     allow_uncorrelated: bool = False,
     dont_match: list[F.Expressions.is_expression] | None = None,
 ) -> T | None:
@@ -320,11 +308,27 @@ class InsertExpressionResult(NamedTuple):
     is_new: bool
 
 
-class ExpressionBuilder(NamedTuple):
-    factory: type[fabll.NodeT]
+class ExpressionBuilder[T: F.Expressions.ExpressionNodes](NamedTuple):
+    factory: type[T]
     operands: list[F.Parameters.can_be_operand]
     assert_: bool
     terminate: bool
+
+    def indexed_ops(self) -> dict[int, F.Parameters.can_be_operand]:
+        return {i: o for i, o in enumerate(self.operands)}
+
+    def indexed_ops_with_trait[TR: fabll.NodeT](self, trait: type[TR]) -> dict[int, TR]:
+        return {
+            i: op
+            for i, o in self.indexed_ops().items()
+            if (op := o.try_get_sibling_trait(trait))
+        }
+
+    def indexed_lits(self) -> dict[int, F.Literals.is_literal]:
+        return self.indexed_ops_with_trait(F.Literals.is_literal)
+
+    def indexed_pos(self) -> dict[int, F.Parameters.is_parameter_operatable]:
+        return self.indexed_ops_with_trait(F.Parameters.is_parameter_operatable)
 
 
 def _no_empty_superset(
@@ -350,13 +354,12 @@ def _no_empty_superset(
 
 
 def _no_predicate_literals(
-    mutator: Mutator,
-    builder: ExpressionBuilder,
+    mutator: Mutator, builder: ExpressionBuilder
 ) -> ExpressionBuilder | None:
     """
     P!{S/P|False} -> Contradiction
     P {S|True} -> P!
-    P!{P|True} -> P!
+    P! ss! True / True ss! P! -> Drop (carries no information)
     """
 
     # FIXME: important
@@ -367,11 +370,7 @@ def _no_predicate_literals(
     if not (factory is F.Expressions.IsSubset and assert_):
         return builder
 
-    if not (
-        lits := {
-            i: lit for i, o in enumerate(operands) if (lit := o.as_literal.try_get())
-        }
-    ):
+    if not (lits := builder.indexed_lits()):
         return builder
 
     # P!{S|False} -> Contradiction
@@ -420,9 +419,7 @@ def _no_literal_inequalities(
     if factory is not F.Expressions.GreaterOrEqual:
         return builder
 
-    lits = {i: lit for i, o in enumerate(operands) if (lit := o.as_literal.try_get())}
-
-    if not lits:
+    if not (lits := builder.indexed_lits()):
         return builder
 
     # Case: A >=! X -> A ss! [X.max(), +∞)
@@ -505,8 +502,6 @@ def insert_expression(
     from faebryk.core.solver.symbolic.pure_literal import exec_pure_literal_operands
 
     assert not builder.terminate or builder.assert_, "terminate ⟹ assert"
-    orig_builder = builder  # for debug
-    # logger.warning(builder.pretty(mutator))
 
     # * Op(P!, ...) -> Op(True, ...)
     builder = _no_predicate_operands(mutator, builder)
@@ -517,9 +512,16 @@ def insert_expression(
         mutator.G_transient, mutator.tg_in, builder.factory, builder.operands
     ):
         logger.debug(
-            f"Folded ({pretty_expr(builder, mutator)}) to literal {lit_fold.pretty_str()}"
+            f"Folded ({pretty_expr(builder, mutator)}) to "
+            f"literal {lit_fold.pretty_str()}"
         )
-        # TODO terminate expression
+        if builder.assert_:
+            # P!{S|True} -> P!$
+            if lit_fold.equals_singleton(True):
+                builder = ExpressionBuilder(
+                    builder.factory, builder.operands, True, True
+                )
+
         new_expr = mutator._create_and_insert_expression(
             builder.factory,
             *builder.operands,
@@ -527,21 +529,22 @@ def insert_expression(
             terminate=builder.terminate,
         )
         new_expr_op = new_expr.get_trait(F.Parameters.can_be_operand)
-        lit_op = lit_fold.as_operand.get()
-        mutator.create_check_and_insert_expression(
-            F.Expressions.IsSubset,
-            new_expr_op,
-            lit_op,
-            terminate=True,
-            assert_=True,
-        )
-        mutator.create_check_and_insert_expression(
-            F.Expressions.IsSubset,
-            lit_op,
-            new_expr_op,
-            terminate=True,
-            assert_=True,
-        )
+        if not builder.assert_:
+            lit_op = lit_fold.as_operand.get()
+            mutator.create_check_and_insert_expression(
+                F.Expressions.IsSubset,
+                new_expr_op,
+                lit_op,
+                terminate=True,
+                assert_=True,
+            )
+            mutator.create_check_and_insert_expression(
+                F.Expressions.IsSubset,
+                lit_op,
+                new_expr_op,
+                terminate=True,
+                assert_=True,
+            )
         return InsertExpressionResult(new_expr_op, True)
 
     # P!{S/P|False} -> Contradiction
@@ -556,11 +559,7 @@ def insert_expression(
     builder = _no_literal_inequalities(mutator, builder)
 
     # * no congruence
-    if congruent := find_congruent_expression(
-        mutator,
-        builder.factory,
-        *builder.operands,
-    ):
+    if congruent := find_congruent_expression(mutator, builder):
         if builder.assert_:
             congruent_assertable = congruent.get_trait(F.Expressions.is_assertable)
             mutator.assert_(congruent_assertable)
@@ -578,9 +577,7 @@ def insert_expression(
     if builder.assert_ or builder.factory.bind_typegraph(
         mutator.tg_in
     ).check_if_instance_of_type_has_trait(F.Expressions.is_assertable):
-        subsume_res = find_subsuming_expression(
-            mutator, builder.factory, builder.operands, is_predicate=builder.assert_
-        )
+        subsume_res = find_subsuming_expression(mutator, builder)
         if subsuming_expr := subsume_res.expr:
             orig = pretty_expr(builder, mutator)
             new = pretty_expr(subsuming_expr, mutator)
@@ -601,13 +598,7 @@ def insert_expression(
 
     # no A is! X(singleton)
     # A is! X in general not allowed
-    if builder.factory is F.Expressions.Is and (
-        lits := {
-            i: lit
-            for i, op in enumerate(builder.operands)
-            if (lit := op.as_literal.try_get())
-        }
-    ):
+    if builder.factory is F.Expressions.Is and (lits := builder.indexed_lits()):
         correlatable = {
             i: lit
             for i, lit in lits.items()
@@ -623,7 +614,7 @@ def insert_expression(
         ]
         builder = ExpressionBuilder(
             F.Expressions.IsSubset,
-            non_lit + [correlatable[0].as_operand.get()],
+            non_lit + [correlatable[1].as_operand.get()],
             builder.assert_,
             builder.terminate,
         )
@@ -1044,8 +1035,12 @@ class TestInvariantsSimple:
         lit2 = mutator.utils.make_number_literal_from_range(50, 150)
         subsume_result = SubsumptionCheck.subset(
             mutator,
-            new_operands=[p_op, lit2.can_be_operand.get()],
-            is_predicate=True,
+            ExpressionBuilder(
+                F.Expressions.IsSubset,
+                [p_op, lit2.can_be_operand.get()],
+                assert_=True,
+                terminate=False,
+            ),
         )
 
         # Subsumption should return a builder with intersected range
@@ -1434,8 +1429,12 @@ class TestInvariantsCombinations:
         lit2 = mutator.utils.make_number_literal_from_range(50, 60)
         subsume_result = SubsumptionCheck.subset(
             mutator,
-            new_operands=[p_op, lit2.can_be_operand.get()],
-            is_predicate=True,
+            ExpressionBuilder(
+                F.Expressions.IsSubset,
+                [p_op, lit2.can_be_operand.get()],
+                assert_=True,
+                terminate=False,
+            ),
         )
 
         # Should return builder with intersected range [50, 60]

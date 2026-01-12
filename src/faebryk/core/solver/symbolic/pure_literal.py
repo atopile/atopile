@@ -11,6 +11,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.libs.util import not_none
 
 logger = logging.getLogger(__name__)
 
@@ -113,3 +114,17 @@ def exec_pure_literal_operands(
         return expr_type_.run(g=g, tg=tg, *lits_nodes)
     except (ValueError, NotImplementedError, ZeroDivisionError, TypeError):
         return None
+
+
+def exec_pure_literal_expression(
+    g: graph.GraphView,
+    tg: fbrk.TypeGraph,
+    expr: F.Expressions.is_expression,
+) -> F.Literals.is_literal | None:
+    expr_type = not_none(
+        fabll.TypeNodeBoundTG.try_get_trait_of_type(
+            fabll.ImplementsType,
+            not_none(fabll.Traits(expr).get_obj_raw().get_type_node()),
+        )
+    )
+    return exec_pure_literal_operands(g, tg, expr_type, expr.get_operands())

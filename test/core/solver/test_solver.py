@@ -2194,7 +2194,7 @@ def test_exec_pure_literal_expressions(
 ):
     E = BoundExpressions()
     from faebryk.core.solver.symbolic.pure_literal import (
-        exec_pure_literal_operands,
+        exec_pure_literal_expression,
     )
 
     op = op_factory(E)
@@ -2215,16 +2215,9 @@ def test_exec_pure_literal_expressions(
 
     expr = op(*lits_converted)
     expr_e = expr.as_parameter_operatable.force_get().as_expression.force_get()
-    assert not_none(
-        exec_pure_literal_operands(
-            E.g,
-            E.tg,
-            fabll.Node.bind_instance(
-                not_none(fabll.Traits(expr_e).get_obj_raw().get_type_node())
-            ).get_trait(fabll.ImplementsType),
-            expr_e.get_operands(),
-        )
-    ).equals(expected_converted, g=E.g, tg=E.tg)
+    assert not_none(exec_pure_literal_expression(E.g, E.tg, expr_e)).equals(
+        expected_converted, g=E.g, tg=E.tg
+    )
 
     if op == E.greater_than:
         pytest.xfail("GreaterThan is not supported in solver")

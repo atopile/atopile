@@ -1283,7 +1283,7 @@ class Mutator:
         op_graphs = {
             op.g.get_self_node().node().get_uuid(): op.g for op in new_operands
         }
-        assert set(op_graphs.keys()) == {
+        assert not op_graphs or set(op_graphs.keys()) == {
             self.G_out.get_self_node().node().get_uuid()
         }, f"Graph mismatch: {op_graphs} != {self.G_out}"
 
