@@ -108,12 +108,13 @@ const TypePath = struct {
 };
 
 const TypePathList = struct {
-    elements: std.ArrayList(TypePath),
+    allocator: std.mem.Allocator,
+    elements: std.ArrayList(*TypePath),
 
     fn add_element(self: *@This(), key: TypeElementList, value: BoundNodeReferenceList) void {
-        for (self.elements.items) |*visited_level| {
-            if (!visited_level.type_element_list.equals(&key)) continue;
-            visited_level.bound_node_reference_list.add_elements(value);
+        for (self.elements.items) |type_path| {
+            if (!type_path.type_element_list.equals(&key)) continue;
+            type_path.bound_node_reference_list.add_elements(value);
             return;
         }
 
@@ -122,14 +123,16 @@ const TypePathList = struct {
         };
         deduped.add_elements(value);
 
-        self.elements.append(.{
+        const new_type_path = self.allocator.create(TypePath) catch @panic("OOM");
+        new_type_path.* = .{
             .type_element_list = key,
             .bound_node_reference_list = deduped,
-        }) catch @panic("OOM");
+        };
+        self.elements.append(new_type_path) catch @panic("OOM");
     }
 
     fn get_nodes(self: @This(), key: TypeElementList) ?*BoundNodeReferenceList {
-        for (self.elements.items) |*type_path| {
+        for (self.elements.items) |type_path| {
             if (type_path.type_element_list.equals(&key)) {
                 return &type_path.bound_node_reference_list;
             }
@@ -168,10 +171,12 @@ pub const PathFinder = struct {
             .elements = std.ArrayList(TypeElement).init(self.arena.allocator()),
         };
         self.to_visit_list = TypePathList{
-            .elements = std.ArrayList(TypePath).init(self.arena.allocator()),
+            .allocator = self.arena.allocator(),
+            .elements = std.ArrayList(*TypePath).init(self.arena.allocator()),
         };
         self.visited_list = TypePathList{
-            .elements = std.ArrayList(TypePath).init(self.arena.allocator()),
+            .allocator = self.arena.allocator(),
+            .elements = std.ArrayList(*TypePath).init(self.arena.allocator()),
         };
     }
 
@@ -205,44 +210,8 @@ pub const PathFinder = struct {
         first_bound_node_reference_list.add_element(start_node);
         self.to_visit_list.add_element(self.bfs_type_element_stack, first_bound_node_reference_list);
 
-        // var nodes_to_visit_remaining = true;
-        // var type_paths_to_visit_remaining = true;
-
-        // while (type_paths_to_visit_remaining) {
-        //     if (self.to_visit_list.elements.getLastOrNull()) |type_path| {
-        //         if (self.to_visit_list.get_nodes(type_path.type_element_list)) |node_list_ptr| {
-        //             std.debug.print("To visit: ", .{});
-        //             type_path.print();
-        //             std.debug.print("\n", .{});
-        //             while (nodes_to_visit_remaining) {
-        //                 if (node_list_ptr.*.elements.getLastOrNull()) |node_to_bfs| {
-        //                     std.debug.print("doing bfs on", .{});
-        //                     print_instance_node(node_to_bfs);
-        //                     std.debug.print("\n", .{});
-        //                 }
-
-        //                 if (node_list_ptr.*.elements.pop()) |_| {
-        //                     nodes_to_visit_remaining = true;
-        //                 } else {
-        //                     nodes_to_visit_remaining = false;
-        //                 }
-        //             }
-        //         }
-        //     }
-
-        //     if (self.to_visit_list.elements.pop()) |_| {
-        //         type_paths_to_visit_remaining = true;
-        //     } else {
-        //         type_paths_to_visit_remaining = false;
-        //     }
-        // }
-
         // iterate through each type path
-        while (self.to_visit_list.elements.pop()) |type_path_const| {
-            var type_path = type_path_const;
-            // Snapshot the current type path elements so reallocation of to_visit_list
-            // during traversal doesn't invalidate our reference.
-            const current_type_element_list = type_path.type_element_list;
+        while (self.to_visit_list.elements.pop()) |type_path| {
 
             // iterate through all connected nodes for a given type path
             while (type_path.bound_node_reference_list.elements.pop()) |node_to_bfs| {
@@ -264,12 +233,13 @@ pub const PathFinder = struct {
                     visited_node_list.elements.append(path.get_last_node()) catch @panic("OOM");
                 }
 
-                self.visited_list.add_element(current_type_element_list, visited_node_list);
+                self.visited_list.add_element(type_path.type_element_list, visited_node_list);
 
                 // Up traverse
                 for (self.current_bfs_paths.items) |path| {
                     const last_node = path.get_last_node();
                     if (EdgeComposition.get_parent_node_of(last_node)) |parent_node| {
+                        // parent_node_list.add_element(parent_node);
                         const parent_edge = EdgeComposition.get_parent_edge(last_node).?;
                         const child_identifier = EdgeComposition.get_name(parent_edge.edge) catch @panic("corrupt edge");
                         const parent_type_edge = EdgeType.get_type_edge(parent_node).?;
@@ -279,44 +249,44 @@ pub const PathFinder = struct {
                             .child_identifier = child_identifier,
                         };
 
-                        std.debug.print("last_node: ", .{});
-                        print_instance_node(last_node);
-                        std.debug.print("\n", .{});
-
                         var type_element_list = TypeElementList{
                             .elements = std.ArrayList(TypeElement).init(self.arena.allocator()),
                         };
 
-                        for (current_type_element_list.elements.items) |element| {
+                        for (type_path.type_element_list.elements.items) |element| {
                             type_element_list.elements.append(element) catch @panic("OOM");
                         }
 
                         type_element_list.elements.append(type_element) catch @panic("OOM");
 
-                        std.debug.print("type_element_list: ", .{});
-                        type_element_list.print();
-                        std.debug.print("\n", .{});
-
-                        const to_visit_node_list = blk: {
-                            var list = BoundNodeReferenceList{
-                                .elements = std.ArrayList(BoundNodeReference).init(self.arena.allocator()),
-                            };
-                            list.elements.appendSlice(visited_node_list.elements.items) catch @panic("OOM");
-                            break :blk list;
-                        };
-
-                        _ = to_visit_node_list;
-
                         const blank_list = BoundNodeReferenceList{
                             .elements = std.ArrayList(BoundNodeReference).init(self.arena.allocator()),
                         };
+                        _ = blank_list;
 
-                        self.to_visit_list.add_element(type_element_list, blank_list);
-                        self.visited_list.add_element(type_element_list, blank_list);
+                        var parent_node_list = BoundNodeReferenceList{
+                            .elements = std.ArrayList(BoundNodeReference).init(self.arena.allocator()),
+                        };
+                        parent_node_list.add_element(parent_node);
+
+                        self.to_visit_list.add_element(type_element_list, parent_node_list);
+                        self.visited_list.add_element(type_element_list, parent_node_list);
+
+                        for (self.to_visit_list.elements.items) |to_visit| {
+                            std.debug.print("To visit: ", .{});
+                            to_visit.print();
+                            std.debug.print("\n", .{});
+                        }
                     }
                 }
-            }
 
+                // Clean up current_bfs_paths for next iteration
+                for (self.current_bfs_paths.items) |path| {
+                    path.deinit();
+                }
+                self.current_bfs_paths.deinit();
+                self.current_bfs_paths = std.ArrayList(*BFSPath).init(self.allocator);
+            }
         }
 
         for (self.visited_list.elements.items) |visited| {
@@ -324,77 +294,6 @@ pub const PathFinder = struct {
             visited.print();
             std.debug.print("\n", .{});
         }
-
-        // while (self.nodes_to_bfs.pop()) |bound_node| {
-
-        //     // Horizontal traverse
-        //     _ = bound_node.g.visit_paths_bfs(
-        //         bound_node,
-        //         void,
-        //         self,
-        //         Self.bfs_visit_fn,
-        //         &[_]graph.Edge.EdgeType{EdgeInterfaceConnection.tid},
-        //     );
-
-        //     var bound_node_reference_list = BoundNodeReferenceList{
-        //         .elements = std.ArrayList(BoundNodeReference).init(self.arena.allocator()),
-        //     };
-
-        //     for (self.current_bfs_paths.items) |path| {
-        //         const last_node = path.get_last_node();
-        //         bound_node_reference_list.elements.append(last_node) catch @panic("OOM");
-        //     }
-
-        //     self.visited_list.add_element(self.bfs_type_element_stack, bound_node_reference_list);
-
-        //     // populate the parents
-        //     for (self.current_bfs_paths.items) |path| {
-        //         const last_node = path.get_last_node();
-        //         if (EdgeComposition.get_parent_node_of(last_node)) |parent_node| {
-        //             const parent_edge = EdgeComposition.get_parent_edge(last_node).?;
-        //             const child_identifier = EdgeComposition.get_name(parent_edge.edge) catch @panic("corrupt edge");
-        //             const parent_type_edge = EdgeType.get_type_edge(parent_node).?;
-        //             const parent_type_node = parent_node.g.bind(EdgeType.get_type_node(parent_type_edge.edge));
-        //             const type_element = TypeElement{
-        //                 .type_node = parent_type_node,
-        //                 .child_identifier = child_identifier,
-        //             };
-        //             var type_element_list = TypeElementList{
-        //                 .elements = std.ArrayList(TypeElement).init(self.arena.allocator()),
-        //             };
-        //             type_element_list.elements.append(type_element) catch @panic("OOM");
-        //             self.bfs_type_element_stack.elements.append(type_element) catch @panic("OOM");
-
-        //             const blank_list = BoundNodeReferenceList{
-        //                 .elements = std.ArrayList(BoundNodeReference).init(self.arena.allocator()),
-        //             };
-
-        //             self.visited_list.add_element(self.bfs_type_element_stack, blank_list);
-        //         }
-        //     }
-
-        //     for (self.visited_list.elements.items) |visited_level| {
-        //         std.debug.print("Visited: ", .{});
-        //         visited_level.print();
-        //         std.debug.print("\n", .{});
-        //     }
-
-        //     // Add parents to bfs queue
-        //     for (self.current_bfs_paths.items) |path| {
-        //         const last_node = path.get_last_node();
-
-        //         if (EdgeComposition.get_parent_node_of(last_node)) |parent_node| {
-        //             self.nodes_to_bfs.append(parent_node) catch @panic("OOM");
-        //         }
-        //     }
-
-        //     // Clean up current_bfs_paths for next iteration
-        //     for (self.current_bfs_paths.items) |path| {
-        //         path.deinit();
-        //     }
-        //     self.current_bfs_paths.deinit();
-        //     self.current_bfs_paths = std.ArrayList(*BFSPath).init(self.allocator);
-        // }
 
         // TODO this stuff below isn't going to yield all the paths because we're discarding each bfs iteration
         // Transfer ownership to BFSPaths
