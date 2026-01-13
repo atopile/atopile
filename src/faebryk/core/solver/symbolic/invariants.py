@@ -84,8 +84,8 @@ class SubsumptionCheck:
         if subset_op := ops.get(0):
             superset_ss = [
                 (ss, lit)
-                for ss in subset_op.get_operations(
-                    types=F.Expressions.IsSubset, predicates_only=True
+                for ss in mutator.get_operations(
+                    subset_op, types=F.Expressions.IsSubset, predicates_only=True
                 )
                 if (
                     lit := ss.get_superset_operand().try_get_sibling_trait(
@@ -120,8 +120,8 @@ class SubsumptionCheck:
         elif superset_op := ops.get(1):
             subset_ss = [
                 (ss, lit)
-                for ss in superset_op.get_operations(
-                    types=F.Expressions.IsSubset, predicates_only=True
+                for ss in mutator.get_operations(
+                    superset_op, types=F.Expressions.IsSubset, predicates_only=True
                 )
                 if (
                     lit := ss.get_subset_operand().try_get_sibling_trait(
