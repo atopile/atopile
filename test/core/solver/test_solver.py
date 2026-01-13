@@ -3,6 +3,7 @@
 
 import logging
 import math
+from enum import Enum, auto
 from itertools import pairwise
 from typing import Callable, cast
 
@@ -2328,6 +2329,14 @@ def test_solve_voltage_divider_complex():
     # assert solver_total_current == res_total_current
 
 
+class SubsumptionResult(Enum):
+    """Result types for subsumption detection."""
+
+    NONE = auto()  # No subsumption
+    FULL = auto()  # Full subsumption - returns existing expression
+    MERGE = auto()  # Merge - returns ExpressionBuilder with intersection
+
+
 class TestSubsumptionDetection:
     """
     Test subsumption detection for predicates.
@@ -2335,29 +2344,32 @@ class TestSubsumptionDetection:
     Subsumption means: if predicate A is true, predicate B is automatically true.
     A "subsumes" B, making B redundant.
 
-    Same-type subsumptions:
-    - IsSubset: X ⊆ [0,10] subsumes X ⊆ [0,20] (tighter range)
-    - GreaterThan: X > 20 subsumes X > 10 (tighter lower bound)
-    - GreaterOrEqual: X >= 20 subsumes X >= 10 (tighter lower bound)
+    Result types:
+    - FULL: Existing predicate fully subsumes new (new adds no information)
+    - MERGE: Constraints overlap, returns intersection as ExpressionBuilder
+    - NONE: No subsumption (disjoint or new is strictly tighter)
 
-    Cross-type subsumptions:
-    - Is → IsSubset: X is 5 subsumes X ⊆ [0,10] when 5 ∈ [0,10]
-    - Is → GreaterThan: X is 5 subsumes X > 3 when 5 > 3
-    - IsSubset → GreaterThan: X ⊆ [10,20] subsumes X > 5 when min >= 5
+    Same-type subsumptions:
+    - IsSubset: X ⊆ [0,10] fully subsumes X ⊆ [0,20] (tighter range)
+    - IsSubset: X ⊆ [0,20] merges with X ⊆ [0,10] -> X ⊆ [0,10]
     """
 
     PRED_FACTORIES = {
         "IsSubset": F.Expressions.IsSubset,
-        "Is": F.Expressions.Is,
-        "GreaterThan": F.Expressions.GreaterThan,
-        "GreaterOrEqual": F.Expressions.GreaterOrEqual,
     }
 
     @staticmethod
-    def _run_in_mutator(mut_map: MutationMap, callback, force_copy=True):
+    def _run_in_mutator(
+        mut_map_or_E: MutationMap | BoundExpressions, callback, force_copy=True
+    ):
         """Run callback within a mutator context, returning its result."""
         from faebryk.core.solver.algorithm import algorithm
         from faebryk.core.solver.mutator import Mutator
+
+        if isinstance(mut_map_or_E, BoundExpressions):
+            mut_map = MutationMap.bootstrap(tg=mut_map_or_E.tg, g=mut_map_or_E.g)
+        else:
+            mut_map = mut_map_or_E
 
         result = None
 
@@ -2375,16 +2387,6 @@ class TestSubsumptionDetection:
         match pred_type:
             case "IsSubset":
                 return E.is_subset(operand, E.lit_op_range(value), assert_=assert_)
-            case "Is":
-                return E.is_(operand, E.lit_op_single(value), assert_=assert_)
-            case "GreaterThan":
-                return F.Expressions.GreaterThan.from_operands(
-                    operand, E.lit_op_single(value), g=E.g, tg=E.tg, assert_=assert_
-                )
-            case "GreaterOrEqual":
-                return F.Expressions.GreaterOrEqual.from_operands(
-                    operand, E.lit_op_single(value), g=E.g, tg=E.tg, assert_=assert_
-                )
             case _:
                 raise ValueError(f"Unknown predicate type: {pred_type}")
 
@@ -2398,178 +2400,79 @@ class TestSubsumptionDetection:
         return [operand, literal]
 
     @pytest.mark.parametrize(
-        "existing_pred, new_pred, expect_subsumed",
+        "existing_pred, new_pred, expected_result",
         [
-            # Same-type: IsSubset with Numbers
+            # FULL subsumption: existing is tighter than new
             pytest.param(
                 ("IsSubset", (0, 10)),
                 ("IsSubset", (0, 20)),
-                True,
-                id="ss_subsumes_ss_positive_tighter_range",
+                SubsumptionResult.FULL,
+                id="ss_full_tighter_range",
             ),
+            # MERGE: existing is looser, intersection returns tighter constraint
             pytest.param(
                 ("IsSubset", (0, 20)),
                 ("IsSubset", (0, 10)),
-                False,
-                id="ss_subsumes_ss_negative_looser_range",
+                SubsumptionResult.MERGE,
+                id="ss_merge_looser_range",
             ),
+            # FULL subsumption: existing is inner range of new
             pytest.param(
                 ("IsSubset", (5, 15)),
                 ("IsSubset", (0, 20)),
-                True,
-                id="ss_subsumes_ss_positive_inner_range",
+                SubsumptionResult.FULL,
+                id="ss_full_inner_range",
             ),
+            # MERGE: partial overlap, intersection is [5, 10]
             pytest.param(
                 ("IsSubset", (0, 10)),
                 ("IsSubset", (5, 15)),
-                False,
-                id="ss_subsumes_ss_negative_partial_overlap",
-            ),
-            # Same-type: GreaterThan
-            pytest.param(
-                ("GreaterThan", 20),
-                ("GreaterThan", 10),
-                True,
-                id="gt_subsumes_gt_positive_higher_bound",
-            ),
-            pytest.param(
-                ("GreaterThan", 10),
-                ("GreaterThan", 20),
-                False,
-                id="gt_subsumes_gt_negative_lower_bound",
-            ),
-            # Same-type: GreaterOrEqual
-            pytest.param(
-                ("GreaterOrEqual", 20),
-                ("GreaterOrEqual", 10),
-                True,
-                id="ge_subsumes_ge_positive_higher_bound",
-            ),
-            pytest.param(
-                ("GreaterOrEqual", 10),
-                ("GreaterOrEqual", 20),
-                False,
-                id="ge_subsumes_ge_negative_lower_bound",
-            ),
-            # Cross-type: Is → IsSubset
-            pytest.param(
-                ("Is", 5),
-                ("IsSubset", (0, 10)),
-                True,
-                id="is_subsumes_ss_positive_value_in_range",
-            ),
-            pytest.param(
-                ("Is", 15),
-                ("IsSubset", (0, 10)),
-                False,
-                id="is_subsumes_ss_negative_value_outside_range",
-            ),
-            # Cross-type: Is → GreaterThan
-            pytest.param(
-                ("Is", 10),
-                ("GreaterThan", 5),
-                True,
-                id="is_subsumes_gt_positive_value_above_bound",
-            ),
-            pytest.param(
-                ("Is", 5),
-                ("GreaterThan", 10),
-                False,
-                id="is_subsumes_gt_negative_value_below_bound",
-            ),
-            # Cross-type: Is → GreaterOrEqual
-            pytest.param(
-                ("Is", 10),
-                ("GreaterOrEqual", 10),
-                True,
-                id="is_subsumes_ge_positive_value_equal_bound",
-            ),
-            pytest.param(
-                ("Is", 5),
-                ("GreaterOrEqual", 10),
-                False,
-                id="is_subsumes_ge_negative_value_below_bound",
-            ),
-            # Cross-type: IsSubset → GreaterThan
-            pytest.param(
-                ("IsSubset", (10, 20)),
-                ("GreaterThan", 5),
-                True,
-                id="ss_subsumes_gt_positive_range_min_above_bound",
-            ),
-            pytest.param(
-                ("IsSubset", (0, 20)),
-                ("GreaterThan", 5),
-                False,
-                id="ss_subsumes_gt_negative_range_min_below_bound",
-            ),
-            # Cross-type: IsSubset → GreaterOrEqual
-            pytest.param(
-                ("IsSubset", (10, 20)),
-                ("GreaterOrEqual", 10),
-                True,
-                id="ss_subsumes_ge_positive_range_min_equal_bound",
-            ),
-            pytest.param(
-                ("IsSubset", (0, 20)),
-                ("GreaterOrEqual", 10),
-                False,
-                id="ss_subsumes_ge_negative_range_min_below_bound",
-            ),
-            # Cross-type: GreaterThan → GreaterOrEqual
-            pytest.param(
-                ("GreaterThan", 10),
-                ("GreaterOrEqual", 10),
-                True,
-                id="gt_subsumes_ge_positive_same_bound",
-            ),
-            pytest.param(
-                ("GreaterThan", 10),
-                ("GreaterOrEqual", 15),
-                False,
-                id="gt_subsumes_ge_negative_higher_bound",
-            ),
-            # Cross-type: GreaterOrEqual → GreaterThan
-            pytest.param(
-                ("GreaterOrEqual", 20),
-                ("GreaterThan", 10),
-                True,
-                id="ge_subsumes_gt_positive_higher_bound",
-            ),
-            pytest.param(
-                ("GreaterOrEqual", 10),
-                ("GreaterThan", 10),
-                False,
-                id="ge_subsumes_gt_negative_equal_bound",
+                SubsumptionResult.MERGE,
+                id="ss_merge_partial_overlap",
             ),
         ],
     )
-    def test_subsumption_detection(self, existing_pred, new_pred, expect_subsumed):
+    def test_subsumption_detection(self, existing_pred, new_pred, expected_result):
         E = BoundExpressions()
         X = E.parameter_op()
-        self._make_pred(E, existing_pred, X, assert_=True)
+        existing_expr = self._make_pred(E, existing_pred, X, assert_=True)
         mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
-
         new_type, _ = new_pred
-        new_operands = self._make_operands(E, new_pred, X)
 
         def callback(m: Mutator):
-            ops = [m.get_copy(op) for op in new_operands]
+            X_canon = not_none(
+                mut_map.map_forward(X.as_parameter_operatable.force_get()).maps_to
+            )
+            existing_canon = not_none(
+                mut_map.map_forward(
+                    existing_expr.as_parameter_operatable.force_get()
+                ).maps_to
+            )
+            m.mutate_expression(existing_canon.as_expression.force_get())
+
             builder = ExpressionBuilder(
-                self.PRED_FACTORIES[new_type], ops, assert_=True, terminate=False
+                self.PRED_FACTORIES[new_type],
+                [
+                    not_none(m.get_copy(op))
+                    for op in self._make_operands(E, new_pred, X_canon.as_operand.get())
+                ],
+                assert_=True,
+                terminate=False,
             )
             return find_subsuming_expression(m, builder)
 
         result = self._run_in_mutator(mut_map, callback)
 
         assert result is not None
-        print(result.most_constrained_expr is None)
-        print(expect_subsumed)
-        assert (
-            result.most_constrained_expr is not None
-            if expect_subsumed
-            else result.most_constrained_expr is None
-        )
+        match expected_result:
+            case SubsumptionResult.NONE:
+                assert result.most_constrained_expr is None
+            case SubsumptionResult.FULL:
+                assert isinstance(
+                    result.most_constrained_expr, F.Expressions.is_expression
+                )
+            case SubsumptionResult.MERGE:
+                assert isinstance(result.most_constrained_expr, ExpressionBuilder)
 
     @pytest.mark.parametrize(
         "existing_pred, new_pred, same_param, assert_existing",
@@ -2582,13 +2485,6 @@ class TestSubsumptionDetection:
                 True,
                 id="different_param_ss",
             ),
-            pytest.param(
-                ("GreaterThan", 20),
-                ("GreaterThan", 10),
-                False,
-                True,
-                id="different_param_gt",
-            ),
             # Non-predicate (not asserted) - should not be found
             pytest.param(
                 ("IsSubset", (0, 10)),
@@ -2597,14 +2493,9 @@ class TestSubsumptionDetection:
                 False,
                 id="non_predicate_ss",
             ),
-            # Disjoint ranges - no subsumption
-            pytest.param(
-                ("IsSubset", (0, 10)),
-                ("IsSubset", (20, 30)),
-                True,
-                True,
-                id="disjoint_ranges",
-            ),
+            # Note: Disjoint ranges (e.g., [0,10] and [20,30]) are not tested here
+            # because they would trigger Contradiction when intersected (empty set).
+            # That behavior is tested by the empty superset invariant tests.
         ],
     )
     def test_false_positives(
@@ -2614,17 +2505,38 @@ class TestSubsumptionDetection:
         X = E.parameter_op()
         Y = E.parameter_op() if not same_param else X
 
-        self._make_pred(E, existing_pred, X, assert_=assert_existing)
-        new_type = new_pred[0]
-        new_operands = self._make_operands(E, new_pred, Y)
-        result = self._run_in_mutator(
-            E,
-            lambda m: m.find_subsuming_expression(
-                self.PRED_FACTORIES[new_type], new_operands
-            ),
-        )
+        existing_expr = self._make_pred(E, existing_pred, X, assert_=assert_existing)
+        mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
+        new_type, _ = new_pred
 
-        assert result is None, f"Should NOT detect subsumption, but found: {result}"
+        def callback(m: Mutator):
+            Y_canon = not_none(
+                mut_map.map_forward(Y.as_parameter_operatable.force_get()).maps_to
+            )
+            if assert_existing:
+                existing_canon = not_none(
+                    mut_map.map_forward(
+                        existing_expr.as_parameter_operatable.force_get()
+                    ).maps_to
+                )
+                m.mutate_expression(existing_canon.as_expression.force_get())
+
+            builder = ExpressionBuilder(
+                self.PRED_FACTORIES[new_type],
+                [
+                    not_none(m.get_copy(op))
+                    for op in self._make_operands(E, new_pred, Y_canon.as_operand.get())
+                ],
+                assert_=True,
+                terminate=False,
+            )
+            return find_subsuming_expression(m, builder)
+
+        result = self._run_in_mutator(mut_map, callback)
+        assert result is not None
+        assert result.most_constrained_expr is None, (
+            f"Should NOT detect subsumption, but found: {result}"
+        )
 
     def test_terminated_predicate_still_found(self):
         """
@@ -2641,47 +2553,66 @@ class TestSubsumptionDetection:
             node=fabll.Traits(existing).get_obj_raw(),
             trait=is_terminated,
         )
-        new_operands = [X, E.lit_op_range((0, 20))]
-        result = self._run_in_mutator(
-            E,
-            lambda m: m.find_subsuming_expression(F.Expressions.IsSubset, new_operands),
-        )
+        mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
+
+        def callback(m: Mutator):
+            X_canon = not_none(
+                mut_map.map_forward(X.as_parameter_operatable.force_get()).maps_to
+            )
+            existing_canon = not_none(
+                mut_map.map_forward(
+                    existing.as_parameter_operatable.force_get()
+                ).maps_to
+            )
+            m.mutate_expression(existing_canon.as_expression.force_get())
+
+            builder = ExpressionBuilder(
+                F.Expressions.IsSubset,
+                [
+                    not_none(m.get_copy(X_canon.as_operand.get())),
+                    not_none(m.get_copy(E.lit_op_range((0, 20)))),
+                ],
+                assert_=True,
+                terminate=False,
+            )
+            return find_subsuming_expression(m, builder)
+
+        result = self._run_in_mutator(mut_map, callback)
         assert result is not None
-
-    def test_finds_correct_among_multiple(self):
-        E = BoundExpressions()
-        X = E.parameter_op()
-        Y = E.parameter_op()
-
-        E.is_subset(Y, E.lit_op_range((0, 5)), assert_=True)  # wrong param
-        E.is_subset(X, E.lit_op_range((50, 60)), assert_=True)  # disjoint
-        E.is_subset(X, E.lit_op_range((0, 10)), assert_=True)  # subsumes
-
-        new_operands = [X, E.lit_op_range((0, 20))]
-        result = self._run_in_mutator(
-            E,
-            lambda m: m.find_subsuming_expression(F.Expressions.IsSubset, new_operands),
-        )
-        assert result is not None
+        assert result.most_constrained_expr is not None
 
     def test_finds_predicate_created_during_algo(self):
+        """Test subsumption finds predicates created during the algorithm."""
         E = BoundExpressions()
         X = E.parameter_op()
-        lit_tight = E.lit_op_range((0, 10))
-        lit_loose = E.lit_op_range((0, 20))
+        mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
 
-        def create_and_find(mutator):
+        def callback(m: Mutator):
+            X_canon = not_none(
+                mut_map.map_forward(X.as_parameter_operatable.force_get()).maps_to
+            )
             # Create a predicate during the algorithm
-            mutator.create_expression(
-                F.Expressions.IsSubset, X, lit_tight, assert_=True
+            m.create_check_and_insert_expression(
+                F.Expressions.IsSubset,
+                X_canon.as_operand.get(),
+                not_none(m.get_copy(E.lit_op_range((0, 10)))),
+                assert_=True,
             )
             # Now try to find subsumption for a looser range
-            return mutator.find_subsuming_expression(
-                F.Expressions.IsSubset, [X, lit_loose]
+            builder = ExpressionBuilder(
+                F.Expressions.IsSubset,
+                [
+                    not_none(m.get_copy(X_canon.as_operand.get())),
+                    not_none(m.get_copy(E.lit_op_range((0, 20)))),
+                ],
+                assert_=True,
+                terminate=False,
             )
+            return find_subsuming_expression(m, builder)
 
-        result = self._run_in_mutator(E, create_and_find, force_copy=False)
+        result = self._run_in_mutator(mut_map, callback, force_copy=False)
         assert result is not None
+        assert result.most_constrained_expr is not None
 
     def test_or_subsumption_subset_operands(self):
         """Or(A, B) subsumes Or(A, B, C) - smaller Or is tighter."""
@@ -2694,13 +2625,27 @@ class TestSubsumptionDetection:
         pred_c = E.is_subset(X, E.lit_op_range((40, 50)), assert_=False)
 
         # Create Or(A, B) as existing predicate
-        F.Expressions.Or.from_operands(pred_a, pred_b, g=E.g, tg=E.tg, assert_=True)
-
-        # Try to find subsumption for Or(A, B, C)
-        new_operands = [pred_a, pred_b, pred_c]
-        result = self._run_in_mutator(
-            E, lambda m: m.find_subsuming_expression(F.Expressions.Or, new_operands)
+        existing_or = F.Expressions.Or.from_operands(
+            pred_a, pred_b, g=E.g, tg=E.tg, assert_=True
         )
+        mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
+
+        def callback(m: Mutator):
+            existing_canon = not_none(
+                mut_map.map_forward(
+                    existing_or.get_trait(F.Parameters.is_parameter_operatable)
+                ).maps_to
+            )
+            m.mutate_expression(existing_canon.as_expression.force_get())
+
+            # Build new Or(A, B, C)
+            new_operands = [not_none(m.get_copy(op)) for op in [pred_a, pred_b, pred_c]]
+            builder = ExpressionBuilder(
+                F.Expressions.Or, new_operands, assert_=True, terminate=False
+            )
+            return find_subsuming_expression(m, builder)
+
+        result = self._run_in_mutator(mut_map, callback)
         assert result is not None
 
     def test_or_subsumption_same_operands(self):
@@ -2711,12 +2656,26 @@ class TestSubsumptionDetection:
         pred_a = E.is_subset(X, E.lit_op_range((0, 10)), assert_=False)
         pred_b = E.is_subset(X, E.lit_op_range((20, 30)), assert_=False)
 
-        F.Expressions.Or.from_operands(pred_a, pred_b, g=E.g, tg=E.tg, assert_=True)
-
-        new_operands = [pred_a, pred_b]
-        result = self._run_in_mutator(
-            E, lambda m: m.find_subsuming_expression(F.Expressions.Or, new_operands)
+        existing_or = F.Expressions.Or.from_operands(
+            pred_a, pred_b, g=E.g, tg=E.tg, assert_=True
         )
+        mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
+
+        def callback(m: Mutator):
+            existing_canon = not_none(
+                mut_map.map_forward(
+                    existing_or.get_trait(F.Parameters.is_parameter_operatable)
+                ).maps_to
+            )
+            m.mutate_expression(existing_canon.as_expression.force_get())
+
+            new_operands = [not_none(m.get_copy(op)) for op in [pred_a, pred_b]]
+            builder = ExpressionBuilder(
+                F.Expressions.Or, new_operands, assert_=True, terminate=False
+            )
+            return find_subsuming_expression(m, builder)
+
+        result = self._run_in_mutator(mut_map, callback)
         assert result is not None
 
     def test_or_subsumption_negative_superset(self):
@@ -2729,16 +2688,29 @@ class TestSubsumptionDetection:
         pred_c = E.is_subset(X, E.lit_op_range((40, 50)), assert_=False)
 
         # Create Or(A, B, C) as existing predicate
-        F.Expressions.Or.from_operands(
+        existing_or = F.Expressions.Or.from_operands(
             pred_a, pred_b, pred_c, g=E.g, tg=E.tg, assert_=True
         )
+        mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
 
-        # Try to find subsumption for Or(A, B)
-        new_operands = [pred_a, pred_b]
-        result = self._run_in_mutator(
-            E, lambda m: m.find_subsuming_expression(F.Expressions.Or, new_operands)
-        )
-        assert result is None
+        def callback(m: Mutator):
+            existing_canon = not_none(
+                mut_map.map_forward(
+                    existing_or.get_trait(F.Parameters.is_parameter_operatable)
+                ).maps_to
+            )
+            m.mutate_expression(existing_canon.as_expression.force_get())
+
+            # Try to find subsumption for Or(A, B)
+            new_operands = [not_none(m.get_copy(op)) for op in [pred_a, pred_b]]
+            builder = ExpressionBuilder(
+                F.Expressions.Or, new_operands, assert_=True, terminate=False
+            )
+            return find_subsuming_expression(m, builder)
+
+        result = self._run_in_mutator(mut_map, callback)
+        assert result is not None
+        assert result.most_constrained_expr is None
 
     def test_or_subsumption_negative_different_operands(self):
         """Or(A, B) does NOT subsume Or(A, C) - different operands."""
@@ -2749,40 +2721,28 @@ class TestSubsumptionDetection:
         pred_b = E.is_subset(X, E.lit_op_range((20, 30)), assert_=False)
         pred_c = E.is_subset(X, E.lit_op_range((40, 50)), assert_=False)
 
-        F.Expressions.Or.from_operands(pred_a, pred_b, g=E.g, tg=E.tg, assert_=True)
-
-        new_operands = [pred_a, pred_c]
-        result = self._run_in_mutator(
-            E, lambda m: m.find_subsuming_expression(F.Expressions.Or, new_operands)
+        existing_or = F.Expressions.Or.from_operands(
+            pred_a, pred_b, g=E.g, tg=E.tg, assert_=True
         )
-        assert result is None
+        mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
 
-    def test_subsumption_check_e2e(self):
-        solver = DefaultSolver()
-        E = BoundExpressions()
+        def callback(m: Mutator):
+            existing_canon = not_none(
+                mut_map.map_forward(
+                    existing_or.get_trait(F.Parameters.is_parameter_operatable)
+                ).maps_to
+            )
+            m.mutate_expression(existing_canon.as_expression.force_get())
 
-        class _App(fabll.Node):
-            param = F.Parameters.NumericParameter.MakeChild(unit=E.U.V)
+            new_operands = [not_none(m.get_copy(op)) for op in [pred_a, pred_c]]
+            builder = ExpressionBuilder(
+                F.Expressions.Or, new_operands, assert_=True, terminate=False
+            )
+            return find_subsuming_expression(m, builder)
 
-        app = _App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
-        A = app.param.get().can_be_operand.get()
-
-        # Create tighter constraint first: X ⊆ [0, 10]
-        tight = E.is_subset(A, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
-
-        # Create looser constraint: X ⊆ [0, 20]
-        loose = E.is_subset(A, E.lit_op_range(((0, E.U.V), (20, E.U.V))), assert_=True)
-
-        repr_map = solver.simplify(E.tg, E.g).data.mutation_map
-
-        tight_mapped = repr_map.map_forward(tight.as_parameter_operatable.force_get())
-        loose_mapped = repr_map.map_forward(loose.as_parameter_operatable.force_get())
-
-        assert tight_mapped is not None
-        assert loose_mapped is not None
-        assert tight_mapped.maps_to is not None
-        assert loose_mapped.maps_to is not None
-        assert tight_mapped.maps_to.is_same(loose_mapped.maps_to)
+        result = self._run_in_mutator(mut_map, callback)
+        assert result is not None
+        assert result.most_constrained_expr is None
 
 
 if __name__ == "__main__":

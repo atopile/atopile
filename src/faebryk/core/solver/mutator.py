@@ -375,11 +375,13 @@ class MutationStage:
         self.G_in = G_in
         self.G_out = G_out
 
-        self.input_operables = set(
-            F.Parameters.is_parameter_operatable.bind_typegraph(
+        self.input_operables = {
+            po
+            for po in F.Parameters.is_parameter_operatable.bind_typegraph(
                 tg=self.tg_in
             ).get_instances(self.G_in)
-        )
+            if not po.has_trait(is_irrelevant)
+        }
 
     @property
     @once
