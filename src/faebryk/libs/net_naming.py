@@ -370,9 +370,9 @@ def _collect_affixes(mifs: list[F.Electrical]) -> tuple[str | None, str | None]:
         if not affix:
             continue
 
-        if prefix := affix.get_prefix:
+        if prefix := affix.get_prefix():
             prefixes.append(str(prefix))
-        if suffix := affix.get_suffix:
+        if suffix := affix.get_suffix():
             suffixes.append(str(suffix))
 
     # Return first prefix and suffix found
