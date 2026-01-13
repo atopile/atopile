@@ -658,14 +658,12 @@ def insert_expression(
         if expr_already_exists_in_old_graph:
             if congruent_po in mutator.transformations.created:
                 del mutator.transformations.created[congruent_po]
-            congruent_assertable = congruent_po.get_sibling_trait(
-                F.Expressions.is_assertable
-            )
-            if (
-                builder.assert_
-                and congruent_assertable in mutator.transformations.asserted
-            ):
-                mutator.transformations.asserted.remove(congruent_assertable)
+            if builder.assert_:
+                congruent_assertable = congruent_po.get_sibling_trait(
+                    F.Expressions.is_assertable
+                )
+                if congruent_assertable in mutator.transformations.asserted:
+                    mutator.transformations.asserted.remove(congruent_assertable)
 
         logger.debug(
             f"Found congruent expression for {pretty_expr(builder, mutator)}:"

@@ -1996,7 +1996,7 @@ def test_mutator_basic_bootstrap():
         pos = mutator.get_parameter_operatables()
         assert len(pos) >= 7
         is_exprs = mutator.get_typed_expressions(F.Expressions.Is)
-        assert len(is_exprs) >= 2
+        assert len(is_exprs) == 0
         preds = mutator.get_expressions(required_traits=(F.Expressions.is_predicate,))
         assert len(preds) >= 2
 
@@ -2011,7 +2011,7 @@ def test_mutator_basic_bootstrap():
             assert_=False,
         )
 
-    mut_map = MutationMap.bootstrap(tg=tg, g=g)
+    mut_map = MutationMap.bootstrap(tg=tg, g=g, canonicalize=False)
     mutator0 = Mutator(
         mutation_map=mut_map,
         algo=algo_empty,

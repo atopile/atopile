@@ -563,7 +563,7 @@ def test_domain():
     E.is_subset(p0, E.lit_op_range(((15, E.U.V), (20, E.U.V))), assert_=True)
 
     solver = DefaultSolver()
-    with pytest.raises(ContradictionByLiteral):
+    with pytest.raises(Contradiction, match="Empty superset"):
         solver.simplify(E.tg, E.g)
 
 
@@ -2046,18 +2046,16 @@ def test_fold_correlated():
     solver = DefaultSolver()
     repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
 
-    ss_lit = repr_map.try_extract_superset(
-        C.as_parameter_operatable.force_get(), allow_subset=True
-    )
+    ss_lit = repr_map.try_extract_superset(C.as_parameter_operatable.force_get())
     assert ss_lit is not None
 
     # Test for ss estimation
-    assert ss_lit.is_subset_of(op_inv[1](lit2_n, lit1_n, g=E.g, tg=E.tg))
+    assert ss_lit.op_setic_is_subset_of(op_inv[1](lit2_n, lit1_n, g=E.g, tg=E.tg))
     # C ss [10, 15] - 5 == [5, 10]
 
     # Test for correct is estimation
     try:
-        assert not_none(is_lit).op_setic_equals_singleton(5)  # C is 5
+        assert not_none(ss_lit).op_setic_equals_singleton(5)  # C is 5
     except AssertionError:
         pytest.xfail("TODO")
 

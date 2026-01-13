@@ -963,7 +963,7 @@ class Subtract(fabll.Node):
     is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
     minuend = OperandPointer.MakeChild()
-    subtrahends = OperandSet.MakeChild()
+    subtrahends = OperandSequence.MakeChild()
 
     def setup(
         self,
@@ -983,10 +983,10 @@ class Subtract(fabll.Node):
         out.add_dependant(
             OperandPointer.MakeEdge([out, cls.minuend], get_operand_path(minuend)),
         )
-        for subtrahend in subtrahends:
+        for i, subtrahend in enumerate(subtrahends):
             out.add_dependant(
-                OperandSet.MakeEdge(
-                    [out, cls.subtrahends], get_operand_path(subtrahend)
+                OperandSequence.MakeEdge(
+                    [out, cls.subtrahends], get_operand_path(subtrahend), i
                 ),
             )
         return out
@@ -1033,16 +1033,16 @@ class Multiply(fabll.Node):
     is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
     is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
-    operands = OperandSet.MakeChild()
+    operands = OperandSequence.MakeChild()
 
     @classmethod
     def MakeChild(cls, *operands: fabll.RefPath) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
 
-        for operand_field in operands:
+        for i, operand_field in enumerate(operands):
             out.add_dependant(
-                OperandSet.MakeEdge(
-                    [out, cls.operands], get_operand_path(operand_field)
+                OperandSequence.MakeEdge(
+                    [out, cls.operands], get_operand_path(operand_field), i
                 )
             )
 
@@ -1949,7 +1949,7 @@ class Or(fabll.Node):
     is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
     is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
-    operands = OperandSequence.MakeChild()
+    operands = OperandSet.MakeChild()
 
     def setup(
         self,
@@ -2275,7 +2275,7 @@ class Union(fabll.Node):
     is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
     is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
-    operands = OperandSequence.MakeChild()
+    operands = OperandSet.MakeChild()
 
     def setup(self, *operands: "F.Parameters.can_be_operand") -> Self:
         self.operands.get().append(*operands)
@@ -2330,7 +2330,7 @@ class Intersection(fabll.Node):
     is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
     is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
-    operands = OperandSequence.MakeChild()
+    operands = OperandSet.MakeChild()
 
     def setup(self, *operands: "F.Parameters.can_be_operand") -> Self:
         self.operands.get().append(*operands)
