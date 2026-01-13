@@ -1528,7 +1528,7 @@ class Mutator:
             self.transformations.terminated.add(pred)
 
     def mark_irrelevant(self, po: F.Parameters.is_parameter_operatable):
-        if po.has_trait(is_irrelevant):
+        if po.try_get_sibling_trait(is_irrelevant) is not None:
             return
         fabll.Traits.create_and_add_instance_to(
             fabll.Traits(po).get_obj_raw(), is_irrelevant
