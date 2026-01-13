@@ -28,6 +28,8 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from jinja2 import Template
+from rich.console import Console
+from rich.text import Text
 
 # Ensure we can import from test package
 sys.path.insert(0, os.getcwd())
@@ -40,6 +42,19 @@ from test.runner.common import (
     Outcome,
     Report,
 )
+
+
+def ansi_to_html(text: str) -> str:
+    """Convert ANSI escape codes to HTML with inline styles."""
+    import io
+
+    # Use Rich to parse ANSI and export to HTML
+    console = Console(file=io.StringIO(), force_terminal=True, record=True)
+    rich_text = Text.from_ansi(text)
+    console.print(rich_text, soft_wrap=True)
+    # Export with inline styles, extract just the code content
+    html_output = console.export_html(inline_styles=True, code_format="{code}")
+    return html_output
 
 
 class CompareStatus(StrEnum):
@@ -956,19 +971,19 @@ class TestAggregator:
             if t.output:
                 log_content = ""
                 if "stdout" in t.output and t.output["stdout"]:
-                    stdout = html.escape(t.output["stdout"])
+                    stdout = ansi_to_html(t.output["stdout"])
                     log_content += (
                         f'<div class="log-section"><h3>STDOUT</h3>'
                         f"<pre>{stdout}</pre></div>"
                     )
                 if "stderr" in t.output and t.output["stderr"]:
-                    stderr = html.escape(t.output["stderr"])
+                    stderr = ansi_to_html(t.output["stderr"])
                     log_content += (
                         f'<div class="log-section"><h3>STDERR</h3>'
                         f"<pre>{stderr}</pre></div>"
                     )
                 if "error" in t.output and t.output["error"]:
-                    error = html.escape(t.output["error"])
+                    error = ansi_to_html(t.output["error"])
                     log_content += (
                         f'<div class="log-section"><h3>ERROR</h3>'
                         f"<pre>{error}</pre></div>"
