@@ -2744,6 +2744,224 @@ class TestSubsumptionDetection:
         assert result is not None
         assert result.most_constrained_expr is None
 
+    def test_subsumption_check_e2e(self):
+        """
+        End-to-end test: verify Or subsumption when expression is created
+        during algorithm execution.
+
+        Creates Or!(A, B, C) in input, then during algorithm creates Or!(A, B).
+        The tighter constraint Or!(A, B) should mark Or!(A, B, C) irrelevant.
+        """
+        from faebryk.core.solver.mutator import is_irrelevant
+
+        E = BoundExpressions()
+
+        A = E.bool_parameter_op()
+        B = E.bool_parameter_op()
+        C = E.bool_parameter_op()
+
+        # Create Or!(A, B, C) - looser constraint in input
+        or_abc = E.or_(A, B, C, assert_=True)
+
+        mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
+
+        def callback(m: Mutator):
+            A_canon = not_none(
+                mut_map.map_forward(A.as_parameter_operatable.force_get()).maps_to
+            )
+            B_canon = not_none(
+                mut_map.map_forward(B.as_parameter_operatable.force_get()).maps_to
+            )
+            or_abc_canon = not_none(
+                mut_map.map_forward(or_abc.as_parameter_operatable.force_get()).maps_to
+            )
+
+            m.mutate_expression(or_abc_canon.as_expression.force_get())
+
+            A_out = m.get_mutated(A_canon)
+            B_out = m.get_mutated(B_canon)
+
+            m.create_check_and_insert_expression(
+                F.Expressions.Or,
+                A_out.as_operand.get(),
+                B_out.as_operand.get(),
+                assert_=True,
+            )
+
+            or_abc_copy = m.get_mutated(or_abc_canon)
+            return or_abc_copy.try_get_sibling_trait(is_irrelevant) is not None
+
+        result = self._run_in_mutator(mut_map, callback)
+        assert result is True
+
+    def test_or_with_true_literal_discard(self):
+        """
+        Or!(A, B, True) should return DISCARD.
+
+        "A or B or True" is always true, so it provides no constraint.
+        """
+        from faebryk.core.solver.symbolic.invariants import SubsumptionCheck
+
+        E = BoundExpressions()
+        A = E.bool_parameter_op()
+        B = E.bool_parameter_op()
+        true_lit = E.lit_bool(True)
+
+        mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
+
+        def callback(m: Mutator):
+            A_canon = not_none(
+                mut_map.map_forward(A.as_parameter_operatable.force_get()).maps_to
+            )
+            B_canon = not_none(
+                mut_map.map_forward(B.as_parameter_operatable.force_get()).maps_to
+            )
+
+            builder = ExpressionBuilder(
+                F.Expressions.Or,
+                [
+                    not_none(m.get_copy(A_canon.as_operand.get())),
+                    not_none(m.get_copy(B_canon.as_operand.get())),
+                    not_none(m.get_copy(true_lit)),
+                ],
+                assert_=True,
+                terminate=False,
+            )
+            return find_subsuming_expression(m, builder)
+
+        result = self._run_in_mutator(mut_map, callback)
+        assert result is not None
+        assert isinstance(
+            result.most_constrained_expr, SubsumptionCheck.Result._DISCARD
+        )
+
+    def test_or_with_false_literal_filtered(self):
+        """
+        Or!(A, B, C, False) should filter out False and behave like Or!(A, B, C).
+
+        When existing Or!(A, B) exists and we create Or!(A, B, C, False),
+        the False is filtered out, leaving Or!(A, B, C) which is looser.
+        The existing Or!(A, B) should subsume the new one.
+        """
+        E = BoundExpressions()
+        X = E.parameter_op()
+
+        pred_a = E.is_subset(X, E.lit_op_range((0, 10)), assert_=False)
+        pred_b = E.is_subset(X, E.lit_op_range((20, 30)), assert_=False)
+        pred_c = E.is_subset(X, E.lit_op_range((40, 50)), assert_=False)
+        false_lit = E.lit_bool(False)
+
+        # Create existing Or!(A, B) - tighter
+        existing_or = F.Expressions.Or.from_operands(
+            pred_a, pred_b, g=E.g, tg=E.tg, assert_=True
+        )
+        mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
+
+        def callback(m: Mutator):
+            existing_canon = not_none(
+                mut_map.map_forward(
+                    existing_or.get_trait(F.Parameters.is_parameter_operatable)
+                ).maps_to
+            )
+            pred_a_canon = not_none(
+                mut_map.map_forward(pred_a.as_parameter_operatable.force_get()).maps_to
+            )
+            pred_b_canon = not_none(
+                mut_map.map_forward(pred_b.as_parameter_operatable.force_get()).maps_to
+            )
+            pred_c_canon = not_none(
+                mut_map.map_forward(pred_c.as_parameter_operatable.force_get()).maps_to
+            )
+
+            m.mutate_expression(existing_canon.as_expression.force_get())
+            m.mutate_expression(pred_c_canon.as_expression.force_get())
+
+            pred_a_out = m.get_mutated(pred_a_canon)
+            pred_b_out = m.get_mutated(pred_b_canon)
+            pred_c_out = m.get_mutated(pred_c_canon)
+
+            builder = ExpressionBuilder(
+                F.Expressions.Or,
+                [
+                    pred_a_out.as_operand.get(),
+                    pred_b_out.as_operand.get(),
+                    pred_c_out.as_operand.get(),
+                    not_none(m.get_copy(false_lit)),
+                ],
+                assert_=True,
+                terminate=False,
+            )
+            return find_subsuming_expression(m, builder)
+
+        result = self._run_in_mutator(mut_map, callback)
+        assert result is not None
+        assert result.most_constrained_expr is not None
+
+    def test_or_could_subsume_returns_existing(self):
+        """
+        Test the could_subsume path: existing tighter Or subsumes new looser Or.
+
+        When Or!(A, B) exists and we try to create Or!(A, B, C),
+        the existing Or!(A, B) should be returned (it's tighter).
+
+        This is distinct from could_be_subsumed which marks things irrelevant.
+        """
+        E = BoundExpressions()
+        X = E.parameter_op()
+
+        pred_a = E.is_subset(X, E.lit_op_range((0, 10)), assert_=False)
+        pred_b = E.is_subset(X, E.lit_op_range((20, 30)), assert_=False)
+        pred_c = E.is_subset(X, E.lit_op_range((40, 50)), assert_=False)
+
+        # Create existing Or!(A, B) - tighter
+        existing_or = F.Expressions.Or.from_operands(
+            pred_a, pred_b, g=E.g, tg=E.tg, assert_=True
+        )
+        mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
+
+        def callback(m: Mutator):
+            existing_canon = not_none(
+                mut_map.map_forward(
+                    existing_or.get_trait(F.Parameters.is_parameter_operatable)
+                ).maps_to
+            )
+            pred_a_canon = not_none(
+                mut_map.map_forward(pred_a.as_parameter_operatable.force_get()).maps_to
+            )
+            pred_b_canon = not_none(
+                mut_map.map_forward(pred_b.as_parameter_operatable.force_get()).maps_to
+            )
+            pred_c_canon = not_none(
+                mut_map.map_forward(pred_c.as_parameter_operatable.force_get()).maps_to
+            )
+
+            m.mutate_expression(existing_canon.as_expression.force_get())
+            pred_a_out = m.get_mutated(pred_a_canon)
+            pred_b_out = m.get_mutated(pred_b_canon)
+
+            m.mutate_expression(pred_c_canon.as_expression.force_get())
+            pred_c_out = m.get_mutated(pred_c_canon)
+
+            # Try to create Or!(A, B, C) - looser
+            builder = ExpressionBuilder(
+                F.Expressions.Or,
+                [
+                    pred_a_out.as_operand.get(),
+                    pred_b_out.as_operand.get(),
+                    pred_c_out.as_operand.get(),
+                ],
+                assert_=True,
+                terminate=False,
+            )
+            result = find_subsuming_expression(m, builder)
+
+            assert result.most_constrained_expr is not None
+            assert isinstance(result.most_constrained_expr, F.Expressions.is_expression)
+            return result
+
+        result = self._run_in_mutator(mut_map, callback)
+        assert result is not None
+
 
 if __name__ == "__main__":
     import typer
