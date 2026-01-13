@@ -60,9 +60,10 @@ Flattenable = (
 )
 def test_flatten_associative(op: type[Flattenable]):
     E = BoundExpressions()
+    from faebryk.core.solver.symbolic.expression_groups import _flatten_associative
 
     def flatten(is_flattenable: "F.Expressions.is_flattenable"):
-        return MutatorUtils.flatten_associative(is_flattenable, lambda _, __: True)
+        return _flatten_associative(is_flattenable, lambda _, __: True)
 
     # TODO: add logic trait to classify logic expressions
     if op in [F.Expressions.And.c, F.Expressions.Or.c, F.Expressions.Xor.c]:

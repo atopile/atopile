@@ -13,6 +13,7 @@ import faebryk.library._F as F
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.mutator import MutationMap
 from faebryk.core.solver.solver import Solver
+from faebryk.core.solver.symbolic.pure_literal import exec_pure_literal_expression
 from faebryk.core.solver.utils import (
     Contradiction,
     ContradictionByLiteral,
@@ -1301,7 +1302,7 @@ def test_extracted_literal_folding(
     lit1 = E.lit_op_range((0, 10))
     lit2 = E.lit_op_range((10, 20))
     lito = not_none(
-        _exec_pure_literal_expressions(
+        exec_pure_literal_expression(
             E.g,
             E.tg,
             op(lit1, lit2)
