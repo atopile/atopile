@@ -764,6 +764,25 @@ def test_chains_mixed_shallow_nested():
         el[1].reference.get()._is_interface.get().is_connected_to(el[2].reference.get())
     )
     assert not el[0].line.get()._is_interface.get().is_connected_to(el[1].line.get())
+    assert (
+        not el[0]
+        .reference.get()
+        ._is_interface.get()
+        .is_connected_to(el[1].reference.get())
+    )
+    assert not el[0].line.get()._is_interface.get().is_connected_to(el[2].line.get())
+    assert (
+        not el[0]
+        .reference.get()
+        ._is_interface.get()
+        .is_connected_to(el[2].reference.get())
+    )
+
+    # Test duplicate resolution
+    el[0].line.get()._is_interface.get().connect_to(el[1].line.get())
+    el[0].reference.get()._is_interface.get().connect_to(el[1].reference.get())
+    assert el[0]._is_interface.get().is_connected_to(el[1])
+    assert el[0]._is_interface.get().is_connected_to(el[2])
 
 
 def test_shallow_blocks_child_parent_child():

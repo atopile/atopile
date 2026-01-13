@@ -18,21 +18,22 @@ class ElectricPower(fabll.Node):
     hv = F.Electrical.MakeChild()
     lv = F.Electrical.MakeChild()
 
-    # # Deprecated aliases for backwards compatibility.
-    # vcc = F.Electrical.MakeChild()
-    # gnd = F.Electrical.MakeChild()
+    # Deprecated aliases for backwards compatibility.
+    vcc = F.Electrical.MakeChild()
+    gnd = F.Electrical.MakeChild()
 
-    # # Connect deprecated aliases to the actual rails
-    # _ = fabll.MakeEdge(
-    #     [vcc],
-    #     [hv],
-    #     edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
-    # )
-    # _ = fabll.MakeEdge(
-    #     [gnd],
-    #     [lv],
-    #     edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
-    # )
+    # Connect deprecated aliases to the actual rails
+    # @raytallen: bug, we seem to be filtering out siblings
+    _vcc_to_hv = fabll.MakeEdge(
+        [vcc],
+        [hv],
+        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
+    )
+    _gnd_to_lv = fabll.MakeEdge(
+        [gnd],
+        [lv],
+        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
+    )
 
     # ----------------------------------------
     #                 traits
