@@ -346,8 +346,10 @@ test "self_connect" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const bn1 = g.create_and_insert_node();
-    const bn2 = g.create_and_insert_node();
+    var tg = TypeGraph.init(&g);
+    const electrical_type = try tg.add_type("Electrical");
+    const bn1 = try instantiate_interface(&tg, electrical_type);
+    const bn2 = try instantiate_interface(&tg, electrical_type);
 
     // expect not connected (empty path)
     try expectNoPath(a, bn1, bn2);
@@ -966,8 +968,8 @@ test "type_graph_pathfinder" {
     const I2C_SDA = try tg.add_type("I2C_SDA");
 
     // I2C has dedicated SCL and SDA child types
-    _ = try tg.add_make_child(I2C, I2C_SCL, null, null, false);
-    _ = try tg.add_make_child(I2C, I2C_SDA, null, null, false);
+    _ = try tg.add_make_child(I2C, I2C_SCL, "scl", null, false);
+    _ = try tg.add_make_child(I2C, I2C_SDA, "sda", null, false);
 
     // Sensor has an I2C interface
     _ = try tg.add_make_child(Sensor, I2C, null, null, false);
