@@ -26,411 +26,450 @@ const EdgeTrait = trait_mod.EdgeTrait;
 
 const debug_pathfinder = false;
 
-const HierarchyTraverseDirection = enum {
-    up, // Child to parent
-    down, // Parent to child
-    horizontal, // Same level (interface connections)
-};
+fn dbg_print(comptime fmt: []const u8, args: anytype) void {
+    if (comptime debug_pathfinder) {
+        std.debug.print(fmt, args);
+    }
+}
 
-const HierarchyElement = struct {
-    edge: EdgeReference,
-    traverse_direction: HierarchyTraverseDirection,
-    parent_type_node: NodeReference,
-    child_type_node: NodeReference,
+const BoundNodeRefMap = struct {};
 
-    fn match(self: *const @This(), other: *const @This()) bool {
-        const opposite_directions = (self.traverse_direction == .up and other.traverse_direction == .down) or
-            (self.traverse_direction == .down and other.traverse_direction == .up);
+const TypeElement = struct {
+    type_node: BoundNodeReference,
+    child_identifier: ?[]const u8,
 
-        const parent_type_match = self.parent_type_node.is_same(other.parent_type_node);
-        const child_type_match = self.child_type_node.is_same(other.child_type_node);
-        const child_name_match = switch (self.traverse_direction) {
-            .horizontal => true,
-            .up, .down => std.mem.eql(u8, self.edge.get_attribute_name() orelse "", other.edge.get_attribute_name() orelse ""),
-        };
+    fn equals(self: *const @This(), other: *const @This()) bool {
+        if (!self.type_node.node.is_same(other.type_node.node)) return false;
+        if (self.child_identifier == null) return other.child_identifier == null;
+        if (other.child_identifier == null) return false;
+        return std.mem.eql(u8, self.child_identifier.?, other.child_identifier.?);
+    }
 
-        return parent_type_match and child_type_match and child_name_match and opposite_directions;
+    fn print(self: *const @This()) void {
+        print_type_node(self.type_node);
+        dbg_print(":{s} ", .{
+            self.child_identifier orelse "<null>",
+        });
     }
 };
 
-// Shallow link attribute key
-const shallow = EdgeInterfaceConnection.shallow_attribute;
+const TypeElementList = struct {
+    elements: std.ArrayList(TypeElement),
+
+    fn equals(self: *const @This(), other: *const @This()) bool {
+        if (self.elements.items.len != other.elements.items.len) return false;
+        for (self.elements.items, 0..) |element, i| {
+            if (!element.equals(&other.elements.items[i])) return false;
+        }
+        return true;
+    }
+
+    fn print(self: *const @This()) void {
+        dbg_print("[", .{});
+        for (self.elements.items) |element| {
+            element.print();
+        }
+        dbg_print("]", .{});
+    }
+};
+
+const InstancePathList = struct {
+    elements: std.ArrayList(*BFSPath),
+
+    fn add_path(self: *@This(), path: *BFSPath) void {
+        const path_last = path.get_last_node();
+        for (self.elements.items, 0..) |existing, i| {
+            const existing_last = existing.get_last_node();
+            // Dedup by end node; type path is handled at the TypePath key level.
+            if (existing_last.g == path_last.g and existing_last.node.is_same(path_last.node)) {
+                if (path.traversed_edges.items.len < existing.traversed_edges.items.len) {
+                    self.elements.items[i] = path;
+                }
+                return;
+            }
+        }
+        self.elements.append(path) catch @panic("OOM");
+    }
+
+    fn add_paths(self: *@This(), other: @This()) void {
+        for (other.elements.items) |path| {
+            self.add_path(path);
+        }
+    }
+
+    fn print(self: *const @This()) void {
+        for (self.elements.items, 0..) |path, i| {
+            if (i != 0) dbg_print("\n", .{});
+            dbg_print("\t", .{});
+            print_instance_path(path);
+        }
+    }
+};
+
+const TypePath = struct {
+    type_element_list: TypeElementList,
+    instance_paths: InstancePathList,
+
+    fn print(self: *const @This()) void {
+        dbg_print("Type Path: ", .{});
+        self.type_element_list.print();
+        dbg_print("\tInstances:\n", .{});
+        self.instance_paths.print();
+    }
+};
+
+const TypePathList = struct {
+    allocator: std.mem.Allocator,
+    elements: std.ArrayList(*TypePath),
+
+    fn add_element(self: *@This(), key: TypeElementList, value: InstancePathList) void {
+        for (self.elements.items) |type_path| {
+            if (!type_path.type_element_list.equals(&key)) continue;
+            type_path.instance_paths.add_paths(value);
+            return;
+        }
+
+        var deduped = InstancePathList{
+            .elements = std.ArrayList(*BFSPath).init(value.elements.allocator),
+        };
+        deduped.add_paths(value);
+
+        const new_type_path = self.allocator.create(TypePath) catch @panic("OOM");
+        new_type_path.* = .{
+            .type_element_list = key,
+            .instance_paths = deduped,
+        };
+        self.elements.append(new_type_path) catch @panic("OOM");
+    }
+
+    fn get_paths(self: @This(), key: TypeElementList) ?*InstancePathList {
+        for (self.elements.items) |type_path| {
+            if (type_path.type_element_list.equals(&key)) {
+                return &type_path.instance_paths;
+            }
+        }
+
+        return null;
+    }
+
+    fn contains_node(self: *const @This(), key: TypeElementList, node: BoundNodeReference) bool {
+        const paths = self.get_paths(key) orelse return false;
+        for (paths.elements.items) |existing| {
+            const existing_last = existing.get_last_node();
+            if (existing_last.g == node.g and existing_last.node.is_same(node.node)) return true;
+        }
+        return false;
+    }
+};
 
 pub const PathFinder = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
-    path_list: std.ArrayList(*BFSPath),
-    path_counter: u64,
-    valid_path_counter: u64,
+    arena: std.heap.ArenaAllocator,
+    visited_path_counter: u64,
+    current_bfs_paths: std.ArrayList(*BFSPath),
+    nodes_to_bfs: std.ArrayList(BoundNodeReference),
+    bfs_type_element_stack: TypeElementList,
+    to_visit_list: TypePathList,
+    visited_list: TypePathList,
 
-    pub fn init(allocator: std.mem.Allocator) PathFinder {
-        return .{
+    pub fn init(self: *Self, allocator: std.mem.Allocator) void {
+        self.* = .{
             .allocator = allocator,
-            .path_list = std.ArrayList(*BFSPath).init(allocator),
-            .path_counter = 0,
-            .valid_path_counter = 0,
+            .arena = std.heap.ArenaAllocator.init(allocator),
+            .visited_path_counter = 0,
+            .current_bfs_paths = undefined,
+            .nodes_to_bfs = undefined,
+            .bfs_type_element_stack = undefined,
+            .to_visit_list = undefined,
+            .visited_list = undefined,
+        };
+        self.current_bfs_paths = std.ArrayList(*BFSPath).init(allocator);
+        self.nodes_to_bfs = std.ArrayList(BoundNodeReference).init(allocator);
+        self.bfs_type_element_stack = TypeElementList{
+            .elements = std.ArrayList(TypeElement).init(self.arena.allocator()),
+        };
+        self.to_visit_list = TypePathList{
+            .allocator = self.arena.allocator(),
+            .elements = std.ArrayList(*TypePath).init(self.arena.allocator()),
+        };
+        self.visited_list = TypePathList{
+            .allocator = self.arena.allocator(),
+            .elements = std.ArrayList(*TypePath).init(self.arena.allocator()),
         };
     }
 
     pub fn deinit(self: *Self) void {
-        for (self.path_list.items) |path| {
-            path.deinit();
-        }
-        self.path_list.deinit();
+        self.arena.deinit();
+        self.nodes_to_bfs.deinit();
     }
 
-    // Find all valid paths from start node
-    // Note: PathFinder is intended for single-use. Create a new instance for each search.
     pub fn find_paths(
         self: *Self,
         start_node: BoundNodeReference,
     ) !graph.BFSPaths {
-        self.path_list.clearRetainingCapacity();
-        try self.path_list.ensureTotalCapacity(256);
+        self.nodes_to_bfs.append(start_node) catch @panic("OOM");
 
-        const allowed_edges = [_]graph.Edge.EdgeType{
-            EdgeComposition.tid,
-            EdgeInterfaceConnection.tid,
+        // boot strap first iteration
+        const first_type_edge = EdgeType.get_type_edge(start_node).?;
+        const first_type_node = start_node.g.bind(EdgeType.get_type_node(first_type_edge.edge));
+        const first_type_element = TypeElement{
+            .type_node = first_type_node,
+            .child_identifier = null,
         };
+        self.bfs_type_element_stack.elements.append(first_type_element) catch @panic("OOM");
 
-        const result = start_node.g.visit_paths_bfs(
-            start_node,
-            void,
-            self,
-            Self.visit_fn,
-            &allowed_edges,
-        );
+        const start_path = BFSPath.init(self.arena.allocator(), start_node) catch @panic("OOM");
+        var first_instance_path_list = InstancePathList{
+            .elements = std.ArrayList(*BFSPath).init(self.arena.allocator()),
+        };
+        first_instance_path_list.add_path(start_path);
+        self.to_visit_list.add_element(self.bfs_type_element_stack, first_instance_path_list);
+        self.visited_list.add_element(self.bfs_type_element_stack, first_instance_path_list);
 
-        switch (result) {
-            .ERROR => |err| return err,
-            .CONTINUE => {},
-            .EXHAUSTED => {},
-            .OK => {},
-            .STOP => {},
+        // iterate through each type path
+        while (self.to_visit_list.elements.pop()) |type_path| {
+
+            // iterate through all connected nodes for a given type path
+            while (type_path.instance_paths.elements.pop()) |path_to_bfs| {
+                const node_to_bfs = path_to_bfs.get_last_node();
+
+                // Horizontal traverse
+                _ = node_to_bfs.g.visit_paths_bfs(
+                    node_to_bfs,
+                    void,
+                    self,
+                    Self.bfs_visit_fn,
+                    &[_]graph.Edge.EdgeType{EdgeInterfaceConnection.tid},
+                );
+
+                var visited_path_list = InstancePathList{
+                    .elements = std.ArrayList(*BFSPath).init(self.arena.allocator()),
+                };
+
+                for (self.current_bfs_paths.items) |path| {
+                    const combined_path = self.concat_paths(path_to_bfs, path);
+                    if (!has_is_interface_trait(combined_path.get_last_node())) {
+                        continue;
+                    }
+                    const start_len = self.bfs_type_element_stack.elements.items.len;
+                    const current_len = type_path.type_element_list.elements.items.len;
+                    const allow_shallow = current_len <= start_len;
+                    if (!allow_shallow and path_has_shallow_edge(combined_path)) {
+                        continue;
+                    }
+                    visited_path_list.add_path(combined_path);
+                }
+
+                self.visited_list.add_element(type_path.type_element_list, visited_path_list);
+
+                // Down traverse
+                for (visited_path_list.elements.items) |path| {
+                    const last_node = path.get_last_node();
+                    const child_type_element = type_path.type_element_list.elements.getLast();
+                    if (child_type_element.child_identifier) |child_identifier| {
+                        const child_node = EdgeComposition.get_child_by_identifier(last_node, child_identifier) orelse {
+                            dbg_print("Skipping missing child '{s}' on node ", .{child_identifier});
+                            print_instance_node(last_node);
+                            dbg_print("\n", .{});
+                            continue;
+                        };
+                        const child_edge = EdgeComposition.get_parent_edge(child_node) orelse @panic("child edge not found");
+                        const child_path = self.extend_path(path, last_node, child_edge);
+                        // dbg_print("CHILD NODE: ", .{});
+                        // print_instance_node(child_node);
+                        // dbg_print("\n", .{});
+                        // dbg_print("PARENT TYPE ELEMENT LIST: ", .{});
+                        // type_path.type_element_list.print();
+                        // dbg_print("\n", .{});
+                        var child_type_element_list = TypeElementList{
+                            .elements = std.ArrayList(TypeElement).init(self.arena.allocator()),
+                        };
+                        const type_items = type_path.type_element_list.elements.items;
+                        if (type_items.len > 0) {
+                            child_type_element_list.elements.appendSlice(type_items[0 .. type_items.len - 1]) catch @panic("OOM");
+                        }
+                        // dbg_print("CHILD TYPE ELEMENT LIST: ", .{});
+                        // child_type_element_list.print();
+                        // dbg_print("\n", .{});
+
+                        var child_path_list = InstancePathList{
+                            .elements = std.ArrayList(*BFSPath).init(self.arena.allocator()),
+                        };
+                        child_path_list.add_path(child_path);
+
+                        if (!self.visited_list.contains_node(child_type_element_list, child_node) and
+                            !self.to_visit_list.contains_node(child_type_element_list, child_node))
+                        {
+                            self.to_visit_list.add_element(child_type_element_list, child_path_list);
+                            self.visited_list.add_element(child_type_element_list, child_path_list);
+                        }
+                    }
+                }
+
+                // Up traverse
+                for (visited_path_list.elements.items) |path| {
+                    const last_node = path.get_last_node();
+                    if (EdgeComposition.get_parent_node_of(last_node)) |parent_node| {
+                        // parent_node_list.add_element(parent_node);
+                        const parent_edge = EdgeComposition.get_parent_edge(last_node).?;
+                        const parent_path = self.extend_path(path, last_node, parent_edge);
+                        const child_identifier = EdgeComposition.get_name(parent_edge.edge) catch @panic("corrupt edge");
+                        const parent_type_edge = EdgeType.get_type_edge(parent_node).?;
+                        const parent_type_node = parent_node.g.bind(EdgeType.get_type_node(parent_type_edge.edge));
+                        const type_element = TypeElement{
+                            .type_node = parent_type_node,
+                            .child_identifier = child_identifier,
+                        };
+
+                        var type_element_list = TypeElementList{
+                            .elements = std.ArrayList(TypeElement).init(self.arena.allocator()),
+                        };
+
+                        for (type_path.type_element_list.elements.items) |element| {
+                            type_element_list.elements.append(element) catch @panic("OOM");
+                        }
+
+                        type_element_list.elements.append(type_element) catch @panic("OOM");
+
+                        var parent_path_list = InstancePathList{
+                            .elements = std.ArrayList(*BFSPath).init(self.arena.allocator()),
+                        };
+                        parent_path_list.add_path(parent_path);
+
+                        if (!self.visited_list.contains_node(type_element_list, parent_node) and
+                            !self.to_visit_list.contains_node(type_element_list, parent_node))
+                        {
+                            self.to_visit_list.add_element(type_element_list, parent_path_list);
+                            self.visited_list.add_element(type_element_list, parent_path_list);
+                        }
+
+                        for (self.to_visit_list.elements.items) |to_visit| {
+                            dbg_print("To visit: ", .{});
+                            to_visit.print();
+                            dbg_print("\n", .{});
+                        }
+                    }
+                }
+
+                // Clean up current_bfs_paths for next iteration
+                for (self.current_bfs_paths.items) |path| {
+                    path.deinit();
+                }
+                self.current_bfs_paths.deinit();
+                self.current_bfs_paths = std.ArrayList(*BFSPath).init(self.allocator);
+            }
+        }
+        dbg_print("RESULTING VISITED LIST\n", .{});
+        for (self.visited_list.elements.items) |visited| {
+            visited.print();
+            dbg_print("\n", .{});
         }
 
-        // Transfer ownership to BFSPaths
+        dbg_print("RESULTING TO VISIT LIST\n", .{});
+        for (self.to_visit_list.elements.items) |to_visit_list| {
+            to_visit_list.print();
+            dbg_print("\n", .{});
+        }
+
+        // Return paths at the same hierarchy level as the start node.
         var bfs_paths = graph.BFSPaths.init(self.allocator);
-        bfs_paths.paths = self.path_list;
-        self.path_list = std.ArrayList(*BFSPath).init(self.allocator);
-
-        if (comptime debug_pathfinder) {
-            std.debug.print("********* Pathfinder find_paths Summary *********\n", .{});
-            std.debug.print("Start node: {}\n", .{start_node.node.uuid});
-            std.debug.print("Paths explored: {}\tValid Paths: {}\n", .{ self.path_counter, bfs_paths.paths.items.len });
+        if (self.visited_list.get_paths(self.bfs_type_element_stack)) |root_paths| {
+            bfs_paths.paths.ensureTotalCapacity(root_paths.elements.items.len) catch @panic("OOM");
+            for (root_paths.elements.items) |path| {
+                const copied_path = path.copy(self.allocator) catch @panic("OOM");
+                bfs_paths.paths.appendAssumeCapacity(copied_path);
+            }
         }
-
         return bfs_paths;
     }
 
-    // BFS visitor callback
-    pub fn visit_fn(self_ptr: *anyopaque, path: *BFSPath) visitor.VisitResult(void) {
+    fn bfs_visit_fn(self_ptr: *anyopaque, path: *graph.BFSPath) visitor.VisitResult(void) {
         const self: *Self = @ptrCast(@alignCast(self_ptr));
-        const result = self.run_filters(path);
+
+        self.visited_path_counter += 1;
+
         if (comptime debug_pathfinder) {
-            _ = self.print_paths(path);
-        }
-        // std.debug.print("path_counter: {} len: {}\n", .{ self.path_counter, path.traversed_edges.items.len });
-        if (result == .ERROR) return result;
-        if (result == .STOP) return result;
-
-        // if path is invalid, don't save to path_list
-        if (path.invalid_path) {
-            path.visit_strength = .unvisited;
-            return visitor.VisitResult(void){ .CONTINUE = {} };
+            self.print_path(path);
         }
 
-        path.visit_strength = .strong;
-
-        // Copy path to long-lived allocator (BFS arena paths are freed when BFS ends)
-        var copied_path = path.copy(self.allocator) catch @panic("OOM");
-        copied_path.stop_new_path_discovery = path.stop_new_path_discovery;
-        copied_path.visit_strength = path.visit_strength;
-        self.path_list.append(copied_path) catch @panic("OOM");
-        self.valid_path_counter += 1;
+        const copied_path = path.copy(self.allocator) catch @panic("OOM");
+        self.current_bfs_paths.append(copied_path) catch @panic("OOM");
 
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
-    pub fn run_filters(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
-        for (filters) |filter| {
-            const result = filter.func(self, path);
-            switch (result) {
-                .CONTINUE => {},
-                .STOP => return result,
-                .ERROR => return result,
-                .OK => {},
-                .EXHAUSTED => return result,
-            }
+    pub fn print_path(self: *Self, path: *BFSPath) void {
+        dbg_print("Path {}: ", .{self.visited_path_counter});
 
-            if (path.stop_new_path_discovery) {
-                // no point iterating through other filters
-                break;
-            }
-        }
-        return visitor.VisitResult(void){ .CONTINUE = {} };
+        print_instance_path(path);
+
+        dbg_print("\n", .{});
     }
 
-    // Filters
-    const filters = [_]struct {
-        name: []const u8,
-        func: *const fn (*Self, *BFSPath) visitor.VisitResult(void),
-    }{
-        .{ .name = "count_paths", .func = Self.count_paths },
-        .{ .name = "filter_path_by_is_interface", .func = Self.filter_path_by_is_interface },
-        .{ .name = "filter_path_by_same_node_type", .func = Self.filter_path_by_same_node_type },
-        .{ .name = "filter_siblings", .func = Self.filter_siblings },
-        .{ .name = "filter_hierarchy_stack", .func = Self.filter_hierarchy_stack },
-    };
+    fn concat_paths(self: *Self, prefix: *const BFSPath, suffix: *const BFSPath) *BFSPath {
+        std.debug.assert(prefix.g == suffix.g);
+        const prefix_last = prefix.get_last_node();
+        std.debug.assert(prefix_last.node.is_same(suffix.start_node.node));
 
-    pub fn count_paths(self: *Self, _: *BFSPath) visitor.VisitResult(void) {
-        self.path_counter += 1;
-        return visitor.VisitResult(void){ .CONTINUE = {} };
+        var combined = BFSPath.init(self.arena.allocator(), prefix.start_node) catch @panic("OOM");
+        const total_len = prefix.traversed_edges.items.len + suffix.traversed_edges.items.len;
+        combined.traversed_edges.ensureTotalCapacity(total_len) catch @panic("OOM");
+        combined.traversed_edges.appendSliceAssumeCapacity(prefix.traversed_edges.items);
+        combined.traversed_edges.appendSliceAssumeCapacity(suffix.traversed_edges.items);
+        combined.invalid_path = prefix.invalid_path or suffix.invalid_path;
+        combined.stop_new_path_discovery = prefix.stop_new_path_discovery or suffix.stop_new_path_discovery;
+        combined.visit_strength = suffix.visit_strength;
+        return combined;
     }
 
-    fn try_get_node_type_name(g: *GraphView, node: NodeReference) ?graph.str {
-        if (EdgeType.get_type_edge(g.bind(node))) |type_edge| {
-            const type_node = EdgeType.get_type_node(type_edge.edge);
-            return TypeNodeAttributes.of(type_node).get_type_name();
-        }
-        return null;
-    }
-
-    fn print_node_uuid_and_type(g: *GraphView, node: NodeReference) void {
-        if (try_get_node_type_name(g, node)) |type_name| {
-            std.debug.print("{}:{s}", .{ node.get_uuid(), type_name });
-        } else std.debug.print("{}:<no_type>", .{node.get_uuid()});
-    }
-
-    pub fn print_paths(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
-        if (comptime !debug_pathfinder) return visitor.VisitResult(void){ .CONTINUE = {} };
-        const g = path.start_node.g;
-        std.debug.print("Path {}: ", .{self.path_counter});
-        print_node_uuid_and_type(g, path.start_node.node);
-        for (path.traversed_edges.items) |traversed_edge| {
-            std.debug.print(" -> ", .{});
-            const end_node = traversed_edge.get_end_node();
-            print_node_uuid_and_type(g, end_node);
-        }
-        if (!path.invalid_path) {
-            std.debug.print(" (VALID)", .{});
-        }
-        std.debug.print("\n", .{});
-        return visitor.VisitResult(void){ .CONTINUE = {} };
-    }
-
-    pub fn filter_path_by_is_interface(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
-        _ = self;
-
-        // Get the end node from the path
-        const end_node = path.get_last_node();
-
-        // Get the TypeGraph to lookup the is_interface trait type
-        const tg = typegraph_mod.TypeGraph.of_instance(end_node) orelse {
-            // Node has no type, mark as invalid
-            path.invalid_path = true;
-            path.stop_new_path_discovery = true;
-            return visitor.VisitResult(void){ .CONTINUE = {} };
-        };
-
-        // Look up the is_interface trait type by name
-        // Note: Core traits have fully qualified names like "is_interface.node.core.faebryk"
-        // We need to try the full name since that's what's registered in the TypeGraph
-        const is_interface_type = tg.get_type_by_name("is_interface.node.core.faebryk") orelse {
-            // is_interface type not found in this TypeGraph - this shouldn't happen
-            // but we'll treat it as "no trait" and invalidate the path
-            path.invalid_path = true;
-            path.stop_new_path_discovery = true;
-            return visitor.VisitResult(void){ .CONTINUE = {} };
-        };
-
-        // Check if the end node instance has the is_interface trait using the proper API
-        const has_is_interface = EdgeTrait.try_get_trait_instance_of_type(end_node, is_interface_type.node);
-
-        if (has_is_interface == null) {
-            // No is_interface trait found - mark path as invalid and stop discovery
-            path.invalid_path = true;
-            path.stop_new_path_discovery = true;
-        }
-
-        return visitor.VisitResult(void){ .CONTINUE = {} };
-    }
-
-    pub fn filter_path_by_same_node_type(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
-        _ = self;
-        const start_node = path.start_node;
-        const end_node = path.get_last_node();
-
-        const start_type_edge = EdgeType.get_type_edge(start_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
-        const end_type_edge = EdgeType.get_type_edge(end_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
-
-        const start_node_type = EdgeType.get_type_node(start_type_edge.edge);
-        const end_node_type = EdgeType.get_type_node(end_type_edge.edge);
-
-        if (!start_node_type.is_same(end_node_type)) {
-            path.invalid_path = true;
-        }
-
-        return visitor.VisitResult(void){ .CONTINUE = {} };
-    }
-
-    // Filters out paths where last 2 edges form child -> parent -> child (sibling traversal)
-    pub fn filter_siblings(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
-        _ = self;
-        const traversed_edges = path.traversed_edges.items;
-
-        if (traversed_edges.len < 2) return visitor.VisitResult(void){ .CONTINUE = {} };
-
-        const last_edges = [_]EdgeReference{ traversed_edges[traversed_edges.len - 1].edge, traversed_edges[traversed_edges.len - 2].edge };
-        for (last_edges) |edge| {
-            if (!EdgeComposition.is_instance(edge)) {
-                return visitor.VisitResult(void){ .CONTINUE = {} };
-            }
-        }
-
-        const edge_1_and_edge_2_share_parent = EdgeComposition.get_parent_node(last_edges[0]).is_same(EdgeComposition.get_parent_node(last_edges[1]));
-        if (edge_1_and_edge_2_share_parent) {
-            path.invalid_path = true;
-            path.stop_new_path_discovery = true;
-        }
-        return visitor.VisitResult(void){ .CONTINUE = {} };
-    }
-
-    fn resolve_node_type(g: *GraphView, node: NodeReference) !NodeReference {
-        const te = EdgeType.get_type_edge(g.bind(node)) orelse return error.MissingNodeType;
-        return EdgeType.get_type_node(te.edge);
-    }
-
-    // Validates paths follow hierarchy rules:
-    // 1. Must return to same level (balanced stack)
-    // 2. Cannot descend from starting level
-    // 3. Shallow links only if at same or deeper level
-    pub fn filter_hierarchy_stack(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
-        // if (path.invalid_path) return visitor.VisitResult(void){ .CONTINUE = {} };
-
-        var stack = std.ArrayList(HierarchyElement).init(self.allocator);
-        defer stack.deinit();
-
-        const g = path.start_node.g;
-        var depth: i32 = 0;
-
-        // iterate through path
-        for (path.traversed_edges.items) |traversed_edge| {
-            const edge = traversed_edge.edge;
-            const start_node = traversed_edge.get_start_node();
-
-            // hierarchical edge
-            if (EdgeComposition.is_instance(edge)) {
-                // determine traversal direction
-                var hierarchy_direction: HierarchyTraverseDirection = undefined;
-                if (EdgeComposition.get_child_node(edge).is_same(start_node)) {
-                    hierarchy_direction = .up;
-                    depth += 1;
-                } else if (EdgeComposition.get_parent_node(edge).is_same(start_node)) {
-                    hierarchy_direction = .down;
-                    depth -= 1;
-                }
-
-                if (depth < 0) {
-                    path.stop_new_path_discovery = true;
-                }
-
-                const hierarchy_element = HierarchyElement{
-                    .edge = edge,
-                    .traverse_direction = hierarchy_direction,
-                    .parent_type_node = resolve_node_type(g, EdgeComposition.get_parent_node(edge)) catch |err| {
-                        return visitor.VisitResult(void){ .ERROR = err };
-                    },
-                    .child_type_node = resolve_node_type(g, EdgeComposition.get_child_node(edge)) catch |err| {
-                        return visitor.VisitResult(void){ .ERROR = err };
-                    },
-                };
-
-                if (stack.items.len == 0 and hierarchy_direction == .down) {
-                    path.invalid_path = true;
-                    path.stop_new_path_discovery = true;
-                }
-
-                if (stack.items.len > 0 and stack.items[stack.items.len - 1].match(&hierarchy_element)) {
-                    _ = stack.pop();
-                } else {
-                    stack.append(hierarchy_element) catch @panic("OOM");
-                }
-            }
-
-            if (EdgeInterfaceConnection.is_instance(edge)) {
-                const shallow_edge = (edge.get(shallow) orelse continue).Bool;
-                if (shallow_edge and depth > 0) path.invalid_path = true;
-            }
-        }
-
-        if (stack.items.len != 0) {
-            path.invalid_path = true;
-        }
-
-        return visitor.VisitResult(void){ .CONTINUE = {} };
+    fn extend_path(self: *Self, base: *const BFSPath, from_node: BoundNodeReference, edge: BoundEdgeReference) *BFSPath {
+        return BFSPath.cloneAndExtend(self.arena.allocator(), base, from_node, edge.edge) catch @panic("OOM");
     }
 };
 
-// Test from graph.zig - basic pathfinding with end nodes
-test "visit_paths_bfs" {
-    const a = std.testing.allocator;
-    var g = GraphView.init(a);
-    const bn1 = g.create_and_insert_node();
-    const bn2 = g.create_and_insert_node();
-    const bn3 = g.create_and_insert_node();
-    const bn4 = g.create_and_insert_node();
-    const bn5 = g.create_and_insert_node();
-    const bn6 = g.create_and_insert_node();
-    const bn7 = g.create_and_insert_node();
-    const tid1 = Edge.hash_edge_type(1759242069);
-    const tid2 = Edge.hash_edge_type(1759242068);
-    const e1 = EdgeReference.init(bn1.node, bn2.node, tid1);
-    const e2 = EdgeReference.init(bn1.node, bn3.node, tid1);
-    const e3 = EdgeReference.init(bn2.node, bn4.node, tid2);
-    const e4 = EdgeReference.init(bn2.node, bn5.node, tid1);
-    const e5 = EdgeReference.init(bn2.node, bn5.node, tid1);
-    const e6 = EdgeReference.init(bn5.node, bn6.node, tid1);
-    const e7 = EdgeReference.init(bn4.node, bn7.node, tid1);
-    defer g.deinit();
-
-    _ = g.insert_edge(e1);
-    _ = g.insert_edge(e2);
-    _ = g.insert_edge(e3);
-    _ = g.insert_edge(e4);
-    _ = g.insert_edge(e5);
-    _ = g.insert_edge(e6);
-    _ = g.insert_edge(e7);
-
-    var pf1 = PathFinder.init(a);
-    defer pf1.deinit();
-
-    var paths1 = try pf1.find_paths(bn1);
-    defer paths1.deinit();
+fn try_get_node_type_name(bound_node: BoundNodeReference) ?graph.str {
+    if (EdgeType.get_type_edge(bound_node)) |type_edge| {
+        const type_node = EdgeType.get_type_node(type_edge.edge);
+        return TypeNodeAttributes.of(type_node).get_type_name();
+    }
+    return null;
 }
 
-test "filter_hierarchy_stack" {
-    const a = std.testing.allocator;
-    var g = GraphView.init(a);
-    defer g.deinit();
+fn print_instance_node(bound_node: BoundNodeReference) void {
+    const type_name = try_get_node_type_name(bound_node) orelse @panic("Missing type");
+    dbg_print("{}:{s}", .{ bound_node.node.get_uuid(), type_name });
+}
 
-    const bn1 = g.create_and_insert_node();
-    const bn2 = g.create_and_insert_node();
-    const bn3 = g.create_and_insert_node();
-    const bn4 = g.create_and_insert_node();
-    const be1 = g.insert_edge(EdgeReference.init(bn2.node, bn1.node, EdgeComposition.tid));
-    const be2 = g.insert_edge(EdgeReference.init(bn3.node, bn4.node, EdgeComposition.tid));
-    const be3 = g.insert_edge(EdgeReference.init(bn2.node, bn3.node, EdgeInterfaceConnection.tid));
+fn has_is_interface_trait(bound_node: BoundNodeReference) bool {
+    const tg = typegraph_mod.TypeGraph.of_instance(bound_node) orelse return false;
+    const is_interface_type = tg.get_type_by_name("is_interface.node.core.faebryk") orelse return false;
+    return EdgeTrait.try_get_trait_instance_of_type(bound_node, is_interface_type.node) != null;
+}
 
-    var bfs_path = try BFSPath.init(a, bn1);
+fn path_has_shallow_edge(path: *const BFSPath) bool {
+    for (path.traversed_edges.items) |traversed_edge| {
+        const edge = traversed_edge.edge;
+        if (EdgeInterfaceConnection.is_instance(edge)) {
+            const shallow_edge = (edge.get(EdgeInterfaceConnection.shallow_attribute) orelse continue).Bool;
+            if (shallow_edge) return true;
+        }
+    }
+    return false;
+}
 
-    try bfs_path.traversed_edges.append(TraversedEdge{ .edge = be1.edge, .forward = false }); // bn1 -> bn2 (target -> source)
-    try bfs_path.traversed_edges.append(TraversedEdge{ .edge = be3.edge, .forward = true }); // bn2 -> bn3 (source -> target)
-    try bfs_path.traversed_edges.append(TraversedEdge{ .edge = be2.edge, .forward = true }); // bn3 -> bn4 (source -> target)
-    defer bfs_path.deinit();
+fn print_instance_path(path: *const BFSPath) void {
+    print_instance_node(path.start_node);
+    for (path.traversed_edges.items) |traversed_edge| {
+        dbg_print(" -> ", .{});
+        const end_node = traversed_edge.get_end_node();
+        print_instance_node(path.start_node.g.bind(end_node));
+    }
+}
 
-    var pf = PathFinder.init(a);
-    defer pf.deinit();
-    _ = pf.filter_hierarchy_stack(bfs_path);
+fn print_type_node(bound_node: BoundNodeReference) void {
+    const type_name = TypeNodeAttributes.of(bound_node.node).get_type_name();
+    dbg_print("type:", .{});
+    dbg_print("{s}", .{type_name});
 }
