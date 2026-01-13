@@ -77,7 +77,7 @@ pub fn makeNodePyObject(value: graph.graph.NodeReference) ?*py.PyObject {
     };
     owned.* = .{ .magic = owned_magic_node, .payload = value };
 
-    const pyobj = bind.wrap_obj("Node", &node_type, NodeWrapper, &owned.payload);
+    const pyobj = bind.wrap_obj("NodeReference", &node_type, NodeWrapper, &owned.payload);
     if (pyobj == null) {
         allocator.destroy(owned);
     }
@@ -92,7 +92,7 @@ pub fn makeEdgePyObject(value: graph.graph.EdgeReference) ?*py.PyObject {
     };
     owned.* = .{ .magic = owned_magic_edge, .payload = value };
 
-    const pyobj = bind.wrap_obj("Edge", &edge_type, EdgeWrapper, &owned.payload);
+    const pyobj = bind.wrap_obj("EdgeReference", &edge_type, EdgeWrapper, &owned.payload);
     if (pyobj == null) {
         allocator.destroy(owned);
     }
