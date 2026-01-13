@@ -55,6 +55,8 @@ import faebryk.library.Lead as Lead
 from faebryk.library.XtalIF import XtalIF
 from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.requires_external_usage import requires_external_usage
+from faebryk.library.ElectricLogic import ElectricLogic
+from faebryk.library.ElectricSignal import ElectricSignal
 from faebryk.library.Regulator import Regulator
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.BJT import BJT
@@ -70,14 +72,6 @@ from faebryk.library.Net import Net
 from faebryk.library.Resistor import Resistor
 from faebryk.library.TestPoint import TestPoint
 from faebryk.library.Battery import Battery
-from faebryk.library.ElectricLogic import ElectricLogic
-from faebryk.library.ElectricSignal import ElectricSignal
-from faebryk.library.MultiCapacitor import MultiCapacitor
-from faebryk.library.LED import LED
-from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
-from faebryk.library.ResistorArray import ResistorArray
-from faebryk.library.has_designator import has_designator
-from faebryk.library.has_pulls import has_pulls
 from faebryk.library.CAN_TTL import CAN_TTL
 from faebryk.library.I2S import I2S
 from faebryk.library.JTAG import JTAG
@@ -87,11 +81,16 @@ from faebryk.library.RS232 import RS232
 from faebryk.library.SPI import SPI
 from faebryk.library.SWD import SWD
 from faebryk.library.UART_Base import UART_Base
-from faebryk.library.DifferentialPair import DifferentialPair
+from faebryk.library.MultiCapacitor import MultiCapacitor
+from faebryk.library.LED import LED
 from faebryk.library.FilterElectricalLC import FilterElectricalLC
+from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
+from faebryk.library.DifferentialPair import DifferentialPair
 from faebryk.library.FilterElectricalRC import FilterElectricalRC
+from faebryk.library.ResistorArray import ResistorArray
 from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
-from faebryk.library.can_be_pulled import can_be_pulled
+from faebryk.library.has_designator import has_designator
+from faebryk.library.has_pulls import has_pulls
 from faebryk.library.SPIFlash import SPIFlash
 from faebryk.library.UART import UART
 from faebryk.library.CAN import CAN
@@ -100,14 +99,15 @@ from faebryk.library.OpAmp import OpAmp
 from faebryk.library.RS485HalfDuplex import RS485HalfDuplex
 from faebryk.library.USB2_0_IF import USB2_0_IF
 from faebryk.library.AdjustableRegulator import AdjustableRegulator
-from faebryk.library.requires_pulls import requires_pulls
+from faebryk.library.can_be_pulled import can_be_pulled
 from faebryk.library.USB2_0 import USB2_0
 from faebryk.library.USB3_IF import USB3_IF
-from faebryk.library.I2C import I2C
+from faebryk.library.requires_pulls import requires_pulls
 from faebryk.library.USB3 import USB3
+from faebryk.library.I2C import I2C
+from faebryk.library.USB_C import USB_C
 from faebryk.library.Addressor import Addressor
 from faebryk.library.HDMI import HDMI
-from faebryk.library.USB_C import USB_C
 
 __all__ = [
     "Collections",
@@ -150,6 +150,8 @@ __all__ = [
     "XtalIF",
     "has_net_name_affix",
     "requires_external_usage",
+    "ElectricLogic",
+    "ElectricSignal",
     "Regulator",
     "has_single_electric_reference",
     "BJT",
@@ -165,14 +167,6 @@ __all__ = [
     "Resistor",
     "TestPoint",
     "Battery",
-    "ElectricLogic",
-    "ElectricSignal",
-    "MultiCapacitor",
-    "LED",
-    "Crystal_Oscillator",
-    "ResistorArray",
-    "has_designator",
-    "has_pulls",
     "CAN_TTL",
     "I2S",
     "JTAG",
@@ -182,11 +176,16 @@ __all__ = [
     "SPI",
     "SWD",
     "UART_Base",
-    "DifferentialPair",
+    "MultiCapacitor",
+    "LED",
     "FilterElectricalLC",
+    "Crystal_Oscillator",
+    "DifferentialPair",
     "FilterElectricalRC",
+    "ResistorArray",
     "ResistorVoltageDivider",
-    "can_be_pulled",
+    "has_designator",
+    "has_pulls",
     "SPIFlash",
     "UART",
     "CAN",
@@ -195,12 +194,13 @@ __all__ = [
     "RS485HalfDuplex",
     "USB2_0_IF",
     "AdjustableRegulator",
-    "requires_pulls",
+    "can_be_pulled",
     "USB2_0",
     "USB3_IF",
-    "I2C",
+    "requires_pulls",
     "USB3",
+    "I2C",
+    "USB_C",
     "Addressor",
     "HDMI",
-    "USB_C",
 ]

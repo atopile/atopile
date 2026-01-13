@@ -212,12 +212,6 @@ def prepare_build(
 
     layout.attach_sub_pcbs_to_entry_points(app)
 
-    # This needs to be done somewhere :)
-    for trait_instance in fabll.Traits.get_implementors(
-        F.has_single_electric_reference.bind_typegraph(app.tg), g=app.g
-    ):
-        trait_instance.connect_all_references()
-
     # TODO remove, once erc split up
     fabll.Traits.create_and_add_instance_to(app, needs_erc_check)
 

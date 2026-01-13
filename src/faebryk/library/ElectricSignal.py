@@ -22,9 +22,7 @@ class ElectricSignal(fabll.Node):
     #                 traits
     # ----------------------------------------
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
-    _single_electric_reference = fabll.Traits.MakeEdge(
-        F.has_single_electric_reference.MakeChild()
-    )
+
     _can_be_pulled = fabll.Traits.MakeEdge(
         can_be_pulled.can_be_pulled.MakeChild(line, reference)
     )
