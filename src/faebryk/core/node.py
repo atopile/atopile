@@ -1001,7 +1001,12 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         if isinstance(field, _ChildField):
             identifier = field.get_identifier()
             for dependant in field._prepend_dependants:
-                cls._exec_field(t=t, field=dependant, type_field=type_field)
+                cls._exec_field(
+                    t=t,
+                    field=dependant,
+                    type_field=type_field,
+                    source_chunk_node=source_chunk_node,
+                )
             if type_field:
                 if isinstance(field.nodetype, str):
                     raise FabLLException(

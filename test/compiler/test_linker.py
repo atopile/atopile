@@ -6,8 +6,8 @@ import pytest
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
+from atopile.compiler import DslImportError, DslRichException
 from atopile.compiler.build import (
-    ImportPathNotFoundError,
     Linker,
     StdlibRegistry,
     build_file,
@@ -153,8 +153,8 @@ def test_package_identifier_rewrite(tmp_path: Path):
 
 def test_missing_import_raises_user_error():
     with pytest.raises(
-        ImportPathNotFoundError, match="Unable to resolve import `missing/module.ato`"
-    ):
+        DslRichException, match="Unable to resolve import `missing/module.ato`"
+    ) as e:
         g, tg, stdlib, result = build_type(
             """
             from "missing/module.ato" import DoesNotExist
@@ -164,6 +164,8 @@ def test_missing_import_raises_user_error():
             """,
             link=True,
         )
+    assert isinstance(e.value.original, DslImportError)
+    assert str(e.value.original) == "Unable to resolve import `missing/module.ato`"
 
 
 def test_different_imports_resolve_to_different_nodes():

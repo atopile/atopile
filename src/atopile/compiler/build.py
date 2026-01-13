@@ -13,6 +13,7 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 from atopile.compiler import (
     DslException,
+    DslImportError,
     DslRichException,
     DslUndefinedSymbolError,
 )
@@ -344,9 +345,45 @@ class Linker:
     ) -> graph.BoundNode:
         assert import_ref.path is not None
 
-        source_path = self._resolver.resolve(
-            raw_path=import_ref.path, base_file=build_state.file_path
-        )
+        try:
+            source_path = self._resolver.resolve(
+                raw_path=import_ref.path, base_file=build_state.file_path
+            )
+        except ImportPathNotFoundError as e:
+            # Find the source chunk for this import in the build state
+            source_node = None
+            for (
+                type_ref_node,
+                ref,
+                source_chunk,
+                traceback,
+            ) in build_state.external_type_refs:
+                if ref == import_ref:
+                    source_node = source_chunk
+                    break
+
+            # If no specific source chunk found, use the first one that matches the path
+            if source_node is None:
+                for (
+                    type_ref_node,
+                    ref,
+                    source_chunk,
+                    traceback,
+                ) in build_state.external_type_refs:
+                    if ref and ref.path == import_ref.path:
+                        source_node = source_chunk
+                        break
+
+            raise DslRichException(
+                f"Unable to resolve import `{import_ref.path}`",
+                original=DslImportError(
+                    f"Unable to resolve import `{import_ref.path}`"
+                ),
+                source_node=source_node,
+                file_path=build_state.file_path,
+            ) from e
+
+        # Rest of method continues with source_path defined
 
         if source_path in self._linked_modules:
             if import_ref.name in self._linked_modules[source_path]:
@@ -410,7 +447,19 @@ class Linker:
             ) from ex
 
         self._linked_modules[source_path] = child_result.state.type_roots
-        return child_result.state.type_roots[import_ref.name]
+        try:
+            return child_result.state.type_roots[import_ref.name]
+        except KeyError:
+            # The imported module doesn't exist in the file
+            import_node = self._find_import_node_for_ref(import_ref, build_state)
+            available_modules = list(child_result.state.type_roots.keys())
+            raise DslRichException(
+                f"Module '{import_ref.name}' not found in '{source_path}'. "
+                f"Available modules: {available_modules}",
+                traceback=[],
+                source_node=import_node,
+                file_path=build_state.file_path,
+            )
 
     def link_imports(self, g: graph.GraphView, build_state: BuildState) -> None:
         resolved_path = (
@@ -461,6 +510,8 @@ class Linker:
         build_state: BuildState,
         cached_type_roots: dict[str, graph.BoundNode] | None = None,
     ) -> None:
+        from atopile.compiler import DslRichException
+
         for (
             type_reference,
             import_ref,
@@ -551,10 +602,36 @@ class Linker:
                         file_imports=self,
                     ).execute()
                     self._linked_modules[stdlib_path] = child_result.state.type_roots
-                    target = child_result.state.type_roots[import_ref.name]
+                    try:
+                        target = child_result.state.type_roots[import_ref.name]
+                    except KeyError:
+                        import_node = self._find_import_node_for_ref(
+                            import_ref, build_state
+                        )
+                        available_modules = list(child_result.state.type_roots.keys())
+                        raise DslRichException(
+                            f"Module '{import_ref.name}' not found in stdlib file '{stdlib_path}'. "  # noqa: E501
+                            f"Available modules: {available_modules}",
+                            traceback=[],
+                            source_node=import_node,
+                            file_path=build_state.file_path,
+                        )
             elif cached_type_roots is not None:
                 # file import from cache
-                target = cached_type_roots[import_ref.name]
+                try:
+                    target = cached_type_roots[import_ref.name]
+                except KeyError:
+                    import_node = self._find_import_node_for_ref(
+                        import_ref, build_state
+                    )
+                    available_modules = list(cached_type_roots.keys())
+                    raise DslRichException(
+                        f"Module '{import_ref.name}' not found in cached file. "
+                        f"Available modules: {available_modules}",
+                        traceback=[],
+                        source_node=import_node,
+                        file_path=build_state.file_path,
+                    )
             else:
                 # file import
                 target = self._build_imported_file(graph, import_ref, build_state)

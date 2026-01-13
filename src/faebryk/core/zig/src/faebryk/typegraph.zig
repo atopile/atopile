@@ -993,17 +993,6 @@ pub const TypeGraph = struct {
             if (idx == 0 and segment.len > 0 and ascii.isDigit(segment[0])) {
                 return false;
             }
-
-            // Skip paths where FIRST segment has bracket notation (e.g., "[0]")
-            // Later segments with brackets are fine (e.g., "items[0]") - they're
-            // indexed child references, but the root should still be validated
-            if (idx == 0) {
-                for (segment) |c| {
-                    if (c == '[' or c == ']') {
-                        return false;
-                    }
-                }
-            }
         }
 
         return true;
