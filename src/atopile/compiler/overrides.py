@@ -190,6 +190,24 @@ _ENUM_PARAMETER_OVERRIDES: dict[str, EnumParameterOverrideSpec] = {
     "temperature_coefficient": EnumParameterOverrideSpec(
         enum_type=F.Capacitor.TemperatureCoefficient,
     ),
+    "channel_type": EnumParameterOverrideSpec(
+        enum_type=F.MOSFET.ChannelType,
+    ),
+    "saturation_type": EnumParameterOverrideSpec(
+        enum_type=F.MOSFET.SaturationType,
+    ),
+    "doping_type": EnumParameterOverrideSpec(
+        enum_type=F.BJT.DopingType,
+    ),
+    "operation_region": EnumParameterOverrideSpec(
+        enum_type=F.BJT.OperationRegion,
+    ),
+    "fuse_type": EnumParameterOverrideSpec(
+        enum_type=F.Fuse.FuseType,
+    ),
+    "response_type": EnumParameterOverrideSpec(
+        enum_type=F.Fuse.ResponseType,
+    ),
 }
 
 
