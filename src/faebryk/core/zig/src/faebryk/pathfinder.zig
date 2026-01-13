@@ -24,14 +24,6 @@ const EdgeType = type_mod.EdgeType;
 const TypeNodeAttributes = typegraph_mod.TypeGraph.TypeNodeAttributes;
 const EdgeTrait = trait_mod.EdgeTrait;
 
-const debug_pathfinder = false;
-
-fn dbg_print(comptime fmt: []const u8, args: anytype) void {
-    if (comptime debug_pathfinder) {
-        std.debug.print(fmt, args);
-    }
-}
-
 const BoundNodeRefMap = struct {};
 
 const TypeElement = struct {
@@ -47,9 +39,7 @@ const TypeElement = struct {
 
     fn print(self: *const @This()) void {
         print_type_node(self.type_node);
-        dbg_print(":{s} ", .{
-            self.child_identifier orelse "<null>",
-        });
+        std.debug.print(":{s} ", .{self.child_identifier orelse "<null>"});
     }
 };
 
@@ -65,11 +55,11 @@ const TypeElementList = struct {
     }
 
     fn print(self: *const @This()) void {
-        dbg_print("[", .{});
+        std.debug.print("[", .{});
         for (self.elements.items) |element| {
             element.print();
         }
-        dbg_print("]", .{});
+        std.debug.print("]", .{});
     }
 };
 
@@ -99,8 +89,8 @@ const InstancePathList = struct {
 
     fn print(self: *const @This()) void {
         for (self.elements.items, 0..) |path, i| {
-            if (i != 0) dbg_print("\n", .{});
-            dbg_print("\t", .{});
+            if (i != 0) std.debug.print("\n", .{});
+            std.debug.print("\t", .{});
             print_instance_path(path);
         }
     }
@@ -111,9 +101,9 @@ const TypePath = struct {
     instance_paths: InstancePathList,
 
     fn print(self: *const @This()) void {
-        dbg_print("Type Path: ", .{});
+        std.debug.print("Type Path: ", .{});
         self.type_element_list.print();
-        dbg_print("\tInstances:\n", .{});
+        std.debug.print("\tInstances:\n", .{});
         self.instance_paths.print();
     }
 };
@@ -270,19 +260,10 @@ pub const PathFinder = struct {
                     const child_type_element = type_path.type_element_list.elements.getLast();
                     if (child_type_element.child_identifier) |child_identifier| {
                         const child_node = EdgeComposition.get_child_by_identifier(last_node, child_identifier) orelse {
-                            dbg_print("Skipping missing child '{s}' on node ", .{child_identifier});
-                            print_instance_node(last_node);
-                            dbg_print("\n", .{});
                             continue;
                         };
                         const child_edge = EdgeComposition.get_parent_edge(child_node) orelse @panic("child edge not found");
                         const child_path = self.extend_path(path, last_node, child_edge);
-                        // dbg_print("CHILD NODE: ", .{});
-                        // print_instance_node(child_node);
-                        // dbg_print("\n", .{});
-                        // dbg_print("PARENT TYPE ELEMENT LIST: ", .{});
-                        // type_path.type_element_list.print();
-                        // dbg_print("\n", .{});
                         var child_type_element_list = TypeElementList{
                             .elements = std.ArrayList(TypeElement).init(self.arena.allocator()),
                         };
@@ -290,9 +271,6 @@ pub const PathFinder = struct {
                         if (type_items.len > 0) {
                             child_type_element_list.elements.appendSlice(type_items[0 .. type_items.len - 1]) catch @panic("OOM");
                         }
-                        // dbg_print("CHILD TYPE ELEMENT LIST: ", .{});
-                        // child_type_element_list.print();
-                        // dbg_print("\n", .{});
 
                         var child_path_list = InstancePathList{
                             .elements = std.ArrayList(*BFSPath).init(self.arena.allocator()),
@@ -344,12 +322,6 @@ pub const PathFinder = struct {
                             self.to_visit_list.add_element(type_element_list, parent_path_list);
                             self.visited_list.add_element(type_element_list, parent_path_list);
                         }
-
-                        for (self.to_visit_list.elements.items) |to_visit| {
-                            dbg_print("To visit: ", .{});
-                            to_visit.print();
-                            dbg_print("\n", .{});
-                        }
                     }
                 }
 
@@ -361,17 +333,6 @@ pub const PathFinder = struct {
                 self.current_bfs_paths = std.ArrayList(*BFSPath).init(self.allocator);
             }
         }
-        dbg_print("RESULTING VISITED LIST\n", .{});
-        for (self.visited_list.elements.items) |visited| {
-            visited.print();
-            dbg_print("\n", .{});
-        }
-
-        dbg_print("RESULTING TO VISIT LIST\n", .{});
-        for (self.to_visit_list.elements.items) |to_visit_list| {
-            to_visit_list.print();
-            dbg_print("\n", .{});
-        }
 
         // Return paths at the same hierarchy level as the start node.
         var bfs_paths = graph.BFSPaths.init(self.allocator);
@@ -382,6 +343,7 @@ pub const PathFinder = struct {
                 bfs_paths.paths.appendAssumeCapacity(copied_path);
             }
         }
+
         return bfs_paths;
     }
 
@@ -390,22 +352,10 @@ pub const PathFinder = struct {
 
         self.visited_path_counter += 1;
 
-        if (comptime debug_pathfinder) {
-            self.print_path(path);
-        }
-
         const copied_path = path.copy(self.allocator) catch @panic("OOM");
         self.current_bfs_paths.append(copied_path) catch @panic("OOM");
 
         return visitor.VisitResult(void){ .CONTINUE = {} };
-    }
-
-    pub fn print_path(self: *Self, path: *BFSPath) void {
-        dbg_print("Path {}: ", .{self.visited_path_counter});
-
-        print_instance_path(path);
-
-        dbg_print("\n", .{});
     }
 
     fn concat_paths(self: *Self, prefix: *const BFSPath, suffix: *const BFSPath) *BFSPath {
@@ -439,7 +389,7 @@ fn try_get_node_type_name(bound_node: BoundNodeReference) ?graph.str {
 
 fn print_instance_node(bound_node: BoundNodeReference) void {
     const type_name = try_get_node_type_name(bound_node) orelse @panic("Missing type");
-    dbg_print("{}:{s}", .{ bound_node.node.get_uuid(), type_name });
+    std.debug.print("{}:{s}", .{ bound_node.node.get_uuid(), type_name });
 }
 
 fn has_is_interface_trait(bound_node: BoundNodeReference) bool {
@@ -462,7 +412,7 @@ fn path_has_shallow_edge(path: *const BFSPath) bool {
 fn print_instance_path(path: *const BFSPath) void {
     print_instance_node(path.start_node);
     for (path.traversed_edges.items) |traversed_edge| {
-        dbg_print(" -> ", .{});
+        std.debug.print(" -> ", .{});
         const end_node = traversed_edge.get_end_node();
         print_instance_node(path.start_node.g.bind(end_node));
     }
@@ -470,6 +420,6 @@ fn print_instance_path(path: *const BFSPath) void {
 
 fn print_type_node(bound_node: BoundNodeReference) void {
     const type_name = TypeNodeAttributes.of(bound_node.node).get_type_name();
-    dbg_print("type:", .{});
-    dbg_print("{s}", .{type_name});
+    std.debug.print("type:", .{});
+    std.debug.print("{s}", .{type_name});
 }
