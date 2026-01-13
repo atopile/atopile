@@ -101,6 +101,7 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.USB2_0,
         F.USB3,
         F.XtalIF,
+        F.TestPoint,
     }
 ) | (
     # Traits
