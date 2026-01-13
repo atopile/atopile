@@ -826,14 +826,18 @@ class MutatorUtils:
 
 def pretty_expr(
     expr: "F.Expressions.is_expression | ExpressionBuilder",
-    mutator: "Mutator",
+    mutator: "Mutator | None" = None,
     context: "F.Parameters.ReprContext | None" = None,
     use_name: bool = False,
     no_lit_suffix: bool = False,
 ) -> str:
     from faebryk.core.solver.symbolic.invariants import ExpressionBuilder
 
-    context = context or mutator.print_ctx
+    context = context or (mutator.print_ctx if mutator else None)
+
+    if context is None:
+        raise ValueError("Mutator or ReprContext is required")
+
     match expr:
         case ExpressionBuilder():
             if expr.operands:
@@ -871,3 +875,5 @@ def pretty_expr(
                 use_name=use_name,
                 no_lit_suffix=no_lit_suffix,
             )
+        case _:
+            raise ValueError(f"Unknown expression type: {type(expr)}")

@@ -164,9 +164,16 @@ def run_tests(matches: list[tuple[Path, Callable]]) -> None:
         if hasattr(test_func, "pytestmark"):
             for mark in test_func.pytestmark:
                 if mark.name == "parametrize":
+                    from _pytest.mark import ParameterSet
+
+                    raw_values = mark.args[1]
+                    values = [
+                        v.values if isinstance(v, ParameterSet) else v
+                        for v in raw_values
+                    ]
                     arg_def = _PytestArgDef(
                         names=[name.strip() for name in mark.args[0].split(",")],
-                        values=list(mark.args[1]),
+                        values=values,
                         id_fn=mark.kwargs.get("ids"),
                     )
                 if mark.name == "usefixtures":

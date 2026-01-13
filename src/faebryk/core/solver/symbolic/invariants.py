@@ -55,14 +55,11 @@ class SubsumptionCheck:
         All default = NoOp
         """
 
-        expr: F.Expressions.is_expression | None = None
-        builder: (
-            tuple[
-                type[F.Expressions.ExpressionNodes], list[F.Parameters.can_be_operand]
-            ]
-            | None
-        ) = None
-        discard: bool = False
+        class _DISCARD:
+            def __repr__(self) -> str:
+                return "<DISCARD>"
+
+        most_constrained_expr: "F.Expressions.is_expression | ExpressionBuilder | _DISCARD | None" = None  # noqa: E501
 
     @staticmethod
     def subset(
@@ -86,8 +83,8 @@ class SubsumptionCheck:
         if subset_op := ops.get(0):
             superset_ss = [
                 (ss, lit)
-                for ss in mutator.get_operations(
-                    subset_op, types=F.Expressions.IsSubset, predicates_only=True
+                for ss in subset_op.get_operations(
+                    types=F.Expressions.IsSubset, predicates_only=True
                 )
                 if (
                     lit := ss.get_superset_operand().try_get_sibling_trait(
@@ -98,27 +95,32 @@ class SubsumptionCheck:
             if not superset_ss:
                 return SubsumptionCheck.Result()
 
-            assert len(superset_ss) == 1
+            assert len(superset_ss) == 1, (
+                "multiple extant supersets violates invariant: "
+                f"{[(ss.pretty_repr(), lit.pretty_repr()) for ss, lit in superset_ss]}",
+            )
             superset_ss, superset_lit = superset_ss[0]
             new_superset = builder.operands[1].as_literal.force_get()
             merged_superset = superset_lit.op_intersect_intervals(
                 new_superset, g=mutator.G_transient, tg=mutator.tg_in
             )
             if superset_lit.equals(merged_superset):
-                return SubsumptionCheck.Result(expr=superset_ss.is_expression.get())
+                return SubsumptionCheck.Result(superset_ss.is_expression.get())
             mutator.mark_irrelevant(superset_ss.is_parameter_operatable.get())
             return SubsumptionCheck.Result(
-                builder=(
+                ExpressionBuilder(
                     IsSubset,
                     [subset_op.as_operand.get(), merged_superset.as_operand.get()],
+                    assert_=True,
+                    terminate=False,
                 )
             )
 
         elif superset_op := ops.get(1):
             subset_ss = [
                 (ss, lit)
-                for ss in mutator.get_operations(
-                    superset_op, types=F.Expressions.IsSubset, predicates_only=True
+                for ss in superset_op.get_operations(
+                    types=F.Expressions.IsSubset, predicates_only=True
                 )
                 if (
                     lit := ss.get_subset_operand().try_get_sibling_trait(
@@ -129,19 +131,26 @@ class SubsumptionCheck:
             if not subset_ss:
                 return SubsumptionCheck.Result()
 
-            assert len(subset_ss) == 1
+            assert len(subset_ss) == 1, (
+                f"multiple extant subsets violates invariant: {subset_ss}"
+            )
             subset_ss, subset_lit = subset_ss[0]
             new_subset = builder.operands[0].as_literal.force_get()
             merged_subset = subset_lit.op_union_intervals(
                 new_subset, g=mutator.G_transient, tg=mutator.tg_in
             )
             if subset_lit.equals(merged_subset):
-                return SubsumptionCheck.Result(expr=subset_ss.is_expression.get())
+                return SubsumptionCheck.Result(
+                    most_constrained_expr=subset_ss.is_expression.get()
+                )
+
             mutator.mark_irrelevant(subset_ss.is_parameter_operatable.get())
             return SubsumptionCheck.Result(
-                builder=(
+                ExpressionBuilder(
                     IsSubset,
                     [merged_subset.as_operand.get(), superset_op.as_operand.get()],
+                    assert_=True,
+                    terminate=False,
                 )
             )
 
@@ -160,7 +169,7 @@ class SubsumptionCheck:
 
         if any(lit.equals_singleton(True) for lit in builder.indexed_lits().values()):
             if builder.assert_:
-                return SubsumptionCheck.Result(discard=True)
+                return SubsumptionCheck.Result(SubsumptionCheck.Result._DISCARD())
             else:
                 # other algorithm will deal with this (no invariant)
                 return SubsumptionCheck.Result()
@@ -217,7 +226,7 @@ class SubsumptionCheck:
                 new_operands,
                 candidate_expr.get_operands(),
             ):
-                return SubsumptionCheck.Result(expr=candidate_expr)
+                return SubsumptionCheck.Result(most_constrained_expr=candidate_expr)
 
         return SubsumptionCheck.Result()
 
@@ -636,20 +645,22 @@ def insert_expression(
         mutator.tg_in
     ).check_if_instance_of_type_has_trait(F.Expressions.is_assertable):
         subsume_res = find_subsuming_expression(mutator, builder)
-        if subsuming_expr := subsume_res.expr:
-            orig = pretty_expr(builder, mutator)
-            new = pretty_expr(subsuming_expr, mutator)
-            logger.debug(f"Subsume replaced: {orig} -> {new}")
-            return InsertExpressionResult(subsuming_expr.as_operand.get(), False)
-        elif subsume_res.discard:
-            logger.debug(f"Subsume discard: {pretty_expr(builder, mutator)}")
-            return InsertExpressionResult(None, False)
-        elif subsume_res.builder:
-            factory, operands = subsume_res.builder
-            builder = ExpressionBuilder(
-                factory, operands, builder.assert_, builder.terminate
-            )
-            logger.debug(f"Subsume adjust {pretty_expr(builder, mutator)}")
+        if most_constrained_expr := subsume_res.most_constrained_expr:
+            match most_constrained_expr:
+                case F.Expressions.is_expression():
+                    orig = pretty_expr(builder, mutator)
+                    new = pretty_expr(most_constrained_expr, mutator)
+                    logger.debug(f"Subsume replaced: {orig} -> {new}")
+                    return InsertExpressionResult(
+                        most_constrained_expr.as_operand.get(), False
+                    )
+                case ExpressionBuilder():
+                    builder = most_constrained_expr
+                    logger.debug(f"Subsume adjust {pretty_expr(builder, mutator)}")
+
+                case SubsumptionCheck.Result._DISCARD():
+                    logger.debug(f"Subsume discard: {pretty_expr(builder, mutator)}")
+                    return InsertExpressionResult(None, False)
 
     # * no empty supersets
     _no_empty_superset(mutator, builder)
@@ -1088,8 +1099,8 @@ class TestInvariantsSimple:
         )
 
         # Subsumption should return a builder with intersected range
-        assert subsume_result.builder is not None
-        _, new_operands = subsume_result.builder
+        assert isinstance(subsume_result.most_constrained_expr, ExpressionBuilder)
+        new_operands = subsume_result.most_constrained_expr.operands
         new_superset = new_operands[1].get_sibling_trait(F.Literals.is_literal)
         new_superset_nums = fabll.Traits(new_superset).get_obj(F.Literals.Numbers)
         # The intersected range should be [50, 100]
@@ -1482,8 +1493,8 @@ class TestInvariantsCombinations:
         )
 
         # Should return builder with intersected range [50, 60]
-        assert subsume_result.builder is not None
-        _, new_operands = subsume_result.builder
+        assert isinstance(subsume_result.most_constrained_expr, ExpressionBuilder)
+        new_operands = subsume_result.most_constrained_expr.operands
         new_superset = new_operands[1].get_sibling_trait(F.Literals.is_literal)
         new_superset_nums = fabll.Traits(new_superset).get_obj(F.Literals.Numbers)
         assert new_superset_nums.get_min_value() == 50

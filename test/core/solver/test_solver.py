@@ -11,8 +11,12 @@ import pytest
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.core.solver.mutator import MutationMap
+from faebryk.core.solver.mutator import MutationMap, Mutator
 from faebryk.core.solver.solver import Solver
+from faebryk.core.solver.symbolic.invariants import (
+    ExpressionBuilder,
+    find_subsuming_expression,
+)
 from faebryk.core.solver.utils import (
     Contradiction,
     ContradictionByLiteral,
@@ -2350,12 +2354,11 @@ class TestSubsumptionDetection:
     }
 
     @staticmethod
-    def _run_in_mutator(E, callback, force_copy=True):
+    def _run_in_mutator(mut_map: MutationMap, callback, force_copy=True):
         """Run callback within a mutator context, returning its result."""
         from faebryk.core.solver.algorithm import algorithm
-        from faebryk.core.solver.mutator import MutationMap, Mutator
+        from faebryk.core.solver.mutator import Mutator
 
-        mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
         result = None
 
         @algorithm("test", force_copy=force_copy)
@@ -2363,7 +2366,7 @@ class TestSubsumptionDetection:
             nonlocal result
             result = callback(mutator)
 
-        Mutator(mutation_map=mut_map, algo=test_algo, iteration=0, terminal=True).run()
+        Mutator(mutation_map=mut_map, algo=test_algo, iteration=1, terminal=True).run()
         return result
 
     @staticmethod
@@ -2545,17 +2548,28 @@ class TestSubsumptionDetection:
         E = BoundExpressions()
         X = E.parameter_op()
         self._make_pred(E, existing_pred, X, assert_=True)
+        mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
 
         new_type, _ = new_pred
         new_operands = self._make_operands(E, new_pred, X)
-        result = self._run_in_mutator(
-            E,
-            lambda m: m.find_subsuming_expression(
-                self.PRED_FACTORIES[new_type], new_operands
-            ),
-        )
 
-        assert result is not None if expect_subsumed else result is None
+        def callback(m: Mutator):
+            ops = [m.get_copy(op) for op in new_operands]
+            builder = ExpressionBuilder(
+                self.PRED_FACTORIES[new_type], ops, assert_=True, terminate=False
+            )
+            return find_subsuming_expression(m, builder)
+
+        result = self._run_in_mutator(mut_map, callback)
+
+        assert result is not None
+        print(result.most_constrained_expr is None)
+        print(expect_subsumed)
+        assert (
+            result.most_constrained_expr is not None
+            if expect_subsumed
+            else result.most_constrained_expr is None
+        )
 
     @pytest.mark.parametrize(
         "existing_pred, new_pred, same_param, assert_existing",
