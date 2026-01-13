@@ -10,13 +10,12 @@ import I2C
 import I2S
 import can_bridge_by_name
 
-# Package imports from https://packages.atopile.io/
-from "atopile/usb-connectors/usb-connectors.ato" import USBCConn
+from "atopile/usb-connectors/usb-connectors.ato" import USBTypeCConnector_driver
 from "atopile/ti-tps63020/ti-tps63020.ato" import TPS63020_driver
 from "atopile/ti-bq25185/ti-bq25185.ato" import TI_BQ25185
 from "atopile/batteries/batteries.ato" import EMB_BATTERY_LP402535
-from "atopile/espressif-esp32-c3/esp32_c3_mini.ato" import ESP32_C3_MINI_1_driver
-from "atopile/addressable-leds/sk6805-ec20.ato" import SK6805EC20_driver
+from "atopile/espressif-esp32-c3/espressif-esp32-c3-mini.ato" import ESP32_C3_MINI_1
+from "atopile/opsco-sk6805-ec20/opsco-sk6805-ec20.ato" import OPSCO_SK6805_EC20
 from "atopile/microphones/tdk_invensense_ics_43434.ato" import TDK_InvenSense_ICS_43434
 from "atopile/logos/logos.ato" import atopile_logo_25x6mm
 
@@ -31,13 +30,13 @@ module LED_BADGE:
     - Buck-boost converter to 3.3V
     - Accelerometer
     """
-    microcontroller = new ESP32_C3_MINI_1_driver
+    microcontroller = new ESP32_C3_MINI_1
     microphone = new TDK_InvenSense_ICS_43434
-    usb_c = new USBCConn
+    usb_c = new USBTypeCConnector_driver
     buck_boost = new TPS63020_driver
     charger = new TI_BQ25185
     battery = new EMB_BATTERY_LP402535
-    led_grid = new SK6805EC20_grid10x10
+    led_grid = new OPSCO_SK6805_EC20_grid10x10
     atopile_logo = new atopile_logo_25x6mm
 
     charger.charge_current_limit = battery.model.capacity / 2hour +/- 10%
@@ -46,7 +45,7 @@ module LED_BADGE:
     power_3v3 = new ElectricPower
 
     # Power path: USB 5V -> Charger -> Battery / System -> BuckBoost -> 3V3 rail
-    usb_c.usb2.usb_if.buspower ~ charger.power_input
+    usb_c.usb.usb_if.buspower ~ charger.power_input
     charger.power_battery ~ battery.power
     charger.power_system ~> buck_boost ~> power_3v3
 
@@ -54,7 +53,7 @@ module LED_BADGE:
     buck_boost_en_pullup = new Resistor
     buck_boost_en_pullup.resistance = 10kohm +/- 1%
     buck_boost_en_pullup.package = "R0402"
-    buck_boost.package.EN ~> buck_boost_en_pullup ~> usb_c.usb2.usb_if.buspower.vcc
+    buck_boost.package.EN ~> buck_boost_en_pullup ~> usb_c.usb.usb_if.buspower.hv
 
     # Charger TS/MR: add 10k pull-down to ground to emulate 25C NTC
     ts_mr_pull_down = new Resistor
@@ -63,7 +62,7 @@ module LED_BADGE:
     charger.temp_sense.line ~> ts_mr_pull_down ~> charger.power_system.lv
 
     # Configure Power
-    usb_c.usb2.usb_if.buspower.voltage = 5V +/- 5%
+    usb_c.usb.usb_if.buspower.voltage = 5V +/- 5%
     charger.input_current_limit = 500mA
     buck_boost.v_out = 3.3V +/- 5%
     battery.model.capacity = 300mAh
@@ -78,7 +77,7 @@ module LED_BADGE:
     power_3v3 ~ led_grid.power
 
     # USB data
-    usb_c.usb2.usb_if.d ~ microcontroller.usb_if.d
+    usb_c.usb.usb_if.d ~ microcontroller.usb_if.d
 
     # I2S for microphone (mapped via GPIOs 3/4/5)
     i2s_bus = new I2S
@@ -97,16 +96,16 @@ module LED_BADGE:
     power_3v3.lv.override_net_name = "gnd"
     charger.power_system.hv.override_net_name = "power_system"
     charger.power_battery.hv.override_net_name = "power_battery"
-    usb_c.usb2.usb_if.buspower.hv.override_net_name = "usb_power"
-    usb_c.usb2.usb_if.d.p.line.override_net_name = "usb_P"
-    usb_c.usb2.usb_if.d.n.line.override_net_name = "usb_N"
+    usb_c.usb.usb_if.buspower.hv.override_net_name = "usb_power"
+    usb_c.usb.usb_if.d.p.line.override_net_name = "usb_P"
+    usb_c.usb.usb_if.d.n.line.override_net_name = "usb_N"
 
-module SK6805EC20_strip10:
+module OPSCO_SK6805_EC20_strip10:
     """
     Row of 10 SK6805 addressable LEDs behaving like a single LED that can be bridged by name.
     """
     # Instantiate 10 individual LED drivers
-    leds = new SK6805EC20_driver[10]
+    leds = new OPSCO_SK6805_EC20[10]
 
     # Shared power rail for all LEDs
     power = new ElectricPower
@@ -127,12 +126,12 @@ module SK6805EC20_strip10:
     # Expose the strip as a single bridgable element
     trait can_bridge_by_name<input_name = "data_in", output_name = "data_out">
 
-module SK6805EC20_grid10x10:
+module OPSCO_SK6805_EC20_grid10x10:
     """
     10 × 10 LED matrix (100 LEDs) constructed from 10 rows of 10 LEDs.
     Presents itself as one bridgable LED for easy chaining.
     """
-    rows = new SK6805EC20_strip10[10]
+    rows = new OPSCO_SK6805_EC20_strip10[10]
 
     # Shared power rail for all rows
     power = new ElectricPower
