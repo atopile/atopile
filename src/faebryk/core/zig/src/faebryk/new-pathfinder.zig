@@ -250,6 +250,12 @@ pub const PathFinder = struct {
                     if (!has_is_interface_trait(combined_path.get_last_node())) {
                         continue;
                     }
+                    const start_len = self.bfs_type_element_stack.elements.items.len;
+                    const current_len = type_path.type_element_list.elements.items.len;
+                    const allow_shallow = current_len <= start_len;
+                    if (!allow_shallow and path_has_shallow_edge(combined_path)) {
+                        continue;
+                    }
                     visited_path_list.add_path(combined_path);
                 }
 
@@ -437,6 +443,17 @@ fn has_is_interface_trait(bound_node: BoundNodeReference) bool {
     const tg = typegraph_mod.TypeGraph.of_instance(bound_node) orelse return false;
     const is_interface_type = tg.get_type_by_name("is_interface.node.core.faebryk") orelse return false;
     return EdgeTrait.try_get_trait_instance_of_type(bound_node, is_interface_type.node) != null;
+}
+
+fn path_has_shallow_edge(path: *const BFSPath) bool {
+    for (path.traversed_edges.items) |traversed_edge| {
+        const edge = traversed_edge.edge;
+        if (EdgeInterfaceConnection.is_instance(edge)) {
+            const shallow_edge = (edge.get(EdgeInterfaceConnection.shallow_attribute) orelse continue).Bool;
+            if (shallow_edge) return true;
+        }
+    }
+    return false;
 }
 
 fn print_instance_path(path: *const BFSPath) void {
