@@ -1621,6 +1621,8 @@ def main(
     # no need to keep on recompiling zig
     # already done during discovery latest
     env["FBRK_ZIG_NORECOMPILE"] = "1"
+    if "FBRK_LOG_FMT" not in env:
+        env["FBRK_LOG_FMT"] = "1"
 
     worker_count = min(WORKER_COUNT, tests_total)
 
