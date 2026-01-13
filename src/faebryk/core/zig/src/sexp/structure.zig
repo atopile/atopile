@@ -777,24 +777,57 @@ fn decodeBool(sexp: SExp, metadata: SexpField) DecodeError!bool {
 
 fn decodeEnum(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T {
     _ = metadata; // metadata not used for basic enums (could be used for custom sexp_name in future)
-    // Try to get the enum value as either a symbol or a string
+    // Try to get the enum value as either a symbol, string, or number
     const enum_str = switch (sexp.value) {
         .symbol => |s| s,
         .string => |s| s,
+        .number => |s| s,
         else => {
-            setCtx(T, sexp, null, "expected symbol or string for enum");
+            setCtx(T, sexp, null, "expected symbol, string, or number for enum");
             return error.UnexpectedType;
         },
     };
 
-    inline for (std.meta.fields(T)) |field| {
-        if (std.mem.eql(u8, enum_str, field.name)) {
-            return @field(T, field.name);
-        }
-    }
+    const enum_info = @typeInfo(T).@"enum";
+    const tag_type_info = @typeInfo(enum_info.tag_type);
+    const is_i32_backed = switch (tag_type_info) {
+        .int => |int_info| int_info.signedness == .signed and int_info.bits == 32,
+        else => false,
+    };
 
-    setCtx(T, sexp, null, std.fmt.allocPrint(std.heap.page_allocator, "invalid enum value '{s}' for type {s}", .{ enum_str, @typeName(T) }) catch "invalid enum value");
-    return error.InvalidValue;
+    if (is_i32_backed) {
+        // For i32 enums, first try parsing as integer value
+        if (std.fmt.parseInt(enum_info.tag_type, enum_str, 0)) |enum_int| {
+            // Find the enum field with this integer value
+            inline for (std.meta.fields(T)) |field| {
+                if (field.value == enum_int) {
+                    return @field(T, field.name);
+                }
+            }
+        } else |_| {
+            // If parsing as integer failed, try matching as string name
+        }
+
+        // Fall back to string name matching
+        inline for (std.meta.fields(T)) |field| {
+            if (std.mem.eql(u8, enum_str, field.name)) {
+                return @field(T, field.name);
+            }
+        }
+
+        setCtx(T, sexp, null, std.fmt.allocPrint(std.heap.page_allocator, "invalid enum value '{s}' for type {s}", .{ enum_str, @typeName(T) }) catch "invalid enum value");
+        return error.InvalidValue;
+    } else {
+        // For non-i32 enums, only match by string name
+        inline for (std.meta.fields(T)) |field| {
+            if (std.mem.eql(u8, enum_str, field.name)) {
+                return @field(T, field.name);
+            }
+        }
+
+        setCtx(T, sexp, null, std.fmt.allocPrint(std.heap.page_allocator, "invalid enum value '{s}' for type {s}", .{ enum_str, @typeName(T) }) catch "invalid enum value");
+        return error.InvalidValue;
+    }
 }
 
 // Main encode function with metadata
@@ -802,14 +835,29 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype, metadata: SexpField,
     const T = @TypeOf(value);
     const type_info = @typeInfo(T);
 
-    // Special handling for enums with symbol flag
+    // Special handling for enums
     if (type_info == .@"enum") {
+        const enum_info = @typeInfo(T).@"enum";
+        const tag_type_info = @typeInfo(enum_info.tag_type);
+        const is_i32_backed = switch (tag_type_info) {
+            .int => |int_info| int_info.signedness == .signed and int_info.bits == 32,
+            else => false,
+        };
+
         inline for (std.meta.fields(T)) |field| {
             if (@intFromEnum(value) == field.value) {
-                if (metadata.symbol orelse true) {
-                    return SExp{ .value = .{ .symbol = field.name }, .location = null };
+                if (is_i32_backed) {
+                    // For i32 enums, output as number
+                    var buf: [20]u8 = undefined;
+                    const num_str = std.fmt.bufPrint(&buf, "{d}", .{@intFromEnum(value)}) catch unreachable;
+                    return SExp{ .value = .{ .number = allocator.dupe(u8, num_str) catch unreachable }, .location = null };
                 } else {
-                    return SExp{ .value = .{ .string = field.name }, .location = null };
+                    // For other enums, use symbol/string as before
+                    if (metadata.symbol orelse true) {
+                        return SExp{ .value = .{ .symbol = field.name }, .location = null };
+                    } else {
+                        return SExp{ .value = .{ .string = field.name }, .location = null };
+                    }
                 }
             }
         }

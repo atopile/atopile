@@ -143,9 +143,21 @@ pub const PyiGenerator = struct {
             },
             .@"union" => try writer.writeAll("Any"),
             .@"enum" => {
-                // Enums are handled as strings in Python bindings
-                // For now, enums are strings at runtime
-                try writer.writeAll("str");
+                // TODO: make proper use of enum types
+                const enum_info = @typeInfo(T).@"enum";
+                const tag_type_info = @typeInfo(enum_info.tag_type);
+                const is_i32_backed = switch (tag_type_info) {
+                    .int => |int_info| int_info.signedness == .signed and int_info.bits == 32,
+                    else => false,
+                };
+
+                if (is_i32_backed) {
+                    // For i32 enums, use int since they're IntEnum at runtime
+                    try writer.writeAll("int");
+                } else {
+                    // For other enums, use strings
+                    try writer.writeAll("str");
+                }
             },
             .error_union => |err_union| {
                 try self.writeZigTypeToPython(writer, err_union.payload);
@@ -177,8 +189,19 @@ pub const PyiGenerator = struct {
         else
             class_name;
 
-        // Generate as proper Enum class
-        try self.output.writer().print("class {s}(str, Enum):\n", .{clean_name});
+        // Check if enum is specifically backed by i32 (signed 32-bit integer)
+        const tag_type_info = @typeInfo(enum_info.tag_type);
+        const is_i32_backed = switch (tag_type_info) {
+            .int => |int_info| int_info.signedness == .signed and int_info.bits == 32,
+            else => false,
+        };
+
+        // Generate as IntEnum for i32-backed enums, StrEnum for others
+        if (is_i32_backed) {
+            try self.output.writer().print("class {s}(IntEnum):\n", .{clean_name});
+        } else {
+            try self.output.writer().print("class {s}(str, Enum):\n", .{clean_name});
+        }
 
         inline for (enum_info.fields) |field| {
             // Convert field name to valid Python identifier
@@ -196,7 +219,13 @@ pub const PyiGenerator = struct {
                     try self.output.writer().print("_", .{});
                 }
             }
-            try self.output.writer().print(" = \"{s}\"\n", .{field.name});
+
+            // Use integer value for IntEnum, string name for StrEnum
+            if (is_i32_backed) {
+                try self.output.writer().print(" = {d}\n", .{field.value});
+            } else {
+                try self.output.writer().print(" = \"{s}\"\n", .{field.name});
+            }
         }
         try self.output.writer().print("\n", .{});
     }
@@ -341,7 +370,7 @@ pub const PyiGenerator = struct {
     pub fn generate(self: *Self, comptime T: type) ![]const u8 {
         //header
         try self.output.writer().print("from typing import Any  # noqa: F401\n", .{});
-        try self.output.writer().print("from enum import Enum  # noqa: F401\n\n", .{});
+        try self.output.writer().print("from enum import Enum, IntEnum  # noqa: F401\n\n", .{});
 
         try self.output.writer().print("# Dirty hack to not error in ruff check\n", .{});
         try self.output.writer().print("type Allocator = Any\n\n", .{});
