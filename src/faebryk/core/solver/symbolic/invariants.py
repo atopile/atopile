@@ -183,10 +183,10 @@ class SubsumptionCheck:
             new_operands: Sequence[F.Parameters.can_be_operand],
         ) -> bool:
             """
-            Check if candidate operands are a subset of new operands (by identity).
+            Check if new operands are a subset of candidate operands (by identity).
             Used for Or subsumption: Or(A, B) subsumes Or(A, B, C).
             """
-            if len(candidate_operands) > len(new_operands):
+            if len(new_operands) > len(candidate_operands):
                 return False
 
             def _get_uuid(op: F.Parameters.can_be_operand) -> int | None:
@@ -196,8 +196,8 @@ class SubsumptionCheck:
                     return lit.instance.node().get_uuid()
                 return None
 
-            new_uuids = {_get_uuid(op) for op in new_operands}
-            return all(_get_uuid(op) in new_uuids for op in candidate_operands)
+            candidate_uuids = {_get_uuid(op) for op in candidate_operands}
+            return all(_get_uuid(op) in candidate_uuids for op in new_operands)
 
         ors = [
             mutator.get_operations(
