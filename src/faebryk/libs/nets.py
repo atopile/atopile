@@ -57,16 +57,22 @@ def bind_fbrk_nets_to_kicad_nets(
         if best_count <= pad_count * 0.8:
             continue
 
-        # bind the kicad net to the fabll net
-        trait_instance = fabll.Traits.create_and_add_instance_to(
-            fbrk_net, F.KiCadFootprints.has_associated_kicad_pcb_net
-        )
-
         # TODO for now since the transformer and kicadpcbnet are not in the graph yet
         nets_by_name = {}
         for pcb_net in transformer.pcb.nets:
             if pcb_net.name:
                 nets_by_name[pcb_net.name] = pcb_net
+
+        if best_kicad_net_name not in nets_by_name:
+            logger.warning(
+                f"Net name '{best_kicad_net_name}' not found in PCB nets, skipping"
+            )
+            continue
+
+        # bind the kicad net to the fabll net
+        trait_instance = fabll.Traits.create_and_add_instance_to(
+            fbrk_net, F.KiCadFootprints.has_associated_kicad_pcb_net
+        )
         trait_instance.setup(nets_by_name[best_kicad_net_name], transformer)
 
 

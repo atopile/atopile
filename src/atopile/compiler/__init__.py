@@ -12,6 +12,16 @@ import atopile.compiler.ast_types as AST
 import faebryk.core.node as fabll
 
 
+def _try_relative_path(path: Path | None) -> str:
+    """Try to make a path relative to cwd, fall back to absolute path."""
+    if path is None:
+        return "<memory>"
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        return str(path)
+
+
 class CompilerException(Exception):
     """Exception raised for internal compiler failures (implementation errors)."""
 
@@ -164,7 +174,7 @@ class DslRichException(DslException):
                 ),
             ]
 
-        display_path = str(file_path)
+        display_path = _try_relative_path(file_path)
         header = Text("  File ", style="dim")
         header.append(f'"{display_path}"', style="dim")
         header.append(f", line {start_line}", style="dim")
@@ -194,7 +204,7 @@ class DslRichException(DslException):
         if source_chunk is None:
             return [
                 Text(
-                    f'  File "{frame.file_path or "<memory>"}"',
+                    f'  File "{_try_relative_path(frame.file_path) if frame.file_path else "<memory>"}"',  # noqa: E501
                     style="dim italic",
                 )
             ]
@@ -203,7 +213,7 @@ class DslRichException(DslException):
         start_line = loc.get_start_line()
 
         # Create the file/line header (first line of frame)
-        file_part = f'"{frame.file_path}"' if frame.file_path else '"<memory>"'
+        file_part = f'"{_try_relative_path(frame.file_path)}"'
         header = Text(f"  File {file_part}, line {start_line}", style="dim italic")
 
         # Get the source code for this frame
