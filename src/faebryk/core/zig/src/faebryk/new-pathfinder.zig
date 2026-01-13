@@ -78,10 +78,13 @@ const InstancePathList = struct {
 
     fn add_path(self: *@This(), path: *BFSPath) void {
         const path_last = path.get_last_node();
-        for (self.elements.items) |existing| {
+        for (self.elements.items, 0..) |existing, i| {
             const existing_last = existing.get_last_node();
             // Dedup by end node; type path is handled at the TypePath key level.
             if (existing_last.g == path_last.g and existing_last.node.is_same(path_last.node)) {
+                if (path.traversed_edges.items.len < existing.traversed_edges.items.len) {
+                    self.elements.items[i] = path;
+                }
                 return;
             }
         }

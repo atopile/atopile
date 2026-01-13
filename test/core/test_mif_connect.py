@@ -764,25 +764,31 @@ def test_chains_mixed_shallow_nested():
         el[1].reference.get()._is_interface.get().is_connected_to(el[2].reference.get())
     )
     assert not el[0].line.get()._is_interface.get().is_connected_to(el[1].line.get())
+
+
+def test_shallow_blocks_child_parent_child():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    electricalLogicType = F.ElectricLogic.bind_typegraph(tg)
+    el1 = electricalLogicType.create_instance(g=g)
+    el2 = electricalLogicType.create_instance(g=g)
+
+    # Shallow at parent level should not allow child->parent->shallow->child
+    el1._is_interface.get().connect_shallow_to(el2)
+
+    assert el1._is_interface.get().is_connected_to(el2)
+    assert not el1.line.get()._is_interface.get().is_connected_to(el2.line.get())
     assert (
-        not el[0]
-        .reference.get()
-        ._is_interface.get()
-        .is_connected_to(el[1].reference.get())
-    )
-    assert not el[0].line.get()._is_interface.get().is_connected_to(el[2].line.get())
-    assert (
-        not el[0]
-        .reference.get()
-        ._is_interface.get()
-        .is_connected_to(el[2].reference.get())
+        not el1.reference.get()._is_interface.get().is_connected_to(el2.reference.get())
     )
 
-    # Test duplicate resolution
-    el[0].line.get()._is_interface.get().connect_to(el[1].line.get())
-    el[0].reference.get()._is_interface.get().connect_to(el[1].reference.get())
-    assert el[0]._is_interface.get().is_connected_to(el[1])
-    assert el[0]._is_interface.get().is_connected_to(el[2])
+    # Full connect should propagate to children
+    el1._is_interface.get().connect_to(el2)
+    assert el1.line.get()._is_interface.get().is_connected_to(el2.line.get())
+    assert (
+        el1.reference.get()._is_interface.get().is_connected_to(el2.reference.get())
+    )
 
 
 def test_loooooong_chain():
