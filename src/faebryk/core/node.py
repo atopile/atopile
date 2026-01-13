@@ -2258,6 +2258,35 @@ class is_interface(Node):
             for node, bfs_path in connected_nodes_map.items()
         }
 
+    def get_direct_connections(self) -> list["Node[Any]"]:
+        """
+        Get only directly connected interfaces (depth 1, no BFS).
+        This is O(n) where n is the number of direct edges, not the full graph.
+        """
+        direct_nodes: list[Node[Any]] = []
+        self_node = self.get_obj()
+
+        def collect_edge(nodes_list: list, bound_edge: graph.BoundEdge) -> None:
+            # Get the other node in this edge (edge() is a method)
+            edge = bound_edge.edge()
+            source = edge.source()
+            target = edge.target()
+            # Find which end is not us (is_same needs keyword arg)
+            my_node = self_node.instance.node()
+            other = target if source.is_same(other=my_node) else source
+            nodes_list.append(
+                Node[Any].bind_instance(
+                    instance=self_node.instance.g().bind(node=other)
+                )
+            )
+
+        fbrk.EdgeInterfaceConnection.visit_connected_edges(
+            bound_node=self_node.instance,
+            ctx=direct_nodes,
+            f=collect_edge,
+        )
+        return direct_nodes
+
     @staticmethod
     def group_into_buses[N: NodeT](nodes: Iterable[N]) -> dict[N, set[N]]:
         remaining = set(nodes)

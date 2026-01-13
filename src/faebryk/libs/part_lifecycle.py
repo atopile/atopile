@@ -643,11 +643,11 @@ class PartLifecycle:
             ## Apply propertys, Reference and atopile_address
             # Take any descriptive properties defined on the component
             properties = F.SerializableMetadata.get_properties(component)
+
+            # Cache the list - calling this method is expensive
+            include_props = PCB_Transformer.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB()
             for prop_name, prop_value in properties.items():
-                if re_in(
-                    prop_name,
-                    PCB_Transformer.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB(),
-                ):
+                if re_in(prop_name, include_props):
                     Property.set_property(pcb_fp, _prop_factory(prop_name, prop_value))
 
             if c_props_t := component.try_get_trait(F.has_datasheet):
@@ -685,6 +685,7 @@ class PartLifecycle:
                     "atopile_address", component.get_full_name(include_uuid=False)
                 ),
             )
+
             if sub_pcb_t := component.try_get_trait(in_sub_pcb):
                 subaddresses = (
                     "["
@@ -733,6 +734,7 @@ class PartLifecycle:
 
             # delete checksum
             Property.checksum.delete_checksum(pcb_fp)
+
             return pcb_fp, new_fp
 
     def __init__(self):

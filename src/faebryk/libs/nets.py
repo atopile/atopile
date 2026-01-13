@@ -84,7 +84,10 @@ def bind_electricals_to_fbrk_nets(
     tg: fbrk.TypeGraph, g: fabll.graph.GraphView
 ) -> set["F.Net"]:
     """
-    Groups electricals into buses, get or create a net, and return all the nets
+    Groups electricals into buses, get or create a net, and return all the nets.
+
+    Each net's part_of Electrical is connected directly to ALL interfaces in its bus,
+    enabling O(n) lookup via get_direct_connections() instead of BFS.
     """
     fbrk_nets: set[F.Net] = set()
     electricals_filtered: set[fabll.Node] = set()
@@ -104,19 +107,26 @@ def bind_electricals_to_fbrk_nets(
                 f"Lead of {interface_node.get_name()} has no associated pads"
             )
 
-    # collect buses in a sorted manner
-    buses = sorted(
-        fabll.is_interface.group_into_buses(electricals_filtered),
+    # collect buses - dict mapping representative interface to all connected interfaces
+    buses_dict = fabll.is_interface.group_into_buses(electricals_filtered)
+    # Sort by representative interface name for deterministic ordering
+    sorted_representatives = sorted(
+        buses_dict.keys(),
         key=lambda node: node.get_full_name(include_uuid=False),
     )
 
     # find or generate nets
-    for bus in buses:
-        if fbrk_net := get_named_net(bus):
+    for bus_representative in sorted_representatives:
+        bus_interfaces = buses_dict[bus_representative]
+        if fbrk_net := get_named_net(bus_representative.cast(F.Electrical)):
             fbrk_nets.add(fbrk_net)
         else:
             fbrk_net = F.Net.bind_typegraph(tg).create_instance(g=g)
-            fbrk_net.part_of.get()._is_interface.get().connect_to(bus)
+            # Connect net's part_of to ALL interfaces in the bus
+            # This enables O(n) lookup via get_direct_connections()
+            net_interface = fbrk_net.part_of.get()._is_interface.get()
+            for interface in bus_interfaces:
+                net_interface.connect_to(interface)
             fbrk_nets.add(fbrk_net)
 
     return fbrk_nets
@@ -198,7 +208,21 @@ def test_bind_nets_from_electricals():
     assert len(nets_sorted) == 2
     print(nets_sorted)
     for i, net in enumerate(nets_sorted):
+        expected_members = 2 + i
         assert net.get_name() == f"elec-{i}"
-        assert len(net.get_connected_interfaces()) == 2 + i
-        assert len(net.get_connected_pads()) == 2 + i
-        assert len(net.part_of.get()._is_interface.get().get_connected()) == 2 + i
+        assert len(net.get_connected_interfaces()) == expected_members
+        assert len(net.get_connected_pads()) == expected_members
+        # BFS traversal should find all members
+        assert (
+            len(net.part_of.get()._is_interface.get().get_connected())
+            == expected_members
+        )
+        # Direct connections should ALSO find all members (we connect to all in bus)
+        direct = net.part_of.get()._is_interface.get().get_direct_connections()
+        print(
+            f"Net {net.get_name()}: direct={len(direct)}, expected={expected_members}"
+        )
+        assert len(direct) == expected_members, (
+            f"Expected {expected_members} direct connections, got {len(direct)}. "
+            "Net.part_of should be directly connected to ALL bus members."
+        )

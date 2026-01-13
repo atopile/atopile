@@ -23,12 +23,23 @@ class Net(fabll.Node):
     #                 functions
     # ----------------------------------------
 
+    def get_members(self) -> list[fabll.Node]:
+        """
+        Get all interfaces directly connected to this net (O(n) where n = members).
+        This returns only the direct connections, not transitive BFS.
+        """
+        return self.part_of.get()._is_interface.get().get_direct_connections()
+
     def get_connected_pads(self) -> set[F.Footprints.is_pad]:
+        """
+        Get all pads connected to this net.
+        Uses direct connections for O(n) lookup instead of BFS.
+        """
         connected_pads: set[F.Footprints.is_pad] = set()
 
-        # get all electricals connected to net
-        for electrical in self.part_of.get()._is_interface.get().get_connected():
-            # if those electricals have a is_lead trait, we're in buisness
+        # Use get_members() for O(n) direct lookup instead of BFS
+        for electrical in self.get_members():
+            # if those electricals have a is_lead trait, we're in business
             if is_lead := electrical.try_get_trait(F.Lead.is_lead):
                 # and if that is_lead has associated pads...
                 if has_associated_pads := is_lead.try_get_trait(
@@ -46,11 +57,8 @@ class Net(fabll.Node):
         return None
 
     def get_connected_interfaces(self) -> list[F.Electrical]:
-        """Get all electrical interfaces connected to this net."""
-        return [
-            e.cast(F.Electrical)
-            for e in self.part_of.get()._is_interface.get().get_connected()
-        ]
+        """Get all electrical interfaces directly connected to this net."""
+        return [e.cast(F.Electrical) for e in self.get_members()]
 
     # ----------------------------------------
     #                WIP

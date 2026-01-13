@@ -328,15 +328,19 @@ class PCB_Transformer:
         g_fp = module.get_trait(F.Footprints.has_associated_footprint).get_footprint()
 
         # Bind the kicad pcb footprint to the is_footprint trait
-        fabll.Traits.create_and_add_instance_to(
-            node=g_fp, trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint
-        ).setup(pcb_fp, self)
+        # Only create if not already bound (idempotent)
+        if not g_fp.has_trait(F.KiCadFootprints.has_associated_kicad_pcb_footprint):
+            fabll.Traits.create_and_add_instance_to(
+                node=g_fp, trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint
+            ).setup(pcb_fp, self)
+
         # get the kicad pcb footprint pads
         pcb_pads = FuncSet[kicad.pcb.Pad](pcb_fp.pads)
         # get the fabll footprint pads (is_pad trait) and compare the names with
         # the kicad pcb footprint pads
+        g_pads = g_fp.get_pads()
 
-        for fpad in g_fp.get_pads():
+        for fpad in g_pads:
             pads = [
                 pad
                 for pad in pcb_pads
@@ -352,9 +356,10 @@ class PCB_Transformer:
                 continue
 
             # bind the kicad pcb pads to the fabll pad (is_pad trait)
-            fabll.Traits.create_and_add_instance_to(
-                node=fpad, trait=F.KiCadFootprints.has_associated_kicad_pcb_pad
-            ).setup(pcb_fp, pads, self)
+            if not fpad.has_trait(F.KiCadFootprints.has_associated_kicad_pcb_pad):
+                fabll.Traits.create_and_add_instance_to(
+                    node=fpad, trait=F.KiCadFootprints.has_associated_kicad_pcb_pad
+                ).setup(pcb_fp, pads, self)
 
         # This may leave some pads on the PCB unlinked to the design
         # This is useful for things like mounting holes, but checks
@@ -1741,6 +1746,7 @@ class PCB_Transformer:
 
         # pads
         PCB_Transformer.footprint_container_merge(footprint, lib_footprint, "pads")
+
         # geos (circles, lines, arcs, rects, poly)
         for _, container_name in get_all_geo_containers(footprint):
             PCB_Transformer.footprint_container_merge(
@@ -1751,7 +1757,9 @@ class PCB_Transformer:
         PCB_Transformer.footprint_container_merge(
             footprint, lib_footprint, "propertys", keep_pcb_obj_if_not_in_lib=True
         )
+
         Property.checksum.delete_checksum(footprint)
+
         # fp_texts
         PCB_Transformer.footprint_container_merge(footprint, lib_footprint, "fp_texts")
 
@@ -1885,9 +1893,22 @@ class PCB_Transformer:
             return None
 
         # components with footprints
-        components_with_footprint = fabll.Traits.get_implementors(
+        # Note: get_implementors returns trait instances, which may have duplicates
+        # if a component has multiple has_associated_footprint traits (e.g., from
+        # inheritance). We deduplicate by the component's address to avoid
+        # processing the same footprint multiple times.
+        components_with_footprint_raw = fabll.Traits.get_implementors(
             trait=F.Footprints.has_associated_footprint.bind_typegraph(self.app.tg)
         )
+
+        # Deduplicate by component address (unique identifier for each component)
+        seen_addresses: dict[str, F.Footprints.has_associated_footprint] = {}
+        for trait in components_with_footprint_raw:
+            component = fabll.Traits(trait).get_obj_raw()
+            address = component.get_full_name(include_uuid=False)
+            if address not in seen_addresses:
+                seen_addresses[address] = trait
+        components_with_footprint = list(seen_addresses.values())
 
         # cluster components by their parent so we can insert them grouped by
         # their parent into the kicad canvas
@@ -1982,7 +2003,7 @@ class PCB_Transformer:
                 logger.info(f"Adding net `{pcb_net}`", extra={"markdown": True})
                 self.bind_net(pcb_net, f_net)
 
-            ## Connect pads to nets
+            ## Connect pads to nets - uses O(n) direct connections, not BFS
             pads_on_net = list(f_net.get_connected_pads())
             if not pads_on_net:
                 logger.warning(f"No pads on net `{net_name}`.")
