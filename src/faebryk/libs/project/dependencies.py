@@ -271,7 +271,7 @@ class ProjectDependencies:
             (None, dep) for dep in self.direct_deps
         ]
 
-        acc_errors = []
+        acc_errors: list[BrokenDependencyError] = []
         while deps_to_process:
             to_add = []
             for parent, dep in deps_to_process:
@@ -304,7 +304,7 @@ class ProjectDependencies:
             deps_to_process.clear()
             deps_to_process.extend(to_add)
         if acc_errors:
-            error_list = [f"{e.identifier}: {e.error.message}" for e in acc_errors]
+            error_list = [f"{e.identifier}: {e.error}" for e in acc_errors]
             raise errors.UserException(f"Broken dependencies:\n {md_list(error_list)}")
 
         if dag.contains_cycles:
