@@ -839,7 +839,7 @@ class is_idempotent(fabll.Node):
 
 class has_idempotent_operands(fabll.Node):
     """
-    f(x,x) == x
+    f(x,x) == f(x)
     """
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())

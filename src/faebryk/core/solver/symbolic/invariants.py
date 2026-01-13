@@ -565,8 +565,13 @@ def _no_literal_aliases(
     """
     no literal aliases: A is! X(singleton) => A ss! X
     A is! X in general not allowed
+    X is! Y is handled by literal fold
     """
     if builder.factory is not F.Expressions.Is or not (lits := builder.indexed_lits()):
+        return builder
+
+    non_lit = builder.indexed_pos()
+    if not non_lit:
         return builder
 
     correlatable = {
@@ -585,16 +590,16 @@ def _no_literal_aliases(
     lit = next(iter(correlatable.values()))
 
     # TODO handle lit,lit; op,lit, lit,op etc, multi lit
-    non_lit = [op for op in builder.operands if op.as_parameter_operatable.try_get()]
     if len(non_lit) > 1:
         raise NotImplementedError(
             f"Is with multiple operands not allowed: {pretty_expr(builder, mutator)}"
         )
     assert len(non_lit) == 1
+    non_lit_op = next(iter(non_lit.values())).as_operand.get()
 
     builder = ExpressionBuilder(
         F.Expressions.IsSubset,
-        non_lit + [lit.as_operand.get()],
+        [non_lit_op, lit.as_operand.get()],
         builder.assert_,
         builder.terminate,
     )
