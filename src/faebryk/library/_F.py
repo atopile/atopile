@@ -48,6 +48,7 @@ from faebryk.library.Electrical import Electrical
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.PCB import PCB
+from faebryk.library.has_default_constraint import has_default_constraint
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Filter import Filter
 import faebryk.library.Lead as Lead
@@ -142,6 +143,7 @@ __all__ = [
     "has_simple_value_representation",
     "is_atomic_part",
     "PCB",
+    "has_default_constraint",
     "ElectricPower",
     "Filter",
     "Lead",

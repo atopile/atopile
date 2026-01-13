@@ -1133,6 +1133,22 @@ class ASTVisitor:
                 target_path, assignable_node, self._type_stack.constraint_expr
             )
 
+        if TraitOverrideRegistry.matches_default_override(
+            target_path.leaf.identifier, assignable_node
+        ):
+            # Visit the assignable to get the literal field
+            assignable = self.visit_Assignable(assignable_node)
+            if not isinstance(assignable, ParameterSpec) or assignable.operand is None:
+                self._raise(
+                    DslSyntaxError,
+                    "`.default` requires a physical quantity value "
+                    "(e.g., `1A`, `10kohm +/- 5%`)",
+                    node,
+                )
+            return TraitOverrideRegistry.handle_default_assignment(
+                target_path, assignable.operand
+            )
+
         if (assignable := self.visit_Assignable(assignable_node)) is None:
             return NoOpAction()
 

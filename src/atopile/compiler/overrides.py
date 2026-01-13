@@ -333,6 +333,55 @@ class TraitOverrideRegistry:
         )
 
     @classmethod
+    def handle_default_assignment(
+        cls,
+        target_path: FieldPath,
+        literal_field: fabll._ChildField,
+    ) -> list[AddMakeChildAction | AddMakeLinkAction]:
+        """
+        Handle default value assignment like `param.default = 1A`.
+
+        Creates a has_default_constraint trait attached to the parent parameter.
+        The default value is only applied if no explicit constraint exists.
+
+        Args:
+            target_path: Full path including ".default" (e.g., "max_current.default")
+            literal_field: The literal value _ChildField from visiting the assignable
+
+        Returns:
+            Actions to create the trait and link it to the parameter
+        """
+        if not target_path.parent_segments:
+            raise DslException(
+                "`.default` must be used on a parameter field, "
+                "e.g., `param.default = 1A`"
+            )
+
+        # Get the parent path (the parameter we're attaching the default to)
+        parent_path: LinkPath = list(
+            FieldPath(segments=tuple(target_path.parent_segments)).identifiers()
+        )
+
+        # Create the has_default_constraint trait with the literal
+        trait_field = F.has_default_constraint.MakeChild(literal=literal_field)
+
+        return ActionsFactory.trait_from_field(trait_field, parent_path)
+
+    @classmethod
+    def matches_default_override(
+        cls, name: str, assignable_node: AST.Assignable
+    ) -> bool:
+        """Check if this is a `.default` assignment."""
+        if assignable_node.get_value().switch_cast().isinstance(AST.NewExpression):
+            return False
+        if assignable_node.get_value().switch_cast().isinstance(AST.AstString):
+            return False
+        if assignable_node.get_value().switch_cast().isinstance(AST.Boolean):
+            return False
+
+        return name == "default"
+
+    @classmethod
     def matches_assignment_override(
         cls, name: str, assignable_node: AST.Assignable
     ) -> bool:
