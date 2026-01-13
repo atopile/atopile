@@ -417,7 +417,7 @@ class MutatorUtils:
         const_sum_lit = const_sum.get_trait(F.Literals.is_literal)
 
         # TODO make work with all the types
-        if const_sum_lit.equals_singleton(identity):
+        if const_sum_lit.op_setic_equals_singleton(identity):
             return []
 
         return [const_sum_lit]
@@ -511,7 +511,7 @@ class MutatorUtils:
     def is_correlatable_literal(op: F.Literals.is_literal):
         if not MutatorUtils.is_literal(op.as_operand.get()):
             return False
-        return op.is_singleton() or op.is_empty()
+        return op.op_setic_is_singleton() or op.op_setic_is_empty()
 
     def no_other_predicates(
         self,

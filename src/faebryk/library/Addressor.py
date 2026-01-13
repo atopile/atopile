@@ -88,10 +88,10 @@ class Addressor(fabll.Node):
 
         lit = solver.extract_superset(offset_p)
 
-        if lit is None or not lit.is_singleton():
+        if lit is None or not lit.op_setic_is_singleton():
             lit = solver.simplify_and_extract_superset(offset_p)
 
-        if lit is None or not lit.is_singleton():
+        if lit is None or not lit.op_setic_is_singleton():
             # raise Addressor.OffsetNotResolvedError(self)
             raise Warning(
                 "Offset not resolved"
@@ -417,7 +417,7 @@ def test_addressor():
 
     assert solver.extract_superset(
         app.i2c.get().address.get().is_parameter.get()
-    ).equals(
+    ).op_setic_equals(
         F.Literals.Numbers.bind_typegraph(tg)
         .create_instance(g)
         .setup_from_singleton(

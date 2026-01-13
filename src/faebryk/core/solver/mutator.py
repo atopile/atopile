@@ -573,7 +573,7 @@ class MutationStage:
                 and new.replace("✓", "") == old.replace("✓", "")
                 and (d_lit := d.try_extract_superset())
                 and (s_lit := s.try_extract_superset())
-                and d_lit.equals(s_lit)  # TODO g & tg
+                and d_lit.op_setic_equals(s_lit)  # TODO g & tg
             ):
                 # done by proven/disproven
                 # TODO disproven

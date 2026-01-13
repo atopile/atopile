@@ -58,7 +58,6 @@ class DefaultSolver(Solver):
             *expression_wise.fold_algorithms,
             structural.predicate_flat_terminate,
             structural.predicate_unconstrained_operands_deduce,
-            structural.predicate_terminated_is_true,
             structural.transitive_subset,
             structural.isolate_lone_params,
             structural.upper_estimation_of_expressions_with_subsets,
@@ -426,7 +425,7 @@ def test_defaultsolver_super_basic():
     lit = res.data.mutation_map.try_extract_superset(P.is_parameter_operatable.get())
     assert lit
     print(lit.pretty_str())
-    assert lit.equals_singleton(True)
+    assert lit.op_setic_equals_singleton(True)
 
 
 def test_defaultsolver_basic():
@@ -469,7 +468,7 @@ def test_defaultsolver_basic():
         app.C.get().is_parameter_operatable.get()
     )
     assert C_lit
-    assert C_lit.equals_singleton(True)
+    assert C_lit.op_setic_equals_singleton(True)
     print(res)
 
 

@@ -400,7 +400,7 @@ class TestForLoopsRuntime:
                 assert (
                     E.lit_op_range_from_center_rel((100, E.U.kohm), rel=0.1)
                     .as_literal.force_get()
-                    .equals(r.resistance.get().force_extract_superset())
+                    .op_setic_equals(r.resistance.get().force_extract_superset())
                 )
 
         # current limit is 2**16
@@ -526,7 +526,7 @@ def test_assert_is():
     assert (
         E.lit_op_range_from_center_rel((2, E.U.mV), rel=0.1)
         .as_literal.force_get()
-        .equals(a.force_extract_superset().is_literal.get())
+        .op_setic_equals(a.force_extract_superset().is_literal.get())
     )
     # TODO: check b is c; d is e is f
 
@@ -549,42 +549,42 @@ def test_numeric_literals():
     assert (
         E.lit_op_single(1)
         .as_literal.force_get()
-        .equals(not_none(a.force_extract_superset()))
+        .op_setic_equals(not_none(a.force_extract_superset()))
     )
 
     b = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "b"))
     assert (
         E.lit_op_single((1, E.U.V))
         .as_literal.force_get()
-        .equals(not_none(b.force_extract_superset()))
+        .op_setic_equals(not_none(b.force_extract_superset()))
     )
 
     c = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "c"))
     assert (
         E.lit_op_single((5, E.U.V))
         .as_literal.force_get()
-        .equals(not_none(c.force_extract_superset()))
+        .op_setic_equals(not_none(c.force_extract_superset()))
     )
 
     d = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "d"))
     assert (
         E.lit_op_ranges(((5, E.U.V), (8, E.U.V)))
         .as_literal.force_get()
-        .equals(not_none(d.force_extract_superset()))
+        .op_setic_equals(not_none(d.force_extract_superset()))
     )
 
     e = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "e"))
     assert (
         E.lit_op_range_from_center_rel((100, E.U.mV), rel=0.1)
         .as_literal.force_get()
-        .equals(not_none(e.force_extract_superset()))
+        .op_setic_equals(not_none(e.force_extract_superset()))
     )
 
     f = F.Parameters.NumericParameter.bind_instance(_get_child(app_instance, "f"))
     assert (
         E.lit_op_range_from_center((3.3, E.U.V), (0.05, E.U.V))
         .as_literal.force_get()
-        .equals(not_none(f.force_extract_superset()))
+        .op_setic_equals(not_none(f.force_extract_superset()))
     )
 
 
@@ -610,7 +610,7 @@ def test_basic_arithmetic():
     assert (
         E.lit_op_range((3, 6))
         .as_literal.force_get()
-        .equals(
+        .op_setic_equals(
             not_none(
                 repr_map.try_extract_superset(
                     a.is_parameter_operatable.get(), allow_subset=True
@@ -621,7 +621,7 @@ def test_basic_arithmetic():
     assert (
         E.lit_op_range((7, 10))
         .as_literal.force_get()
-        .equals(
+        .op_setic_equals(
             not_none(
                 repr_map.try_extract_superset(
                     b.is_parameter_operatable.get(), allow_subset=True
@@ -692,7 +692,7 @@ def test_simple_module_build():
     assert (
         E.lit_op_single(1)
         .as_literal.force_get()
-        .equals(not_none(a.force_extract_superset()))
+        .op_setic_equals(not_none(a.force_extract_superset()))
     )
 
 
@@ -1238,7 +1238,7 @@ def test_list_literal_basic():
     assert (
         E.lit_op_single((100, E.U.kohm))
         .as_literal.force_get()
-        .equals(not_none(r1.resistance.get().try_extract_superset()))
+        .op_setic_equals(not_none(r1.resistance.get().try_extract_superset()))
     )
 
     r2_node = _get_child(app_instance, "r2")
@@ -1252,7 +1252,7 @@ def test_list_literal_basic():
     assert (
         E.lit_op_single((100, E.U.kohm))
         .as_literal.force_get()
-        .equals(not_none(r3.resistance.get().try_extract_superset()))
+        .op_setic_equals(not_none(r3.resistance.get().try_extract_superset()))
     )
 
 
@@ -1281,7 +1281,7 @@ def test_list_literal_nested():
     assert (
         E.lit_op_single((100, E.U.kohm))
         .as_literal.force_get()
-        .equals(not_none(r1.resistance.get().try_extract_superset()))
+        .op_setic_equals(not_none(r1.resistance.get().try_extract_superset()))
     )
 
     r2 = F.Resistor.bind_instance(_get_child(nested_node, "r2"))
@@ -1291,7 +1291,7 @@ def test_list_literal_nested():
     assert (
         E.lit_op_single((100, E.U.kohm))
         .as_literal.force_get()
-        .equals(not_none(r3.resistance.get().try_extract_superset()))
+        .op_setic_equals(not_none(r3.resistance.get().try_extract_superset()))
     )
 
 
@@ -1319,7 +1319,7 @@ def test_list_literal_long():
     assert (
         E.lit_op_single((100, E.U.kohm))
         .as_literal.force_get()
-        .equals(not_none(r1.resistance.get().try_extract_superset()))
+        .op_setic_equals(not_none(r1.resistance.get().try_extract_superset()))
     )
     r2 = F.Resistor.bind_instance(_get_child(app_instance, "r2"))
     assert r2.resistance.get().try_extract_superset() is None
@@ -1327,7 +1327,7 @@ def test_list_literal_long():
     assert (
         E.lit_op_single((100, E.U.kohm))
         .as_literal.force_get()
-        .equals(not_none(r3.resistance.get().try_extract_superset()))
+        .op_setic_equals(not_none(r3.resistance.get().try_extract_superset()))
     )
 
 
@@ -1655,7 +1655,7 @@ def test_slice_for_loop():
         assert (
             E.lit_op_single((100, E.U.kohm))
             .as_literal.force_get()
-            .equals(r.resistance.get().force_extract_superset())
+            .op_setic_equals(r.resistance.get().force_extract_superset())
         )
 
     for r_node in resistors.as_list()[-3:-1]:
@@ -1663,7 +1663,7 @@ def test_slice_for_loop():
         assert (
             E.lit_op_single((200, E.U.kohm))
             .as_literal.force_get()
-            .equals(r.resistance.get().force_extract_superset())
+            .op_setic_equals(r.resistance.get().force_extract_superset())
         )
 
     for r_node in resistors.as_list()[3:6:2]:
@@ -1671,7 +1671,7 @@ def test_slice_for_loop():
         assert (
             E.lit_op_single((150, E.U.kohm))
             .as_literal.force_get()
-            .equals(r.resistance.get().force_extract_superset())
+            .op_setic_equals(r.resistance.get().force_extract_superset())
         )
 
     # Check that other resistors weren't assigned a value in the loop
@@ -1684,7 +1684,7 @@ def test_slice_for_loop():
         assert (
             E.lit_op_single((250, E.U.kohm))
             .as_literal.force_get()
-            .equals(r.resistance.get().force_extract_superset())
+            .op_setic_equals(r.resistance.get().force_extract_superset())
         )
 
 
@@ -1772,7 +1772,9 @@ def test_slice_bigger_start_than_end():
         assert (
             E.lit_op_single((100, E.U.kohm))
             .as_literal.force_get()
-            .equals(r_node.cast(F.Resistor).resistance.get().force_extract_superset())
+            .op_setic_equals(
+                r_node.cast(F.Resistor).resistance.get().force_extract_superset()
+            )
         )
 
     for r_node in set(resistor_list) - set(resistor_list[3:1]):
@@ -2262,7 +2264,9 @@ def test_literals(value: str, literal: F.Parameters.can_be_operand):
     )
     a_node = _get_child(app_instance, "a")
     a = F.Parameters.NumericParameter.bind_instance(a_node)
-    assert literal.as_literal.force_get().equals(not_none(a.force_extract_superset()))
+    assert literal.as_literal.force_get().op_setic_equals(
+        not_none(a.force_extract_superset())
+    )
 
 
 class TestInheritanceRuntime:
@@ -2927,7 +2931,9 @@ class TestParameterConstraintTypes:
         assert (
             E.lit_op_single((5, E.U.V))
             .as_literal.force_get()
-            .equals(not_none(voltage_param.try_extract_superset()).is_literal.get())
+            .op_setic_equals(
+                not_none(voltage_param.try_extract_superset()).is_literal.get()
+            )
         )
 
         # Should NOT find literal via exact Is extraction (modules use IsSubset)
@@ -2949,13 +2955,15 @@ class TestParameterConstraintTypes:
         assert (
             E.lit_op_single((5, E.U.V))
             .as_literal.force_get()
-            .equals(not_none(voltage_param.try_extract_subset()))
+            .op_setic_equals(not_none(voltage_param.try_extract_subset()))
         )
         # Should NOT find literal via subset extraction
         assert (
             E.lit_op_ranges(((0, E.U.V), (math.inf, E.U.V)))
             .as_literal.force_get()
-            .equals(not_none(voltage_param.try_extract_superset()).is_literal.get())
+            .op_setic_equals(
+                not_none(voltage_param.try_extract_superset()).is_literal.get()
+            )
         )
 
     def test_module_with_toleranced_value_uses_issubset(self):
@@ -2973,7 +2981,7 @@ class TestParameterConstraintTypes:
         assert (
             E.lit_op_range_from_center_rel((10000, E.U.Ohm), rel=0.05)
             .as_literal.force_get()
-            .equals(not_none(resistance_param.try_extract_superset()))
+            .op_setic_equals(not_none(resistance_param.try_extract_superset()))
         )
         # Should NOT find literal via exact Is extraction (modules use IsSubset)
         assert resistance_param.try_extract_subset() is None
@@ -2993,12 +3001,16 @@ class TestParameterConstraintTypes:
         assert (
             E.lit_op_range_from_center_rel((10000, E.U.Ohm), rel=0.05)
             .as_literal.force_get()
-            .equals(not_none(resistance_param.try_extract_subset()).is_literal.get())
+            .op_setic_equals(
+                not_none(resistance_param.try_extract_subset()).is_literal.get()
+            )
         )
         assert (
             E.lit_op_ranges(((0, E.U.Ohm), (math.inf, E.U.Ohm)))
             .as_literal.force_get()
-            .equals(not_none(resistance_param.try_extract_superset()).is_literal.get())
+            .op_setic_equals(
+                not_none(resistance_param.try_extract_superset()).is_literal.get()
+            )
         )
 
     def test_nested_module_in_component_uses_issubset(self):
@@ -3021,7 +3033,9 @@ class TestParameterConstraintTypes:
         assert (
             E.lit_op_single((3, E.U.V))
             .as_literal.force_get()
-            .equals(not_none(value_param.try_extract_superset()).is_literal.get())
+            .op_setic_equals(
+                not_none(value_param.try_extract_superset()).is_literal.get()
+            )
         )
         # Should NOT find literal via exact Is extraction (modules use IsSubset)
         assert value_param.try_extract_subset() is None
@@ -3046,12 +3060,14 @@ class TestParameterConstraintTypes:
         assert (
             E.lit_op_single((3, E.U.V))
             .as_literal.force_get()
-            .equals(not_none(value_param.try_extract_subset()))
+            .op_setic_equals(not_none(value_param.try_extract_subset()))
         )
         assert (
             E.lit_op_ranges(((0, E.U.V), (math.inf, E.U.V)))
             .as_literal.force_get()
-            .equals(not_none(value_param.try_extract_superset()).is_literal.get())
+            .op_setic_equals(
+                not_none(value_param.try_extract_superset()).is_literal.get()
+            )
         )
 
     def test_module_range_value_uses_issubset(self):
@@ -3069,7 +3085,7 @@ class TestParameterConstraintTypes:
         assert (
             E.lit_op_ranges(((3, E.U.V), (5, E.U.V)))
             .as_literal.force_get()
-            .equals(not_none(voltage_param.try_extract_superset()))
+            .op_setic_equals(not_none(voltage_param.try_extract_superset()))
         )
         # Should NOT find literal via exact Is extraction (modules use IsSubset)
         assert voltage_param.try_extract_subset() is None
@@ -3089,12 +3105,14 @@ class TestParameterConstraintTypes:
         assert (
             E.lit_op_ranges(((3, E.U.V), (5, E.U.V)))
             .as_literal.force_get()
-            .equals(not_none(voltage_param.try_extract_subset()).is_literal.get())
+            .op_setic_equals(
+                not_none(voltage_param.try_extract_subset()).is_literal.get()
+            )
         )
         assert (
             E.lit_op_ranges(((0, E.U.V), (math.inf, E.U.V)))
             .as_literal.force_get()
-            .equals(not_none(voltage_param.try_extract_superset()))
+            .op_setic_equals(not_none(voltage_param.try_extract_superset()))
         )
 
 

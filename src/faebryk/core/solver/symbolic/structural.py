@@ -276,34 +276,6 @@ def predicate_flat_terminate(mutator: Mutator):
         mutator.predicate_terminate(p_e.get_sibling_trait(F.Expressions.is_predicate))
 
 
-@algorithm("Predicate is!! True", terminal=False)
-def predicate_terminated_is_true(mutator: Mutator):
-    """
-    P!! is! True -> P!! is!! True
-    """
-
-    for p in mutator.get_typed_expressions(
-        Is, required_traits=(F.Expressions.is_predicate,)
-    ):
-        p_c = p.is_assertable.get().as_predicate.force_get()
-        if mutator.is_predicate_terminated(p_c):
-            continue
-        p_e = p.is_expression.get()
-        if not any(
-            lit.equals_singleton(True) for lit in p_e.get_operand_literals().values()
-        ):
-            continue
-        if not (op_operatables := p_e.get_operand_operatables()):
-            continue
-        op = next(iter(op_operatables))
-        if not (
-            op_c := op.try_get_sibling_trait(F.Expressions.is_predicate)
-        ) or not mutator.is_predicate_terminated(op_c):
-            continue
-
-        mutator.predicate_terminate(p_c)
-
-
 @algorithm("Convert aliased singletons into literals", terminal=False)
 def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
     """
@@ -484,7 +456,8 @@ def isolate_lone_params(mutator: Mutator):
         # TODO why? are we trying to do only arithmetic?
         # Then why not do isinstance(expr, Arithmetic)?
         if any(
-            lit.equals_singleton(True) for lit in expr_e.get_operand_literals().values()
+            lit.op_setic_equals_singleton(True)
+            for lit in expr_e.get_operand_literals().values()
         ):
             continue
 

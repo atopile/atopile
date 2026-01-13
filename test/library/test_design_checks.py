@@ -146,8 +146,8 @@ def test_electric_signal_parallel_pull_resistance():
     )
     assert lit_trait is not None
     lit = fabll.Traits(lit_trait).get_obj(F.Literals.Numbers)
-    assert lit.is_subset_of(g=g, tg=tg, other=expected_resistance)
-    assert expected_resistance.is_subset_of(g=g, tg=tg, other=lit)
+    assert lit.op_setic_is_subset_of(g=g, tg=tg, other=expected_resistance)
+    assert expected_resistance.op_setic_is_subset_of(g=g, tg=tg, other=lit)
 
 
 def test_electric_signal_single_pull_resistance():
@@ -199,5 +199,5 @@ def test_electric_signal_single_pull_resistance():
     )
     assert lit_trait is not None
     lit = fabll.Traits(lit_trait).get_obj(F.Literals.Numbers)
-    assert lit.is_subset_of(g=g, tg=tg, other=r1_value)
-    assert r1_value.is_subset_of(g=g, tg=tg, other=lit)
+    assert lit.op_setic_is_subset_of(g=g, tg=tg, other=r1_value)
+    assert r1_value.op_setic_is_subset_of(g=g, tg=tg, other=lit)

@@ -230,7 +230,7 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
         and len(literal_prod) == len(literal_operands)
         and not (
             literal_prod
-            and literal_prod[0].equals_singleton(0)
+            and literal_prod[0].op_setic_equals_singleton(0)
             and len(replacable_nonliteral_operands)
             + len(non_replacable_nonliteral_operands)
             > 0
@@ -259,7 +259,7 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
 
         # 0 * A -> 0
         if any(
-            x_lit.equals_singleton(0)
+            x_lit.op_setic_equals_singleton(0)
             for x in new_operands
             if (x_lit := mutator.utils.is_literal(x))
         ):
@@ -335,12 +335,12 @@ def fold_pow(expr: F.Expressions.Power, mutator: Mutator):
     base, exp = expr.is_expression.get().get_operands()
 
     if exp_lit := mutator.utils.is_literal(exp):
-        if exp_lit.equals_singleton(1):
+        if exp_lit.op_setic_equals_singleton(1):
             mutator.utils.mutate_unpack_expression(e)
             return
 
         # in python 0**0 is also 1
-        if exp_lit.equals_singleton(0):
+        if exp_lit.op_setic_equals_singleton(0):
             mutator.create_check_and_insert_expression(
                 F.Expressions.IsSubset,
                 e_op,
@@ -350,7 +350,7 @@ def fold_pow(expr: F.Expressions.Power, mutator: Mutator):
             )
             return
     if base_lit := mutator.utils.is_literal(base):
-        if base_lit.equals_singleton(0):
+        if base_lit.op_setic_equals_singleton(0):
             mutator.create_check_and_insert_expression(
                 F.Expressions.IsSubset,
                 e_op,
@@ -360,7 +360,7 @@ def fold_pow(expr: F.Expressions.Power, mutator: Mutator):
             )
             # FIXME: exp >! 0
             return
-        if base_lit.equals_singleton(1):
+        if base_lit.op_setic_equals_singleton(1):
             mutator.create_check_and_insert_expression(
                 F.Expressions.IsSubset,
                 e_op,
@@ -470,7 +470,7 @@ def fold_or(expr: F.Expressions.Or, mutator: Mutator):
         return
 
     # Or(A, B, C, True) -> True
-    if any(lit.equals_singleton(True) for lit in lits.values()):
+    if any(lit.op_setic_equals_singleton(True) for lit in lits.values()):
         if e.try_get_sibling_trait(F.Expressions.is_predicate):
             return
         mutator.create_check_and_insert_expression(
@@ -590,7 +590,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
 
     if (
         superset := mutator.utils.try_extract_superset(op_po)
-    ) is not None and superset.is_singleton():
+    ) is not None and superset.op_setic_is_singleton():
         negated = superset.cast(F.Literals.Booleans).op_not(
             g=mutator.G_transient, tg=mutator.tg_in
         )
@@ -613,7 +613,7 @@ def fold_is(expr: F.Expressions.Is, mutator: Mutator):
 
     e = expr.is_expression.get()
     is_true_alias = expr.try_get_trait(F.Expressions.is_predicate) and any(
-        lit.equals_singleton(True) for lit in e.get_operand_literals().values()
+        lit.op_setic_equals_singleton(True) for lit in e.get_operand_literals().values()
     )
     if is_true_alias:
         # P1 is! True -> P1!
@@ -646,14 +646,14 @@ def fold_subset(expr: F.Expressions.IsSubset, mutator: Mutator):
 
     if e.try_get_trait(F.Expressions.is_predicate):
         # P1 ss! True -> P1!
-        if B_lit.equals_singleton(True):
+        if B_lit.op_setic_equals_singleton(True):
             mutator.assert_(
                 A.as_parameter_operatable.force_get()
                 .as_expression.force_get()
                 .as_assertable.force_get()
             )
         # P ss! False -> ¬!P
-        if B_lit.equals_singleton(False):
+        if B_lit.op_setic_equals_singleton(False):
             mutator.create_check_and_insert_expression(
                 F.Expressions.Not,
                 A,
@@ -686,7 +686,7 @@ def fold_ge(expr: F.Expressions.GreaterOrEqual, mutator: Mutator):
         assert len(literal_operands) == 1
         lit = literal_operands[0]
         lit_n = fabll.Traits(lit).get_obj(F.Literals.Numbers)
-        if not lit.is_singleton() and not lit.is_empty():
+        if not lit.op_setic_is_singleton() and not lit.op_setic_is_empty():
             lit_op = lit.as_operand.get()
             if left.is_same(lit_op):
                 mutator.mutate_expression(

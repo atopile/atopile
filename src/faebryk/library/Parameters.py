@@ -293,7 +293,7 @@ class is_parameter_operatable(fabll.Node):
 
         if not lits:
             return None
-        lit_merged = F.Literals.is_literal.op_intersect_intervals(*lits)
+        lit_merged = F.Literals.is_literal.op_setic_intersect(*lits)
 
         if lit_type is None or lit_type is is_literal:
             return cast(T, lit_merged)
@@ -351,10 +351,10 @@ class is_parameter_operatable(fabll.Node):
             return f"{{AMBIGUOUS ⊆: {e.duplicates}}}"
 
         if subset is not None and superset is not None:
-            if subset.equals(superset):
-                if subset.equals_singleton(True):
+            if subset.op_setic_equals(superset):
+                if subset.op_setic_equals_singleton(True):
                     return "✓"
-                elif subset.equals_singleton(False):
+                elif subset.op_setic_equals_singleton(False):
                     return "✗"
                 return f"{{⊆⊇|{format_lit(subset)}}}"
 
@@ -363,9 +363,9 @@ class is_parameter_operatable(fabll.Node):
 
         if superset is not None:
             out += f"{{⊆|{format_lit(superset)}}}"
-            if superset.equals_singleton(True):
+            if superset.op_setic_equals_singleton(True):
                 out = "✓"
-            elif superset.equals_singleton(False):
+            elif superset.op_setic_equals_singleton(False):
                 out = "✗"
 
         return out

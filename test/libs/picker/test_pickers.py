@@ -311,7 +311,7 @@ def test_pick_resistor_by_params():
         app.r1.get()
         .resistance.get()
         .force_extract_subset()
-        .is_subset_of(
+        .op_setic_is_subset_of(
             F.Literals.Numbers(resistance_op.get_raw_obj().instance),
             g=g,
             tg=tg,
@@ -398,7 +398,7 @@ def test_pick_led_by_colour():
     assert led.has_trait(F.Pickable.has_part_picked)
     assert solver.simplify_and_extract_superset(
         led.color.get().is_parameter.get()
-    ).is_subset_of(E.lit_op_enum(color).as_literal.force_get())
+    ).op_setic_is_subset_of(E.lit_op_enum(color).as_literal.force_get())
 
 
 @pytest.mark.usefixtures("setup_project_config")
@@ -576,7 +576,7 @@ def test_null_solver():
     assert (
         (solver)
         .extract_superset(app.cap.get().capacitance.get().is_parameter.get())
-        .is_subset_of(capacitance.as_literal.force_get())
+        .op_setic_is_subset_of(capacitance.as_literal.force_get())
     )
 
 

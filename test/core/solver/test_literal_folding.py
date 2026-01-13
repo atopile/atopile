@@ -762,7 +762,7 @@ def test_discover_literal_folding_local(expr: F.Parameters.can_be_operand):
     solver_result_num = fabll.Traits(solver_result).get_obj(F.Literals.Numbers)
 
     # Compare results (need to pass g and tg for Numbers.equals)
-    match = solver_result_num.equals(evaluated_expr, g=test_g, tg=test_tg)
+    match = solver_result_num.op_setic_equals(evaluated_expr, g=test_g, tg=test_tg)
     print("\n" + "=" * 70)
     print("COMPARISON")
     print("=" * 70)
@@ -776,7 +776,7 @@ def test_discover_literal_folding_local(expr: F.Parameters.can_be_operand):
     print("=" * 70 + "\n")
     # assert match, f"Solver: {solver_result_num} != Test: {evaluated_expr}"
     # solver_result.g.destroy()
-    assert solver_result_num.equals(evaluated_expr, g=test_g, tg=test_tg)
+    assert solver_result_num.op_setic_equals(evaluated_expr, g=test_g, tg=test_tg)
 
 
 # Examples -----------------------------------------------------------------------------
@@ -1047,7 +1047,7 @@ def test_regression_literal_folding(
     solver_result_num = fabll.Traits(solver_result).get_obj(F.Literals.Numbers)
 
     # Compare results (need to pass g and tg for Numbers.equals)
-    match = solver_result_num.equals(evaluated_expr, g=g, tg=tg)
+    match = solver_result_num.op_setic_equals(evaluated_expr, g=g, tg=tg)
     print("\n" + "=" * 70)
     print("COMPARISON")
     print("=" * 70)
@@ -1057,7 +1057,7 @@ def test_regression_literal_folding(
     print(f"Match:          {'✓ PASS' if match else '✗ FAIL'}")
     print("=" * 70 + "\n")
     # assert match, f"Solver: {solver_result_num} != Test: {evaluated_expr}"
-    ok = solver_result_num.equals(evaluated_expr, g=g, tg=tg)
+    ok = solver_result_num.op_setic_equals(evaluated_expr, g=g, tg=tg)
 
     assert ok
     g.destroy()

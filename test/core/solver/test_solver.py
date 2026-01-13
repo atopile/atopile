@@ -92,7 +92,7 @@ def _extract_and_check(
     if isinstance(expected, F.Literals.LiteralNodes):
         expected = expected.can_be_operand.get()
     if not isinstance(expected, F.Parameters.can_be_operand):
-        matches = extracted.equals_singleton(expected)
+        matches = extracted.op_setic_equals_singleton(expected)
         if not matches:
             print(
                 f"Expected {expected}"
@@ -101,7 +101,7 @@ def _extract_and_check(
             )
         return matches
 
-    matches = extracted.equals(expected.as_literal.force_get())
+    matches = extracted.op_setic_equals(expected.as_literal.force_get())
     if not matches:
         print(
             f"Expected {expected.as_literal.force_get().pretty_str()}"
@@ -192,7 +192,7 @@ def test_simplify():
     lits = out_add_e.get_operand_literals().values()
     assert len(lits) == 1
     lit = next(iter(lits))
-    assert lit.equals(
+    assert lit.op_setic_equals(
         E.lit_op_range(((8, E.U.dl), (9, E.U.dl))).as_literal.force_get()
     ), f"lit: {lit.pretty_str()} != {{8..9}}"
     H_mapped = res.map_forward(app.ops[7].get().is_parameter_operatable.get()).maps_to
@@ -542,9 +542,9 @@ def test_very_simple_alias_class():
     A_res = _extract(A, repr_map)
     B_res = _extract(B, repr_map)
     C_res = _extract(C, repr_map)
-    assert A_res.equals(B_res)
-    assert B_res.equals(C_res)
-    assert A_res.equals(C_res)
+    assert A_res.op_setic_equals(B_res)
+    assert B_res.op_setic_equals(C_res)
+    assert A_res.op_setic_equals(C_res)
 
 
 def test_domain():
@@ -603,8 +603,8 @@ def test_symmetric_inequality_correlated():
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     p0_lit = _extract(p0, repr_map)
     p1_lit = _extract(p1, repr_map)
-    assert p0_lit.equals(p1_lit)
-    assert p0_lit.equals(lit.as_literal.force_get())
+    assert p0_lit.op_setic_equals(p1_lit)
+    assert p0_lit.op_setic_equals(lit.as_literal.force_get())
 
 
 @pytest.mark.parametrize(
@@ -726,7 +726,7 @@ def test_literal_folding_add_multiplicative_1():
             if (
                 next(
                     iter(mul.is_expression.get().get_operand_literals().values())
-                ).equals_singleton(expected_lit)
+                ).op_setic_equals_singleton(expected_lit)
                 and set(mul.is_expression.get().get_operand_operatables())
                 == expected_ops
             ):
@@ -777,7 +777,7 @@ def test_literal_folding_add_multiplicative_2():
         if any(
             lit
             for lit in op.is_expression.get().get_operand_literals().values()
-            if lit.equals_singleton(8)
+            if lit.op_setic_equals_singleton(8)
         )
     ]
     assert len(a_ops) == 1
@@ -786,7 +786,7 @@ def test_literal_folding_add_multiplicative_2():
     add_ops_lits = rep_add_obj.is_expression.get().get_operand_literals()
     assert len(add_ops_lits) == 1 and next(
         iter(add_ops_lits.values())
-    ).equals_singleton(10)
+    ).op_setic_equals_singleton(10)
     assert add_ops == {b_res, mul.is_parameter_operatable.get()}
 
 
@@ -1872,7 +1872,9 @@ def test_simplify_non_terminal_manual_test_2():
         p_lit = solver.extract_superset(p.as_parameter.force_get())
         print(f"{p.as_parameter.force_get().compact_repr(context)}, lit:", p_lit)
         print(f"{p_lit.as_operand.get()}, {E.multiply(origin[1], _inc)}")
-        assert p_lit.is_subset_of(E.multiply(origin[1], _inc).as_literal.force_get())
+        assert p_lit.op_setic_is_subset_of(
+            E.multiply(origin[1], _inc).as_literal.force_get()
+        )
         E.is_subset(p.as_operand.get(), p_lit.as_operand.get(), assert_=True)
         solver.simplify(E.g, E.tg)
 
@@ -2055,7 +2057,7 @@ def test_fold_correlated():
 
     # Test for correct is estimation
     try:
-        assert not_none(is_lit).equals_singleton(5)  # C is 5
+        assert not_none(is_lit).op_setic_equals_singleton(5)  # C is 5
     except AssertionError:
         pytest.xfail("TODO")
 
@@ -2141,9 +2143,9 @@ _A: list[
         lambda E: [E.lit_op_range((0, 10)), E.lit_op_range((5, 20))],
         lambda E: E.lit_op_ranges((0, 5), (10, 20)),
     ),
-    # Is tests
+    # IsSubset tests
     (
-        lambda E: E.is_,
+        lambda E: E.is_subset,
         lambda E: [E.lit_op_range((0, 10)), E.lit_op_range((0, 10))],
         lambda E: True,
     ),
@@ -2216,7 +2218,9 @@ def test_exec_pure_literal_expressions(
 
     expr = op(*lits_converted)
     expr_e = expr.as_parameter_operatable.force_get().as_expression.force_get()
-    assert not_none(exec_pure_literal_expression(E.g, E.tg, expr_e)).equals(
+    print("EXPR", expr_e.compact_repr())
+    print("EXPECTED", expected_converted.pretty_str())
+    assert not_none(exec_pure_literal_expression(E.g, E.tg, expr_e)).op_setic_equals(
         expected_converted, g=E.g, tg=E.tg
     )
 

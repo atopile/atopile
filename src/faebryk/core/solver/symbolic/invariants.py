@@ -106,10 +106,10 @@ class SubsumptionCheck:
             )
             superset_ss, superset_lit = superset_ss[0]
             new_superset = builder.operands[1].as_literal.force_get()
-            merged_superset = superset_lit.op_intersect_intervals(
+            merged_superset = superset_lit.op_setic_intersect(
                 new_superset, g=mutator.G_transient, tg=mutator.tg_in
             )
-            if superset_lit.equals(merged_superset):
+            if superset_lit.op_setic_equals(merged_superset):
                 return SubsumptionCheck.Result(superset_ss.is_expression.get())
             return SubsumptionCheck.Result(
                 ExpressionBuilder(
@@ -141,10 +141,10 @@ class SubsumptionCheck:
             )
             subset_ss, subset_lit = subset_ss[0]
             new_subset = builder.operands[0].as_literal.force_get()
-            merged_subset = subset_lit.op_union_intervals(
+            merged_subset = subset_lit.op_setic_union(
                 new_subset, g=mutator.G_transient, tg=mutator.tg_in
             )
-            if subset_lit.equals(merged_subset):
+            if subset_lit.op_setic_equals(merged_subset):
                 return SubsumptionCheck.Result(
                     most_constrained_expr=subset_ss.is_expression.get()
                 )
@@ -172,7 +172,10 @@ class SubsumptionCheck:
         Or!(A, B, True) -> discard (no information)
         """
 
-        if any(lit.equals_singleton(True) for lit in builder.indexed_lits().values()):
+        if any(
+            lit.op_setic_equals_singleton(True)
+            for lit in builder.indexed_lits().values()
+        ):
             if builder.assert_:
                 return SubsumptionCheck.Result(SubsumptionCheck.Result._DISCARD())
             else:
@@ -358,7 +361,7 @@ def _no_empty_superset(
         factory is IsSubset
         and assert_
         and (lit := operands[1].try_get_sibling_trait(F.Literals.is_literal))
-        and lit.is_empty()
+        and lit.op_setic_is_empty()
         and (po := operands[0].as_parameter_operatable.try_get())
     ):
         raise Contradiction(
@@ -390,7 +393,7 @@ def _no_predicate_literals(
 
     # P!{S|False} -> Contradiction
     if operands[0].try_get_sibling_trait(F.Expressions.is_predicate) and any(
-        lit.equals_singleton(False) for lit in lits.values()
+        lit.op_setic_equals_singleton(False) for lit in lits.values()
     ):
         raise Contradiction(
             "P!{S/P|False}",
@@ -398,7 +401,7 @@ def _no_predicate_literals(
             mutator=mutator,
         )
 
-    if any(lit.equals_singleton(True) for lit in lits.values()):
+    if any(lit.op_setic_equals_singleton(True) for lit in lits.values()):
         # P!{S/P|True} -> P!
         if any(op.try_get_sibling_trait(F.Expressions.is_predicate) for op in operands):
             logger.debug(f"Remove predicate literal {pretty_expr(builder, mutator)}")
@@ -419,8 +422,9 @@ def _no_literal_inequalities(
 ) -> ExpressionBuilder:
     """
     Convert GreaterOrEqual expressions with literals to IsSubset constraints:
-    - A >= X (X is literal) -> A ss [X.max(), +∞)
-    - X >= A (X is literal) -> A ss (-∞, X.min()]
+    - A >=! X (X is literal) -> A ss! [X.max(), +∞)
+    - X >=! A (X is literal) -> A ss! (-∞, X.min()]
+    Important: only valid for predicates
 
     This transformation is semantically equivalent:
     - "A is at least X" becomes "A is a subset of [X, infinity)"
@@ -430,7 +434,7 @@ def _no_literal_inequalities(
 
     factory, operands, assert_, terminate = builder
 
-    if factory is not F.Expressions.GreaterOrEqual:
+    if factory is not F.Expressions.GreaterOrEqual or not assert_:
         return builder
 
     if not (lits := builder.indexed_lits()):
@@ -517,7 +521,7 @@ def _fold_pure_literal_operands(
     )
     if builder.assert_:
         # P!{S|True} -> P!$
-        if lit_fold.equals_singleton(False):
+        if lit_fold.op_setic_equals_singleton(False):
             raise Contradiction(
                 "P!{S|False}",
                 involved=[],
@@ -801,9 +805,9 @@ class TestInvariantsSimple:
         # => Or(True, p)
         assert or_res.out_operand and or_res.out_operand.get_sibling_trait(
             F.Expressions.is_expression
-        ).get_operands()[0].get_sibling_trait(F.Literals.is_literal).equals_singleton(
-            True
-        )
+        ).get_operands()[0].get_sibling_trait(
+            F.Literals.is_literal
+        ).op_setic_equals_singleton(True)
 
     @staticmethod
     def test_pure_literal():
@@ -823,7 +827,7 @@ class TestInvariantsSimple:
             pred_res.out_operand
             and pred_res.out_operand.as_parameter_operatable.force_get()
             .force_extract_superset()
-            .equals(
+            .op_setic_equals(
                 F.Literals.Numbers.bind_typegraph(mutator.tg_in)
                 .create_instance(mutator.G_transient)
                 .setup_from_min_max(40, 60)
@@ -1368,7 +1372,7 @@ class TestInvariantsCombinations:
         # First operand should now be True (predicate replaced)
         first_op = result.operands[0]
         first_lit = first_op.try_get_sibling_trait(F.Literals.is_literal)
-        assert first_lit is not None and first_lit.equals_singleton(True)
+        assert first_lit is not None and first_lit.op_setic_equals_singleton(True)
 
     @staticmethod
     def test_greater_or_equal_chain_intersects_to_contradiction():
@@ -1492,7 +1496,7 @@ class TestInvariantsCombinations:
         # Both operands should now be True literals
         for op in result.operands:
             lit = op.try_get_sibling_trait(F.Literals.is_literal)
-            assert lit is not None and lit.equals_singleton(True)
+            assert lit is not None and lit.op_setic_equals_singleton(True)
 
     @staticmethod
     def test_subsumption_with_subset_check():

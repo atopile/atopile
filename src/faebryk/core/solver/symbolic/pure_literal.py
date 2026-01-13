@@ -55,8 +55,8 @@ _CanonicalExpressions: dict[type[fabll.NodeT], _Multi] = {
     F.Expressions.Or: _Multi(F.Literals.Booleans.op_or, False),
     F.Expressions.Xor: _Multi(F.Literals.Booleans.op_xor),
     F.Expressions.Not: _Multi(F.Literals.Booleans.op_not),
-    F.Expressions.Intersection: _Multi(F.Literals.is_literal.op_intersect_intervals),
-    F.Expressions.Union: _Multi(F.Literals.is_literal.op_union_intervals),
+    F.Expressions.Intersection: _Multi(F.Literals.is_literal.op_setic_intersect),
+    F.Expressions.Union: _Multi(F.Literals.is_literal.op_setic_union),
     # TODO wtf
     F.Expressions.LessThan: _Multi(F.Literals.Numbers.op_mul_intervals),
     F.Expressions.GreaterThan: _Multi(F.Literals.Numbers.op_mul_intervals),
@@ -66,12 +66,12 @@ _CanonicalExpressions: dict[type[fabll.NodeT], _Multi] = {
     F.Expressions.Min: _Multi(F.Literals.Numbers.min_elem),
     F.Expressions.Max: _Multi(F.Literals.Numbers.max_elem),
     F.Expressions.SymmetricDifference: _Multi(
-        F.Literals.is_literal.op_symmetric_difference_intervals
+        F.Literals.is_literal.op_setic_symmetric_difference
     ),
-    F.Expressions.Is: _Multi(F.Literals.is_literal.equals),
     F.Expressions.GreaterOrEqual: _Multi(F.Literals.Numbers.op_greater_or_equal),
     F.Expressions.GreaterThan: _Multi(F.Literals.Numbers.op_greater_than),
-    F.Expressions.IsSubset: _Multi(F.Literals.is_literal.is_subset_of),
+    F.Expressions.Is: _Multi(F.Literals.is_literal.op_setic_equals),
+    F.Expressions.IsSubset: _Multi(F.Literals.is_literal.op_setic_is_subset_of),
     F.Expressions.IsBitSet: _Multi(F.Literals.Numbers.op_is_bit_set),
 }
 
