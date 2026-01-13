@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 class implements_design_check(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
+    # Priority for ordering checks within a stage. Higher values run first.
+    # Default is 0. Use higher values for checks that need to run early
+    # (e.g., has_default_constraint uses 100 to run before Addressor).
+    CHECK_PRIORITY: int = 0
+
     class CheckStage(Enum):
         POST_DESIGN = auto()
         POST_SOLVE = auto()
@@ -186,6 +191,16 @@ class implements_design_check(fabll.Node):
                 return self.check_post_solve()
             case implements_design_check.CheckStage.POST_PCB:
                 return self.check_post_pcb()
+
+    def get_check_priority(self) -> int:
+        """
+        Get the priority for this check. Higher values run first.
+
+        Returns the CHECK_PRIORITY class attribute from the owner class,
+        defaulting to 0 if not defined.
+        """
+        _, owner_class = self._get_owner_with_type()
+        return getattr(owner_class, "CHECK_PRIORITY", 0)
 
     def on_check(self):
         _, owner_class = self._get_owner_with_type()

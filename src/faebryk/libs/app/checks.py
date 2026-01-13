@@ -23,8 +23,12 @@ def check_design(
         exclude: list of names of checks to exclude e.g:
         - `I2C.requires_unique_addresses`
     """
+    # Get all checks and sort by priority (higher priority runs first)
+    checks = F.implements_design_check.bind_typegraph(app.tg).get_instances()
+    checks_sorted = sorted(checks, key=lambda c: c.get_check_priority(), reverse=True)
+
     with accumulate(UserDesignCheckException) as accumulator:
-        for check in F.implements_design_check.bind_typegraph(app.tg).get_instances():
+        for check in checks_sorted:
             with accumulator.collect():
                 try:
                     check.run(stage)

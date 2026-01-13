@@ -43,8 +43,16 @@ class has_default_constraint(fabll.Node):
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
+    # High priority so defaults are applied before other POST_DESIGN checks
+    # (e.g., Addressor needs defaults to be set before it tries to deduce offset)
+    CHECK_PRIORITY = 100
+
     # Design check trait for pre-solve default application
     design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
+
+    # Identifier for the literal child
+    _LITERAL_CHILD_IDENTIFIER = "default_literal"
+    _type_counter = 0
 
     @classmethod
     def MakeChild(
@@ -57,23 +65,30 @@ class has_default_constraint(fabll.Node):
             literal: The literal value _ChildField from the parser
                      (e.g., 1A, 10kohm +/- 5%, "string", True)
         """
-        out: fabll._ChildField[Self] = fabll._ChildField(cls)
+        # Create a concrete type with a unique name and the literal as a named child
+        cls._type_counter += 1
+        ConcreteType = fabll.Node._copy_type(
+            cls, name=f"has_default_constraint_{cls._type_counter}"
+        )
 
-        # Add the literal as a dependant with a known identifier so we can find it later
-        out.add_dependant(literal, identifier="default_literal")
+        # Add the literal as a named composition child
+        ConcreteType._handle_cls_attr(cls._LITERAL_CHILD_IDENTIFIER, literal)
 
-        return out
+        return fabll._ChildField(ConcreteType)
 
     def get_default_literal(self) -> "F.Literals.is_literal | None":
         """Get the default literal value from this trait."""
         import faebryk.core.faebrykpy as fbrk
 
-        # The literal is stored as a child with identifier "default_literal"
+        # The literal is stored as a composition child with a known identifier
         child = fbrk.EdgeComposition.get_child_by_identifier(
             bound_node=self.instance,
-            child_identifier="default_literal",
+            child_identifier=self._LITERAL_CHILD_IDENTIFIER,
         )
         if child is None:
+            logger.warning(
+                f"No child found with identifier {self._LITERAL_CHILD_IDENTIFIER}"
+            )
             return None
 
         # Get the is_literal trait from the child
@@ -98,10 +113,15 @@ class has_default_constraint(fabll.Node):
 
     def _has_explicit_constraint(self, param: "F.Parameters.is_parameter") -> bool:
         """
-        Check if the parameter has any explicit IsSubset or Is constraints.
+        Check if the parameter has any explicit value constraints.
 
         We consider a constraint "explicit" if it's an IsSubset or Is predicate
-        that wasn't created by this default trait.
+        that constrains the parameter to a literal value (not just linking to
+        another parameter).
+
+        For example:
+        - `param = 1A` → IsSubset(param, 1A) → explicit (has literal)
+        - `assert param1 is param2` → Is(param1, param2) → NOT explicit (no literal)
         """
         from faebryk.library.Expressions import Is, IsSubset
 
@@ -112,32 +132,70 @@ class has_default_constraint(fabll.Node):
         subset_ops = param_op.get_operations(types=IsSubset, predicates_only=True)
         is_ops = param_op.get_operations(types=Is, predicates_only=True)
 
+        logger.debug(
+            f"Checking constraints on {param}: "
+            f"IsSubset={len(subset_ops)}, Is={len(is_ops)}"
+        )
+
         # Get the literal from our default trait for comparison
         my_literal = self.get_default_literal()
+        logger.debug(f"Default literal: {my_literal}")
         if my_literal is None:
+            logger.warning("No default literal found, falling back to constraint check")
             # No default literal stored, shouldn't happen but handle gracefully
-            return len(subset_ops) > 0 or len(is_ops) > 0
+            # Fall back to checking if any literal-involving constraint exists
+            for op in subset_ops | is_ops:
+                expr = op.get_trait(F.Expressions.is_expression)
+                for operand in expr.get_operands():
+                    if operand.as_literal.try_get() is not None:
+                        return True
+            return False
 
         for op in subset_ops | is_ops:
             # Get the expression and its operands
             expr = op.get_trait(F.Expressions.is_expression)
             operands = expr.get_operands()
+            logger.debug(f"Examining constraint: {op}, operands: {operands}")
 
-            # Check if this constraint uses our default literal
-            is_our_constraint = False
+            # Find literals in this constraint
+            has_bounded_literal = False
+            is_our_literal = False
+            literal_operand = None
+
             for operand in operands:
                 if lit := operand.as_literal.try_get():
-                    # Compare if this is our literal by checking if it's the same node
-                    if lit.instance.node().is_same(my_literal.instance.node()):
-                        is_our_constraint = True
+                    literal_operand = operand
+                    # Check if this is our default literal
+                    if lit.instance.node().is_same(other=my_literal.instance.node()):
+                        is_our_literal = True
                         break
 
-            if not is_our_constraint:
-                # Found an explicit constraint that's not from our default
+                    # Check if this is a bounded literal (not a domain constraint)
+                    # Domain constraints like [0, ∞) are not "explicit" user values
+                    lit_node = fabll.Traits(lit).get_obj_raw()
+                    if numbers := lit_node.try_cast(F.Literals.Numbers):
+                        # Check if bounds are finite - domain constraints have ∞
+                        import math
+
+                        min_val = numbers.get_min_value()
+                        max_val = numbers.get_max_value()
+                        if not math.isinf(min_val) and not math.isinf(max_val):
+                            has_bounded_literal = True
+                    else:
+                        # Non-numeric literals (strings, bools) are always bounded
+                        has_bounded_literal = True
+
+            # Only count as explicit if it has a bounded literal AND it's not ours
+            if has_bounded_literal and not is_our_literal:
                 logger.debug(
-                    f"Found explicit constraint on parameter, skipping default: {op}"
+                    f"Found explicit value constraint: {op}, literal: {literal_operand}"
                 )
                 return True
+
+            logger.debug(
+                f"Checked constraint {op}: has_bounded_literal={has_bounded_literal}, "
+                f"is_our_literal={is_our_literal}"
+            )
 
         return False
 
