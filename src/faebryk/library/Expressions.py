@@ -387,6 +387,7 @@ class is_expression(fabll.Node):
         tg: fbrk.TypeGraph,
         allow_uncorrelated: bool = False,
         check_constrained: bool = True,
+        recursive: bool = True,
     ) -> bool:
         """
         Check if this expression is congruent to an expression that would be
@@ -426,6 +427,7 @@ class is_expression(fabll.Node):
             tg=tg,
             allow_uncorrelated=allow_uncorrelated,
             check_constrained=check_constrained,
+            recursive=recursive,
         )
         return out
 
@@ -576,6 +578,7 @@ class is_expression(fabll.Node):
         commutative: bool = False,
         allow_uncorrelated: bool = False,
         check_constrained: bool = True,
+        recursive: bool = True,
     ) -> bool:
         """
         Check if two sequences of operands are positionally congruent.
@@ -623,7 +626,7 @@ class is_expression(fabll.Node):
                     return False
                 return lit1.equals(lit2, g=g, tg=tg)
 
-            if expr1 := op1_obj.try_get_trait(is_expression):
+            if recursive and (expr1 := op1_obj.try_get_trait(is_expression)):
                 expr2 = op2_obj.get_trait(is_expression)
                 return expr1.is_congruent_to(
                     expr2,
@@ -730,14 +733,13 @@ class is_assertable(fabll.Node):
     # TODO: solver_terminated flag, has to be attr
 
     def assert_(self):
-        parent = self.get_parent_force()[0]
-        if parent.has_trait(is_predicate):
+        obj = fabll.Traits(self).get_obj_raw()
+        if obj.has_trait(is_predicate):
             return
-        return fabll.Traits.create_and_add_instance_to(node=parent, trait=is_predicate)
+        return fabll.Traits.create_and_add_instance_to(node=obj, trait=is_predicate)
 
     def is_asserted(self) -> bool:
-        parent = self.get_parent_force()[0]
-        return bool(parent.has_trait(is_predicate))
+        return self.try_get_sibling_trait(is_predicate) is not None
 
 
 class is_predicate(fabll.Node):

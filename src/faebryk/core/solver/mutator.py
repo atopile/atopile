@@ -96,7 +96,7 @@ class Transformations:
     @property
     def dirty(self) -> bool:
         non_no_op_mutations = any(
-            k is not v for k, v in self.mutated.items() if k not in self.copied
+            not k.is_same(v) for k, v in self.mutated.items() if k not in self.copied
         )
 
         return bool(
@@ -520,7 +520,6 @@ class MutationStage:
         for op, from_ops in created_ops.items():
             key = "new"
             key_from_ops = " \n  ".join(___repr_op(o) for o in from_ops)
-            key_from_ops = f"  {key_from_ops}"
             value = ___repr_op(op)
             if (op_e := op.as_expression.try_get()) and (
                 MutatorUtils.is_set_literal_expression(op)
@@ -534,7 +533,7 @@ class MutationStage:
                 key = f"new_{alias_type}\n{lit.pretty_str()}"
                 value = ___repr_op(expr)
             if key_from_ops:
-                key = f"{key} from\n{key_from_ops}"
+                key = f"{key} from\n  {key_from_ops}"
             rows.append((key, value))
 
         terminated = self.transformations.terminated.difference(
@@ -1291,10 +1290,7 @@ class Mutator:
 
         if assert_:
             ce = new_expr.get_trait(F.Expressions.is_assertable)
-            self.assert_(ce)
-
-        if terminate:
-            self.predicate_terminate(new_expr.get_trait(F.Expressions.is_predicate))
+            self.assert_(ce, terminate=terminate, track=False)
 
         op_graphs = {
             op.g.get_self_node().node().get_uuid(): op.g for op in new_operands
@@ -1338,7 +1334,7 @@ class Mutator:
         self,
         expr: F.Expressions.is_expression,
         operands: Iterable[F.Parameters.can_be_operand] | None = None,
-        expression_factory: type[fabll.NodeT] | None = None,
+        expression_factory: type[F.Expressions.ExpressionNodes] | None = None,
     ) -> F.Expressions.is_canonical | None:
         import faebryk.core.solver.symbolic.invariants as invariants
 
@@ -1363,20 +1359,10 @@ class Mutator:
         assert_ = expr_pred is not None
         terminate = assert_ and self.is_predicate_terminated(expr_pred)
 
-        # expr_obj = fabll.Traits(expr).get_obj_raw()
-        # copy_only = (
-        #    expr_obj.isinstance(expression_factory) and operands == expr.get_operands()
-        # )
-        # TODO
-        # copy_only = False
-        # if copy_only:
-        #     new_expr = self._create_and_insert_expression(
-        #         expression_factory,
-        #         *operands,
-        #         assert_=assert_,
-        #         terminate=terminate,
-        #     )
-        # else:
+        expr_obj = fabll.Traits(expr).get_obj_raw()
+        copy_only = (
+            expr_obj.isinstance(expression_factory) and operands == expr.get_operands()
+        )
 
         c_operands = [o for op in operands if (o := self.get_copy(op))]
 
@@ -1387,7 +1373,9 @@ class Mutator:
             assert_=assert_,
             terminate=terminate,
         )
-        res = invariants.wrap_insert_expression(self, builder)
+        res = invariants.wrap_insert_expression(
+            self, builder, expr_already_exists_in_old_graph=copy_only
+        )
         if res.out_operand is None:
             return None
 
@@ -1502,11 +1490,13 @@ class Mutator:
         self,
         *po: F.Expressions.is_assertable,
         terminate: bool = False,
+        track: bool = True,
     ):
         for p in po:
             if not p.is_asserted():
                 p.assert_()
-                self.transformations.asserted.add(p)
+                if track:
+                    self.transformations.asserted.add(p)
             if terminate:
                 self.predicate_terminate(
                     p.get_sibling_trait(F.Expressions.is_predicate)
@@ -1915,6 +1905,9 @@ class Mutator:
 
         self.check_no_illegal_mutations()
         self._copy_unmutated()
+        # important to check after copying unmutated
+        # because invariant checking might revert 'new' state
+        dirty = self.transformations.dirty
         stage = MutationStage(
             tg_in=self.tg_in,
             tg_out=self.tg_out,
@@ -1931,7 +1924,7 @@ class Mutator:
         # allowed if no copy was needed for graph
         # TODO
 
-        return AlgoResult(mutation_stage=stage, dirty=True)
+        return AlgoResult(mutation_stage=stage, dirty=dirty)
 
     def run(self):
         self._run()

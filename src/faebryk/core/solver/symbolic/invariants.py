@@ -253,26 +253,23 @@ def find_subsuming_expression(
 def find_congruent_expression[T: F.Expressions.ExpressionNodes](
     mutator: Mutator,
     builder: "ExpressionBuilder[T]",
-    allow_uncorrelated: bool = False,
-    dont_match: list[F.Expressions.is_expression] | None = None,
 ) -> T | None:
     """
-    Careful: Disregards whether asserted in root expression!
+    Careful: Disregards asserted (on purpose)!
     """
+    allow_uncorrelated = builder.assert_
     non_lits = list(builder.indexed_pos().values())
     literal_expr = all(
         mutator.utils.is_literal(op) or mutator.utils.is_literal_expression(op)
         for op in builder.operands
     )
-    dont_match_set = set(dont_match or [])
     if literal_expr:
         lit_ops = {
             op
             for op in builder.factory.bind_typegraph(mutator.tg_in).get_instances(
                 mutator.G_out
             )
-            if op.get_trait(F.Expressions.is_expression) not in dont_match_set
-            and mutator.utils.is_literal_expression(
+            if mutator.utils.is_literal_expression(
                 op.get_trait(F.Parameters.can_be_operand)
             )
             # check congruence
@@ -288,12 +285,10 @@ def find_congruent_expression[T: F.Expressions.ExpressionNodes](
             return next(iter(lit_ops))
         return None
 
-    # TODO: might have to check in repr_map
     candidates = [
         expr_t
         for expr in non_lits[0].get_operations()
         if (expr_t := expr.try_cast(builder.factory))
-        and expr_t.get_trait(F.Expressions.is_expression) not in dont_match_set
     ]
 
     for c in candidates:
@@ -303,6 +298,11 @@ def find_congruent_expression[T: F.Expressions.ExpressionNodes](
             g=mutator.G_transient,
             tg=mutator.tg_in,
             allow_uncorrelated=allow_uncorrelated,
+            check_constrained=False,
+            # inductive, if subexpression was congruent to another expression
+            # it would have already been merged
+            # helps with performance
+            recursive=False,
         ):
             return c
     return None
@@ -597,6 +597,7 @@ def _no_literal_aliases(
 def insert_expression(
     mutator: Mutator,
     builder: ExpressionBuilder,
+    expr_already_exists_in_old_graph: bool = False,
 ) -> InsertExpressionResult:
     """
     Invariants
@@ -640,6 +641,19 @@ def insert_expression(
             congruent_predicate = congruent.get_trait(F.Expressions.is_predicate)
             mutator.predicate_terminate(congruent_predicate)
         congruent_op = congruent.get_trait(F.Parameters.can_be_operand)
+        congruent_po = congruent_op.as_parameter_operatable.force_get()
+        if expr_already_exists_in_old_graph:
+            if congruent_po in mutator.transformations.created:
+                del mutator.transformations.created[congruent_po]
+            congruent_assertable = congruent_po.get_sibling_trait(
+                F.Expressions.is_assertable
+            )
+            if (
+                builder.assert_
+                and congruent_assertable in mutator.transformations.asserted
+            ):
+                mutator.transformations.asserted.remove(congruent_assertable)
+
         logger.debug(
             f"Found congruent expression for {pretty_expr(builder, mutator)}:"
             f" {congruent_op.pretty()}"
@@ -667,6 +681,8 @@ def insert_expression(
                 case F.Expressions.is_expression():
                     orig = pretty_expr(builder, mutator)
                     new = pretty_expr(most_constrained_expr, mutator)
+                    if new == orig:
+                        new = "congruent"
                     logger.debug(f"Subsume replaced: {orig} -> {new}")
                     return InsertExpressionResult(
                         most_constrained_expr.as_operand.get(), False
@@ -702,8 +718,13 @@ def insert_expression(
 def wrap_insert_expression(
     mutator: Mutator,
     builder: ExpressionBuilder,
+    expr_already_exists_in_old_graph: bool = False,
 ) -> InsertExpressionResult:
-    res = insert_expression(mutator, builder)
+    res = insert_expression(
+        mutator,
+        builder,
+        expr_already_exists_in_old_graph=expr_already_exists_in_old_graph,
+    )
     if res.out_operand is None:
         target_dbg = "Dropped"
     else:
