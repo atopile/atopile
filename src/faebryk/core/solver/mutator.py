@@ -1291,7 +1291,7 @@ class Mutator:
 
     def create_check_and_insert_expression(
         self,
-        expr_factory: type[fabll.NodeT],
+        expr_factory: type[F.Expressions.ExpressionNodes],
         *operands: F.Parameters.can_be_operand,
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
         assert_: bool = False,

@@ -16,7 +16,7 @@ from faebryk.core.solver.utils import (
     Contradiction,
     pretty_expr,
 )
-from faebryk.libs.util import not_none
+from faebryk.libs.util import indented_container, not_none
 
 logger = logging.getLogger(__name__)
 if S_LOG:
@@ -60,6 +60,7 @@ class SubsumptionCheck:
                 return "<DISCARD>"
 
         most_constrained_expr: "F.Expressions.is_expression | ExpressionBuilder | _DISCARD | None" = None  # noqa: E501
+        subsumed: list[F.Expressions.is_expression] | None = None
 
     @staticmethod
     def subset(
@@ -106,14 +107,14 @@ class SubsumptionCheck:
             )
             if superset_lit.equals(merged_superset):
                 return SubsumptionCheck.Result(superset_ss.is_expression.get())
-            mutator.mark_irrelevant(superset_ss.is_parameter_operatable.get())
             return SubsumptionCheck.Result(
                 ExpressionBuilder(
                     IsSubset,
                     [subset_op.as_operand.get(), merged_superset.as_operand.get()],
                     assert_=True,
                     terminate=False,
-                )
+                ),
+                subsumed=[superset_ss.is_expression.get()],
             )
 
         elif superset_op := ops.get(1):
@@ -144,14 +145,14 @@ class SubsumptionCheck:
                     most_constrained_expr=subset_ss.is_expression.get()
                 )
 
-            mutator.mark_irrelevant(subset_ss.is_parameter_operatable.get())
             return SubsumptionCheck.Result(
                 ExpressionBuilder(
                     IsSubset,
                     [merged_subset.as_operand.get(), superset_op.as_operand.get()],
                     assert_=True,
                     terminate=False,
-                )
+                ),
+                subsumed=[subset_ss.is_expression.get()],
             )
 
         assert False, "Unreachable"
@@ -206,15 +207,19 @@ class SubsumptionCheck:
             )
             for op in new_operands
         ]
+        if not ors:
+            return SubsumptionCheck.Result()
+
         could_be_subsumed = reduce(lambda x, y: x & y, ors)
 
+        subsumed: list[F.Expressions.is_expression] = []
         if builder.assert_:
             for candidate in could_be_subsumed:
-                if _operands_are_subset(
-                    candidate.get_trait(F.Expressions.is_expression).get_operands(),
-                    new_operands,
-                ):
-                    mutator.mark_irrelevant(candidate.is_parameter_operatable.get())
+                candidate_expr = candidate.get_trait(F.Expressions.is_expression)
+                if _operands_are_subset(candidate_expr.get_operands(), new_operands):
+                    subsumed.append(candidate_expr)
+        if subsumed:
+            return SubsumptionCheck.Result(subsumed=subsumed)
 
         could_subsume = reduce(lambda x, y: x | y, ors) - could_be_subsumed
         # returning first subsuming expression
@@ -532,6 +537,7 @@ def _fold_pure_literal_operands(
         lit_op,
         terminate=True,
         assert_=True,
+        from_ops=[],
     )
     mutator.create_check_and_insert_expression(
         F.Expressions.IsSubset,
@@ -539,6 +545,7 @@ def _fold_pure_literal_operands(
         new_expr_op,
         terminate=True,
         assert_=True,
+        from_ops=[],
     )
     return InsertExpressionResult(new_expr_op, True)
 
@@ -645,6 +652,16 @@ def insert_expression(
         mutator.tg_in
     ).check_if_instance_of_type_has_trait(F.Expressions.is_assertable):
         subsume_res = find_subsuming_expression(mutator, builder)
+        if subsume_res.subsumed:
+            logger.debug(
+                f"Subsumed: {indented_container([s.compact_repr(mutator.mutation_map.print_ctx) for s in subsume_res.subsumed])}"
+            )
+        for subsumed in subsume_res.subsumed or []:
+            subsumed_po = subsumed.as_parameter_operatable.get()
+            mutator.mark_irrelevant(subsumed_po)
+            if subsumed_po in mutator.transformations.created:
+                del mutator.transformations.created[subsumed_po]
+
         if most_constrained_expr := subsume_res.most_constrained_expr:
             match most_constrained_expr:
                 case F.Expressions.is_expression():
@@ -661,7 +678,6 @@ def insert_expression(
                 case SubsumptionCheck.Result._DISCARD():
                     logger.debug(f"Subsume discard: {pretty_expr(builder, mutator)}")
                     return InsertExpressionResult(None, False)
-
     # * no empty supersets
     _no_empty_superset(mutator, builder)
 

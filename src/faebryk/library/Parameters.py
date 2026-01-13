@@ -343,21 +343,30 @@ class is_parameter_operatable(fabll.Node):
 
         try:
             subset = self.try_extract_subset()
-            if subset is not None:
-                out += f"{{⊇|{format_lit(subset)}}}"
         except KeyErrorAmbiguous as e:
             return f"{{AMBIGUOUS ⊇: {e.duplicates}}}"
-
         try:
             superset = self.try_extract_superset()
-            if superset is not None:
-                out += f"{{⊆|{format_lit(superset)}}}"
-                if superset.equals_singleton(True):
-                    out = "✓"
-                elif superset.equals_singleton(False):
-                    out = "✗"
         except KeyErrorAmbiguous as e:
             return f"{{AMBIGUOUS ⊆: {e.duplicates}}}"
+
+        if subset is not None and superset is not None:
+            if subset.equals(superset):
+                if subset.equals_singleton(True):
+                    return "✓"
+                elif subset.equals_singleton(False):
+                    return "✗"
+                return f"{{⊆⊇|{format_lit(subset)}}}"
+
+        if subset is not None:
+            out += f"{{⊇|{format_lit(subset)}}}"
+
+        if superset is not None:
+            out += f"{{⊆|{format_lit(superset)}}}"
+            if superset.equals_singleton(True):
+                out = "✓"
+            elif superset.equals_singleton(False):
+                out = "✗"
 
         return out
 
