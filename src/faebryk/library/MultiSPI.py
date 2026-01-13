@@ -30,6 +30,8 @@ class MultiSPI(fabll.Node):
         F.has_single_electric_reference.MakeChild()
     )
 
+    can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(in_=[""], out_=[""]))
+
     @classmethod
     @once
     def factory(cls, data_lane_count: int) -> type[Self]:

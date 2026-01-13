@@ -63,9 +63,13 @@ def bind_fbrk_nets_to_kicad_nets(
             if pcb_net.name:
                 nets_by_name[pcb_net.name] = pcb_net
 
+        # Handle stale net references in PCB files where pads reference nets
+        # that don't exist in the net definitions (e.g., unconnected pads with
+        # leftover net assignments)
         if best_kicad_net_name not in nets_by_name:
             logger.warning(
-                f"Net name '{best_kicad_net_name}' not found in PCB nets, skipping"
+                f"Net '{best_kicad_net_name}' referenced by pads but not defined "
+                f"in PCB - skipping (likely stale net assignment)"
             )
             continue
 
