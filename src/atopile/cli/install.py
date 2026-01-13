@@ -109,6 +109,7 @@ def sync(
         api.Errors.PackageNotFoundError,
         api.Errors.ReleaseNotFoundError,
         api.Errors.InvalidPackageIdentifierError,
+        api.Errors.PackagesApiHTTPError,  # catch base class for unexpected HTTP errors
     ) as e:
         raise errors.UserException(f"Error syncing dependencies: {e}") from e
 
@@ -157,6 +158,7 @@ def add(
         api.Errors.PackageNotFoundError,
         api.Errors.ReleaseNotFoundError,
         api.Errors.InvalidPackageIdentifierError,
+        api.Errors.PackagesApiHTTPError,  # catch base class for unexpected HTTP errors
     ) as e:
         raise errors.UserException(f"Error adding dependencies: {e}") from e
 
