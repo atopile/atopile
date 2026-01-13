@@ -908,6 +908,7 @@ class MutationMap:
         iteration: int = 0,
         print_context: F.Parameters.ReprContext | None = None,
         relevant: list[F.Parameters.can_be_operand] | None = None,
+        canonicalize: bool = True,
     ) -> "MutationMap":
         if relevant is not None:
             g_out, tg_out = MutationMap._bootstrap_copy(g, tg)
@@ -963,7 +964,7 @@ class MutationMap:
                     f", |exprs|={expr_count}"
                     f", |params|={param_count} {g_out}"
                 )
-            return MutationMap(
+            mut_map = MutationMap(
                 MutationStage(
                     tg_in=tg,
                     tg_out=tg_out,
@@ -984,7 +985,7 @@ class MutationMap:
                 )
             )
 
-        return MutationMap(
+        mut_map = MutationMap(
             MutationStage.identity(
                 tg,
                 g,
@@ -993,6 +994,19 @@ class MutationMap:
                 print_context=print_context or F.Parameters.ReprContext(),
             )
         )
+
+        if canonicalize:
+            from faebryk.core.solver.symbolic.canonical import (
+                convert_to_canonical_operations,
+            )
+
+            algo_result = Mutator(
+                mut_map, convert_to_canonical_operations, iteration=0, terminal=False
+            ).run()
+
+            mut_map = mut_map.extend(algo_result.mutation_stage)
+
+        return mut_map
 
     def extend(self, *changes: MutationStage) -> "MutationMap":
         return MutationMap(*self.mutation_stages, *changes)

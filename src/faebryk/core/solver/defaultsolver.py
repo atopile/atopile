@@ -20,13 +20,11 @@ from faebryk.core.solver.mutator import (
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.symbolic import (
-    canonical,
     expression_groups,
     expression_wise,
     structural,
 )
 from faebryk.core.solver.utils import (
-    ALLOW_PARTIAL_STATE,
     MAX_ITERATIONS_HEURISTIC,
     PRINT_START,
     S_LOG,
@@ -45,9 +43,6 @@ class DefaultSolver(Solver):
     class algorithms:
         # TODO: get order from topo sort
         # and types from decorator
-        pre = [
-            canonical.convert_to_canonical_operations,
-        ]
         iterative = [
             structural.check_literal_contradiction,
             structural.remove_unconstrained,
@@ -326,16 +321,8 @@ class DefaultSolver(Solver):
                 F.Expressions.is_expression
             )
 
-        pre_algos = self.algorithms.pre
-        it_algos = self.algorithms.iterative
-        if not terminal:
-            pre_algos = [a for a in pre_algos if not a.terminal]
-            it_algos = [a for a in it_algos if not a.terminal]
-
-        iterno = 0
+        algos = [a for a in self.algorithms.iterative if terminal or not a.terminal]
         for iterno in count():
-            first_iter = iterno == 0
-
             if iterno > MAX_ITERATIONS_HEURISTIC:
                 raise TimeoutError(
                     "Solver Bug: Too many iterations, likely stuck in a loop"
@@ -348,10 +335,7 @@ class DefaultSolver(Solver):
 
             try:
                 iteration_state = DefaultSolver._run_iteration(
-                    iterno=iterno,
-                    data=self.state.data,
-                    terminal=terminal,
-                    algos=pre_algos if first_iter else it_algos,
+                    iterno=iterno, data=self.state.data, terminal=terminal, algos=algos
                 )
             except Exception:
                 if S_LOG:
