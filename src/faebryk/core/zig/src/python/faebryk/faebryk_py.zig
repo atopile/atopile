@@ -3006,7 +3006,7 @@ fn wrap_edgebuilder_insert_edge() type {
             const attributes = bind.castWrapper("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
             var edge = attributes.data.insert_edge(kwarg_obj.g, kwarg_obj.source.*, kwarg_obj.target.*);
-            return bind.wrap_obj("BoundEdge", &graph_py.bound_edge_type, BoundEdgeWrapper, &edge);
+            return bind.wrap_obj("BoundEdgeReference", &graph_py.bound_edge_type, BoundEdgeWrapper, &edge);
         }
     };
 }

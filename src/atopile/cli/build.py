@@ -1377,6 +1377,24 @@ def build(
             keep_net_names=keep_net_names,
             keep_designators=keep_designators,
         )
+
+        # Install dependencies if needed (same as single project mode)
+        deps = ProjectDependencies(sync_versions=False)
+        if deps.not_installed_dependencies:
+            logger.info("Installing missing dependencies")
+            for dep in deps.not_installed_dependencies:
+                try:  # protect against parallel worker race condition
+                    assert dep.dist is not None
+                    from faebryk.libs.project.dependencies import _log_add_package
+
+                    _log_add_package(dep.identifier, dep.dist.version)
+                    dep.dist.install(dep.target_path)
+                except FileExistsError:
+                    logger.debug(
+                        f"Dependency {dep.identifier} already exists at "
+                        f"{dep.target_path}"
+                    )
+
         _run_single_build(frozen=frozen)
         return
 
