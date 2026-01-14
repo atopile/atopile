@@ -141,21 +141,29 @@ def simple_erc(tg: fbrk.TypeGraph):
         comps = fabll.Node.bind_typegraph(tg).nodes_of_types(
             (F.Resistor, F.Capacitor, F.Fuse)
         )
-        logger.info(f"Checking {len(comps)} passives")
-        for comp in comps:
-            with accumulator.collect():
-                assert isinstance(comp, (F.Resistor, F.Capacitor, F.Fuse))
-                # TODO make prettier
-                if (
-                    comp.has_trait(F.Pickable.has_part_picked)
-                    and comp.get_trait(F.Pickable.has_part_picked).removed
-                ):
-                    continue
+        logger.info(f"Checking {len(comps)} passives for shorts")
 
-                if path := fabll.Path.from_connection(
-                    comp.unnamed[0].get(), comp.unnamed[1].get()
-                ):
-                    raise ERCFaultShortedInterfaces.from_path(path)
+        electrical_instances = {
+            elec
+            for comp in comps
+            for elec in comp.get_children(direct_only=True, types=F.Electrical)
+        }
+
+        electrical_buses = fabll.is_interface.group_into_buses(electrical_instances)
+
+        logger.info(f"Grouped {len(electrical_instances)} electricals into {len(electrical_buses)} buses")
+
+        for comp in comps:
+            unnamed_0 = comp.unnamed[0].get()
+            unnamed_1 = comp.unnamed[1].get()
+            if any(
+                unnamed_0 in bus and unnamed_1 in bus
+                for bus in electrical_buses.values()
+            ):
+                path = fabll.Path.from_connection(unnamed_0, unnamed_1)
+                assert path is not None
+                raise ERCFaultShortedInterfaces.from_path(path)
+
 
         ## unmapped Electricals
         # fps = [n for n in nodes if isinstance(n, Footprint)]
