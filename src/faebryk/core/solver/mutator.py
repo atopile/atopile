@@ -983,6 +983,7 @@ class MutationMap:
                     G_out=g_out,
                 )
             )
+            return mut_map
 
         mut_map = MutationMap(
             MutationStage.identity(
