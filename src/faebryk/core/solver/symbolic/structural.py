@@ -552,6 +552,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
         for ss in mutator.get_typed_expressions(
             F.Expressions.IsSubset,
             required_traits=(F.Expressions.is_predicate,),
+            include_terminated=True,
         )
         if (lit_superset := ss.get_superset_operand().as_literal.try_get())
         and (op_subset := ss.get_subset_operand().as_parameter_operatable.try_get())

@@ -435,17 +435,6 @@ def test_defaultsolver_basic():
 
     import faebryk.library._F as FT
 
-    # Fill typegraph
-    # for E in (
-    #    list(vars(FT.Expressions).values())
-    #    + list(vars(FT.Parameters).values())
-    #    + list(vars(FT.Literals).values())
-    #    + [is_terminated]
-    # ):
-    #    if not isinstance(E, type) or not issubclass(E, fabll.Node):
-    #        continue
-    #    fabll.TypeNodeBoundTG.get_or_create_type_in_tg(tg=tg, E)
-
     class _App(fabll.Node):
         A = FT.Parameters.BooleanParameter.MakeChild()
         B = FT.Parameters.BooleanParameter.MakeChild()

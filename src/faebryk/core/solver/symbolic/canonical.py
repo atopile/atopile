@@ -312,3 +312,19 @@ def convert_to_canonical_operations(mutator: Mutator):
             # are congruent to canonical
             # ignore_existing=True,
         )
+
+
+@algorithm("Fix ss lit invariants", single=True, terminal=False, force_copy=True)
+def fix_ss_lit_invariants(mutator: Mutator):
+    """
+    Makes sure all subset lit exprs are passed through the invariants algorithm.
+    """
+
+    for e in mutator.get_typed_expressions(
+        F.Expressions.IsSubset,
+        sort_by_depth=True,
+        required_traits=(F.Expressions.is_predicate,),
+        # terminated one's get automatically handled
+        include_terminated=False,
+    ):
+        mutator.mutate_expression(e.is_expression.get())

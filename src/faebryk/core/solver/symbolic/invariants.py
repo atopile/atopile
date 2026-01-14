@@ -358,6 +358,21 @@ class ExpressionBuilder[
             and self.assert_ == other.has_trait(F.Expressions.is_predicate)
         )
 
+    # TODO use this more
+    def with_(
+        self,
+        factory: type[T] | None = None,
+        operands: list[F.Parameters.can_be_operand] | None = None,
+        assert_: bool | None = None,
+        terminate: bool | None = None,
+    ) -> "ExpressionBuilder[T]":
+        return ExpressionBuilder(
+            factory or self.factory,
+            operands if operands is not None else self.operands,
+            assert_ if assert_ is not None else self.assert_,
+            terminate if terminate is not None else self.terminate,
+        )
+
 
 def _no_empty_superset(
     mutator: Mutator,
@@ -699,9 +714,7 @@ def _no_singleton_supersets(
     if mapped_operands == builder.operands:
         return builder
 
-    out = ExpressionBuilder(
-        builder.factory, mapped_operands, builder.assert_, builder.terminate
-    )
+    out = builder.with_(operands=mapped_operands)
     logger.debug(
         f"No singleton supersets: {pretty_expr(builder, mutator)} -> "
         f"{pretty_expr(out, mutator)}"
@@ -720,7 +733,6 @@ def insert_expression(
     Sequencing sensitive!
     * ✓ terminated expressions are already copied
     * TODO: don't mutate terminated expressions?
-    * TODO: terminate?
     * ✓ don't use predicates as operands: Op(P!, ...) -> Op(True, ...)
     * ✓ P{S|True} -> P!, P!{S/P|False} -> Contradiction, P!{S|True} -> P!
     * ✓ no A >! X or X >! A (create A ss! X or X ss! A)
@@ -732,6 +744,7 @@ def insert_expression(
     * ✓ fold pure literal expressions: E(X, Y) -> E{S/P|...}(X, Y)
     * - no pure P!
     * ✓ superset estimate lit exprs: f1(f2(A{S|X})) ⊆! f1(f2(X))
+    * ✓ terminate ss lit: A ss! X -> A ss!$ X; X ss! A -> X ss!$ A TODO rethink/expand
     * ✓ canonical
     * no A is X(single) => A ss! X
 
@@ -841,8 +854,7 @@ def insert_expression(
     if lit_fold := _fold_unpure_literal_operands(mutator, builder):
         return lit_fold
 
-    # TODO remove
-    # terminate ss lit
+    # * terminate ss lit
     if (
         builder.factory is F.Expressions.IsSubset
         and builder.assert_
@@ -850,12 +862,7 @@ def insert_expression(
         and not builder.terminate
     ):
         logger.debug(f"Terminate ss lit: {pretty_expr(builder, mutator)}")
-        builder = ExpressionBuilder(
-            F.Expressions.IsSubset,
-            builder.operands,
-            builder.assert_,
-            terminate=True,
-        )
+        builder = builder.with_(terminate=True)
 
     # * canonical (covered by create)
     expr = mutator._create_and_insert_expression(

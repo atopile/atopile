@@ -910,7 +910,6 @@ class MutationMap:
         iteration: int = 0,
         print_context: F.Parameters.ReprContext | None = None,
         relevant: list[F.Parameters.can_be_operand] | None = None,
-        canonicalize: bool = True,
     ) -> "MutationMap":
         if relevant is not None:
             g_out, tg_out = MutationMap._bootstrap_copy(g, tg)
@@ -997,13 +996,19 @@ class MutationMap:
                 )
             )
 
-        if canonicalize:
-            from faebryk.core.solver.symbolic.canonical import (
-                convert_to_canonical_operations,
-            )
+        # canonicalize
+        from faebryk.core.solver.symbolic.canonical import (
+            convert_to_canonical_operations,
+            fix_ss_lit_invariants,
+        )
 
+        for algo in (convert_to_canonical_operations, fix_ss_lit_invariants):
+            logger.debug(f"Running {algo.name}")
             algo_result = Mutator(
-                mut_map, convert_to_canonical_operations, iteration=0, terminal=False
+                mut_map,
+                algo,
+                iteration=0,
+                terminal=False,
             ).run()
 
             mut_map = mut_map.extend(algo_result.mutation_stage)
