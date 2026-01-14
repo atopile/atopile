@@ -17,6 +17,7 @@ from faebryk.core.solver.mutator import MutationMap, Mutator, is_terminated
 from faebryk.core.solver.utils import (
     S_LOG,
     Contradiction,
+    ContradictionByLiteral,
     pretty_expr,
 )
 from faebryk.libs.test.boundexpressions import BoundExpressions
@@ -531,9 +532,10 @@ def _fold_pure_literal_operands(
     if builder.assert_:
         # P!{S|True} -> P!$
         if lit_fold.op_setic_equals_singleton(False):
-            raise Contradiction(
+            raise ContradictionByLiteral(
                 "P!{S|False}",
                 involved=[],
+                literals=[lit_fold],
                 mutator=mutator,
             )
         else:
