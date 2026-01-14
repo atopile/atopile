@@ -5,18 +5,67 @@ Workers use the URL specified by FBRK_TEST_ORCHESTRATOR_URL env var
 and send JSON events for test start/finish.
 """
 
+import io
 import os
 import sys
 import time
 import tracemalloc
 
+import _pytest
 import httpx
+import pluggy
 import psutil
 import pytest
+from rich.console import Console
+from rich.traceback import Traceback
 
 from test.runner.common import ORCHESTRATOR_URL_ENV, EventRequest, EventType, Outcome
 
 FBRK_TEST_TEST_TIMEOUT = int(os.environ.get("FBRK_TEST_TEST_TIMEOUT", -1))
+
+# Storage for captured exception info per test nodeid
+_captured_exc_info: dict[str, tuple] = {}
+
+
+def _format_rich_traceback(
+    exc_type: type[BaseException],
+    exc_value: BaseException,
+    exc_tb,
+    width: int = 120,
+) -> str:
+    """Format an exception using Rich's Traceback and return ANSI string."""
+    try:
+        console = Console(
+            file=io.StringIO(),
+            force_terminal=True,
+            width=width,
+            record=True,
+        )
+        # Import current module for suppression
+        import test.runner.plugin
+
+        tb = Traceback.from_exception(
+            exc_type,
+            exc_value,
+            exc_tb,
+            width=width,
+            show_locals=True,
+            max_frames=50,
+            suppress=[
+                pluggy,  # pytest plugin system
+                _pytest,  # pytest internals
+                pytest,  # pytest
+                test.runner.plugin,  # our test runner plugin
+            ],
+        )
+        console.print(tb)
+        return console.export_text(styles=True)
+    except Exception as e:
+        # Fall back to simple traceback format if Rich fails
+        import traceback
+
+        lines = traceback.format_exception(exc_type, exc_value, exc_tb)
+        return "".join(lines)
 
 
 def _extract_error_message(longreprtext: str) -> str:
@@ -95,6 +144,18 @@ def pytest_configure(config):
         config.pluginmanager.unregister(terminal)
 
 
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_call(item: pytest.Item):
+    """Capture exception info when a test fails for Rich traceback formatting."""
+    try:
+        result = yield
+        return result
+    except BaseException:
+        # Capture the exception info for Rich formatting later
+        _captured_exc_info[item.nodeid] = sys.exc_info()
+        raise
+
+
 def pytest_runtest_logstart(nodeid, location):
     global _start_memory
     _start_memory = psutil.Process().memory_info().rss
@@ -144,7 +205,15 @@ def pytest_runtest_logreport(report: pytest.TestReport):
             output["stdout"] = report.capstdout
         if hasattr(report, "capstderr"):
             output["stderr"] = report.capstderr
-        if hasattr(report, "longreprtext"):
+
+        # Use Rich traceback if we captured the exception, else fall back to longreprtext
+        if report.nodeid in _captured_exc_info:
+            exc_type, exc_value, exc_tb = _captured_exc_info.pop(report.nodeid)
+            if exc_type and exc_value:
+                output["error"] = _format_rich_traceback(exc_type, exc_value, exc_tb)
+                # Extract error message from the exception directly
+                error_message = f"{exc_type.__name__}: {exc_value}"
+        elif hasattr(report, "longreprtext") and report.longreprtext:
             output["error"] = report.longreprtext
             # Extract a concise error message from the full traceback
             # The last non-empty line typically contains the actual error
