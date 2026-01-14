@@ -1,3 +1,4 @@
+import logging
 import math
 import tempfile
 import textwrap
@@ -3372,6 +3373,27 @@ class TestReferenceOverrides:
         assert _check_connected(trait_reference.hv.get(), power.hv.get())
         assert _check_connected(trait_reference.lv.get(), power.lv.get())
 
+    def test_reference_shim_deprecation_warning(self, caplog):
+        caplog.set_level(logging.WARNING)
+
+        _, _, _, _, _ = build_instance(
+            """
+            import I2C
+            import ElectricPower
+
+            module App:
+                i2c = new I2C
+                power = new ElectricPower
+
+                # Deprecated syntax: should still work, but warn
+                i2c.reference_shim ~ power
+            """,
+            "App",
+        )
+
+        assert "reference_shim" in caplog.text
+        assert "has_single_electric_reference.reference" in caplog.text
+
     def test_reference_shim_in_middle_of_path(self):
         """
         Test reference_shim used in the middle of a field path.
@@ -3504,6 +3526,37 @@ class TestReferenceOverrides:
         trait_reference = trait.reference.get()
 
         # The trait's reference should be connected to the external power
+        assert _check_connected(trait_reference, power)
+
+    def test_trait_pointer_access_has_single_electric_reference_reference(self):
+        """
+        Test explicit trait-pointer syntax:
+
+            has_single_electric_reference.reference ~ power_io
+
+        This should traverse the has_single_electric_reference trait on the current
+        node and then access its `reference` child.
+        """
+        _, _, _, _, app_instance = build_instance(
+            """
+            #pragma experiment("TRAITS")
+            import ElectricPower
+            import has_single_electric_reference
+
+            module App:
+                trait has_single_electric_reference
+                power_io = new ElectricPower
+
+                has_single_electric_reference.reference ~ power_io
+            """,
+            "App",
+        )
+
+        power = F.ElectricPower.bind_instance(_get_child(app_instance, "power_io"))
+        app_bound = fabll.Node.bind_instance(app_instance)
+        trait = app_bound.get_trait(F.has_single_electric_reference)
+        trait_reference = trait.reference.get()
+
         assert _check_connected(trait_reference, power)
 
 

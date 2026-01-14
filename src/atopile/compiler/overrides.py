@@ -430,6 +430,17 @@ _REFERENCE_OVERRIDES: dict[str, ReferenceOverrideSpec] = {
     ),
 }
 
+# Trait pointer overrides: treat a path segment as a trait traversal rather than
+# a composition child. This allows ato to access trait-owned children using:
+#
+#     has_single_electric_reference.reference ~ power_io
+#
+# i.e. `has_single_electric_reference` acts like a pointer to the trait instance
+# on the current node (or a nested node if used mid-path).
+_TRAIT_POINTER_OVERRIDES: dict[str, type[fabll.Node]] = {
+    "has_single_electric_reference": F.has_single_electric_reference,
+}
+
 
 class ReferenceOverrideRegistry:
     """
@@ -468,6 +479,22 @@ class ReferenceOverrideRegistry:
         if not path:
             return path
 
+        # First: trait pointer overrides
+        # (e.g. `has_single_electric_reference.reference`)
+        for i, element in enumerate(path):
+            if not isinstance(element, str):
+                continue
+            if element not in _TRAIT_POINTER_OVERRIDES:
+                continue
+            trait_type = _TRAIT_POINTER_OVERRIDES[element]
+            prefix = list(path[:i])
+            suffix = list(path[i + 1 :])
+            return [
+                *prefix,
+                EdgeTrait.traverse(trait_type=trait_type),
+                *suffix,
+            ]
+
         # Scan through path looking for reference override identifiers
         for i, element in enumerate(path):
             if not isinstance(element, str):
@@ -477,6 +504,36 @@ class ReferenceOverrideRegistry:
                 continue
 
             spec = _REFERENCE_OVERRIDES[element]
+
+            # Deprecation: reference_shim -> has_single_electric_reference.reference
+            #
+            # We keep `reference_shim` for now for backwards-compatibility, but it
+            # should be replaced with explicit trait-pointer syntax.
+            if element == "reference_shim":
+                prefix = list(path[:i])
+                suffix = list(path[i + 1 :])
+
+                def _fmt(parts: list[str]) -> str:
+                    return ".".join(parts) if parts else "<self>"
+
+                prefix_str = [p for p in prefix if isinstance(p, str)]
+                suffix_str = [s for s in suffix if isinstance(s, str)]
+
+                old_expr = _fmt([*prefix_str, "reference_shim", *suffix_str])
+                replacement_parts = [
+                    *prefix_str,
+                    "has_single_electric_reference",
+                    "reference",
+                    *suffix_str,
+                ]
+                with downgrade(DeprecatedException):
+                    raise DeprecatedException(
+                        "Field `reference_shim` is deprecated.\n\n"
+                        f"Replace `{old_expr}` with `{_fmt(replacement_parts)}`.\n\n"
+                        "Example:\n"
+                        "- `i2c.reference_shim ~ power`\n"
+                        "- `i2c.has_single_electric_reference.reference ~ power`"
+                    )
 
             # Build the new path:
             # - prefix: everything before the override identifier

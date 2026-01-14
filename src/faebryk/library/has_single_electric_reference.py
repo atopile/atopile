@@ -18,8 +18,12 @@ class has_single_electric_reference(fabll.Node):
     Connect all electric references of a module into a single reference.
 
     The trait provides a `reference` (ElectricPower) that can be accessed via
-    `reference_shim` at compile time. All ElectricPower children in the
-    hierarchy are connected together with this reference.
+    `reference_shim` at compile time.
+
+    What counts as an "electric reference" here is **not** "any ElectricPower
+    anywhere". Instead, we look for `ElectricSignal`/`ElectricLogic` instances
+    in the owning node's hierarchy and connect their `.reference` power rails
+    to this trait's shared `reference`.
     """
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
@@ -54,53 +58,26 @@ class has_single_electric_reference(fabll.Node):
         ground_only = self.ground_only
         reference = self.reference.get()
 
-        # Get ALL ElectricPower children in the hierarchy (not just direct)
-        all_powers: list[F.ElectricPower] = parent_node.get_children(
+        all_signals: list[fabll.Node] = parent_node.get_children(
             direct_only=False,
-            types=F.ElectricPower,
+            types=(F.ElectricSignal, F.ElectricLogic),
         )
 
-        if not all_powers:
-            logger.debug(f"No ElectricPower children found in {parent_node.get_name()}")
+        if not all_signals:
+            logger.debug(
+                "No ElectricSignal/ElectricLogic children found in "
+                f"{parent_node.get_name()}"
+            )
             return
 
-        # Filter out ElectricPowers whose parent module has its own
-        # has_single_electric_reference. Those modules manage their own internal
-        # power connections - we shouldn't reach into them.
-        filtered_powers: list[F.ElectricPower] = []
-        for power in all_powers:
-            # Find the owning module (walk up past traits to find the actual module)
-            parent_tuple = power.get_parent()
-            power_owner = parent_tuple[0] if parent_tuple else None
-            while power_owner is not None and power_owner.has_trait(
-                fabll.ImplementsTrait
-            ):
-                parent_tuple = power_owner.get_parent()
-                power_owner = parent_tuple[0] if parent_tuple else None
-
-            # Skip if owner is a different module with its own reference management
-            # Use instance comparison since Python object identity may differ
-            is_same_node = (
-                power_owner is not None
-                and power_owner.instance.node().is_same(
-                    other=parent_node.instance.node()
-                )
-            )
-            if (
-                power_owner is not None
-                and not is_same_node
-                and power_owner.has_trait(has_single_electric_reference)
-            ):
-                continue
-
-            filtered_powers.append(power)
-
-        # Connect filtered ElectricPowers to the reference
-        for power in filtered_powers:
+        for signal in all_signals:
+            signal_reference: F.ElectricPower = signal.reference.get()  # type: ignore[attr-defined]
             if ground_only:
-                power.lv.get()._is_interface.get().connect_to(reference.lv.get())
+                signal_reference.lv.get()._is_interface.get().connect_to(
+                    reference.lv.get()
+                )
             else:
-                power._is_interface.get().connect_to(reference)
+                signal_reference._is_interface.get().connect_to(reference)
 
     @classmethod
     def MakeChild(
@@ -113,3 +90,73 @@ class has_single_electric_reference(fabll.Node):
             )
         )
         return out
+
+
+# -----------------------------------------------------------------------------
+#                                 Tests
+# -----------------------------------------------------------------------------
+
+import faebryk.core.faebrykpy as fbrk  # noqa: E402
+import faebryk.core.graph as graph  # noqa: E402
+
+
+def _iface_connected(a: fabll.Node, b: fabll.Node) -> bool:
+    path = fbrk.EdgeInterfaceConnection.is_connected_to(
+        source=a.instance, target=b.instance
+    )
+    return path.get_end_node().node().is_same(other=b.instance.node())
+
+
+def test_has_single_electric_reference_connects_signal_references():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _App(fabll.Node):
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        _shared_ref = fabll.Traits.MakeEdge(has_single_electric_reference.MakeChild())
+
+        a = F.ElectricLogic.MakeChild()
+        b = F.ElectricSignal.MakeChild()
+
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
+
+    trait = app.get_trait(has_single_electric_reference)
+    shared = trait.reference.get()
+
+    # Before unification, the signal references are distinct
+    assert not _iface_connected(app.a.get().reference.get(), shared)
+    assert not _iface_connected(app.b.get().reference.get(), shared)
+
+    trait.connect_all_references()
+
+    assert _iface_connected(app.a.get().reference.get(), shared)
+    assert _iface_connected(app.b.get().reference.get(), shared)
+
+
+def test_has_single_electric_reference_reaches_into_nested_nodes_with_own_trait():  # noqa: E501
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _Child(fabll.Node):
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        _shared_ref = fabll.Traits.MakeEdge(has_single_electric_reference.MakeChild())
+        logic = F.ElectricLogic.MakeChild()
+
+    class _App(fabll.Node):
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        _shared_ref = fabll.Traits.MakeEdge(has_single_electric_reference.MakeChild())
+        child = _Child.MakeChild()
+        top_logic = F.ElectricLogic.MakeChild()
+
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
+
+    app_trait = app.get_trait(has_single_electric_reference)
+    shared = app_trait.reference.get()
+
+    app_trait.connect_all_references()
+
+    # top-level logic should be unified with app's shared reference
+    assert _iface_connected(app.top_logic.get().reference.get(), shared)
+
+    # child's logic reference should ALSO be unified with parent's shared reference
+    assert _iface_connected(app.child.get().logic.get().reference.get(), shared)
