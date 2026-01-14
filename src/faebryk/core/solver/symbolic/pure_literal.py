@@ -55,19 +55,12 @@ _CanonicalExpressions: dict[type[fabll.NodeT], _Multi] = {
     F.Expressions.Or: _Multi(F.Literals.Booleans.op_or, False),
     F.Expressions.Xor: _Multi(F.Literals.Booleans.op_xor),
     F.Expressions.Not: _Multi(F.Literals.Booleans.op_not),
-    F.Expressions.Intersection: _Multi(F.Literals.is_literal.op_setic_intersect),
-    F.Expressions.Union: _Multi(F.Literals.is_literal.op_setic_union),
     # TODO wtf
     F.Expressions.LessThan: _Multi(F.Literals.Numbers.op_mul_intervals),
     F.Expressions.GreaterThan: _Multi(F.Literals.Numbers.op_mul_intervals),
     #
     F.Expressions.Floor: _Multi(F.Literals.Numbers.op_floor),
     F.Expressions.Ceil: _Multi(F.Literals.Numbers.op_ceil),
-    F.Expressions.Min: _Multi(F.Literals.Numbers.min_elem),
-    F.Expressions.Max: _Multi(F.Literals.Numbers.max_elem),
-    F.Expressions.SymmetricDifference: _Multi(
-        F.Literals.is_literal.op_setic_symmetric_difference
-    ),
     F.Expressions.GreaterOrEqual: _Multi(F.Literals.Numbers.op_greater_or_equal),
     F.Expressions.GreaterThan: _Multi(F.Literals.Numbers.op_greater_than),
     F.Expressions.Is: _Multi(F.Literals.is_literal.op_setic_equals),

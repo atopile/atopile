@@ -364,16 +364,6 @@ class BoundExpressions:
     def ceil(self, operand: F.Parameters.can_be_operand) -> F.Parameters.can_be_operand:
         return F.Expressions.Ceil.c(operand, g=self.g, tg=self.tg)
 
-    def min(
-        self, *operands: F.Parameters.can_be_operand
-    ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Min.c(*operands, g=self.g, tg=self.tg)
-
-    def max(
-        self, *operands: F.Parameters.can_be_operand
-    ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Max.c(*operands, g=self.g, tg=self.tg)
-
     def is_(
         self,
         *operands: F.Parameters.can_be_operand,
@@ -473,23 +463,6 @@ class BoundExpressions:
         self, *operands: F.Parameters.can_be_operand, assert_: bool = False
     ) -> F.Parameters.can_be_operand:
         return F.Expressions.Xor.c(*operands, g=self.g, tg=self.tg, assert_=assert_)
-
-    def intersection(
-        self, *operands: F.Parameters.can_be_operand
-    ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Intersection.c(*operands, g=self.g, tg=self.tg)
-
-    def union(
-        self, *operands: F.Parameters.can_be_operand
-    ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Union.c(*operands, g=self.g, tg=self.tg)
-
-    def symmetric_difference(
-        self,
-        left: F.Parameters.can_be_operand,
-        right: F.Parameters.can_be_operand,
-    ) -> F.Parameters.can_be_operand:
-        return F.Expressions.SymmetricDifference.c(left, right, g=self.g, tg=self.tg)
 
     def numbers(self) -> F.Literals.Numbers:
         return F.Literals.Numbers.bind_typegraph(tg=self.tg).create_instance(g=self.g)

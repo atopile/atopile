@@ -415,36 +415,6 @@ def fold_sin(expr: F.Expressions.Sin, mutator: Mutator):
     )
 
 
-# Setic --------------------------------------------------------------------------------
-
-
-# @expression_wise_algorithm(Intersection)
-def fold_intersect(expr: F.Expressions.Intersection, mutator: Mutator):
-    """
-    Intersection(A) -> A (implicit)
-    """
-
-    return
-
-
-# @expression_wise_algorithm(Union)
-def fold_union(expr: F.Expressions.Union, mutator: Mutator):
-    """
-    Union(A) -> A (implicit)
-    """
-
-    return
-
-
-# @expression_wise_algorithm(SymmetricDifference)
-def fold_symmetric_difference(
-    expr: F.Expressions.SymmetricDifference, mutator: Mutator
-):
-    """ """
-
-    return
-
-
 # Constrainable ------------------------------------------------------------------------
 
 

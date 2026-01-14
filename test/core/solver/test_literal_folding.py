@@ -3,7 +3,6 @@ import logging
 import sys
 import warnings
 from collections import defaultdict
-from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from math import inf
@@ -49,8 +48,6 @@ Log = F.Expressions.Log
 Cos = F.Expressions.Cos
 Floor = F.Expressions.Floor
 Ceil = F.Expressions.Ceil
-Min = F.Expressions.Min
-Max = F.Expressions.Max
 
 # Workaround: for large repr generation of hypothesis strategies,
 LazyStrategy.__repr__ = lambda self: str(id(self))
@@ -133,10 +130,6 @@ def eval_pure_literal_expression(
     elif expr_type is Ceil:
         return operands_literals[0].op_ceil(g=g, tg=tg)
     # Variadic operations (currently disabled in EXPR_TYPES)
-    elif expr_type is Min:
-        return operands_literals[0].op_min(g=g, tg=tg)
-    elif expr_type is Max:
-        return operands_literals[0].op_max(g=g, tg=tg)
     else:
         raise NotImplementedError(f"Expression type {expr_type} not supported")
 
@@ -560,9 +553,6 @@ EXPR_TYPES = [
     ExprType(Round, st_values.values, Extension.single, check_overflow=False),
     ExprType(Floor, st_values.values, Extension.single, check_overflow=False),
     ExprType(Ceil, st_values.values, Extension.single, check_overflow=False),
-    # TODO
-    ExprType(Min, st_values.lists, Extension.tuples, disable=True),
-    ExprType(Max, st_values.lists, Extension.tuples, disable=True),
 ]
 
 

@@ -37,9 +37,6 @@ Flattenable = (
     | F.Expressions.And
     | F.Expressions.Or
     | F.Expressions.Xor
-    | F.Expressions.Union
-    | F.Expressions.Intersection
-    | F.Expressions.Difference
 )
 
 
@@ -53,9 +50,6 @@ Flattenable = (
         F.Expressions.And,
         F.Expressions.Or,
         F.Expressions.Xor,
-        F.Expressions.Union,
-        F.Expressions.Intersection,
-        F.Expressions.Difference,
     ],
 )
 def test_flatten_associative(op: type[Flattenable]):

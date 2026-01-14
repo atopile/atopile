@@ -16,13 +16,11 @@ And = F.Expressions.And
 Cardinality = F.Expressions.Cardinality
 Ceil = F.Expressions.Ceil
 Cos = F.Expressions.Cos
-Difference = F.Expressions.Difference
 Divide = F.Expressions.Divide
 Floor = F.Expressions.Floor
 GreaterOrEqual = F.Expressions.GreaterOrEqual
 GreaterThan = F.Expressions.GreaterThan
 Implies = F.Expressions.Implies
-Intersection = F.Expressions.Intersection
 is_predicate = F.Expressions.is_predicate
 IsSubset = F.Expressions.IsSubset
 IsSuperset = F.Expressions.IsSuperset
@@ -36,8 +34,6 @@ Round = F.Expressions.Round
 Sin = F.Expressions.Sin
 Sqrt = F.Expressions.Sqrt
 Subtract = F.Expressions.Subtract
-SymmetricDifference = F.Expressions.SymmetricDifference
-Union = F.Expressions.Union
 Xor = F.Expressions.Xor
 
 logger = logging.getLogger(__name__)
@@ -118,11 +114,6 @@ def convert_to_canonical_operations(mutator: Mutator):
     # CanonicalLogic
     Or_ = curry(Or)
     Not_ = curry(Not)
-
-    # CanonicalSetic
-    # Intersection_ = curry(Intersection)
-    Union_ = curry(Union)
-    SymmetricDifference_ = curry(SymmetricDifference)
 
     # CanonicalPredicate
     # GreaterOrEqual_ = curry(GreaterOrEqual)
@@ -213,16 +204,6 @@ def convert_to_canonical_operations(mutator: Mutator):
             IsSuperset,
             lambda operands: list(reversed(operands)),
         ),
-        (
-            # A - B - C = A - (B | C)
-            # = A & (A ^ (B | C))
-            Intersection,
-            Difference,
-            lambda operands: [
-                operands[0],
-                SymmetricDifference_(operands[0], Union_(*operands)),
-            ],
-        ),
     ]
 
     lookup = {
@@ -311,49 +292,6 @@ def convert_to_canonical_operations(mutator: Mutator):
 
         operands = [_strip_units(o) for o in e.get_operands()]
         from_ops = [e_po]
-        # TODO move up, by implementing Parameter Target
-        # Min, Max
-        if e.isinstance(F.Expressions.Min, F.Expressions.Max):
-            p = (
-                F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
-                .create_instance(mutator.G_out)
-                .setup(
-                    is_unit=None,
-                    domain=F.Parameters.NumericParameter.DOMAIN_SKIP,
-                )
-            )
-            p_p = p.is_parameter.get()
-            p_po = p.is_parameter_operatable.get()
-            p_op = p_po.as_operand.get()
-            mutator.register_created_parameter(p_p, from_ops=from_ops)
-            union = (
-                Union.bind_typegraph(mutator.tg_out)
-                .create_instance(mutator.G_out)
-                .setup(*[copy for o in operands if (copy := mutator.get_copy(o))])
-            )
-            mutator.create_check_and_insert_expression(
-                IsSubset,
-                p_op,
-                union.is_expression.get().as_operand.get(),
-                from_ops=from_ops,
-                assert_=True,
-            )
-            if e.isinstance(F.Expressions.Min):
-                mutator.create_check_and_insert_expression(
-                    GreaterOrEqual,
-                    union.is_expression.get().as_operand.get(),
-                    p_op,
-                    from_ops=from_ops,
-                )
-            else:
-                mutator.create_check_and_insert_expression(
-                    GreaterOrEqual,
-                    p_op,
-                    union.is_expression.get().as_operand.get(),
-                    from_ops=from_ops,
-                )
-            mutator._mutate(e_po, p_po)
-            continue
 
         # Canonical-expressions need to be mutated to strip the units
         if e_type_uuid not in lookup:

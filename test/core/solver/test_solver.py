@@ -2118,29 +2118,6 @@ _A: list[
     (lambda E: E.or_, lambda E: [], lambda E: False),
     # Not tests
     (lambda E: E.not_, lambda E: [False], lambda E: True),
-    # Intersection tests
-    (
-        lambda E: E.intersection,
-        lambda E: [E.lit_op_range((0, 10)), E.lit_op_range((10, 20))],
-        lambda E: E.lit_op_range((10, 10)),
-    ),
-    # Union tests
-    (
-        lambda E: E.union,
-        lambda E: [E.lit_op_range((0, 10)), E.lit_op_range((10, 20))],
-        lambda E: E.lit_op_range((0, 20)),
-    ),
-    # SymmetricDifference tests
-    (
-        lambda E: E.symmetric_difference,
-        lambda E: [E.lit_op_range((0, 10)), E.lit_op_range((10, 20))],
-        lambda E: E.lit_op_range((0, 20)),
-    ),
-    (
-        lambda E: E.symmetric_difference,
-        lambda E: [E.lit_op_range((0, 10)), E.lit_op_range((5, 20))],
-        lambda E: E.lit_op_ranges((0, 5), (10, 20)),
-    ),
     # IsSubset tests
     (
         lambda E: E.is_subset,
