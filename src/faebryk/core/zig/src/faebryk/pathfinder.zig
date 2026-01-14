@@ -362,6 +362,9 @@ pub const PathFinder = struct {
         }
 
         if (comptime debug_pathfinder) {
+            std.debug.print("Start node: ", .{});
+            print_instance_node(start_node);
+            std.debug.print("\n", .{});
             std.debug.print("Visited paths: {}\t", .{self.visited_path_counter});
             std.debug.print("Paths returned: {}\n", .{bfs_paths.paths.items.len});
             std.debug.print("Total time: {d:.3}ms\t", .{@as(f64, @floatFromInt(total_timer.read())) / 1_000_000.0});
