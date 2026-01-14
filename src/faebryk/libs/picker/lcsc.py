@@ -633,7 +633,7 @@ def attach(
         )
         footprint = associated_footprint.setup_from_pads_and_leads(
             component_node=component_node,
-            pads=[p[1] for p in is_pads],
+            pads=[p[0] for p in is_pads],
             leads=leads_t,
         ).get_footprint()
     except F.Footprints.FootprintError as e:

@@ -27,11 +27,8 @@ class is_pad(fabll.Node):
     pad_name_ = F.Parameters.StringParameter.MakeChild()
     pad_number_ = F.Parameters.StringParameter.MakeChild()
 
-    pad_ = F.Collections.Pointer.MakeChild()
-
-    @property
-    def pad(self) -> fabll.Node:
-        return self.pad_.get().deref()
+    def get_pad_node(self) -> fabll.Node:
+        return fabll.Traits(self).get_obj_raw()
 
     @property
     def pad_name(self) -> str:
@@ -104,7 +101,7 @@ class has_associated_footprint(fabll.Node):
     def setup_from_pads_and_leads(
         self,
         component_node: fabll.Node,
-        pads: list[fabll.Node],
+        pads: list[is_pad] | None = None,
         leads: list["F.Lead.is_lead"] | None = None,
     ) -> Self:
         """
@@ -129,28 +126,27 @@ class has_associated_footprint(fabll.Node):
             component_node.instance
         ).create_instance(g=component_node.instance.g())
         fp_trait = fabll.Traits.create_and_add_instance_to(node=fp, trait=is_footprint)
-        # add pad_nodes to the footprint with composition edge
-        for pad_node in pads:
-            if not pad_node.has_trait(is_pad):
-                raise FootprintError(
-                    f"{pad_node.get_name(accept_no_parent=True)} is not a pad"
-                )
-            fp.add_child(pad_node)
 
         fabll.Traits.create_and_add_instance_to(
             node=component_node, trait=has_associated_footprint
         ).setup(fp_trait)
 
-        pads_t = fp_trait.get_pads()
-        if leads is not None:
-            # only attach to leads that don't have associated pads yet
-            for lead_t in [lt for lt in leads if not lt.has_trait(has_associated_pads)]:
-                matched_pad = lead_t.find_matching_pad(pads_t)
-                logger.debug(
-                    f"matched pad and lead: "
-                    f"{matched_pad.pad_name}:{lead_t.get_lead_name()}"
-                    f"for {component_node.get_name()}"
-                )
+        # add pad_nodes to the footprint with composition edge
+        if pads:
+            for pad in pads:
+                fp.add_child(pad.get_pad_node())
+
+            if leads is not None:
+                # only attach to leads that don't have associated pads yet
+                for lead_t in [
+                    lt for lt in leads if not lt.has_trait(has_associated_pads)
+                ]:
+                    matched_pad = lead_t.find_matching_pad(pads)
+                    logger.debug(
+                        f"matched pad and lead: "
+                        f"{matched_pad.pad_name}:{lead_t.get_lead_name()}"
+                        f"for {component_node.get_name()}"
+                    )
         self.setup(fp_trait)
         return self
 

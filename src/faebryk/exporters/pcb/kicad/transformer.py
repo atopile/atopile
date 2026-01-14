@@ -205,10 +205,11 @@ class PCB_Transformer:
             ).get_footprint()
 
             # For atomic parts, create pads from library footprint if not already there
-            if module.has_trait(F.is_atomic_part) and not g_fp.get_pads():
+            if (
+                atomic_part_t := module.try_get_trait(F.is_atomic_part)
+            ) and not g_fp.get_pads():
                 # Get footprint identifier
-                atomic_part = module.get_trait(F.is_atomic_part)
-                k_lib_file_fp_t = atomic_part.get_kicad_library_footprint()
+                k_lib_file_fp_t = atomic_part_t.get_kicad_library_footprint()
                 fp_id = k_lib_file_fp_t.kicad_identifier
 
                 # Get library footprint to extract pad info
