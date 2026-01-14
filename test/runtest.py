@@ -8,10 +8,11 @@ import sys
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from textwrap import indent
 from typing import Any, Callable
 
 import typer
+from rich.console import Console
+from rich.traceback import Traceback
 
 from faebryk.libs.logging import FLOG_FMT, setup_basic_logging
 from faebryk.libs.util import indented_container
@@ -207,7 +208,18 @@ def run_tests(matches: list[tuple[Path, Callable]]) -> None:
                 print(f"Running {test_func.__name__} with {kwargs}")
                 test_func(**kwargs)
 
-        typer.run(fn)
+        try:
+            fn()
+        except Exception:
+            # Print Rich traceback with locals and suppressed internals
+            console = Console(stderr=True)
+            tb = Traceback.from_exception(
+                *sys.exc_info(),
+                show_locals=True,
+                suppress=[typer, "click", __file__],
+            )
+            console.print(tb)
+            raise SystemExit(1)
 
 
 class TestNotFound(Exception):

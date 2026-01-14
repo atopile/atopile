@@ -587,6 +587,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
             mutator.utils.hack_get_expr_type(expr_e),
             *mapped_operands,
             from_ops=from_ops,
+            allow_uncorrelated_congruence_match=True,
         )
         if res.out_operand is None:
             continue

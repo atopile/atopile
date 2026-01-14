@@ -260,11 +260,17 @@ def find_subsuming_expression(
 def find_congruent_expression[T: F.Expressions.ExpressionNodes](
     mutator: Mutator,
     builder: "ExpressionBuilder[T]",
+    allow_uncorrelated_congruence_match: bool = False,
 ) -> T | None:
     """
     Careful: Disregards asserted (on purpose)!
     """
-    allow_uncorrelated = builder.assert_
+    allow_uncorrelated = (
+        builder.assert_
+        or allow_uncorrelated_congruence_match
+        # TODO use setic trait instead
+        or builder.factory in [F.Expressions.IsSubset]
+    )
     non_lits = list(builder.indexed_pos().values())
     if not non_lits:
         lit_ops = {
@@ -550,6 +556,61 @@ def _fold_pure_literal_operands(
     return InsertExpressionResult(new_expr_op, True)
 
 
+def _fold_unpure_literal_operands(
+    mutator: Mutator, builder: ExpressionBuilder
+) -> InsertExpressionResult | None:
+    """
+    Fold unpure literal operands: f1(f2(X)) ⊆! eval(f1(f2(X)))
+    """
+    from faebryk.core.solver.symbolic.pure_literal import exec_pure_literal_operands
+
+    if builder.factory in [F.Expressions.IsSubset, F.Expressions.Is]:
+        return None
+
+    if not (
+        all(
+            mutator.utils.is_literal_expression(op.as_operand.get())
+            for op in builder.indexed_ops_with_trait(
+                F.Expressions.is_expression
+            ).values()
+        )
+    ):
+        return None
+
+    lit_operands = [
+        lit
+        if (lit := op.try_get_sibling_trait(F.Literals.is_literal))
+        # inner literal expression has already superset due to invariant
+        else not_none(
+            mutator.utils.try_extract_superset(op.as_parameter_operatable.force_get())
+        )
+        for op in builder.operands
+    ]
+
+    operands = [op.as_operand.get() for op in lit_operands]
+    folded_lit = exec_pure_literal_operands(
+        mutator.G_transient, mutator.tg_out, builder.factory, operands
+    )
+    if folded_lit is None:
+        return None
+
+    folded_lit_op = folded_lit.as_operand.get()
+    new_expr = mutator._create_and_insert_expression(
+        builder.factory, *operands, assert_=builder.assert_, terminate=builder.terminate
+    )
+    new_expr_op = new_expr.get_trait(F.Parameters.can_be_operand)
+    mutator.create_check_and_insert_expression(
+        F.Expressions.IsSubset,
+        new_expr_op,
+        folded_lit_op,
+        terminate=True,
+        assert_=True,
+        from_ops=[],
+    )
+
+    return InsertExpressionResult(new_expr_op, True)
+
+
 def _no_literal_aliases(
     mutator: Mutator,
     builder: ExpressionBuilder,
@@ -637,6 +698,7 @@ def insert_expression(
     mutator: Mutator,
     builder: ExpressionBuilder,
     expr_already_exists_in_old_graph: bool = False,
+    allow_uncorrelated_congruence_match: bool = False,
 ) -> InsertExpressionResult:
     """
     Invariants
@@ -651,8 +713,14 @@ def insert_expression(
     * ✓ no empty supersets
     * ✓ fold pure literal expressions: E(X, Y) -> E{S/P|...}(X, Y)
     * - no pure P!
+    * ✓ superset estimate lit exprs: f1(f2(A{S|X})) ⊆! f1(f2(X))
     * ✓ canonical
     * no A is X(single) => A ss! X
+
+    ====
+    - allow_uncorrelated_congruence_match: sometimes it's okay to match uncorrelated literals
+        that's mostly the case for operands of setic expressions
+        e.g for A ss! B, if B is congruence matching B' we can replace
     """
 
     # TODO: congruence check is running on new graph only,
@@ -676,7 +744,9 @@ def insert_expression(
     builder = _no_singleton_supersets(mutator, builder)
 
     # * no congruence
-    if congruent := find_congruent_expression(mutator, builder):
+    if congruent := find_congruent_expression(
+        mutator, builder, allow_uncorrelated_congruence_match
+    ):
         if builder.assert_:
             congruent_assertable = congruent.get_trait(F.Expressions.is_assertable)
             mutator.assert_(congruent_assertable)
@@ -747,6 +817,9 @@ def insert_expression(
     if lit_fold := _fold_pure_literal_operands(mutator, builder):
         return lit_fold
 
+    if lit_fold := _fold_unpure_literal_operands(mutator, builder):
+        return lit_fold
+
     # * canonical (covered by create)
     expr = mutator._create_and_insert_expression(
         builder.factory,
@@ -760,11 +833,13 @@ def wrap_insert_expression(
     mutator: Mutator,
     builder: ExpressionBuilder,
     expr_already_exists_in_old_graph: bool = False,
+    allow_uncorrelated_congruence_match: bool = False,
 ) -> InsertExpressionResult:
     res = insert_expression(
         mutator,
         builder,
         expr_already_exists_in_old_graph=expr_already_exists_in_old_graph,
+        allow_uncorrelated_congruence_match=allow_uncorrelated_congruence_match,
     )
     if res.out_operand is None:
         target_dbg = "Dropped"
@@ -780,8 +855,8 @@ def wrap_insert_expression(
             ctx = mutator.mutation_map.print_ctx
             target_dbg = f"`{op.pretty(context=ctx)}`"
     # TODO debug
-    if target_dbg != "COPY":
-        logger.warning(f"{pretty_expr(builder, mutator)} -> {target_dbg}")
+    # if target_dbg != "COPY":
+    logger.warning(f"{pretty_expr(builder, mutator)} -> {target_dbg}")
 
     return res
 

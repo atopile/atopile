@@ -1308,6 +1308,7 @@ class Mutator:
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
         assert_: bool = False,
         terminate: bool = False,
+        allow_uncorrelated_congruence_match: bool = False,
     ) -> "InsertExpressionResult":
         import faebryk.core.solver.symbolic.invariants as invariants
 
@@ -1321,7 +1322,11 @@ class Mutator:
             terminate=terminate,
         )
 
-        res = invariants.wrap_insert_expression(self, builder)
+        res = invariants.wrap_insert_expression(
+            self,
+            builder,
+            allow_uncorrelated_congruence_match=allow_uncorrelated_congruence_match,
+        )
 
         if res.is_new and (
             out_po := not_none(res.out_operand).as_parameter_operatable.try_get()

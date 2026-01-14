@@ -637,7 +637,28 @@ class TestAggregator:
         # haven't yet received START/FINISH. If a worker dies in that window,
         # the test is otherwise "lost" (not in the queue and never started).
         self._claimed_by_pid: dict[int, str] = {}
+        # Maps worker PID to worker ID (for log file access)
+        self._pid_to_worker_id: dict[int, int] = {}
         self.start_time = datetime.datetime.now()
+
+    def register_worker(self, worker_id: int, pid: int) -> None:
+        """Register a worker's PID to worker_id mapping for log file access."""
+        with self._lock:
+            self._pid_to_worker_id[pid] = worker_id
+
+    def get_worker_log(self, pid: int) -> str | None:
+        """Get the log file content for a worker by PID."""
+        with self._lock:
+            worker_id = self._pid_to_worker_id.get(pid)
+        if worker_id is None:
+            return None
+        log_file = get_log_file(worker_id)
+        if log_file.exists():
+            try:
+                return log_file.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                return None
+        return None
 
     def handle_claim(self, pid: int, nodeid: str) -> None:
         with self._lock:
@@ -968,8 +989,10 @@ class TestAggregator:
             # Logs
             log_button = ""
             log_modal = ""
+            log_content = ""
+
             if t.output:
-                log_content = ""
+                # Finished test - use captured output
                 if "stdout" in t.output and t.output["stdout"]:
                     stdout = ansi_to_html(t.output["stdout"])
                     log_content += (
@@ -988,25 +1011,34 @@ class TestAggregator:
                         f'<div class="log-section"><h3>ERROR</h3>'
                         f"<pre>{error}</pre></div>"
                     )
+            elif t.start_time and t.outcome is None and t.pid:
+                # Running test - read worker log file
+                worker_log = self.get_worker_log(t.pid)
+                if worker_log:
+                    log_html = ansi_to_html(worker_log)
+                    log_content = (
+                        f'<div class="log-section"><h3>LIVE OUTPUT</h3>'
+                        f"<pre>{log_html}</pre></div>"
+                    )
 
-                if log_content:
-                    safe_nodeid = html.escape(t.nodeid)
-                    modal_id = f"modal_{safe_nodeid}"
-                    log_button = f"<button onclick=\"openModal('{modal_id}')\">View Logs</button>"  # noqa: E501
-                    log_modal = f"""
-                    <div id="{modal_id}" class="modal">
-                      <div class="modal-content">
-                        <div class="modal-header">
-                          <h2>Logs for {t.nodeid}</h2>
-                          <div class="modal-buttons">
-                            <button class="copy-btn" onclick="copyLogs('{modal_id}')">Copy</button>
-                            <button class="close-btn" onclick="closeModal('{modal_id}')">&times;</button>
-                          </div>
-                        </div>
-                        {log_content}
+            if log_content:
+                safe_nodeid = html.escape(t.nodeid)
+                modal_id = f"modal_{safe_nodeid}"
+                log_button = f"<button onclick=\"openModal('{modal_id}')\">View Logs</button>"  # noqa: E501
+                log_modal = f"""
+                <div id="{modal_id}" class="modal">
+                  <div class="modal-content">
+                    <div class="modal-header">
+                      <h2>Logs for {t.nodeid}</h2>
+                      <div class="modal-buttons">
+                        <button class="copy-btn" onclick="copyLogs('{modal_id}')">Copy</button>
+                        <button class="close-btn" onclick="closeModal('{modal_id}')">&times;</button>
                       </div>
                     </div>
-                    """  # noqa: E501
+                    {log_content}
+                  </div>
+                </div>
+                """  # noqa: E501
 
             # Split nodeid
             # Format: path/to/file.py::test_name[param] or path/to/file.py::TestClass::test_method[param]  # noqa: E501
@@ -1646,6 +1678,7 @@ def main(
             [sys.executable, str(worker_script)], env=env, stdout=f, stderr=f
         )
         workers[i] = p
+        aggregator.register_worker(i, p.pid)
 
     for _ in range(worker_count):
         start_worker()

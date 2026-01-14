@@ -22,6 +22,8 @@ REL_DIGITS = 7  # 99.99999% precision
 ABS_DIGITS = 15  # femto
 EPSILON_REL = 10 ** -(REL_DIGITS - 1)
 EPSILON_ABS = 10**-ABS_DIGITS
+# TODO set to -1
+PRINT_DIGITS = 3
 
 # TODO all creating functions need g as param
 
@@ -4612,7 +4614,12 @@ class Numbers(fabll.Node):
             """
             if math.isinf(number):
                 return "∞" if number > 0 else "-∞"
-            return str(number)
+            str_num = str(number)
+            if "." in str_num:
+                num, digits = str_num.split(".")
+                digits = digits[:PRINT_DIGITS]
+                str_num = f"{num}.{digits}"
+            return str_num
 
         # Get unit symbol
         try:
