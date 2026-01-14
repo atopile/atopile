@@ -266,11 +266,7 @@ def find_congruent_expression[T: F.Expressions.ExpressionNodes](
     """
     allow_uncorrelated = builder.assert_
     non_lits = list(builder.indexed_pos().values())
-    literal_expr = all(
-        mutator.utils.is_literal(op) or mutator.utils.is_literal_expression(op)
-        for op in builder.operands
-    )
-    if literal_expr:
+    if not non_lits:
         lit_ops = {
             op
             for op in builder.factory.bind_typegraph(mutator.tg_in).get_instances(
@@ -292,11 +288,7 @@ def find_congruent_expression[T: F.Expressions.ExpressionNodes](
             return next(iter(lit_ops))
         return None
 
-    candidates = [
-        expr_t
-        for expr in non_lits[0].get_operations()
-        if (expr_t := expr.try_cast(builder.factory))
-    ]
+    candidates = next(iter(non_lits)).get_operations(builder.factory)
 
     for c in candidates:
         if c.get_trait(F.Expressions.is_expression).is_congruent_to_factory(
@@ -607,6 +599,40 @@ def _no_literal_aliases(
     return builder
 
 
+def _no_singleton_supersets(
+    mutator: Mutator, builder: ExpressionBuilder
+) -> ExpressionBuilder:
+    """
+    no singleton supersets
+    f(A{S|[X]}, B, ...) -> f(X, B ...)
+
+    not on
+    - A{S|{X]} ss! X
+    - X ss! A{S|{X]}
+    """
+    lits = builder.indexed_lits()
+    if builder.factory is F.Expressions.IsSubset and builder.assert_ and lits:
+        return builder
+
+    mapped_operands = [
+        lit.as_operand.get()
+        if (lit := mutator.utils.is_replacable_by_literal(op))
+        else op
+        for op in builder.operands
+    ]
+    if mapped_operands == builder.operands:
+        return builder
+
+    out = ExpressionBuilder(
+        builder.factory, mapped_operands, builder.assert_, builder.terminate
+    )
+    logger.debug(
+        f"No singleton supersets: {pretty_expr(builder, mutator)} -> "
+        f"{pretty_expr(out, mutator)}"
+    )
+    return out
+
+
 def insert_expression(
     mutator: Mutator,
     builder: ExpressionBuilder,
@@ -618,7 +644,8 @@ def insert_expression(
     * ✓ don't use predicates as operands: Op(P!, ...) -> Op(True, ...)
     * ✓ P{S|True} -> P!, P!{S/P|False} -> Contradiction, P!{S|True} -> P!
     * ✓ no A >! X or X >! A (create A ss! X or X ss! A)
-    * ✓ no congruence (function is kinda shit, TODO)
+    * ✓ no singleton supersets: f(A{S|[X]}, B, ...) -> f(X, B ...)
+    * ✓ no congruence
     * ✓ minimal subsumption
     * ✓ - intersected supersets (single superset)
     * ✓ no empty supersets
@@ -644,6 +671,9 @@ def insert_expression(
 
     # * no A >! X or X >! A (create A ss! X or X ss! A)
     builder = _no_literal_inequalities(mutator, builder)
+
+    # * f(A{S|[X]}, B, ...) |-> f(X, B ...)
+    builder = _no_singleton_supersets(mutator, builder)
 
     # * no congruence
     if congruent := find_congruent_expression(mutator, builder):

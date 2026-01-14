@@ -46,7 +46,6 @@ class DefaultSolver(Solver):
         iterative = [
             structural.check_literal_contradiction,
             structural.remove_unconstrained,
-            structural.convert_operable_aliased_to_single_into_literal,
             structural.resolve_alias_classes,
             structural.distribute_literals_across_alias_classes,
             expression_groups.associative_flatten,
@@ -355,8 +354,10 @@ class DefaultSolver(Solver):
 
         if LOG_PICK_SOLVE:
             logger.info(
-                f"Phase 1 Solving: Analytical Solving done in {iterno} iterations"
-                f" and {time.time() - now:.3f} seconds".ljust(NET_LINE_WIDTH, "=")
+                (
+                    f"Phase 1 Solving: Analytical Solving done in {iterno} iterations"
+                    f" and {time.time() - now:.3f} seconds"
+                ).ljust(NET_LINE_WIDTH, "=")
             )
 
         timings.add("terminal" if terminal else "non-terminal")

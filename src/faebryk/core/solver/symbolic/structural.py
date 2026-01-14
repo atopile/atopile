@@ -276,42 +276,6 @@ def predicate_flat_terminate(mutator: Mutator):
         mutator.predicate_terminate(p_e.get_sibling_trait(F.Expressions.is_predicate))
 
 
-@algorithm("Convert aliased singletons into literals", terminal=False)
-def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
-    """
-    A{S|5} + B -> ([5]) + B
-    A{S|True} ^ B -> [True] ^ B
-    """
-
-    # TODO explore alt strat:
-    # - find all lit aliases
-    # - get all operations of each po
-    # - iterate through those exprs
-    # Attention: dont immediately replace, because we might have multiple literals
-
-    exprs = mutator.get_expressions(sort_by_depth=True)
-    for e in exprs:
-        e_po = e.as_parameter_operatable.get()
-        # A{S|Xs} ss! Xs
-        if mutator.utils.is_set_literal_expression(e_po, allow_superset_exprs=True):
-            continue
-
-        e_ops = e.get_operands()
-        # preserve non-replaceable operands
-        # A{S|5} + B + C + 10 -> 5, B, C, 10
-        ops = [
-            lit.as_operand.get()
-            if (lit := mutator.utils.is_replacable_by_literal(op))
-            else op
-            for op in e_ops
-        ]
-
-        if ops == e_ops:
-            continue
-
-        mutator.mutate_expression(e, operands=ops)
-
-
 @algorithm("Isolate lone parameters", terminal=False)
 def isolate_lone_params(mutator: Mutator):
     """
