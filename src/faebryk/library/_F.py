@@ -68,6 +68,7 @@ from faebryk.library.Diode import Diode
 from faebryk.library.Fuse import Fuse
 from faebryk.library.Inductor import Inductor
 from faebryk.library.MOSFET import MOSFET
+from faebryk.library.MountingHole import MountingHole
 from faebryk.library.Net import Net
 from faebryk.library.Resistor import Resistor
 from faebryk.library.TestPoint import TestPoint
@@ -163,6 +164,7 @@ __all__ = [
     "Fuse",
     "Inductor",
     "MOSFET",
+    "MountingHole",
     "Net",
     "Resistor",
     "TestPoint",
