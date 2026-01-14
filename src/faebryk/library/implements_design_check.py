@@ -3,6 +3,7 @@
 
 
 import logging
+import time
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Any, Callable, Sequence
 
@@ -207,7 +208,6 @@ class implements_design_check(fabll.Node):
         return True
 
     def run(self, stage: CheckStage) -> bool:
-        logger.debug(f"Running {stage.name} checks")
         match stage:
             case implements_design_check.CheckStage.POST_DESIGN_SETUP:
                 return self.check_post_design_setup()

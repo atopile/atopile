@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import time
 
 import pytest
 
@@ -32,6 +33,7 @@ def check_design(
     with accumulate(UserDesignCheckException) as accumulator:
         for check in checks:
             with accumulator.collect():
+                start_time = time.perf_counter()
                 try:
                     check.run(stage)
                 except F.implements_design_check.MaybeUnfulfilledCheckException as e:
@@ -41,6 +43,7 @@ def check_design(
                         ) from e
                 except F.implements_design_check.UnfulfilledCheckException as e:
                     raise UserDesignCheckException.from_nodes(str(e), e.nodes) from e
+                logger.info(f"Time taken: {(time.perf_counter() - start_time):.3f} seconds")
 
 
 class Test:
