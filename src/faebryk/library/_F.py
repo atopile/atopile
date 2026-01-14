@@ -45,6 +45,7 @@ import faebryk.library.Units as Units
 import faebryk.library.KiCadFootprints as KiCadFootprints
 from faebryk.library.implements_design_check import implements_design_check
 from faebryk.library.Electrical import Electrical
+from faebryk.library.NetTie import NetTie
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.PCB import PCB
@@ -141,6 +142,7 @@ __all__ = [
     "KiCadFootprints",
     "implements_design_check",
     "Electrical",
+    "NetTie",
     "has_simple_value_representation",
     "is_atomic_part",
     "PCB",
