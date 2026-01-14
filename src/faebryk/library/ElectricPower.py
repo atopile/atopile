@@ -11,27 +11,6 @@ from faebryk.libs.exceptions import DeprecatedException, downgrade
 logger = logging.getLogger(__name__)
 
 
-def _has_interface_connections(node: fabll.Node) -> bool:
-    """
-    Efficiently check if a node has any direct interface connection edges.
-
-    This is O(number of direct edges on node) instead of O(entire connected component)
-    like get_connected() which does full BFS traversal.
-    """
-    # Use a mutable container to track if we found any edges
-    found: list[bool] = [False]
-
-    def mark_found(ctx, edge):
-        ctx[0] = True
-
-    node.instance.visit_edges_of_type(
-        edge_type=fbrk.EdgeInterfaceConnection.get_tid(),
-        ctx=found,
-        f=mark_found,
-    )
-    return found[0]
-
-
 class ElectricPower(fabll.Node):
     """
     ElectricPower is a class that represents a power rail. Power rails have a
@@ -97,12 +76,21 @@ class ElectricPower(fabll.Node):
         ).put_on_type()
     )
 
+    def make_source(self):
+        fabll.Traits.create_and_add_instance_to(node=self, trait=F.is_source).setup()
+
+    def make_sink(self):
+        fabll.Traits.create_and_add_instance_to(node=self, trait=F.is_sink).setup()
+
     # Design check to connect deprecated vcc/gnd aliases to hv/lv if used
     design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
 
     @F.implements_design_check.register_post_design_setup_check
     def __check_post_design_setup__(self):
-        """Connect deprecated vcc/gnd to hv/lv if they have connections."""
+        """
+        Connect deprecated vcc/gnd to hv/lv if they have connections.
+        This allows support for legacy designs that use vcc/gnd.
+        """
         vcc_node = self.vcc.get()
         gnd_node = self.gnd.get()
 
@@ -125,8 +113,23 @@ class ElectricPower(fabll.Node):
                     f"{', '.join(aliases_used)}. Use hv/lv instead."
                 )
 
-    def make_source(self):
-        fabll.Traits.create_and_add_instance_to(node=self, trait=F.is_source).setup()
 
-    def make_sink(self):
-        fabll.Traits.create_and_add_instance_to(node=self, trait=F.is_sink).setup()
+def _has_interface_connections(node: fabll.Node) -> bool:
+    """
+    Efficiently check if a node has any direct interface connection edges.
+
+    This is O(number of direct edges on node) instead of O(entire connected component)
+    like get_connected() which does full BFS traversal.
+    """
+    # Use a mutable container to track if we found any edges
+    found: list[bool] = [False]
+
+    def mark_found(ctx, edge):
+        ctx[0] = True
+
+    node.instance.visit_edges_of_type(
+        edge_type=fbrk.EdgeInterfaceConnection.get_tid(),
+        ctx=found,
+        f=mark_found,
+    )
+    return found[0]
