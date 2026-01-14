@@ -744,10 +744,7 @@ def pretty_expr(
 ) -> str:
     from faebryk.core.solver.symbolic.invariants import ExpressionBuilder
 
-    context = context or (mutator.print_ctx if mutator else None)
-
-    if context is None:
-        raise ValueError("Mutator or ReprContext is required")
+    context = context or (mutator.print_ctx if mutator else F.Parameters.ReprContext())
 
     match expr:
         case ExpressionBuilder():

@@ -346,6 +346,9 @@ class ExpressionBuilder[
     def indexed_pos(self) -> dict[int, F.Parameters.is_parameter_operatable]:
         return self.indexed_ops_with_trait(F.Parameters.is_parameter_operatable)
 
+    def __repr__(self) -> str:
+        return pretty_expr(self)
+
 
 def _no_empty_superset(
     mutator: Mutator,
@@ -564,11 +567,13 @@ def _fold_unpure_literal_operands(
     """
     from faebryk.core.solver.symbolic.pure_literal import exec_pure_literal_operands
 
+    # TODO use setic trait instead
     if builder.factory in [F.Expressions.IsSubset, F.Expressions.Is]:
         return None
 
     if not (
-        all(
+        not builder.indexed_ops_with_trait(F.Parameters.is_parameter)
+        and all(
             mutator.utils.is_literal_expression(op.as_operand.get())
             for op in builder.indexed_ops_with_trait(
                 F.Expressions.is_expression
