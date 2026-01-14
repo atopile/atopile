@@ -175,8 +175,6 @@ class implements_design_check(fabll.Node):
         owner_instance, owner_class = self._get_owner_with_type()
         if not hasattr(owner_class, "__check_post_design_setup__"):
             return False
-        type_name = self.get_parent_force()[0].get_type_name()
-        logger.info(f"Running {self.CheckStage.POST_DESIGN_SETUP.name} {type_name}")
         owner_class.__check_post_design_setup__(owner_instance)  # type: ignore[attr-defined]
         return True
 
@@ -184,8 +182,6 @@ class implements_design_check(fabll.Node):
         owner_instance, owner_class = self._get_owner_with_type()
         if not hasattr(owner_class, "__check_post_design__"):
             return False
-        type_name = self.get_parent_force()[0].get_type_name()
-        logger.info(f"Running {self.CheckStage.POST_DESIGN.name} {type_name}")
         owner_class.__check_post_design__(owner_instance)  # type: ignore[attr-defined]
         return True
 
@@ -193,8 +189,6 @@ class implements_design_check(fabll.Node):
         owner_instance, owner_class = self._get_owner_with_type()
         if not hasattr(owner_class, "__check_post_solve__"):
             return False
-        type_name = self.get_parent_force()[0].get_type_name()
-        logger.info(f"Running {self.CheckStage.POST_SOLVE.name} {type_name}")
         owner_class.__check_post_solve__(owner_instance)  # type: ignore[attr-defined]
         return True
 
@@ -202,8 +196,6 @@ class implements_design_check(fabll.Node):
         owner_instance, owner_class = self._get_owner_with_type()
         if not hasattr(owner_class, "__check_post_pcb__"):
             return False
-        type_name = self.get_parent_force()[0].get_type_name()
-        logger.info(f"Running {self.CheckStage.POST_PCB.name} {type_name}")
         owner_class.__check_post_pcb__(owner_instance)  # type: ignore[attr-defined]
         return True
 

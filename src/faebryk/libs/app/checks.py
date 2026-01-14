@@ -43,7 +43,7 @@ def check_design(
                         ) from e
                 except F.implements_design_check.UnfulfilledCheckException as e:
                     raise UserDesignCheckException.from_nodes(str(e), e.nodes) from e
-                logger.info(f"Time taken: {(time.perf_counter() - start_time):.3f} seconds")
+                logger.debug(f"Ran {stage.name} check on {check.get_parent_force()[0].get_type_name()} in {(time.perf_counter() - start_time):.3f} seconds")
 
 
 class Test:

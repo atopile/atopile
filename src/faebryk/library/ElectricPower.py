@@ -1,34 +1,11 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import logging
-
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.core.zig.gen.graph.graph import BoundEdge
 from faebryk.libs.exceptions import DeprecatedException, downgrade
-
-logger = logging.getLogger(__name__)
-
-
-def _count_interface_connections(node: fabll.Node) -> int:
-    """
-    Efficiently count the number of direct interface connection edges on a node.
-
-    This is O(number of direct edges on node) instead of O(entire connected component)
-    like get_connected() which does full BFS traversal.
-    """
-    count: list[int] = [0]
-
-    def increment(ctx, edge):
-        ctx[0] += 1
-
-    node.instance.visit_edges_of_type(
-        edge_type=fbrk.EdgeInterfaceConnection.get_tid(),
-        ctx=count,
-        f=increment,
-    )
-    return count[0]
 
 
 class ElectricPower(fabll.Node):
@@ -109,9 +86,8 @@ class ElectricPower(fabll.Node):
     def make_sink(self):
         fabll.Traits.create_and_add_instance_to(node=self, trait=F.is_sink).setup()
 
-    # Design check to warn if deprecated vcc/gnd aliases are used
-    design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
 
+    design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
     @F.implements_design_check.register_post_design_check
     def __check_post_design__(self):
         """
@@ -120,17 +96,24 @@ class ElectricPower(fabll.Node):
         vcc/gnd are always connected to hv/lv (1 connection each).
         If they have more than 1 connection, something external is using them.
         """
+
+        def count_edges(count: list[int], edge: BoundEdge):
+            count[0] += 1
+
         vcc_node = self.vcc.get()
         gnd_node = self.gnd.get()
 
-        # Count direct interface edges - 1 connection is the vcc~hv or gnd~lv edge
-        vcc_connection_count = _count_interface_connections(vcc_node)
-        gnd_connection_count = _count_interface_connections(gnd_node)
+        count_vcc: list[int] = [0]
+        count_gnd: list[int] = [0]
+
+        fbrk.EdgeInterfaceConnection.visit_connected_edges(bound_node=vcc_node.instance, ctx=count_vcc, f=count_edges)
+        fbrk.EdgeInterfaceConnection.visit_connected_edges(bound_node=gnd_node.instance, ctx=count_gnd, f=count_edges)
 
         aliases_used: list[str] = []
-        if vcc_connection_count > 1:
+
+        if count_vcc[0] != 1:
             aliases_used.append("vcc")
-        if gnd_connection_count > 1:
+        if count_gnd[0] != 1:
             aliases_used.append("gnd")
 
         if aliases_used:
