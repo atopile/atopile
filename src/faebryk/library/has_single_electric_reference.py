@@ -64,8 +64,39 @@ class has_single_electric_reference(fabll.Node):
             logger.debug(f"No ElectricPower children found in {parent_node.get_name()}")
             return
 
-        # Connect all ElectricPowers to the reference
+        # Filter out ElectricPowers whose parent module has its own
+        # has_single_electric_reference. Those modules manage their own internal
+        # power connections - we shouldn't reach into them.
+        filtered_powers: list[F.ElectricPower] = []
         for power in all_powers:
+            # Find the owning module (walk up past traits to find the actual module)
+            parent_tuple = power.get_parent()
+            power_owner = parent_tuple[0] if parent_tuple else None
+            while power_owner is not None and power_owner.has_trait(
+                fabll.ImplementsTrait
+            ):
+                parent_tuple = power_owner.get_parent()
+                power_owner = parent_tuple[0] if parent_tuple else None
+
+            # Skip if owner is a different module with its own reference management
+            # Use instance comparison since Python object identity may differ
+            is_same_node = (
+                power_owner is not None
+                and power_owner.instance.node().is_same(
+                    other=parent_node.instance.node()
+                )
+            )
+            if (
+                power_owner is not None
+                and not is_same_node
+                and power_owner.has_trait(has_single_electric_reference)
+            ):
+                continue
+
+            filtered_powers.append(power)
+
+        # Connect filtered ElectricPowers to the reference
+        for power in filtered_powers:
             if ground_only:
                 power.lv.get()._is_interface.get().connect_to(reference.lv.get())
             else:

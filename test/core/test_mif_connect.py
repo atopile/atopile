@@ -1479,18 +1479,41 @@ def test_sibling_connected():
     assert test_if.if1.get()._is_interface.get().is_connected_to(test_if.if2.get())
 
 
-class TestElectricPowerLazyVccGnd:
+class TestElectricPowerVccGndDeprecation:
     """
-    Test lazy connection of deprecated vcc/gnd aliases in ElectricPower.
+    Test deprecation warnings for vcc/gnd aliases in ElectricPower.
 
-    The vcc/gnd children exist but are floating until post_design connects
-    them to hv/lv if something is actually connected to them. This avoids
-    creating unnecessary connection edges for every ElectricPower instance.
+    vcc/gnd are always connected to hv/lv for backwards compatibility.
+    The post_design check warns if external connections use these deprecated aliases.
     """
 
-    def test_vcc_gnd_not_connected_without_usage(self):
+    def test_vcc_always_connected_to_hv(self):
         """
-        vcc/gnd should NOT be connected to hv/lv if nothing uses them.
+        vcc should always be connected to hv (not floating).
+        """
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        power = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+
+        # vcc should be connected to hv immediately (via MakeEdge)
+        assert power.vcc.get()._is_interface.get().is_connected_to(power.hv.get())
+
+    def test_gnd_always_connected_to_lv(self):
+        """
+        gnd should always be connected to lv (not floating).
+        """
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        power = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+
+        # gnd should be connected to lv immediately (via MakeEdge)
+        assert power.gnd.get()._is_interface.get().is_connected_to(power.lv.get())
+
+    def test_no_warning_when_vcc_gnd_not_externally_used(self):
+        """
+        No deprecation warning if nothing external connects to vcc/gnd.
         """
         from faebryk.libs.app.checks import check_design
 
@@ -1499,20 +1522,12 @@ class TestElectricPowerLazyVccGnd:
 
         power = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
 
-        # Before post_design: vcc/gnd should be floating (not connected to hv/lv)
-        assert not power.hv.get()._is_interface.get().is_connected_to(power.hv.get())
-        assert not power.lv.get()._is_interface.get().is_connected_to(power.lv.get())
-
-        # Run post_design check
+        # Should not raise any warning - vcc/gnd only have their hv/lv connections
         check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
 
-        # After post_design: still not connected since nothing uses vcc/gnd
-        assert not power.hv.get()._is_interface.get().is_connected_to(power.hv.get())
-        assert not power.lv.get()._is_interface.get().is_connected_to(power.lv.get())
-
-    def test_vcc_connected_to_hv_when_used(self):
+    def test_warning_when_vcc_externally_used(self, caplog):
         """
-        vcc should be connected to hv after post_design if something connects to vcc.
+        Deprecation warning should be raised if something external connects to vcc.
         """
         from faebryk.libs.app.checks import check_design
 
@@ -1522,27 +1537,19 @@ class TestElectricPowerLazyVccGnd:
         power = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
         external = F.Electrical.bind_typegraph(tg).create_instance(g=g)
 
-        # Connect something external to vcc
-        external._is_interface.get().connect_to(power.hv.get())
+        # Connect something external to vcc (deprecated)
+        external._is_interface.get().connect_to(power.vcc.get())
 
-        # Before post_design: vcc has external connection but not connected to hv
-        assert external._is_interface.get().is_connected_to(power.hv.get())
-        assert not power.hv.get()._is_interface.get().is_connected_to(power.hv.get())
+        # Run check - should warn about vcc usage
+        with caplog.at_level(logging.WARNING):
+            check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
 
-        # Run post_design check
-        check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
+        assert "vcc" in caplog.text
+        assert "Deprecated" in caplog.text
 
-        # After post_design: vcc should now be connected to hv
-        assert power.hv.get()._is_interface.get().is_connected_to(power.hv.get())
-        # And therefore external should be connected to hv too
-        assert external._is_interface.get().is_connected_to(power.hv.get())
-
-        # gnd should still be floating (not used)
-        assert not power.lv.get()._is_interface.get().is_connected_to(power.lv.get())
-
-    def test_gnd_connected_to_lv_when_used(self):
+    def test_warning_when_gnd_externally_used(self, caplog):
         """
-        gnd should be connected to lv after post_design if something connects to gnd.
+        Deprecation warning should be raised if something external connects to gnd.
         """
         from faebryk.libs.app.checks import check_design
 
@@ -1552,48 +1559,51 @@ class TestElectricPowerLazyVccGnd:
         power = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
         external = F.Electrical.bind_typegraph(tg).create_instance(g=g)
 
-        # Connect something external to gnd
-        external._is_interface.get().connect_to(power.lv.get())
+        # Connect something external to gnd (deprecated)
+        external._is_interface.get().connect_to(power.gnd.get())
 
-        # Run post_design check
-        check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
+        # Run check - should warn about gnd usage
+        with caplog.at_level(logging.WARNING):
+            check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
 
-        # gnd should now be connected to lv
-        assert power.lv.get()._is_interface.get().is_connected_to(power.lv.get())
+        assert "gnd" in caplog.text
+        assert "Deprecated" in caplog.text
+
+    def test_external_to_vcc_reaches_hv(self):
+        """
+        Something connected to vcc should be able to reach hv.
+        """
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        power = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+        external = F.Electrical.bind_typegraph(tg).create_instance(g=g)
+
+        # Connect external to vcc
+        external._is_interface.get().connect_to(power.vcc.get())
+
+        # External should be reachable from hv (through vcc)
+        assert external._is_interface.get().is_connected_to(power.hv.get())
+
+    def test_external_to_gnd_reaches_lv(self):
+        """
+        Something connected to gnd should be able to reach lv.
+        """
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        power = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+        external = F.Electrical.bind_typegraph(tg).create_instance(g=g)
+
+        # Connect external to gnd
+        external._is_interface.get().connect_to(power.gnd.get())
+
+        # External should be reachable from lv (through gnd)
         assert external._is_interface.get().is_connected_to(power.lv.get())
 
-        # vcc should still be floating (not used)
-        assert not power.hv.get()._is_interface.get().is_connected_to(power.hv.get())
-
-    def test_both_vcc_and_gnd_connected_when_both_used(self):
+    def test_no_warning_when_using_hv_lv_directly(self, caplog):
         """
-        Both vcc and gnd should be connected when both are used.
-        """
-        from faebryk.libs.app.checks import check_design
-
-        g = graph.GraphView.create()
-        tg = fbrk.TypeGraph.create(g=g)
-
-        power = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
-        external_vcc = F.Electrical.bind_typegraph(tg).create_instance(g=g)
-        external_gnd = F.Electrical.bind_typegraph(tg).create_instance(g=g)
-
-        # Connect externals to both vcc and gnd
-        external_vcc._is_interface.get().connect_to(power.hv.get())
-        external_gnd._is_interface.get().connect_to(power.lv.get())
-
-        # Run post_design check
-        check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
-
-        # Both should be connected
-        assert power.hv.get()._is_interface.get().is_connected_to(power.hv.get())
-        assert power.lv.get()._is_interface.get().is_connected_to(power.lv.get())
-        assert external_vcc._is_interface.get().is_connected_to(power.hv.get())
-        assert external_gnd._is_interface.get().is_connected_to(power.lv.get())
-
-    def test_hv_lv_still_work_independently(self):
-        """
-        Using hv/lv directly should work without triggering vcc/gnd connections.
+        Using hv/lv directly should not trigger deprecation warnings.
         """
         from faebryk.libs.app.checks import check_design
 
@@ -1608,13 +1618,9 @@ class TestElectricPowerLazyVccGnd:
         external_hv._is_interface.get().connect_to(power.hv.get())
         external_lv._is_interface.get().connect_to(power.lv.get())
 
-        # Run post_design check
-        check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
+        # Run check - should NOT warn
+        with caplog.at_level(logging.WARNING):
+            check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
 
-        # hv/lv should be connected to externals
-        assert external_hv._is_interface.get().is_connected_to(power.hv.get())
-        assert external_lv._is_interface.get().is_connected_to(power.lv.get())
-
-        # vcc/gnd should still be floating
-        assert not power.hv.get()._is_interface.get().is_connected_to(power.hv.get())
-        assert not power.lv.get()._is_interface.get().is_connected_to(power.lv.get())
+        # No deprecation warning for hv/lv usage
+        assert "Deprecated" not in caplog.text

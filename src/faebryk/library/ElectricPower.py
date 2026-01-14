@@ -11,6 +11,26 @@ from faebryk.libs.exceptions import DeprecatedException, downgrade
 logger = logging.getLogger(__name__)
 
 
+def _count_interface_connections(node: fabll.Node) -> int:
+    """
+    Efficiently count the number of direct interface connection edges on a node.
+
+    This is O(number of direct edges on node) instead of O(entire connected component)
+    like get_connected() which does full BFS traversal.
+    """
+    count: list[int] = [0]
+
+    def increment(ctx, edge):
+        ctx[0] += 1
+
+    node.instance.visit_edges_of_type(
+        edge_type=fbrk.EdgeInterfaceConnection.get_tid(),
+        ctx=count,
+        f=increment,
+    )
+    return count[0]
+
+
 class ElectricPower(fabll.Node):
     """
     ElectricPower is a class that represents a power rail. Power rails have a
@@ -24,11 +44,18 @@ class ElectricPower(fabll.Node):
     lv = F.Electrical.MakeChild()
 
     # Deprecated aliases for backwards compatibility.
-    # These are floating until POST_DESIGN_SETUP connects them to hv/lv if used.
-    # This avoids creating connection edges for every ElectricPower instance
-    # when vcc/gnd are not actually referenced.
+    # These are always connected to hv/lv via the edges below.
+    # The post_design check warns if they are actually used.
     vcc = F.Electrical.MakeChild()
     gnd = F.Electrical.MakeChild()
+
+    # Always connect vcc->hv and gnd->lv for backwards compatibility
+    _vcc_to_hv = fabll.MakeEdge(
+        [vcc], [hv], edge=fbrk.EdgeInterfaceConnection.build(shallow=False)
+    )
+    _gnd_to_lv = fabll.MakeEdge(
+        [gnd], [lv], edge=fbrk.EdgeInterfaceConnection.build(shallow=False)
+    )
 
     # ----------------------------------------
     #                 traits
@@ -82,29 +109,29 @@ class ElectricPower(fabll.Node):
     def make_sink(self):
         fabll.Traits.create_and_add_instance_to(node=self, trait=F.is_sink).setup()
 
-    # Design check to connect deprecated vcc/gnd aliases to hv/lv if used
+    # Design check to warn if deprecated vcc/gnd aliases are used
     design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
 
-    @F.implements_design_check.register_post_design_setup_check
-    def __check_post_design_setup__(self):
+    @F.implements_design_check.register_post_design_check
+    def __check_post_design__(self):
         """
-        Connect deprecated vcc/gnd to hv/lv if they have connections.
-        This allows support for legacy designs that use vcc/gnd.
+        Warn if deprecated vcc/gnd aliases are being used.
+
+        vcc/gnd are always connected to hv/lv (1 connection each).
+        If they have more than 1 connection, something external is using them.
         """
         vcc_node = self.vcc.get()
         gnd_node = self.gnd.get()
 
-        # Efficiently check for direct interface edges (O(edges) not O(graph))
-        vcc_connected = _has_interface_connections(vcc_node)
-        gnd_connected = _has_interface_connections(gnd_node)
+        # Count direct interface edges - 1 connection is the vcc~hv or gnd~lv edge
+        vcc_connection_count = _count_interface_connections(vcc_node)
+        gnd_connection_count = _count_interface_connections(gnd_node)
 
         aliases_used: list[str] = []
-        if vcc_connected:
-            aliases_used.append("vcc->hv")
-            vcc_node._is_interface.get().connect_to(self.hv.get())
-        if gnd_connected:
-            aliases_used.append("gnd->lv")
-            gnd_node._is_interface.get().connect_to(self.lv.get())
+        if vcc_connection_count > 1:
+            aliases_used.append("vcc")
+        if gnd_connection_count > 1:
+            aliases_used.append("gnd")
 
         if aliases_used:
             with downgrade(DeprecatedException):
@@ -112,24 +139,3 @@ class ElectricPower(fabll.Node):
                     f"Deprecated ElectricPower aliases used in {self.pretty_repr()}: "
                     f"{', '.join(aliases_used)}. Use hv/lv instead."
                 )
-
-
-def _has_interface_connections(node: fabll.Node) -> bool:
-    """
-    Efficiently check if a node has any direct interface connection edges.
-
-    This is O(number of direct edges on node) instead of O(entire connected component)
-    like get_connected() which does full BFS traversal.
-    """
-    # Use a mutable container to track if we found any edges
-    found: list[bool] = [False]
-
-    def mark_found(ctx, edge):
-        ctx[0] = True
-
-    node.instance.visit_edges_of_type(
-        edge_type=fbrk.EdgeInterfaceConnection.get_tid(),
-        ctx=found,
-        f=mark_found,
-    )
-    return found[0]

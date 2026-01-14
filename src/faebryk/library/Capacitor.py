@@ -4,6 +4,7 @@
 import logging
 from enum import IntEnum, auto
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 
@@ -33,6 +34,20 @@ class Capacitor(fabll.Node):
     max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
     temperature_coefficient = F.Parameters.EnumParameter.MakeChild(
         enum_t=TemperatureCoefficient
+    )
+
+    # Alias for backwards compatibility
+    power = F.ElectricPower.MakeChild()
+    # Connect power to unnamed[0] and unnamed[1]
+    _power_hv_to_unnamed0 = fabll.MakeEdge(
+        [power, "hv"],
+        [unnamed[0]],
+        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
+    )
+    _power_lv_to_unnamed1 = fabll.MakeEdge(
+        [power, "lv"],
+        [unnamed[1]],
+        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
     )
 
     # ----------------------------------------
