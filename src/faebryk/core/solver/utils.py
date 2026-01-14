@@ -658,7 +658,9 @@ class MutatorUtils:
             raise TypeError(f"Unknown parameter type: {p_type_repr}")
 
     @staticmethod
-    def hack_get_expr_type(expr: F.Expressions.is_expression) -> type[fabll.NodeT]:
+    def hack_get_expr_type(
+        expr: F.Expressions.is_expression,
+    ) -> type[F.Expressions.ExpressionNodes]:
         # TODO this is a hack, we should not do it like this
         # better build something into is_expression trait that allows copying
         type_node = not_none(fabll.Traits(expr).get_obj_raw().get_type_node())

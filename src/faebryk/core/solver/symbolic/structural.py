@@ -569,84 +569,69 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
 @algorithm("Upper estimation", terminal=False)
 def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
     """
-    If any operand in an expression has a subset literal,
-    we can add a subset to the expression.
+    If any operand in an expression has a superset literal,
+    we can estimate the expression to the function applied to the superset literals.
 
     ```
-    A + B{S|{1..5}} -> (A + B{S|{1..5}}) , (A + B{S|{1..5}}) ss! (A + {1..5})
+    f(A{S|X}, B{S|Y}, C, ...)
+        => f(A{S|X}, B{S|Y}, C, Z, ...) ⊆! f(X, Y, C, Z, ...)
+
+    ```
+    - f not setic
+    - X not singleton
+
     TODO supersets (check correlation)
-    ```
-
-    No need to check:
-    ```
-    A + B | A alias B ; never happens (after eq classes)
-    A + B | B ss! singleton; never happens (after aliased_single_into_literal)
-    TODO: A ss! B{S|X}
-    TODO: A{S|Y} ss! B
-    ```
     """
 
-    return  # TODO
-
-    new_literal_supersets = {
-        (
-            op.get_subset_operand().as_parameter_operatable.force_get()
-        ): op.get_superset_operand().as_literal.force_get()
-        for op in mutator.utils.get_literal_subsets(new_only=True)
+    supersetted_ops = {
+        op_subset.as_operand.get(): lit_superset
+        for ss in mutator.get_typed_expressions(
+            F.Expressions.IsSubset,
+            required_traits=(F.Expressions.is_predicate,),
+        )
+        if (lit_superset := ss.get_superset_operand().as_literal.try_get())
+        and (op_subset := ss.get_subset_operand().as_parameter_operatable.try_get())
+        # singletons get taken care of by `convert_operable_aliased_to_single_into_literal`
+        and not mutator.utils.is_correlatable_literal(lit_superset)
     }
 
-    new_exprs = {
-        k: v
-        for k, v in new_literal_supersets.items()
-        if not mutator.utils.is_correlatable_literal(v)
+    exprs = {
+        e
+        for op in supersetted_ops.keys()
+        for e in op.get_operations()
+        # setic expressions can't get subset estimated
+        if not e.has_trait(F.Expressions.is_setic)
     }
-
-    exprs = {e for alias in new_exprs.keys() for e in alias.get_operations()}
-    exprs.update((fabll.Traits(e).get_obj_raw() for e in mutator.non_copy_mutated))
     exprs = F.Expressions.is_expression.sort_by_depth(exprs, ascending=True)
 
     for expr in exprs:
-        # In Is automatically by eq classes
-        if expr.isinstance(F.Expressions.Is, F.Expressions.IsSubset):
-            continue
         expr_e = expr.get_trait(F.Expressions.is_expression)
-        # Taken care of by singleton fold
-        if any(
-            mutator.utils.is_replacable_by_literal(op) is not None
-            for op in expr_e.get_operands()
-        ):
+        operands = expr_e.get_operands()
+        # check if any operand has a superset literal
+        mapped_operands = [
+            supersetted_ops[op].as_operand.get() if op in supersetted_ops else op
+            for op in operands
+        ]
+        if mapped_operands == operands:
             continue
-        mapped_ops, operands_with_superset = (
-            mutator.utils.map_operands_extracted_supersets(expr_e)
-        )
-        if not operands_with_superset:
-            continue
-
-        # TODO make this more efficient (include in extract)
-        lit_ss_origins = {
-            e.is_expression.get().as_parameter_operatable.get()
-            for p in operands_with_superset
-            for e in p.get_operations(IsSubset, predicates_only=True)
-            if e.is_expression.get().get_operand_literals()
-        }
 
         expr_po = expr.get_trait(F.Parameters.is_parameter_operatable)
-        from_ops = [
-            expr_po,
-            *lit_ss_origins,
-        ]
+        from_ops = [expr_po]
 
         # Make new expr with subset literals
-        new_expr = mutator.create_check_and_insert_expression(
-            mutator.utils.hack_get_expr_type(expr),
-            *mapped_ops,
+        res = mutator.create_check_and_insert_expression(
+            mutator.utils.hack_get_expr_type(expr_e),
+            *mapped_operands,
             from_ops=from_ops,
         )
+        if res.out_operand is None:
+            continue
+        expr_superset = res.out_operand
 
         # Subset old expr to subset estimated one
         mutator.create_check_and_insert_expression(
             F.Expressions.IsSubset,
             expr_e,
-            new_expr.as_operand.get(),
+            expr_superset,
             from_ops=from_ops,
         )

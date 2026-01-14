@@ -801,10 +801,6 @@ class is_numeric_predicate(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
-class is_setic_predicate(fabll.Node):
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
-
-
 class has_side_effects(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
@@ -2597,6 +2593,7 @@ class IsSubset(fabll.Node):
     is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     is_reflexive = fabll.Traits.MakeEdge(is_reflexive.MakeChild())
+    is_setic = fabll.Traits.MakeEdge(is_setic.MakeChild())
 
     subset = OperandPointer.MakeChild()
     superset = OperandPointer.MakeChild()
@@ -2676,6 +2673,7 @@ class IsSuperset(fabll.Node):
         ).put_on_type()
     )
     is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
+    is_setic = fabll.Traits.MakeEdge(is_setic.MakeChild())
 
     superset = OperandPointer.MakeChild()
     zsubset = OperandPointer.MakeChild()
@@ -2820,6 +2818,7 @@ class Is(fabll.Node):
     is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
+    is_setic = fabll.Traits.MakeEdge(is_setic.MakeChild())
 
     operands = OperandSet.MakeChild()
 
