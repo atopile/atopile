@@ -212,5 +212,4 @@ class DeferredExecutor:
                     str(ex),
                     original=ex,
                     source_node=retype.source_node,
-                    file_path=self._base_file,
                 ) from ex

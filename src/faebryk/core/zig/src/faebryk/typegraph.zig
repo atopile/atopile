@@ -76,6 +76,48 @@ pub const TypeGraph = struct {
         message: []const u8,
     };
 
+    /// Error returned when instantiation fails, containing the failing node
+    /// (MakeChild or MakeLink) and an error message for rich error reporting.
+    pub const InstantiationError = struct {
+        node: BoundNodeReference,
+        message: []const u8,
+        kind: InstantiationErrorKind,
+        identifier: []const u8 = "",
+    };
+
+    pub const InstantiationErrorKind = enum {
+        unresolved_type_reference,
+        unresolved_reference,
+        missing_operand_reference,
+        invalid_argument,
+        other,
+    };
+
+    /// Error returned when path resolution fails, containing the failing reference node
+    /// and an error message for rich error reporting via DSLRichException.
+    pub const ResolveError = struct {
+        node: BoundNodeReference,
+        message: []const u8,
+        kind: ResolveErrorKind,
+        identifier: []const u8 = "",
+    };
+
+    pub const ResolveErrorKind = enum {
+        type_not_found,
+        composition_child_not_found,
+        trait_type_not_found,
+        trait_instance_not_found,
+        pointer_dereference_failed,
+        operand_not_found,
+        unknown_edge_type,
+        typegraph_not_found,
+    };
+
+    pub const ChildResolveResult = union(enum) {
+        ok: graph.BoundNodeReference,
+        err: ResolveError,
+    };
+
     pub const TypeNodeAttributes = struct {
         node: NodeReference,
 
@@ -252,7 +294,10 @@ pub const TypeGraph = struct {
         };
 
         pub fn create_and_insert(tg: *TypeGraph, type_identifier: str) !BoundNodeReference {
-            const reference = try tg.instantiate_node(tg.get_TypeReference());
+            const reference = switch (tg.instantiate_node(tg.get_TypeReference())) {
+                .ok => |n| n,
+                .err => return error.InstantiationFailed,
+            };
             TypeReferenceNode.Attributes.of(reference.node).set_type_identifier(type_identifier);
             return reference;
         }
@@ -336,7 +381,10 @@ pub const TypeGraph = struct {
             var current_node: ?BoundNodeReference = null;
 
             for (path) |segment| {
-                const reference = try tg.instantiate_node(tg.get_Reference());
+                const reference = switch (tg.instantiate_node(tg.get_Reference())) {
+                    .ok => |n| n,
+                    .err => return error.InstantiationFailed,
+                };
                 if (current_node) |_current_node| {
                     _ = EdgeNext.add_next(_current_node, reference);
                 } else {
@@ -384,14 +432,17 @@ pub const TypeGraph = struct {
             }
         }
 
-        pub fn resolve(reference: BoundNodeReference, instance: BoundNodeReference) ?graph.BoundNodeReference {
+        pub fn resolve(reference: BoundNodeReference, instance: BoundNodeReference) ChildResolveResult {
             // TODO iterate instead of recursion
             var target = instance;
             const child_identifier = ChildReferenceNode.Attributes.of(reference.node).get_child_identifier();
             const edge_type = ChildReferenceNode.Attributes.of(reference.node).get_edge_type();
             const tg = TypeGraph.of_instance(reference) orelse {
-                std.debug.print("ChildReferenceNode.resolve: Failed to get TypeGraph from reference node\n", .{});
-                return null;
+                return ChildResolveResult{ .err = ResolveError{
+                    .node = reference,
+                    .message = "Failed to get TypeGraph from reference node",
+                    .kind = .typegraph_not_found,
+                } };
             };
 
             // TODO: Implement typesafe alternative, escape character just proof of concept
@@ -402,8 +453,12 @@ pub const TypeGraph = struct {
                 if (type_node) |_type_node| {
                     target = _type_node;
                 } else {
-                    std.debug.print("ChildReferenceNode.resolve: Type node not found for enum type '{s}'\n", .{up_str});
-                    return null;
+                    return ChildResolveResult{ .err = ResolveError{
+                        .node = reference,
+                        .message = "Type node not found for enum type",
+                        .kind = .type_not_found,
+                        .identifier = up_str,
+                    } };
                 }
             } else {
                 // Dispatch based on edge type to traverse different edge kinds
@@ -415,19 +470,31 @@ pub const TypeGraph = struct {
                         target = _child;
                     } else if (child_identifier.len > 0) {
                         // Only fail if identifier is non-empty - empty identifier means "self"
-                        std.debug.print("ChildReferenceNode.resolve: Composition child '{s}' not found\n", .{child_identifier});
-                        return null;
+                        return ChildResolveResult{ .err = ResolveError{
+                            .node = reference,
+                            .message = "Child not found",
+                            .kind = .composition_child_not_found,
+                            .identifier = child_identifier,
+                        } };
                     }
                     // Empty identifier with composition = self-reference, keep target unchanged
                 } else if (edge_type == EdgeTrait.tid) {
                     // Traverse trait edges by looking up the trait type, then finding an instance.
                     const trait_type = tg.get_type_by_name(child_identifier) orelse {
-                        std.debug.print("ChildReferenceNode.resolve: Trait type '{s}' not found in TypeGraph\n", .{child_identifier});
-                        return null;
+                        return ChildResolveResult{ .err = ResolveError{
+                            .node = reference,
+                            .message = "trait type not found in TypeGraph",
+                            .kind = .trait_type_not_found,
+                            .identifier = child_identifier,
+                        } };
                     };
                     const trait_instance = EdgeTrait.try_get_trait_instance_of_type(target, trait_type.node) orelse {
-                        std.debug.print("ChildReferenceNode.resolve: No trait instance of type '{s}' found on target node\n", .{child_identifier});
-                        return null;
+                        return ChildResolveResult{ .err = ResolveError{
+                            .node = reference,
+                            .message = "trait not found on",
+                            .kind = .trait_instance_not_found,
+                            .identifier = child_identifier,
+                        } };
                     };
                     target = trait_instance;
                 } else if (edge_type == EdgePointer.tid) {
@@ -435,29 +502,45 @@ pub const TypeGraph = struct {
                     // The current node should be a Pointer node - follow its EdgePointer edge.
                     // No identifier needed - we just dereference whatever the current node points to.
                     const dereferenced = EdgePointer.get_referenced_node_from_node(target) orelse {
-                        std.debug.print("ChildReferenceNode.resolve: Pointer dereference failed - node has no target\n", .{});
-                        return null;
+                        return ChildResolveResult{ .err = ResolveError{
+                            .node = reference,
+                            .message = "pointer dereference failed from node",
+                            .kind = .pointer_dereference_failed,
+                            .identifier = child_identifier,
+                        } };
                     };
                     target = dereferenced;
                 } else if (edge_type == EdgeOperand.tid) {
                     // Operand traversal: find operand by identifier (e.g., "lhs", "rhs")
                     const operand = EdgeOperand.get_operand_by_identifier(target, child_identifier) orelse {
-                        std.debug.print("ChildReferenceNode.resolve: Operand '{s}' not found\n", .{child_identifier});
-                        return null;
+                        return ChildResolveResult{ .err = ResolveError{
+                            .node = reference,
+                            .message = "operand not found on node",
+                            .kind = .operand_not_found,
+                            .identifier = child_identifier,
+                        } };
                     };
                     target = operand;
                 } else {
-                    std.debug.print("ChildReferenceNode.resolve: Unknown edge type {d}\n", .{edge_type});
-                    return null;
+                    return ChildResolveResult{ .err = ResolveError{
+                        .node = reference,
+                        .message = "Unknown edge type",
+                        .kind = .unknown_edge_type,
+                        .identifier = child_identifier,
+                    } };
                 }
             }
 
             const next_reference = EdgeNext.get_next_node_from_node(reference);
             if (next_reference) |_next_reference| {
                 const next_ref = reference.g.bind(_next_reference);
-                target = ChildReferenceNode.resolve(next_ref, target) orelse return null;
+                const next_result = ChildReferenceNode.resolve(next_ref, target);
+                switch (next_result) {
+                    .ok => |resolved| target = resolved,
+                    .err => return next_result, // Propagate error from recursive call
+                }
             }
-            return target;
+            return ChildResolveResult{ .ok = target };
         }
     };
 
@@ -653,7 +736,10 @@ pub const TypeGraph = struct {
         const type_node = TypeNode.create_and_insert(self, identifier);
 
         // Add type trait
-        const trait_implements_type_instance = try self.instantiate_node(self.get_ImplementsType());
+        const trait_implements_type_instance = switch (self.instantiate_node(self.get_ImplementsType())) {
+            .ok => |n| n,
+            .err => return error.InstantiationFailed,
+        };
         _ = EdgeTrait.add_trait_instance(type_node, trait_implements_type_instance.node);
         _ = EdgeComposition.add_child(type_node, trait_implements_type_instance.node, null);
 
@@ -706,7 +792,10 @@ pub const TypeGraph = struct {
         node_attributes: ?*NodeCreationAttributes,
         soft_create: bool,
     ) !BoundNodeReference {
-        const make_child = try self.instantiate_node(self.get_MakeChild());
+        const make_child = switch (self.instantiate_node(self.get_MakeChild())) {
+            .ok => |n| n,
+            .err => return error.InstantiationFailed,
+        };
         MakeChildNode.Attributes.of(make_child).init(identifier, soft_create);
         if (node_attributes) |_node_attributes| {
             MakeChildNode.Attributes.of(make_child).store_node_attributes(_node_attributes.*);
@@ -729,7 +818,10 @@ pub const TypeGraph = struct {
     ) !BoundNodeReference {
         const attrs = edge_attributes;
 
-        const make_link = try self.instantiate_node(self.get_MakeLink());
+        const make_link = switch (self.instantiate_node(self.get_MakeLink())) {
+            .ok => |n| n,
+            .err => return error.InstantiationFailed,
+        };
         MakeLinkNode.Attributes.of(make_link).store_edge_attributes(attrs);
 
         _ = EdgeComposition.add_child(make_link, lhs_reference.node, "lhs");
@@ -1735,7 +1827,12 @@ pub const TypeGraph = struct {
         return list.toOwnedSlice() catch @panic("OOM");
     }
 
-    pub fn instantiate_node(tg: *@This(), type_node: BoundNodeReference) !graph.BoundNodeReference {
+    pub const InstantiateResult = union(enum) {
+        ok: graph.BoundNodeReference,
+        err: InstantiationError,
+    };
+
+    pub fn instantiate_node(tg: *@This(), type_node: BoundNodeReference) InstantiateResult {
         // FIXME: restore
         // type_node may be linked from another TypeGraph
         // std.debug.print("OG TG {any}\n", .{tg.get_MakeChild().node});
@@ -1751,25 +1848,43 @@ pub const TypeGraph = struct {
         const VisitMakeChildren = struct {
             type_graph: *TypeGraph,
             parent_instance: graph.BoundNodeReference,
+            /// Captures the failing node for rich error reporting
+            failing_node: ?BoundNodeReference = null,
+            error_kind: InstantiationErrorKind = .other,
+            error_message: []const u8 = "",
+            /// The identifier that was being looked up when the error occurred
+            error_identifier: []const u8 = "",
 
             pub fn visit(self_ptr: *anyopaque, info: MakeChildInfo) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
 
                 // 2.1) Resolve child instructions (identifier and type)
                 const referenced_type = MakeChildNode.get_child_type(info.make_child) orelse {
+                    self.failing_node = info.make_child;
+                    self.error_kind = .unresolved_type_reference;
+                    self.error_message = "Unresolved type reference (linking required)";
                     return visitor.VisitResult(void){ .ERROR = error.UnresolvedTypeReference };
                 };
 
-                // 2.2) Instantiate child
-                const child = self.type_graph.instantiate_node(referenced_type) catch |e| {
-                    return visitor.VisitResult(void){ .ERROR = e };
-                };
+                // 2.2) Instantiate child (recursive)
+                const child_result = self.type_graph.instantiate_node(referenced_type);
+                switch (child_result) {
+                    .ok => |child| {
+                        // 2.3) Attach child instance to parent instance with the reference name
+                        _ = EdgeComposition.add_child(self.parent_instance, child.node, info.identifier);
 
-                // 2.3) Attach child instance to parent instance with the reference name
-                _ = EdgeComposition.add_child(self.parent_instance, child.node, info.identifier);
-
-                // 2.4) Copy node attributes from MakeChild node to child instance
-                MakeChildNode.Attributes.of(info.make_child).load_node_attributes(child.node);
+                        // 2.4) Copy node attributes from MakeChild node to child instance
+                        MakeChildNode.Attributes.of(info.make_child).load_node_attributes(child.node);
+                    },
+                    .err => |err_info| {
+                        // Propagate the error with the original failing node and identifier
+                        self.failing_node = err_info.node;
+                        self.error_kind = err_info.kind;
+                        self.error_message = err_info.message;
+                        self.error_identifier = err_info.identifier;
+                        return visitor.VisitResult(void){ .ERROR = error.UnresolvedTypeReference };
+                    },
+                }
 
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
@@ -1783,7 +1898,22 @@ pub const TypeGraph = struct {
         // FIXME: restore
         // const make_child_result = type_owner_tg.visit_make_children(type_node, void, &make_child_visitor, VisitMakeChildren.visit);
         switch (make_child_result) {
-            .ERROR => |err| return err,
+            .ERROR => {
+                if (make_child_visitor.failing_node) |failing| {
+                    return InstantiateResult{ .err = InstantiationError{
+                        .node = failing,
+                        .message = make_child_visitor.error_message,
+                        .kind = make_child_visitor.error_kind,
+                        .identifier = make_child_visitor.error_identifier,
+                    } };
+                }
+                // Fallback if no failing node captured
+                return InstantiateResult{ .err = InstantiationError{
+                    .node = type_node,
+                    .message = "MakeChild instantiation failed",
+                    .kind = .other,
+                } };
+            },
             else => {},
         }
 
@@ -1791,6 +1921,12 @@ pub const TypeGraph = struct {
         const VisitMakeLinks = struct {
             type_graph: *TypeGraph,
             parent_instance: graph.BoundNodeReference,
+            /// Captures the failing MakeLink node for rich error reporting
+            failing_node: ?BoundNodeReference = null,
+            error_kind: InstantiationErrorKind = .other,
+            error_message: []const u8 = "",
+            /// The identifier that was being looked up when the error occurred
+            error_identifier: []const u8 = "",
 
             pub fn visit(self_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
@@ -1802,15 +1938,36 @@ pub const TypeGraph = struct {
                 const rhs_reference_node = EdgeComposition.get_child_by_identifier(make_link, "rhs");
 
                 if (lhs_reference_node == null or rhs_reference_node == null) {
+                    self.failing_node = make_link;
+                    self.error_kind = .missing_operand_reference;
+                    self.error_message = "Missing operand reference in MakeLink";
                     return visitor.VisitResult(void){ .ERROR = error.MissingOperandReference };
                 }
 
                 // 3.2) Resolve operand references to actual instance nodes
-                const lhs_resolved = ChildReferenceNode.resolve(lhs_reference_node.?, self.parent_instance) orelse {
-                    return visitor.VisitResult(void){ .ERROR = error.UnresolvedReference };
+                const lhs_result = ChildReferenceNode.resolve(lhs_reference_node.?, self.parent_instance);
+                const lhs_resolved = switch (lhs_result) {
+                    .ok => |resolved| resolved,
+                    .err => |resolve_err| {
+                        // Use the make_link node (not the reference) since it has the source chunk
+                        self.failing_node = make_link;
+                        self.error_kind = .unresolved_reference;
+                        self.error_message = resolve_err.message;
+                        self.error_identifier = resolve_err.identifier;
+                        return visitor.VisitResult(void){ .ERROR = error.UnresolvedReference };
+                    },
                 };
-                const rhs_resolved = ChildReferenceNode.resolve(rhs_reference_node.?, self.parent_instance) orelse {
-                    return visitor.VisitResult(void){ .ERROR = error.UnresolvedReference };
+                const rhs_result = ChildReferenceNode.resolve(rhs_reference_node.?, self.parent_instance);
+                const rhs_resolved = switch (rhs_result) {
+                    .ok => |resolved| resolved,
+                    .err => |resolve_err| {
+                        // Use the make_link node (not the reference) since it has the source chunk
+                        self.failing_node = make_link;
+                        self.error_kind = .unresolved_reference;
+                        self.error_message = resolve_err.message;
+                        self.error_identifier = resolve_err.identifier;
+                        return visitor.VisitResult(void){ .ERROR = error.UnresolvedReference };
+                    },
                 };
 
                 // 3.3) Create link between resolved nodes
@@ -1834,12 +1991,27 @@ pub const TypeGraph = struct {
             // FIXME: restore
             // const make_link_result = EdgeComposition.visit_children_of_type(type_node, type_owner_tg.get_MakeLink().node, void, &make_link_visitor, VisitMakeLinks.visit);
             switch (make_link_result) {
-                .ERROR => |err| return err,
+                .ERROR => {
+                    if (make_link_visitor.failing_node) |failing| {
+                        return InstantiateResult{ .err = InstantiationError{
+                            .node = failing,
+                            .message = make_link_visitor.error_message,
+                            .kind = make_link_visitor.error_kind,
+                            .identifier = make_link_visitor.error_identifier,
+                        } };
+                    }
+                    // Fallback if no failing node captured
+                    return InstantiateResult{ .err = InstantiationError{
+                        .node = type_node,
+                        .message = "MakeLink instantiation failed",
+                        .kind = .other,
+                    } };
+                },
                 else => {},
             }
         }
 
-        return new_instance;
+        return InstantiateResult{ .ok = new_instance };
     }
 
     pub fn get_type_by_name(self: *const @This(), type_identifier: str) ?BoundNodeReference {
@@ -1847,11 +2019,17 @@ pub const TypeGraph = struct {
         return EdgeComposition.get_child_by_identifier(self.self_node, type_identifier);
     }
 
-    pub fn instantiate(self: *@This(), type_identifier: str) !BoundNodeReference {
+    pub fn instantiate(self: *@This(), type_identifier: str) InstantiateResult {
         const parent_type_node = self.get_type_by_name(type_identifier) orelse {
-            return error.InvalidArgument;
+            return InstantiateResult{
+                .err = InstantiationError{
+                    .node = self.self_node, // Use typegraph node as fallback
+                    .message = "Type not found",
+                    .kind = .invalid_argument,
+                },
+            };
         };
-        return try self.instantiate_node(parent_type_node);
+        return self.instantiate_node(parent_type_node);
     }
 
     pub fn get_or_create_type(self: *@This(), type_identifier: str) !BoundNodeReference {
@@ -2287,7 +2465,13 @@ test "basic instantiation" {
     _ = try tg.add_make_child(Capacitor, Electrical, "tp", &node_attrs, false);
 
     // Build instance graph
-    const resistor = try tg.instantiate_node(Resistor);
+    const resistor = switch (tg.instantiate_node(Resistor)) {
+        .ok => |n| n,
+        .err => |e| {
+            std.debug.print("Instantiation failed: {s}\n", .{e.message});
+            return error.InstantiationFailed;
+        },
+    };
 
     // test: instance graph
     std.debug.print("Resistor Instance: {d}\n", .{resistor.node.get_uuid()});
@@ -2328,7 +2512,13 @@ test "basic instantiation" {
     const cap1p2_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{ EdgeComposition.traverse("cap1"), EdgeComposition.traverse("p2") });
 
     // test: resolve_instance_reference
-    const cap1p1_reference_resolved = TypeGraph.ChildReferenceNode.resolve(cap1p1_reference, resistor).?;
+    const cap1p1_reference_resolved = switch (TypeGraph.ChildReferenceNode.resolve(cap1p1_reference, resistor)) {
+        .ok => |resolved| resolved,
+        .err => |e| {
+            std.debug.print("Resolve failed: {s}\n", .{e.message});
+            return error.ResolveFailed;
+        },
+    };
     try std.testing.expect(cap1p1_reference_resolved.node.is_same(cap1p1.node));
 
     // Build make link
@@ -2340,7 +2530,13 @@ test "basic instantiation" {
         .dynamic = graph.DynamicAttributes.init_on_stack(),
     });
 
-    const instantiated_resistor = try tg.instantiate("Resistor");
+    const instantiated_resistor = switch (tg.instantiate("Resistor")) {
+        .ok => |n| n,
+        .err => |e| {
+            std.debug.print("Instantiation failed: {s}\n", .{e.message});
+            return error.InstantiationFailed;
+        },
+    };
     const instantiated_p1 = EdgeComposition.get_child_by_identifier(instantiated_resistor, "p1").?;
     const instantiated_cap = EdgeComposition.get_child_by_identifier(instantiated_resistor, "cap1").?;
     const instantiated_cap_p1 = EdgeComposition.get_child_by_identifier(instantiated_cap, "p1").?;
@@ -2349,8 +2545,14 @@ test "basic instantiation" {
     std.debug.print("Instantiated P1 Instance: {d}\n", .{instantiated_p1.node.get_uuid()});
 
     const cref = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{ EdgeComposition.traverse("<<Resistor"), EdgeComposition.traverse("p1") });
-    const result_node = TypeGraph.ChildReferenceNode.resolve(cref, cref);
-    std.debug.print("result node: {d}\n", .{result_node.?.node.get_uuid()});
+    const result_node = switch (TypeGraph.ChildReferenceNode.resolve(cref, cref)) {
+        .ok => |resolved| resolved,
+        .err => |e| {
+            std.debug.print("Resolve failed: {s}\n", .{e.message});
+            return error.ResolveFailed;
+        },
+    };
+    std.debug.print("result node: {d}\n", .{result_node.node.get_uuid()});
 
     // test: check edge created
     const _EdgeVisitor = struct {
@@ -2488,9 +2690,18 @@ test "get_type_instance_overview" {
     _ = try tg.add_make_child(Resistor, Electrical, "p2", null, false);
 
     // Create some instances
-    _ = try tg.instantiate_node(Capacitor);
-    _ = try tg.instantiate_node(Capacitor);
-    _ = try tg.instantiate_node(Resistor);
+    _ = switch (tg.instantiate_node(Capacitor)) {
+        .ok => |n| n,
+        .err => return error.InstantiationFailed,
+    };
+    _ = switch (tg.instantiate_node(Capacitor)) {
+        .ok => |n| n,
+        .err => return error.InstantiationFailed,
+    };
+    _ = switch (tg.instantiate_node(Resistor)) {
+        .ok => |n| n,
+        .err => return error.InstantiationFailed,
+    };
 
     // Get the overview
     var overview = tg.get_type_instance_overview(a);
@@ -2541,7 +2752,10 @@ test "resolve path through trait and pointer edges" {
     const CanBridge = try tg.add_type("CanBridge");
 
     // Mark CanBridge as a trait type
-    const implements_trait_instance = try tg.instantiate_node(tg.get_ImplementsTrait());
+    const implements_trait_instance = switch (tg.instantiate_node(tg.get_ImplementsTrait())) {
+        .ok => |n| n,
+        .err => return error.InstantiationFailed,
+    };
     _ = EdgeTrait.add_trait_instance(CanBridge, implements_trait_instance.node);
 
     const Resistor = try tg.add_type("Resistor");
@@ -2549,7 +2763,10 @@ test "resolve path through trait and pointer edges" {
     _ = try tg.add_make_child(Resistor, Electrical, "p2", null, false);
 
     // 2. Create a Resistor instance with p1, p2 children
-    const resistor_instance = try tg.instantiate_node(Resistor);
+    const resistor_instance = switch (tg.instantiate_node(Resistor)) {
+        .ok => |n| n,
+        .err => return error.InstantiationFailed,
+    };
     const p1_instance = EdgeComposition.get_child_by_identifier(resistor_instance, "p1").?;
     const p2_instance = EdgeComposition.get_child_by_identifier(resistor_instance, "p2").?;
 
@@ -2558,7 +2775,10 @@ test "resolve path through trait and pointer edges" {
     std.debug.print("p2 instance: {d}\n", .{p2_instance.node.get_uuid()});
 
     // 3. Create a can_bridge trait instance and attach to resistor
-    const can_bridge_instance = try tg.instantiate_node(CanBridge);
+    const can_bridge_instance = switch (tg.instantiate_node(CanBridge)) {
+        .ok => |n| n,
+        .err => return error.InstantiationFailed,
+    };
     _ = EdgeTrait.add_trait_instance(resistor_instance, can_bridge_instance.node);
     // Set edge name so we can find it by identifier
     const trait_edge = EdgeTrait.get_owner_edge(can_bridge_instance).?;
@@ -2569,8 +2789,14 @@ test "resolve path through trait and pointer edges" {
     // 4. Add Pointer nodes as composition children of can_bridge, then point them to p1/p2
     // Create Pointer type if not exists
     const PointerType = tg.get_type_by_name("Pointer") orelse try tg.add_type("Pointer");
-    const in_ptr = try tg.instantiate_node(PointerType);
-    const out_ptr = try tg.instantiate_node(PointerType);
+    const in_ptr = switch (tg.instantiate_node(PointerType)) {
+        .ok => |n| n,
+        .err => return error.InstantiationFailed,
+    };
+    const out_ptr = switch (tg.instantiate_node(PointerType)) {
+        .ok => |n| n,
+        .err => return error.InstantiationFailed,
+    };
 
     // Add as composition children of can_bridge (must use add_child to insert into graph index)
     _ = EdgeComposition.add_child(can_bridge_instance, in_ptr.node, "in_");
@@ -2591,12 +2817,17 @@ test "resolve path through trait and pointer edges" {
     const reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &path);
 
     // 6. Resolve the reference starting from resistor_instance
-    const resolved = TypeGraph.ChildReferenceNode.resolve(reference, resistor_instance);
-    try std.testing.expect(resolved != null);
-    std.debug.print("Resolved node: {d}\n", .{resolved.?.node.get_uuid()});
+    const resolved = switch (TypeGraph.ChildReferenceNode.resolve(reference, resistor_instance)) {
+        .ok => |r| r,
+        .err => |e| {
+            std.debug.print("Resolve failed: {s}\n", .{e.message});
+            return error.ResolveFailed;
+        },
+    };
+    std.debug.print("Resolved node: {d}\n", .{resolved.node.get_uuid()});
 
     // 7. Verify we resolved to p1_instance
-    try std.testing.expect(resolved.?.node.is_same(p1_instance.node));
+    try std.testing.expect(resolved.node.is_same(p1_instance.node));
 
     // 8. Test the out_ path as well
     const ET = TypeGraph.ChildReferenceNode.EdgeTraversal;
@@ -2606,9 +2837,14 @@ test "resolve path through trait and pointer edges" {
         EdgePointer.traverse(),
     };
     const reference_out = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &path_out);
-    const resolved_out = TypeGraph.ChildReferenceNode.resolve(reference_out, resistor_instance);
-    try std.testing.expect(resolved_out != null);
-    try std.testing.expect(resolved_out.?.node.is_same(p2_instance.node));
+    const resolved_out = switch (TypeGraph.ChildReferenceNode.resolve(reference_out, resistor_instance)) {
+        .ok => |r| r,
+        .err => |e| {
+            std.debug.print("Resolve failed: {s}\n", .{e.message});
+            return error.ResolveFailed;
+        },
+    };
+    try std.testing.expect(resolved_out.node.is_same(p2_instance.node));
 
     std.debug.print("EdgeTraversal test passed: resolved can_bridge->in_ to p1, can_bridge->out_ to p2\n", .{});
 
@@ -2620,19 +2856,31 @@ test "resolve path through trait and pointer edges" {
     _ = try tg.add_make_child(TopModule, Resistor, "resistor", null, false);
 
     // Create TopModule instance - this will auto-create resistor child
-    const top_instance = try tg.instantiate_node(TopModule);
+    const top_instance = switch (tg.instantiate_node(TopModule)) {
+        .ok => |n| n,
+        .err => return error.InstantiationFailed,
+    };
     const resistor_child = EdgeComposition.get_child_by_identifier(top_instance, "resistor").?;
 
     // The resistor_child needs its own can_bridge trait with pointers
     const child_p1 = EdgeComposition.get_child_by_identifier(resistor_child, "p1").?;
     const child_p2 = EdgeComposition.get_child_by_identifier(resistor_child, "p2").?;
 
-    const child_can_bridge = try tg.instantiate_node(CanBridge);
+    const child_can_bridge = switch (tg.instantiate_node(CanBridge)) {
+        .ok => |n| n,
+        .err => return error.InstantiationFailed,
+    };
     _ = EdgeTrait.add_trait_instance(resistor_child, child_can_bridge.node);
 
     // Add Pointer nodes as composition children of child_can_bridge
-    const child_in_ptr = try tg.instantiate_node(PointerType);
-    const child_out_ptr = try tg.instantiate_node(PointerType);
+    const child_in_ptr = switch (tg.instantiate_node(PointerType)) {
+        .ok => |n| n,
+        .err => return error.InstantiationFailed,
+    };
+    const child_out_ptr = switch (tg.instantiate_node(PointerType)) {
+        .ok => |n| n,
+        .err => return error.InstantiationFailed,
+    };
     _ = EdgeComposition.add_child(child_can_bridge, child_in_ptr.node, "in_");
     _ = EdgeComposition.add_child(child_can_bridge, child_out_ptr.node, "out_");
     _ = EdgePointer.point_to(child_in_ptr, child_p1.node, null, null);
@@ -2652,20 +2900,30 @@ test "resolve path through trait and pointer edges" {
     };
 
     const mixed_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &mixed_path);
-    const mixed_resolved = TypeGraph.ChildReferenceNode.resolve(mixed_reference, top_instance);
+    const mixed_resolved = switch (TypeGraph.ChildReferenceNode.resolve(mixed_reference, top_instance)) {
+        .ok => |r| r,
+        .err => |e| {
+            std.debug.print("Resolve failed: {s}\n", .{e.message});
+            return error.ResolveFailed;
+        },
+    };
 
-    try std.testing.expect(mixed_resolved != null);
-    std.debug.print("Mixed path resolved to: {d}\n", .{mixed_resolved.?.node.get_uuid()});
-    try std.testing.expect(mixed_resolved.?.node.is_same(child_p1.node));
+    std.debug.print("Mixed path resolved to: {d}\n", .{mixed_resolved.node.get_uuid()});
+    try std.testing.expect(mixed_resolved.node.is_same(child_p1.node));
 
     // 10. Test composition-only path
     const comp_path = [_]ET{ EdgeComposition.traverse("resistor"), EdgeComposition.traverse("p1") };
     const comp_ref = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &comp_path);
-    const comp_resolved = TypeGraph.ChildReferenceNode.resolve(comp_ref, top_instance);
+    const comp_resolved = switch (TypeGraph.ChildReferenceNode.resolve(comp_ref, top_instance)) {
+        .ok => |r| r,
+        .err => |e| {
+            std.debug.print("Resolve failed: {s}\n", .{e.message});
+            return error.ResolveFailed;
+        },
+    };
 
-    try std.testing.expect(comp_resolved != null);
-    std.debug.print("Composition path 'resistor.p1' resolved to: {d}\n", .{comp_resolved.?.node.get_uuid()});
-    try std.testing.expect(comp_resolved.?.node.is_same(child_p1.node));
+    std.debug.print("Composition path 'resistor.p1' resolved to: {d}\n", .{comp_resolved.node.get_uuid()});
+    try std.testing.expect(comp_resolved.node.is_same(child_p1.node));
 
     std.debug.print("All EdgeTraversal tests passed!\n", .{});
     std.debug.print("  - Trait->Composition->Pointer path works\n", .{});

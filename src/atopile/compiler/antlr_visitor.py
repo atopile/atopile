@@ -55,6 +55,7 @@ class ANTLRVisitor(AtoParserVisitor):
             end_line=stop_token.line,  # type: ignore[reportOptionalMemberAccess]
             end_col=stop_token.column,  # type: ignore[reportOptionalMemberAccess]
             text=text,
+            filepath=str(self._file_path) if self._file_path else None,
         )
 
     @staticmethod

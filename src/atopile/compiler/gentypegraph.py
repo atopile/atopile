@@ -336,6 +336,7 @@ class ActionsFactory:
         lhs_link_path: LinkPath,
         rhs_link_path: LinkPath,
         direction: AST.DirectedConnectStmt.Direction,
+        source_chunk_node: AST.SourceChunk | None = None,
     ) -> "AddMakeLinkAction":
         """
         Create a link action for directed (~> or <~) connections via can_bridge.
@@ -355,7 +356,11 @@ class ActionsFactory:
         lhs_bridge_path = ActionsFactory._build_bridge_path(lhs_link_path, lhs_pointer)
         rhs_bridge_path = ActionsFactory._build_bridge_path(rhs_link_path, rhs_pointer)
 
-        return AddMakeLinkAction(lhs_path=lhs_bridge_path, rhs_path=rhs_bridge_path)
+        return AddMakeLinkAction(
+            lhs_path=lhs_bridge_path,
+            rhs_path=rhs_bridge_path,
+            source_chunk_node=source_chunk_node,
+        )
 
     @staticmethod
     def _build_bridge_path(base_link_path: LinkPath, pointer: str) -> LinkPath:

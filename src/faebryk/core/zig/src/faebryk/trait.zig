@@ -19,7 +19,10 @@ const return_first = visitor.return_first;
 pub const Trait = struct {
     pub fn add_trait_to(target: BoundNodeReference, trait_type: BoundNodeReference) !BoundNodeReference {
         var tg = TypeGraph.of_type(trait_type).?;
-        const trait_instance = try tg.instantiate_node(trait_type);
+        const trait_instance = switch (tg.instantiate_node(trait_type)) {
+            .ok => |n| n,
+            .err => return error.InstantiationFailed,
+        };
         _ = EdgeTrait.add_trait_instance(target, trait_instance.node);
         return trait_instance;
     }
@@ -31,7 +34,10 @@ pub const Trait = struct {
 
     pub fn mark_as_trait(trait_type: BoundNodeReference) !void {
         var tg = TypeGraph.of_type(trait_type) orelse return error.TypeGraphNotFound;
-        const impl_trait = try tg.instantiate_node(tg.get_ImplementsTrait());
+        const impl_trait = switch (tg.instantiate_node(tg.get_ImplementsTrait())) {
+            .ok => |n| n,
+            .err => return error.InstantiationFailed,
+        };
         _ = EdgeTrait.add_trait_instance(trait_type, impl_trait.node);
     }
 
@@ -260,7 +266,10 @@ test "basic" {
     const trait_instance_recall_1 = EdgeTrait.try_get_trait_instance_of_type(bn1, trait_type.node);
     try std.testing.expect(EdgeTrait.get_owner_node_of(trait_instance_recall_1.?).?.node.is_same(bn1.node));
 
-    const trait_instance2 = try tg.instantiate_node(trait_type2);
+    const trait_instance2 = switch (tg.instantiate_node(trait_type2)) {
+        .ok => |n| n,
+        .err => return error.InstantiationFailed,
+    };
     _ = try Trait.add_trait_instance_to(bn1, trait_instance2);
     const trait_instance_recall_2 = EdgeTrait.try_get_trait_instance_of_type(bn1, trait_type2.node);
     try std.testing.expect(EdgeTrait.get_owner_node_of(trait_instance_recall_2.?).?.node.is_same(bn1.node));

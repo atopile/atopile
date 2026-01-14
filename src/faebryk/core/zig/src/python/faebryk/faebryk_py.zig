@@ -33,6 +33,8 @@ var edge_creation_attributes_type: ?*py.PyTypeObject = null;
 var node_creation_attributes_type: ?*py.PyTypeObject = null;
 var type_graph_type: ?*py.PyTypeObject = null;
 var typegraph_path_error_type: ?*py.PyObject = null;
+var typegraph_instantiation_error_type: ?*py.PyObject = null;
+var typegraph_resolve_error_type: ?*py.PyObject = null;
 var make_child_node_type: ?*py.PyTypeObject = null;
 
 pub const method_descr = bind.method_descr;
@@ -3713,6 +3715,266 @@ fn _init_typegraph_path_error(module: *py.PyObject) void {
     py.Py_INCREF(exc.?);
 }
 
+fn _init_typegraph_instantiation_error(module: *py.PyObject) void {
+    if (typegraph_instantiation_error_type != null) return;
+
+    const exc_name = "faebryk.core.zig.TypeGraphInstantiationError";
+    const exc = py.PyErr_NewException(exc_name, py.PyExc_ValueError, null);
+    if (exc == null) {
+        py.PyErr_Clear();
+        return;
+    }
+
+    const doc =
+        "Raised when TypeGraph instantiation fails. " ++
+        "Contains the failing node (MakeChild or MakeLink) and error message " ++
+        "for rich error reporting with source location.";
+    const doc_obj = py.PyUnicode_FromStringAndSize(
+        @ptrCast(doc.ptr),
+        @as(isize, @intCast(doc.len)),
+    );
+    if (doc_obj != null) {
+        if (py.PyObject_SetAttrString(exc, "__doc__", doc_obj) != 0) {
+            py.PyErr_Clear();
+        }
+        py.Py_DECREF(doc_obj.?);
+    }
+
+    if (py.PyModule_AddObject(module, "TypeGraphInstantiationError", exc) != 0) {
+        py.Py_DECREF(exc.?);
+        py.PyErr_Clear();
+        return;
+    }
+
+    typegraph_instantiation_error_type = exc;
+    py.Py_INCREF(exc.?);
+}
+
+fn _instantiation_error_kind_to_str(kind: faebryk.typegraph.TypeGraph.InstantiationErrorKind) []const u8 {
+    return switch (kind) {
+        .unresolved_type_reference => "unresolved_type_reference",
+        .unresolved_reference => "unresolved_reference",
+        .missing_operand_reference => "missing_operand_reference",
+        .invalid_argument => "invalid_argument",
+        .other => "other",
+    };
+}
+
+/// Raise a TypeGraphInstantiationError with the failing node and message.
+/// The node is the MakeChild or MakeLink that caused the failure.
+fn _raise_instantiation_error(
+    err_info: faebryk.typegraph.TypeGraph.InstantiationError,
+    fallback_message: [:0]const u8,
+) void {
+    if (typegraph_instantiation_error_type == null) {
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+
+    // Create exception instance with message
+    const args = py.PyTuple_New(1);
+    if (args == null) {
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+
+    const message_obj = _make_py_string(err_info.message) orelse {
+        py.Py_DECREF(args.?);
+        py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate error message");
+        return;
+    };
+
+    if (py.PyTuple_SetItem(args, 0, message_obj) != 0) {
+        py.Py_DECREF(message_obj);
+        py.Py_DECREF(args.?);
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+
+    const exc_instance = py.PyObject_Call(typegraph_instantiation_error_type.?, args, null);
+    py.Py_DECREF(args.?);
+    if (exc_instance == null) {
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+
+    // Set the 'node' attribute (BoundNode)
+    const node_obj = graph_py.makeBoundNodePyObject(err_info.node) orelse {
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate error node");
+        return;
+    };
+    if (py.PyObject_SetAttrString(exc_instance.?, "node", node_obj) != 0) {
+        py.Py_DECREF(node_obj);
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+    py.Py_DECREF(node_obj);
+
+    // Set the 'kind' attribute (string)
+    const kind_bytes = _instantiation_error_kind_to_str(err_info.kind);
+    const kind_obj = _make_py_string(kind_bytes) orelse {
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate error kind");
+        return;
+    };
+    if (py.PyObject_SetAttrString(exc_instance.?, "kind", kind_obj) != 0) {
+        py.Py_DECREF(kind_obj);
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+    py.Py_DECREF(kind_obj);
+
+    // Set the 'identifier' attribute (the identifier being looked up)
+    const id_obj = py.PyUnicode_FromStringAndSize(err_info.identifier.ptr, @intCast(err_info.identifier.len)) orelse {
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    };
+    if (py.PyObject_SetAttrString(exc_instance.?, "identifier", id_obj) != 0) {
+        py.Py_DECREF(id_obj);
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+    py.Py_DECREF(id_obj);
+
+    // Raise the exception
+    py.PyErr_SetObject(typegraph_instantiation_error_type.?, exc_instance);
+    py.Py_DECREF(exc_instance.?);
+}
+
+fn _init_typegraph_resolve_error(module: *py.PyObject) void {
+    if (typegraph_resolve_error_type != null) return;
+
+    const exc_name = "faebryk.core.zig.TypeGraphResolveError";
+    const exc = py.PyErr_NewException(exc_name, py.PyExc_ValueError, null);
+    if (exc == null) {
+        py.PyErr_Clear();
+        return;
+    }
+
+    const doc =
+        "Raised when TypeGraph reference resolution fails. " ++
+        "Contains the failing reference node and error message " ++
+        "for rich error reporting with source location.";
+
+    const doc_obj = py.PyUnicode_FromStringAndSize(doc.ptr, @intCast(doc.len));
+    if (doc_obj != null) {
+        _ = py.PyObject_SetAttrString(exc.?, "__doc__", doc_obj.?);
+        py.Py_DECREF(doc_obj.?);
+    }
+
+    if (py.PyModule_AddObject(module, "TypeGraphResolveError", exc) != 0) {
+        py.Py_DECREF(exc.?);
+        py.PyErr_Clear();
+        return;
+    }
+
+    typegraph_resolve_error_type = exc;
+    py.Py_INCREF(exc.?);
+}
+
+fn _resolve_error_kind_to_str(kind: faebryk.typegraph.TypeGraph.ResolveErrorKind) []const u8 {
+    return switch (kind) {
+        .type_not_found => "type_not_found",
+        .composition_child_not_found => "composition_child_not_found",
+        .trait_type_not_found => "trait_type_not_found",
+        .trait_instance_not_found => "trait_instance_not_found",
+        .pointer_dereference_failed => "pointer_dereference_failed",
+        .operand_not_found => "operand_not_found",
+        .unknown_edge_type => "unknown_edge_type",
+        .typegraph_not_found => "typegraph_not_found",
+    };
+}
+
+/// Raise a TypeGraphResolveError with the failing reference node and message.
+fn _raise_resolve_error(
+    err_info: faebryk.typegraph.TypeGraph.ResolveError,
+    fallback_message: [:0]const u8,
+) void {
+    if (typegraph_resolve_error_type == null) {
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+
+    // Create exception instance with message
+    const args = py.PyTuple_New(1);
+    if (args == null) {
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+
+    const message_obj = _make_py_string(err_info.message) orelse {
+        py.Py_DECREF(args.?);
+        py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate error message");
+        return;
+    };
+
+    if (py.PyTuple_SetItem(args, 0, message_obj) != 0) {
+        py.Py_DECREF(message_obj);
+        py.Py_DECREF(args.?);
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+
+    const exc_instance = py.PyObject_Call(typegraph_resolve_error_type.?, args, null);
+    py.Py_DECREF(args.?);
+    if (exc_instance == null) {
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+
+    // Set the 'node' attribute (BoundNode - the failing reference node)
+    const node_obj = graph_py.makeBoundNodePyObject(err_info.node) orelse {
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate error node");
+        return;
+    };
+    if (py.PyObject_SetAttrString(exc_instance.?, "node", node_obj) != 0) {
+        py.Py_DECREF(node_obj);
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+    py.Py_DECREF(node_obj);
+
+    // Set the 'kind' attribute (error kind as string)
+    const kind_str = _resolve_error_kind_to_str(err_info.kind);
+    const kind_obj = py.PyUnicode_FromStringAndSize(kind_str.ptr, @intCast(kind_str.len)) orelse {
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    };
+    if (py.PyObject_SetAttrString(exc_instance.?, "kind", kind_obj) != 0) {
+        py.Py_DECREF(kind_obj);
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+    py.Py_DECREF(kind_obj);
+
+    // Set the 'identifier' attribute (the identifier being looked up)
+    const id_obj = py.PyUnicode_FromStringAndSize(err_info.identifier.ptr, @intCast(err_info.identifier.len)) orelse {
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    };
+    if (py.PyObject_SetAttrString(exc_instance.?, "identifier", id_obj) != 0) {
+        py.Py_DECREF(id_obj);
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+    py.Py_DECREF(id_obj);
+
+    // Raise the exception
+    py.PyErr_SetObject(typegraph_resolve_error_type.?, exc_instance.?);
+    py.Py_DECREF(exc_instance.?);
+}
+
 fn _raise_path_error(
     failure_opt: ?faebryk.typegraph.TypeGraph.PathResolutionFailure,
     segments: []const []const u8,
@@ -4126,16 +4388,6 @@ fn wrap_typegraph_validate_type() type {
     };
 }
 
-fn instantiation_error_message(err: anyerror) [*:0]const u8 {
-    return switch (err) {
-        error.InvalidArgument => "Node instantiation failed: type not found",
-        error.UnresolvedTypeReference => "Node instantiation failed: unresolved type reference (linking required)",
-        error.UnresolvedReference => "Node instantiation failed: unresolved reference in MakeLink",
-        error.MissingOperandReference => "Node instantiation failed: missing operand reference in MakeLink",
-        else => "Node instantiation failed",
-    };
-}
-
 fn wrap_typegraph_instantiate() type {
     return struct {
         pub const descr = method_descr{
@@ -4153,12 +4405,16 @@ fn wrap_typegraph_instantiate() type {
 
             const identifier = bind.unwrap_str(kwarg_obj.type_identifier) orelse return null;
 
-            const bnode = faebryk.typegraph.TypeGraph.instantiate(wrapper.data, identifier) catch |err| {
-                py.PyErr_SetString(py.PyExc_ValueError, instantiation_error_message(err));
-                return null;
-            };
-
-            return graph_py.makeBoundNodePyObject(bnode);
+            const result = faebryk.typegraph.TypeGraph.instantiate(wrapper.data, identifier);
+            switch (result) {
+                .ok => |bnode| {
+                    return graph_py.makeBoundNodePyObject(bnode);
+                },
+                .err => |err_info| {
+                    _raise_instantiation_error(err_info, "Node instantiation failed");
+                    return null;
+                },
+            }
         }
     };
 }
@@ -4167,7 +4423,7 @@ fn wrap_typegraph_instantiate_node() type {
     return struct {
         pub const descr = method_descr{
             .name = "instantiate_node",
-            .doc = "Instantiate the given type node into the graph",
+            .doc = "Instantiate the given type node into the graph. Raises TypeGraphInstantiationError on failure with the failing node.",
             .args_def = struct {
                 type_node: *graph.BoundNodeReference,
                 attributes: *py.PyObject,
@@ -4186,14 +4442,17 @@ fn wrap_typegraph_instantiate_node() type {
             var dynamic = _unwrap_literal_str_dict(kwarg_obj.attributes, std.heap.c_allocator) catch return null;
             // DynamicAttributes is a value type, no deinit needed
 
-            const bnode = faebryk.typegraph.TypeGraph.instantiate_node(wrapper.data, kwarg_obj.type_node.*) catch |err| {
-                py.PyErr_SetString(py.PyExc_ValueError, instantiation_error_message(err));
-                return null;
-            };
-
-            bnode.node.copy_dynamic_attributes_into(&dynamic);
-
-            return graph_py.makeBoundNodePyObject(bnode);
+            const result = faebryk.typegraph.TypeGraph.instantiate_node(wrapper.data, kwarg_obj.type_node.*);
+            switch (result) {
+                .ok => |bnode| {
+                    bnode.node.copy_dynamic_attributes_into(&dynamic);
+                    return graph_py.makeBoundNodePyObject(bnode);
+                },
+                .err => |err_info| {
+                    _raise_instantiation_error(err_info, "Node instantiation failed");
+                    return null;
+                },
+            }
         }
     };
 }
@@ -4268,7 +4527,7 @@ fn wrap_typegraph_reference_resolve() type {
     return struct {
         pub const descr = method_descr{
             .name = "reference_resolve",
-            .doc = "Resolve a reference node within the instance graph",
+            .doc = "Resolve a reference node within the instance graph. Raises TypeGraphResolveError on failure with the failing reference node.",
             .args_def = struct {
                 reference_node: *graph.BoundNodeReference,
                 base_node: *graph.BoundNodeReference,
@@ -4285,15 +4544,18 @@ fn wrap_typegraph_reference_resolve() type {
             _ = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const resolved = faebryk.typegraph.TypeGraph.ChildReferenceNode.resolve(
+            const result = faebryk.typegraph.TypeGraph.ChildReferenceNode.resolve(
                 kwarg_obj.reference_node.*,
                 kwarg_obj.base_node.*,
             );
 
-            if (resolved) |node| {
-                return graph_py.makeBoundNodePyObject(node);
+            switch (result) {
+                .ok => |node| return graph_py.makeBoundNodePyObject(node),
+                .err => |resolve_err| {
+                    _raise_resolve_error(resolve_err, "Reference resolution failed");
+                    return null;
+                },
             }
-            return py.Py_None();
         }
     };
 }
@@ -4674,6 +4936,8 @@ fn wrap_typegraph(root: *py.PyObject) void {
     bind.wrap_namespace_struct(root, faebryk.typegraph.TypeGraph, extra_methods);
     wrap_typegraph_make_child_node(root);
     _init_typegraph_path_error(root);
+    _init_typegraph_instantiation_error(root);
+    _init_typegraph_resolve_error(root);
 
     type_graph_type = type_registry.getRegisteredTypeObject("TypeGraph");
     if (type_graph_type) |tg_type| {

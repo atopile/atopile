@@ -380,7 +380,6 @@ class Linker:
                     f"Unable to resolve import `{import_ref.path}`"
                 ),
                 source_node=source_node,
-                file_path=build_state.file_path,
             ) from e
 
         # Rest of method continues with source_path defined
@@ -443,7 +442,6 @@ class Linker:
                 traceback=[],
                 original=ex,
                 source_node=import_node,
-                file_path=build_state.file_path,
             ) from ex
 
         self._linked_modules[source_path] = child_result.state.type_roots
@@ -458,7 +456,6 @@ class Linker:
                 f"Available modules: {available_modules}",
                 traceback=[],
                 source_node=import_node,
-                file_path=build_state.file_path,
             )
 
     def link_imports(self, g: graph.GraphView, build_state: BuildState) -> None:
@@ -531,7 +528,6 @@ class Linker:
                         f"Symbol `{type_id}` is not defined in this scope",
                         original=DslUndefinedSymbolError(),
                         source_node=source_node,
-                        file_path=build_state.file_path,
                         traceback=traceback_stack,
                     )
             elif import_ref.path is None:
@@ -614,7 +610,6 @@ class Linker:
                             f"Available modules: {available_modules}",
                             traceback=[],
                             source_node=import_node,
-                            file_path=build_state.file_path,
                         )
             elif cached_type_roots is not None:
                 # file import from cache
@@ -630,7 +625,6 @@ class Linker:
                         f"Available modules: {available_modules}",
                         traceback=[],
                         source_node=import_node,
-                        file_path=build_state.file_path,
                     )
             else:
                 # file import
@@ -791,6 +785,5 @@ def build_stage_2(
                             message,
                             original=DslException(message),
                             source_node=source_chunk,
-                            file_path=file_path,
                             traceback=[],
                         )

@@ -4,6 +4,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 from atopile.cli.logging_ import LoggingStage
+from atopile.compiler import format_message
 from atopile.compiler.build import build_stage_2
 from atopile.config import BuildType, config
 
@@ -82,6 +83,7 @@ def _init_ato_app(
     """Initialize a specific .ato build."""
     import faebryk.core.node as fabll
     import faebryk.library._F as F
+    from atopile.compiler import DslRichException, DslTypeError
     from atopile.compiler.build import build_file
 
     result = build_file(
@@ -94,7 +96,16 @@ def _init_ato_app(
     build_stage_2(g=g, tg=tg, linker=linker, result=result)
 
     app_type = result.state.type_roots[config.build.entry_section]
-    app_root = tg.instantiate_node(type_node=app_type, attributes={})
+    try:
+        app_root = tg.instantiate_node(type_node=app_type, attributes={})
+    except fbrk.TypeGraphInstantiationError as e:
+        message = format_message(e)
+        raise DslRichException(
+            message=message,
+            original=DslTypeError(message),
+            source_node=fabll.Node.bind_instance(e.node) if e.node else None,
+        ) from e
+
     app = fabll.Node.bind_instance(app_root)
 
     F.Parameters.NumericParameter.infer_units_in_tree(app)

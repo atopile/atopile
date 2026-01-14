@@ -229,7 +229,10 @@ fn add_is_interface_recursive(tg: *TypeGraph, root: BoundNodeReference) !void {
 }
 
 fn instantiate_interface(tg: *TypeGraph, node_type: BoundNodeReference) !BoundNodeReference {
-    const node = try tg.instantiate_node(node_type);
+    const node = switch (tg.instantiate_node(node_type)) {
+        .ok => |n| n,
+        .err => return error.InstantiationFailed,
+    };
     try add_is_interface_recursive(tg, node);
     return node;
 }

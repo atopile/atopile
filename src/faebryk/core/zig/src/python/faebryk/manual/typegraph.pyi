@@ -13,6 +13,19 @@ class TypeGraphPathError(ValueError):
     failing_segment_index: int
     index_value: int | None
 
+class TypeGraphInstantiationError(ValueError):
+    node: BoundNode
+    """The MakeChild or MakeLink node that caused the instantiation failure."""
+    kind: str
+    identifier: str
+
+class TypeGraphResolveError(ValueError):
+    node: BoundNode
+    """The reference node that caused the resolution failure."""
+
+    kind: str
+    identifier: str
+
 class TypeGraph:
     @staticmethod
     def create(*, g: GraphView) -> "TypeGraph": ...
@@ -178,7 +191,7 @@ class TypeGraph:
     ) -> BoundNode: ...
     def reference_resolve(
         self, *, reference_node: BoundNode, base_node: BoundNode
-    ) -> BoundNode | None: ...
+    ) -> BoundNode: ...
     def get_graph_view(self) -> GraphView: ...
     def get_self_node(self) -> BoundNode: ...
     def get_type_by_name(self, *, type_identifier: str) -> BoundNode | None: ...

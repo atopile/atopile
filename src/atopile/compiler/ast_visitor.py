@@ -502,7 +502,6 @@ class ASTVisitor:
             message,
             original=exc_type(message),
             source_node=source_node,
-            file_path=self._state.file_path,
             traceback=self._traceback_stack.get_frames(),
         )
 
@@ -802,9 +801,17 @@ class ASTVisitor:
         )
 
         type_identifier = self._make_type_identifier(module_name)
-        if fabll.Node._seen_types.get(type_identifier):
-            logger.info(f"Overwriting {type_identifier}")
-            fabll.Node._seen_types.pop(type_identifier)
+        if existing_type := fabll.Node._seen_types.get(type_identifier):
+            logger.debug(
+                f"Type {type_identifier} already processed, skipping reprocessing"
+            )
+            type_node_bound_tg = fabll.TypeNodeBoundTG(tg=self._tg, t=existing_type)
+            type_node = type_node_bound_tg.get_or_create_type()
+
+            self._state.type_roots[module_name] = type_node
+            self._scope_stack.add_symbol(Symbol(name=module_name, type_node=type_node))
+            return
+
         match node.get_block_type():
             case AST.BlockDefinition.BlockType.MODULE:
 
@@ -1688,8 +1695,12 @@ class ASTVisitor:
         if nested_rhs := rhs.try_cast(t=AST.DirectedConnectStmt):
             nested_direction = nested_rhs.get_direction()
             if current_direction != nested_direction:
-                raise DslException(
-                    "Only one type of connection direction per statement allowed"
+                raise DslRichException(
+                    message="Only one connection direction per statement allowed",
+                    original=DslException(
+                        "Only one connection direction per statement allowed"
+                    ),
+                    source_node=node,
                 )
 
         lhs_node = fabll.Traits(lhs).get_obj_raw()
@@ -1705,7 +1716,7 @@ class ASTVisitor:
             middle_link_path = self._field_path_to_link_path(middle_base_path)
 
             link_action = ActionsFactory.directed_link_action(
-                lhs_link_path, middle_link_path, node.get_direction()
+                lhs_link_path, middle_link_path, node.get_direction(), node.source.get()
             )
             nested_actions = self.visit_DirectedConnectStmt(nested_rhs)
 
@@ -1716,7 +1727,7 @@ class ASTVisitor:
         rhs_link_path = self._field_path_to_link_path(rhs_base_path)
 
         link_action = ActionsFactory.directed_link_action(
-            lhs_link_path, rhs_link_path, node.get_direction()
+            lhs_link_path, rhs_link_path, node.get_direction(), node.source.get()
         )
         return [*lhs_actions, *rhs_actions, link_action]
 
@@ -1903,3 +1914,22 @@ class ASTVisitor:
         if source_chunk_bnode is None:
             return None
         return AST.SourceChunk.bind_instance(source_chunk_bnode)
+
+    @staticmethod
+    def _extract_filepath_from_source_node(
+        source_node: fabll.Node | None,
+    ) -> Path | None:
+        if source_node is None:
+            return None
+
+        try:
+            source_chunk_node = ASTVisitor.get_source_chunk(source_node.instance)
+            if source_chunk_node is None:
+                return None
+
+            filepath_str = source_chunk_node.get_path()
+            if filepath_str:
+                return Path(filepath_str)
+        except Exception:
+            pass
+        return None

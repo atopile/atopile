@@ -526,7 +526,10 @@ test "get_children_query type filtering" {
     _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null, false);
 
     // Instantiate a Resistor (which has p1, p2 as Electrical and cap1 as Capacitor)
-    const resistor = try tg.instantiate_node(Resistor);
+    const resistor = switch (tg.instantiate_node(Resistor)) {
+        .ok => |n| n,
+        .err => return error.InstantiationFailed,
+    };
 
     // Test: filter children by Electrical type only (should get rp1, rp2 but not cap1)
     const query_electrical = ChildQuery{
@@ -592,7 +595,10 @@ test "get_children_query recursive with type filtering" {
     _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null, false);
 
     // Instantiate a Resistor
-    const resistor = try tg.instantiate_node(Resistor);
+    const resistor = switch (tg.instantiate_node(Resistor)) {
+        .ok => |n| n,
+        .err => return error.InstantiationFailed,
+    };
 
     // Test: recursively get all Electrical children (should find cap1.p1 and cap1.p2)
     const query_electrical_recursive = ChildQuery{

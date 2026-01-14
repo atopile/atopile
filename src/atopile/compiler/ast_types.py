@@ -109,6 +109,7 @@ class SourceInfo:
     end_line: int
     end_col: int
     text: str
+    filepath: str | None = None
 
 
 class FileLocation(fabll.Node):
@@ -116,14 +117,22 @@ class FileLocation(fabll.Node):
     start_col = F.Literals.Counts.MakeChild()
     end_line = F.Literals.Counts.MakeChild()
     end_col = F.Literals.Counts.MakeChild()
+    filepath = F.Literals.Strings.MakeChild()
 
     def setup(  # type: ignore[invalid-method-override]
-        self, start_line: int, start_col: int, end_line: int, end_col: int
+        self,
+        start_line: int,
+        start_col: int,
+        end_line: int,
+        end_col: int,
+        filepath: str | None = None,
     ) -> Self:
         self.start_line.get().setup_from_values(values=[start_line])
         self.start_col.get().setup_from_values(values=[start_col])
         self.end_line.get().setup_from_values(values=[end_line])
         self.end_col.get().setup_from_values(values=[end_col])
+        if filepath is not None:
+            self.filepath.get().setup_from_values(filepath)
         return self
 
     def get_start_line(self) -> int:
@@ -150,11 +159,18 @@ class SourceChunk(fabll.Node):
             start_col=source_info.start_col,
             end_line=source_info.end_line,
             end_col=source_info.end_col,
+            filepath=source_info.filepath,
         )
         return self
 
     def get_text(self) -> str:
         return self.text.get().get_single()
+
+    def get_path(self) -> str | None:
+        try:
+            return self.loc.get().filepath.get().get_single()
+        except Exception:
+            return None
 
 
 class TypeRef(fabll.Node):

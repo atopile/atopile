@@ -1,4 +1,5 @@
 import math
+import tempfile
 import textwrap
 from enum import IntEnum, StrEnum
 from pathlib import Path
@@ -9,15 +10,19 @@ import pytest
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from atopile.compiler import DslRichException
+from atopile.compiler.ast_types import SourceChunk, SourceInfo
 from atopile.compiler.ast_visitor import (
+    STDLIB_ALLOWLIST,
     ASTVisitor,
     DslException,
     is_ato_component,
     is_ato_interface,
     is_ato_module,
 )
-from atopile.compiler.build import Linker, StdlibRegistry, build_file
+from atopile.compiler.build import Linker, StdlibRegistry, build_file, build_stage_2
 from atopile.errors import UserSyntaxError
+from faebryk.core import graph
 from faebryk.core.faebrykpy import EdgeComposition, EdgeType
 from faebryk.core.graph import BoundNode, GraphView
 from faebryk.core.solver.defaultsolver import DefaultSolver
@@ -3610,3 +3615,157 @@ class TestDSLExceptionTracebacks:
                 "_App",
             )
         assert e.value.message == "Field `dcathode` could not be resolved"
+
+    def test_error_filepath_in_main_file(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            main_file = Path(tmpdir) / "main.ato"
+            main_file.write_text("""
+module TestModule:
+                # Reference a non-existent symbol to trigger an error
+                child = new NonExistentModule
+            """)
+            result = build_file(
+                g=g,
+                tg=tg,
+                import_path="test",
+                path=main_file,
+            )
+
+        # This should raise an error about undefined symbol
+        with pytest.raises(DslRichException) as exc_info:
+            stdlib = StdlibRegistry(tg=tg, allowlist=STDLIB_ALLOWLIST)
+            linker = Linker(
+                config_obj=None,
+                stdlib=stdlib,
+                tg=tg,
+            )
+            build_stage_2(g=g, tg=tg, linker=linker, result=result)
+
+        # Check that the error has the correct filepath
+        assert exc_info.value.file_path is not None
+        assert exc_info.value.file_path == main_file
+        assert "NonExistentModule" in str(exc_info.value)
+
+    def test_error_filepath_in_imported_file(self):
+        """Test that errors in imported files show the correct filepath."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create an imported file with an error
+            imported_file = Path(tmpdir) / "imported.ato"
+            imported_file.write_text("""
+module ImportedModule:
+    # Reference a non-existent symbol
+    child = new AnotherNonExistent
+    """)
+
+            # Create main file that imports the problematic module
+            main_file = Path(tmpdir) / "main.ato"
+            main_file.write_text("""
+from "imported.ato" import ImportedModule
+
+module MainModule:
+    imported = new ImportedModule
+    """)
+
+            result = build_file(
+                g=g,
+                tg=tg,
+                import_path="test",
+                path=main_file,
+            )
+
+            stdlib = StdlibRegistry(tg=tg, allowlist=STDLIB_ALLOWLIST)
+            linker = Linker(
+                config_obj=None,
+                stdlib=stdlib,
+                tg=tg,
+            )
+
+            # This should raise an error about undefined symbol in imported file
+            with pytest.raises(DslRichException) as exc_info:
+                build_stage_2(g=g, tg=tg, linker=linker, result=result)
+
+            # Check that the error has the correct filepath (should be imported_file)
+            assert exc_info.value.file_path is not None
+            # The error should reference the imported file, not the main file
+            # Use resolve() to handle symlinks (e.g., /private/var vs /var on macOS)
+            assert exc_info.value.file_path.resolve() == imported_file.resolve()
+            assert "AnotherNonExistent" in str(exc_info.value)
+
+    def test_error_rendering_uses_source_chunk_filepath(self):
+        """Test that error rendering extracts filepath from
+        source chunk when not provided."""
+
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        # Create a SourceChunk with a filepath
+        source_chunk_type = SourceChunk.bind_typegraph(tg)
+        source_chunk = source_chunk_type.create_instance(g)
+
+        test_filepath = "/path/to/test_file.ato"
+        source_info = SourceInfo(
+            text="test = new Something",
+            start_line=42,
+            start_col=4,
+            end_line=42,
+            end_col=24,
+            filepath=test_filepath,
+        )
+        source_chunk.setup(source_info)
+
+        # Create an exception with file_path=None
+        # The rendering should extract it from source_chunk
+        exc = DslRichException(
+            "Test error message",
+            original=DslException("Test error"),
+            source_node=source_chunk,
+            file_path=None,  # Explicitly None
+            traceback=[],
+        )
+
+        # Render the exception
+        renderables = exc._render_ast_source(source_chunk, None)
+
+        # Check that the filepath was extracted and used in rendering
+        # The header should contain the filepath
+        header_text = str(renderables[0])
+        assert test_filepath in header_text or "test_file.ato" in header_text
+
+    def test_filepath_extraction_from_source_chunk(self):
+        """Test that filepath can be extracted from source chunk nodes."""
+
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        # Create a SourceChunk with various filepaths
+        test_cases = [
+            "/absolute/path/to/file.ato",
+            "relative/path/to/file.ato",
+            "/path/with/subdirs/deep/file.ato",
+        ]
+
+        for test_path in test_cases:
+            source_chunk_type = SourceChunk.bind_typegraph(tg)
+            source_chunk = source_chunk_type.create_instance(g)
+
+            source_info = SourceInfo(
+                text="module Test: pass",
+                start_line=1,
+                start_col=0,
+                end_line=1,
+                end_col=20,
+                filepath=test_path,
+            )
+            source_chunk.setup(source_info)
+
+            # Extract filepath
+            extracted = ASTVisitor._extract_filepath_from_source_node(source_chunk)
+
+            assert extracted is not None
+            assert str(extracted) == test_path

@@ -48,6 +48,7 @@ def _render_tokens(
             start_line=lexer.start_line,
             indent_guides=True,
             highlight_lines=highlight_lines,
+            background_color="default",
         ),
     ]
 

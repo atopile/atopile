@@ -9,17 +9,8 @@ from rich.syntax import Syntax
 from rich.text import Text
 
 import atopile.compiler.ast_types as AST
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
-
-
-def _try_relative_path(path: Path | None) -> str:
-    """Try to make a path relative to cwd, fall back to absolute path."""
-    if path is None:
-        return "<memory>"
-    try:
-        return str(path.relative_to(Path.cwd()))
-    except ValueError:
-        return str(path)
 
 
 class CompilerException(Exception):
@@ -116,7 +107,13 @@ class DslRichException(DslException):
         file_path: Path | None = None,
         code: str | None = None,
     ):
+        from atopile.compiler.ast_visitor import ASTVisitor
+
         super().__init__(message)
+
+        if file_path is None:
+            file_path = ASTVisitor._extract_filepath_from_source_node(source_node)
+
         self.message = message
         self.original = original
         self.source_node = source_node
@@ -139,9 +136,15 @@ class DslRichException(DslException):
     def _render_ast_source(
         self, source_chunk: AST.SourceChunk, file_path: Path | None
     ) -> list[ConsoleRenderable]:
+        from atopile.compiler.ast_visitor import ASTVisitor
+
         loc = source_chunk.loc.get()
         start_line = loc.get_start_line()
         end_line = loc.get_end_line()
+
+        # Try to extract filepath from source_chunk if file_path is None
+        if file_path is None:
+            file_path = ASTVisitor._extract_filepath_from_source_node(source_chunk)
 
         code = None
         if file_path is not None:
@@ -174,7 +177,7 @@ class DslRichException(DslException):
                 ),
             ]
 
-        display_path = _try_relative_path(file_path)
+        display_path = str(file_path)
         header = Text("  File ", style="dim")
         header.append(f'"{display_path}"', style="dim")
         header.append(f", line {start_line}", style="dim")
@@ -204,7 +207,7 @@ class DslRichException(DslException):
         if source_chunk is None:
             return [
                 Text(
-                    f'  File "{_try_relative_path(frame.file_path) if frame.file_path else "<memory>"}"',  # noqa: E501
+                    f'  File "{str(frame.file_path) if frame.file_path else "<memory>"}"',  # noqa: E501
                     style="dim italic",
                 )
             ]
@@ -213,7 +216,7 @@ class DslRichException(DslException):
         start_line = loc.get_start_line()
 
         # Create the file/line header (first line of frame)
-        file_part = f'"{_try_relative_path(frame.file_path)}"'
+        file_part = f'"{str(frame.file_path)}"' if frame.file_path else "<memory>"
         header = Text(f"  File {file_part}, line {start_line}", style="dim italic")
 
         # Get the source code for this frame
@@ -261,3 +264,50 @@ class DslRichException(DslException):
                 )
             else:
                 yield from self._render_ast_source(source_chunk, self.file_path)
+
+
+def _try_relative_path(path: Path | None) -> str:
+    """Try to make a path relative to cwd, fall back to absolute path."""
+    if path is None:
+        return "<memory>"
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        return str(path)
+
+
+# TODO: Move this function
+def format_message(e: fbrk.TypeGraphInstantiationError) -> str:
+    import faebryk.core.node as fabll
+
+    # Format error message: "<identifier> <message> <node_name>"
+    identifier = getattr(e, "identifier", None) or ""
+    base_msg = str(e)  # e.g. "trait not found on"
+
+    # Get node name by wrapping the BoundNode in a fabll.Node
+    node_name = ""
+    if e.node is not None:
+        try:
+            # TODO: get the actual node back that failed the reference resolution
+            wrapped_node = fabll.Node(e.node)
+            node_name = wrapped_node.get_full_name()
+        except Exception:
+            try:
+                node_name = f"node:{e.node.node().get_uuid()}"
+            except Exception:
+                node_name = "<unknown>"
+
+    # Build message: "<identifier> <message> <node_name>"
+    # Filter out empty parts and join with spaces
+    parts = [
+        p
+        for p in [
+            f"`{identifier}`" if identifier else "",
+            base_msg,
+            f"`{node_name}`" if node_name else "",
+        ]
+        if p
+    ]
+    message = " ".join(parts) if parts else "Instantiation failed"
+
+    return message

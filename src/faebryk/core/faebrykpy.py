@@ -12,7 +12,12 @@ from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.core.zig.gen.faebryk.trait import EdgeTrait as _ZigEdgeTrait
 from faebryk.core.zig.gen.faebryk.trait import Trait
-from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph, TypeGraphPathError
+from faebryk.core.zig.gen.faebryk.typegraph import (
+    TypeGraph,
+    TypeGraphInstantiationError,
+    TypeGraphPathError,
+    TypeGraphResolveError,
+)
 
 if TYPE_CHECKING:
     import faebryk.core.node as fabll
@@ -106,4 +111,6 @@ __all__ = [
     "Trait",
     "TypeGraph",
     "TypeGraphPathError",
+    "TypeGraphInstantiationError",
+    "TypeGraphResolveError",
 ]
