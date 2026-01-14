@@ -218,7 +218,7 @@ def prepare_build(
 
 @muster.register(
     "post-design-setup",
-    description="Running post-design setup (structure modifications)",
+    description="Running post-design setup",
     dependencies=[prepare_build],
 )
 def post_design_setup(

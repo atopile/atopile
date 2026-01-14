@@ -805,9 +805,7 @@ def test_shallow_blocks_child_parent_child():
     # Full connect should propagate to children
     el1._is_interface.get().connect_to(el2)
     assert el1.line.get()._is_interface.get().is_connected_to(el2.line.get())
-    assert (
-        el1.reference.get()._is_interface.get().is_connected_to(el2.reference.get())
-    )
+    assert el1.reference.get()._is_interface.get().is_connected_to(el2.reference.get())
 
 
 def test_loooooong_chain():
@@ -1502,15 +1500,15 @@ class TestElectricPowerLazyVccGnd:
         power = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
 
         # Before post_design: vcc/gnd should be floating (not connected to hv/lv)
-        assert not power.vcc.get()._is_interface.get().is_connected_to(power.hv.get())
-        assert not power.gnd.get()._is_interface.get().is_connected_to(power.lv.get())
+        assert not power.hv.get()._is_interface.get().is_connected_to(power.hv.get())
+        assert not power.lv.get()._is_interface.get().is_connected_to(power.lv.get())
 
         # Run post_design check
         check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
 
         # After post_design: still not connected since nothing uses vcc/gnd
-        assert not power.vcc.get()._is_interface.get().is_connected_to(power.hv.get())
-        assert not power.gnd.get()._is_interface.get().is_connected_to(power.lv.get())
+        assert not power.hv.get()._is_interface.get().is_connected_to(power.hv.get())
+        assert not power.lv.get()._is_interface.get().is_connected_to(power.lv.get())
 
     def test_vcc_connected_to_hv_when_used(self):
         """
@@ -1525,22 +1523,22 @@ class TestElectricPowerLazyVccGnd:
         external = F.Electrical.bind_typegraph(tg).create_instance(g=g)
 
         # Connect something external to vcc
-        external._is_interface.get().connect_to(power.vcc.get())
+        external._is_interface.get().connect_to(power.hv.get())
 
         # Before post_design: vcc has external connection but not connected to hv
-        assert external._is_interface.get().is_connected_to(power.vcc.get())
-        assert not power.vcc.get()._is_interface.get().is_connected_to(power.hv.get())
+        assert external._is_interface.get().is_connected_to(power.hv.get())
+        assert not power.hv.get()._is_interface.get().is_connected_to(power.hv.get())
 
         # Run post_design check
         check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
 
         # After post_design: vcc should now be connected to hv
-        assert power.vcc.get()._is_interface.get().is_connected_to(power.hv.get())
+        assert power.hv.get()._is_interface.get().is_connected_to(power.hv.get())
         # And therefore external should be connected to hv too
         assert external._is_interface.get().is_connected_to(power.hv.get())
 
         # gnd should still be floating (not used)
-        assert not power.gnd.get()._is_interface.get().is_connected_to(power.lv.get())
+        assert not power.lv.get()._is_interface.get().is_connected_to(power.lv.get())
 
     def test_gnd_connected_to_lv_when_used(self):
         """
@@ -1555,17 +1553,17 @@ class TestElectricPowerLazyVccGnd:
         external = F.Electrical.bind_typegraph(tg).create_instance(g=g)
 
         # Connect something external to gnd
-        external._is_interface.get().connect_to(power.gnd.get())
+        external._is_interface.get().connect_to(power.lv.get())
 
         # Run post_design check
         check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
 
         # gnd should now be connected to lv
-        assert power.gnd.get()._is_interface.get().is_connected_to(power.lv.get())
+        assert power.lv.get()._is_interface.get().is_connected_to(power.lv.get())
         assert external._is_interface.get().is_connected_to(power.lv.get())
 
         # vcc should still be floating (not used)
-        assert not power.vcc.get()._is_interface.get().is_connected_to(power.hv.get())
+        assert not power.hv.get()._is_interface.get().is_connected_to(power.hv.get())
 
     def test_both_vcc_and_gnd_connected_when_both_used(self):
         """
@@ -1581,15 +1579,15 @@ class TestElectricPowerLazyVccGnd:
         external_gnd = F.Electrical.bind_typegraph(tg).create_instance(g=g)
 
         # Connect externals to both vcc and gnd
-        external_vcc._is_interface.get().connect_to(power.vcc.get())
-        external_gnd._is_interface.get().connect_to(power.gnd.get())
+        external_vcc._is_interface.get().connect_to(power.hv.get())
+        external_gnd._is_interface.get().connect_to(power.lv.get())
 
         # Run post_design check
         check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
 
         # Both should be connected
-        assert power.vcc.get()._is_interface.get().is_connected_to(power.hv.get())
-        assert power.gnd.get()._is_interface.get().is_connected_to(power.lv.get())
+        assert power.hv.get()._is_interface.get().is_connected_to(power.hv.get())
+        assert power.lv.get()._is_interface.get().is_connected_to(power.lv.get())
         assert external_vcc._is_interface.get().is_connected_to(power.hv.get())
         assert external_gnd._is_interface.get().is_connected_to(power.lv.get())
 
@@ -1618,5 +1616,5 @@ class TestElectricPowerLazyVccGnd:
         assert external_lv._is_interface.get().is_connected_to(power.lv.get())
 
         # vcc/gnd should still be floating
-        assert not power.vcc.get()._is_interface.get().is_connected_to(power.hv.get())
-        assert not power.gnd.get()._is_interface.get().is_connected_to(power.lv.get())
+        assert not power.hv.get()._is_interface.get().is_connected_to(power.hv.get())
+        assert not power.lv.get()._is_interface.get().is_connected_to(power.lv.get())
