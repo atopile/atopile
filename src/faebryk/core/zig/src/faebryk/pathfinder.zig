@@ -24,6 +24,8 @@ const EdgeType = type_mod.EdgeType;
 const TypeNodeAttributes = typegraph_mod.TypeGraph.TypeNodeAttributes;
 const EdgeTrait = trait_mod.EdgeTrait;
 
+const debug_pathfinder = false;
+
 const BoundNodeRefMap = struct {};
 
 const TypeElement = struct {
@@ -199,6 +201,11 @@ pub const PathFinder = struct {
         self: *Self,
         start_node: BoundNodeReference,
     ) !graph.BFSPaths {
+        var total_timer = try std.time.Timer.start();
+        var horizontal_time: u64 = 0;
+        var down_time: u64 = 0;
+        var up_time: u64 = 0;
+
         self.nodes_to_bfs.append(start_node) catch @panic("OOM");
 
         // boot strap first iteration
@@ -225,6 +232,7 @@ pub const PathFinder = struct {
             while (type_path.instance_paths.elements.pop()) |path_to_bfs| {
                 const node_to_bfs = path_to_bfs.get_last_node();
 
+                var timer = try std.time.Timer.start();
                 // Horizontal traverse
                 _ = node_to_bfs.g.visit_paths_bfs(
                     node_to_bfs,
@@ -253,6 +261,9 @@ pub const PathFinder = struct {
                 }
 
                 self.visited_list.add_element(type_path.type_element_list, visited_path_list);
+
+                horizontal_time += timer.read();
+                timer.reset();
 
                 // Down traverse
                 for (visited_path_list.elements.items) |path| {
@@ -285,6 +296,9 @@ pub const PathFinder = struct {
                         }
                     }
                 }
+
+                down_time += timer.read();
+                timer.reset();
 
                 // Up traverse
                 for (visited_path_list.elements.items) |path| {
@@ -325,6 +339,9 @@ pub const PathFinder = struct {
                     }
                 }
 
+                up_time += timer.read();
+                timer.reset();
+
                 // Clean up current_bfs_paths for next iteration
                 for (self.current_bfs_paths.items) |path| {
                     path.deinit();
@@ -344,10 +361,19 @@ pub const PathFinder = struct {
             }
         }
 
+        if (comptime debug_pathfinder) {
+            std.debug.print("Visited paths: {}\t", .{self.visited_path_counter});
+            std.debug.print("Paths returned: {}\n", .{bfs_paths.paths.items.len});
+            std.debug.print("Total time: {d:.3}ms\t", .{@as(f64, @floatFromInt(total_timer.read())) / 1_000_000.0});
+            std.debug.print("Horizontal time: {d:.3}ms\t", .{@as(f64, @floatFromInt(horizontal_time)) / 1_000_000.0});
+            std.debug.print("Down time: {d:.3}ms\t", .{@as(f64, @floatFromInt(down_time)) / 1_000_000.0});
+            std.debug.print("Up time: {d:.3}ms\n", .{@as(f64, @floatFromInt(up_time)) / 1_000_000.0});
+        }
+
         return bfs_paths;
     }
 
-    fn bfs_visit_fn(self_ptr: *anyopaque, path: *graph.BFSPath) visitor.VisitResult(void) {
+    fn bfs_visit_fn(self_ptr: *anyopaque, path: *graph.BFSPath) graph.BFSVisitResult(void) {
         const self: *Self = @ptrCast(@alignCast(self_ptr));
 
         self.visited_path_counter += 1;
@@ -355,7 +381,10 @@ pub const PathFinder = struct {
         const copied_path = path.copy(self.allocator) catch @panic("OOM");
         self.current_bfs_paths.append(copied_path) catch @panic("OOM");
 
-        return visitor.VisitResult(void){ .CONTINUE = {} };
+        return graph.BFSVisitResult(void){
+            .result = visitor.VisitResult(void){ .CONTINUE = {} },
+            .accept_path = !path_has_shallow_edge(path),
+        };
     }
 
     fn concat_paths(self: *Self, prefix: *const BFSPath, suffix: *const BFSPath) *BFSPath {

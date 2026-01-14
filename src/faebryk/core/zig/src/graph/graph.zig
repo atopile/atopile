@@ -703,8 +703,15 @@ pub const BFSPaths = struct {
 pub const VisitStrength = enum { unvisited, strong };
 
 pub const VisitInfo = struct {
-    visit_strength: VisitStrength,
+    accepted: bool = false,
 };
+
+pub fn BFSVisitResult(comptime T: type) type {
+    return struct {
+        result: visitor.VisitResult(T),
+        accept_path: bool = true,
+    };
+}
 
 // =============================================================================
 // GraphView
@@ -956,7 +963,7 @@ pub const GraphView = struct {
         start_node: BoundNodeReference,
         comptime T: type,
         ctx: *anyopaque,
-        f: fn (*anyopaque, *BFSPath) visitor.VisitResult(T),
+        f: fn (*anyopaque, *BFSPath) BFSVisitResult(T),
         edge_type_filter: ?[]const Edge.EdgeType,
     ) visitor.VisitResult(T) {
         // Use C allocator for path metadata to avoid Arena ballooning.
@@ -979,44 +986,44 @@ pub const GraphView = struct {
             visited_nodes_ev: *NodeRefMap.T(VisitInfo),
             path_allocator: std.mem.Allocator,
 
-            fn valid_node_to_add_to_path(self: *@This(), node: NodeReference) bool {
-                if (self.current_path.contains(node)) {
-                    return false;
-                }
-
-                var node_strength: VisitStrength = .unvisited;
-                if (self.visited_nodes_ev.get(node)) |visit_info| {
-                    node_strength = visit_info.visit_strength;
-                }
-
-                if (node_strength == .strong) {
-                    return false;
-                }
-
-                return true;
-            }
-
             pub fn visit_fn(self_ptr: *anyopaque, bound_edge: BoundEdgeReference) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
                 const other_node = bound_edge.edge.get_other_node(self.start_node_ev.node);
 
-                if (self.valid_node_to_add_to_path(other_node)) {
-                    const new_path = BFSPath.cloneAndExtend(self.path_allocator, self.current_path, self.start_node_ev, bound_edge.edge) catch @panic("OOM");
-                    self.open_path_queue.writeItem(new_path) catch @panic("OOM");
+                if (self.current_path.contains(other_node)) {
+                    return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
+                if (self.visited_nodes_ev.get(other_node)) |info| {
+                    if (info.accepted) {
+                        return visitor.VisitResult(void){ .CONTINUE = {} };
+                    }
+                }
+                const new_path = BFSPath.cloneAndExtend(self.path_allocator, self.current_path, self.start_node_ev, bound_edge.edge) catch @panic("OOM");
+                self.open_path_queue.writeItem(new_path) catch @panic("OOM");
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
         };
 
-        visited_nodes.put(start_node.node, VisitInfo{ .visit_strength = .strong }) catch @panic("OOM");
         const empty_path_copy = BFSPath.init(allocator, start_node) catch @panic("OOM");
         open_path_queue.writeItem(empty_path_copy) catch @panic("OOM");
 
         while (open_path_queue.readItem()) |path| {
             defer path.deinit();
-            const bfs_visitor_result = f(ctx, path);
-
-            visited_nodes.put(path.get_last_node().node, VisitInfo{ .visit_strength = path.visit_strength }) catch @panic("OOM");
+            if (visited_nodes.get(path.get_last_node().node)) |info| {
+                if (info.accepted) {
+                    continue;
+                }
+            }
+            const bfs_decision = f(ctx, path);
+            if (bfs_decision.accept_path) {
+                const end_node = path.get_last_node().node;
+                if (visited_nodes.getPtr(end_node)) |info| {
+                    info.accepted = true;
+                } else {
+                    visited_nodes.put(end_node, VisitInfo{ .accepted = true }) catch @panic("OOM");
+                }
+            }
+            const bfs_visitor_result = bfs_decision.result;
 
             switch (bfs_visitor_result) {
                 .STOP => return bfs_visitor_result,
