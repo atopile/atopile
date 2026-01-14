@@ -64,13 +64,19 @@ TERMINAL_WIDTH = ConfigFlagInt(
     default=get_terminal_width(),
     descr="Width of the terminal",
 )
-NET_LINE_WIDTH = int(TERMINAL_WIDTH) - 40
 
 
 LOG_TIME = ConfigFlag("LOG_TIME", default=True, descr="Enable logging of time")
 LOG_FILEINFO = ConfigFlag(
     "LOG_FILEINFO", default=True, descr="Enable logging of file info"
 )
+
+TIME_LEN = 5 + 2 if LOG_TIME else 0
+LEVEL_LEN = 1
+FILE_LEN = 12 + 4 if LOG_FILEINFO else 0
+FMT_HEADER_LEN = TIME_LEN + 1 + LEVEL_LEN + 1 + FILE_LEN + 1
+
+NET_LINE_WIDTH = min(120, int(TERMINAL_WIDTH) - FMT_HEADER_LEN)
 
 
 class NestedConsole(Console):
@@ -114,10 +120,6 @@ class RelativeTimeFormatter(logging.Formatter):
         # Replace level name with abbreviated colored version
         record.level_abbrev = _LEVEL_ABBREV.get(record.levelname, record.levelname)
 
-        TIME_LEN = 5 + 2 if LOG_TIME else 0
-        LEVEL_LEN = 1
-        FILE_LEN = 12 + 4 if LOG_FILEINFO else 0
-        FMT_HEADER_LEN = TIME_LEN + 1 + LEVEL_LEN + 1 + FILE_LEN + 1
         INDENT = " " * (FMT_HEADER_LEN + 1)
         record.nmessage = record.getMessage().replace("\n", f"\n{INDENT}")
 
