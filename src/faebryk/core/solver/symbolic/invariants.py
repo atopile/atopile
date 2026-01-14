@@ -511,7 +511,7 @@ def _fold_pure_literal_operands(
 
     if not (
         lit_fold := exec_pure_literal_operands(
-            mutator.G_transient, mutator.tg_in, builder.factory, builder.operands
+            mutator.G_transient, mutator.tg_out, builder.factory, builder.operands
         )
     ):
         return None
