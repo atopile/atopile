@@ -631,7 +631,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
         # Subset old expr to subset estimated one
         mutator.create_check_and_insert_expression(
             F.Expressions.IsSubset,
-            expr_e,
+            expr_e.as_operand.get(),
             expr_superset,
             from_ops=from_ops,
         )
