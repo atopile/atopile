@@ -59,21 +59,58 @@ class ERCPowerSourcesShortedError(ERCFault):
 
 
 def simple_erc(tg: fbrk.TypeGraph):
-    """Simple ERC check.
+    """
+    Implement checks:
+    - shorted interfaces:
+        - ElectricPower (hv and lv)
+    - shorted components:
+        - Capacitor (unnamed[0] and unnamed[1])
+        - Resistor (unnamed[0] and unnamed[1])
+        - Fuse (unnamed[0] and unnamed[1])
+    - shorted nets
+    - net name collisions
 
-    This function will check for the following ERC violations:
-    - shorted ElectricPower
-    - shorted Caps
-    - shorted Resistors
+    TODO
+    - shorted ElectricPower sources
     - shorted symmetric footprints
-    - shorted Nets
-    - Net name collision
-
     - [unmapped pins for footprints]
     """
     logger.info("Checking for ERC violations")
 
     with accumulate(ERCFault) as accumulator:
+        # shorted interfaces and components
+
+        comps = fabll.Node.bind_typegraph(tg).nodes_of_types(
+            (F.Resistor, F.Capacitor, F.Fuse, F.ElectricPower)
+        )
+        logger.info(f"Checking {len(comps)} elements for shorts")
+
+        electrical_instances = {
+            elec
+            for comp in comps
+            for elec in comp.get_children(direct_only=True, types=F.Electrical)
+        }
+
+        electrical_buses = fabll.is_interface.group_into_buses(electrical_instances)
+
+        logger.info(f"Grouped {len(electrical_instances)} electricals into {len(electrical_buses)} buses")
+
+
+        for comp in comps:
+            if isinstance(comp, F.ElectricPower):
+                e1 = comp.hv.get()
+                e2 = comp.lv.get()
+            else:
+                e1 = comp.unnamed[0].get()
+                e2 = comp.unnamed[1].get()
+            if any(
+                e1 in bus and e2 in bus
+                for bus in electrical_buses.values()
+            ):
+                path = fabll.Path.from_connection(e1, e2)
+                assert path is not None
+                raise ERCFaultShortedInterfaces.from_path(path)
+
         # shorted power
         electricpower = F.ElectricPower.bind_typegraph(tg).get_instances(
             g=tg.get_graph_view()
@@ -83,11 +120,6 @@ def simple_erc(tg: fbrk.TypeGraph):
         # We do collection both inside and outside the loop because we don't
         # want to continue the loop if we've already raised a short exception
         with accumulator.collect():
-            logger.info("Checking for ElectricPower shorts between hv and lv")
-            for ep, ep_bus in ep_buses.items():
-                # print(f"Checking {ep.get_full_name()} - Elements: {len(ep_bus)}")
-                if path := fabll.Path.from_connection(ep.lv.get(), ep.hv.get()):
-                    raise ERCFaultShortedInterfaces.from_path(path)
 
             logger.info("Checking for power source shorts")
             for ep_bus in ep_buses.values():
@@ -119,8 +151,7 @@ def simple_erc(tg: fbrk.TypeGraph):
                         n.get_full_name() for n in named_collisions
                     )
                     raise ERCFaultShort(
-                        f"Shorted nets: {friendly_shorted}",
-                    )
+                        f"Shorted nets: {friendly_shorted}")
 
         # shorted components
         # parts = [n for n in nodes if n.has_trait(has_footprint)]
@@ -137,33 +168,6 @@ def simple_erc(tg: fbrk.TypeGraph):
         #        checked.add(mif)
         #        if any(mif.is_connected_to(other) for other in (mifs - checked)):
         #            raise ERCFault([mif], "shorted symmetric footprint")
-
-        comps = fabll.Node.bind_typegraph(tg).nodes_of_types(
-            (F.Resistor, F.Capacitor, F.Fuse)
-        )
-        logger.info(f"Checking {len(comps)} passives for shorts")
-
-        electrical_instances = {
-            elec
-            for comp in comps
-            for elec in comp.get_children(direct_only=True, types=F.Electrical)
-        }
-
-        electrical_buses = fabll.is_interface.group_into_buses(electrical_instances)
-
-        logger.info(f"Grouped {len(electrical_instances)} electricals into {len(electrical_buses)} buses")
-
-        for comp in comps:
-            unnamed_0 = comp.unnamed[0].get()
-            unnamed_1 = comp.unnamed[1].get()
-            if any(
-                unnamed_0 in bus and unnamed_1 in bus
-                for bus in electrical_buses.values()
-            ):
-                path = fabll.Path.from_connection(unnamed_0, unnamed_1)
-                assert path is not None
-                raise ERCFaultShortedInterfaces.from_path(path)
-
 
         ## unmapped Electricals
         # fps = [n for n in nodes if isinstance(n, Footprint)]
