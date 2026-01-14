@@ -10,10 +10,10 @@ builds:
     hide_designators: true
     exclude_checks: ["PCB.requires_drc_check"]
   strip10:
-    entry: led_badge.ato:SK6805EC20_strip10
+    entry: led_badge.ato:OPSCO_SK6805_EC20_strip10
     exclude_checks: ["PCB.requires_drc_check"]
   grid10x10:
-    entry: led_badge.ato:SK6805EC20_grid10x10
+    entry: led_badge.ato:OPSCO_SK6805_EC20_grid10x10
     exclude_checks: ["PCB.requires_drc_check"]
 
 dependencies:
