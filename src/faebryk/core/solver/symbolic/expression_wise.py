@@ -3,7 +3,7 @@
 
 
 import logging
-from collections import Counter
+from collections import Counter, defaultdict
 from typing import Callable
 
 import faebryk.core.node as fabll
@@ -12,6 +12,7 @@ from faebryk.core.solver.algorithm import SolverAlgorithm, algorithm
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     Contradiction,
+    MutatorUtils,
 )
 from faebryk.libs.util import not_none, partition_as_list
 
@@ -118,6 +119,97 @@ fold_algorithms.append(noop)
 # Arithmetic ---------------------------------------------------------------------------
 
 
+def _collect_factors[T: F.Expressions.Multiply | F.Expressions.Power](
+    mutator: Mutator,
+    counter: Counter[F.Parameters.is_parameter_operatable],
+    collect_type: type[T],
+) -> tuple[
+    dict[F.Parameters.is_parameter_operatable, F.Literals.Numbers],
+    list[F.Parameters.is_parameter_operatable],
+]:
+    # Convert the counter to a dict for easy manipulation
+    factors: dict[
+        F.Parameters.is_parameter_operatable,
+        F.Literals.Numbers,
+    ] = {op: mutator.make_singleton(count) for op, count in counter.items()}
+    # Store operations of type collect_type grouped by their non-literal operand
+    same_literal_factors: dict[
+        F.Parameters.is_parameter_operatable,
+        list[F.Parameters.is_parameter_operatable],
+    ] = defaultdict(list)
+
+    # Look for operations matching collect_type and gather them
+    for collect_op in set(factors.keys()):
+        if not collect_op.get_obj().isinstance(collect_type):
+            continue
+        expr = collect_op.as_expression.force_get()
+        # Skip if operation doesn't have exactly two operands
+        # TODO unnecessary strict
+        if len(expr.get_operands()) != 2:
+            continue
+        # handled by lit fold first
+        if len(expr.get_operand_literals()) > 1:
+            continue
+        if not expr.get_operand_literals():
+            continue
+        # handled by lit fold completely
+        if MutatorUtils.is_pure_literal_expression(collect_op.as_operand.get()):
+            continue
+        if not F.Expressions.is_commutative.is_commutative_type(
+            collect_type.bind_typegraph(mutator.tg_in)
+        ):
+            if collect_type is not F.Expressions.Power:
+                raise NotImplementedError(
+                    f"Non-commutative {collect_type.__name__} not implemented"
+                )
+            # For power, ensure second operand is literal
+            if not MutatorUtils.is_literal(expr.get_operands()[1]):
+                continue
+
+        # pick non-literal operand
+        paramop = next(iter(expr.get_operand_operatables()))
+        # Collect these factors under the non-literal operand
+        same_literal_factors[paramop].append(collect_op)
+        # If this operand isn't in factors yet, initialize it with 0
+        if paramop not in factors:
+            factors[paramop] = mutator.make_singleton(0)
+        # Remove this operation from the main factors
+        del factors[collect_op]
+
+    # new_factors: combined literal counts, old_factors: leftover items
+    new_factors: dict[F.Parameters.is_parameter_operatable, F.Literals.Numbers] = {}
+    old_factors = list[F.Parameters.is_parameter_operatable]()
+
+    # Combine literals for each non-literal operand
+    for var, count in factors.items():
+        muls = same_literal_factors[var]
+        # If no effective multiplier or only a single factor, treat as leftover
+        if count.try_get_single() == 0 and len(muls) <= 1:
+            old_factors.extend(muls)
+            continue
+
+        # If only count=1 and no additional factors, just keep the variable
+        if count.try_get_single() == 1 and not muls:
+            old_factors.append(var)
+            continue
+
+        # Extract literal parts from collected operations
+        mul_lits = [
+            next(
+                fabll.Traits(o_lit).get_obj(F.Literals.Numbers)
+                for o_lit in mul.as_expression.force_get()
+                .get_operand_literals()
+                .values()
+            )
+            for mul in muls
+        ]
+
+        # Sum all literal multipliers plus the leftover count
+        new_factors[var] = count.op_add_intervals(*mul_lits)
+
+    return new_factors, old_factors
+
+
 @expression_wise_algorithm(F.Expressions.Add)
 def fold_add(expr: F.Expressions.Add, mutator: Mutator):
     """
@@ -153,9 +245,8 @@ def fold_add(expr: F.Expressions.Add, mutator: Mutator):
         0,
     )
 
-    new_factors, old_factors = mutator.utils.collect_factors(
-        replacable_nonliteral_operands,
-        F.Expressions.Multiply,
+    new_factors, old_factors = _collect_factors(
+        mutator, replacable_nonliteral_operands, F.Expressions.Multiply
     )
 
     # if non-lit factors all 1 and no literal folding, nothing to do
@@ -220,8 +311,8 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
         1,
     )
 
-    new_powers, old_powers = mutator.utils.collect_factors(
-        replacable_nonliteral_operands, F.Expressions.Power
+    new_powers, old_powers = _collect_factors(
+        mutator, replacable_nonliteral_operands, F.Expressions.Power
     )
 
     # if non-lit powers all 1 and no literal folding, nothing to do
