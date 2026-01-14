@@ -13,7 +13,7 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import SolverAlgorithm
-from faebryk.core.solver.mutator import MutationMap, Mutator
+from faebryk.core.solver.mutator import MutationMap, Mutator, is_terminated
 from faebryk.core.solver.utils import (
     S_LOG,
     Contradiction,
@@ -349,6 +349,14 @@ class ExpressionBuilder[
     def __repr__(self) -> str:
         return pretty_expr(self)
 
+    def matches(self, other: F.Expressions.is_expression) -> bool:
+        return (
+            fabll.Traits(other).get_obj_raw().isinstance(self.factory)
+            and other.get_operands() == self.operands
+            and self.terminate == other.has_trait(is_terminated)
+            and self.assert_ == other.has_trait(F.Expressions.is_predicate)
+        )
+
 
 def _no_empty_superset(
     mutator: Mutator,
@@ -536,7 +544,7 @@ def _fold_pure_literal_operands(
         builder.factory,
         *builder.operands,
         assert_=builder.assert_,
-        terminate=builder.terminate,
+        terminate=True,
     )
     new_expr_op = new_expr.get_trait(F.Parameters.can_be_operand)
     lit_op = lit_fold.as_operand.get()
@@ -708,6 +716,9 @@ def insert_expression(
     """
     Invariants
     Sequencing sensitive!
+    * ✓ terminated expressions are already copied
+    * TODO: don't mutate terminated expressions?
+    * TODO: terminate?
     * ✓ don't use predicates as operands: Op(P!, ...) -> Op(True, ...)
     * ✓ P{S|True} -> P!, P!{S/P|False} -> Contradiction, P!{S|True} -> P!
     * ✓ no A >! X or X >! A (create A ss! X or X ss! A)
@@ -732,6 +743,9 @@ def insert_expression(
     #  thus expression might be incorrectly marked as new
 
     assert not builder.terminate or builder.assert_, "terminate ⟹ assert"
+
+    # * terminated expressions are already copied
+    mutator._copy_terminated()
 
     # * Op(P!, ...) -> Op(True, ...)
     builder = _no_predicate_operands(mutator, builder)
@@ -825,11 +839,28 @@ def insert_expression(
     if lit_fold := _fold_unpure_literal_operands(mutator, builder):
         return lit_fold
 
+    # TODO remove
+    # terminate ss lit
+    if (
+        builder.factory is F.Expressions.IsSubset
+        and builder.assert_
+        and builder.indexed_lits
+        and not builder.terminate
+    ):
+        logger.debug(f"Terminate ss lit: {pretty_expr(builder, mutator)}")
+        builder = ExpressionBuilder(
+            F.Expressions.IsSubset,
+            builder.operands,
+            builder.assert_,
+            terminate=True,
+        )
+
     # * canonical (covered by create)
     expr = mutator._create_and_insert_expression(
         builder.factory,
         *builder.operands,
         assert_=builder.assert_,
+        terminate=builder.terminate,
     )
     return InsertExpressionResult(expr.get_trait(F.Parameters.can_be_operand), True)
 
@@ -846,22 +877,26 @@ def wrap_insert_expression(
         expr_already_exists_in_old_graph=expr_already_exists_in_old_graph,
         allow_uncorrelated_congruence_match=allow_uncorrelated_congruence_match,
     )
+    src_dbg = f"`{pretty_expr(builder, mutator)}`"
     if res.out_operand is None:
         target_dbg = "Dropped"
     else:
         op = res.out_operand
         if (
-            (op_e := op.try_get_sibling_trait(F.Expressions.is_expression))
-            and fabll.Traits(op_e).get_obj_raw().isinstance(builder.factory)
-            and op_e.get_operands() == builder.operands
-        ):
+            op_e := op.try_get_sibling_trait(F.Expressions.is_expression)
+        ) and builder.matches(op_e):
             target_dbg = "COPY"
         else:
             ctx = mutator.mutation_map.print_ctx
             target_dbg = f"`{op.pretty(context=ctx)}`"
+
+        if target_dbg == src_dbg:
+            target_dbg = (
+                f"NOOP (assert: {builder.assert_}, terminate: {builder.terminate})"
+            )
     # TODO debug
     # if target_dbg != "COPY":
-    logger.warning(f"{pretty_expr(builder, mutator)} -> {target_dbg}")
+    logger.warning(f"{src_dbg} -> {target_dbg}")
 
     return res
 

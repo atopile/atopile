@@ -685,7 +685,7 @@ class is_expression(fabll.Node):
         else:
             return all(operands_congruent(le, ri) for le, ri in zip(left, right))
 
-    def get_depth(self) -> int:
+    def get_depth(self) -> float:
         """
         Returns depth of longest expression tree from this expression.
         ```
@@ -699,9 +699,7 @@ class is_expression(fabll.Node):
          1 2    3 1
         ```
         """
-        return 1 + max(
-            [op.get_depth() for op in self.get_operands_with_trait(is_expression)] + [0]
-        )
+        return 1 + max([op.get_depth() for op in self.get_operands()] + [0])
 
     def switch_cast(self) -> "ExpressionNodes":
         """

@@ -136,6 +136,24 @@ class can_be_operand(fabll.Node):
 
         return out
 
+    def get_depth(self) -> float:
+        """
+        Returns depth of the operand in an expression tree.
+
+        - Literals: 0
+        - Parameters: 0.05
+        - Expressions: 1 + max(operand depths)
+        """
+        if self.as_literal.try_get():
+            return 0
+        if po := self.as_parameter_operatable.try_get():
+            if expr := po.as_expression.try_get():
+                return expr.get_depth()
+            # It's a parameter (not an expression)
+            return 0.05
+        # Fallback
+        return 0
+
     def get_root_operands(
         self, *more: "can_be_operand", predicates_only: bool = False
     ) -> set["can_be_operand"]:
@@ -211,10 +229,8 @@ class is_parameter_operatable(fabll.Node):
             yield f"Error in repr: {e}"
         yield "on " + fabll.Traits(self).get_obj_raw().get_full_name(types=True)
 
-    def get_depth(self) -> int:
-        if expr := self.as_expression.try_get():
-            return expr.get_depth()
-        return 0
+    def get_depth(self) -> float:
+        return self.as_operand.get().get_depth()
 
     def get_operations[T: "fabll.NodeT"](
         self,

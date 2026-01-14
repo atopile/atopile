@@ -3,6 +3,7 @@
 
 import inspect
 import logging
+import math
 import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -457,7 +458,9 @@ class MutationStage:
         out = ""
         node_by_depth = groupby(
             nodes,
-            key=lambda n: n.get_trait(F.Parameters.is_parameter_operatable).get_depth(),
+            key=lambda n: (
+                n.get_trait(F.Parameters.is_parameter_operatable).get_depth()
+            ),
         )
         for depth, dnodes in sorted(node_by_depth.items(), key=lambda t: t[0]):
             out += f"\n  --Depth {depth}--"
@@ -1596,15 +1599,26 @@ class Mutator:
                 if (ne := fabll.Traits(n).get_obj_raw().try_cast(t))
             }
         elif t is fabll.Node:
-            out = cast(
-                set[T],
-                set(
-                    fabll.Traits.get_implementor_objects(
-                        F.Expressions.is_expression.bind_typegraph(self.tg_in),
-                        self.G_in,
-                    )
-                ),
-            )
+            if len(required_traits) == 1:
+                out = cast(
+                    set[T],
+                    set(
+                        fabll.Traits.get_implementor_objects(
+                            required_traits[0].bind_typegraph(self.tg_in),
+                            self.G_in,
+                        )
+                    ),
+                )
+            else:
+                out = cast(
+                    set[T],
+                    set(
+                        fabll.Traits.get_implementor_objects(
+                            F.Expressions.is_expression.bind_typegraph(self.tg_in),
+                            self.G_in,
+                        )
+                    ),
+                )
         else:
             out = set(t.bind_typegraph(self.tg_in).get_instances(self.G_in))
 
@@ -1615,7 +1629,7 @@ class Mutator:
             )
             out.difference_update(terminated)
 
-        if required_traits:
+        if required_traits and not (t is fabll.Node and len(required_traits) == 1):
             out = {o for o in out if all(o.has_trait(t) for t in required_traits)}
 
         if sort_by_depth:
@@ -1722,6 +1736,36 @@ class Mutator:
 
     def _run(self):
         self.algo(self)
+
+    def _copy_terminated(self):
+        """
+        Copy all terminated expressions to G_out before the algorithm runs.
+
+        This ensures invariants are upheld during expression copying:
+        - Congruence checks (find_congruent_expression) look in G_out
+        - Subsumption checks (find_subsuming_expression) query operations in G_out
+        - If terminated expressions aren't copied first, these checks might miss
+          existing expressions, leading to duplicates or invariant violations.
+
+        Terminated expressions are "stable" - algorithms should not transform them
+        further, so they can be safely pre-copied without affecting algorithm behavior.
+        """
+        if getattr(self, "_copied_terminated", False):
+            return
+        self._copied_terminated = True
+
+        # Get all terminated expressions from G_in
+        terminated_pos = self.get_expressions(
+            sort_by_depth=True,
+            include_terminated=True,
+            required_traits=(is_terminated,),
+        )
+
+        # Copy each terminated expression to G_out
+        for po in terminated_pos:
+            self.get_copy_po(po.as_parameter_operatable.get())
+
+        logger.debug(f"Pre-copied {len(terminated_pos)} terminated expressions")
 
     def _copy_unmutated_optimized(self):
         # TODO we might have new types in tg_in that haven't been copied over yet
@@ -2096,6 +2140,83 @@ def test_mutate_copy_terminated_predicate():
     assert fabll.Node.graphs_match(tg3.get_self_node().g(), g3)
     assert pred3.get_sibling_trait(F.Expressions.is_assertable)
     assert pred3.try_get_sibling_trait(is_terminated)
+
+
+def test_terminated_expressions_copied_first():
+    """
+    Test that terminated expressions are copied to G_out before the algorithm runs.
+
+    This ensures invariants are upheld during expression copying:
+    - Congruence checks need terminated expressions in G_out
+    - Subsumption checks need them for querying operations
+    """
+    from faebryk.core.solver.algorithm import algorithm
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    # Create parameters
+    p = (
+        F.Parameters.NumericParameter.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(is_unit=None, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
+    )
+    p_op = p.can_be_operand.get()
+
+    # Create a superset constraint and mark it terminated
+    lit = (
+        F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_min_max(0, 100)
+    )
+    ss_expr = (
+        F.Expressions.IsSubset.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(p_op, lit.can_be_operand.get(), assert_=True)
+    )
+    ss_po = ss_expr.is_parameter_operatable.get()
+
+    # Mark the expression as terminated
+    fabll.Traits.create_and_add_instance_to(ss_expr, is_terminated)
+    assert ss_po.try_get_sibling_trait(is_terminated) is not None
+
+    # Bootstrap mutation map
+    mut_map = MutationMap.bootstrap(tg=tg, g=g, canonicalize=False)
+
+    # Track whether terminated expression was copied
+    terminated_copied_before_run = False
+
+    @algorithm("test_terminated_first", force_copy=True)
+    def test_algo(mutator: Mutator):
+        nonlocal terminated_copied_before_run
+        # At the start of the algorithm, terminated expression should already be copied
+        ss_copy = mutator.try_get_mutated(ss_po)
+        terminated_copied_before_run = ss_copy is not None
+
+    mutator = Mutator(
+        mutation_map=mut_map,
+        algo=test_algo,
+        iteration=0,
+        terminal=True,
+    )
+    result = mutator.run()
+
+    # Verify terminated expression was copied before the algorithm ran
+    assert terminated_copied_before_run, (
+        "Terminated expression should be copied before algorithm runs"
+    )
+
+    # Verify the terminated expression is in the output graph
+    output_pos = set(
+        F.Parameters.is_parameter_operatable.bind_typegraph(
+            result.mutation_stage.tg_out
+        ).get_instances(result.mutation_stage.G_out)
+    )
+
+    # The terminated expression should be mapped in transformations
+    assert ss_po in result.mutation_stage.transformations.mutated, (
+        "Terminated expression should be in transformation mutated map"
+    )
 
 
 if __name__ == "__main__":
