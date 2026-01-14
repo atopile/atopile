@@ -50,8 +50,11 @@ class NetTie(fabll.Node):
         F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.JP)
     )
 
-    # PointerSequence for power interfaces - elements are added dynamically by factory()
-    power = F.Collections.PointerSequence.MakeChild()
+    power = F.Electrical.MakeChild()
+
+    can_bridge = fabll.Traits.MakeEdge(
+        F.can_bridge.MakeChild(in_=[power], out_=[power])
+    )
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

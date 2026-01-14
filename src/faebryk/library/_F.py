@@ -45,7 +45,6 @@ import faebryk.library.Units as Units
 import faebryk.library.KiCadFootprints as KiCadFootprints
 from faebryk.library.implements_design_check import implements_design_check
 from faebryk.library.Electrical import Electrical
-from faebryk.library.NetTie import NetTie
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.PCB import PCB
@@ -53,6 +52,7 @@ from faebryk.library.has_default_constraint import has_default_constraint
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Filter import Filter
 import faebryk.library.Lead as Lead
+from faebryk.library.NetTie import NetTie
 from faebryk.library.XtalIF import XtalIF
 from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.requires_external_usage import requires_external_usage
@@ -142,7 +142,6 @@ __all__ = [
     "KiCadFootprints",
     "implements_design_check",
     "Electrical",
-    "NetTie",
     "has_simple_value_representation",
     "is_atomic_part",
     "PCB",
@@ -150,6 +149,7 @@ __all__ = [
     "ElectricPower",
     "Filter",
     "Lead",
+    "NetTie",
     "XtalIF",
     "has_net_name_affix",
     "requires_external_usage",
