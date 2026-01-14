@@ -449,26 +449,26 @@ def test_inspect_known_superranges():
 
 def test_obvious_contradiction_by_literal():
     """
-    p0 is! [0V, 10V]
-    p1 is! [5V, 10V]
+    p0 ss! [0V, 10V]
+    p1 ss! [11V, 12V]
     p0 is! p1
     """
     E = BoundExpressions()
     p0, p1 = [E.parameter_op(units=E.U.V) for _ in range(2)]
 
     E.is_subset(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
-    E.is_subset(p1, E.lit_op_range(((5, E.U.V), (10, E.U.V))), assert_=True)
+    E.is_subset(p1, E.lit_op_range(((11, E.U.V), (12, E.U.V))), assert_=True)
 
     E.is_(p0, p1, assert_=True)
 
     solver = DefaultSolver()
-    with pytest.raises(ContradictionByLiteral):
+    with pytest.raises(Contradiction):
         solver.simplify(E.tg, E.g)
 
 
-def test_subset_is():
+def test_subset_superset():
     """
-    A is! [0, 15]
+    [0, 15] ss! A
     B ss! [5, 20]
     A is! B
     => Contradiction
@@ -476,7 +476,7 @@ def test_subset_is():
     E = BoundExpressions()
     A, B = [E.parameter_op() for _ in range(2)]
 
-    E.is_subset(A, E.lit_op_range((0, 15)), assert_=True)
+    E.is_superset(A, E.lit_op_range((0, 15)), assert_=True)
     E.is_subset(B, E.lit_op_range((5, 20)), assert_=True)
     E.is_(A, B, assert_=True)
 
@@ -485,7 +485,7 @@ def test_subset_is():
         p.as_parameter_operatable.force_get().compact_repr(context)
 
     solver = DefaultSolver()
-    with pytest.raises(ContradictionByLiteral):
+    with pytest.raises(Contradiction):
         solver.simplify(E.tg, E.g)
 
 
@@ -624,18 +624,18 @@ def test_simple_literal_folds_arithmetic(
     E = BoundExpressions()
     expected_result = expected
 
-    p0 = E.parameter_op(units=E.U.dl)
-    p1 = E.parameter_op(units=E.U.dl)
+    A = E.parameter_op(units=E.U.dl)
+    B = E.parameter_op(units=E.U.dl)
+    C = E.parameter_op(units=E.U.dl)
 
-    E.is_subset(p0, E.lit_op_single(operands[0]), assert_=True)
-    E.is_subset(p1, E.lit_op_single(operands[1]), assert_=True)
+    E.is_subset(A, E.lit_op_single(operands[0]), assert_=True)
+    E.is_subset(B, E.lit_op_single(operands[1]), assert_=True)
 
-    expr = expr_type(p0, p1)
-    E.less_or_equal(expr, E.lit_op_single(100.0), assert_=True)
+    expr = expr_type(A, B)
+    E.is_(C, expr, assert_=True)
 
     solver = DefaultSolver()
-    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
-    assert _extract_and_check(expr, repr_map, expected_result, allow_subset=True)
+    assert _extract_and_check(C, solver, expected_result)
 
 
 @pytest.mark.parametrize(
