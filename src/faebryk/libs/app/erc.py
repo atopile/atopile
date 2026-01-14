@@ -9,6 +9,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import errors
+from faebryk.libs.app.checks import check_design
 from faebryk.libs.exceptions import accumulate
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,8 @@ class ERCPowerSourcesShortedError(ERCFault):
     """
 
 
-def simple_erc(tg: fbrk.TypeGraph):
+# TODO split this up
+class needs_erc_check(fabll.Node):
     """
     Implement checks:
     - shorted interfaces:
@@ -75,12 +77,21 @@ def simple_erc(tg: fbrk.TypeGraph):
     - shorted symmetric footprints
     - [unmapped pins for footprints]
     """
-    logger.info("Checking for ERC violations")
+    is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
+    design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
 
-    with accumulate(ERCFault) as accumulator:
-        # shorted interfaces and components
+    # TODO: Implement this
+    @F.implements_design_check.register_post_design_check
+    def __check_post_design__(self):
+        logger.info("Checking for ERC violations")
+        with accumulate(ERCFault) as accumulator:
+            self._check_shorted_interfaces_and_components()
+            self._check_shorted_nets(accumulator)
+            self._check_shorted_electric_power_sources(accumulator)
+            self._check_additional_heuristics()
 
-        comps = fabll.Node.bind_typegraph(tg).nodes_of_types(
+    def _check_shorted_interfaces_and_components(self) -> None:
+        comps = fabll.Node.bind_typegraph(self.tg).nodes_of_types(
             (F.Resistor, F.Capacitor, F.Fuse, F.ElectricPower)
         )
         logger.info(f"Checking {len(comps)} elements for shorts")
@@ -93,8 +104,11 @@ def simple_erc(tg: fbrk.TypeGraph):
 
         electrical_buses = fabll.is_interface.group_into_buses(electrical_instances)
 
-        logger.info(f"Grouped {len(electrical_instances)} electricals into {len(electrical_buses)} buses")
-
+        logger.info(
+            "Grouped %s electricals into %s buses",
+            len(electrical_instances),
+            len(electrical_buses),
+        )
 
         for comp in comps:
             if isinstance(comp, F.ElectricPower):
@@ -103,38 +117,15 @@ def simple_erc(tg: fbrk.TypeGraph):
             else:
                 e1 = comp.unnamed[0].get()
                 e2 = comp.unnamed[1].get()
-            if any(
-                e1 in bus and e2 in bus
-                for bus in electrical_buses.values()
-            ):
+            if any(e1 in bus and e2 in bus for bus in electrical_buses.values()):
                 path = fabll.Path.from_connection(e1, e2)
                 assert path is not None
                 raise ERCFaultShortedInterfaces.from_path(path)
 
-        # shorted power
-        electricpower = F.ElectricPower.bind_typegraph(tg).get_instances(
-            g=tg.get_graph_view()
+    def _check_shorted_nets(self, accumulator: accumulate) -> None:
+        nets = F.Net.bind_typegraph(self.tg).get_instances(
+            g=self.tg.get_graph_view()
         )
-        ep_buses = fabll.is_interface.group_into_buses(electricpower)
-
-        # We do collection both inside and outside the loop because we don't
-        # want to continue the loop if we've already raised a short exception
-        with accumulator.collect():
-
-            logger.info("Checking for power source shorts")
-            for ep_bus in ep_buses.values():
-                with accumulator.collect():
-                    sources = {ep for ep in ep_bus if ep.has_trait(F.is_source)}
-                    if len(sources) <= 1:
-                        continue
-
-                    friendly_sources = ", ".join(n.get_full_name() for n in sources)
-                    raise ERCPowerSourcesShortedError(
-                        f"Power sources shorted: {friendly_sources}"
-                    )
-
-        # shorted nets
-        nets = F.Net.bind_typegraph(tg).get_instances(g=tg.get_graph_view())
         logger.info(f"Checking {len(nets)} explicit nets")
         for net in nets:
             with accumulator.collect():
@@ -150,9 +141,33 @@ def simple_erc(tg: fbrk.TypeGraph):
                     friendly_shorted = ", ".join(
                         n.get_full_name() for n in named_collisions
                     )
-                    raise ERCFaultShort(
-                        f"Shorted nets: {friendly_shorted}")
+                    raise ERCFaultShort(f"Shorted nets: {friendly_shorted}")
 
+    def _check_shorted_electric_power_sources(
+        self, accumulator: accumulate
+    ) -> None:
+        # shorted power
+        electricpower = F.ElectricPower.bind_typegraph(self.tg).get_instances(
+            g=self.tg.get_graph_view()
+        )
+        ep_buses = fabll.is_interface.group_into_buses(electricpower)
+
+        # We do collection both inside and outside the loop because we don't
+        # want to continue the loop if we've already raised a short exception
+        with accumulator.collect():
+            logger.info("Checking for power source shorts")
+            for ep_bus in ep_buses.values():
+                with accumulator.collect():
+                    sources = {ep for ep in ep_bus if ep.has_trait(F.is_source)}
+                    if len(sources) <= 1:
+                        continue
+
+                    friendly_sources = ", ".join(n.get_full_name() for n in sources)
+                    raise ERCPowerSourcesShortedError(
+                        f"Power sources shorted: {friendly_sources}"
+                    )
+
+    def _check_additional_heuristics(self) -> None:
         # shorted components
         # parts = [n for n in nodes if n.has_trait(has_footprint)]
         # sym_fps = [
@@ -178,21 +193,22 @@ def simple_erc(tg: fbrk.TypeGraph):
         #            raise ERCFault([mif], "no connections")
 
         # TODO check multiple pulls per logic
+        pass
 
 
-# TODO split this up
-class needs_erc_check(fabll.Node):
-    is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
-
-    design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
-
-    # TODO: Implement this
-    @F.implements_design_check.register_post_design_check
-    def __check_post_design__(self):
-        simple_erc(self.tg)
 
 
 class Test:
+    class _App(fabll.Node):
+        is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+    def _run_post_design_checks(self, tg: fbrk.TypeGraph) -> None:
+        g = tg.get_graph_view()
+        app_type = self._App.bind_typegraph(tg)
+        app = app_type.create_instance(g=g)
+        fabll.Traits.create_and_add_instance_to(app, needs_erc_check)
+        check_design(app, F.implements_design_check.CheckStage.POST_DESIGN)
+
     def test_erc_isolated_connect(self):
         g = fabll.graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
@@ -207,7 +223,7 @@ class Test:
 
         with pytest.raises(ERCPowerSourcesShortedError):
             y1._is_interface.get().connect_to(y2)
-            simple_erc(tg)
+            self._run_post_design_checks(tg)
 
         # TODO no more LDO in fabll
         # ldo1 = F.LDO()
@@ -240,13 +256,13 @@ class Test:
         ep1._is_interface.get().connect_to(ep2)
 
         # This is okay!
-        simple_erc(tg)
+        self._run_post_design_checks(tg)
 
         ep1.lv.get()._is_interface.get().connect_to(ep2.hv.get())
 
         # This is not okay!
         with pytest.raises(ERCFaultShortedInterfaces) as ex:
-            simple_erc(tg)
+            self._run_post_design_checks(tg)
 
         # TODO figure out a nice way to format paths for this
         print(ex.value.path)
@@ -265,7 +281,7 @@ class Test:
         eps[0].hv.get()._is_interface.get().connect_to(eps[3].lv.get())
 
         with pytest.raises(ERCFaultShortedInterfaces):
-            simple_erc(tg)
+            self._run_post_design_checks(tg)
 
     def test_erc_electric_power_short_via_resistor_no_short(self):
         g = fabll.graph.GraphView.create()
@@ -279,7 +295,7 @@ class Test:
         ep1.lv.get()._is_interface.get().connect_to(resistor.unnamed[1].get())
 
         # should not raise
-        simple_erc(tg)
+        self._run_post_design_checks(tg)
 
     def test_erc_power_source_short(self):
         """
@@ -298,7 +314,7 @@ class Test:
         power_out_2.make_source()
 
         with pytest.raises(ERCPowerSourcesShortedError):
-            simple_erc(tg)
+            self._run_post_design_checks(tg)
 
     def test_erc_power_source_no_short(self):
         """
@@ -315,4 +331,4 @@ class Test:
 
         power_out_1._is_interface.get().connect_to(power_out_2)
 
-        simple_erc(tg)
+        self._run_post_design_checks(tg)
