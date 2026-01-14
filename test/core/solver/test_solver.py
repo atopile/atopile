@@ -809,7 +809,7 @@ def test_transitive_subset():
 
     solver = DefaultSolver()
     repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
-    assert _extract_and_check(A, repr_map, E.lit_op_range((0, 10)), allow_subset=True)
+    assert _extract_and_check(A, repr_map, E.lit_op_range((0, 10)))
 
 
 def test_nested_additions():
