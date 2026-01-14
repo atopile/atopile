@@ -52,12 +52,12 @@ from faebryk.library.has_default_constraint import has_default_constraint
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Filter import Filter
 import faebryk.library.Lead as Lead
-from faebryk.library.NetTie import NetTie
 from faebryk.library.XtalIF import XtalIF
 from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.ElectricSignal import ElectricSignal
+from faebryk.library.NetTie import NetTie
 from faebryk.library.Regulator import Regulator
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.BJT import BJT
@@ -149,12 +149,12 @@ __all__ = [
     "ElectricPower",
     "Filter",
     "Lead",
-    "NetTie",
     "XtalIF",
     "has_net_name_affix",
     "requires_external_usage",
     "ElectricLogic",
     "ElectricSignal",
+    "NetTie",
     "Regulator",
     "has_single_electric_reference",
     "BJT",

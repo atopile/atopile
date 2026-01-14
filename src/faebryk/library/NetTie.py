@@ -50,7 +50,7 @@ class NetTie(fabll.Node):
         F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.JP)
     )
 
-    power = F.Electrical.MakeChild()
+    power = F.ElectricPower.MakeChild()
 
     can_bridge = fabll.Traits.MakeEdge(
         F.can_bridge.MakeChild(in_=[power], out_=[power])
