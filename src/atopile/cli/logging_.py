@@ -391,6 +391,27 @@ class CompletableSpinnerColumn(SpinnerColumn):
         return text
 
 
+class StaticIndicatorColumn(ProgressColumn):
+    """Non-animated indicator that shows status without spinning."""
+
+    class Status(StrEnum):
+        SUCCESS = "[green]✓[/green]"
+        FAILURE = "[red]✗[/red]"
+        WARNING = "[yellow]⚠[/yellow]"
+
+    def __init__(self):
+        super().__init__()
+        self.status: str | None = None
+
+    def complete(self, status: Status) -> None:
+        self.status = status
+
+    def render(self, task: "Task") -> RenderableType:
+        if self.status is not None:
+            return Text.from_markup(self.status)
+        return Text.from_markup("[blue]●[/blue]")  # Static "in progress" indicator
+
+
 # =============================================================================
 # Parallel Build Display
 # =============================================================================
@@ -797,8 +818,11 @@ class LoggingStage(Advancable):
         self._parallel_display = get_parallel_display()
         self._in_parallel_mode = self._parallel_display is not None
 
-        # Only create progress bar if not in parallel mode
-        if not self._in_parallel_mode:
+        # Check if animations should be disabled (verbose mode via pipe)
+        self._no_animation = os.environ.get("ATO_NO_PROGRESS_ANIMATION") == "1"
+
+        # Only create progress bar if not in parallel mode and not in no-animation mode
+        if not self._in_parallel_mode and not self._no_animation:
             self._progress = IndentedProgress(
                 *self._get_columns(),
                 console=self._console,
@@ -816,10 +840,17 @@ class LoggingStage(Advancable):
             self._info_log_path and self._console.width >= _SHOW_LOG_FILE_PATH_THRESHOLD
         )
 
+        # Use static indicator (no animation) when piped for verbose mode
+        if self._no_animation:
+            indicator_col = StaticIndicatorColumn()
+        else:
+            indicator_col = CompletableSpinnerColumn()
+        self._indicator_col = indicator_col
+
         return tuple(
             col
             for col in (
-                CompletableSpinnerColumn(),
+                indicator_col,
                 TextColumn("{task.description}"),
                 StyledMofNCompleteColumn() if self.steps is not None else None,
                 ShortTimeElapsedColumn(),
@@ -869,6 +900,9 @@ class LoggingStage(Advancable):
                 self._parallel_display.refresh()
             return
 
+        if self._no_animation:
+            return  # No progress bar to refresh
+
         if not hasattr(self, "_task_id"):
             return
 
@@ -877,16 +911,15 @@ class LoggingStage(Advancable):
     def set_total(self, total: int | None) -> None:
         self.steps = total
         self._current_progress = 0
-        self._update_columns()
 
         # Write progress to status file if in worker mode
         self._write_status_file()
 
-        if self._in_parallel_mode:
-            # In parallel mode, don't update stages_total from sub-steps
-            # (like part count) - it would overwrite the stage count
+        if self._in_parallel_mode or self._no_animation:
+            # In parallel/no-animation mode, don't update progress bar
             return
 
+        self._update_columns()
         self._progress.update(self._task_id, total=total)
         self.refresh()
 
@@ -896,8 +929,8 @@ class LoggingStage(Advancable):
         # Write progress to status file if in worker mode
         self._write_status_file()
 
-        if self._in_parallel_mode:
-            return  # Progress tracking handled differently in parallel mode
+        if self._in_parallel_mode or self._no_animation:
+            return  # Progress tracking handled differently
         assert self.steps is not None
         self._progress.advance(self._task_id, advance)
 
@@ -943,6 +976,9 @@ class LoggingStage(Advancable):
                     log_dir=self._log_dir,
                     reset_stage_time=True,
                 )
+        elif self._no_animation:
+            # No-animation mode: no progress bar, just track internally
+            self._stage_start_time = time.time()
         else:
             self._update_columns()
             self._progress.start()
@@ -974,6 +1010,26 @@ class LoggingStage(Advancable):
                         warnings=state.warnings + self._warning_count,
                         errors=state.errors + self._error_count,
                     )
+        elif self._no_animation:
+            # No-animation mode: print single completion line
+            elapsed = time.time() - getattr(self, "_stage_start_time", time.time())
+            status_icon = {
+                CompletableSpinnerColumn.Status.SUCCESS: "[green]✓[/green]",
+                CompletableSpinnerColumn.Status.WARNING: "[yellow]⚠[/yellow]",
+                CompletableSpinnerColumn.Status.FAILURE: "[red]✗[/red]",
+            }.get(status, "●")
+
+            # Build description with warning count if any
+            desc = self.description
+            if self._warning_count > 0:
+                desc = f"{desc} ({self._warning_count} warning)"
+
+            # Print completion line
+            log_path = self._info_log_path or ""
+            self._console.print(
+                f"{'':>{self.indent}}{status_icon} {desc} [{elapsed:.1f}s]"
+                f"{'':>10}{log_path}"
+            )
         else:
             for column in self._progress.columns:
                 if isinstance(column, CompletableSpinnerColumn):

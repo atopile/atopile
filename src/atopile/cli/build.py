@@ -74,8 +74,12 @@ class BuildProcess:
         self._log_handle: IO | None = None
         self._error_reported: bool = False  # Track if error was already printed
 
-    def start(self) -> None:
-        """Start the build subprocess."""
+    def start(self, passthrough: bool = False) -> None:
+        """Start the build subprocess.
+
+        Args:
+            passthrough: If True, output goes to terminal. If False, captured to log.
+        """
         # Create log directory for this build
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.log_file = self.log_dir / "build.log"
@@ -83,9 +87,6 @@ class BuildProcess:
 
         # Initialize status file
         self.status_file.write_text("Starting...")
-
-        # Open log file for capturing output
-        self._log_handle = open(self.log_file, "w")
 
         # Build the command - run ato build for just this target
         cmd = [
@@ -108,13 +109,36 @@ class BuildProcess:
         env["ATO_BUILD_TIMESTAMP"] = NOW
 
         self.start_time = time.time()
-        self.process = subprocess.Popen(
-            cmd,
-            cwd=self.project_root,
-            stdout=self._log_handle,
-            stderr=subprocess.STDOUT,
-            env=env,
-        )
+
+        if passthrough:
+            # Verbose mode: output goes to terminal AND tee to log file
+            # Disable Python buffering in subprocess for real-time output
+            env["PYTHONUNBUFFERED"] = "1"
+            # Force Rich to output colors even though stdout is a pipe
+            env["FORCE_COLOR"] = "1"
+            # Disable animated progress spinners (they don't work when piped)
+            env["ATO_NO_PROGRESS_ANIMATION"] = "1"
+            self._log_handle = open(self.log_file, "w", encoding="utf-8")
+            self.process = subprocess.Popen(
+                cmd,
+                cwd=self.project_root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                env=env,
+                bufsize=1,  # Line buffered
+                text=True,  # Text mode for proper encoding
+                encoding="utf-8",
+            )
+        else:
+            # Normal mode: output captured to log file only
+            self._log_handle = open(self.log_file, "w")
+            self.process = subprocess.Popen(
+                cmd,
+                cwd=self.project_root,
+                stdout=self._log_handle,
+                stderr=subprocess.STDOUT,
+                env=env,
+            )
 
     def poll(self) -> int | None:
         """Check if process has finished. Returns exit code or None if still running."""
@@ -132,6 +156,34 @@ class BuildProcess:
                 self._log_handle.close()
                 self._log_handle = None
             self._parse_log_for_stats()
+        return ret
+
+    def wait(self) -> int:
+        """Wait for process to complete, streaming output to terminal and log.
+
+        Used in verbose mode where output should be visible in real-time.
+        """
+        if self.process is None:
+            return -1
+
+        # If process.stdout is piped (passthrough mode), tee to console and log
+        if self.process.stdout:
+            # Read lines and stream in real-time
+            # PYTHONUNBUFFERED=1 ensures subprocess flushes after each line
+            for line in iter(self.process.stdout.readline, ""):
+                sys.stdout.write(line)
+                sys.stdout.flush()
+                if self._log_handle:
+                    self._log_handle.write(line)
+                    self._log_handle.flush()
+
+        ret = self.process.wait()
+        self.return_code = ret
+        self.end_time = time.time()
+        if self._log_handle:
+            self._log_handle.close()
+            self._log_handle = None
+        self._parse_log_for_stats()
         return ret
 
     def _read_status(self) -> None:
@@ -320,6 +372,7 @@ class ParallelBuildManager:
         build_tasks: list[tuple[str, Path, str | None]],
         logs_base: Path,
         max_workers: int = DEFAULT_WORKER_COUNT,
+        verbose: bool = False,
     ):
         """
         Initialize the build manager.
@@ -328,10 +381,12 @@ class ParallelBuildManager:
             build_tasks: List of (build_name, project_root, project_name) tuples
             logs_base: Base directory for logs
             max_workers: Maximum concurrent builds (default: CPU count)
+            verbose: Show full output (runs sequentially, no live display)
         """
         self.build_tasks = build_tasks
         self.logs_base = logs_base
         self.max_workers = max_workers
+        self.verbose = verbose
 
         # Check if this is multi-project mode (any task has a project_name)
         self.multi_project_mode = any(t[2] is not None for t in build_tasks)
@@ -358,6 +413,7 @@ class ParallelBuildManager:
             self._task_queue.put(display_name)
 
         self._lock = threading.Lock()
+        self._display_lock = threading.Lock()  # Synchronize display updates
         self._stop_display = threading.Event()
         self._display_thread: threading.Thread | None = None
         self._active_workers: set[str] = set()
@@ -371,45 +427,27 @@ class ParallelBuildManager:
         self._Table = Table
         self._live: Live | None = None
 
-    @staticmethod
-    def _get_editor_scheme() -> str | None:
-        """Detect editor and return appropriate URI scheme."""
-        # Cursor sets CURSOR_TRACE_ID or CURSOR_AGENT env vars
-        if os.environ.get("CURSOR_TRACE_ID") or os.environ.get("CURSOR_AGENT"):
-            return "cursor"
-        # VS Code sets TERM_PROGRAM=vscode (without Cursor env vars)
-        elif os.environ.get("TERM_PROGRAM") == "vscode":
-            return "vscode"
-        return None
-
     @classmethod
     def _make_file_uri(cls, path: Path | str, line: int | None = None) -> str:
-        """Create a file URI, using editor-specific scheme when available."""
+        """Create a file:// URI with optional line number fragment."""
         path = Path(path) if isinstance(path, str) else path
-        scheme = cls._get_editor_scheme()
-
-        if scheme and line:
-            return f"{scheme}://file/{path}:{line}"
-        elif scheme:
-            return f"{scheme}://file/{path}"
-        else:
-            return path.as_uri()
+        uri = path.absolute().as_uri()
+        # Some terminals/editors support #L<line> fragment for line numbers
+        if line:
+            uri = f"{uri}#L{line}"
+        return uri
 
     @classmethod
     def _linkify_paths(cls, text: str) -> str:
         """Make file paths in text clickable using Rich link markup."""
         import re
 
-        scheme = cls._get_editor_scheme()
-
         def make_link(match: re.Match) -> str:
             path = match.group(1)
             line_num = match.group(2)
             col = match.group(3) if match.group(3) else "1"
-            if scheme:
-                uri = f"{scheme}://file/{path}:{line_num}:{col}"
-            else:
-                uri = f"file://{path}"
+            # Use file:// URI with line fragment
+            uri = f"file://{path}#L{line_num}"
             return f"[link={uri}]{path}:{line_num}:{col}[/link]"
 
         # Match file paths with line numbers (e.g., /path/to/file.ato:38:10)
@@ -522,13 +560,21 @@ class ParallelBuildManager:
         if self.multi_project_mode:
             return self._render_project_table()
 
-        # Get terminal height, reserve space for header/summary/margins
-        term_height = shutil.get_terminal_size().lines
+        # Get terminal size
+        term_size = shutil.get_terminal_size()
+        term_height = term_size.lines
+        term_width = term_size.columns
         max_rows = max(term_height - 10, 10)  # At least 10 rows
 
         # Determine max target name length for dynamic column width
         max_name_len = max(len(bp.display_name) for bp in self.processes.values())
         target_width = min(max(max_name_len, 12), 30)  # Clamp between 12 and 30
+
+        # Calculate available width for status column
+        # Fixed widths: icon(1) + time(5) + logs(~6) + padding(~10)
+        fixed_width = 1 + target_width + 5 + 6 + 10
+        status_width = max(self._STAGE_WIDTH, term_width - fixed_width)
+        status_width = min(status_width, 50)  # Cap at reasonable max
 
         table = self._Table(
             show_header=True,
@@ -540,7 +586,7 @@ class ParallelBuildManager:
 
         table.add_column("", width=1)  # Status icon
         table.add_column("Target", width=target_width, style="cyan")
-        table.add_column("Status", width=self._STAGE_WIDTH)
+        table.add_column("Status", width=status_width)
         table.add_column("Time", width=5, justify="right")
         table.add_column("Logs", style="dim")
 
@@ -577,8 +623,10 @@ class ParallelBuildManager:
                 # Format stage text with colors
                 if status == "building":
                     stage_name = bp.current_stage or "Building..."
-                    if len(stage_name) > 18:
-                        stage_name = stage_name[:15] + "..."
+                    # Truncate based on available status width
+                    max_stage = status_width - 3  # Leave room for "..."
+                    if len(stage_name) > max_stage:
+                        stage_name = stage_name[: max_stage - 3] + "..."
                     stage_text = f"[blue]{stage_name}[/blue]"
                 elif status in ("success", "warning"):
                     stage_text = "[green]Completed[/green]"
@@ -628,13 +676,22 @@ class ParallelBuildManager:
 
         from rich.box import SIMPLE
 
-        term_height = shutil.get_terminal_size().lines
+        term_size = shutil.get_terminal_size()
+        term_height = term_size.lines
+        term_width = term_size.columns
         max_rows = max(term_height - 10, 10)
 
         # Find max project name length
         projects = self._get_project_states()
         max_name_len = max(len(name) for name in projects.keys())
         project_width = min(max(max_name_len, 12), 28)
+
+        # Calculate available width for status column
+        # Fixed widths: icon(1) + time(5) + logs(~6) + padding(~10)
+        fixed_width = 1 + project_width + 5 + 6 + 10
+        status_width = max(self._STAGE_WIDTH + 12, term_width - fixed_width)
+        # Cap at reasonable max to avoid super long lines
+        status_width = min(status_width, 60)
 
         table = self._Table(
             show_header=True,
@@ -646,7 +703,7 @@ class ParallelBuildManager:
 
         table.add_column("", width=1)  # Status icon
         table.add_column("Project", width=project_width, style="cyan")
-        table.add_column("Status", width=self._STAGE_WIDTH + 12)
+        table.add_column("Status", width=status_width)
         table.add_column("Time", width=5, justify="right")
         table.add_column("Logs", style="dim")
 
@@ -680,15 +737,21 @@ class ParallelBuildManager:
             # Build status text showing progress and current activity
             if status == "building":
                 stage = p["current_stage"] or "Building"
-                if len(stage) > 14:
-                    stage = stage[:11] + "..."
-                # Truncate build name to fit
                 build_name = p["current_build"] or ""
+                progress = f"{p['completed']}/{p['total']}"
+
+                # Calculate available space for stage based on status_width
+                # Format: "{build_name} {progress} {stage}"
+                # Reserve: build_name(max 10) + space + progress + space
+                reserved = min(len(build_name), 10) + 1 + len(progress) + 1
+                max_stage_len = max(status_width - reserved, 10)
+
+                if len(stage) > max_stage_len:
+                    stage = stage[: max_stage_len - 3] + "..."
                 if len(build_name) > 10:
                     build_name = build_name[:8] + ".."
-                status_text = (
-                    f"[blue]{build_name}[/blue] {p['completed']}/{p['total']} {stage}"
-                )
+
+                status_text = f"[blue]{build_name}[/blue] {progress} {stage}"
             elif status == "failed":
                 status_text = (
                     f"[red]{p['failed']} failed[/red], "
@@ -770,9 +833,10 @@ class ParallelBuildManager:
 
         while not self._stop_display.is_set():
             if self._live:
-                table = self._render_table()
-                summary = self._render_summary()
-                self._live.update(Group(table, "", summary))
+                with self._display_lock:
+                    table = self._render_table()
+                    summary = self._render_summary()
+                    self._live.update(Group(table, "", summary))
             time.sleep(0.5)
 
     def run_until_complete(self) -> dict[str, int]:
@@ -780,9 +844,44 @@ class ParallelBuildManager:
         Run all builds until complete, showing live progress.
 
         Uses a queue to limit concurrent builds to max_workers.
+        In verbose mode, runs sequentially with full output.
 
         Returns dict of display_name -> exit_code.
         """
+        if self.verbose:
+            return self._run_verbose()
+        return self._run_parallel()
+
+    def _run_verbose(self) -> dict[str, int]:
+        """Run builds sequentially with full output visible."""
+        results: dict[str, int] = {}
+
+        for display_name, bp in self.processes.items():
+            self._console.print(f"\n[bold cyan]▶ Building {display_name}[/bold cyan]")
+            self._console.print(f"[dim]  Logs: {bp.log_dir}[/dim]\n")
+
+            # Start the build with stdout/stderr passed through
+            bp.start(passthrough=True)
+
+            # Wait for completion
+            ret = bp.wait()
+            results[display_name] = ret
+
+            if ret == 0:
+                if bp.warnings > 0:
+                    self._console.print(
+                        f"\n[yellow]⚠ {display_name} completed with "
+                        f"{bp.warnings} warning(s)[/yellow]"
+                    )
+                else:
+                    self._console.print(f"\n[green]✓ {display_name} completed[/green]")
+            else:
+                self._console.print(f"\n[red]✗ {display_name} failed[/red]")
+
+        return results
+
+    def _run_parallel(self) -> dict[str, int]:
+        """Run builds in parallel with live progress display."""
         from rich.console import Group
         from rich.live import Live
 
@@ -824,25 +923,26 @@ class ParallelBuildManager:
                                     error_details = bp.get_error_details()
                                     error_msg = bp.get_error_message()
 
-                                    # Print detailed error above the live display
-                                    live.console.print(
-                                        f"[red bold]✗ {display_name}[/red bold]"
-                                    )
-                                    if error_details:
-                                        for line in error_details:
-                                            # Make file paths clickable
-                                            line = self._linkify_paths(line)
-                                            live.console.print(f"  {line}")
-                                    elif error_msg:
-                                        live.console.print(f"  {error_msg}")
+                                    # Print error above display (lock to sync)
+                                    with self._display_lock:
+                                        live.console.print(
+                                            f"[red bold]✗ {display_name}[/red bold]"
+                                        )
+                                        if error_details:
+                                            for line in error_details:
+                                                # Make file paths clickable
+                                                line = self._linkify_paths(line)
+                                                live.console.print(f"  {line}")
+                                        elif error_msg:
+                                            live.console.print(f"  {error_msg}")
 
-                                    # Add link to full log at the end
-                                    if bp.log_file and bp.log_file.exists():
-                                        log_path = bp.log_file.absolute()
-                                        uri = self._make_file_uri(log_path)
-                                        link = f"[link={uri}]View full log[/link]"
-                                        live.console.print(f"  [dim]→ {link}[/dim]")
-                                    live.console.print("")  # Blank line after error
+                                        # Add link to full log at the end
+                                        if bp.log_file and bp.log_file.exists():
+                                            log_path = bp.log_file.absolute()
+                                            uri = self._make_file_uri(log_path)
+                                            link = f"[link={uri}]View full log[/link]"
+                                            live.console.print(f"  [dim]→ {link}[/dim]")
+                                        live.console.print("")  # Blank line
 
                         # Remove completed builds from active set
                         for name in completed_this_round:
@@ -1113,6 +1213,7 @@ def _build_all_projects(
     jobs: int,
     frozen: bool | None = None,
     selected_builds: list[str] | None = None,
+    verbose: bool = False,
 ) -> None:
     """
     Build all projects in a directory.
@@ -1182,6 +1283,7 @@ def _build_all_projects(
         build_tasks,
         logs_base,
         max_workers=jobs,
+        verbose=verbose,
     )
 
     results = manager.run_until_complete()
@@ -1258,6 +1360,14 @@ def build(
             help=f"Max concurrent builds (default: {DEFAULT_WORKER_COUNT})",
         ),
     ] = DEFAULT_WORKER_COUNT,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            "-v",
+            help="Show full build output (runs sequentially)",
+        ),
+    ] = False,
 ):
     """
     Build the specified --target(s) or the targets specified by the build config.
@@ -1296,6 +1406,7 @@ def build(
             jobs=jobs,
             frozen=frozen,
             selected_builds=selected_builds,
+            verbose=verbose,
         )
         return
 
@@ -1335,6 +1446,7 @@ def build(
         build_tasks,
         config.project.paths.logs,
         max_workers=jobs,
+        verbose=verbose,
     )
 
     results = manager.run_until_complete()
