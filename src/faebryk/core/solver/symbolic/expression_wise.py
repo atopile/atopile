@@ -652,12 +652,14 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
     if (
         superset := mutator.utils.try_extract_superset(op_po)
     ) is not None and superset.op_setic_is_singleton():
-        negated = superset.cast(F.Literals.Booleans).op_not(
-            g=mutator.G_transient, tg=mutator.tg_in
+        negated = (
+            fabll.Traits(superset)
+            .get_obj(F.Literals.Booleans)
+            .op_not(g=mutator.G_transient, tg=mutator.tg_in)
         )
         mutator.create_check_and_insert_expression(
             F.Expressions.IsSubset,
-            op,
+            e.as_operand.get(),
             negated.can_be_operand.get(),
             terminate=True,
             assert_=True,
