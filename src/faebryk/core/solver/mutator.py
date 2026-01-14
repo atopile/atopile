@@ -983,17 +983,16 @@ class MutationMap:
                     G_out=g_out,
                 )
             )
-            return mut_map
-
-        mut_map = MutationMap(
-            MutationStage.identity(
-                tg,
-                g,
-                algorithm=algorithm,
-                iteration=iteration,
-                print_context=print_context or F.Parameters.ReprContext(),
+        else:
+            mut_map = MutationMap(
+                MutationStage.identity(
+                    tg,
+                    g,
+                    algorithm=algorithm,
+                    iteration=iteration,
+                    print_context=print_context or F.Parameters.ReprContext(),
+                )
             )
-        )
 
         if canonicalize:
             from faebryk.core.solver.symbolic.canonical import (
