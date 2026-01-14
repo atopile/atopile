@@ -2304,6 +2304,56 @@ def test_solve_voltage_divider_complex():
     # assert solver_total_current == res_total_current
 
 
+def test_correlated_direct_contradiction():
+    """
+    Correlated(A, B) and Not(Correlated(A, B)) should contradict.
+    """
+    E = BoundExpressions()
+    p1 = E.parameter_op(units=E.U.Ohm)
+    p2 = E.parameter_op(units=E.U.Ohm)
+
+    E.correlated(p1, p2, assert_=True)
+    E.not_(E.correlated(p1, p2), assert_=True)
+
+    solver = DefaultSolver()
+    with pytest.raises(Contradiction):
+        solver.simplify(E.tg, E.g)
+
+
+def test_correlated_direct_contradiction_multi():
+    """
+    Correlated(A, B, C) and Not(Correlated(A, B, C)) should contradict.
+    """
+    E = BoundExpressions()
+    p1 = E.parameter_op(units=E.U.Ohm)
+    p2 = E.parameter_op(units=E.U.Ohm)
+    p3 = E.parameter_op(units=E.U.Ohm)
+
+    E.correlated(p1, p2, p3, assert_=True)
+    E.not_(E.correlated(p1, p2, p3), assert_=True)
+
+    solver = DefaultSolver()
+    with pytest.raises(Contradiction):
+        solver.simplify(E.tg, E.g)
+
+
+def test_correlated_no_contradiction_different_sets():
+    """
+    Correlated(A, B) and Not(Correlated(A, C)) should NOT contradict.
+    These are independent assertions about different parameter pairs.
+    """
+    E = BoundExpressions()
+    p1 = E.parameter_op(units=E.U.Ohm)
+    p2 = E.parameter_op(units=E.U.Ohm)
+    p3 = E.parameter_op(units=E.U.Ohm)
+
+    E.correlated(p1, p2, assert_=True)
+    E.not_(E.correlated(p1, p3), assert_=True)
+
+    solver = DefaultSolver()
+    solver.simplify(E.tg, E.g)
+
+
 if __name__ == "__main__":
     import typer
 

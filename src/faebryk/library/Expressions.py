@@ -2879,6 +2879,73 @@ class Is(fabll.Node):
         return _op(cls.from_operands(*operands, g=g, tg=tg, assert_=assert_))
 
 
+class Correlated(fabll.Node):
+    can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
+        F.Parameters.is_parameter_operatable.MakeChild()
+    )
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="~", placement=is_expression_type.ReprStyle.Placement.INFIX
+            )
+        ).put_on_type()
+    )
+    is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
+    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
+    is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
+    is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
+    is_reflexive = fabll.Traits.MakeEdge(is_reflexive.MakeChild())
+    has_idempotent_operands = fabll.Traits.MakeEdge(has_idempotent_operands.MakeChild())
+
+    operands = OperandSet.MakeChild()
+
+    def setup(
+        self, *operands: "F.Parameters.can_be_operand", assert_: bool = False
+    ) -> Self:
+        self.operands.get().append(*operands)
+        if assert_:
+            self.is_assertable.get().assert_()
+        return self
+
+    @classmethod
+    def MakeChild(
+        cls, *operands: fabll.RefPath, assert_: bool = False
+    ) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        if assert_:
+            out.add_dependant(
+                fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
+            )
+        for operand in operands:
+            out.add_dependant(
+                OperandSet.MakeEdge([out, cls.operands], get_operand_path(operand))
+            )
+        return out
+
+    @classmethod
+    def from_operands(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+        assert_: bool = False,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, operands, g=g, tg=tg)
+        return instance.setup(*operands, assert_=assert_)
+
+    @classmethod
+    def c(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+        assert_: bool = False,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(*operands, g=g, tg=tg, assert_=assert_))
+
+
 ExpressionNodes = (
     Add
     | Subtract
@@ -2911,6 +2978,7 @@ ExpressionNodes = (
     | Cardinality
     | IsBitSet
     | Is
+    | Correlated
 )
 
 # Macro Expressions --------------------------------------------------------------------

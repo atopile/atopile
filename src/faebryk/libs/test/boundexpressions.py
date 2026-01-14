@@ -372,6 +372,15 @@ class BoundExpressions:
     ) -> F.Parameters.can_be_operand:
         return F.Expressions.Is.c(*operands, g=self.g, tg=self.tg, assert_=assert_)
 
+    def correlated(
+        self,
+        *operands: F.Parameters.can_be_operand,
+        assert_: bool = False,
+    ) -> F.Parameters.can_be_operand:
+        return F.Expressions.Correlated.c(
+            *operands, g=self.g, tg=self.tg, assert_=assert_
+        )
+
     def is_subset(
         self,
         subset: F.Parameters.can_be_operand,

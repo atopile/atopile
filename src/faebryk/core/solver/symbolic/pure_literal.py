@@ -38,7 +38,7 @@ class _Multi:
 
 # TODO consider making this a trait instead
 
-_CanonicalExpressions: dict[type[fabll.NodeT], _Multi] = {
+_CanonicalExpressions: dict[type[fabll.NodeT], _Multi | None] = {
     F.Expressions.Add: _Multi(F.Literals.Numbers.op_add_intervals, 0),
     F.Expressions.Subtract: _Multi(F.Literals.Numbers.op_subtract_intervals),
     F.Expressions.Multiply: _Multi(F.Literals.Numbers.op_mul_intervals, 1),
@@ -66,6 +66,7 @@ _CanonicalExpressions: dict[type[fabll.NodeT], _Multi] = {
     F.Expressions.Is: _Multi(F.Literals.is_literal.op_setic_equals),
     F.Expressions.IsSubset: _Multi(F.Literals.is_literal.op_setic_is_subset_of),
     F.Expressions.IsBitSet: _Multi(F.Literals.Numbers.op_is_bit_set),
+    F.Expressions.Correlated: None,
 }
 
 # Pure literal folding -----------------------------------------------------------------
