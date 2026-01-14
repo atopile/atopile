@@ -468,6 +468,17 @@ def build_document(uri: str, source: str) -> DocumentState:
     file_path = get_file_path(uri)
     document_path = file_path.resolve()
 
+    # Clear cached types from this file to ensure full rebuild
+    # Type identifiers are formatted as "path/to/file.ato:TypeName"
+    # This ensures external_type_refs is populated on each rebuild
+    file_prefix = str(document_path) + ":"
+    types_to_clear = [
+        type_id for type_id in fabll.Node._seen_types if type_id.startswith(file_prefix)
+    ]
+    for type_id in types_to_clear:
+        del fabll.Node._seen_types[type_id]
+        logger.debug(f"Cleared cached type: {type_id}")
+
     # Collect diagnostics during build
     diagnostics: list[lsp.Diagnostic] = []
 
@@ -2351,12 +2362,9 @@ def _find_external_type_definition(
     # Look through external_type_refs for the import
     # Format: (type_ref, import_ref, node, traceback_stack)
     external_refs = state.build_result.state.external_type_refs
-    logger.info(
-        f"External type lookup: looking for {type_name}, "
-        f"refs={[ref.name for _, ref, _, _ in external_refs]}"
-    )
     for _type_ref, import_ref, _node, _traceback in external_refs:
-        if import_ref.name != type_name:
+        # import_ref can be None for local type references
+        if import_ref is None or import_ref.name != type_name:
             continue
 
         # Check if it has a path (non-stdlib imports)
