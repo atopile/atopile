@@ -93,9 +93,7 @@ class implements_design_check(fabll.Node):
         - Connecting electric references (has_single_electric_reference)
         - Setting address lines (Addressor)
         """
-        return implements_design_check._CheckMethod(
-            func, "__check_post_design_setup__"
-        )
+        return implements_design_check._CheckMethod(func, "__check_post_design_setup__")
 
     @staticmethod
     def register_post_design_check(
