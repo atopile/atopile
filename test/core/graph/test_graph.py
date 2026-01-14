@@ -17,12 +17,12 @@ def _get_component_node_count_params():
     component_counts: dict[type, int | None] = {
         fabll.Node: 1,
         F.Electrical: 5,
-        F.ElectricLogic: 1240,
-        F.ElectricSignal: 1231,
-        F.ElectricPower: 593,
+        F.ElectricLogic: 616,
+        F.ElectricSignal: 607,
+        F.ElectricPower: 594,
         F.Resistor: 1069,
-        F.Capacitor: 1453,
-        F.I2C: 3760,
+        F.Capacitor: 1454,
+        F.I2C: 2513,
     }
 
     return [

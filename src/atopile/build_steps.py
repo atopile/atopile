@@ -217,13 +217,38 @@ def prepare_build(
 
 
 @muster.register(
+    "post-design-setup",
+    description="Running post-design setup (structure modifications)",
+    dependencies=[prepare_build],
+)
+def post_design_setup(
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+) -> None:
+    """
+    Run POST_DESIGN_SETUP checks which modify the graph structure.
+
+    This includes:
+    - Applying default constraints (has_default_constraint)
+    - Connecting deprecated aliases (ElectricPower vcc/gnd)
+    - Connecting electric references (has_single_electric_reference)
+    - Setting address lines (Addressor)
+    """
+    check_design(
+        app,
+        stage=F.implements_design_check.CheckStage.POST_DESIGN_SETUP,
+        exclude=tuple(set(config.build.exclude_checks)),
+    )
+
+
+@muster.register(
     "post-design-checks",
     description="Running post-design checks",
-    dependencies=[prepare_build],
+    dependencies=[post_design_setup],
 )
 def post_design_checks(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
+    """Run POST_DESIGN checks for pure verification."""
     check_design(
         app,
         stage=F.implements_design_check.CheckStage.POST_DESIGN,

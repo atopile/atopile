@@ -571,8 +571,8 @@ class ParallelBuildManager:
         target_width = min(max(max_name_len, 12), 30)  # Clamp between 12 and 30
 
         # Calculate available width for status column
-        # Fixed widths: icon(1) + time(5) + logs(~6) + padding(~10)
-        fixed_width = 1 + target_width + 5 + 6 + 10
+        # Fixed widths: icon(1) + time(5) + padding(~10)
+        fixed_width = 1 + target_width + 5 + 10
         status_width = max(self._STAGE_WIDTH, term_width - fixed_width)
         status_width = min(status_width, 50)  # Cap at reasonable max
 
@@ -588,7 +588,6 @@ class ParallelBuildManager:
         table.add_column("Target", width=target_width, style="cyan")
         table.add_column("Status", width=status_width)
         table.add_column("Time", width=5, justify="right")
-        table.add_column("Logs", style="dim")
 
         with self._lock:
             # Sort builds by priority: building > failed > warning > success > queued
@@ -647,15 +646,7 @@ class ParallelBuildManager:
                 else:
                     time_text = f"{int(bp.elapsed)}s"
 
-                # Log path - show as clickable hyperlink to summary.md
-                if bp.log_dir and bp.log_dir.exists():
-                    summary_file = bp.log_dir / "summary.md"
-                    uri = self._make_file_uri(summary_file.absolute())
-                    log_text = f"[link={uri}]logs[/link]"
-                else:
-                    log_text = ""
-
-                table.add_row(icon, display_name, stage_text, time_text, log_text)
+                table.add_row(icon, display_name, stage_text, time_text)
                 rows_shown += 1
 
             # Add a summary row for hidden queued items
@@ -687,8 +678,8 @@ class ParallelBuildManager:
         project_width = min(max(max_name_len, 12), 28)
 
         # Calculate available width for status column
-        # Fixed widths: icon(1) + time(5) + logs(~6) + padding(~10)
-        fixed_width = 1 + project_width + 5 + 6 + 10
+        # Fixed widths: icon(1) + time(5) + padding(~10)
+        fixed_width = 1 + project_width + 5 + 10
         status_width = max(self._STAGE_WIDTH + 12, term_width - fixed_width)
         # Cap at reasonable max to avoid super long lines
         status_width = min(status_width, 60)
@@ -705,7 +696,6 @@ class ParallelBuildManager:
         table.add_column("Project", width=project_width, style="cyan")
         table.add_column("Status", width=status_width)
         table.add_column("Time", width=5, justify="right")
-        table.add_column("Logs", style="dim")
 
         # Sort projects by priority
         priority_order = {
@@ -776,22 +766,13 @@ class ParallelBuildManager:
             else:
                 time_text = f"{int(p['elapsed'])}s"
 
-            # Log path - show as clickable hyperlink to project log dir
-            # (project level doesn't have a single summary, so link to dir)
-            log_text = ""
-            if p["log_dir"] and p["log_dir"].exists():
-                # Directories always use file:// (vscode:// doesn't work for dirs)
-                uri = p["log_dir"].absolute().as_uri()
-                log_text = f"[link={uri}]logs[/link]"
-
-            table.add_row(icon, project_name, status_text, time_text, log_text)
+            table.add_row(icon, project_name, status_text, time_text)
             rows_shown += 1
 
         if hidden_queued > 0:
             table.add_row(
                 "[dim]...[/dim]",
                 f"[dim]+{hidden_queued} more queued[/dim]",
-                "",
                 "",
                 "",
             )

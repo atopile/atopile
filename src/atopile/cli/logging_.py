@@ -592,7 +592,6 @@ class ParallelBuildDisplay:
         table.add_column("", width=12, style="cyan")  # Target (max ~12 chars)
         table.add_column("", width=self._STAGE_COLUMN_WIDTH)  # Stage (fixed width)
         table.add_column("", width=5, justify="right")  # Time
-        table.add_column("", style="dim")  # Logs
 
         with self._lock:
             for state in self._states.values():
@@ -627,22 +626,11 @@ class ParallelBuildDisplay:
                 else:
                     time_text = "[dim]-[/dim]"
 
-                # Format log path
-                if state.log_dir and state.log_dir.exists():
-                    try:
-                        rel_path = state.log_dir.relative_to(Path.cwd())
-                    except ValueError:
-                        rel_path = state.log_dir
-                    log_text = str(rel_path)
-                else:
-                    log_text = ""
-
                 table.add_row(
                     status_icon,
                     state.name,
                     stage_text,
                     time_text,
-                    log_text,
                 )
 
         return table

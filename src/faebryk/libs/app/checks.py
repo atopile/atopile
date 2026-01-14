@@ -19,16 +19,18 @@ def check_design(
     exclude: tuple[str, ...] = tuple(),
 ):
     """
-    args:
+    Run design checks for a given stage.
+
+    Args:
+        app: The root application node
+        stage: Which check stage to run (POST_DESIGN_SETUP, POST_DESIGN, etc.)
         exclude: list of names of checks to exclude e.g:
-        - `I2C.requires_unique_addresses`
+            - `I2C.requires_unique_addresses`
     """
-    # Get all checks and sort by priority (higher priority runs first)
     checks = F.implements_design_check.bind_typegraph(app.tg).get_instances()
-    checks_sorted = sorted(checks, key=lambda c: c.get_check_priority(), reverse=True)
 
     with accumulate(UserDesignCheckException) as accumulator:
-        for check in checks_sorted:
+        for check in checks:
             with accumulator.collect():
                 try:
                     check.run(stage)
@@ -64,6 +66,11 @@ class Test:
         def check_log(self, value: list[str]):
             self._log_store[self.instance.node().get_uuid()] = value
 
+        @F.implements_design_check.register_post_design_setup_check
+        def __check_post_design_setup__(self):
+            self._ensure_log()
+            self.check_log.append("post_design_setup")
+
         @F.implements_design_check.register_post_design_check
         def __check_post_design__(self):
             self._ensure_log()
@@ -88,15 +95,31 @@ class Test:
         a1 = app.create_instance(g=g)
         a2 = app.create_instance(g=g)
 
+        # POST_DESIGN_SETUP runs first (structure modifications)
+        check_design(a1, F.implements_design_check.CheckStage.POST_DESIGN_SETUP)
+        assert a1.check_log == ["post_design_setup"]
+        assert a2.check_log == ["post_design_setup"]
+
+        # POST_DESIGN runs second (pure verification)
         check_design(a1, F.implements_design_check.CheckStage.POST_DESIGN)
-        assert a1.check_log == ["post_design"]
-        assert a2.check_log == ["post_design"]
+        assert a1.check_log == ["post_design_setup", "post_design"]
+        assert a2.check_log == ["post_design_setup", "post_design"]
 
         with pytest.raises(UserDesignCheckException):
             check_design(a1, F.implements_design_check.CheckStage.POST_SOLVE)
-        assert a1.check_log == ["post_design", "post_solve"]
-        assert a2.check_log == ["post_design", "post_solve"]
+        assert a1.check_log == ["post_design_setup", "post_design", "post_solve"]
+        assert a2.check_log == ["post_design_setup", "post_design", "post_solve"]
 
         check_design(a1, F.implements_design_check.CheckStage.POST_PCB)
-        assert a1.check_log == ["post_design", "post_solve", "post_pcb"]
-        assert a2.check_log == ["post_design", "post_solve", "post_pcb"]
+        assert a1.check_log == [
+            "post_design_setup",
+            "post_design",
+            "post_solve",
+            "post_pcb",
+        ]
+        assert a2.check_log == [
+            "post_design_setup",
+            "post_design",
+            "post_solve",
+            "post_pcb",
+        ]

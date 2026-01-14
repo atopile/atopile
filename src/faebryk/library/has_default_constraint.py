@@ -43,10 +43,6 @@ class has_default_constraint(fabll.Node):
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
-    # High priority so defaults are applied before other POST_DESIGN checks
-    # (e.g., Addressor needs defaults to be set before it tries to deduce offset)
-    CHECK_PRIORITY = 100
-
     # Design check trait for pre-solve default application
     design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
 
@@ -199,13 +195,14 @@ class has_default_constraint(fabll.Node):
 
         return False
 
-    @F.implements_design_check.register_post_design_check
-    def __check_post_design__(self):
+    @F.implements_design_check.register_post_design_setup_check
+    def __check_post_design_setup__(self):
         """
         Apply default constraint if no explicit constraint exists.
 
-        This runs before the solver, allowing default values to be set up
-        only when the user hasn't provided their own constraints.
+        This runs in POST_DESIGN_SETUP before pure verification checks,
+        allowing default values to be set up only when the user hasn't
+        provided their own constraints.
         """
         param = self._get_target_parameter()
         if param is None:

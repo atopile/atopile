@@ -18,12 +18,11 @@ logger = logging.getLogger(__name__)
 class implements_design_check(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
-    # Priority for ordering checks within a stage. Higher values run first.
-    # Default is 0. Use higher values for checks that need to run early
-    # (e.g., has_default_constraint uses 100 to run before Addressor).
-    CHECK_PRIORITY: int = 0
-
     class CheckStage(Enum):
+        # POST_DESIGN_SETUP runs first: for structure modifications like
+        # applying defaults, connecting references, setting address lines.
+        POST_DESIGN_SETUP = auto()
+        # POST_DESIGN runs second: for pure verification checks
         POST_DESIGN = auto()
         POST_SOLVE = auto()
         POST_PCB = auto()
@@ -82,9 +81,27 @@ class implements_design_check(fabll.Node):
             return self.func
 
     @staticmethod
+    def register_post_design_setup_check(
+        func: Callable[[Any], None],
+    ) -> "implements_design_check._CheckMethod":
+        """
+        Register a POST_DESIGN_SETUP check.
+
+        These run before POST_DESIGN and are for structure modifications like:
+        - Applying default constraints (has_default_constraint)
+        - Connecting deprecated aliases (ElectricPower vcc/gnd)
+        - Connecting electric references (has_single_electric_reference)
+        - Setting address lines (Addressor)
+        """
+        return implements_design_check._CheckMethod(
+            func, "__check_post_design_setup__"
+        )
+
+    @staticmethod
     def register_post_design_check(
         func: Callable[[Any], None],
     ) -> "implements_design_check._CheckMethod":
+        """Register a POST_DESIGN check for pure verification."""
         return implements_design_check._CheckMethod(func, "__check_post_design__")
 
     @staticmethod
@@ -155,6 +172,15 @@ class implements_design_check(fabll.Node):
         # There should be exactly one solver in the graph
         return solver_traits[0].get_solver()
 
+    def check_post_design_setup(self):
+        owner_instance, owner_class = self._get_owner_with_type()
+        if not hasattr(owner_class, "__check_post_design_setup__"):
+            return False
+        type_name = self.get_parent_force()[0].get_type_name()
+        logger.info(f"Running {self.CheckStage.POST_DESIGN_SETUP.name} {type_name}")
+        owner_class.__check_post_design_setup__(owner_instance)  # type: ignore[attr-defined]
+        return True
+
     def check_post_design(self):
         owner_instance, owner_class = self._get_owner_with_type()
         if not hasattr(owner_class, "__check_post_design__"):
@@ -183,8 +209,10 @@ class implements_design_check(fabll.Node):
         return True
 
     def run(self, stage: CheckStage) -> bool:
-        logger.info(f"Running {stage.name} checks")
+        logger.debug(f"Running {stage.name} checks")
         match stage:
+            case implements_design_check.CheckStage.POST_DESIGN_SETUP:
+                return self.check_post_design_setup()
             case implements_design_check.CheckStage.POST_DESIGN:
                 return self.check_post_design()
             case implements_design_check.CheckStage.POST_SOLVE:
@@ -192,20 +220,11 @@ class implements_design_check(fabll.Node):
             case implements_design_check.CheckStage.POST_PCB:
                 return self.check_post_pcb()
 
-    def get_check_priority(self) -> int:
-        """
-        Get the priority for this check. Higher values run first.
-
-        Returns the CHECK_PRIORITY class attribute from the owner class,
-        defaulting to 0 if not defined.
-        """
-        _, owner_class = self._get_owner_with_type()
-        return getattr(owner_class, "CHECK_PRIORITY", 0)
-
     def on_check(self):
         _, owner_class = self._get_owner_with_type()
         if (
-            not hasattr(owner_class, "__check_post_design__")
+            not hasattr(owner_class, "__check_post_design_setup__")
+            and not hasattr(owner_class, "__check_post_design__")
             and not hasattr(owner_class, "__check_post_solve__")
             and not hasattr(owner_class, "__check_post_pcb__")
         ):

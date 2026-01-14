@@ -1479,3 +1479,144 @@ def test_sibling_connected():
     test_if.if1.get()._is_interface.get().connect_to(test_if.if2.get())
 
     assert test_if.if1.get()._is_interface.get().is_connected_to(test_if.if2.get())
+
+
+class TestElectricPowerLazyVccGnd:
+    """
+    Test lazy connection of deprecated vcc/gnd aliases in ElectricPower.
+
+    The vcc/gnd children exist but are floating until post_design connects
+    them to hv/lv if something is actually connected to them. This avoids
+    creating unnecessary connection edges for every ElectricPower instance.
+    """
+
+    def test_vcc_gnd_not_connected_without_usage(self):
+        """
+        vcc/gnd should NOT be connected to hv/lv if nothing uses them.
+        """
+        from faebryk.libs.app.checks import check_design
+
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        power = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+
+        # Before post_design: vcc/gnd should be floating (not connected to hv/lv)
+        assert not power.vcc.get()._is_interface.get().is_connected_to(power.hv.get())
+        assert not power.gnd.get()._is_interface.get().is_connected_to(power.lv.get())
+
+        # Run post_design check
+        check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
+
+        # After post_design: still not connected since nothing uses vcc/gnd
+        assert not power.vcc.get()._is_interface.get().is_connected_to(power.hv.get())
+        assert not power.gnd.get()._is_interface.get().is_connected_to(power.lv.get())
+
+    def test_vcc_connected_to_hv_when_used(self):
+        """
+        vcc should be connected to hv after post_design if something connects to vcc.
+        """
+        from faebryk.libs.app.checks import check_design
+
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        power = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+        external = F.Electrical.bind_typegraph(tg).create_instance(g=g)
+
+        # Connect something external to vcc
+        external._is_interface.get().connect_to(power.vcc.get())
+
+        # Before post_design: vcc has external connection but not connected to hv
+        assert external._is_interface.get().is_connected_to(power.vcc.get())
+        assert not power.vcc.get()._is_interface.get().is_connected_to(power.hv.get())
+
+        # Run post_design check
+        check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
+
+        # After post_design: vcc should now be connected to hv
+        assert power.vcc.get()._is_interface.get().is_connected_to(power.hv.get())
+        # And therefore external should be connected to hv too
+        assert external._is_interface.get().is_connected_to(power.hv.get())
+
+        # gnd should still be floating (not used)
+        assert not power.gnd.get()._is_interface.get().is_connected_to(power.lv.get())
+
+    def test_gnd_connected_to_lv_when_used(self):
+        """
+        gnd should be connected to lv after post_design if something connects to gnd.
+        """
+        from faebryk.libs.app.checks import check_design
+
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        power = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+        external = F.Electrical.bind_typegraph(tg).create_instance(g=g)
+
+        # Connect something external to gnd
+        external._is_interface.get().connect_to(power.gnd.get())
+
+        # Run post_design check
+        check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
+
+        # gnd should now be connected to lv
+        assert power.gnd.get()._is_interface.get().is_connected_to(power.lv.get())
+        assert external._is_interface.get().is_connected_to(power.lv.get())
+
+        # vcc should still be floating (not used)
+        assert not power.vcc.get()._is_interface.get().is_connected_to(power.hv.get())
+
+    def test_both_vcc_and_gnd_connected_when_both_used(self):
+        """
+        Both vcc and gnd should be connected when both are used.
+        """
+        from faebryk.libs.app.checks import check_design
+
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        power = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+        external_vcc = F.Electrical.bind_typegraph(tg).create_instance(g=g)
+        external_gnd = F.Electrical.bind_typegraph(tg).create_instance(g=g)
+
+        # Connect externals to both vcc and gnd
+        external_vcc._is_interface.get().connect_to(power.vcc.get())
+        external_gnd._is_interface.get().connect_to(power.gnd.get())
+
+        # Run post_design check
+        check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
+
+        # Both should be connected
+        assert power.vcc.get()._is_interface.get().is_connected_to(power.hv.get())
+        assert power.gnd.get()._is_interface.get().is_connected_to(power.lv.get())
+        assert external_vcc._is_interface.get().is_connected_to(power.hv.get())
+        assert external_gnd._is_interface.get().is_connected_to(power.lv.get())
+
+    def test_hv_lv_still_work_independently(self):
+        """
+        Using hv/lv directly should work without triggering vcc/gnd connections.
+        """
+        from faebryk.libs.app.checks import check_design
+
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        power = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+        external_hv = F.Electrical.bind_typegraph(tg).create_instance(g=g)
+        external_lv = F.Electrical.bind_typegraph(tg).create_instance(g=g)
+
+        # Connect directly to hv/lv (preferred usage)
+        external_hv._is_interface.get().connect_to(power.hv.get())
+        external_lv._is_interface.get().connect_to(power.lv.get())
+
+        # Run post_design check
+        check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
+
+        # hv/lv should be connected to externals
+        assert external_hv._is_interface.get().is_connected_to(power.hv.get())
+        assert external_lv._is_interface.get().is_connected_to(power.lv.get())
+
+        # vcc/gnd should still be floating
+        assert not power.vcc.get()._is_interface.get().is_connected_to(power.hv.get())
+        assert not power.gnd.get()._is_interface.get().is_connected_to(power.lv.get())

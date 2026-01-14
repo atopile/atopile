@@ -1,9 +1,35 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import logging
+
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.libs.exceptions import DeprecatedException, downgrade
+
+logger = logging.getLogger(__name__)
+
+
+def _has_interface_connections(node: fabll.Node) -> bool:
+    """
+    Efficiently check if a node has any direct interface connection edges.
+
+    This is O(number of direct edges on node) instead of O(entire connected component)
+    like get_connected() which does full BFS traversal.
+    """
+    # Use a mutable container to track if we found any edges
+    found: list[bool] = [False]
+
+    def mark_found(ctx, edge):
+        ctx[0] = True
+
+    node.instance.visit_edges_of_type(
+        edge_type=fbrk.EdgeInterfaceConnection.get_tid(),
+        ctx=found,
+        f=mark_found,
+    )
+    return found[0]
 
 
 class ElectricPower(fabll.Node):
@@ -19,21 +45,11 @@ class ElectricPower(fabll.Node):
     lv = F.Electrical.MakeChild()
 
     # Deprecated aliases for backwards compatibility.
+    # These are floating until POST_DESIGN_SETUP connects them to hv/lv if used.
+    # This avoids creating connection edges for every ElectricPower instance
+    # when vcc/gnd are not actually referenced.
     vcc = F.Electrical.MakeChild()
     gnd = F.Electrical.MakeChild()
-
-    # Connect deprecated aliases to the actual rails
-    # @raytallen: bug, we seem to be filtering out siblings
-    _vcc_to_hv = fabll.MakeEdge(
-        [vcc],
-        [hv],
-        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
-    )
-    _gnd_to_lv = fabll.MakeEdge(
-        [gnd],
-        [lv],
-        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
-    )
 
     # ----------------------------------------
     #                 traits
@@ -80,6 +96,34 @@ class ElectricPower(fabll.Node):
             language=F.has_usage_example.Language.ato,
         ).put_on_type()
     )
+
+    # Design check to connect deprecated vcc/gnd aliases to hv/lv if used
+    design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
+
+    @F.implements_design_check.register_post_design_setup_check
+    def __check_post_design_setup__(self):
+        """Connect deprecated vcc/gnd to hv/lv if they have connections."""
+        vcc_node = self.vcc.get()
+        gnd_node = self.gnd.get()
+
+        # Efficiently check for direct interface edges (O(edges) not O(graph))
+        vcc_connected = _has_interface_connections(vcc_node)
+        gnd_connected = _has_interface_connections(gnd_node)
+
+        aliases_used: list[str] = []
+        if vcc_connected:
+            aliases_used.append("vcc->hv")
+            vcc_node._is_interface.get().connect_to(self.hv.get())
+        if gnd_connected:
+            aliases_used.append("gnd->lv")
+            gnd_node._is_interface.get().connect_to(self.lv.get())
+
+        if aliases_used:
+            with downgrade(DeprecatedException):
+                raise DeprecatedException(
+                    f"Deprecated ElectricPower aliases used in {self.pretty_repr()}: "
+                    f"{', '.join(aliases_used)}. Use hv/lv instead."
+                )
 
     def make_source(self):
         fabll.Traits.create_and_add_instance_to(node=self, trait=F.is_source).setup()
