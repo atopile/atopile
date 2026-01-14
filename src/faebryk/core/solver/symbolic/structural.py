@@ -634,4 +634,5 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
             expr_e.as_operand.get(),
             expr_superset,
             from_ops=from_ops,
+            assert_=True,
         )
