@@ -779,6 +779,7 @@ def pretty_expr(
                 False,
                 factory_type.get_type_name(),
                 expr.operands or [],
+                no_lit_suffix=no_lit_suffix,
             )
         case F.Expressions.is_expression():
             return expr.compact_repr(

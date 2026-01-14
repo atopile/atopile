@@ -286,6 +286,7 @@ class is_expression(fabll.Node):
         use_name: bool,
         expr_name: str,
         operands: Sequence["F.Parameters.can_be_operand"],
+        no_lit_suffix: bool,
     ):
         """Return compact math repr with symbols (+, *, ≥, ¬, ∧) and precedence."""
         symbol_suffix = ""
@@ -304,7 +305,7 @@ class is_expression(fabll.Node):
                 return lit.pretty_str()
             if po := op.as_parameter_operatable.try_get():
                 op_out = po.compact_repr(
-                    context, use_name=use_name, no_lit_suffix=lit_suffix == ""
+                    context, use_name=use_name, no_lit_suffix=no_lit_suffix
                 )
                 if (op_expr := po.as_expression.try_get()) and len(
                     op_expr.get_operands()
@@ -371,12 +372,15 @@ class is_expression(fabll.Node):
             style.symbol if style.symbol is not None else type(self).__name__,
             bool(self.try_get_sibling_trait(is_predicate)),
             bool(self.try_get_sibling_trait(is_terminated)),
-            lit_suffix=self.as_parameter_operatable.get()._get_lit_suffix()
-            if not no_lit_suffix
-            else "",
+            lit_suffix=(
+                self.as_parameter_operatable.get()._get_lit_suffix()
+                if not no_lit_suffix
+                else ""
+            ),
             use_name=use_name,
             expr_name=not_none(fabll.Traits(self).get_obj_raw().get_type_name()),
             operands=self.get_operands(),
+            no_lit_suffix=no_lit_suffix,
         )
 
     def is_congruent_to_factory(
