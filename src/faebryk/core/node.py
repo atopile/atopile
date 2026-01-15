@@ -252,7 +252,7 @@ class _ChildField[T: NodeT](Field, ChildAccessor[T]):
         identifier: str | None = None,
         before: bool = False,
     ) -> Self:
-        to.add_dependant(to, identifier=identifier, before=before)
+        to.add_dependant(self, identifier=identifier, before=before)
         return self
 
     def __repr__(self) -> str:
