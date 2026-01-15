@@ -1211,7 +1211,9 @@ def test_abstract_lowpass():
     fc = 1 / (2 * math.pi * sqrt(C * Li))
     Li is! {1e-6+/-1%}
     fc is! {1000+/-1%}
-    => C is! {6 * 158765796 .. 6 * 410118344}
+    => C is! {0.0253 +/- 3%}
+
+    NOTE: don't trust these calculated values — not human verified
     """
     E = BoundExpressions()
 
@@ -1241,10 +1243,11 @@ def test_abstract_lowpass():
     # solve
     solver = DefaultSolver()
 
+    # C = 1 / ((fc * 2*pi)^2 * Li)
     assert _extract_and_check(
         C,
         solver,
-        E.lit_op_range(((6.0 * 158765796, E.U.dl), (6.0 * 410118344, E.U.dl))),
+        E.lit_op_range_from_center_rel((0.0253, E.U.Fa), 0.03),
     )
 
 
