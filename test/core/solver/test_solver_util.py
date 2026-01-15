@@ -18,6 +18,7 @@ from faebryk.core.solver.mutator import (
     Transformations,
 )
 from faebryk.core.solver.utils import (
+    Contradiction,
     ContradictionByLiteral,
     MutatorUtils,
 )
@@ -615,7 +616,7 @@ def test_contradiction_message_subset():
 
     solver = DefaultSolver()
 
-    with pytest.raises(ContradictionByLiteral, match="is lit not subset of ss lits"):
+    with pytest.raises(Contradiction, match="Empty superset for parameter operatable"):
         solver.simplify(E.tg, E.g, print_context=context, terminal=True)
 
 
@@ -629,9 +630,7 @@ def test_contradiction_message_superset():
 
     solver = DefaultSolver()
 
-    with pytest.raises(
-        ContradictionByLiteral, match="Contradiction: Incompatible literal subsets"
-    ):
+    with pytest.raises(ContradictionByLiteral, match=r"P!\{S\|False\}"):
         solver.simplify(E.tg, E.g, print_context=context, terminal=True)
 
 
