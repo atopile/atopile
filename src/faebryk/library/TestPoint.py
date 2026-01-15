@@ -45,6 +45,7 @@ class TestPoint(fabll.Node):
     pad_type = F.Parameters.EnumParameter.MakeChild(enum_t=PadType)
 
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+    _has_part_removed = fabll.Traits.MakeEdge(F.has_part_removed.MakeChild())
 
     _can_attatch_to_footprint = fabll.Traits.MakeEdge(
         F.Footprints.can_attach_to_footprint.MakeChild()
