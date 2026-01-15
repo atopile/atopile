@@ -446,16 +446,18 @@ def pick_topologically(
     logger.info(f"Picked complete: picked {_pick_count} parts")
     relevant = [rp for m in tree_backup for rp in _relevant_params(m)]
     if relevant:
-        logger.info("Verify design")
-        try:
-            # hack
-            n = next(iter(relevant), None)
-            if n:
-                g = n.g
-                tg = n.tg
-                solver.simplify(g, tg, terminal=True, relevant=relevant)
-        except Contradiction as e:
-            raise PickVerificationError(str(e), *tree_backup) from e
+        with timings.as_global("verify design"):
+            logger.info("Verify design")
+            try:
+                # hack
+                n = next(iter(relevant), None)
+                if n:
+                    g = n.g
+                    tg = n.tg
+                    solver.simplify(g, tg, terminal=True, relevant=relevant)
+            except Contradiction as e:
+                raise PickVerificationError(str(e), *tree_backup) from e
+        logger.info(f"Verified design in {timings.get_formatted('verify design')}")
     else:
         logger.info("No relevant parameters to verify design with")
 

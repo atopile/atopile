@@ -425,14 +425,20 @@ def _no_predicate_literals(
     if any(lit.op_setic_equals_singleton(True) for lit in lits.values()):
         # P!{S/P|True} -> P!
         if any(op.try_get_sibling_trait(F.Expressions.is_predicate) for op in operands):
-            logger.debug(f"Remove predicate literal {pretty_expr(builder, mutator)}")
+            if S_LOG:
+                logger.debug(
+                    f"Remove predicate literal {pretty_expr(builder, mutator)}"
+                )
             return None
         # P {S|True} -> P!
         if pred := operands[0].try_get_sibling_trait(F.Expressions.is_assertable):
-            before = pred.as_expression.get().compact_repr(mutator.print_ctx)
-            mutator.assert_(pred)
-            after = pred.as_expression.get().compact_repr(mutator.print_ctx)
-            logger.debug(f"Assert implicit predicate `{before}` -> `{after}`")
+            if S_LOG:
+                before = pred.as_expression.get().compact_repr(mutator.print_ctx)
+                mutator.assert_(pred)
+                after = pred.as_expression.get().compact_repr(mutator.print_ctx)
+                logger.debug(f"Assert implicit predicate `{before}` -> `{after}`")
+            else:
+                mutator.assert_(pred)
             return None
 
     return builder
@@ -484,10 +490,11 @@ def _no_literal_inequalities(
         ExpressionBuilder, ExpressionBuilder(IsSubset, new_operands, assert_, terminate)
     )  # TODO fuck you pyright
 
-    logger.debug(
-        f"Converting {pretty_expr(builder, mutator)} ->"
-        f" {pretty_expr(new_builder, mutator)}"
-    )
+    if S_LOG:
+        logger.debug(
+            f"Converting {pretty_expr(builder, mutator)} ->"
+            f" {pretty_expr(new_builder, mutator)}"
+        )
     return new_builder
 
 
@@ -512,7 +519,7 @@ def _no_predicate_operands(
         builder.factory, new_operands, builder.assert_, builder.terminate
     )
 
-    if new_operands != operands:
+    if S_LOG and new_operands != operands:
         logger.debug(
             f"Predicate operands: {pretty_expr(builder, mutator)} ->"
             f" {pretty_expr(new_builder, mutator)}"
@@ -537,9 +544,11 @@ def _fold_pure_literal_operands(
     ):
         return None
 
-    logger.debug(
-        f"Folded ({pretty_expr(builder, mutator)}) to literal {lit_fold.pretty_str()}"
-    )
+    if S_LOG:
+        logger.debug(
+            f"Folded ({pretty_expr(builder, mutator)}) "
+            f"to literal {lit_fold.pretty_str()}"
+        )
     if builder.assert_:
         # P!{S|True} -> P!$
         if lit_fold.op_setic_equals_singleton(True):
@@ -714,10 +723,11 @@ def _no_singleton_supersets(
         return builder
 
     out = builder.with_(operands=mapped_operands)
-    logger.debug(
-        f"No singleton supersets: {pretty_expr(builder, mutator)} -> "
-        f"{pretty_expr(out, mutator)}"
-    )
+    if S_LOG:
+        logger.debug(
+            f"No singleton supersets: {pretty_expr(builder, mutator)} -> "
+            f"{pretty_expr(out, mutator)}"
+        )
     return out
 
 
@@ -798,10 +808,11 @@ def insert_expression(
                 if congruent_assertable in mutator.transformations.asserted:
                     mutator.transformations.asserted.remove(congruent_assertable)
 
-        logger.debug(
-            f"Found congruent expression for {pretty_expr(builder, mutator)}:"
-            f" {congruent_op.pretty()}"
-        )
+        if S_LOG:
+            logger.debug(
+                f"Found congruent expression for {pretty_expr(builder, mutator)}:"
+                f" {congruent_op.pretty()}"
+            )
         return InsertExpressionResult(congruent_op, False)
 
     # * minimal subsumption
@@ -810,10 +821,10 @@ def insert_expression(
         mutator.tg_in
     ).check_if_instance_of_type_has_trait(F.Expressions.is_assertable):
         subsume_res = find_subsuming_expression(mutator, builder)
-        if subsume_res.subsumed:
-            logger.debug(
-                f"Subsumed: {indented_container([s.compact_repr(mutator.mutation_map.print_ctx) for s in subsume_res.subsumed])}"
-            )
+        if subsume_res.subsumed and S_LOG:
+            ctx = mutator.mutation_map.print_ctx
+            reprs = [s.compact_repr(ctx) for s in subsume_res.subsumed]
+            logger.debug(f"Subsumed: {indented_container(reprs)}")
         for subsumed in subsume_res.subsumed or []:
             subsumed_po = subsumed.as_parameter_operatable.get()
             mutator.mark_irrelevant(subsumed_po)
@@ -823,20 +834,25 @@ def insert_expression(
         if most_constrained_expr := subsume_res.most_constrained_expr:
             match most_constrained_expr:
                 case F.Expressions.is_expression():
-                    orig = pretty_expr(builder, mutator)
-                    new = pretty_expr(most_constrained_expr, mutator)
-                    if new == orig:
-                        new = "congruent"
-                    logger.debug(f"Subsume replaced: {orig} -> {new}")
+                    if S_LOG:
+                        orig = pretty_expr(builder, mutator)
+                        new = pretty_expr(most_constrained_expr, mutator)
+                        if new == orig:
+                            new = "congruent"
+                        logger.debug(f"Subsume replaced: {orig} -> {new}")
                     return InsertExpressionResult(
                         most_constrained_expr.as_operand.get(), False
                     )
                 case ExpressionBuilder():
                     builder = most_constrained_expr
-                    logger.debug(f"Subsume adjust {pretty_expr(builder, mutator)}")
+                    if S_LOG:
+                        logger.debug(f"Subsume adjust {pretty_expr(builder, mutator)}")
 
                 case SubsumptionCheck.Result._DISCARD():
-                    logger.debug(f"Subsume discard: {pretty_expr(builder, mutator)}")
+                    if S_LOG:
+                        logger.debug(
+                            f"Subsume discard: {pretty_expr(builder, mutator)}"
+                        )
                     return InsertExpressionResult(
                         mutator.make_singleton(True).can_be_operand.get(), False
                     )
@@ -863,7 +879,8 @@ def insert_expression(
         and not builder.terminate
         and not builder.indexed_ops_with_trait(F.Expressions.is_expression)
     ):
-        logger.debug(f"Terminate ss lit: {pretty_expr(builder, mutator)}")
+        if S_LOG:
+            logger.debug(f"Terminate ss lit: {pretty_expr(builder, mutator)}")
         builder = builder.with_(terminate=True)
 
     # * canonical (covered by create)
@@ -888,6 +905,9 @@ def wrap_insert_expression(
         expr_already_exists_in_old_graph=expr_already_exists_in_old_graph,
         allow_uncorrelated_congruence_match=allow_uncorrelated_congruence_match,
     )
+    if not S_LOG:
+        return res
+
     src_dbg = f"`{pretty_expr(builder, mutator)}`"
     if res.out_operand is None:
         target_dbg = "Dropped"
