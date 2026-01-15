@@ -368,30 +368,33 @@ def test_get_correlations_correlated_regression():
 
 def test_mutation_map_compressed_mapping_forwards_identity():
     E = BoundExpressions()
-    context, variables = _create_letters(E, 3)
+    context, _ = _create_letters(E, 3)
 
     mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
 
     f = mapping.compressed_mapping_forwards
-    assert {k: v.maps_to for k, v in f.items()} == {v: v for v in variables}
+    assert set(f.keys()) == mapping.input_operables
+    assert all(v.maps_to in mapping.output_operables for v in f.values())
 
 
 def test_mutation_map_compressed_mapping_backwards_identity():
     E = BoundExpressions()
-    context, variables = _create_letters(E, 3)
+    context, _ = _create_letters(E, 3)
 
     mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
 
-    b = mapping.compressed_mapping_backwards
-    assert b == {v: [v] for v in variables}
+    expected = {
+        out_op: [in_op]
+        for in_op, out_op in mapping.compressed_mapping_forwards_complete.items()
+    }
+    assert mapping.compressed_mapping_backwards == expected
 
 
 def test_mutation_map_compressed_mapping_backwards_copy():
     E = BoundExpressions()
-    context, variables = _create_letters(E, 3)
-    variables = [v for v in variables]
-
+    context, _ = _create_letters(E, 3)
     mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
+    variables_mid = list(mapping.output_operables)
 
     E2 = BoundExpressions()
     _, variables_new = _create_letters(E2, 3)
@@ -399,32 +402,35 @@ def test_mutation_map_compressed_mapping_backwards_copy():
 
     mapping_new = mapping.extend(
         MutationStage(
-            tg_in=E.tg,
+            tg_in=mapping.tg_out,
             tg_out=E2.tg,
-            G_in=E.g,
+            G_in=mapping.G_out,
             G_out=E2.g,
             algorithm="Test",
             iteration=0,
             print_ctx=mapping.print_ctx,
             transformations=Transformations(
                 print_ctx=mapping.print_ctx,
-                mutated=dict(zip(variables, variables_new)),
-                copied=set(variables),
+                mutated=dict(zip(variables_mid, variables_new)),
+                copied=set(variables_mid),
             ),
         )
     )
 
-    b = mapping_new.compressed_mapping_backwards
-    expected = {v_new: [v] for v, v_new in zip(variables, variables_new)}
-    assert b == expected
+    expected = {
+        v_new: [v_orig]
+        for v_new, v_orig in zip(
+            variables_new, [mapping.map_backward(v_mid)[0] for v_mid in variables_mid]
+        )
+    }
+    assert mapping_new.compressed_mapping_backwards == expected
 
 
 def test_mutation_map_compressed_mapping_backwards_mutate():
     E = BoundExpressions()
-    context, variables = _create_letters(E, 3)
-    variables = [v for v in variables]
-
+    context, _ = _create_letters(E, 3)
     mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
+    variables_mid = list(mapping.output_operables)
 
     E2 = BoundExpressions()
     _, variables_new = _create_letters(E2, 3)
@@ -432,28 +438,32 @@ def test_mutation_map_compressed_mapping_backwards_mutate():
 
     mapping_new = mapping.extend(
         MutationStage(
-            tg_in=E.tg,
+            tg_in=mapping.tg_out,
             tg_out=E2.tg,
-            G_in=E.g,
+            G_in=mapping.G_out,
             G_out=E2.g,
             algorithm="Test",
             iteration=0,
             print_ctx=mapping.print_ctx,
             transformations=Transformations(
                 print_ctx=mapping.print_ctx,
-                mutated=dict(zip(variables, variables_new)),
+                mutated=dict(zip(variables_mid, variables_new)),
             ),
         )
     )
 
-    b = mapping_new.compressed_mapping_backwards
-    expected = {v_new: [v] for v, v_new in zip(variables, variables_new)}
-    assert b == expected
+    expected = {
+        v_new: [v_orig]
+        for v_new, v_orig in zip(
+            variables_new, [mapping.map_backward(v_mid)[0] for v_mid in variables_mid]
+        )
+    }
+    assert mapping_new.compressed_mapping_backwards == expected
 
 
 def test_mutation_map_non_copy_mutated_identity():
     E = BoundExpressions()
-    context, variables = _create_letters(E, 3)
+    context, _ = _create_letters(E, 3)
 
     mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
 
