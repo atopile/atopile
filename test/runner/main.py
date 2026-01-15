@@ -1463,8 +1463,19 @@ class ReportTimer:
             self._thread.join(timeout=1.0)
 
 
-def get_free_port():
+def get_free_port(start_port: int = 50000, max_attempts: int = 100) -> int:
+    """Find a free port starting from start_port, incrementing until one is available."""
+    for port in range(start_port, start_port + max_attempts):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                s.bind(("127.0.0.1", port))
+                return port
+        except OSError:
+            continue
+    # Fallback to OS-assigned port if all preferred ports are taken
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind(("", 0))
         return s.getsockname()[1]
 
@@ -1529,18 +1540,18 @@ def collect_tests(pytest_args: list[str]) -> tuple[list[str], dict[str, str]]:
     return tests, errors_clean
 
 
-def start_server(port):
+def start_server(port) -> uvicorn.Server:
     config = uvicorn.Config(
         app, host="127.0.0.1", port=port, log_level="error", access_log=False
     )
     server = uvicorn.Server(config)
+
     t = threading.Thread(target=server.run, daemon=True)
     t.start()
 
-    # Wait for server to start? Uvicorn doesn't have a simple event.
-    # We'll just wait a bit.
+    # Wait for server to start
     time.sleep(1.0)
-    return t
+    return server
 
 
 def get_log_file(worker_id: int) -> Path:
@@ -1629,7 +1640,7 @@ def main(
     port = get_free_port()
     url = f"http://127.0.0.1:{port}"
     _print(f"Starting orchestrator at {url}")
-    start_server(port)
+    server = start_server(port)
 
     # Print clickable link to the report (ANSI hyperlink format for terminals)
     report_url = f"{url}/report"
@@ -1746,6 +1757,10 @@ def main(
 
     finally:
         timer.stop()
+
+        # Shutdown the HTTP server to release the port
+        server.should_exit = True
+
         # Kill remaining workers
         for p in workers.values():
             if p.poll() is None:
