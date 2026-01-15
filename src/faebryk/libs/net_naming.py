@@ -391,7 +391,9 @@ def _apply_affixes(
             net_name.required_suffix = None
 
 
-def _find_anchor_interface(hierarchy: list[tuple]) -> tuple[int, tuple] | None:
+def _find_anchor_interface(
+    hierarchy: list[tuple[fabll.Node, str]],
+) -> tuple[int, tuple[fabll.Node, str]] | None:
     """Find the first non-Electrical fabll.Node in hierarchy."""
     for idx, (node, name) in enumerate(hierarchy):
         is_interface = node.has_trait(fabll.is_interface)
@@ -692,8 +694,6 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
     # Apply affixes
     _apply_affixes(unnamed_nets, names)
 
-    # Note: differential pair harmonization removed to avoid cross-net coupling
-
     # Resolve conflicts through prefixing
     _resolve_conflicts_with_prefixes(names)
 
@@ -754,6 +754,30 @@ class TestNetNaming:
         assert power_hv_names[0] == set()
         assert power_hv_names[1] == [("hv", -1), ("hv", 1)]
         assert power_hv_names[2] == {"hv": 0.09999999999999999}
+
+    def _bind_nets_for_test(
+        self,
+        electricals: Iterable[F.Electrical],
+        tg: fbrk.TypeGraph,
+        g: fabll.graph.GraphView,
+    ) -> set[F.Net]:
+        fbrk_nets: set[F.Net] = set()
+        # collect buses in a sorted manner
+        buses = sorted(
+            fabll.is_interface.group_into_buses(electricals),
+            key=lambda node: node.get_full_name(include_uuid=False),
+        )
+
+        # find or generate nets
+        for bus in buses:
+            if fbrk_net := get_named_net(bus):
+                fbrk_nets.add(fbrk_net)
+            else:
+                fbrk_net = F.Net.bind_typegraph(tg).create_instance(g=g)
+                fbrk_net.part_of.get()._is_interface.get().connect_to(bus)
+                fbrk_nets.add(fbrk_net)
+
+        return fbrk_nets
 
     def test_hierarchical_net_name_suggestions(self):
         import faebryk.core.node as fabll
@@ -818,28 +842,16 @@ class TestNetNaming:
         assert electrical_app_names[1] == [("E_APP", -1), ("E_APP", 0)]
         assert electrical_app_names[2] == {"electrical_app": 0.5}
 
-        def bind_nets_for_test(electricals: Iterable[F.Electrical]) -> set[F.Net]:
-            fbrk_nets: set[F.Net] = set()
-            # collect buses in a sorted manner
-            buses = sorted(
-                fabll.is_interface.group_into_buses(electricals),
-                key=lambda node: node.get_full_name(include_uuid=False),
-            )
-
-            # find or generate nets
-            for bus in buses:
-                if fbrk_net := get_named_net(bus):
-                    fbrk_nets.add(fbrk_net)
-                else:
-                    fbrk_net = F.Net.bind_typegraph(tg).create_instance(g=g)
-                    fbrk_net.part_of.get()._is_interface.get().connect_to(bus)
-                    fbrk_nets.add(fbrk_net)
-
-            return fbrk_nets
-
-        nets = bind_nets_for_test(
-            [app.some_module.get().electrical_base.get(), app.electrical_app.get()]
+        nets = self._bind_nets_for_test(
+            electricals=[
+                app.some_module.get().electrical_base.get(),
+                app.electrical_app.get(),
+            ],
+            tg=tg,
+            g=g,
         )
+
+        assert len(nets) == 1
 
         attach_net_names(nets)
 
@@ -854,3 +866,75 @@ class TestNetNaming:
         # name of the highest in the hierarchy should be chosen
 
         assert base_net == app_net
+
+    def test_net_name_conflicts(self):
+        import faebryk.core.node as fabll
+        from faebryk.core.faebrykpy import EdgeInterfaceConnection as interface
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        class SomeModule(fabll.Node):
+            electrical_base = F.Electrical.MakeChild()
+            electrical_base.add_dependant(
+                fabll.Traits.MakeEdge(
+                    F.has_net_name_suggestion.MakeChild(
+                        name="E_BASE",
+                        level=F.has_net_name_suggestion.Level.EXPECTED,
+                    ),
+                    owner=[electrical_base],
+                )
+            )
+            electrical_base_0 = F.Electrical.MakeChild()
+            electrical_base_1 = F.Electrical.MakeChild()
+            electrical_base_2 = F.Electrical.MakeChild()
+            electrical_base_3 = F.Electrical.MakeChild()
+
+        class App(fabll.Node):
+            some_module = SomeModule.MakeChild()
+
+            electrical_app = F.Electrical.MakeChild()
+            electrical_app.add_dependant(
+                fabll.Traits.MakeEdge(
+                    F.has_net_name_suggestion.MakeChild(
+                        name="E_APP", level=F.has_net_name_suggestion.Level.SUGGESTED
+                    ),
+                    owner=[electrical_app],
+                )
+            )
+
+            _elec_connection = fabll.MakeEdge(
+                [electrical_app],
+                [some_module, "electrical_base"],
+                edge=interface.build(shallow=False),
+            )
+
+            electrical_base_0 = F.Electrical.MakeChild()
+            electrical_app_0 = F.Electrical.MakeChild()
+
+        app = App.bind_typegraph(tg=tg).create_instance(g=g)
+
+        nets = self._bind_nets_for_test(
+            electricals=app.get_children(direct_only=False, types=F.Electrical),
+            tg=tg,
+            g=g,
+        )
+
+        assert len(nets) == 7
+
+        attach_net_names(nets)
+
+        net_names = [net.get_name() for net in nets]
+        print(f"net_names: {net_names}")
+        assert (
+            net_names
+            == [
+                "some_module.electrical_base_0-electrical_base_0",  # TODO: should be some_module.electrical_base_0
+                "electrical_base_1",
+                "E_BASE",
+                "electrical_base_2",
+                "electrical_app_0",
+                "electrical_base_3",
+                "electrical_base_0-electrical_base_0",  # TODO: should be electrical_base_0
+            ]
+        )
