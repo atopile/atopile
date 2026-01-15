@@ -11,6 +11,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserException
+from faebryk.libs.nets import get_named_net
 from faebryk.libs.util import FuncDict, groupby
 
 logger = logging.getLogger(__name__)
@@ -786,7 +787,7 @@ class TestNetNaming:
                 )
             )
 
-            fabll.MakeEdge(
+            _elec_connection = fabll.MakeEdge(
                 [electrical_app],
                 [some_module, "electrical_base"],
                 edge=interface.build(shallow=False),
@@ -799,13 +800,57 @@ class TestNetNaming:
         )
         electrical_app_names = _extract_net_name_info(app.electrical_app.get())
 
+        assert (
+            app.some_module.get()
+            .electrical_base.get()
+            ._is_interface.get()
+            .is_connected_to(app.electrical_app.get())
+        )
+
         print(f"some_module_names: {some_module_names}")
         print(f"electrical_app_names: {electrical_app_names}")
 
         assert some_module_names[0] == set()
-        assert some_module_names[1] == [("E_BASE", 0)]
-        assert some_module_names[2] == {"electrical_base": 0.075}
+        assert some_module_names[1] == [("E_BASE", -1), ("E_BASE", 1)]
+        assert some_module_names[2] == {"electrical_base": 0.3333333333333333}
 
         assert electrical_app_names[0] == set()
-        assert electrical_app_names[1] == [("E_APP", 0)]
-        assert electrical_app_names[2] == {"electrical_app": 0.075}
+        assert electrical_app_names[1] == [("E_APP", -1), ("E_APP", 0)]
+        assert electrical_app_names[2] == {"electrical_app": 0.5}
+
+        def bind_nets_for_test(electricals: Iterable[F.Electrical]) -> set[F.Net]:
+            fbrk_nets: set[F.Net] = set()
+            # collect buses in a sorted manner
+            buses = sorted(
+                fabll.is_interface.group_into_buses(electricals),
+                key=lambda node: node.get_full_name(include_uuid=False),
+            )
+
+            # find or generate nets
+            for bus in buses:
+                if fbrk_net := get_named_net(bus):
+                    fbrk_nets.add(fbrk_net)
+                else:
+                    fbrk_net = F.Net.bind_typegraph(tg).create_instance(g=g)
+                    fbrk_net.part_of.get()._is_interface.get().connect_to(bus)
+                    fbrk_nets.add(fbrk_net)
+
+            return fbrk_nets
+
+        nets = bind_nets_for_test(
+            [app.some_module.get().electrical_base.get(), app.electrical_app.get()]
+        )
+
+        attach_net_names(nets)
+
+        base_net = get_named_net(app.some_module.get().electrical_base.get())
+        app_net = get_named_net(app.electrical_app.get())
+
+        assert base_net is not None
+        assert app_net is not None
+
+        assert base_net.get_name() == "E_APP"
+        assert app_net.get_name() == "E_APP"
+        # name of the highest in the hierarchy should be chosen
+
+        assert base_net == app_net
