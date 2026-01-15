@@ -1387,6 +1387,8 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def tg(self) -> fbrk.TypeGraph:
         tg = fbrk.TypeGraph.of_instance(instance_node=self.instance)
         if tg is None:
+            tg = fbrk.TypeGraph.of_type(type_node=self.instance)
+        if tg is None:
             raise FabLLException(
                 f"Failed to bind typegraph from instance: {self.instance}"
             )
@@ -1746,15 +1748,12 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         return TypeNodeBoundTG.try_get_trait_of_type(trait=trait, type_node=type_node)
 
     def point_to_source_chunk(self, source_chunk_node: "Node | None") -> None:
-        from atopile.compiler.ast_visitor import AnyAtoBlock
+        import faebryk.library._F as F
 
         if source_chunk_node is not None:
-            fbrk.EdgePointer.point_to(
-                bound_node=self.instance,
-                target_node=source_chunk_node.instance.node(),
-                identifier=AnyAtoBlock._source_identifier,
-                index=None,
-            )
+            Traits.create_and_add_instance_to(
+                node=self, trait=F.has_source_chunk
+            ).setup(source_chunk_node=source_chunk_node.instance.node())
 
 
 type NodeT = Node[Any]
