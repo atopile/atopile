@@ -29,19 +29,6 @@ from faebryk.libs.picker.lcsc import (
     LCSC_PinmapException,
     attach,
     check_attachable,
-<<<<<<< HEAD
-)
-from faebryk.libs.picker.picker import (
-    PickError,
-||||||| parent of 19551e320 (WIP)
-    get_raw,
-)
-from faebryk.libs.picker.picker import (
-    NotCompatibleException,
-    PickError,
-    does_not_require_picker_check,
-=======
->>>>>>> 19551e320 (WIP)
 )
 from faebryk.libs.picker.picker import PickError
 from faebryk.libs.smd import SMDSize
