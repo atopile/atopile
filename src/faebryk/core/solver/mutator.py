@@ -3,7 +3,6 @@
 
 import inspect
 import logging
-import math
 import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -23,7 +22,6 @@ from faebryk.core.solver.utils import (
     S_LOG,
     SHOW_SS_IS,
     VERBOSE_TABLE,
-    ContradictionByLiteral,
     MutatorUtils,
 )
 from faebryk.libs.logging import rich_to_string
@@ -34,8 +32,6 @@ from faebryk.libs.util import (
     invert_dict,
     not_none,
     once,
-    unique,
-    unique_ref,
 )
 
 if TYPE_CHECKING:
