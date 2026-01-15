@@ -11,7 +11,7 @@ import pytest
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
-from faebryk.core.solver.defaultsolver import DefaultSolver
+from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.mutator import (
     MutationMap,
     MutationStage,
@@ -404,7 +404,7 @@ def test_traceback_filtering_chain():
     E1 = E.add(A.as_operand.get(), B.as_operand.get())
     E2 = E.add(E1, A.as_operand.get())
 
-    solver = DefaultSolver()
+    solver = Solver()
     out = solver.simplify(E.tg, E.g, print_context=context, terminal=False)
 
     E2_new = out.data.mutation_map.map_forward(
@@ -426,7 +426,7 @@ def test_traceback_filtering_tree():
     E.is_subset(A.as_operand.get(), B.as_operand.get(), assert_=True)
     E.is_subset(A.as_operand.get(), C.as_operand.get(), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     out = solver.simplify(E.tg, E.g, print_context=context, terminal=True)
 
     A_new = out.data.mutation_map.map_forward(A).maps_to
@@ -448,7 +448,7 @@ def test_contradiction_message_subset():
     E.is_subset(A.as_operand.get(), E.lit_op_range((6, 7)), assert_=True)
     E.is_subset(A.as_operand.get(), E.lit_op_range((4, 5)), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
 
     with pytest.raises(Contradiction, match="Empty superset for parameter operatable"):
         solver.simplify(E.tg, E.g, print_context=context, terminal=True)
@@ -462,7 +462,7 @@ def test_contradiction_message_superset():
     E.is_superset(A.as_operand.get(), E.lit_op_range((0, 10)), assert_=True)
     E.is_subset(A.as_operand.get(), E.lit_op_range((4, 5)), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
 
     with pytest.raises(ContradictionByLiteral, match=r"P!\{S\|False\}"):
         solver.simplify(E.tg, E.g, print_context=context, terminal=True)

@@ -16,7 +16,6 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core import graph
-from faebryk.core.solver.solver import LOG_PICK_SOLVE
 from faebryk.libs.logging import rich_to_string
 from faebryk.libs.util import (
     ConfigFlag,
@@ -34,6 +33,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Config -------------------------------------------------------------------------------
+LOG_PICK_SOLVE = ConfigFlag("LOG_PICK_SOLVE", False)
 S_LOG = ConfigFlag("SLOG", default=False, descr="Log solver operations")
 VERBOSE_TABLE = ConfigFlag("SVERBOSE_TABLE", default=False, descr="Verbose table")
 SHOW_SS_IS = ConfigFlag(
@@ -54,10 +54,10 @@ if S_LOG:
 
 
 def set_log_level(level: int):
-    from faebryk.core.solver.defaultsolver import logger as defaultsolver_logger
+    from faebryk.core.solver.solver import logger as solver_logger
     from faebryk.core.solver.mutator import logger as mutator_logger
 
-    loggers = [logger, mutator_logger, defaultsolver_logger]
+    loggers = [logger, mutator_logger, solver_logger]
     for lo in loggers:
         lo.setLevel(level)
 

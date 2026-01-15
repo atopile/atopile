@@ -10,9 +10,8 @@ import pytest
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.core.solver.mutator import MutationMap
 from faebryk.core.solver.solver import Solver
+from faebryk.core.solver.mutator import MutationMap
 from faebryk.core.solver.symbolic.pure_literal import exec_pure_literal_expression
 from faebryk.core.solver.utils import (
     Contradiction,
@@ -74,7 +73,7 @@ def _extract(
 
 def _extract_and_check(
     op: F.Parameters.can_be_operand,
-    res: MutationMap | DefaultSolver,
+    res: MutationMap | Solver,
     expected: F.Parameters.can_be_operand
     | F.Literals.LiteralValues
     | F.Literals.LiteralNodes
@@ -112,7 +111,7 @@ def _extract_and_check(
 
 
 def test_solve_phase_one():
-    solver = DefaultSolver()
+    solver = Solver()
     E = BoundExpressions()
 
     class _App(fabll.Node):
@@ -178,7 +177,7 @@ def test_simplify():
     acc = E.subtract(acc, E.lit_op_single((3, E.U.dl)), E.lit_op_single((4, E.U.dl)))
     le = E.less_or_equal(acc, E.lit_op_single((11, E.U.dl)), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     res = solver.simplify(E.tg, E.g).data.mutation_map
     out = res.map_forward(le.as_parameter_operatable.force_get()).maps_to
 
@@ -230,7 +229,7 @@ def test_simplify_logic_and():
 
     anded = E.and_(anded, anded, assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     repr_map = solver.simplify(E.tg, E.g, relevant=p_ops).data.mutation_map
 
     # Y = And!(X, X) canonicalizes to Not!(Or(Not(p0), Not(p1), Not(p2), Not(p3)))
@@ -261,7 +260,7 @@ def test_shortcircuit_logic_and():
     E = BoundExpressions()
     p0 = E.bool_parameter_op()
     E.and_(p0, E.lit_bool(False), assert_=True)
-    solver = DefaultSolver()
+    solver = Solver()
 
     with pytest.raises(ContradictionByLiteral):
         solver.simplify(E.tg, E.g)
@@ -288,7 +287,7 @@ def test_shortcircuit_logic_or():
     A = E.bool_parameter_op()
     E.is_(A, E2, assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(A, solver, True)
 
 
@@ -297,7 +296,7 @@ def test_inequality_to_set():
     p0 = E.parameter_op(units=E.U.dl)
     E.less_than(p0, E.lit_op_single((2, E.U.dl)), assert_=True)
     E.greater_than(p0, E.lit_op_single((1, E.U.dl)), assert_=True)
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(p0, solver, E.lit_op_range((1, 2)))
 
 
@@ -320,7 +319,7 @@ def test_remove_obvious_tautologies():
     E.is_(p2, E.add(p1, p2), assert_=True)
     X = E.is_(p2, p2, assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
     # The tautology X = (p2 is! p2) gets simplified to Is(p2) with single operand
@@ -345,7 +344,7 @@ def test_subset_of_literal():
     E.is_(p0, p1, assert_=True)
     E.is_(p1, p2, assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     solver.simplify(E.g, E.tg, relevant=[p0, p1, p2])
 
     # for p in (p0, p1, p2):
@@ -373,7 +372,7 @@ def test_alias_classes():
     context = F.Parameters.ReprContext()
     for p in (A, B, C, D, H):
         p.as_parameter_operatable.force_get().compact_repr(context)
-    solver = DefaultSolver()
+    solver = Solver()
     repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
 
     # A, B, and H are aliased via the Is constraints and commutativity of addition
@@ -427,7 +426,7 @@ def test_solve_realworld_biggest():
 
     # app = App()
     # F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
-    # solver = DefaultSolver()
+    # solver = Solver()
     # solver.simplify(app.get_graph())
 
     # pick_part_recursively(app, solver)
@@ -449,7 +448,7 @@ def test_inspect_known_superranges():
         ),
         assert_=True,
     )
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(p0, solver, E.lit_op_range(((5, E.U.V), (9, E.U.V))))
 
 
@@ -467,7 +466,7 @@ def test_obvious_contradiction_by_literal():
 
     E.is_(p0, p1, assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     with pytest.raises(Contradiction):
         solver.simplify(E.tg, E.g)
 
@@ -490,7 +489,7 @@ def test_subset_superset():
     for p in [A, B]:
         p.as_parameter_operatable.force_get().compact_repr(context)
 
-    solver = DefaultSolver()
+    solver = Solver()
     with pytest.raises(Contradiction):
         solver.simplify(E.tg, E.g)
 
@@ -501,7 +500,7 @@ def test_subset_single_alias():
 
     E.is_subset(A, E.lit_op_single((1, E.U.V)), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     assert _extract_and_check(A, repr_map, E.lit_op_single((1, E.U.V)))
 
@@ -523,7 +522,7 @@ def test_very_simple_alias_class():
     for p in params:
         p.as_parameter_operatable.force_get().compact_repr(context)
 
-    solver = DefaultSolver()
+    solver = Solver()
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     A_res = _extract(A, repr_map)
     B_res = _extract(B, repr_map)
@@ -548,7 +547,7 @@ def test_domain():
     )
     E.is_subset(p0, E.lit_op_range(((15, E.U.V), (20, E.U.V))), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     with pytest.raises(Contradiction, match="Empty superset"):
         solver.simplify(E.tg, E.g)
 
@@ -568,7 +567,7 @@ def test_less_obvious_contradiction_by_literal():
     for p in (A, B, C):
         p.as_parameter_operatable.force_get().compact_repr(print_context)
 
-    solver = DefaultSolver()
+    solver = Solver()
     with pytest.raises(ContradictionByLiteral):
         solver.simplify(E.tg, E.g, print_context=print_context)
 
@@ -585,7 +584,7 @@ def test_symmetric_inequality_correlated():
     E.greater_or_equal(p0, p1, assert_=True)
     E.greater_or_equal(p1, p0, assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     p0_lit = _extract(p0, repr_map)
     p1_lit = _extract(p1, repr_map)
@@ -620,7 +619,7 @@ def test_simple_literal_folds_arithmetic(
     expr = expr_type(A, B)
     E.is_(C, expr, assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(C, solver, expected_result)
 
 
@@ -645,7 +644,7 @@ def test_super_simple_literal_folding(
     E = BoundExpressions()
     operands_op = [E.lit_op_single(o) for o in operands]
     expr = expr_type(*operands_op)
-    solver = DefaultSolver()
+    solver = Solver()
 
     E.less_or_equal(expr, E.lit_op_single(100.0), assert_=True)
 
@@ -677,7 +676,7 @@ def test_literal_folding_add_multiplicative_1():
 
     E.less_or_equal(expr, E.lit_op_single(100.0), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
     rep_add = not_none(
@@ -743,7 +742,7 @@ def test_literal_folding_add_multiplicative_2():
 
     E.less_or_equal(expr, E.lit_op_single(100.0), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     rep_add = not_none(
         repr_map.map_forward(expr.as_parameter_operatable.force_get()).maps_to
@@ -793,7 +792,7 @@ def test_transitive_subset():
 
     E.is_subset(C, E.lit_op_range((0, 10)), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
     assert _extract_and_check(A, repr_map, E.lit_op_range((0, 10)))
 
@@ -810,7 +809,7 @@ def test_nested_additions():
     E.is_(C, E.add(A, B), assert_=True)
     E.is_(D, E.add(C, A), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     repr_map = not_none(solver.simplify(E.tg, E.g).data.mutation_map)
 
     assert _extract_and_check(A, repr_map, 1)
@@ -829,7 +828,7 @@ def test_combined_add_and_multiply_with_ranges():
     E.is_subset(B, E.lit_op_range_from_center_rel((2, E.U.dl), 0.01), assert_=True)
     E.is_(C, E.add(E.multiply(E.lit_op_single(2), A), B), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(
         C, solver, E.lit_op_range_from_center_rel((4, E.U.dl), 0.01)
     )
@@ -852,7 +851,7 @@ def test_voltage_divider_find_v_out_no_division():
         ),
         assert_=True,
     )
-    solver = DefaultSolver()
+    solver = Solver()
 
     # dependency problem prevents finding precise solution of [9/11, 100/11]
     # TODO: automatically rearrange expression to match
@@ -876,7 +875,7 @@ def test_voltage_divider_find_v_out_with_division():
         assert_=True,
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(v_out, solver, E.lit_op_range((0.45, 50)))
 
 
@@ -901,7 +900,7 @@ def test_voltage_divider_find_v_out_single_variable_occurrences():
         assert_=True,
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(v_out, solver, E.lit_op_range((9 / 11, 100 / 11)))
 
 
@@ -921,7 +920,7 @@ def test_voltage_divider_find_v_in():
         assert_=True,
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
 
     # TODO: should find [9.9, 100]
     assert _extract_and_check(v_in, solver, E.lit_op_range((1.8, 200)))
@@ -947,7 +946,7 @@ def test_voltage_divider_find_resistances():
         assert_=True,
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
     # FIXME: this test looks funky
     assert _extract_and_check(v_out, solver, E.lit_op_range(((0.9, E.U.V), (1, E.U.V))))
 
@@ -976,7 +975,7 @@ def test_voltage_divider_find_r_top(request: pytest.FixtureRequest):
     )
     # r_top = (v_in * r_bottom) / v_out - r_bottom
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(
         r_top,
         solver,
@@ -1006,7 +1005,7 @@ def test_voltage_divider_reject_invalid_r_top():
         r_top, E.lit_op_range_from_center_rel((999, E.U.Ohm), 0.01), assert_=True
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
     with pytest.raises(ContradictionByLiteral):
         solver.simplify(E.tg, E.g)
 
@@ -1018,7 +1017,7 @@ def test_base_unit_switch():
     E.is_subset(A, E.lit_op_range(((0.100, E.U.As), (0.600, E.U.As))), assert_=True)
     E.greater_or_equal(A, E.lit_op_single((0.100, E.U.As)), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     assert _extract_and_check(
         A, repr_map, E.lit_op_range(((0.100, E.U.As), (0.600, E.U.As)))
@@ -1043,7 +1042,7 @@ def test_congruence_filter():
         )
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     y1_mut = repr_map.map_forward(y1.as_parameter_operatable.force_get()).maps_to
     y2_mut = repr_map.map_forward(y2.as_parameter_operatable.force_get()).maps_to
@@ -1056,7 +1055,7 @@ def test_inspect_enum_simple():
 
     E.is_subset(A, E.lit_op_enum(F.LED.Color.EMERALD), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(A, solver, F.LED.Color.EMERALD)
 
 
@@ -1070,7 +1069,7 @@ def test_inspect_enum_led():
         assert_=True,
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(
         led.color.get().can_be_operand.get(),
         solver,
@@ -1088,7 +1087,7 @@ def test_jlcpcb_pick_resistor():
         assert_=True,
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
     pick_part_recursively(resistor, solver)
 
     assert resistor.has_trait(F.Pickable.has_part_picked)
@@ -1110,7 +1109,7 @@ def test_jlcpcb_pick_capacitor():
         assert_=True,
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
     pick_part_recursively(capacitor, solver)
 
     assert capacitor.has_trait(F.Pickable.has_part_picked)
@@ -1132,7 +1131,7 @@ def test_jlcpcb_pick_led():
         assert_=True,
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
     pick_part_recursively(led, solver)
 
     assert led.has_trait(F.Pickable.has_part_picked)
@@ -1149,7 +1148,7 @@ def test_jlcpcb_pick_powered_led_simple():
     # led.power.voltage.constrain_subset(lit_op_range(((1.8, E.U.V), (5.5, E.U.V))))
     # led.led.forward_voltage.constrain_subset(lit_op_range(((1, E.U.V), (4, E.U.V))))
 
-    # solver = DefaultSolver()
+    # solver = Solver()
     # children_mods = led.get_children(
     #     direct_only=False, types=fabll.Node, required_trait=fabll.is_module
     # )
@@ -1173,7 +1172,7 @@ def test_jlcpcb_pick_powered_led_regression():
     #     TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
     # )
 
-    # solver = DefaultSolver()
+    # solver = Solver()
     # children_mods = led.get_children(
     #     direct_only=False, types=fabll.Node, required_trait=fabll.is_module
     # )
@@ -1202,7 +1201,7 @@ def test_simple_parameter_isolation():
     E.is_subset(add, x_op_y, assert_=True)
     E.is_subset(Y, y, assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(X, solver, x_expected)
 
 
@@ -1241,7 +1240,7 @@ def test_abstract_lowpass():
     E.is_subset(fc, E.lit_op_range_from_center_rel((1000, E.U.Hz), 0.01), assert_=True)
 
     # solve
-    solver = DefaultSolver()
+    solver = Solver()
 
     # C = 1 / ((fc * 2*pi)^2 * Li)
     assert _extract_and_check(
@@ -1261,7 +1260,7 @@ def test_param_isolation():
     )
     E.is_subset(Y, E.lit_op_range_from_center_rel((1, E.U.dl), 0.01), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
 
     assert _extract_and_check(
         X, solver, E.lit_op_range_from_center_rel((2, E.U.dl), 0.02)
@@ -1304,7 +1303,7 @@ def test_extracted_literal_folding(
     E.is_subset(B, lit2, assert_=True)
     E.is_(op(A, B), C, assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(C, solver, lito)
 
 
@@ -1321,7 +1320,7 @@ def test_fold_pow():
     E.is_subset(A, lit_op, assert_=True)
     E.is_(B, E.power(A, lit_operand_op), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
     assert _extract_and_check(
@@ -1352,7 +1351,7 @@ def test_graph_split():
     for p in (Aop, Bop, C, D):
         p.as_parameter_operatable.force_get().compact_repr(context)
 
-    solver = DefaultSolver()
+    solver = Solver()
     repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
 
     assert (
@@ -1378,7 +1377,7 @@ def test_ss_single_into_alias():
     E.is_subset(B, E.lit_op_single(5), assert_=True)
     _ = E.add(A, B)
 
-    solver = DefaultSolver()
+    solver = Solver()
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
 
     assert _extract_and_check(B, repr_map, 5)
@@ -1425,7 +1424,7 @@ def test_find_contradiction_by_predicate(
             A, B
         ).as_parameter_operatable.force_get().as_expression.force_get().as_assertable.force_get().assert_()
 
-    solver = DefaultSolver()
+    solver = Solver()
 
     with pytest.raises(Contradiction):
         solver.simplify(E.tg, E.g)
@@ -1441,7 +1440,7 @@ def test_find_contradiction_by_gt():
 
     E.greater_than(A, B, assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     with pytest.raises(ContradictionByLiteral):
         solver.simplify(E.tg, E.g)
 
@@ -1456,7 +1455,7 @@ def test_can_add_parameters():
     E.is_subset(B, E.lit_op_range((10, 100)), assert_=True)
     E.is_(C, E.add(A, B), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
 
     assert _extract_and_check(C, solver, E.lit_op_range((20, 200)))
 
@@ -1470,7 +1469,7 @@ def test_ss_estimation_ge():
     E.is_subset(A, E.lit_op_range((0, 10)), assert_=True)
     E.greater_or_equal(B, A, assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     res = solver.simplify(E.tg, E.g)
     assert _extract_and_check(
         B, res.data.mutation_map, E.lit_op_range((10, math.inf)), allow_subset=True
@@ -1488,7 +1487,7 @@ def test_fold_mul_zero():
 
     E.is_(C, E.multiply(A, B), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
 
     assert _extract_and_check(C, solver, 0)
 
@@ -1507,7 +1506,7 @@ def test_fold_or_true():
 
     E.is_(E.or_(A, B), C, assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(C, solver, True)
 
 
@@ -1519,7 +1518,7 @@ def test_fold_not():
     E.is_subset(A, E.lit_bool(False), assert_=True)
     E.is_(E.not_(A), B, assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(B, solver, True)
 
 
@@ -1533,7 +1532,7 @@ def test_fold_ss_transitive():
     E.is_subset(B, C, assert_=True)
     E.is_subset(A, B, assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(A, solver, E.lit_op_range((0, 10)))
 
 
@@ -1548,7 +1547,7 @@ def test_ss_intersect():
     E.is_subset(C, A, assert_=True)
     E.is_subset(C, B, assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(C, solver, E.lit_op_range((10, 15)))
 
 
@@ -1644,7 +1643,7 @@ def test_fold_literals():
     A = E.parameter_op()
     E.is_(A, E.add(E.lit_op_range((0, 10)), E.lit_op_range((0, 10))), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(A, solver, E.lit_op_range((0, 20)))
 
 
@@ -1675,7 +1674,7 @@ def test_implication():
 
     E.is_subset(A, E.lit_op_single(10), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(
         B, solver, E.lit_op_range_from_center_rel((500, E.U.dl), 0.1)
     )
@@ -1701,8 +1700,8 @@ def test_mapping(A_value: int):
 
     E.is_subset(A, E.lit_op_single(A_value), assert_=True)
 
-    solver = DefaultSolver()
-    res = cast(DefaultSolver.SolverState, solver.simplify_for(A, B))
+    solver = Solver()
+    res = cast(Solver.SolverState, solver.simplify_for(A, B))
     assert _extract_and_check(A, res.data.mutation_map, A_value)
     assert _extract_and_check(B, res.data.mutation_map, mapping[A_value])
 
@@ -1714,7 +1713,7 @@ def test_subtract_zero(op):
     A = E.parameter_op()
     E.is_(A, (op(E.lit_op_single(1), E.lit_op_single(0))), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(A, solver, 1)
 
 
@@ -1735,8 +1734,8 @@ def test_canonical_subtract_zero():
         assert_=True,
     )
 
-    solver = DefaultSolver()
-    res = cast(DefaultSolver.SolverState, solver.simplify_for(A, B))
+    solver = Solver()
+    res = cast(Solver.SolverState, solver.simplify_for(A, B))
     assert _extract_and_check(A, res.data.mutation_map, 0)
     assert _extract_and_check(B, res.data.mutation_map, 1)
 
@@ -1751,7 +1750,7 @@ def test_nested_fold_scalar():
         assert_=True,
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(A, solver, 7)
 
 
@@ -1769,7 +1768,7 @@ def test_regression_lit_mul_fold_powers():
         assert_=True,
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(A, solver, 2**-0.5)
 
 
@@ -1790,7 +1789,7 @@ def test_nested_fold_interval():
         assert_=True,
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(A, solver, E.lit_op_range((5.76, 8.36)))
 
 
@@ -1804,7 +1803,7 @@ def test_simplify_non_terminal_manual_test_1():
     A = E.parameter_op(units=E.U.V)
     B = E.add(A, A)
 
-    solver = DefaultSolver()
+    solver = Solver()
     solver.simplify(E.g, E.tg)
     _ = E.add(B, A)
     E.is_subset(A, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
@@ -1840,7 +1839,7 @@ def test_simplify_non_terminal_manual_test_2():
             p1.as_operand.get(), E.divide(p2.as_operand.get(), increase), assert_=True
         )
 
-    solver = DefaultSolver()
+    solver = Solver()
     solver.simplify_for(*[p.as_operand.get() for p in ps], terminal=False)
 
     origin = 1, E.lit_op_range(((9, E.U.V), (11, E.U.V)))
@@ -1897,7 +1896,7 @@ def test_abstract_lowpass_ss():
     E.is_subset(fc, fc_const.can_be_operand.get(), assert_=True)
 
     # solve
-    solver = DefaultSolver()
+    solver = Solver()
     solver.simplify(E.tg, E.g)
 
     # C_expected = 1 / (4 * math.pi**2 * Li_const * fc_const**2)
@@ -1935,7 +1934,7 @@ def test_voltage_divider_find_r_bottom():
     E.is_subset(v_out, E.lit_op_range_from_center_rel((1, E.U.V), 0.01), assert_=True)
     E.is_subset(r_top, E.lit_op_range_from_center_rel((9, E.U.Ohm), 0.01), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(
         r_bottom, solver, E.lit_op_range_from_center_rel((1, E.U.Ohm), 0.01)
     )
@@ -1950,7 +1949,7 @@ def test_min_max_single():
     p1 = E.parameter_op(units=E.U.V)
     E.is_(p1, E.max(p0), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(p1, solver, E.lit_op_single((10, E.U.V)))
 
 
@@ -1965,7 +1964,7 @@ def test_min_max_multi():
     p1 = E.parameter_op(units=E.U.V)
     E.is_(p1, E.max(p0, p3), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     assert _extract_and_check(p1, solver, E.lit_op_single((15, E.U.V)))
 
 
@@ -1990,7 +1989,7 @@ def test_symmetric_inequality_uncorrelated():
     # strategy: if this kind of unequality exists, check if there is an alias
     # and if not, throw
 
-    solver = DefaultSolver()
+    solver = Solver()
 
     with pytest.raises(Contradiction):
         solver.simplify(E.tg, E.g)
@@ -2031,7 +2030,7 @@ def test_fold_correlated():
     for p in (A, B, C):
         p.as_parameter_operatable.force_get().compact_repr(context)
 
-    solver = DefaultSolver()
+    solver = Solver()
     repr_map = solver.simplify(E.tg, E.g, print_context=context).data.mutation_map
 
     ss_lit = repr_map.try_extract_superset(C.as_parameter_operatable.force_get())
@@ -2199,7 +2198,7 @@ def test_exec_pure_literal_expressions(
     result = _get_param_from_lit(expected_converted)
     E.is_(result, expr, assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     repr_map = solver.simplify(E.tg, E.g).data.mutation_map
     assert _extract_and_check(result, repr_map, expected_converted)
 
@@ -2235,7 +2234,7 @@ def test_solve_voltage_divider_complex():
 
     # # Solve for r_top
     # print("Solving for r_top")
-    # solver = DefaultSolver()
+    # solver = Solver()
     # solver.update_superset_cache(rdiv)
 
     # r_top = solver.inspect_get_known_supersets(rdiv.r_top.resistance)
@@ -2303,7 +2302,7 @@ def test_correlated_direct_contradiction():
     E.correlated(p1, p2, assert_=True)
     E.not_(E.correlated(p1, p2), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     with pytest.raises(Contradiction):
         solver.simplify(E.tg, E.g)
 
@@ -2320,7 +2319,7 @@ def test_correlated_direct_contradiction_multi():
     E.correlated(p1, p2, p3, assert_=True)
     E.not_(E.correlated(p1, p2, p3), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     with pytest.raises(Contradiction):
         solver.simplify(E.tg, E.g)
 
@@ -2338,5 +2337,5 @@ def test_correlated_no_contradiction_different_sets():
     E.correlated(p1, p2, assert_=True)
     E.not_(E.correlated(p1, p3), assert_=True)
 
-    solver = DefaultSolver()
+    solver = Solver()
     solver.simplify(E.tg, E.g)

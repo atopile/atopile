@@ -1,14 +1,17 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from __future__ import annotations
 
 import ctypes
 import logging
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.solver.solver import Solver
+
+if TYPE_CHECKING:
+    from faebryk.core.solver.solver import Solver
 
 logger = logging.getLogger(__name__)
 

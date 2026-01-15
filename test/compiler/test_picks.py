@@ -7,7 +7,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.compiler.build import Linker, StdlibRegistry, build_file, build_source
 from faebryk.core.faebrykpy import EdgeComposition
-from faebryk.core.solver.defaultsolver import DefaultSolver
+from faebryk.core.solver.solver import Solver
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import BoundNode, GraphView
 from faebryk.libs.picker.picker import pick_part_recursively
@@ -46,7 +46,7 @@ def test_ato_pick_resistor():
         == SMDSize.I0805
     )
 
-    pick_part_recursively(r1, DefaultSolver())
+    pick_part_recursively(r1, Solver())
 
     assert r1.has_trait(F.Pickable.has_part_picked)
 
@@ -73,7 +73,7 @@ def test_ato_pick_capacitor():
         == SMDSize.I0402
     )
 
-    pick_part_recursively(r1, DefaultSolver())
+    pick_part_recursively(r1, Solver())
 
     assert r1.has_trait(F.Pickable.has_part_picked)
 
@@ -123,7 +123,7 @@ def test_ato_pick_inductor(
         == package
     )
 
-    pick_part_recursively(inductor, DefaultSolver())
+    pick_part_recursively(inductor, Solver())
 
     assert inductor.has_trait(F.Pickable.has_part_picked)
 
@@ -180,7 +180,7 @@ def test_ato_pick_resistor_dependency(tmp_path: Path):
     app_type = result.state.type_roots["App"]
     app_instance = tg.instantiate_node(type_node=app_type, attributes={})
 
-    solver = DefaultSolver()
+    solver = Solver()
     pick_part_recursively(fabll.Node.bind_instance(app_instance), solver)
 
     r1 = fabll.Node.bind_instance(_get_child(app_instance, "r1"))
@@ -221,7 +221,7 @@ def test_ato_pick_resistor_voltage_divider_fab():
     app_type = result.state.type_roots["App"]
     app_instance = tg.instantiate_node(type_node=app_type, attributes={})
 
-    solver = DefaultSolver()
+    solver = Solver()
     pick_part_recursively(fabll.Node.bind_instance(app_instance), solver)
 
     # Check all resistors have parts picked
@@ -268,7 +268,7 @@ def test_ato_pick_resistor_voltage_divider_ato(tmp_path: Path):
     app_type = result.state.type_roots["App"]
     app_instance = tg.instantiate_node(type_node=app_type, attributes={})
 
-    solver = DefaultSolver()
+    solver = Solver()
     pick_part_recursively(fabll.Node.bind_instance(app_instance), solver)
 
     # Check all resistors have parts picked

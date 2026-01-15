@@ -22,7 +22,7 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.core import Namespace
-from faebryk.core.solver.defaultsolver import DefaultSolver
+from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.utils import Contradiction
 from faebryk.libs.test.boundexpressions import BoundExpressions
 from faebryk.libs.test.times import Times
@@ -718,7 +718,7 @@ def test_discover_literal_folding_local(expr: F.Parameters.can_be_operand):
             )
         )
 
-    solver = DefaultSolver()
+    solver = Solver()
 
     test_g = graph.GraphView.create()
     global_tg.copy_into(target_graph=test_g, minimal=False)
@@ -802,7 +802,7 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
     python ./test/runtest.py -k "debug_fix_literal_folding"
     ```
     """
-    solver = DefaultSolver()
+    solver = Solver()
     test_g = graph.GraphView.create()
     global_tg.copy_into(target_graph=test_g, minimal=False)
     test_expr = expr.copy_into(test_g)
@@ -1013,7 +1013,7 @@ def test_regression_literal_folding(
     expr = expr_factory().copy_into(g)
     tg = expr.tg
 
-    solver = DefaultSolver()
+    solver = Solver()
 
     # Get the expression node that owns the can_be_operand trait, then copy that
     E = BoundExpressions(g=g, tg=tg)
@@ -1169,7 +1169,7 @@ def test_folding_statistics(expr: F.Expressions.is_expression):
     test_expr = expr.copy_into(test_g)
     test_tg = test_expr.tg
     stats.event("generate", test_expr, terminal=False)
-    solver = DefaultSolver()
+    solver = Solver()
     E = BoundExpressions(g=test_g, tg=test_tg)
     root = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
     E.is_(root, test_expr.get_sibling_trait(F.Parameters.can_be_operand), assert_=True)

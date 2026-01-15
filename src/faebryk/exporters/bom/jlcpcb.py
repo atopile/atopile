@@ -254,7 +254,7 @@ class TestJLCBom:
 
     @staticmethod
     def _test_build(app: fabll.Node):
-        from faebryk.core.solver.defaultsolver import DefaultSolver
+        from faebryk.core.solver.solver import Solver
         from faebryk.libs.app.designators import (
             attach_random_designators,
             load_kicad_pcb_designators,
@@ -262,7 +262,7 @@ class TestJLCBom:
         from faebryk.libs.picker.picker import pick_part_recursively
 
         load_kicad_pcb_designators(app.tg, attach=True)
-        solver = DefaultSolver()
+        solver = Solver()
         pick_part_recursively(app, solver)
         attach_random_designators(app.tg)
 

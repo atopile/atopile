@@ -26,7 +26,7 @@ from atopile.errors import UserSyntaxError
 from faebryk.core import graph
 from faebryk.core.faebrykpy import EdgeComposition, EdgeType
 from faebryk.core.graph import BoundNode, GraphView
-from faebryk.core.solver.defaultsolver import DefaultSolver
+from faebryk.core.solver.solver import Solver
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.test.boundexpressions import BoundExpressions
 from faebryk.libs.util import cast_assert, not_none
@@ -598,7 +598,7 @@ def test_basic_arithmetic():
     app = fabll.Node.bind_instance(app_instance)
     F.Parameters.NumericParameter.infer_units_in_tree(app)
 
-    solver = DefaultSolver()
+    solver = Solver()
     solver_result = solver.simplify(tg, g, terminal=True)
     repr_map = solver_result.data.mutation_map
 

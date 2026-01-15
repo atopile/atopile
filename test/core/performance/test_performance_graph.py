@@ -40,7 +40,7 @@ def test_performance_parameters(A: int, B: int, rs: int, pick: bool):
     with timings.measure("import F"):
         import faebryk.library._F as F
 
-    from faebryk.core.solver.defaultsolver import DefaultSolver
+    from faebryk.core.solver.solver import Solver
     from faebryk.libs.picker.picker import get_pick_tree, pick_topologically
 
     def _build_recursive(depth: int) -> fabll._ChildField[F.Expressions.Add]:
@@ -284,7 +284,7 @@ def test_performance_parameters(A: int, B: int, rs: int, pick: bool):
     timings.add("pick tree")
 
     if pick:
-        solver = DefaultSolver()
+        solver = Solver()
         with timings.measure("pick_topologically"):
             pick_topologically(pick_tree, solver)
             # solver.simplify(tg, g, terminal=True)

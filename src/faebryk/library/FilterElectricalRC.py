@@ -168,7 +168,7 @@ class TestFilterElectricalRC:
         Given: C = 100nF, fc = 1kHz
         Expected: R = 1 / (2 * pi * C * fc) ≈ 1591.5 Ω
         """
-        from faebryk.core.solver.defaultsolver import DefaultSolver
+        from faebryk.core.solver.solver import Solver
         from faebryk.libs.test.boundexpressions import BoundExpressions
 
         E = BoundExpressions()
@@ -193,7 +193,7 @@ class TestFilterElectricalRC:
         expected_R = 1 / (2 * math.pi * C_value * fc_value)
 
         # Run solver
-        solver = DefaultSolver()
+        solver = Solver()
         solver.simplify_for(C_param, fc_param, R_param)
 
         # Get solver's result for R
@@ -221,7 +221,7 @@ class TestFilterElectricalRC:
         Given: R = 10kΩ, fc = 10kHz
         Expected: C = 1 / (2 * pi * R * fc) ≈ 1.59nF
         """
-        from faebryk.core.solver.defaultsolver import DefaultSolver
+        from faebryk.core.solver.solver import Solver
         from faebryk.libs.test.boundexpressions import BoundExpressions
 
         E = BoundExpressions()
@@ -245,7 +245,7 @@ class TestFilterElectricalRC:
         expected_C = 1 / (2 * math.pi * R_value * fc_value)
 
         # Run solver
-        solver = DefaultSolver()
+        solver = Solver()
         solver.simplify_for(R_param, fc_param, C_param)
 
         # Get solver's result for C
@@ -271,7 +271,7 @@ class TestFilterElectricalRC:
         Test that FilterElectricalRC correctly sets filter response to LOWPASS
         and order to 1.
         """
-        from faebryk.core.solver.defaultsolver import DefaultSolver
+        from faebryk.core.solver.solver import Solver
         from faebryk.libs.test.boundexpressions import BoundExpressions
 
         E = BoundExpressions()
@@ -283,7 +283,7 @@ class TestFilterElectricalRC:
         order_param = rc_filter.filter.get().order.get()
 
         # Run solver to resolve constraints
-        solver = DefaultSolver()
+        solver = Solver()
         solver.simplify_for(
             response_param.can_be_operand.get(),
             order_param.can_be_operand.get(),

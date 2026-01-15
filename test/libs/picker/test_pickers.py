@@ -12,8 +12,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core import graph
-from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.core.solver.nullsolver import NullSolver
+from faebryk.core.solver.solver import Solver
 from faebryk.libs.picker.picker import PickedPart, PickError, pick_part_recursively
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.test.boundexpressions import BoundExpressions
@@ -63,7 +62,7 @@ def test_pick_module(case: "ComponentTestCase"):
     #     )
 
     # pick
-    solver = DefaultSolver()
+    solver = Solver()
     pick_part_recursively(module, solver)
 
     assert module.has_trait(F.Pickable.has_part_picked)
@@ -113,7 +112,7 @@ def test_type_pick():
         # assert_=True,
     )
 
-    pick_part_recursively(module, DefaultSolver())
+    pick_part_recursively(module, Solver())
 
     assert module.has_trait(F.Pickable.has_part_picked)
 
@@ -127,7 +126,7 @@ def test_no_pick():
     fabll.Traits.create_and_add_instance_to(module, fabll.is_module)
     fabll.Traits.create_and_add_instance_to(module, F.has_part_removed)
 
-    pick_part_recursively(module, DefaultSolver())
+    pick_part_recursively(module, Solver())
 
     assert module.has_trait(F.Pickable.has_part_picked)
     assert module.get_trait(F.Pickable.has_part_picked).removed
@@ -251,7 +250,7 @@ def test_check_missing_picks_with_footprint_with_picker(caplog):
 def test_pick_explicit_modules():
     from faebryk.libs.picker.picker import get_pick_tree, pick_topologically
 
-    solver = DefaultSolver()
+    solver = Solver()
 
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -283,7 +282,7 @@ def test_pick_explicit_modules():
 def test_pick_resistor_by_params():
     from faebryk.libs.picker.picker import get_pick_tree, pick_topologically
 
-    solver = DefaultSolver()
+    solver = Solver()
 
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -332,7 +331,7 @@ def test_pick_resistor_by_params():
 
 #     assert not module.has_trait(F.Pickable.is_pickable)
 
-#     pick_part_recursively(module, DefaultSolver())
+#     pick_part_recursively(module, Solver())
 
 #     assert not module.has_trait(F.Pickable.has_part_picked)
 
@@ -348,7 +347,7 @@ def test_no_pick_inherit_remove():
 
     module = _.bind_typegraph(tg=tg).create_instance(g=g)
 
-    pick_part_recursively(module, DefaultSolver())
+    pick_part_recursively(module, Solver())
 
     assert module.has_trait(F.Pickable.has_part_picked)
     assert module.get_trait(F.Pickable.has_part_picked).removed
@@ -365,7 +364,7 @@ def test_skip_self_pick():
 
     module = _CapInherit.bind_typegraph(tg=tg).create_instance(g=g)
 
-    pick_part_recursively(module, DefaultSolver())
+    pick_part_recursively(module, Solver())
 
     assert not module.has_trait(F.Pickable.has_part_picked)
     assert module.inner.get().has_trait(F.Pickable.has_part_picked)
@@ -392,7 +391,7 @@ def test_pick_led_by_colour():
         assert_=True,
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
     pick_part_recursively(led, solver)
 
     assert led.has_trait(F.Pickable.has_part_picked)
@@ -426,7 +425,7 @@ def test_pick_error_group():
         assert_=True,
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
 
     with pytest.raises(ExceptionGroup) as ex:
         pick_part_recursively(app, solver)
@@ -447,7 +446,7 @@ def test_pick_dependency_simple():
 
     app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
-    solver = DefaultSolver()
+    solver = Solver()
     r1r = app.r1.get().resistance.get().can_be_operand.get()
     r2r = app.r2.get().resistance.get().can_be_operand.get()
     sum_lit = E.lit_op_range_from_center_rel((100000, E.U.Ohm), 0.2)
@@ -481,7 +480,7 @@ def test_pick_dependency_advanced_1():
         assert_=True,
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
     pick_part_recursively(rdiv, solver)
 
 
@@ -510,7 +509,7 @@ def test_pick_dependency_advanced_2():
         assert_=True,
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
     pick_part_recursively(rdiv, solver)
 
 
@@ -539,7 +538,7 @@ def test_pick_dependency_div_negative():
         assert_=True,
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
     pick_part_recursively(rdiv, solver)
 
 
@@ -566,7 +565,7 @@ def test_null_solver():
         assert_=True,
     )
 
-    solver = NullSolver()
+    solver = Solver()
     pick_part_recursively(app, solver)
 
     assert app.cap.get().has_trait(F.Pickable.has_part_picked)
@@ -616,7 +615,7 @@ def test_pick_voltage_divider_complex():
         assert_=True,
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
 
     solver.simplify(tg, g)
 
@@ -639,7 +638,7 @@ def test_pick_capacitor_temperature_coefficient():
         F.Capacitor.TemperatureCoefficient.X7R
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
     pick_part_recursively(cap, solver)
 
     assert cap.has_trait(F.Pickable.has_part_picked)
@@ -706,7 +705,7 @@ def test_not_correlated_doesnt_group():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     E = BoundExpressions(g=g, tg=tg)
-    solver = DefaultSolver()
+    solver = Solver()
 
     class _App(fabll.Node):
         r1 = F.Resistor.MakeChild()
@@ -735,7 +734,7 @@ def test_find_groups_transitive_override():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     E = BoundExpressions(g=g, tg=tg)
-    solver = DefaultSolver()
+    solver = Solver()
 
     class _App(fabll.Node):
         r1 = F.Resistor.MakeChild()
