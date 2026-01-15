@@ -201,12 +201,13 @@ def test_bind_nets_from_electricals():
     attach_net_names(nets)
 
     # sort nets by name to ensure deterministic ordering
-    nets_sorted = sorted(nets, key=lambda net: net.get_name())
+    nets_sorted = sorted(nets, key=lambda net: net.get_name() or "")
 
     assert len(nets_sorted) == 2
     print(nets_sorted)
+    assert nets_sorted[0].get_name() == "elec"
+    assert nets_sorted[1].get_name() == "elec-1"
     for i, net in enumerate(nets_sorted):
-        assert net.get_name() == f"elec-{i}"
         assert len(net.get_connected_interfaces()) == 2 + i
         assert len(net.get_connected_pads()) == 2 + i
         assert len(net.part_of.get()._is_interface.get().get_connected()) == 2 + i
