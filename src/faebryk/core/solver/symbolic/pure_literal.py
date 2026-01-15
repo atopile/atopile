@@ -48,19 +48,16 @@ _CanonicalExpressions: dict[type[fabll.NodeT], _Multi | None] = {
     F.Expressions.Round: _Multi(F.Literals.Numbers.op_round),
     F.Expressions.Abs: _Multi(F.Literals.Numbers.op_abs),
     F.Expressions.Sin: _Multi(F.Literals.Numbers.op_sin),
-    F.Expressions.Log: _Multi(
-        F.Literals.Numbers.op_log,
-    ),
+    F.Expressions.Log: _Multi(F.Literals.Numbers.op_log),
+    F.Expressions.Floor: _Multi(F.Literals.Numbers.op_floor),
+    F.Expressions.Ceil: _Multi(F.Literals.Numbers.op_ceil),
     F.Expressions.And: _Multi(F.Literals.Booleans.op_and, True),
     F.Expressions.Or: _Multi(F.Literals.Booleans.op_or, False),
     F.Expressions.Xor: _Multi(F.Literals.Booleans.op_xor),
     F.Expressions.Not: _Multi(F.Literals.Booleans.op_not),
-    # TODO wtf
-    F.Expressions.LessThan: _Multi(F.Literals.Numbers.op_mul_intervals),
-    F.Expressions.GreaterThan: _Multi(F.Literals.Numbers.op_mul_intervals),
-    #
-    F.Expressions.Floor: _Multi(F.Literals.Numbers.op_floor),
-    F.Expressions.Ceil: _Multi(F.Literals.Numbers.op_ceil),
+    F.Expressions.Implies: _Multi(F.Literals.Booleans.op_implies),
+    F.Expressions.LessThan: _Multi(F.Literals.Numbers.op_lt),
+    F.Expressions.LessOrEqual: _Multi(F.Literals.Numbers.op_le),
     F.Expressions.GreaterOrEqual: _Multi(F.Literals.Numbers.op_greater_or_equal),
     F.Expressions.GreaterThan: _Multi(F.Literals.Numbers.op_greater_than),
     F.Expressions.Is: _Multi(F.Literals.is_literal.op_setic_equals),
@@ -74,6 +71,10 @@ _CanonicalExpressions: dict[type[fabll.NodeT], _Multi | None] = {
 
 def _get_type(expr_type: "fabll.ImplementsType | type[fabll.NodeT]") -> _Multi | None:
     if isinstance(expr_type, type):
+        if expr_type not in _CanonicalExpressions:
+            # can happen if run before canonicalization
+            # its ok to just do nothing, will later be called again
+            return None
         return _CanonicalExpressions[expr_type]
     else:
         _map = {
