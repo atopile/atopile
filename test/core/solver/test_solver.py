@@ -269,9 +269,9 @@ def test_shortcircuit_logic_and():
 
 def test_shortcircuit_logic_or():
     """
-    X := Or(*App.p[0:3], True)
-    Y := Or(X, X)
-    Y -> True
+    E1 := Or(*App.p[0:3], True)
+    E2 := Or(E1, E1)
+    E2 -> True
     """
     E = BoundExpressions()
 
@@ -281,14 +281,15 @@ def test_shortcircuit_logic_or():
     app = _App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
     p_ops = [p.get().can_be_operand.get() for p in app.p]
 
-    X = E.or_(p_ops[0], E.lit_bool(True))
+    E1 = E.or_(p_ops[0], E.lit_bool(True))
     for p in p_ops[1:]:
-        X = E.or_(X, p)
-    Y = E.or_(X, X)
+        E1 = E.or_(E1, p)
+    E2 = E.or_(E1, E1)
+    A = E.bool_parameter_op()
+    E.is_(A, E2, assert_=True)
 
     solver = DefaultSolver()
-    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
-    assert _extract_and_check(Y, repr_map, True)
+    assert _extract_and_check(A, solver, True)
 
 
 def test_inequality_to_set():

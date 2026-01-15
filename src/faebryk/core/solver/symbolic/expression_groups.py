@@ -155,10 +155,8 @@ class _FlattenAssociativeResult:
 
 
 def _flatten_associative(
+    mutator: Mutator,
     to_flatten: F.Expressions.is_flattenable,
-    check_destructable: Callable[
-        [F.Expressions.is_expression, F.Expressions.is_expression], bool
-    ],
 ):
     """
     Recursively extract operands from nested expressions of the same type.
@@ -200,9 +198,10 @@ def _flatten_associative(
                 return False
         if not fabll.Traits(o).get_obj_raw().has_same_type_as(to_flatten_obj):
             return False
-        if not check_destructable(
-            o.get_sibling_trait(F.Expressions.is_expression), to_flatten_expr
-        ):
+        o_po = o.as_parameter_operatable.force_get()
+        if mutator.has_been_mutated(o_po):
+            return False
+        if len(o.get_operations()) > 1:
             return False
         return True
 
@@ -219,13 +218,14 @@ def _flatten_associative(
     for nested_to_flatten in nested_compressible_operations:
         nested_to_flatten_po = nested_to_flatten.as_parameter_operatable.force_get()
         nested_to_flatten_expr = nested_to_flatten_po.as_expression.force_get()
+        nested_to_flatten_fl = nested_to_flatten.get_sibling_trait(
+            F.Expressions.is_flattenable
+        )
 
         out.destroyed_operations.add(nested_to_flatten_expr)
 
-        res = _flatten_associative(
-            nested_to_flatten.get_sibling_trait(F.Expressions.is_flattenable),
-            check_destructable,
-        )
+        # recursive flatten
+        res = _flatten_associative(mutator, nested_to_flatten_fl)
         nested_extracted_operands += res.extracted_operands
         out.destroyed_operations.update(res.destroyed_operations)
 
@@ -259,25 +259,9 @@ def associative_flatten(mutator: Mutator):
     # get out deepest expr in compressable tree
     root_ops = [e for e in ops if not _involved_in_expr_with_same_type(e)]
 
-    def is_replacable(
-        to_replace: F.Expressions.is_expression,
-        parent_expr: F.Expressions.is_expression,
-    ) -> bool:
-        """
-        Check if an expression can be replaced.
-        Only possible if not in use somewhere else or already mapped to new expr
-        """
-        # overly restrictive: equivalent replacement would be ok
-        if mutator.has_been_mutated(to_replace.as_parameter_operatable.get()):
-            return False
-        exprs_involved_in = to_replace.as_parameter_operatable.get().get_operations()
-        if len(exprs_involved_in) > 1:
-            return False
-        return True
-
     for expr in root_ops:
         expr_flat = expr.get_sibling_trait(F.Expressions.is_flattenable)
-        res = _flatten_associative(expr_flat, is_replacable)
+        res = _flatten_associative(mutator, expr_flat)
         if not res.destroyed_operations:
             continue
 

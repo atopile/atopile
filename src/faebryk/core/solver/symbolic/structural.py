@@ -154,7 +154,7 @@ def resolve_alias_classes(mutator: Mutator):
                 if not class_expressions:
                     continue
             # else
-            mutator.get_copy_po(_repr_po)
+            mutator.copy_operand(_repr_po)
             continue
 
         # Merge param alias classes

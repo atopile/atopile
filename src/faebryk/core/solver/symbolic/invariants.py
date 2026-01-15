@@ -315,11 +315,7 @@ def find_congruent_expression[T: F.Expressions.ExpressionNodes](
 
 
 class InsertExpressionResult(NamedTuple):
-    # TODO: i dont think we should return cbo, even in fold case we return expr
-    out_operand: F.Parameters.can_be_operand | None
-    """
-    None if expression dropped. Can only happen for predicates
-    """
+    out_operand: F.Parameters.can_be_operand
     is_new: bool
 
 
@@ -546,16 +542,16 @@ def _fold_pure_literal_operands(
     )
     if builder.assert_:
         # P!{S|True} -> P!$
-        if lit_fold.op_setic_equals_singleton(False):
+        if lit_fold.op_setic_equals_singleton(True):
+            return InsertExpressionResult(lit_fold.as_operand.get(), False)
+        else:
+            # False/ {True,False}
             raise ContradictionByLiteral(
                 "P!{S|False}",
                 involved=[],
                 literals=[lit_fold],
                 mutator=mutator,
             )
-        else:
-            # True / {False,True}
-            return InsertExpressionResult(None, False)
 
     new_expr = mutator._create_and_insert_expression(
         builder.factory,
@@ -768,7 +764,9 @@ def insert_expression(
     # P!{S/P|False} -> Contradiction, P!{P|True} -> P!, P {S|True} -> P!
     builder_ = _no_predicate_literals(mutator, builder)
     if builder_ is None:
-        return InsertExpressionResult(None, False)
+        return InsertExpressionResult(
+            mutator.make_singleton(True).can_be_operand.get(), False
+        )
     builder = builder_
 
     # * no A >! X or X >! A (create A ss! X or X ss! A)
@@ -838,7 +836,9 @@ def insert_expression(
 
                 case SubsumptionCheck.Result._DISCARD():
                     logger.debug(f"Subsume discard: {pretty_expr(builder, mutator)}")
-                    return InsertExpressionResult(None, False)
+                    return InsertExpressionResult(
+                        mutator.make_singleton(True).can_be_operand.get(), False
+                    )
     # * no empty supersets
     _no_empty_superset(mutator, builder)
 
@@ -860,6 +860,7 @@ def insert_expression(
         and builder.assert_
         and builder.indexed_lits
         and not builder.terminate
+        and not builder.indexed_ops_with_trait(F.Expressions.is_expression)
     ):
         logger.debug(f"Terminate ss lit: {pretty_expr(builder, mutator)}")
         builder = builder.with_(terminate=True)

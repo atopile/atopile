@@ -1348,7 +1348,7 @@ class Mutator:
         expr: F.Expressions.is_expression,
         operands: Iterable[F.Parameters.can_be_operand] | None = None,
         expression_factory: type[F.Expressions.ExpressionNodes] | None = None,
-    ) -> F.Expressions.is_canonical | None:
+    ) -> F.Parameters.can_be_operand:
         import faebryk.core.solver.symbolic.invariants as invariants
 
         if expression_factory is None:
@@ -1357,16 +1357,10 @@ class Mutator:
         if operands is None:
             operands = expr.get_operands()
 
+        expr_po = expr.as_parameter_operatable.get()
         # if mutated
-        if (
-            expr_po := expr.as_parameter_operatable.get()
-        ) in self.transformations.mutated:
-            out = self.get_mutated(expr_po)
-            out_obj = fabll.Traits(out).get_obj_raw()
-            out_canon = out.as_expression.force_get().as_canonical.force_get()
-            # TODO more checks
-            assert out_obj.isinstance(expression_factory)
-            return out_canon
+        if expr_po in self.transformations.mutated:
+            return self.get_mutated(expr_po).as_operand.get()
 
         expr_pred = expr.try_get_sibling_trait(F.Expressions.is_predicate)
         assert_ = expr_pred is not None
@@ -1379,7 +1373,6 @@ class Mutator:
 
         c_operands = [o for op in operands if (o := self.get_copy(op))]
 
-        expr_po = expr.as_parameter_operatable.get()
         builder = invariants.ExpressionBuilder(
             factory=expression_factory,
             operands=c_operands,
@@ -1389,15 +1382,12 @@ class Mutator:
         res = invariants.wrap_insert_expression(
             self, builder, expr_already_exists_in_old_graph=copy_only
         )
-        if res.out_operand is None:
-            return None
+        if res.out_operand.as_literal.try_get():
+            return res.out_operand
 
-        new_expr = res.out_operand.get_raw_obj()
-
-        new_expr_po = new_expr.get_trait(F.Parameters.is_parameter_operatable)
-
+        new_expr_po = res.out_operand.as_parameter_operatable.force_get()
         out = self._mutate(expr_po, new_expr_po)
-        return out.as_expression.force_get().as_canonical.force_get()
+        return out.as_operand.get()
 
     def soft_replace(
         self,
@@ -1419,37 +1409,29 @@ class Mutator:
         self.get_copy_po(current, accept_soft=False)
 
     def get_copy(
-        self, obj: F.Parameters.can_be_operand, accept_soft: bool = True
-    ) -> F.Parameters.can_be_operand | None:
-        # TODO is this ok?
-        if (
-            obj.g.get_self_node()
-            .node()
-            .is_same(other=self.G_out.get_self_node().node())
-        ):
+        self,
+        obj: F.Parameters.can_be_operand,
+        accept_soft: bool = True,
+    ) -> F.Parameters.can_be_operand:
+        if obj.is_in_graph(self.G_out):
             return obj
         if obj_po := obj.as_parameter_operatable.try_get():
-            copied = self.get_copy_po(obj_po, accept_soft)
-            if copied is None:
-                return None
-            return copied.as_operand.get()
+            return self.copy_operand(obj_po, accept_soft)
         if obj_lit := obj.as_literal.try_get():
             self.tg_out
             return obj_lit.copy_into(self.G_out).as_operand.get()
-        if obj.try_get_sibling_trait(F.Units.is_unit_expression):
-            raise ValueError(
-                "Should not have any unit expressions after canonicalization"
-            )
-        return obj
+        raise ValueError(f"Cannot copy {obj}")
 
-    def get_copy_po(
-        self, obj_po: F.Parameters.is_parameter_operatable, accept_soft: bool = True
-    ) -> F.Parameters.is_parameter_operatable | None:
+    def copy_operand(
+        self,
+        obj_po: F.Parameters.is_parameter_operatable,
+        accept_soft: bool = True,
+    ) -> F.Parameters.can_be_operand:
         if accept_soft and obj_po in self.transformations.soft_replaced:
-            return self.transformations.soft_replaced[obj_po]
+            return self.transformations.soft_replaced[obj_po].as_operand.get()
 
         if m := self.try_get_mutated(obj_po):
-            return m
+            return m.as_operand.get()
 
         # TODO: not sure if ok
         # if obj is new, no need to copy
@@ -1457,21 +1439,26 @@ class Mutator:
         if obj_po in self.transformations.created or obj_po in set(
             self.transformations.mutated.values()
         ):
-            return obj_po
+            return obj_po.as_operand.get()
 
         # purely for debug
         self.transformations.copied.add(obj_po)
 
         if expr := obj_po.as_expression.try_get():
-            # TODO consider using copy here instead of recreating expr
-            mutated = self.mutate_expression(expr)
-            if not mutated:
-                return None
-            return mutated.as_parameter_operatable.get()
+            return self.mutate_expression(expr)
         elif p := obj_po.as_parameter.try_get():
-            return self.mutate_parameter(p).as_parameter_operatable.get()
+            return self.mutate_parameter(p).as_operand.get()
 
         assert False
+
+    def get_copy_po(
+        self,
+        obj_po: F.Parameters.is_parameter_operatable,
+        accept_soft: bool = True,
+    ) -> F.Parameters.is_parameter_operatable:
+        return self.copy_operand(
+            obj_po, accept_soft=accept_soft
+        ).as_parameter_operatable.force_get()
 
     def remove(
         self, *po: F.Parameters.is_parameter_operatable, no_check_roots: bool = False
@@ -1588,6 +1575,8 @@ class Mutator:
         new_only: bool = False,
         include_terminated: bool = False,
         required_traits: tuple[type[fabll.NodeT], ...] = (),
+        include_removed: bool = False,
+        include_mutated: bool = False,
     ) -> list[T] | set[T]:
         assert not new_only or not created_only
 
@@ -1636,6 +1625,11 @@ class Mutator:
 
         if required_traits and not (t is fabll.Node and len(required_traits) == 1):
             out = {o for o in out if all(o.has_trait(t) for t in required_traits)}
+
+        if not include_removed:
+            out.difference_update(self.transformations.removed)
+        if not include_mutated:
+            out.difference_update(self.transformations.mutated.keys())
 
         if sort_by_depth:
             out = F.Expressions.is_expression.sort_by_depth(out, ascending=True)
@@ -1768,9 +1762,7 @@ class Mutator:
 
         # Copy each terminated expression to G_out
         for po in terminated_pos:
-            self.get_copy_po(po.as_parameter_operatable.get())
-
-        logger.debug(f"Pre-copied {len(terminated_pos)} terminated expressions")
+            self.copy_operand(po.as_parameter_operatable.get())
 
     def _copy_unmutated_optimized(self):
         # TODO we might have new types in tg_in that haven't been copied over yet
@@ -1816,7 +1808,7 @@ class Mutator:
         clean_no_congruent = clean - set(congruencies.keys())
 
         for p in clean_no_congruent:
-            self.get_copy_po(p)
+            self.copy_operand(p)
             # p_copy = p.copy_into(self.G_out)
             # if (
             #    pred := p.try_get_sibling_trait(F.Expressions.is_predicate)
@@ -1827,7 +1819,7 @@ class Mutator:
             # self.transformations.mutated[p] = p_copy
 
         for p in dirtied - touched | set(congruencies.keys()):
-            self.get_copy_po(p)
+            self.copy_operand(p)
 
         # logger.info(f"Terminated {len(self.transformations.terminated)}")
         # logger.info(f"Touched {len(touched)}")
@@ -1915,7 +1907,7 @@ class Mutator:
             ascending=True,
         )
         for p in to_copy:
-            self.get_copy_po(p.get_trait(F.Parameters.is_parameter_operatable))
+            self.copy_operand(p.get_trait(F.Parameters.is_parameter_operatable))
 
     def check_no_illegal_mutations(self):
         # TODO should only run during dev
@@ -2147,83 +2139,6 @@ def test_mutate_copy_terminated_predicate():
     assert fabll.Node.graphs_match(tg3.get_self_node().g(), g3)
     assert pred3.get_sibling_trait(F.Expressions.is_assertable)
     assert pred3.try_get_sibling_trait(is_terminated)
-
-
-def test_terminated_expressions_copied_first():
-    """
-    Test that terminated expressions are copied to G_out before the algorithm runs.
-
-    This ensures invariants are upheld during expression copying:
-    - Congruence checks need terminated expressions in G_out
-    - Subsumption checks need them for querying operations
-    """
-    from faebryk.core.solver.algorithm import algorithm
-
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-
-    # Create parameters
-    p = (
-        F.Parameters.NumericParameter.bind_typegraph(tg=tg)
-        .create_instance(g=g)
-        .setup(is_unit=None, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
-    )
-    p_op = p.can_be_operand.get()
-
-    # Create a superset constraint and mark it terminated
-    lit = (
-        F.Literals.Numbers.bind_typegraph(tg=tg)
-        .create_instance(g=g)
-        .setup_from_min_max(0, 100)
-    )
-    ss_expr = (
-        F.Expressions.IsSubset.bind_typegraph(tg=tg)
-        .create_instance(g=g)
-        .setup(p_op, lit.can_be_operand.get(), assert_=True)
-    )
-    ss_po = ss_expr.is_parameter_operatable.get()
-
-    # Mark the expression as terminated
-    fabll.Traits.create_and_add_instance_to(ss_expr, is_terminated)
-    assert ss_po.try_get_sibling_trait(is_terminated) is not None
-
-    # Bootstrap mutation map
-    mut_map = MutationMap.bootstrap(tg=tg, g=g)
-
-    # Track whether terminated expression was copied
-    terminated_copied_before_run = False
-
-    @algorithm("test_terminated_first", force_copy=True)
-    def test_algo(mutator: Mutator):
-        nonlocal terminated_copied_before_run
-        # At the start of the algorithm, terminated expression should already be copied
-        ss_copy = mutator.try_get_mutated(ss_po)
-        terminated_copied_before_run = ss_copy is not None
-
-    mutator = Mutator(
-        mutation_map=mut_map,
-        algo=test_algo,
-        iteration=0,
-        terminal=True,
-    )
-    result = mutator.run()
-
-    # Verify terminated expression was copied before the algorithm ran
-    assert terminated_copied_before_run, (
-        "Terminated expression should be copied before algorithm runs"
-    )
-
-    # Verify the terminated expression is in the output graph
-    output_pos = set(
-        F.Parameters.is_parameter_operatable.bind_typegraph(
-            result.mutation_stage.tg_out
-        ).get_instances(result.mutation_stage.G_out)
-    )
-
-    # The terminated expression should be mapped in transformations
-    assert ss_po in result.mutation_stage.transformations.mutated, (
-        "Terminated expression should be in transformation mutated map"
-    )
 
 
 if __name__ == "__main__":

@@ -50,19 +50,12 @@ def fold_literals[T: fabll.NodeT](
     Not(Not(A)) -> neutralize=replace: A
     ```
     """
-    exprs = mutator.get_typed_expressions(expr_type, sort_by_depth=True, new_only=False)
+    exprs = mutator.get_typed_expressions(expr_type, sort_by_depth=True)
     for expr in exprs:
-        if mutator.has_been_mutated(
-            expr.get_trait(F.Parameters.is_parameter_operatable)
-        ) or mutator.is_removed(expr.get_trait(F.Parameters.is_parameter_operatable)):
-            continue
-
-        # covered by pure literal folding
         if mutator.utils.is_pure_literal_expression(
             expr.get_trait(F.Parameters.can_be_operand)
         ):
             continue
-
         f(expr, mutator)
 
 
@@ -527,13 +520,17 @@ def fold_or(expr: F.Expressions.Or, mutator: Mutator):
 
     e = expr.is_expression.get()
     lits = e.get_operand_literals()
+
+    logger.error(
+        f"Try fold_or {expr.is_parameter_operatable.get().compact_repr(mutator.print_ctx)}, lits: {lits}"
+    )
     if not lits:
         return
 
     # Or(A, B, C, True) -> True
     if any(lit.op_setic_equals_singleton(True) for lit in lits.values()):
-        if e.try_get_sibling_trait(F.Expressions.is_predicate):
-            return
+        # if e.try_get_sibling_trait(F.Expressions.is_predicate):
+        #     return
         mutator.create_check_and_insert_expression(
             F.Expressions.IsSubset,
             e.as_operand.get(),
