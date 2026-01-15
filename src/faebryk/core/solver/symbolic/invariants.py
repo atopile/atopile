@@ -4,7 +4,7 @@
 import logging
 from enum import Enum, auto
 from functools import reduce
-from typing import NamedTuple, Sequence, cast
+from typing import Any, NamedTuple, Sequence, cast
 
 import pytest
 
@@ -246,7 +246,7 @@ class SubsumptionCheck:
 
 def find_subsuming_expression(
     mutator: Mutator,
-    builder: "ExpressionBuilder",
+    builder: "ExpressionBuilder[Any]",
 ) -> SubsumptionCheck.Result:
     # TODO use right graph
     match builder.factory:
@@ -372,7 +372,7 @@ class ExpressionBuilder[
 
 def _no_empty_superset(
     mutator: Mutator,
-    builder: ExpressionBuilder,
+    builder: ExpressionBuilder[Any],
 ) -> None:
     """
     A ss! {} => Contradiction.
@@ -393,7 +393,7 @@ def _no_empty_superset(
 
 
 def _no_predicate_literals(
-    mutator: Mutator, builder: ExpressionBuilder
+    mutator: Mutator, builder: ExpressionBuilder[Any]
 ) -> ExpressionBuilder | None:
     """
     P!{S/P|False} -> Contradiction
@@ -439,7 +439,7 @@ def _no_predicate_literals(
 
 
 def _no_literal_inequalities(
-    mutator: Mutator, builder: ExpressionBuilder
+    mutator: Mutator, builder: ExpressionBuilder[Any]
 ) -> ExpressionBuilder:
     """
     Convert GreaterOrEqual expressions with literals to IsSubset constraints:
@@ -493,7 +493,7 @@ def _no_literal_inequalities(
 
 def _no_predicate_operands(
     mutator: Mutator,
-    builder: ExpressionBuilder,
+    builder: ExpressionBuilder[Any],
 ) -> ExpressionBuilder:
     """
     don't use predicates as operands:
@@ -696,9 +696,12 @@ def _no_singleton_supersets(
     not on
     - A{S|{X]} ss! X
     - X ss! A{S|{X]}
+    - A is! B{S|{X}} # done by distribute literals alias classes
     """
     lits = builder.indexed_lits()
     if builder.factory is F.Expressions.IsSubset and builder.assert_ and lits:
+        return builder
+    if builder.factory is F.Expressions.Is and builder.assert_:
         return builder
 
     mapped_operands = [
