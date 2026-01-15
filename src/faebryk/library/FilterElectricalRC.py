@@ -115,12 +115,12 @@ class FilterElectricalRC(fabll.Node):
     )
 
     # Set filter response to LOWPASS (this is an RC low-pass filter)
-    _eq_response = F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+    _eq_response = F.Literals.AbstractEnums.MakeChild_SetSuperset(
         [filter, "response"], F.Filter.Response.LOWPASS
     )
 
     # Set filter order to 1 (first-order RC filter)
-    _eq_order = F.Literals.Numbers.MakeChild_ConstrainToSingleton(
+    _eq_order = F.Literals.Numbers.MakeChild_SetSingleton(
         [filter, "order"], 1.0, unit=F.Units.Dimensionless
     )
 
@@ -194,10 +194,10 @@ class TestFilterElectricalRC:
 
         # Run solver
         solver = DefaultSolver()
-        solver.update_superset_cache(C_param, fc_param, R_param)
+        solver.simplify_for(C_param, fc_param, R_param)
 
         # Get solver's result for R
-        result = solver.inspect_get_known_supersets(
+        result = solver.extract_superset(
             R_param.as_parameter_operatable.force_get().as_parameter.force_get()
         )
         assert result is not None, "Solver should find resistance"
@@ -210,7 +210,7 @@ class TestFilterElectricalRC:
         expected_numbers = E.numbers().setup_from_singleton(
             expected_R, unit=E._resolve_unit(E.U.Ohm)
         )
-        assert result_numbers.equals(expected_numbers, g=E.g, tg=E.tg), (
+        assert result_numbers.op_setic_equals(expected_numbers, g=E.g, tg=E.tg), (
             f"Expected R ≈ {expected_R:.2f} Ω, got {result_numbers.pretty_str()}"
         )
 
@@ -246,10 +246,10 @@ class TestFilterElectricalRC:
 
         # Run solver
         solver = DefaultSolver()
-        solver.update_superset_cache(R_param, fc_param, C_param)
+        solver.simplify_for(R_param, fc_param, C_param)
 
         # Get solver's result for C
-        result = solver.inspect_get_known_supersets(
+        result = solver.extract_superset(
             C_param.as_parameter_operatable.force_get().as_parameter.force_get()
         )
         assert result is not None, "Solver should find capacitance"
@@ -262,7 +262,7 @@ class TestFilterElectricalRC:
         expected_numbers = E.numbers().setup_from_singleton(
             expected_C, unit=E._resolve_unit(E.U.Fa)
         )
-        assert result_numbers.equals(expected_numbers, g=E.g, tg=E.tg), (
+        assert result_numbers.op_setic_equals(expected_numbers, g=E.g, tg=E.tg), (
             f"Expected C ≈ {expected_C:.2e} F, got {result_numbers.pretty_str()}"
         )
 
@@ -284,13 +284,13 @@ class TestFilterElectricalRC:
 
         # Run solver to resolve constraints
         solver = DefaultSolver()
-        solver.update_superset_cache(
+        solver.simplify_for(
             response_param.can_be_operand.get(),
             order_param.can_be_operand.get(),
         )
 
         # Check response is constrained to LOWPASS
-        response_result = solver.inspect_get_known_supersets(
+        response_result = solver.extract_superset(
             response_param.can_be_operand.get()
             .as_parameter_operatable.force_get()
             .as_parameter.force_get()
