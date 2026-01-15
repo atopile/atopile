@@ -100,15 +100,6 @@ def expression_wise_algorithm[T: fabll.NodeT](expr_type: type[T]):
     return wrap
 
 
-# TODO REMOVE JUST A TEST
-@algorithm("NOOOP")
-def noop(mutator: Mutator):
-    pass
-
-
-fold_algorithms.append(noop)
-
-
 # Arithmetic ---------------------------------------------------------------------------
 
 

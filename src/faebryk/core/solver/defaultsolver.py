@@ -44,7 +44,6 @@ class DefaultSolver(Solver):
         # TODO: get order from topo sort
         # and types from decorator
         iterative = [
-            structural.check_literal_contradiction,
             structural.remove_unconstrained,
             structural.resolve_alias_classes,
             structural.distribute_literals_across_alias_classes,
@@ -55,7 +54,6 @@ class DefaultSolver(Solver):
             expression_groups.involutory_fold,
             expression_groups.unary_identity_unpack,
             *expression_wise.fold_algorithms,
-            structural.predicate_flat_terminate,
             structural.predicate_unconstrained_operands_deduce,
             structural.transitive_subset,
             structural.upper_estimation_of_expressions_with_subsets,
@@ -135,12 +133,12 @@ class DefaultSolver(Solver):
             iteration_state.dirty |= algo_result.dirty
             data.mutation_map = data.mutation_map.extend(algo_result.mutation_stage)
 
-            timings.add(f"close {'dirty' if algo_result.dirty else 'clean'}")
+            timings.add(f"close {'💩' if algo_result.dirty else '🧹'}")
 
             new_name = (
-                f"{algo.name}"
-                f" {'terminal' if terminal else 'non-terminal'}"
-                f" {'dirty' if algo_result.dirty else 'clean'}"
+                f"{algo.name.ljust(40)}"
+                f" {'🛑' if terminal else '♻️'}"
+                f" {'💩' if algo_result.dirty else '🧹'}"
             )
             timings.add(new_name, duration=run_time)
 
@@ -304,7 +302,6 @@ class DefaultSolver(Solver):
         if isinstance(g, fbrk.TypeGraph) and isinstance(tg, graph.GraphView):
             g, tg = tg, g
         assert isinstance(g, graph.GraphView) and isinstance(tg, fbrk.TypeGraph)
-        timings = Times(name="simplify")
 
         now = time.time()
         if LOG_PICK_SOLVE:
@@ -358,8 +355,6 @@ class DefaultSolver(Solver):
                     f" and {time.time() - now:.3f} seconds"
                 ).ljust(NET_LINE_WIDTH, "=")
             )
-
-        timings.add("terminal" if terminal else "non-terminal")
 
         if not terminal:
             self.reusable_state = self.state

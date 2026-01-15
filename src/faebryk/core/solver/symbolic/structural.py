@@ -2,23 +2,12 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-import math
-from itertools import combinations
-from typing import cast
 
-import faebryk.core.faebrykpy as fbrk
-import faebryk.core.graph as graph
-import faebryk.core.node as fabll
 import faebryk.library._F as F
 import faebryk.library.Expressions as Expressions
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
-from faebryk.core.solver.utils import Contradiction
-from faebryk.libs.util import (
-    EquivalenceClasses,
-    groupby,
-    not_none,
-)
+from faebryk.libs.util import EquivalenceClasses
 
 logger = logging.getLogger(__name__)
 
@@ -30,39 +19,6 @@ Multiply = F.Expressions.Multiply
 Power = F.Expressions.Power
 
 # TODO: mark terminal=False where applicable
-
-
-@algorithm("Check literal contradiction", terminal=False)
-def check_literal_contradiction(mutator: Mutator):
-    """
-    Check if a literal is contradictory
-    """
-    # TODO should be invariant
-
-    pass
-
-
-@algorithm("Remove unconstrained", terminal=True)
-def remove_unconstrained(mutator: Mutator):
-    """
-    Remove all expressions that are not involved in any predicates
-    or expressions with side effects
-    Note: Not possible for Parameters, want to keep those around for REPR
-    """
-    objs = mutator.get_typed_expressions()
-    for obj in objs:
-        obj_po = obj.get_trait(F.Parameters.is_parameter_operatable)
-        if obj.try_get_trait(F.Expressions.is_predicate):
-            continue
-        if obj.has_trait(Expressions.has_side_effects):
-            continue
-        if any(
-            e.try_get_trait(F.Expressions.is_predicate)
-            or e.has_trait(Expressions.has_side_effects)
-            for e in mutator.utils.get_expressions_involved_in(obj_po)
-        ):
-            continue
-        mutator.remove(obj_po)
 
 
 @algorithm("Alias classes", terminal=False)
@@ -253,29 +209,6 @@ def transitive_subset(mutator: Mutator):
             )
 
 
-@algorithm("Predicate flat terminate", terminal=False)
-def predicate_flat_terminate(mutator: Mutator):
-    """
-    ```
-    P!(A, Lit) -> P!!(A, Lit)
-    P!(Lit1, Lit2) -> P!!(Lit1, Lit2)
-    ```
-
-    Terminates all (dis)proven predicates that contain no expressions.
-    """
-    predicates = mutator.get_expressions(required_traits=(F.Expressions.is_predicate,))
-    for p_e in predicates:
-        p_po = p_e.as_parameter_operatable.get()
-        if any(p_e.get_operands_with_trait(F.Expressions.is_expression)):
-            continue
-
-        # only (dis)proven
-        if mutator.utils.try_extract_superset(p_po) is None:
-            continue
-
-        mutator.terminate(p_e)
-
-
 @algorithm("Distribute literals across alias classes", terminal=False)
 def distribute_literals_across_alias_classes(mutator: Mutator):
     """
@@ -322,6 +255,27 @@ def distribute_literals_across_alias_classes(mutator: Mutator):
 
 
 # Terminal -----------------------------------------------------------------------------
+@algorithm("Remove unconstrained", terminal=True)
+def remove_unconstrained(mutator: Mutator):
+    """
+    Remove all expressions that are not involved in any predicates
+    or expressions with side effects
+    Note: Not possible for Parameters, want to keep those around for REPR
+    """
+    objs = mutator.get_typed_expressions()
+    for obj in objs:
+        obj_po = obj.get_trait(F.Parameters.is_parameter_operatable)
+        if obj.try_get_trait(F.Expressions.is_predicate):
+            continue
+        if obj.has_trait(Expressions.has_side_effects):
+            continue
+        if any(
+            e.try_get_trait(F.Expressions.is_predicate)
+            or e.has_trait(Expressions.has_side_effects)
+            for e in mutator.utils.get_expressions_involved_in(obj_po)
+        ):
+            continue
+        mutator.remove(obj_po)
 
 
 @algorithm("Predicate unconstrained operands deduce", terminal=True)
@@ -332,8 +286,6 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
 
     preds = mutator.get_expressions(required_traits=(F.Expressions.is_predicate,))
     for p_e in preds:
-        if mutator.is_terminated(p_e):
-            continue
         if mutator.utils.is_literal_expression(p_e.as_operand.get()):
             continue
 
@@ -343,13 +295,6 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
                 p_e.as_assertable.force_get(),
                 unfulfilled_only=True,
             ):
-                mutator.create_check_and_insert_expression(
-                    F.Expressions.IsSubset,
-                    p_e.as_operand.get(),
-                    mutator.make_singleton(True).can_be_operand.get(),
-                    terminate=True,
-                    assert_=True,
-                )
                 mutator.terminate(p_e)
                 break
 

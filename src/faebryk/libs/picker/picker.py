@@ -335,6 +335,7 @@ def _infer_uncorrelated_params(tree: Tree["F.Pickable.is_pickable"]):
         ),
         g=g,
         tg=tg,
+        assert_=True,
     )
 
 
