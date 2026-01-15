@@ -919,7 +919,9 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype, metadata: SexpField,
             // round float to 6 decimal places
             const rounded = std.math.round(value * 10e6) / 10e6;
             const fucked = std.mem.eql(u8, name, "dashed_line_dash_ratio") or std.mem.eql(u8, name, "dashed_line_gap_ratio") or std.mem.eql(u8, name, "hpglpendiameter");
-            const str = if (fucked)
+            const is_whole = rounded == @trunc(rounded);
+            const needs_six_decimals = fucked and !is_whole;
+            const str = if (needs_six_decimals)
                 std.fmt.bufPrint(&buf, "{d:.6}", .{rounded}) catch return error.OutOfMemory
             else
                 std.fmt.bufPrint(&buf, "{d}", .{rounded}) catch return error.OutOfMemory;
