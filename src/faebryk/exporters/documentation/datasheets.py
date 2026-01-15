@@ -118,7 +118,7 @@ def _download_datasheet(url: str, path: Path):
                     redirected_url = (
                         f"https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/{lcsc_id}.pdf"
                     )
-                    logger.warning(f"LCSC 301 redirect: {url} -> {redirected_url}")
+                    logger.info(f"LCSC 301 redirect: {url} -> {redirected_url}")
                     _download_datasheet(redirected_url, path)
                     return  # Exit after successful recursive download
         # Re-raise if we couldn't handle the redirect
