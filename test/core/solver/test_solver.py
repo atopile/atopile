@@ -1841,11 +1841,10 @@ def test_simplify_non_terminal_manual_test_2():
         )
 
     solver = DefaultSolver()
-    solver.simplify(E.tg, E.g, terminal=False, print_context=context)
+    solver.simplify_for(*[p.as_operand.get() for p in ps], terminal=False)
 
     origin = 1, E.lit_op_range(((9, E.U.V), (11, E.U.V)))
-    E.is_(ps[origin[0]].as_operand.get(), (origin[1]), assert_=True)
-    solver.simplify(E.g, E.tg)
+    E.is_subset(ps[origin[0]].as_operand.get(), (origin[1]), assert_=True)
 
     solver.simplify_for(*[p.as_operand.get() for p in ps])
     for i, p in enumerate(ps):
