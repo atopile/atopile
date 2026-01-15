@@ -3,7 +3,6 @@
 
 
 import logging
-import time
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Any, Callable, Sequence
 
@@ -20,10 +19,8 @@ class implements_design_check(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     class CheckStage(Enum):
-        # POST_DESIGN_SETUP runs first: for structure modifications like
-        # applying defaults, connecting references, setting address lines.
+        POST_DESIGN_VERIFY = auto()
         POST_DESIGN_SETUP = auto()
-        # POST_DESIGN runs second: for pure verification checks
         POST_DESIGN = auto()
         POST_SOLVE = auto()
         POST_PCB = auto()
@@ -82,13 +79,29 @@ class implements_design_check(fabll.Node):
             return self.func
 
     @staticmethod
+    def register_post_design_verify_check(
+        func: Callable[[Any], None],
+    ) -> "implements_design_check._CheckMethod":
+        """
+        Register a POST_DESIGN_VERIFY check.
+
+        These run FIRST, before any graph traversal operations. Used to validate
+        graph structure integrity:
+        - Verify EdgeInterfaceConnections are between is_interface nodes
+        - Catch malformed connections that would cause BFS hangs
+        """
+        return implements_design_check._CheckMethod(
+            func, "__check_post_design_verify__"
+        )
+
+    @staticmethod
     def register_post_design_setup_check(
         func: Callable[[Any], None],
     ) -> "implements_design_check._CheckMethod":
         """
         Register a POST_DESIGN_SETUP check.
 
-        These run before POST_DESIGN and are for structure modifications like:
+        These run after PRE_DESIGN_VERIFY and are for structure modifications like:
         - Applying default constraints (has_default_constraint)
         - Connecting deprecated aliases (ElectricPower vcc/gnd)
         - Connecting electric references (has_single_electric_reference)
@@ -171,6 +184,13 @@ class implements_design_check(fabll.Node):
         # There should be exactly one solver in the graph
         return solver_traits[0].get_solver()
 
+    def check_post_design_verify(self):
+        owner_instance, owner_class = self._get_owner_with_type()
+        if not hasattr(owner_class, "__check_post_design_verify__"):
+            return False
+        owner_class.__check_post_design_verify__(owner_instance)  # type: ignore[attr-defined]
+        return True
+
     def check_post_design_setup(self):
         owner_instance, owner_class = self._get_owner_with_type()
         if not hasattr(owner_class, "__check_post_design_setup__"):
@@ -201,6 +221,8 @@ class implements_design_check(fabll.Node):
 
     def run(self, stage: CheckStage) -> bool:
         match stage:
+            case implements_design_check.CheckStage.POST_DESIGN_VERIFY:
+                return self.check_post_design_verify()
             case implements_design_check.CheckStage.POST_DESIGN_SETUP:
                 return self.check_post_design_setup()
             case implements_design_check.CheckStage.POST_DESIGN:
@@ -213,7 +235,8 @@ class implements_design_check(fabll.Node):
     def on_check(self):
         _, owner_class = self._get_owner_with_type()
         if (
-            not hasattr(owner_class, "__check_post_design_setup__")
+            not hasattr(owner_class, "__check_post_design_verify__")
+            and not hasattr(owner_class, "__check_post_design_setup__")
             and not hasattr(owner_class, "__check_post_design__")
             and not hasattr(owner_class, "__check_post_solve__")
             and not hasattr(owner_class, "__check_post_pcb__")

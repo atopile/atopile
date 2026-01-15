@@ -217,9 +217,30 @@ def prepare_build(
 
 
 @muster.register(
+    "post-design-verify",
+    description="Verifying graph structure",
+    dependencies=[prepare_build],
+)
+def post_design_verify(
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+) -> None:
+    """
+    Run POST_DESIGN_VERIFY checks for early graph validation.
+
+    This runs FIRST before any BFS traversal to catch malformed connections
+    that would cause hangs (e.g., EdgeInterfaceConnection to non-interface nodes).
+    """
+    check_design(
+        app,
+        stage=F.implements_design_check.CheckStage.POST_DESIGN_VERIFY,
+        exclude=tuple(set(config.build.exclude_checks)),
+    )
+
+
+@muster.register(
     "post-design-setup",
     description="Running post-design setup",
-    dependencies=[prepare_build],
+    dependencies=[post_design_verify],
 )
 def post_design_setup(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage

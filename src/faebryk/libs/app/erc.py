@@ -6,6 +6,7 @@ import logging
 import pytest
 
 import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import errors
@@ -59,6 +60,47 @@ class ERCPowerSourcesShortedError(ERCFault):
     """
 
 
+class ERCFaultIncompatibleInterfaceConnection(ERCFault):
+    """
+    Raised when two interfaces with incompatible types are connected.
+    E.g., connecting ElectricPower directly to Electrical.
+    """
+
+    def __init__(
+        self,
+        msg: str,
+        source_node: fabll.Node,
+        target_node: fabll.Node,
+        source_type: str,
+        target_type: str,
+        *args: object,
+    ) -> None:
+        super().__init__(msg, [source_node, target_node], *args, markdown=False)
+        self.source_node = source_node
+        self.target_node = target_node
+        self.source_type = source_type
+        self.target_type = target_type
+
+    @classmethod
+    def from_nodes(
+        cls,
+        source: fabll.Node,
+        target: fabll.Node,
+        source_type: str,
+        target_type: str,
+    ) -> "ERCFaultIncompatibleInterfaceConnection":
+        """Create an exception for incompatible interface connection."""
+        return cls(
+            f"Incompatible interface types connected:\n"
+            f"  {source.pretty_repr()} ({source_type})\n"
+            f"    -> {target.pretty_repr()} ({target_type})",
+            source,
+            target,
+            source_type,
+            target_type,
+        )
+
+
 # TODO split this up
 class needs_erc_check(fabll.Node):
     """
@@ -77,14 +119,27 @@ class needs_erc_check(fabll.Node):
     - shorted symmetric footprints
     - [unmapped pins for footprints]
     """
+
     is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
     design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
 
-    # TODO: Implement this
+    @F.implements_design_check.register_post_design_verify_check
+    def __check_post_design_verify__(self):
+        """
+        Early validation of graph structure before any BFS traversal.
+
+        This runs FIRST to catch malformed EdgeInterfaceConnections that would
+        cause hangs in later checks (like requires_external_usage which uses BFS).
+        """
+        logger.info("Verifying interface connection graph structure")
+        with accumulate(ERCFault) as accumulator:
+            self._verify_interface_connections(accumulator)
+
     @F.implements_design_check.register_post_design_check
     def __check_post_design__(self):
         logger.info("Checking for ERC violations")
         with accumulate(ERCFault) as accumulator:
+            self._check_interface_connection_types(accumulator)
             self._check_shorted_interfaces_and_components()
             self._check_shorted_nets(accumulator)
             self._check_shorted_electric_power_sources(accumulator)
@@ -123,9 +178,7 @@ class needs_erc_check(fabll.Node):
                 raise ERCFaultShortedInterfaces.from_path(path)
 
     def _check_shorted_nets(self, accumulator: accumulate) -> None:
-        nets = F.Net.bind_typegraph(self.tg).get_instances(
-            g=self.tg.get_graph_view()
-        )
+        nets = F.Net.bind_typegraph(self.tg).get_instances(g=self.tg.get_graph_view())
         logger.info(f"Checking {len(nets)} explicit nets")
         for net in nets:
             with accumulator.collect():
@@ -143,9 +196,7 @@ class needs_erc_check(fabll.Node):
                     )
                     raise ERCFaultShort(f"Shorted nets: {friendly_shorted}")
 
-    def _check_shorted_electric_power_sources(
-        self, accumulator: accumulate
-    ) -> None:
+    def _check_shorted_electric_power_sources(self, accumulator: accumulate) -> None:
         # shorted power
         electricpower = F.ElectricPower.bind_typegraph(self.tg).get_instances(
             g=self.tg.get_graph_view()
@@ -165,6 +216,219 @@ class needs_erc_check(fabll.Node):
                     friendly_sources = ", ".join(n.get_full_name() for n in sources)
                     raise ERCPowerSourcesShortedError(
                         f"Power sources shorted: {friendly_sources}"
+                    )
+
+    def _verify_interface_connections(self, accumulator: accumulate) -> None:
+        """
+        Verify that all EdgeInterfaceConnections are between is_interface nodes.
+
+        This runs BEFORE any BFS traversal to catch malformed connections like
+        `power.lv ~ resistor` (interface to non-interface) that would cause hangs.
+
+        This is a lightweight check that doesn't traverse the graph - it just
+        validates edge endpoints.
+        """
+        g = self.tg.get_graph_view()
+        edge_tid = fbrk.EdgeInterfaceConnection.get_tid()
+
+        # Get the is_interface type to find all nodes with the trait
+        is_interface_type = self.tg.get_type_by_name(
+            type_identifier="is_interface.node.core.faebryk"
+        )
+        if is_interface_type is None:
+            logger.debug("No is_interface type found, skipping verification")
+            return
+
+        # Get all nodes that implement is_interface
+        interface_nodes: list[graph.BoundNode] = []
+
+        def collect_implementer(
+            ctx: list[graph.BoundNode], node: graph.BoundNode
+        ) -> None:
+            ctx.append(node)
+
+        fbrk.Trait.visit_implementers(
+            trait_type=is_interface_type, ctx=interface_nodes, f=collect_implementer
+        )
+
+        # Build set of interface node UUIDs for O(1) lookup
+        interface_uuids: set[int] = {node.node().get_uuid() for node in interface_nodes}
+
+        # Check all edges from interface nodes
+        edges_checked = 0
+        for bound_node in interface_nodes:
+
+            def check_edge(
+                ctx: tuple[set[int], accumulate, graph.GraphView, int],
+                edge: graph.BoundEdge,
+            ) -> None:
+                interface_uuids, acc, gv, count = ctx
+                nonlocal edges_checked
+                edges_checked += 1
+
+                source = edge.edge().source()
+                target = edge.edge().target()
+
+                source_is_interface = source.get_uuid() in interface_uuids
+                target_is_interface = target.get_uuid() in interface_uuids
+
+                if not source_is_interface or not target_is_interface:
+                    with acc.collect():
+                        source_bound = gv.bind(node=source)
+                        target_bound = gv.bind(node=target)
+                        source_py = fabll.Node.bind_instance(instance=source_bound)
+                        target_py = fabll.Node.bind_instance(instance=target_bound)
+                        non_interface = (
+                            target_py if not target_is_interface else source_py
+                        )
+                        raise ERCFaultIncompatibleInterfaceConnection(
+                            f"EdgeInterfaceConnection to non-interface node:\n"
+                            f"  {non_interface.pretty_repr()} is not an interface",
+                            source_py,
+                            target_py,
+                            "<interface>" if source_is_interface else "<not interface>",
+                            "<interface>" if target_is_interface else "<not interface>",
+                        )
+
+            bound_node.visit_edges_of_type(
+                edge_type=edge_tid,
+                ctx=(interface_uuids, accumulator, g, edges_checked),
+                f=check_edge,
+            )
+
+        logger.debug(f"Verified {edges_checked} interface connection edges")
+
+    def _check_interface_connection_types(self, accumulator: accumulate) -> None:
+        """
+        Check that all interface connections have compatible types.
+
+        This validates that EdgeInterfaceConnections only exist between nodes
+        of compatible types. Compatible types are:
+        - Same type (e.g., Electrical to Electrical)
+        - ElectricLogic <-> ElectricSignal (structurally compatible)
+
+        Raises ERCFaultIncompatibleInterfaceConnection for invalid connections.
+        """
+        # Types that are compatible with each other despite being different
+        # Both have the same structure: line (Electrical) and reference (ElectricPower)
+        COMPATIBLE_TYPE_PAIRS: frozenset[frozenset[str]] = frozenset(
+            {
+                frozenset({"ElectricLogic", "ElectricSignal"}),
+            }
+        )
+
+        def are_types_compatible(type1: str | None, type2: str | None) -> bool:
+            """Check if two type names are compatible for connection."""
+            if type1 is None or type2 is None:
+                # If either type is unknown, we can't validate - allow it
+                return True
+            if type1 == type2:
+                return True
+            # Check for special compatible pairs
+            pair = frozenset({type1, type2})
+            return pair in COMPATIBLE_TYPE_PAIRS
+
+        def get_type_name(bound_node: graph.BoundNode) -> str | None:
+            """Get the type name of an instance node."""
+            type_edge = fbrk.EdgeType.get_type_edge(bound_node=bound_node)
+            if type_edge is None:
+                return None
+            type_node = fbrk.EdgeType.get_type_node(edge=type_edge.edge())
+            type_bound = bound_node.g().bind(node=type_node)
+            return fbrk.TypeGraph.get_type_name(type_node=type_bound)
+
+        g = self.tg.get_graph_view()
+        edge_tid = fbrk.EdgeInterfaceConnection.get_tid()
+
+        # Get the is_interface type to find all nodes with the trait
+        is_interface_type = self.tg.get_type_by_name(
+            type_identifier="is_interface.node.core.faebryk"
+        )
+        if is_interface_type is None:
+            logger.debug("No is_interface type found, skipping interface type check")
+            return
+
+        # Get all nodes that implement is_interface using Trait.visit_implementers
+        # This is O(number of interfaces) rather than O(all nodes)
+        interface_nodes: list[graph.BoundNode] = []
+
+        def collect_implementer(
+            ctx: list[graph.BoundNode], node: graph.BoundNode
+        ) -> None:
+            ctx.append(node)
+
+        fbrk.Trait.visit_implementers(
+            trait_type=is_interface_type, ctx=interface_nodes, f=collect_implementer
+        )
+
+        # Collect interface connection edges, only from source side to avoid dupes
+        all_edges: list[graph.BoundEdge] = []
+
+        def collect_if_source(
+            ctx: tuple[list[graph.BoundEdge], graph.BoundNode],
+            edge: graph.BoundEdge,
+        ) -> None:
+            edges_list, current_node = ctx
+            # Only collect if current node is the source - avoids duplicates
+            if edge.edge().source().is_same(other=current_node.node()):
+                edges_list.append(edge)
+
+        for bound_node in interface_nodes:
+            bound_node.visit_edges_of_type(
+                edge_type=edge_tid, ctx=(all_edges, bound_node), f=collect_if_source
+            )
+
+        logger.debug(
+            f"Checking {len(all_edges)} interface connections "
+            f"across {len(interface_nodes)} interface nodes"
+        )
+
+        # Build set of interface node references for O(1) lookup
+        interface_node_set: set[int] = {
+            node.node().get_uuid() for node in interface_nodes
+        }
+
+        def has_is_interface(bound_node: graph.BoundNode) -> bool:
+            """Check if node has is_interface trait (is in our interface set)."""
+            return bound_node.node().get_uuid() in interface_node_set
+
+        # Now check each edge exactly once
+        # Source is guaranteed to have is_interface (we collected from interface nodes)
+        for bound_edge in all_edges:
+            edge = bound_edge.edge()
+            source_bound = g.bind(node=edge.source())
+            target_bound = g.bind(node=edge.target())
+
+            # First verify both sides are interfaces - if not, skip
+            # (This can happen with malformed connections like `power.lv ~ resistor`)
+            if not has_is_interface(target_bound):
+                # Target is not an interface - this is a malformed connection
+                # Report error but don't try to get type info which might hang
+                with accumulator.collect():
+                    source_py = fabll.Node.bind_instance(instance=source_bound)
+                    target_py = fabll.Node.bind_instance(instance=target_bound)
+                    raise ERCFaultIncompatibleInterfaceConnection.from_nodes(
+                        source=source_py,
+                        target=target_py,
+                        source_type=get_type_name(source_bound) or "<unknown>",
+                        target_type="<not an interface>",
+                    )
+                continue
+
+            # Get type information
+            source_type = get_type_name(source_bound)
+            target_type = get_type_name(target_bound)
+
+            # Check type compatibility
+            if not are_types_compatible(source_type, target_type):
+                with accumulator.collect():
+                    source_py = fabll.Node.bind_instance(instance=source_bound)
+                    target_py = fabll.Node.bind_instance(instance=target_bound)
+                    raise ERCFaultIncompatibleInterfaceConnection.from_nodes(
+                        source=source_py,
+                        target=target_py,
+                        source_type=source_type or "<unknown>",
+                        target_type=target_type or "<unknown>",
                     )
 
     def _check_additional_heuristics(self) -> None:
@@ -194,8 +458,6 @@ class needs_erc_check(fabll.Node):
 
         # TODO check multiple pulls per logic
         pass
-
-
 
 
 class Test:
@@ -332,3 +594,71 @@ class Test:
         power_out_1._is_interface.get().connect_to(power_out_2)
 
         self._run_post_design_checks(tg)
+
+    def test_erc_interface_type_same_type_compatible(self):
+        """
+        Test that connecting interfaces of the same type passes ERC.
+        """
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        # Create two Electrical interfaces and connect them
+        electrical_type = F.Electrical.bind_typegraph(tg)
+        e1 = electrical_type.create_instance(g=g)
+        e2 = electrical_type.create_instance(g=g)
+
+        e1._is_interface.get().connect_to(e2)
+
+        # Should pass - same types
+        self._run_post_design_checks(tg)
+
+    def test_erc_interface_type_electric_power_compatible(self):
+        """
+        Test that connecting ElectricPower interfaces passes ERC.
+        """
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        power_type = F.ElectricPower.bind_typegraph(tg)
+        p1 = power_type.create_instance(g=g)
+        p2 = power_type.create_instance(g=g)
+
+        p1._is_interface.get().connect_to(p2)
+
+        # Should pass - same types
+        self._run_post_design_checks(tg)
+
+    def test_erc_interface_type_electric_logic_compatible(self):
+        """
+        Test that connecting ElectricLogic interfaces passes ERC.
+        """
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        logic_type = F.ElectricLogic.bind_typegraph(tg)
+        l1 = logic_type.create_instance(g=g)
+        l2 = logic_type.create_instance(g=g)
+
+        l1._is_interface.get().connect_to(l2)
+
+        # Should pass - same types
+        self._run_post_design_checks(tg)
+
+    def test_erc_interface_type_incompatible_power_to_electrical(self):
+        """
+        Test that the Zig layer prevents incompatible type connections
+        (ElectricPower to Electrical directly).
+
+        Note: The Zig connect function enforces type matching at connection
+        time, so this tests that the protection is in place.
+        """
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        power = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+        electrical = F.Electrical.bind_typegraph(tg).create_instance(g=g)
+
+        # The Zig layer should reject this connection due to type mismatch
+        # It raises ValueError with "Failed to connect interface nodes"
+        with pytest.raises(ValueError, match="Failed to connect"):
+            power._is_interface.get().connect_to(electrical)
