@@ -2268,10 +2268,11 @@ class is_interface(Node):
         while remaining:
             interface = remaining.pop()
             logger.info(f"Grouping bus: {interface.get_full_name()}")
-            connected = (
+            connected = cast(
+                set[N],
                 interface.get_trait(is_interface)
                 .get_connected(include_self=True)
-                .keys()
+                .keys(),
             )
             logger.info(f"Grouping complete. Elements: {len(connected)}")
             logger.info({i.get_full_name() for i in connected})
