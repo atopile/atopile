@@ -54,6 +54,7 @@ class Addressor(fabll.Node):
     _single_electric_reference = fabll.Traits.MakeEdge(
         F.has_single_electric_reference.MakeChild()
     )
+    _has_part_removed = fabll.Traits.MakeEdge(F.has_part_removed.MakeChild())
 
     # PointerSequence for address lines - elements are added dynamically by factory()
     address_lines = F.Collections.PointerSequence.MakeChild()
