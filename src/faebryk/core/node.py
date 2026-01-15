@@ -256,8 +256,13 @@ class _ChildField[T: NodeT](Field, ChildAccessor[T]):
         return self
 
     def __repr__(self) -> str:
+        nodetype_name = (
+            self.nodetype.__qualname__
+            if isinstance(self.nodetype, type)
+            else self.nodetype
+        )
         return (
-            f"ChildField(nodetype={self.nodetype.__qualname__},"
+            f"ChildField(nodetype={nodetype_name},"
             f" identifier={self.identifier}, attributes={self.attributes})"
             f" dependants={indented_container(self._dependants)}, "
             f"prepend_dependants={indented_container(self._prepend_dependants)})"
