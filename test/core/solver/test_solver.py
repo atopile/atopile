@@ -389,13 +389,18 @@ def test_alias_classes():
     ).maps_to
 
     # A and B should be unified (same parameter)
-    assert A_mapped == B_mapped
+    assert A_mapped
+    assert B_mapped
+    assert H_mapped
+    assert addition_mapped
+    assert addition2_mapped
+    assert A_mapped.is_same(B_mapped)
 
     # C + D and D + C should be unified (commutativity)
-    assert addition_mapped == addition2_mapped
+    assert addition_mapped.is_same(addition2_mapped)
 
     # A, B, H should all be unified since they're all aliased to the same Add expression
-    assert A_mapped == B_mapped == H_mapped
+    assert A_mapped.is_same(H_mapped)
 
 
 @pytest.mark.usefixtures("setup_project_config")

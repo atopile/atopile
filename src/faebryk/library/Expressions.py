@@ -417,10 +417,8 @@ class is_expression(fabll.Node):
             return False
 
         # Check if the factory type is commutative
-        type_node = self_obj.bind_typegraph_from_instance(self_obj.instance)
-        commutative = (
-            is_commutative.is_commutative_type(type_node) if type_node else False
-        )
+        type_node = not_none(self_obj.get_type_node())
+        commutative = is_commutative.is_commutative_type(type_node)
 
         # Check operand congruence
         out = is_expression.are_pos_congruent(
@@ -851,8 +849,10 @@ class is_commutative(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     @classmethod
-    def is_commutative_type(cls, node_type: fabll.TypeNodeBoundTG[Any, Any]) -> bool:
-        return node_type.check_if_instance_of_type_has_trait(is_commutative)
+    def is_commutative_type(cls, typenode: graph.BoundNode) -> bool:
+        return fabll.TypeNodeBoundTG.has_instance_of_type_has_trait(
+            typenode, is_commutative
+        )
 
 
 class has_unary_identity(fabll.Node):

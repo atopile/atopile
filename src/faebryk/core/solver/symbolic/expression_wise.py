@@ -149,7 +149,7 @@ def _collect_factors[T: F.Expressions.Multiply | F.Expressions.Power](
         if MutatorUtils.is_pure_literal_expression(collect_op.as_operand.get()):
             continue
         if not F.Expressions.is_commutative.is_commutative_type(
-            collect_type.bind_typegraph(mutator.tg_in)
+            collect_type.bind_typegraph(mutator.tg_in).get_or_create_type()
         ):
             if collect_type is not F.Expressions.Power:
                 raise NotImplementedError(
@@ -613,7 +613,11 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                     F.Expressions.is_expression
                 ):
                     # ¬!(¬A v ...)
-                    if fabll.Traits(inner_op_e).get_obj_raw().try_cast(F.Expressions.Not):
+                    if (
+                        fabll.Traits(inner_op_e)
+                        .get_obj_raw()
+                        .try_cast(F.Expressions.Not)
+                    ):
                         for not_op in inner_op_e.get_operands():
                             if (
                                 (not_op_po := not_op.as_parameter_operatable.try_get())

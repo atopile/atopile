@@ -1964,16 +1964,26 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
             edge_attributes=edge,
         )
 
-    def check_if_instance_of_type_has_trait(self, trait: type[NodeT]) -> bool:
-        children = Node.bind_instance(instance=self.get_or_create_type()).get_children(
-            direct_only=True, types=MakeChild, tg=self.tg
+    @staticmethod
+    def has_instance_of_type_has_trait(
+        type_node: graph.BoundNode, trait: type[NodeT]
+    ) -> bool:
+        tg = fbrk.TypeGraph.of_type(type_node=type_node)
+        assert tg
+        children = Node.bind_instance(instance=type_node).get_children(
+            direct_only=True, types=MakeChild, tg=tg
         )
-        bound_trait = TypeNodeBoundTG.get_or_create_type_in_tg(self.tg, trait)
+        bound_trait = TypeNodeBoundTG.get_or_create_type_in_tg(tg, trait)
         for child in children:
             child_type = child.get_child_type()
             if child_type.node().is_same(other=bound_trait.node()):
                 return True
         return False
+
+    def check_if_instance_of_type_has_trait(self, trait: type[NodeT]) -> bool:
+        return self.has_instance_of_type_has_trait(
+            type_node=self.get_or_create_type(), trait=trait
+        )
 
     @staticmethod
     def try_get_trait_of_type[T: NodeT](
