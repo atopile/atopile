@@ -87,12 +87,14 @@ def bind_electricals_to_fbrk_nets(
     Groups electricals into buses, get or create a net, and return all the nets
     """
     fbrk_nets: set[F.Net] = set()
-    electricals_filtered: set[fabll.Node] = set()
+    electricals_filtered: set[F.Electrical] = set()
 
     for is_lead_trait in fabll.Traits.get_implementors(
         F.Lead.is_lead.bind_typegraph(tg), g=g
     ):
-        interface_node = fabll.Traits.bind(is_lead_trait).get_obj_raw()
+        interface_node = (
+            fabll.Traits.bind(is_lead_trait).get_obj_raw().cast(F.Electrical)
+        )
 
         if not interface_node.has_trait(fabll.is_interface):
             continue
