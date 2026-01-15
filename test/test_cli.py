@@ -23,14 +23,15 @@ def from_temp_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 @pytest.mark.slow
 @pytest.mark.parametrize("config", ["default"])
 def test_app(config):
-    _, stderr, _ = run_live(
+    stdout, stderr, _ = run_live(
         [sys.executable, "-m", "atopile", "build", "examples/quickstart", "-b", config],
         env={**os.environ, "NONINTERACTIVE": "1"},
         stdout=print,
         stderr=print,
     )
-    assert "Build successful!" in stderr
-    assert "ERROR" not in stderr
+    combined = stdout + stderr
+    assert "Build successful!" in combined
+    assert "ERROR" not in combined
 
 
 @pytest.mark.usefixtures("from_temp_dir")

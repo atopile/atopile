@@ -33,8 +33,8 @@ def test_examples_build_fast(
 
     assert example_copy.exists()
 
-    _, stderr, _ = run_live(
-        [sys.executable, "-m", "atopile", "build"],
+    stdout, stderr, _ = run_live(
+        [sys.executable, "-m", "atopile", "build", "-v"],
         env={**os.environ, "NONINTERACTIVE": "1"},
         cwd=example_copy,
         stdout=print,
@@ -43,15 +43,19 @@ def test_examples_build_fast(
     )
 
     # TODO: add a strict mode to the CLI
-    assert "Build successful! 🚀" in stderr
-    assert stderr.count("✓") >= 1
-    assert stderr.count("✗") == 0
+
+    combined = stdout + stderr
+    print(stderr)
+
+    assert "Build successful! 🚀" in combined
+    assert combined.count("✓") >= 1
+    assert combined.count("✗") == 0
 
     # expected warnings:
     # - missing kicad-cli for '3d-model' target (in CI only)
     # - container modules without footprints (e.g. layout_reuse)
     # - cache updates for KiCAD file format changes
-    assert stderr.count("⚠") <= 3
+    assert combined.count("⚠") <= 3
 
 
 @pytest.mark.slow
@@ -72,7 +76,7 @@ def test_examples_build_slow(
 
     assert example_copy.exists()
 
-    _, stderr, _ = run_live(
+    stdout, stderr, _ = run_live(
         [sys.executable, "-m", "atopile", "build"],
         env={**os.environ, "NONINTERACTIVE": "1"},
         cwd=example_copy,
@@ -81,12 +85,13 @@ def test_examples_build_slow(
     )
 
     # TODO: add a strict mode to the CLI
-    assert "Build successful! 🚀" in stderr
-    assert stderr.count("✓") >= 1
-    assert stderr.count("✗") == 0
+    combined = stdout + stderr
+    assert "Build successful! 🚀" in combined
+    assert combined.count("✓") >= 1
+    assert combined.count("✗") == 0
 
     # expected warnings:
     # - missing kicad-cli for '3d-model' target (in CI only)
     # - container modules without footprints (e.g. layout_reuse)
     # - cache updates for KiCAD file format changes
-    assert stderr.count("⚠") <= 3
+    assert combined.count("⚠") <= 3
