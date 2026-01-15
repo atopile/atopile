@@ -364,7 +364,7 @@ def prepare_build(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     dependencies=[prepare_build],
 )
 def post_design_verify(
-    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    ctx: BuildStepContext, log_context: LoggingStage
 ) -> None:
     """
     Run POST_DESIGN_VERIFY checks for early graph validation.
@@ -372,6 +372,7 @@ def post_design_verify(
     This runs FIRST before any BFS traversal to catch malformed connections
     that would cause hangs (e.g., EdgeInterfaceConnection to non-interface nodes).
     """
+    app = ctx.require_app()
     check_design(
         app,
         stage=F.implements_design_check.CheckStage.POST_DESIGN_VERIFY,
