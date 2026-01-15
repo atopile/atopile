@@ -2022,26 +2022,44 @@ class Mutator:
 
         if allow_subset:
             ops_ss = list(self._get_literal_subsets(new_only=new_only))
-            mapping_ss = [self.utils.get_lit_mapping_from_lit_expr(op) for op in ops_ss]
+            mapping_ss = [
+                (*self.utils.get_lit_mapping_from_lit_expr(op), op) for op in ops_ss
+            ]
             grouped_ss = groupby(mapping_ss, key=lambda t: t[0])
             for k, v in grouped_ss.items():
-                ss_lits = [ss_lit for _, ss_lit in v]
+                ss_entries = list(v)
+                ss_lits = [ss_lit for _, ss_lit, _ in ss_entries]
                 merged_ss = F.Literals.is_literal.op_intersect_intervals(
                     *ss_lits, g=self.G_transient, tg=self.tg_in
                 )
                 if merged_ss.is_empty():
                     raise ContradictionByLiteral(
-                        "Empty intersection", [k], ss_lits, mutator=self
+                        "Empty intersection",
+                        [k],
+                        ss_lits,
+                        mutator=self,
+                        constraint_expr_pairs=[
+                            (ss_lit, ss_expr) for _, ss_lit, ss_expr in ss_entries
+                        ],
                     )
                 if k in mapping_dict:
                     if not mapping_dict[k].is_subset_of(
                         merged_ss, g=self.G_transient, tg=self.tg_in
                     ):
+                        is_sources = [
+                            e.is_expression.get().as_parameter_operatable.get()
+                            for e in k.get_operations(Is, predicates_only=True)
+                            if e.is_expression.get().get_operand_literals()
+                        ]
                         raise ContradictionByLiteral(
                             "is lit not subset of ss lits",
                             [k],
                             [mapping_dict[k], *ss_lits],
                             mutator=self,
+                            constraint_expr_pairs=[
+                                (ss_lit, ss_expr) for _, ss_lit, ss_expr in ss_entries
+                            ],
+                            constraint_sources=is_sources,
                         )
                     continue
                 mapping_dict[k] = merged_ss

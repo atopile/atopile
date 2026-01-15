@@ -6,16 +6,16 @@ import pytest
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
+import faebryk.library._F as F
 from atopile.compiler import DslRichException, DslUndefinedSymbolError
-from atopile.compiler.ast_visitor import DslException
-from atopile.compiler.build import (
-    Linker,
-    StdlibRegistry,
-    build_file,
-)
+from atopile.compiler.ast_visitor import ASTVisitor, DslException
+from atopile.compiler.build import Linker, StdlibRegistry, build_file
 from atopile.errors import UserSyntaxError
+from faebryk.core.solver.mutator import MutationMap, Mutator
+from faebryk.core.solver.symbolic.structural import merge_intersect_subsets
+from faebryk.core.solver.utils import ContradictionByLiteral
 from faebryk.libs.util import not_none
-from test.compiler.conftest import build_type
+from test.compiler.conftest import build_instance, build_type
 
 NULL_CONFIG = SimpleNamespace(project=None)
 
@@ -3673,3 +3673,168 @@ class TestSoftHardMakeChild:
             .get_intervals()
             == []
         )
+
+
+def test_source_chunk_ptr_copy_to_instance():
+    """Test that source chunk pointer is copied to instance."""
+    g, tg, stdlib, result = build_type(
+        """
+        import Resistor
+
+        module Resistors:
+            r1 = new Resistor
+            r2 = new Resistor
+
+        module App:
+            resistors = new Resistors
+        """,
+        link=True,
+    )
+    import atopile.compiler.ast_types as AST
+    import faebryk.library._F as F
+
+    app_type = not_none(result.state.type_roots["App"])
+    app_instance = not_none(tg.instantiate_node(type_node=app_type, attributes={}))
+
+    resistor_mc = not_none(
+        fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_type, child_identifier="resistors"
+        )
+    )
+    resistor_instance = not_none(
+        fbrk.EdgeComposition.get_child_by_identifier(
+            bound_node=app_instance, child_identifier="resistors"
+        )
+    )
+
+    source_chunk_mc = ASTVisitor.get_source_chunk(resistor_mc)
+    r_instance = F.Resistor.bind_instance(resistor_instance)
+    source_chunk_instance = AST.SourceChunk.bind_instance(
+        r_instance.get_trait(F.has_source_chunk).source_ptr.get().deref().instance
+    )
+
+    # With source chunk copying disabled, instances may not have source chunks
+    # This is acceptable as long as the build works
+    assert source_chunk_mc is not None, "MakeChild should have source chunk"
+    assert source_chunk_instance is not None, "Instance should have source chunk"
+
+
+def _build_mutator(source: str) -> Mutator:
+    g, tg, _stdlib, _result, _app_root = build_instance(
+        source, root="App", import_path="app.ato"
+    )
+    mutation_map = MutationMap.bootstrap(
+        tg=tg, g=g, print_context=F.Parameters.ReprContext()
+    )
+    return Mutator(
+        mutation_map=mutation_map,
+        algo=merge_intersect_subsets,
+        iteration=0,
+        terminal=False,
+    )
+
+
+def _build_numeric_param_mutator() -> tuple[
+    Mutator, F.Parameters.NumericParameter, F.Units.is_unit
+]:
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    unit = F.Units.Dimensionless.bind_typegraph(tg).create_instance(g).is_unit.get()
+    param = (
+        F.Parameters.NumericParameter.bind_typegraph(tg)
+        .create_instance(g)
+        .setup(is_unit=unit)
+    )
+    mutation_map = MutationMap.bootstrap(
+        tg=tg, g=g, print_context=F.Parameters.ReprContext()
+    )
+    mutator = Mutator(
+        mutation_map=mutation_map,
+        algo=merge_intersect_subsets,
+        iteration=0,
+        terminal=False,
+    )
+    return mutator, param, unit
+
+
+def test_contradiction_empty_intersection_has_sources():
+    source = """
+    module App:
+        resistance: ohm
+        assert resistance within 0ohm to 5ohm
+        assert resistance within 10ohm to 12ohm
+    """
+    mutator = _build_mutator(source)
+    with pytest.raises(ContradictionByLiteral, match="Empty intersection") as exc:
+        mutator.get_literal_mappings(new_only=False, allow_subset=True)
+    msg = str(exc.value)
+    assert "Constraints:" in msg
+    assert "<unknown>:" in msg
+
+
+def test_contradiction_alias_incompatible_with_subset_has_sources():
+    with pytest.raises(
+        ContradictionByLiteral, match="Tried alias to literal incompatible with subset"
+    ) as exc:
+        mutator, param, unit = _build_numeric_param_mutator()
+        subset_lit = (
+            F.Literals.Numbers.bind_typegraph(mutator.tg_in)
+            .create_instance(mutator.G_in)
+            .setup_from_min_max(0, 5, unit=unit)
+        )
+        subset_expr = (
+            F.Expressions.IsSubset.bind_typegraph(mutator.tg_in)
+            .create_instance(mutator.G_in)
+            .setup(
+                subset=param.is_parameter_operatable.get().as_operand.get(),
+                superset=subset_lit.is_literal.get().as_operand.get(),
+                assert_=True,
+            )
+        )
+        literal = mutator.make_lit(10.0).is_literal.get()
+        raise ContradictionByLiteral(
+            "Tried alias to literal incompatible with subset",
+            involved=[param.is_parameter_operatable.get()],
+            literals=[subset_lit.is_literal.get(), literal],
+            mutator=mutator,
+            constraint_expr_pairs=[(subset_lit.is_literal.get(), subset_expr)],
+        )
+    msg = str(exc.value)
+    assert "Constraints:" in msg
+    assert "{0.0..5.0}" in msg
+
+
+def test_contradiction_subset_to_different_literal_has_sources():
+    with pytest.raises(
+        ContradictionByLiteral, match="Tried subset to different literal"
+    ) as exc:
+        mutator, param, unit = _build_numeric_param_mutator()
+        literal = (
+            F.Literals.Numbers.bind_typegraph(mutator.tg_in)
+            .create_instance(mutator.G_in)
+            .setup_from_singleton(value=10, unit=unit)
+        )
+        is_expr = (
+            F.Expressions.Is.bind_typegraph(mutator.tg_in)
+            .create_instance(mutator.G_in)
+            .setup(
+                param.is_parameter_operatable.get().as_operand.get(),
+                literal.is_literal.get().as_operand.get(),
+                assert_=True,
+            )
+        )
+        subset_lit = (
+            F.Literals.Numbers.bind_typegraph(mutator.tg_in)
+            .create_instance(mutator.G_in)
+            .setup_from_min_max(0, 5, unit=unit)
+        )
+        raise ContradictionByLiteral(
+            "Tried subset to different literal",
+            involved=[param.is_parameter_operatable.get()],
+            literals=[literal.is_literal.get(), subset_lit.is_literal.get()],
+            mutator=mutator,
+            constraint_sources=[is_expr.is_parameter_operatable.get()],
+        )
+    msg = str(exc.value)
+    assert "Constraints:" in msg
+    assert "10.0" in msg

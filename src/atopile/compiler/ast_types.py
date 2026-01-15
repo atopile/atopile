@@ -147,6 +147,13 @@ class FileLocation(fabll.Node):
     def get_end_col(self) -> int:
         return self.end_col.get().get_single()
 
+    def get_full_location(self) -> str:
+        try:
+            filepath = self.filepath.get().get_single()
+        except Exception:
+            filepath = "<unknown>"
+        return f"{filepath}:{self.get_start_line()}:{self.get_start_col()}"
+
 
 class SourceChunk(fabll.Node):
     text = F.Literals.Strings.MakeChild()

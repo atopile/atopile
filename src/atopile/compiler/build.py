@@ -50,6 +50,10 @@ class StdlibRegistry:
             type_._type_identifier(): type_
             for type_ in allowlist or STDLIB_ALLOWLIST.copy()
         }
+        # Bootstrap has_source_chunk so Zig can find it during instantiation
+        import faebryk.library._F as F
+
+        F.has_source_chunk.bind_typegraph(self._tg).get_or_create_type()
 
     def get(self, name: str) -> graph.BoundNode:
         if name not in self._cache:

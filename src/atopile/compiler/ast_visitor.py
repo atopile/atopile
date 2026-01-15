@@ -1898,6 +1898,7 @@ class ASTVisitor:
         """
         Get corresponding SourceChunk for a given node in the typegraph.
         """
+        import faebryk.library._F as F
 
         source_chunk_bnode = None
         if fabll.Node(type_graph_node).isinstance(AST.SourceChunk):
@@ -1907,6 +1908,12 @@ class ASTVisitor:
                 bound_node=type_graph_node,
                 identifier=AnyAtoBlock._source_identifier,
             )
+        if source_chunk_bnode is None:
+            # Check for instance-level has_source_chunk trait
+            node = fabll.Node.bind_instance(type_graph_node)
+            if node.has_trait(F.has_source_chunk):
+                trait = node.get_trait(F.has_source_chunk)
+                source_chunk_bnode = trait.get_source_chunk_node()
         if source_chunk_bnode is None:
             source_chunk_bnode = fbrk.EdgeComposition.get_child_by_identifier(
                 bound_node=type_graph_node,
@@ -1923,14 +1930,11 @@ class ASTVisitor:
         if source_node is None:
             return None
 
-        try:
-            source_chunk_node = ASTVisitor.get_source_chunk(source_node.instance)
-            if source_chunk_node is None:
-                return None
+        source_chunk_node = ASTVisitor.get_source_chunk(source_node.instance)
+        if source_chunk_node is None:
+            return None
 
-            filepath_str = source_chunk_node.get_path()
-            if filepath_str:
-                return Path(filepath_str)
-        except Exception:
-            pass
+        filepath_str = source_chunk_node.get_path()
+        if filepath_str:
+            return Path(filepath_str)
         return None

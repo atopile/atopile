@@ -32,6 +32,7 @@ from faebryk.libs.util import (
     not_none,
     partition,
     unique,
+    unique_ref,
 )
 
 if TYPE_CHECKING:
@@ -119,13 +120,109 @@ class ContradictionByLiteral(Contradiction):
         involved: list[F.Parameters.is_parameter_operatable],
         literals: list[F.Literals.is_literal],
         mutator: "Mutator",
+        constraint_sources: list[F.Parameters.is_parameter_operatable] | None = None,
+        constraint_expr_pairs: Iterable[
+            tuple[F.Literals.is_literal, F.Expressions.IsSubset]
+        ]
+        | None = None,
     ):
         super().__init__(msg, involved, mutator)
         self.literals = literals
+        sources: list[F.Parameters.is_parameter_operatable] = []
+        if constraint_sources is not None:
+            sources.extend(constraint_sources)
+        if constraint_expr_pairs is not None:
+            sources.extend(
+                self.get_original_constraints(constraint_expr_pairs, mutator)
+            )
+        self.constraint_sources = unique_ref(sources)
 
     def __str__(self):
-        literals_str = "\n".join(f" - {lit.pretty_str()}" for lit in self.literals)
-        return f"{super().__str__()}\n\nLiterals:\n{literals_str}"
+        from atopile.compiler.ast_visitor import ASTVisitor
+
+        def _format_source_chunk(node: fabll.Node) -> str | None:
+            source_chunk = ASTVisitor.get_source_chunk(node.instance)
+            if source_chunk is None:
+                return None
+            return source_chunk.loc.get().get_full_location()
+
+        literals_lines = []
+        for lit in self.literals:
+            source = _format_source_chunk(fabll.Traits(lit).get_obj_raw())
+            literal_str = lit.pretty_str()
+            if source:
+                literals_lines.append(f" - {literal_str} ({source})")
+            else:
+                literals_lines.append(f" - {literal_str}")
+
+        parts = [super().__str__()]
+
+        if self.constraint_sources:
+            context = self.mutator.mutation_map.input_print_context
+
+            def _has_bounded_literal(
+                expr: F.Parameters.is_parameter_operatable,
+            ) -> bool:
+                try:
+                    if expr_expr := expr.as_expression.try_get():
+                        expr_trait = expr_expr
+                    else:
+                        return False
+                    literals = list(expr_trait.get_operand_literals().values())
+                    for operand in expr_trait.get_operands():
+                        if lit := operand.as_literal.try_get():
+                            literals.append(lit)
+
+                    for lit in literals:
+                        lit_obj = fabll.Traits(lit).get_obj_raw()
+                        if numbers := lit_obj.try_cast(F.Literals.Numbers):
+                            import math
+
+                            min_val = numbers.get_min_value()
+                            max_val = numbers.get_max_value()
+                            if not math.isinf(min_val) and not math.isinf(max_val):
+                                return True
+                        else:
+                            return True
+                    return False
+                except Exception:
+                    return False
+
+            def _safe_compact_repr(
+                expr: F.Parameters.is_parameter_operatable,
+            ) -> str:
+                try:
+                    return expr.compact_repr(context, use_name=True)
+                except Exception as exc:
+                    return f"<unprintable constraint {type(exc).__name__}>"
+
+            constraint_lines = []
+            for constraint in self.constraint_sources:
+                source = _format_source_chunk(fabll.Traits(constraint).get_obj_raw())
+                constraint_str = _safe_compact_repr(constraint)
+                if source or _has_bounded_literal(constraint):
+                    if source:
+                        constraint_lines.append(f" - {constraint_str} ({source})")
+                    else:
+                        constraint_lines.append(f" - {constraint_str}")
+            parts.append("Constraints:\n" + "\n".join(constraint_lines))
+
+        parts.append("Literals:\n" + "\n".join(literals_lines))
+        return "\n\n".join(parts)
+
+    @staticmethod
+    def get_original_constraints(
+        lit_expr_pairs: Iterable[tuple[F.Literals.is_literal, F.Expressions.IsSubset]],
+        mutator: "Mutator",
+    ) -> list[F.Parameters.is_parameter_operatable]:
+        """
+        Resolve the earliest constraint expressions for a set of subset expressions.
+        """
+        roots: list[F.Parameters.is_parameter_operatable] = []
+        for _, ss_expr in lit_expr_pairs:
+            ss_expr_po = ss_expr.get_trait(F.Parameters.is_parameter_operatable)
+            roots.extend(mutator.mutation_map.map_backward(ss_expr_po))
+        return unique_ref(roots)
 
 
 class MutatorUtils:
@@ -307,11 +404,13 @@ class MutatorUtils:
             if not literal.is_subset_of(
                 ss_lit, g=self.mutator.G_transient, tg=self.mutator.tg_in
             ):
+                constraint_pairs = self.get_subset_constraint_pairs(po, ss_lit)
                 raise ContradictionByLiteral(
                     "Tried alias to literal incompatible with subset",
                     involved=[po],
                     literals=[ss_lit, literal],
                     mutator=self.mutator,
+                    constraint_expr_pairs=constraint_pairs,
                 )
         out = self.mutator.create_expression(
             F.Expressions.Is,
@@ -357,6 +456,9 @@ class MutatorUtils:
                         involved=[po],
                         literals=[ex_lit, literal],
                         mutator=self.mutator,
+                        constraint_sources=[
+                            ex_op.is_parameter_operatable.get(),
+                        ],
                     )
                 return ex_op.is_expression.get()
 
@@ -1474,6 +1576,23 @@ class MutatorUtils:
             if e.is_expression.get().get_operands()[0].is_same(op.as_operand.get())
         ]
         return groupby(ss, key=lambda e: e.is_expression.get().get_operands()[1])
+
+    def get_subset_constraint_pairs(
+        self,
+        op: F.Parameters.is_parameter_operatable,
+        literal: F.Literals.is_literal | None = None,
+    ) -> list[tuple[F.Literals.is_literal, F.Expressions.IsSubset]]:
+        pairs: list[tuple[F.Literals.is_literal, F.Expressions.IsSubset]] = []
+        for lit_op, exprs in self.get_supersets(op).items():
+            lit = self.is_literal(lit_op)
+            if not lit:
+                continue
+            if literal is not None and not lit.equals(
+                literal, g=self.mutator.G_transient, tg=self.mutator.tg_in
+            ):
+                continue
+            pairs.extend((lit, expr) for expr in exprs)
+        return pairs
 
     @staticmethod
     def get_aliases(

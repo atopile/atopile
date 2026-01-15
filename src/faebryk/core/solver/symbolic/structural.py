@@ -413,11 +413,17 @@ def merge_intersect_subsets(mutator: Mutator):
 
         # short-cut, would be detected by subset_to
         if intersected.is_empty():
+            constraint_pairs = [
+                (lit, ss_expr)
+                for lit, ss_exprs in ss_lits.items()
+                for ss_expr in ss_exprs
+            ]
             raise ContradictionByLiteral(
                 "Intersection of literals is empty",
                 involved=[po],
                 literals=list(ss_lits.keys()),
                 mutator=mutator,
+                constraint_expr_pairs=constraint_pairs,
             )
 
         old_sss = [old_ss for old_ss_it in ss_lits.values() for old_ss in old_ss_it]

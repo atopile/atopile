@@ -1875,6 +1875,30 @@ pub const TypeGraph = struct {
 
                         // 2.4) Copy node attributes from MakeChild node to child instance
                         MakeChildNode.Attributes.of(info.make_child).load_node_attributes(child.node);
+
+                        // 2.5) If MakeChild has a source pointer, attach has_source_chunk trait
+                        if (EdgePointer.get_pointed_node_by_identifier(info.make_child, "source")) |source_chunk| {
+                            if (self.type_graph.get_type_by_name("has_source_chunk")) |has_source_chunk_type| {
+                                // Instantiate the trait
+                                switch (self.type_graph.instantiate_node(has_source_chunk_type)) {
+                                    .ok => |trait_instance| {
+                                        // Attach trait to the child instance
+                                        const trait_edge = EdgeTrait.add_trait_instance(child, trait_instance.node);
+                                        trait_edge.edge.set_attribute_name("has_source_chunk");
+
+                                        // TODO: remove hardcoded source pointer and pointer edge identifiers
+                                        // Find the source_ptr child of the trait and point it to the source chunk
+                                        if (EdgeComposition.get_child_by_identifier(trait_instance, "source_ptr")) |source_ptr| {
+                                            _ = EdgePointer.point_to(source_ptr, source_chunk.node, "source", null);
+                                        }
+                                    },
+                                    .err => {
+                                        std.debug.print("Failed to instantiate has_source_chunk trait while executing MakeChild\n", .{});
+                                        return visitor.VisitResult(void){ .ERROR = error.InstantiationFailed };
+                                    },
+                                }
+                            }
+                        }
                     },
                     .err => |err_info| {
                         // Propagate the error with the original failing node and identifier
@@ -2342,6 +2366,19 @@ pub const TypeGraph = struct {
             // Visitor for EdgeTrait instances or owner
             fn visit_trait_instance_or_owner(ctx_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                // Skip "has_source_chunk" trait edges - these point to source chunk nodes
+                // in the type graph and should not be copied (they would cause the entire
+                // source chunk subgraph to be copied, leading to issues during solver bootstrap).
+                // Check the trait instance's type name to identify has_source_chunk traits
+                const trait_instance = EdgeTrait.get_trait_instance_node(bound_edge.edge);
+                const bound_trait = bound_edge.g.bind(trait_instance);
+                if (EdgeType.get_type_edge(bound_trait)) |type_edge| {
+                    const type_node = EdgeType.get_type_node(type_edge.edge);
+                    const type_name = TypeNodeAttributes.of(type_node).get_type_name();
+                    if (std.mem.eql(u8, type_name, "has_source_chunk")) {
+                        return visitor.VisitResult(void){ .CONTINUE = {} };
+                    }
+                }
                 const owner = bound_edge.edge.get_source_node();
                 _ = ctx.add_node(owner);
                 const instance = bound_edge.edge.get_target_node();
