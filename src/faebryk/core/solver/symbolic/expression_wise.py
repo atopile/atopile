@@ -613,7 +613,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                     F.Expressions.is_expression
                 ):
                     # ¬!(¬A v ...)
-                    if inner_op_e.try_cast(F.Expressions.Not):
+                    if fabll.Traits(inner_op_e).get_obj_raw().try_cast(F.Expressions.Not):
                         for not_op in inner_op_e.get_operands():
                             if (
                                 (not_op_po := not_op.as_parameter_operatable.try_get())
