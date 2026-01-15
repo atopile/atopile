@@ -750,6 +750,62 @@ class TestLCSCattach:
         )
 
     @pytest.mark.usefixtures("setup_project_config")
+    def test_attach_led(self):
+        """
+        Special case where the LED itself does not has any leads, but the
+        diode it's composed of does.
+        """
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.core.node as fabll
+
+        LCSC_ID = "C2289"
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        led = F.LED.bind_typegraph(tg=tg).create_instance(g=g)
+
+        component_with_fp = led.get_trait(F.Footprints.can_attach_to_footprint)
+        attach(component_with_fp=component_with_fp, partno=LCSC_ID)
+
+        associated_footprint = led.try_get_trait(F.Footprints.has_associated_footprint)
+
+        assert associated_footprint is not None
+
+        # After attach: footprint should now be linked
+        footprint = associated_footprint.get_footprint()
+
+        # there should also be a kicad library footprint linked
+        kicad_library_footprint = footprint.try_get_trait(
+            F.KiCadFootprints.has_associated_kicad_library_footprint
+        )
+        assert kicad_library_footprint is not None
+
+        diode_lead_nodes = led.diode.get().get_children(
+            direct_only=False, types=fabll.Node, required_trait=F.Lead.is_lead
+        )
+        assert len(diode_lead_nodes) == 2
+        diode_lead_traits = [
+            lead.get_trait(F.Lead.is_lead) for lead in diode_lead_nodes
+        ]
+        assert all(
+            lead.has_trait(F.Lead.has_associated_pads) for lead in diode_lead_traits
+        )
+        assert [lead.get_lead_name() for lead in diode_lead_traits] == [
+            "anode",
+            "cathode",
+        ]
+
+        diode_pads_traits = [
+            lead.get_trait(F.Lead.has_associated_pads) for lead in diode_lead_traits
+        ]
+        assert len(diode_pads_traits) == 2
+        pads = [pad.get_pads() for pad in diode_pads_traits]
+        assert len(pads) == 2
+        assert [pad.pad_name for pad in pads[0]] == ["A"]
+        assert [pad.pad_name for pad in pads[1]] == ["K"]
+
+    @pytest.mark.usefixtures("setup_project_config")
     def test_attach_mosfet(self):
         import faebryk.core.faebrykpy as fbrk
         import faebryk.core.node as fabll
