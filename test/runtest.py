@@ -63,12 +63,16 @@ def discover_tests(
         if not re.search(test_pattern, fp.read_text(encoding="utf-8")):
             continue
         try:
-            spec = importlib.util.spec_from_file_location("test_module", fp)
+            module_name = f"test_module_{fp.stem}"
+            spec = importlib.util.spec_from_file_location(module_name, fp)
             if spec is None:
                 continue
             module = importlib.util.module_from_spec(spec)
             if spec.loader is None:
                 continue
+            # Register module in sys.modules before exec to allow forward references
+            # in dataclasses to resolve correctly
+            sys.modules[module_name] = module
             # redirect_stderr and redirect_stdout to devnull
             # with redirect_stdout(open(os.devnull, "w")):
             #   with redirect_stderr(open(os.devnull, "w")):
