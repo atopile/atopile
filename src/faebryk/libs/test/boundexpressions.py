@@ -259,7 +259,7 @@ class BoundExpressions:
         self,
         units: "type[fabll.Node] | None" = None,
         within: "F.Literals.Numbers | None" = None,
-        domain: "F.NumberDomain.Args | None" = None,
+        domain: "F.NumberDomain.Args | type[F.Parameters.NumericParameter.DOMAIN_SKIP] | None" = None,  # noqa: E501
         attach_to: "tuple[fabll.Node, str] | None" = None,
     ) -> F.Parameters.can_be_operand:
         is_unit_node = (

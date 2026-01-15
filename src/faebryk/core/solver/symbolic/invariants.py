@@ -2106,8 +2106,12 @@ class TestSubsumptionDetection:
         self, existing_pred, new_pred, same_param, assert_existing
     ):
         E = BoundExpressions()
-        X = E.parameter_op()
-        Y = E.parameter_op() if not same_param else X
+        X = E.parameter_op(domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
+        Y = (
+            E.parameter_op(domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
+            if not same_param
+            else X
+        )
 
         existing_expr = self._make_pred(E, existing_pred, X, assert_=assert_existing)
         mut_map = MutationMap.bootstrap(tg=E.tg, g=E.g)
