@@ -1,3 +1,8 @@
+from pathlib import Path
+
+from test.end_to_end.conftest import dump_and_run
+from test.end_to_end.test_pcb_export import PcbSummary, summarize_pcb_file
+
 from .conftest import EXEC_T
 
 
@@ -117,3 +122,31 @@ def test_differential_pair_suffixes(build_app: EXEC_T, save_tmp_path_on_failure:
     )
 
     assert p.returncode == 0
+
+
+def test_expected_net_name(tmpdir: Path):
+    pcb_file = tmpdir / Path("layout/app/app.kicad_pcb")
+    assert not pcb_file.exists()
+
+    app = """
+    #pragma experiment("BRIDGE_CONNECT")
+    import I2C
+    import Resistor
+
+    module App:
+        i2c = new I2C
+        resistor = new Resistor
+        resistor.lcsc_id = "C25804"
+
+        i2c.scl.line ~> resistor ~> i2c.sda.line
+    """
+
+    _, stderr, p = dump_and_run(app, [], working_dir=tmpdir)
+
+    assert p.returncode == 0
+    assert pcb_file.exists()
+    # print(pcb_file.read_text(encoding="utf-8"))
+
+    assert summarize_pcb_file(pcb_file) == PcbSummary(
+        num_layers=29, nets=["SCL", "SDA"], footprints=["R1"]
+    )

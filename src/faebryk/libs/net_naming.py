@@ -5,7 +5,7 @@ import logging
 import re
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Generator, Iterable, Mapping
+from typing import Callable, Generator, Iterable, Mapping
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
@@ -143,11 +143,6 @@ def _register_named_nets(
             names[net] = _NetName(base_name=net.get_trait(F.has_net_name).get_name())
 
 
-def _get_hierarchy_depth(owner_node: fabll.Node) -> int:
-    """Get hierarchy depth of trait owner. Lower depth = higher priority."""
-    return len(owner_node.get_hierarchy())
-
-
 def _calculate_suggested_name_rank(mif: fabll.Node, base_depth: int) -> int:
     """Calculate rank for a suggested name based on hierarchy."""
     rank = base_depth
@@ -170,61 +165,45 @@ def _extract_net_name_info(
     suggested_names: list[tuple[str, int]] = []
     implicit_candidates: dict[str, float] = {}
 
-    depth = len(electrical.get_hierarchy())
-
-    # Collect all has_net_name_suggestion trait instances to handle cases where
-    # both library-defined (type-level) and user-defined (instance-level) traits
-    # exist. Prioritize EXPECTED over SUGGESTED.
-    trait_type = fabll.TypeNodeBoundTG.get_or_create_type_in_tg(
-        electrical.tg, F.has_net_name_suggestion
-    )
-
-    class TraitCollector:
-        def __init__(self):
-            self.instances = []
-
-        def collect(self, ctx, bound_edge):
-            trait_node = fbrk.EdgeTrait.get_trait_instance_node(edge=bound_edge.edge())
-            trait_instance = F.has_net_name_suggestion.bind_instance(
-                instance=bound_edge.g().bind(node=trait_node)
-            )
-            # Get the owner node where this trait is attached
-            owner_node = fbrk.EdgeTrait.get_owner_node(edge=bound_edge.edge())
-            owner_bound = bound_edge.g().bind(node=owner_node)
-            self.instances.append((trait_instance, owner_bound))
-
-    collector = TraitCollector()
-    fbrk.EdgeTrait.visit_trait_instances_of_type(
-        owner=electrical.instance,
-        trait_type=trait_type.node(),
-        ctx=collector,
-        f=collector.collect,
-    )
+    hierarchy = electrical.get_hierarchy()
+    elec_depth = len(hierarchy)
 
     # Process all found trait instances, prioritizing EXPECTED
-    for has_net_name_suggestion, owner_bound in collector.instances:
-        if has_net_name_suggestion.level == F.has_net_name_suggestion.Level.EXPECTED:
-            required_names.add(has_net_name_suggestion.name)
-        elif has_net_name_suggestion.level == F.has_net_name_suggestion.Level.SUGGESTED:
-            # Rank based on hierarchy depth: lower depth = higher priority
-            owner_node = fabll.Node.bind_instance(instance=owner_bound)
-            rank = _get_hierarchy_depth(owner_node)
-            suggested_names.append((has_net_name_suggestion.name, rank))
+    def check_suggested_name(node: fabll.Node, depth: int):
+        if has_net_name_suggestion := node.try_get_trait(F.has_net_name_suggestion):
+            owner_node = fabll.Traits(has_net_name_suggestion).get_obj_raw()
+            if (
+                has_net_name_suggestion.level
+                == F.has_net_name_suggestion.Level.EXPECTED
+            ):
+                required_names.add(has_net_name_suggestion.name)
+            elif (
+                has_net_name_suggestion.level
+                == F.has_net_name_suggestion.Level.SUGGESTED
+            ):
+                # Rank based on hierarchy depth: lower depth = higher priority
+                rank = _calculate_suggested_name_rank(owner_node, depth)
+                suggested_names.append((has_net_name_suggestion.name, rank))
+
+    check_suggested_name(electrical, 0)
 
     # TODO not sure it makes sense to have net names on nodes that arent electricals
     # TODO this will just fail all the time
     # Also consider traits on ancestor interfaces in the hierarchy
     try:
-        for node, _name_in_parent in electrical.get_hierarchy():
+        for idx, (node, _name_in_parent) in enumerate(hierarchy):
             if not node.get_parent():
                 continue
             if not node.has_trait(fabll.is_interface):
                 continue
-            if not node.has_trait(F.has_net_name):
-                continue
             # has_net_name is always a required/expected name (no level property)
-            has_net_name = node.get_trait(F.has_net_name)
-            required_names.add(has_net_name.get_name())
+            if has_net_name := node.try_get_trait(F.has_net_name):
+                required_names.add(has_net_name.get_name())
+            else:
+                check_suggested_name(
+                    node, idx
+                )  # idx increases as we go further from the electrical
+
     except fabll.NodeNoParent:
         pass
 
@@ -236,10 +215,10 @@ def _extract_net_name_info(
 
     # Adjust depth for interfaces on the same level
     if electrical.get_parent_of_type(fabll.Node):
-        depth -= 1
+        elec_depth -= 1
 
     # Calculate implicit name score
-    score = (1 / (depth + 1)) * _name_shittiness(name.lower())
+    score = (1 / (elec_depth + 1)) * _name_shittiness(name.lower())
     implicit_candidates[name] = score
 
     return required_names, suggested_names, implicit_candidates
@@ -311,7 +290,7 @@ def _is_generic_name(name: str | None) -> bool:
         return True
 
     generic_names = {"line", "hv", "p", "n"}
-    generic_patterns = [
+    generic_patterns: list[Callable[[str], bool]] = [
         lambda n: n.startswith("unnamed"),
         lambda n: re.match(r"^(_\d+|p\d+)$", n) is not None,
     ]
@@ -609,8 +588,10 @@ def _assign_prefix_for_net(
 
 def _resolve_conflicts_with_prefixes(names: FuncDict[F.Net, _NetName]) -> None:
     """Resolve naming conflicts by adding interface-based prefixes."""
-    for conflict_nets in _conflicts(names):
-        # Sort nets deterministically within the conflict group
+    conflicts = _conflicts(names)
+    for (
+        conflict_nets
+    ) in conflicts:  # Sort nets deterministically within the conflict group
         ordered_conflict_nets = sorted(conflict_nets, key=_get_net_stable_key)
 
         # Get interface paths for all conflicting nets
@@ -725,3 +706,106 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
     _apply_names_to_nets(names)
 
     assert all(n.has_trait(F.has_net_name) for n in nets)
+
+
+class TestNetNaming:
+    def test_expected_net_name(self):
+        import faebryk.core.node as fabll
+        from faebryk.core.faebrykpy import EdgeInterfaceConnection as interface
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        class App(fabll.Node):
+            i2c = F.I2C.MakeChild()
+            power = F.ElectricPower.MakeChild()
+
+            fabll.MakeEdge(
+                [power],
+                [i2c, "reference"],
+                edge=interface.build(shallow=False),
+            )
+
+        app = App.bind_typegraph(tg=tg).create_instance(g=g)
+
+        scl_names = _extract_net_name_info(app.i2c.get().scl.get().line.get())
+        sda_names = _extract_net_name_info(app.i2c.get().sda.get().line.get())
+        power_hv_names = _extract_net_name_info(app.power.get().hv.get())
+        power_lv_names = _extract_net_name_info(app.power.get().lv.get())
+
+        print(f"scl_names: {scl_names}")
+        print(f"sda_names: {sda_names}")
+        print(f"power_lv_names: {power_lv_names}")
+        print(f"power_hv_names: {power_hv_names}")
+
+        assert scl_names[0] == set()
+        assert scl_names[1] == [("SCL", 0)]
+        assert scl_names[2] == {"line": 0.075}
+
+        assert sda_names[0] == set()
+        assert sda_names[1] == [("SDA", 0)]
+        assert sda_names[2] == {"line": 0.075}
+
+        assert power_lv_names[0] == set()
+        assert power_lv_names[1] == [("lv", -1), ("lv", 1)]
+        assert power_lv_names[2] == {"lv": 0.3333333333333333}
+
+        assert power_hv_names[0] == set()
+        assert power_hv_names[1] == [("hv", -1), ("hv", 1)]
+        assert power_hv_names[2] == {"hv": 0.09999999999999999}
+
+    def test_hierarchical_net_name_suggestions(self):
+        import faebryk.core.node as fabll
+        from faebryk.core.faebrykpy import EdgeInterfaceConnection as interface
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        class SomeModule(fabll.Node):
+            electrical_base = F.Electrical.MakeChild()
+            electrical_base.add_dependant(
+                fabll.Traits.MakeEdge(
+                    F.has_net_name_suggestion.MakeChild(
+                        name="E_BASE",
+                        level=F.has_net_name_suggestion.Level.SUGGESTED,
+                    ),
+                    owner=[electrical_base],
+                )
+            )
+
+        class App(fabll.Node):
+            some_module = SomeModule.MakeChild()
+
+            electrical_app = F.Electrical.MakeChild()
+            electrical_app.add_dependant(
+                fabll.Traits.MakeEdge(
+                    F.has_net_name_suggestion.MakeChild(
+                        name="E_APP", level=F.has_net_name_suggestion.Level.SUGGESTED
+                    ),
+                    owner=[electrical_app],
+                )
+            )
+
+            fabll.MakeEdge(
+                [electrical_app],
+                [some_module, "electrical_base"],
+                edge=interface.build(shallow=False),
+            )
+
+        app = App.bind_typegraph(tg=tg).create_instance(g=g)
+
+        some_module_names = _extract_net_name_info(
+            app.some_module.get().electrical_base.get()
+        )
+        electrical_app_names = _extract_net_name_info(app.electrical_app.get())
+
+        print(f"some_module_names: {some_module_names}")
+        print(f"electrical_app_names: {electrical_app_names}")
+
+        assert some_module_names[0] == set()
+        assert some_module_names[1] == [("E_BASE", 0)]
+        assert some_module_names[2] == {"electrical_base": 0.075}
+
+        assert electrical_app_names[0] == set()
+        assert electrical_app_names[1] == [("E_APP", 0)]
+        assert electrical_app_names[2] == {"electrical_app": 0.075}

@@ -46,6 +46,20 @@ class I2C(fabll.Node):
 
     can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(in_=[""], out_=[""]))
 
+    net_names = [
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="SDA", level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[sda],
+        ),
+        fabll.Traits.MakeEdge(
+            F.has_net_name_suggestion.MakeChild(
+                name="SCL", level=F.has_net_name_suggestion.Level.SUGGESTED
+            ),
+            owner=[scl],
+        ),
+    ]
     # ----------------------------------------
     #                 functions
     # ----------------------------------------
