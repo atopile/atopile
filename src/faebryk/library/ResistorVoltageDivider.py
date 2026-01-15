@@ -116,16 +116,18 @@ class ResistorVoltageDivider(fabll.Node):
     )
 
     # ratio is! v_out / v_in
+    _eq_ratio_from_v_divide = F.Expressions.Divide.MakeChild([v_out], [v_in])
     _eq_ratio_from_v = F.Expressions.Is.MakeChild(
         [ratio],
-        [F.Expressions.Divide.MakeChild([v_out], [v_in])],
+        [_eq_ratio_from_v_divide],
         assert_=True,
     )
 
     # max_current is! v_in / r_total
+    _eq_max_current_divide = F.Expressions.Divide.MakeChild([v_in], [total_resistance])
     _eq_max_current = F.Expressions.Is.MakeChild(
         [max_current],
-        [F.Expressions.Divide.MakeChild([v_in], [total_resistance])],
+        [_eq_max_current_divide],
         assert_=True,
     )
 
