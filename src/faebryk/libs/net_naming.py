@@ -586,7 +586,8 @@ def _assign_prefix_for_net(
             return
 
     # Use the computed suffix from the path
-    net_name.prefix = "-".join(path[-suffix_len[net] :])
+    prefix_parts = path[-suffix_len[net] :]
+    net_name.prefix = "-".join(prefix_parts)
 
 
 def _resolve_conflicts_with_prefixes(names: FuncDict[F.Net, _NetName]) -> None:
@@ -609,15 +610,17 @@ def _resolve_conflicts_with_prefixes(names: FuncDict[F.Net, _NetName]) -> None:
             paths, list(ordered_conflict_nets)
         )
 
-        # Assign prefixes to each net
-        for net in ordered_conflict_nets:
+        # Assign prefixes to each net except the first one (highest in hierarchy)
+        for net in ordered_conflict_nets[1:]:
             _assign_prefix_for_net(net, paths[net], suffix_len, names)
 
 
 def _resolve_conflicts_with_lca(names: FuncDict[F.Net, _NetName]) -> None:
     """Resolve remaining conflicts using lowest common ancestor."""
     for conflict_nets in _conflicts(names):
-        for net in conflict_nets:
+        # Sort nets deterministically and skip the first one (highest in hierarchy)
+        ordered_conflict_nets = sorted(conflict_nets, key=_get_net_stable_key)
+        for net in ordered_conflict_nets[1:]:
             # Skip if already has a prefix
             if names[net].prefix is not None:
                 continue
@@ -627,15 +630,26 @@ def _resolve_conflicts_with_lca(names: FuncDict[F.Net, _NetName]) -> None:
             lcn = fabll.Node.nearest_common_ancestor(*interfaces)
 
             if lcn:
-                names[net].prefix = lcn[0].get_full_name(include_uuid=False)
+                lca_name = lcn[0].get_full_name(include_uuid=False)
+
+                # Strip the last component if it matches the base name to avoid duplication
+                # e.g., if LCA is "some_module.electrical_base_0" and base is "electrical_base_0",
+                # use "some_module" as the prefix
+                if "." in lca_name:
+                    parts = lca_name.rsplit(".", 1)
+                    if parts[-1] == names[net].base_name:
+                        lca_name = parts[0]
+
+                names[net].prefix = lca_name
 
 
 def _resolve_conflicts_with_suffixes(names: FuncDict[F.Net, _NetName]) -> None:
     """Resolve remaining conflicts by adding numeric suffixes."""
     for conflict_nets in _conflicts(names):
         # Assign suffixes in a deterministic order within a conflict group
+        # Skip the first net (highest in hierarchy) to preserve its name
         ordered_conflict_nets = sorted(conflict_nets, key=_get_net_stable_key)
-        for i, net in enumerate(ordered_conflict_nets):
+        for i, net in enumerate(ordered_conflict_nets[1:], start=1):
             names[net].suffix = i
 
 
@@ -924,17 +938,16 @@ class TestNetNaming:
 
         attach_net_names(nets)
 
-        net_names = [net.get_name() for net in nets]
-        print(f"net_names: {net_names}")
-        assert (
-            net_names
-            == [
-                "some_module.electrical_base_0-electrical_base_0",  # TODO: should be some_module.electrical_base_0
-                "electrical_base_1",
-                "E_BASE",
-                "electrical_base_2",
-                "electrical_app_0",
-                "electrical_base_3",
-                "electrical_base_0-electrical_base_0",  # TODO: should be electrical_base_0
-            ]
+        net_names = sorted(
+            [net_name for net in nets if (net_name := net.get_name()) is not None]
         )
+        print(f"net_names: {net_names}")
+        assert net_names == [
+            "E_BASE",
+            "electrical_app_0",
+            "electrical_base_0",
+            "electrical_base_1",
+            "electrical_base_2",
+            "electrical_base_3",
+            "some_module-electrical_base_0",
+        ]
