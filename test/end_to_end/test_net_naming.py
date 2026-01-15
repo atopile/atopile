@@ -9,7 +9,7 @@ from .conftest import EXEC_T
 def test_duplicate_specified_net_names(
     build_app: EXEC_T, save_tmp_path_on_failure: None
 ):
-    _, stderr, p = build_app(
+    stdout, _, p = build_app(
         """
         import Resistor
         module App:
@@ -22,11 +22,11 @@ def test_duplicate_specified_net_names(
     )
 
     assert p.returncode != 0
-    assert "Net name collision" in stderr
+    assert "Net name collision" in stdout
 
 
 def test_conflicting_net_names(build_app: EXEC_T, save_tmp_path_on_failure: None):
-    _, stderr, p = build_app(
+    stdout, _, p = build_app(
         """
         import Resistor
         module App:
@@ -40,7 +40,7 @@ def test_conflicting_net_names(build_app: EXEC_T, save_tmp_path_on_failure: None
     )
 
     assert p.returncode != 0
-    assert "Multiple conflicting required net names" in stderr
+    assert "Multiple conflicting required net names" in stdout
 
 
 def test_agreeing_net_names(build_app: EXEC_T, save_tmp_path_on_failure: None):

@@ -1,21 +1,64 @@
 import contextlib
 import logging
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.build_steps import Tags, muster
-from atopile.build_steps import generate_default as default_target
-from atopile.config import config
+from faebryk.core.solver.solver import Solver
+from atopile.config import BuildType, config
 from atopile.errors import UserToolNotAvailableError
-from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.core.solver.nullsolver import NullSolver
 from faebryk.libs.exceptions import accumulate
-from faebryk.libs.util import ConfigFlag, once
+from faebryk.libs.util import once
+
+if TYPE_CHECKING:
+    from atopile.compiler.build import BuildFileResult, Linker
 
 logger = logging.getLogger(__name__)
 
 
-SKIP_SOLVING = ConfigFlag("SKIP_SOLVING", default=False)
+@dataclass
+class BuildContext:
+    g: graph.GraphView
+    tg: fbrk.TypeGraph
+    build_type: BuildType
+    app_type: graph.BoundNode | None = None
+    app_class: type[fabll.Node] | None = None
+    linker: "Linker | None" = None
+    result: "BuildFileResult | None" = None
+    app: fabll.Node | None = None
+
+
+@dataclass
+class BuildStepContext:
+    build: BuildContext | None
+    app: fabll.Node | None = None
+    solver: Solver | None = None
+    pcb: F.PCB | None = None
+
+    def require_build(self) -> BuildContext:
+        if self.build is None:
+            raise RuntimeError("Build context is not initialized")
+        return self.build
+
+    def require_app(self) -> fabll.Node:
+        if self.app is not None:
+            return self.app
+        if self.build is not None and self.build.app is not None:
+            return self.build.app
+        raise RuntimeError("App is not instantiated")
+
+    def require_solver(self) -> Solver:
+        if self.solver is None:
+            raise RuntimeError("Solver is not initialized")
+        return self.solver
+
+    def require_pcb(self) -> F.PCB:
+        if self.pcb is None:
+            raise RuntimeError("PCB is not initialized")
+        return self.pcb
 
 
 @once
@@ -29,39 +72,68 @@ def _check_kicad_cli() -> bool:
     return False
 
 
-def build(app: fabll.Node) -> None:
-    """Build the project."""
-    if SKIP_SOLVING:
-        logger.warning("Assertion checking is disabled")
-        solver = NullSolver()
-    else:
-        solver = DefaultSolver()
+def run_build_targets(ctx: BuildStepContext) -> None:
+    """Run build targets in dependency order."""
+    from atopile import build_steps
 
-    # Convert Path object to string before passing to setup
-    pcb = F.PCB.bind_typegraph(app.tg).create_instance(g=app.g).setup(
-        path=str(config.build.paths.layout),
-        app=app
-    )
-
-    targets = {default_target.name} | set(config.build.targets) - set(
+    targets = {build_steps.generate_default.name} | set(config.build.targets) - set(
         config.build.exclude_targets
     )
 
     with accumulate() as accumulator:
-        for target in muster.select(targets):
+        for target in build_steps.muster.select(targets):
             if target.name in config.build.exclude_targets:
                 logger.warning(f"Skipping excluded build step '{target.name}'")
                 continue
 
-            if Tags.REQUIRES_KICAD in target.tags and not _check_kicad_cli():
+            if build_steps.Tags.REQUIRES_KICAD in target.tags and not _check_kicad_cli():
                 if target.implicit:
                     logger.warning(
                         f"Skipping target '{target.name}' because kicad-cli "
                         "was not found"
                     )
                     continue
-                else:
-                    raise UserToolNotAvailableError("kicad-cli not found")
+                raise UserToolNotAvailableError("kicad-cli not found")
 
             with accumulator.collect():
-                target(app, solver, pcb)
+                target(ctx)
+
+
+def _load_python_app_class() -> type[fabll.Node]:
+    """Initialize a specific .py build."""
+    from atopile import errors
+    from atopile.compiler.build import (
+        FabllTypeFileNotFoundError,
+        FabllTypeNotATypeError,
+        FabllTypeNotNodeSubclassError,
+        FabllTypeSymbolNotFoundError,
+        import_fabll_type,
+    )
+
+    try:
+        return import_fabll_type(
+            config.build.entry_file_path, config.build.entry_section
+        )
+    except FabllTypeFileNotFoundError as e:
+        raise errors.UserFileNotFoundError(
+            f"Cannot find build entry {config.build.address}"
+        ) from e
+    except FabllTypeSymbolNotFoundError as e:
+        raise errors.UserPythonModuleError(
+            f"Cannot import build entry {config.build.address}"
+        ) from e
+    except FabllTypeNotATypeError as e:
+        raise errors.UserPythonLoadError(
+            f"Build entry {config.build.address} is not a module we can instantiate"
+        ) from e
+    except FabllTypeNotNodeSubclassError as e:
+        raise errors.UserPythonConstructionError(
+            f"Build entry {config.build.address} is not a subclass of fabll.Node"
+        ) from e
+
+
+def build(app: fabll.Node | None = None) -> fabll.Node:
+    """Build the project."""
+    ctx = BuildStepContext(build=None, app=app)
+    run_build_targets(ctx)
+    return ctx.require_app()

@@ -12,8 +12,9 @@ Primary goals:
 - serializable graph
 
 ### Virtual Environment
-- This project uses a uv-managed virtual environment. From the repo root, activate it with `source .venv/bin/activate` (avoid `uv run` here; it can hit permission issues on cached sdists).
-- If uv needs to materialize the env, run `UV_CACHE_DIR=.uv-cache uv sync` first, then `source .venv/bin/activate`.
+- This project uses a uv-managed virtual environment
+- If running in interactive shell activate with `source .venv/bin/activate`
+- Else run commands with `uv run <command>` prefix
 
 ## Graph and Fabll Re-Design
 

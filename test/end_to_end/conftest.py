@@ -34,6 +34,8 @@ EXEC_T = Callable[[str, list[str]], tuple[str, str, subprocess.Popen]]
 
 
 def dump_and_run(src: str, args: list[str], working_dir: Path):
+    if "-v" not in args:
+        args.insert(0, "-vv")
     # Copy the default_ato.yaml to the tmpdir
     shutil.copy2(DEFAULT_CONFIG, working_dir / "ato.yaml")
 

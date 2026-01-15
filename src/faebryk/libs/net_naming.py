@@ -391,7 +391,9 @@ def _apply_affixes(
             net_name.required_suffix = None
 
 
-def _find_anchor_interface(hierarchy: list[tuple]) -> tuple[int, tuple] | None:
+def _find_anchor_interface(
+    hierarchy: list[tuple[fabll.Node, str]],
+) -> tuple[int, tuple[fabll.Node, str]] | None:
     """Find the first non-Electrical fabll.Node in hierarchy."""
     for idx, (node, name) in enumerate(hierarchy):
         is_interface = node.has_trait(fabll.is_interface)
@@ -584,7 +586,8 @@ def _assign_prefix_for_net(
             return
 
     # Use the computed suffix from the path
-    net_name.prefix = "-".join(path[-suffix_len[net] :])
+    prefix_parts = path[-suffix_len[net] :]
+    net_name.prefix = "-".join(prefix_parts)
 
 
 def _resolve_conflicts_with_prefixes(names: FuncDict[F.Net, _NetName]) -> None:
@@ -607,15 +610,17 @@ def _resolve_conflicts_with_prefixes(names: FuncDict[F.Net, _NetName]) -> None:
             paths, list(ordered_conflict_nets)
         )
 
-        # Assign prefixes to each net
-        for net in ordered_conflict_nets:
+        # Assign prefixes to each net except the first one (highest in hierarchy)
+        for net in ordered_conflict_nets[1:]:
             _assign_prefix_for_net(net, paths[net], suffix_len, names)
 
 
 def _resolve_conflicts_with_lca(names: FuncDict[F.Net, _NetName]) -> None:
     """Resolve remaining conflicts using lowest common ancestor."""
     for conflict_nets in _conflicts(names):
-        for net in conflict_nets:
+        # Sort nets deterministically and skip the first one (highest in hierarchy)
+        ordered_conflict_nets = sorted(conflict_nets, key=_get_net_stable_key)
+        for net in ordered_conflict_nets[1:]:
             # Skip if already has a prefix
             if names[net].prefix is not None:
                 continue
@@ -625,15 +630,27 @@ def _resolve_conflicts_with_lca(names: FuncDict[F.Net, _NetName]) -> None:
             lcn = fabll.Node.nearest_common_ancestor(*interfaces)
 
             if lcn:
-                names[net].prefix = lcn[0].get_full_name(include_uuid=False)
+                lca_name = lcn[0].get_full_name(include_uuid=False)
+
+                # Strip the last component if it matches the base name to
+                # avoid duplication.
+                # e.g., if LCA is "some_module.electrical_base_0" and base is
+                # "electrical_base_0", use "some_module" as the prefix
+                if "." in lca_name:
+                    parts = lca_name.rsplit(".", 1)
+                    if parts[-1] == names[net].base_name:
+                        lca_name = parts[0]
+
+                names[net].prefix = lca_name
 
 
 def _resolve_conflicts_with_suffixes(names: FuncDict[F.Net, _NetName]) -> None:
     """Resolve remaining conflicts by adding numeric suffixes."""
     for conflict_nets in _conflicts(names):
         # Assign suffixes in a deterministic order within a conflict group
+        # Skip the first net (highest in hierarchy) to preserve its name
         ordered_conflict_nets = sorted(conflict_nets, key=_get_net_stable_key)
-        for i, net in enumerate(ordered_conflict_nets):
+        for i, net in enumerate(ordered_conflict_nets[1:], start=1):
             names[net].suffix = i
 
 
@@ -691,8 +708,6 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
 
     # Apply affixes
     _apply_affixes(unnamed_nets, names)
-
-    # Note: differential pair harmonization removed to avoid cross-net coupling
 
     # Resolve conflicts through prefixing
     _resolve_conflicts_with_prefixes(names)
@@ -754,6 +769,30 @@ class TestNetNaming:
         assert power_hv_names[0] == set()
         assert power_hv_names[1] == [("hv", -1), ("hv", 1)]
         assert power_hv_names[2] == {"hv": 0.09999999999999999}
+
+    def _bind_nets_for_test(
+        self,
+        electricals: Iterable[F.Electrical],
+        tg: fbrk.TypeGraph,
+        g: fabll.graph.GraphView,
+    ) -> set[F.Net]:
+        fbrk_nets: set[F.Net] = set()
+        # collect buses in a sorted manner
+        buses = sorted(
+            fabll.is_interface.group_into_buses(electricals),
+            key=lambda node: node.get_full_name(include_uuid=False),
+        )
+
+        # find or generate nets
+        for bus in buses:
+            if fbrk_net := get_named_net(bus):
+                fbrk_nets.add(fbrk_net)
+            else:
+                fbrk_net = F.Net.bind_typegraph(tg).create_instance(g=g)
+                fbrk_net.part_of.get()._is_interface.get().connect_to(bus)
+                fbrk_nets.add(fbrk_net)
+
+        return fbrk_nets
 
     def test_hierarchical_net_name_suggestions(self):
         import faebryk.core.node as fabll
@@ -818,28 +857,16 @@ class TestNetNaming:
         assert electrical_app_names[1] == [("E_APP", -1), ("E_APP", 0)]
         assert electrical_app_names[2] == {"electrical_app": 0.5}
 
-        def bind_nets_for_test(electricals: Iterable[F.Electrical]) -> set[F.Net]:
-            fbrk_nets: set[F.Net] = set()
-            # collect buses in a sorted manner
-            buses = sorted(
-                fabll.is_interface.group_into_buses(electricals),
-                key=lambda node: node.get_full_name(include_uuid=False),
-            )
-
-            # find or generate nets
-            for bus in buses:
-                if fbrk_net := get_named_net(bus):
-                    fbrk_nets.add(fbrk_net)
-                else:
-                    fbrk_net = F.Net.bind_typegraph(tg).create_instance(g=g)
-                    fbrk_net.part_of.get()._is_interface.get().connect_to(bus)
-                    fbrk_nets.add(fbrk_net)
-
-            return fbrk_nets
-
-        nets = bind_nets_for_test(
-            [app.some_module.get().electrical_base.get(), app.electrical_app.get()]
+        nets = self._bind_nets_for_test(
+            electricals=[
+                app.some_module.get().electrical_base.get(),
+                app.electrical_app.get(),
+            ],
+            tg=tg,
+            g=g,
         )
+
+        assert len(nets) == 1
 
         attach_net_names(nets)
 
@@ -854,3 +881,242 @@ class TestNetNaming:
         # name of the highest in the hierarchy should be chosen
 
         assert base_net == app_net
+
+    def test_net_name_conflicts(self):
+        import faebryk.core.node as fabll
+        from faebryk.core.faebrykpy import EdgeInterfaceConnection as interface
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        class SomeModule(fabll.Node):
+            electrical_base = F.Electrical.MakeChild()
+            electrical_base.add_dependant(
+                fabll.Traits.MakeEdge(
+                    F.has_net_name_suggestion.MakeChild(
+                        name="E_BASE",
+                        level=F.has_net_name_suggestion.Level.EXPECTED,
+                    ),
+                    owner=[electrical_base],
+                )
+            )
+            electrical_base_0 = F.Electrical.MakeChild()
+            electrical_base_1 = F.Electrical.MakeChild()
+            electrical_base_2 = F.Electrical.MakeChild()
+            electrical_base_3 = F.Electrical.MakeChild()
+
+        class App(fabll.Node):
+            some_module = SomeModule.MakeChild()
+
+            electrical_app = F.Electrical.MakeChild()
+            electrical_app.add_dependant(
+                fabll.Traits.MakeEdge(
+                    F.has_net_name_suggestion.MakeChild(
+                        name="E_APP", level=F.has_net_name_suggestion.Level.SUGGESTED
+                    ),
+                    owner=[electrical_app],
+                )
+            )
+
+            _elec_connection = fabll.MakeEdge(
+                [electrical_app],
+                [some_module, "electrical_base"],
+                edge=interface.build(shallow=False),
+            )
+
+            electrical_base_0 = F.Electrical.MakeChild()
+            electrical_app_0 = F.Electrical.MakeChild()
+
+        app = App.bind_typegraph(tg=tg).create_instance(g=g)
+
+        nets = self._bind_nets_for_test(
+            electricals=app.get_children(direct_only=False, types=F.Electrical),
+            tg=tg,
+            g=g,
+        )
+
+        assert len(nets) == 7
+
+        attach_net_names(nets)
+
+        net_names = sorted(
+            [net_name for net in nets if (net_name := net.get_name()) is not None]
+        )
+        print(f"net_names: {net_names}")
+        assert net_names == [
+            "E_BASE",
+            "electrical_app_0",
+            "electrical_base_0",
+            "electrical_base_1",
+            "electrical_base_2",
+            "electrical_base_3",
+            "some_module-electrical_base_0",
+        ]
+
+    def test_all_conflict_resolution_strategies(self):
+        """Test that demonstrates all three conflict resolution strategies:
+        1. Prefix resolution (using interface paths)
+        2. LCA resolution (using lowest common ancestor)
+        3. Suffix resolution (using numeric suffixes)
+        """
+        import faebryk.core.node as fabll
+        from faebryk.core.faebrykpy import EdgeInterfaceConnection as interface
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        # Module with named interfaces that will create paths for prefix resolution
+        class SensorModule(fabll.Node):
+            i2c = F.I2C.MakeChild()
+            power = F.ElectricPower.MakeChild()
+
+            fabll.MakeEdge(
+                [power],
+                [i2c, "reference"],
+                edge=interface.build(shallow=False),
+            )
+
+        class ControllerModule(fabll.Node):
+            i2c = F.I2C.MakeChild()
+            power = F.ElectricPower.MakeChild()
+
+            fabll.MakeEdge(
+                [power],
+                [i2c, "reference"],
+                edge=interface.build(shallow=False),
+            )
+
+        class SimpleModule(fabll.Node):
+            # Plain electricals without interface hierarchy (will use LCA resolution)
+            signal_a = F.Electrical.MakeChild()
+            signal_b = F.Electrical.MakeChild()
+
+        # Module that contains identically named electricals
+        class IdenticalNetsModule(fabll.Node):
+            line = F.Electrical.MakeChild()
+
+        # Container module - create multiple electricals with same suggested name
+        # This forces suffix resolution since they'll all want the same name
+        class ContainerModule(fabll.Node):
+            clk1 = F.Electrical.MakeChild()
+            clk1.add_dependant(
+                fabll.Traits.MakeEdge(
+                    F.has_net_name_suggestion.MakeChild(
+                        name="CLK",
+                        level=F.has_net_name_suggestion.Level.SUGGESTED,
+                    ),
+                    owner=[clk1],
+                )
+            )
+
+            clk2 = F.Electrical.MakeChild()
+            clk2.add_dependant(
+                fabll.Traits.MakeEdge(
+                    F.has_net_name_suggestion.MakeChild(
+                        name="CLK",
+                        level=F.has_net_name_suggestion.Level.SUGGESTED,
+                    ),
+                    owner=[clk2],
+                )
+            )
+
+            clk3 = F.Electrical.MakeChild()
+            clk3.add_dependant(
+                fabll.Traits.MakeEdge(
+                    F.has_net_name_suggestion.MakeChild(
+                        name="CLK",
+                        level=F.has_net_name_suggestion.Level.SUGGESTED,
+                    ),
+                    owner=[clk3],
+                )
+            )
+
+        class AppWithConflicts(fabll.Node):
+            sensor = SensorModule.MakeChild()
+            controller = ControllerModule.MakeChild()
+            simple1 = SimpleModule.MakeChild()
+            simple2 = SimpleModule.MakeChild()
+
+            identical1 = IdenticalNetsModule.MakeChild()
+            identical2 = IdenticalNetsModule.MakeChild()
+            identical3 = IdenticalNetsModule.MakeChild()
+
+            container = ContainerModule.MakeChild()
+
+        app = AppWithConflicts.bind_typegraph(tg=tg).create_instance(g=g)
+
+        all_electricals = app.get_children(direct_only=False, types=F.Electrical)
+
+        nets = self._bind_nets_for_test(
+            electricals=all_electricals,
+            tg=tg,
+            g=g,
+        )
+
+        attach_net_names(nets)
+
+        # Get all net names sorted for consistent checking
+        net_names_dict = {
+            net_name: net for net in nets if (net_name := net.get_name()) is not None
+        }
+        net_names = sorted(net_names_dict)
+
+        assert len(net_names) == 30
+
+        print(f"\nAll net names ({len(net_names)}):")
+        for name in net_names:
+            print(f"  - {name}")
+
+        # prefix resolution: I2C interfaces should have prefixes based on their
+        # parent module name.
+        # e.g. sensor.i2c.scl and controller.i2c.scl
+        scl_nets = [name for name in net_names if "SCL" in name.upper()]
+        assert len(scl_nets) == 2, f"Expected 2 SCL nets, got {scl_nets}"
+        # only one should get a prefix
+        assert any("SCL" == name for name in scl_nets)
+        assert any("-" in name and "SCL" in name for name in scl_nets), (
+            "Expected one prefixed SCL"
+        )
+
+        # lca resolution: signal_a from simple1 and simple2 should use module
+        # names as prefixes
+        # e.g. simple1.signal_a and simple2.signal_a
+        signal_a_nets = [name for name in net_names if "signal_a" in name]
+        assert len(signal_a_nets) == 2, f"Expected 2 signal_a nets, got {signal_a_nets}"
+        # only one should get a prefix
+        assert "signal_a" in signal_a_nets
+        prefixed_signal = [n for n in signal_a_nets if n != "signal_a"]
+        assert len(prefixed_signal) == 1
+        assert "simple" in prefixed_signal[0]
+
+        # lca resolution: "line" nets from different identical modules get LCA prefixes
+        # e.g. identical1-line, identical2-line and identical3-line
+        line_nets = [name for name in net_names if "line" in name]
+        assert len(line_nets) == 3, f"Expected 3 line nets, got {line_nets}"
+        assert len(set(line_nets)) == 3, (
+            f"Expected 3 distinct line net names, got {line_nets}"
+        )
+        # should have different LCA-based prefixes
+        # e.g. identical1, identical2 and identical3
+        regex = r"identical\d"
+        assert any(re.match(regex, name) for name in line_nets), (
+            f"Expected line nets to have LCA-based prefixes, got {line_nets}"
+        )
+
+        # suffix resolution: multiple CLK nets with same suggested name
+        # e.g. container-clk1, container-clk2 and container-clk3
+        clk_nets = [name for name in net_names if "CLK" in name]
+        assert len(clk_nets) == 3, f"Expected 3 CLK nets, got {clk_nets}"
+        assert len(set(clk_nets)) == 3
+        # one should get a plain name, others get suffixes or prefixes
+        has_plain_clk = "CLK" in clk_nets
+        has_modifications = any(
+            ("-" in name or "container" in name.lower())
+            for name in clk_nets
+            if name != "CLK"
+        )
+
+        assert has_plain_clk or has_modifications, (
+            "Expected CLK nets to show conflict resolution (plain + suffixes/prefixes)"
+            f", got {clk_nets}"
+        )
