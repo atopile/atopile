@@ -1270,10 +1270,12 @@ class Mutator:
         """
 
         # check canonical
-        expr_bound = expr_factory.bind_typegraph(self.tg_out)
-        assert expr_bound.check_if_instance_of_type_has_trait(
-            F.Expressions.is_canonical
-        )
+        # only after canonicalize has run
+        if self.iteration > 0:
+            expr_bound = expr_factory.bind_typegraph(self.tg_out)
+            assert expr_bound.check_if_instance_of_type_has_trait(
+                F.Expressions.is_canonical
+            )
 
         # map operands to mutated
         new_operands = [

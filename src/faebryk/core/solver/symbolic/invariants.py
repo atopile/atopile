@@ -529,11 +529,17 @@ def _no_predicate_operands(
 
 
 def _fold_pure_literal_operands(
-    mutator: Mutator, builder: ExpressionBuilder
+    mutator: Mutator,
+    builder: ExpressionBuilder,
+    force_replacable_by_literal: bool = False,
 ) -> InsertExpressionResult | None:
     """
     Fold pure literal operands: E(X, Y) -> E{S/P|...}(X, Y)
     No pure P!
+
+    force_replacable_by_literal: if True, the expression is allowed to be
+    replaced by a literal
+    That is often the case for setic operations A ss! E, E pure, E can be replaced
     """
     from faebryk.core.solver.symbolic.pure_literal import exec_pure_literal_operands
 
@@ -561,6 +567,8 @@ def _fold_pure_literal_operands(
                 literals=[lit_fold],
                 mutator=mutator,
             )
+    if force_replacable_by_literal:
+        return InsertExpressionResult(lit_fold.as_operand.get(), False)
 
     new_expr = mutator._create_and_insert_expression(
         builder.factory,
@@ -865,7 +873,11 @@ def insert_expression(
     # * fold pure literal expressions
     # needs to run last since it creates new expressions
     # folding to literal will result in ss/sup in mutator.mutate_expression
-    if lit_fold := _fold_pure_literal_operands(mutator, builder):
+    if lit_fold := _fold_pure_literal_operands(
+        mutator,
+        builder,
+        force_replacable_by_literal=allow_uncorrelated_congruence_match,
+    ):
         return lit_fold
 
     if lit_fold := _fold_unpure_literal_operands(mutator, builder):
