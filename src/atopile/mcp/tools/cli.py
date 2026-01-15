@@ -35,7 +35,6 @@ class PackageVerifyResult(Result):
 def build_project(
     absolute_project_dir: Path, target_name_from_yaml: str
 ) -> BuildResult:
-    from atopile.build import init_app
     from atopile.config import config
 
     config.apply_options(
@@ -54,8 +53,7 @@ def build_project(
 
         try:
             with log_exceptions(logs):
-                app_root = init_app()
-                buildutil.build(app_root)
+                buildutil.build()
         except Exception:
             success = False
 

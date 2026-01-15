@@ -6,10 +6,8 @@ from pathlib import Path
 
 import pytest
 
-import faebryk.core.faebrykpy as fbrk
-import faebryk.core.graph as graph
-from atopile import errors
-from atopile.build import _init_python_app
+from atopile import build_steps, errors
+from atopile.buildutil import BuildStepContext
 from atopile.config import config
 
 PROJECT_DIR = Path("test/common/resources/test-project")
@@ -43,13 +41,13 @@ def from_project_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 )
 @pytest.mark.usefixtures("from_project_dir")
 def test_build_errors(build_name: str, expected_error):
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
     config.project_dir = Path.cwd()
     config.selected_builds = [build_name]
 
     with pytest.raises(expected_error) as exc_info, next(config.builds):
-        _init_python_app(g=g, tg=tg)
+        step_ctx = BuildStepContext(build=None)
+        build_steps.init_build_context_step(step_ctx, None)
+        build_steps.instantiate_app_step(step_ctx, None)
 
     assert exc_info.value.__cause__ is not None
     assert isinstance(exc_info.value.__cause__, ValueError)

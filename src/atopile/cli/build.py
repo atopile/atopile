@@ -1171,7 +1171,6 @@ def _run_single_build(frozen: bool | None = None) -> None:
 
     This is called when --parallel-worker flag is set.
     """
-    from atopile import build as buildlib
     from atopile import buildutil
     from atopile.config import config
 
@@ -1185,8 +1184,7 @@ def _run_single_build(frozen: bool | None = None) -> None:
     build_name = build_names[0]
 
     with config.select_build(build_name):
-        app = buildlib.init_app()
-        buildutil.build(app)
+        buildutil.build()
 
 
 def _build_all_projects(

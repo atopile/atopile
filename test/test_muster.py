@@ -8,6 +8,7 @@ import pytest
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.build_steps import Muster, MusterTarget
+from atopile.buildutil import BuildStepContext
 from atopile.cli.logging_ import LoggingStage
 from faebryk.core.solver.solver import Solver
 
@@ -18,9 +19,15 @@ class _InducedFailure(Exception):
 
 def _log_targets(targets: Generator[MusterTarget, None, None]) -> list[str]:
     logged_targets = []
+    ctx = BuildStepContext(
+        build=None,
+        app=Mock(spec=fabll.Module),
+        solver=Mock(spec=Solver),
+        pcb=Mock(spec=F.PCB),
+    )
     for t in targets:
         try:
-            t(Mock(), Mock(), Mock())
+            t(ctx)
             logged_targets.append(t.name)
         except _InducedFailure:
             pass
@@ -147,13 +154,13 @@ def test_muster_register_decorator():
 
     @muster.register("target1")
     def func1(
-        app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+        ctx: BuildStepContext, log_context: LoggingStage
     ) -> None:
         pass
 
     @muster.register("target2", dependencies=[muster.targets["target1"]])
     def func2(
-        app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+        ctx: BuildStepContext, log_context: LoggingStage
     ) -> None:
         pass
 
@@ -161,7 +168,7 @@ def test_muster_register_decorator():
         "target3", dependencies=[muster.targets["target1"], muster.targets["target2"]]
     )
     def func3(
-        app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+        ctx: BuildStepContext, log_context: LoggingStage
     ) -> None:
         pass
 
@@ -277,9 +284,12 @@ def test_muster_success_tracking():
     """Test that MusterTarget tracks success/failure status."""
     from unittest.mock import Mock
 
-    app = Mock(spec=fabll.Module)
-    solver = Mock(spec=Solver)
-    pcb = Mock(spec=F.PCB)
+    ctx = BuildStepContext(
+        build=None,
+        app=Mock(spec=fabll.Module),
+        solver=Mock(spec=Solver),
+        pcb=Mock(spec=F.PCB),
+    )
 
     # Test successful target execution
     success_func = Mock()
@@ -287,7 +297,7 @@ def test_muster_success_tracking():
 
     assert target.success is None  # Initially None
 
-    target(app, solver, pcb)
+    target(ctx)
 
     assert target.success is True
     success_func.assert_called_once()
@@ -297,9 +307,12 @@ def test_muster_failure_tracking():
     """Test that MusterTarget tracks failure status when exception occurs."""
     from unittest.mock import Mock
 
-    app = Mock(spec=fabll.Module)
-    solver = Mock(spec=Solver)
-    pcb = Mock(spec=F.PCB)
+    ctx = BuildStepContext(
+        build=None,
+        app=Mock(spec=fabll.Module),
+        solver=Mock(spec=Solver),
+        pcb=Mock(spec=F.PCB),
+    )
 
     # Test failing target execution
     failure_func = Mock(side_effect=_InducedFailure)
@@ -308,7 +321,7 @@ def test_muster_failure_tracking():
     assert target.success is None  # Initially None
 
     with pytest.raises(_InducedFailure):
-        target(app, solver, pcb)
+        target(ctx)
 
     assert target.success is False
     failure_func.assert_called_once()
