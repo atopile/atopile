@@ -58,7 +58,6 @@ class DefaultSolver(Solver):
             structural.predicate_flat_terminate,
             structural.predicate_unconstrained_operands_deduce,
             structural.transitive_subset,
-            structural.isolate_lone_params,
             structural.upper_estimation_of_expressions_with_subsets,
         ]
 
