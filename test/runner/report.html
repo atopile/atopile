@@ -221,6 +221,24 @@
         border-color: var(--ctp-lavender);
       }
 
+      .table-filter {
+        width: 100%;
+        padding: 4px 6px;
+        font-size: 11px;
+        box-sizing: border-box;
+      }
+
+      .search-row th {
+        padding: 2px 4px;
+        background-color: var(--ctp-surface0);
+        border: 1px solid var(--ctp-surface1);
+      }
+
+      .search-row th:hover {
+        background-color: var(--ctp-surface0);
+        cursor: default;
+      }
+
       .outcome-filters {
         display: flex;
         gap: 5px;
@@ -580,50 +598,83 @@
         }
       }
 
+      /**
+       * Create a search matcher that supports both plain text and regex
+       * @param {string} pattern - The search pattern (plain text or regex)
+       * @returns {function(string): boolean} - Function that tests if text matches
+       */
+      function createSearchMatcher(pattern) {
+        if (!pattern || pattern === "") {
+          return function () {
+            return true;
+          };
+        }
+
+        // Try to compile as regex first
+        try {
+          var regex = new RegExp(pattern, "i");
+          return function (text) {
+            return regex.test(text);
+          };
+        } catch (e) {
+          // If regex compilation fails, fall back to case-insensitive substring match
+          var upperPattern = pattern.toUpperCase();
+          return function (text) {
+            return text.toUpperCase().indexOf(upperPattern) > -1;
+          };
+        }
+      }
+
       function filterTable() {
-        var input, filter, table, tr, td, i, txtValue;
-        input = document.getElementById("searchInput");
-        filter = input.value.toUpperCase();
+        var input = document.getElementById("searchInput");
+        var generalMatcher = createSearchMatcher(input.value);
+
+        var functionInput = document.getElementById("functionSearchInput");
+        var functionMatcher = createSearchMatcher(functionInput.value);
 
         var logInput = document.getElementById("logSearchInput");
-        var logFilter = logInput.value.toUpperCase();
+        var logMatcher = createSearchMatcher(logInput.value);
+        var hasLogFilter = logInput.value !== "";
 
         var deltaOnlyCb = document.getElementById("deltaOnly");
         var deltaOnly = deltaOnlyCb && deltaOnlyCb.checked ? true : false;
 
-        table = document.getElementById("testTable");
-        // Get all rows from tbody
+        var table = document.getElementById("testTable");
         var tbody = table.getElementsByTagName("tbody")[0];
-        tr = tbody.getElementsByTagName("tr");
+        var tr = tbody.getElementsByTagName("tr");
 
         var checkedOutcomes = Array.from(
           document.querySelectorAll(".outcome-filter:checked")
         ).map((cb) => cb.value);
 
-        for (i = 0; i < tr.length; i++) {
-          var visible = false;
-
+        for (var i = 0; i < tr.length; i++) {
           var textMatch = false;
-          if (filter === "") {
-            textMatch = true;
-          } else {
-            // Search in File(0), Class(1), Function(2), Params(3)
-            for (var j = 0; j < 4; j++) {
-              td = tr[i].getElementsByTagName("td")[j];
-              if (td) {
-                txtValue = td.textContent || td.innerText;
-                if (txtValue.toUpperCase().indexOf(filter) > -1) {
-                  textMatch = true;
-                  break;
-                }
+          // Search in File(0), Class(1), Function(2), Params(3)
+          for (var j = 0; j < 4; j++) {
+            var td = tr[i].getElementsByTagName("td")[j];
+            if (td) {
+              var txtValue = td.textContent || td.innerText;
+              if (generalMatcher(txtValue)) {
+                textMatch = true;
+                break;
               }
             }
+          }
+
+          var functionMatch = false;
+          // Search only in Function column (index 2)
+          td = tr[i].getElementsByTagName("td")[2];
+          if (td) {
+            txtValue = td.textContent || td.innerText;
+            functionMatch = functionMatcher(txtValue);
+          } else {
+            functionMatch = functionMatcher("");
           }
 
           var logMatch = false;
           var logButton = tr[i].querySelector("button");
 
-          if (logFilter === "") {
+          if (!hasLogFilter) {
             logMatch = true;
             if (logButton) logButton.classList.remove("log-match");
           } else {
@@ -631,14 +682,14 @@
             var modalDiv = tr[i].querySelector(".modal-content");
             if (modalDiv) {
               var logText = modalDiv.textContent || modalDiv.innerText;
-              if (logText.toUpperCase().indexOf(logFilter) > -1) {
-                logMatch = true;
-                if (logButton) logButton.classList.add("log-match");
-              } else {
-                if (logButton) logButton.classList.remove("log-match");
+              logMatch = logMatcher(logText);
+              if (logMatch && logButton) {
+                logButton.classList.add("log-match");
+              } else if (logButton) {
+                logButton.classList.remove("log-match");
               }
             } else {
-              logMatch = false;
+              logMatch = logMatcher("");
             }
           }
 
@@ -660,7 +711,13 @@
               tr[i].classList.contains("row-fixed");
           }
 
-          if (textMatch && outcomeMatch && logMatch && deltaMatch) {
+          if (
+            textMatch &&
+            functionMatch &&
+            outcomeMatch &&
+            logMatch &&
+            deltaMatch
+          ) {
             tr[i].style.display = "";
           } else {
             tr[i].style.display = "none";
@@ -713,7 +770,12 @@
         });
         tbody.appendChild(fragment);
 
-        var headers = table.getElementsByTagName("th");
+        // Get headers from the second row (index 1) which contains the actual column headers
+        var thead = table.getElementsByTagName("thead")[0];
+        var headerRows = thead.getElementsByTagName("tr");
+        var headerRow = headerRows.length > 1 ? headerRows[1] : headerRows[0];
+        var headers = headerRow.getElementsByTagName("th");
+
         for (var j = 0; j < headers.length; j++) {
           var text = headers[j].innerText.replace(" ▲", "").replace(" ▼", "");
           headers[j].innerText = text;
@@ -800,20 +862,6 @@
     </div>
 
     <div class="controls">
-      <input
-        type="text"
-        id="searchInput"
-        onkeyup="filterTable()"
-        placeholder="Search..."
-        class="filter-input"
-      />
-      <input
-        type="text"
-        id="logSearchInput"
-        onkeyup="filterTable()"
-        placeholder="Search logs..."
-        class="filter-input"
-      />
       <label
         ><input type="checkbox" id="deltaOnly" onchange="filterTable()" /> Delta
         only</label
@@ -887,6 +935,43 @@
 
     <table id="testTable">
       <thead>
+        <tr class="search-row">
+          <th>
+            <input
+              type="text"
+              id="searchInput"
+              onkeyup="filterTable()"
+              placeholder="Search File..."
+              class="filter-input table-filter"
+            />
+          </th>
+          <th></th>
+          <th>
+            <input
+              type="text"
+              id="functionSearchInput"
+              onkeyup="filterTable()"
+              placeholder="Search Function..."
+              class="filter-input table-filter"
+            />
+          </th>
+          <th></th>
+          <th></th>
+          <th></th>
+          <th></th>
+          <th></th>
+          <th></th>
+          <th></th>
+          <th>
+            <input
+              type="text"
+              id="logSearchInput"
+              onkeyup="filterTable()"
+              placeholder="Search Logs..."
+              class="filter-input table-filter"
+            />
+          </th>
+        </tr>
         <tr>
           <th onclick="sortTable(0)">File</th>
           <th onclick="sortTable(1)">Class</th>
