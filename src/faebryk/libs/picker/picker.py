@@ -386,15 +386,15 @@ def pick_topologically(
 
     timings.add("setup")
     relevant = [rp for m in tree.keys() for rp in _relevant_params(m)]
-    with timings.as_global("parallel slow-pick"):
+    with timings.measure("parallel slow-pick"):
         if relevant:
             g = relevant[0].g
             tg = relevant[0].tg
             logger.info(f"Simplifying with {len(relevant)} relevant parameters")
-            with timings.as_global("simplify"):
+            with timings.measure("simplify"):
                 solver.simplify(g, tg, terminal=True, relevant=relevant)
             logger.info(f"Solved in {timings.get_formatted('simplify')}")
-            with timings.as_global("get candidates"):
+            with timings.measure("get candidates"):
                 candidates = picker_lib.get_candidates(tree, solver)
             no_candidates = [m for m, cs in candidates.items() if not cs]
             if no_candidates:
@@ -427,10 +427,10 @@ def pick_topologically(
                 if not relevant:
                     break
                 now = time.perf_counter()
-                with timings.context("simplify"):
+                with timings.measure("simplify"):
                     solver.simplify(g, tg, terminal=True, relevant=relevant)
                 logger.info(f"Solved in {(time.perf_counter() - now) * 1000:.3f}ms")
-                with timings.as_global("get candidates"):
+                with timings.measure("get candidates"):
                     candidates = picker_lib.get_candidates(tree, solver)
                 no_candidates = [m for m, cs in candidates.items() if not cs]
                 if no_candidates:
@@ -446,7 +446,7 @@ def pick_topologically(
     logger.info(f"Picked complete: picked {_pick_count} parts")
     relevant = [rp for m in tree_backup for rp in _relevant_params(m)]
     if relevant:
-        with timings.as_global("verify design"):
+        with timings.measure("verify design"):
             logger.info("Verify design")
             try:
                 # hack

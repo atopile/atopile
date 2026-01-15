@@ -161,7 +161,7 @@ def _prepare_query(
             trait.get_params(),
         )
         cmp_params = {
-            fabll.Traits(p).get_obj_raw().get_name(): solver.extract_superset(
+            fabll.Traits(p).get_obj_raw(): solver.extract_superset(
                 # FIXME g
                 p  # , g=g, tg=tg
             )
@@ -200,6 +200,8 @@ def _prepare_query(
 def _process_candidates(
     module: F.Pickable.is_pickable, candidates: list[Component]
 ) -> list[Component]:
+    timings = Times(name="process_candidates")
+
     # Filter parts with weird pinmaps
     it = iter(candidates)
     filtered_candidates = []
@@ -211,9 +213,12 @@ def _process_candidates(
             component_node,
         )
     module_with_fp = component_node.get_trait(F.Footprints.can_attach_to_footprint)
-    for c in it:
+    timings.add("setup")
+
+    for idx, c in enumerate(it):
         try:
-            attach(module_with_fp, c.lcsc_display, check_only=True, get_3d_model=False)
+            with timings.measure(f"attach_check_{idx}"):
+                attach(module_with_fp, c.lcsc_display, check_only=True, get_3d_model=False)
             filtered_candidates.append(c)
             # If we found one that's ok, just continue since likely enough
             filtered_candidates.extend(it)
@@ -233,6 +238,7 @@ def _process_candidates(
             if not filtered_candidates and candidates[-1] is c:
                 raise
 
+    timings.add("filter_done")
     return filtered_candidates
 
 

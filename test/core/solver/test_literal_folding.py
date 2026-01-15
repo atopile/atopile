@@ -1065,8 +1065,8 @@ class Stats:
     def __init__(self):
         self.exprs: dict[F.Expressions.is_expression, set[str]] = defaultdict(set)
         self.events: dict[str, set[F.Expressions.is_expression]] = defaultdict(set)
-        self.times = Times(multi_sample_strategy=Times.MultiSampleStrategy.ALL)
-        self._total = self.times.context("total")
+        self.times = Times(strategy=Times.Strategy.ALL)
+        self._total = self.times.measure("total")
         self._total.__enter__()
 
     def print(self):

@@ -57,7 +57,7 @@ def test_performance_pick_real_module():
 
     solver = DefaultSolver()
 
-    # with timings.as_global("pick"):
+    # with timings.measure("pick"):
     pick_topologically(pick_tree, solver)
     timings.add("pick")
 
@@ -88,7 +88,7 @@ def test_performance_pick_rc_formulas():
                     m1.resistance.constrain_subset(m2.resistance / increase)
                 self.alias_res[i].resistance.alias_is(self.res[i].resistance)
 
-    timings = Times(multi_sample_strategy=Times.MultiSampleStrategy.ALL)
+    timings = Times(strategy=Times.Strategy.ALL)
 
     app = _App()
     timings.add("construct")
@@ -101,7 +101,7 @@ def test_performance_pick_rc_formulas():
 
     solver = DefaultSolver()
     try:
-        with timings.as_global("pick"):
+        with timings.measure("pick"):
             pick_topologically(pick_tree, solver)
     except PickError as e:
         logger.error(f"Error picking: {e.args[0]}")
@@ -147,33 +147,33 @@ def test_performance_pick_rc_formulas():
             terminal_str = (
                 "" if terminal is None else "terminal " if terminal else "non-terminal "
             )
-            timings.make_group(
+            timings.group(
                 f"{dirty_str}{terminal_str}algos",
                 lambda k: _is_algo(k, dirty=dirty, terminal=terminal),
             )
 
-        timings.add_seperator()
+        timings.separator()
         for algo in get_algorithms():
-            timings.make_group("Total " + algo.name, lambda k: algo.name + " " in k)
-        timings.add_seperator()
+            timings.group("Total " + algo.name, lambda k: algo.name + " " in k)
+        timings.separator()
         for i in [None, True, False]:
             for j in [None, True, False]:
                 _make_algo_group(dirty=i, terminal=j)
-        timings.add_seperator()
-        timings.make_group(
+        timings.separator()
+        timings.group(
             "mutator setup",
             lambda k: "run_iteration:setup" in k or "run_iteration:close" in k,
         )
-        timings.make_group("backend wait", lambda k: "fetch parts" in k)
-        timings.make_group("solver", lambda k: "algos" == k)
-        logger.info(f"\n{timings.to_str(force_unit='ms')}")
+        timings.group("backend wait", lambda k: "fetch parts" in k)
+        timings.group("solver", lambda k: "algos" == k)
+        logger.info(f"\n{timings.to_str()}")
 
     picked_values = {
         m.get_full_name(): str(m.resistance.try_get_literal()) for m in app.res
     }
     logger.info(f"Picked values: {indented_container(picked_values)}")
 
-    pick_time = timings.get_formatted("pick", strat=Times.MultiSampleStrategy.ACC)
+    pick_time = timings.get_formatted("pick", strategy=Times.Strategy.SUM)
     logger.info(f"Pick duration {_GROUPS}x{_GROUP_SIZE}: {pick_time}")
 
 

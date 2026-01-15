@@ -142,7 +142,7 @@ class DefaultSolver(Solver):
                 f" {'terminal' if terminal else 'non-terminal'}"
                 f" {'dirty' if algo_result.dirty else 'clean'}"
             )
-            timings._add(new_name, run_time)
+            timings.add(new_name, duration=run_time)
 
         return iteration_state
 

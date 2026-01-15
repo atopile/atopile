@@ -26,7 +26,7 @@ def test_performance_mifs_connect_check(node_type):
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     cnt = 100
-    timings = Times(multi_sample_strategy=Times.MultiSampleStrategy.AVG)
+    timings = Times(strategy=Times.Strategy.AVG)
     name = node_type.__name__
 
     type = node_type.bind_typegraph(tg)
@@ -108,7 +108,7 @@ def test_performance_mifs_connect_hull(node_type):
 # @pytest.mark.slow
 # def test_performance_mifs_no_connect():
 #     CNT = 30
-#     timings = Times(multi_sample_strategy=Times.MultiSampleStrategy.ALL)
+#     timings = Times(strategy=Times.Strategy.ALL)
 
 #     app = RP2040_ReferenceDesign()
 #     timings.add("construct")
