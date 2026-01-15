@@ -163,7 +163,7 @@ _TRAIT_OVERRIDES: dict[str, TraitOverrideSpec] = {
             [args.get("input_name", "input")],
             [args.get("output_name", "output")],
         ),
-        deprecated_hint="Use can_bridge instead",
+        # deprecated_hint="Use can_bridge instead", # Remove warning, no alternative
     ),
     "has_datasheet_defined": TraitOverrideSpec(
         trait_class=F.has_datasheet,

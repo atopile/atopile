@@ -46,6 +46,9 @@ class LED(fabll.Node):
     #     modules, interfaces, parameters
     # ----------------------------------------
     diode = F.Diode.MakeChild()
+    _mark_diode_symbolic = fabll.Traits.MakeEdge(
+        F.has_part_removed.MakeChild(), [diode]
+    )
 
     brightness = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Candela)
     max_brightness = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Candela)

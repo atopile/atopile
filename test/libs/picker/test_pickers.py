@@ -202,14 +202,20 @@ def test_check_missing_picks_no_footprint_no_picker(caplog):
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
+    # Create a minimal module with no picker, no footprint, and no child modules
+    # This should trigger the "No pickers and no footprint" warning
+    class _ModuleWithoutPicker(fabll.Node):
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        # Only interfaces, no child modules
+        pin = F.Electrical.MakeChild()
+
     class _App(fabll.Node):
-        r1 = F.LED.MakeChild()
-        r2 = F.Resistor.MakeChild()
+        unpickable = _ModuleWithoutPicker.MakeChild()
 
     app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
-    # Optionally set log level to capture DEBUG messages
-    with caplog.at_level(logging.DEBUG):
+    # Optionally set log level to capture WARNING messages
+    with caplog.at_level(logging.WARNING):
         get_pick_tree(app)
 
     # Assert on logs

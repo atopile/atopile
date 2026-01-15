@@ -99,10 +99,36 @@ def bind_electricals_to_fbrk_nets(
 
         if is_lead_trait.has_trait(F.Lead.has_associated_pads):
             electricals_filtered.add(interface_node)
-        else:
-            logger.warning(
-                f"Lead of {interface_node.get_name()} has no associated pads"
+            continue
+
+        # If this lead isn't directly attached to pads, check whether it's part of a
+        # bus that contains at least one padded lead. In that case, suppress the
+        # warning and emit a breadcrumb for traceability.
+        padded_lead_on_bus = False
+        bus_member_names: list[str] = []
+        if interface_node.has_trait(fabll.is_interface):
+            bus_members = interface_node.get_trait(fabll.is_interface).get_connected(
+                include_self=True
             )
+            for bus_member in bus_members:
+                bus_member_names.append(bus_member.get_full_name(include_uuid=False))
+                if bus_member.has_trait(F.Lead.is_lead):
+                    bus_member_lead = bus_member.get_trait(F.Lead.is_lead)
+                    if bus_member_lead.has_trait(F.Lead.has_associated_pads):
+                        padded_lead_on_bus = True
+
+        if padded_lead_on_bus:
+            bus_steps = " -> ".join(sorted(bus_member_names))
+            logger.info(
+                "Lead of %s has no associated pads, but is connected via bus: %s",
+                interface_node.get_full_name(),
+                bus_steps,
+            )
+            continue
+
+        logger.warning(
+            f"Lead of {interface_node.get_full_name()} has no associated pads"
+        )
 
     # collect buses in a sorted manner
     buses = sorted(

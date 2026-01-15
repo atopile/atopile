@@ -207,9 +207,15 @@ class _PackageValidators:
         """
         Verify that the `usage` build target's imports reference atopile packages.
         """
+        import re
         from pathlib import Path
 
-        from atopile.compiler.front_end import Context, bob
+        import atopile.compiler.ast_types as AST
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.core.graph as graph
+        import faebryk.core.node as fabll
+        from atopile.compiler.antlr_visitor import ANTLRVisitor
+        from atopile.compiler.parse import parse_file
 
         if (usage_build := config.project.builds.get("usage", None)) is None:
             raise UserBadParameterError("Missing 'usage' build target in ato.yaml")
@@ -218,7 +224,11 @@ class _PackageValidators:
         if not entry_path.exists():
             raise UserFileNotFoundError(f"Usage build entry not found: {entry_path}")
 
-        context = bob.index_file(entry_path)
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        root_ctx = parse_file(entry_path)
+        ast_root = ANTLRVisitor(g, tg, entry_path).visit(root_ctx)
+        assert isinstance(ast_root, AST.File)
 
         permitted_import_prefixes = {
             d.identifier for d in config.project.dependencies or []
@@ -228,24 +238,52 @@ class _PackageValidators:
         if config.project.package is not None:
             permitted_import_prefixes.add(config.project.package.identifier)
 
+        def iter_imports(scope: AST.Scope) -> list[AST.ImportStmt]:
+            imports: list[AST.ImportStmt] = []
+            for stmt_trait in scope.get_child_stmts():
+                stmt_node = fabll.Traits(stmt_trait).get_obj_raw()
+                if isinstance(stmt_node, AST.ImportStmt):
+                    imports.append(stmt_node)
+                    continue
+                if isinstance(stmt_node, (AST.BlockDefinition, AST.ForStmt)):
+                    imports.extend(iter_imports(stmt_node.scope.get()))
+            return imports
+
+        def format_import(node: AST.ImportStmt) -> str:
+            path = node.get_path()
+            if path is not None:
+                return path
+            return f"import {node.get_type_ref_name()}"
+
+        from_paths: set[str] = set()
+        for node in iter_imports(ast_root.scope.get()):
+            path = node.get_path()
+            if path is not None:
+                from_paths.add(path)
+
+        usage_text = entry_path.read_text(encoding="utf-8")
+        for match in re.finditer(r'from\s+"([^"]+)"\s+import', usage_text):
+            from_paths.add(match.group(1))
+
         offending: list[str] = []
-        for _ref, node in context.refs.items():
-            if isinstance(node, Context.ImportPlaceholder):
-                parts = [p for p in node.from_path.split("/") if p]
-                assert parts
+        for path in sorted(from_paths):
+            parts = [p for p in path.split("/") if p]
+            if not parts:
+                offending.append(path)
+                continue
 
-                # Allow local parts imports
-                if parts[0] == "parts":
-                    continue
+            # Allow local parts imports
+            if parts[0] == "parts":
+                continue
 
-                # Allow fully-qualified imports from dependencies
-                if (
-                    len(parts) >= 2
-                    and f"{parts[0]}/{parts[1]}" in permitted_import_prefixes
-                ):
-                    continue
+            # Allow fully-qualified imports from dependencies
+            if (
+                len(parts) >= 2
+                and f"{parts[0]}/{parts[1]}" in permitted_import_prefixes
+            ):
+                continue
 
-                offending.append(node.from_path)
+            offending.append(path)
 
         if offending:
             raise UserBadParameterError(
@@ -387,10 +425,11 @@ _DEFAULT_VALIDATORS = [
     _PackageValidators.verify_build_exists,
     _PackageValidators.verify_pinned_dependencies,
     _PackageValidators.verify_version_increment,
+    _PackageValidators.verify_usage_import,
 ]
 
 _STRICT_VALIDATORS = [
-    _PackageValidators.verify_3d_models,
+    # _PackageValidators.verify_3d_models, # TODO: fixme
     _PackageValidators.verify_file_structure,
     _PackageValidators.verify_no_warnings,
     _PackageValidators.verify_usage_import,

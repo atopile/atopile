@@ -19,9 +19,9 @@ import faebryk.library.Collections as Collections
 from faebryk.library.NumberDomain import NumberDomain
 from faebryk.library.is_sink import is_sink
 from faebryk.library.is_source import is_source
+from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
-from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.Signal import Signal
 from faebryk.library.is_app_root import is_app_root
 import faebryk.library.Literals as Literals
@@ -116,9 +116,9 @@ __all__ = [
     "NumberDomain",
     "is_sink",
     "is_source",
+    "has_part_removed",
     "Logic",
     "Mechanical",
-    "has_part_removed",
     "Signal",
     "is_app_root",
     "Literals",

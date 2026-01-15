@@ -174,8 +174,10 @@ def save_part_info_to_pcb(app: fabll.Node):
 
     for node in nodes:
         has_part_picked = node.get_trait(F.Pickable.has_part_picked)
-        part = has_part_picked.try_get_part()
+        if has_part_picked.has_trait(F.has_part_removed):
+            continue
 
+        part = has_part_picked.try_get_part()
         if part is None:
             logger.warning(f"No part found for {node.get_name()}")
             continue
