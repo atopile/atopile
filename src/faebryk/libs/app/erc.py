@@ -1,9 +1,15 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from __future__ import annotations
+
 import logging
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+from rich.syntax import Syntax
+from rich.text import Text
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -13,7 +19,191 @@ from atopile import errors
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.exceptions import accumulate
 
+if TYPE_CHECKING:
+    from rich.console import Console, ConsoleOptions, ConsoleRenderable
+
+    from atopile.compiler import ast_types as AST
+
 logger = logging.getLogger(__name__)
+
+
+def _get_node_path_from_ancestor(
+    node: graph.BoundNode, ancestor: graph.BoundNode
+) -> list[str]:
+    """Get the path of composition edges from ancestor to node."""
+    path: list[str] = []
+    current = node
+    ancestor_uuid = ancestor.node().get_uuid()
+
+    while True:
+        if current.node().get_uuid() == ancestor_uuid:
+            path.reverse()
+            return path
+        parent_edge = fbrk.EdgeComposition.get_parent_edge(bound_node=current)
+        if parent_edge is None:
+            # Reached root without finding ancestor
+            return []
+        edge_name = fbrk.EdgeComposition.get_name(edge=parent_edge.edge())
+        path.append(edge_name)
+        current = parent_edge.g().bind(
+            node=fbrk.EdgeComposition.get_parent_node(edge=parent_edge.edge())
+        )
+
+
+def _find_common_ancestor(
+    node1: graph.BoundNode, node2: graph.BoundNode
+) -> graph.BoundNode | None:
+    """Find the first common ancestor of two nodes."""
+    # Collect all ancestors of node1
+    ancestors1: set[int] = set()
+    current = node1
+    while True:
+        ancestors1.add(current.node().get_uuid())
+        parent_edge = fbrk.EdgeComposition.get_parent_edge(bound_node=current)
+        if parent_edge is None:
+            break
+        current = parent_edge.g().bind(
+            node=fbrk.EdgeComposition.get_parent_node(edge=parent_edge.edge())
+        )
+
+    # Walk up from node2 until we find a common ancestor
+    current = node2
+    while True:
+        if current.node().get_uuid() in ancestors1:
+            return current
+        parent_edge = fbrk.EdgeComposition.get_parent_edge(bound_node=current)
+        if parent_edge is None:
+            break
+        current = parent_edge.g().bind(
+            node=fbrk.EdgeComposition.get_parent_node(edge=parent_edge.edge())
+        )
+    return None
+
+
+def _path_is_prefix_or_equal(prefix: list[str], full_path: list[str]) -> bool:
+    """Check if prefix is a prefix of (or equal to) full_path."""
+    if len(prefix) > len(full_path):
+        return False
+    return full_path[: len(prefix)] == prefix
+
+
+# Bridge connect paths include these suffixes that should be stripped for matching
+_BRIDGE_PATH_SUFFIXES = frozenset({"can_bridge", "out_", "in_", ""})
+
+
+def _strip_bridge_suffix(path: list[str]) -> list[str]:
+    """
+    Strip can_bridge traversal suffixes from a MakeLink path.
+
+    Bridge connects store paths like ["power_3v3", "can_bridge", "out_", ""]
+    but the actual instance path is just ["power_3v3", "hv"] or similar.
+
+    Returns the base path with bridge suffixes removed from the end.
+    """
+    result = list(path)
+    while result and result[-1] in _BRIDGE_PATH_SUFFIXES:
+        result.pop()
+    return result
+
+
+def _get_source_chunk_for_connection(
+    source_node: graph.BoundNode,
+    target_node: graph.BoundNode,
+    tg: fbrk.TypeGraph,
+) -> "AST.SourceChunk | None":
+    """
+    Find the source chunk for an EdgeInterfaceConnection between two nodes.
+
+    Strategy:
+    1. Find the common ancestor of both nodes
+    2. Get the type node for the common ancestor
+    3. Get all MakeLink nodes from that type
+    4. Find the MakeLink whose lhs_path and rhs_path match the relative paths
+       - First try exact match
+       - Then try prefix match (for bridge connects where actual connection
+         is between children of the declared endpoints)
+    5. Return the source chunk from that MakeLink
+    """
+    from atopile.compiler.ast_visitor import ASTVisitor
+
+    # Find common ancestor
+    ancestor = _find_common_ancestor(source_node, target_node)
+    if ancestor is None:
+        return None
+
+    # Get paths from ancestor to each node
+    source_path = _get_node_path_from_ancestor(source_node, ancestor)
+    target_path = _get_node_path_from_ancestor(target_node, ancestor)
+
+    if not source_path and not target_path:
+        # Both nodes are the ancestor - can't determine which MakeLink
+        return None
+
+    # Get the type node for the ancestor
+    ancestor_type_edge = fbrk.EdgeType.get_type_edge(bound_node=ancestor)
+    if ancestor_type_edge is None:
+        return None
+    ancestor_type = ancestor.g().bind(
+        node=fbrk.EdgeType.get_type_node(edge=ancestor_type_edge.edge())
+    )
+
+    # Get all MakeLinks from the ancestor type
+    try:
+        make_links = tg.collect_make_links(type_node=ancestor_type)
+    except ValueError:
+        return None
+
+    # Find matching MakeLink - collect candidates with match quality scores
+    edge_tid = fbrk.EdgeInterfaceConnection.get_tid()
+    best_match: tuple["AST.SourceChunk | None", int] = (None, -1)
+
+    for make_link_node, lhs_tuple, rhs_tuple in make_links:
+        # Check if this is an EdgeInterfaceConnection type MakeLink
+        edge_type_attr = make_link_node.node().get_attr(key="edge_type")
+        if edge_type_attr is None:
+            continue
+        if edge_type_attr != edge_tid:
+            continue
+
+        # Strip bridge connect suffixes (can_bridge, out_, in_, "")
+        # These are added for ~> connections but don't match actual instance paths
+        lhs_path = _strip_bridge_suffix(list(lhs_tuple))
+        rhs_path = _strip_bridge_suffix(list(rhs_tuple))
+
+        # Skip if paths are empty after stripping
+        if not lhs_path and not rhs_path:
+            continue
+
+        # Try exact match first (either direction)
+        if (lhs_path == source_path and rhs_path == target_path) or (
+            lhs_path == target_path and rhs_path == source_path
+        ):
+            # Exact match - return immediately
+            return ASTVisitor.get_source_chunk(make_link_node)
+
+        # Try prefix match for bridge connects
+        # e.g., MakeLink: power_3v3 ~> resistor
+        #       Actual: power_3v3.hv ~ resistor.unnamed[0]
+        # The MakeLink paths are prefixes of the actual connection paths
+        match_score = 0
+
+        # Check lhs->source, rhs->target
+        if _path_is_prefix_or_equal(lhs_path, source_path) and _path_is_prefix_or_equal(
+            rhs_path, target_path
+        ):
+            match_score = len(lhs_path) + len(rhs_path)
+
+        # Check lhs->target, rhs->source (bidirectional)
+        if _path_is_prefix_or_equal(lhs_path, target_path) and _path_is_prefix_or_equal(
+            rhs_path, source_path
+        ):
+            score = len(lhs_path) + len(rhs_path)
+            match_score = max(match_score, score)
+
+        if match_score > best_match[1]:
+            best_match = (ASTVisitor.get_source_chunk(make_link_node), match_score)
+
+    return best_match[0]
 
 
 class ERCFault(errors.UserException):
@@ -74,12 +264,55 @@ class ERCFaultIncompatibleInterfaceConnection(ERCFault):
         source_type: str,
         target_type: str,
         *args: object,
+        source_chunk: "AST.SourceChunk | None" = None,
     ) -> None:
         super().__init__(msg, [source_node, target_node], *args, markdown=False)
         self.source_node = source_node
         self.target_node = target_node
         self.source_type = source_type
         self.target_type = target_type
+        self.source_chunk = source_chunk
+
+    def __rich_console__(
+        self, console: "Console", options: "ConsoleOptions"
+    ) -> list["ConsoleRenderable"]:
+        """Render error with source location if available."""
+        # Get base rendering from parent
+        renderables = super().__rich_console__(console, options)
+
+        # Add source location if we have it
+        if self.source_chunk is not None:
+            loc = self.source_chunk.loc.get()
+            start_line = loc.get_start_line()
+            end_line = loc.get_end_line()
+            file_path = self.source_chunk.get_path()
+
+            if file_path:
+                try:
+                    with open(file_path) as f:
+                        code = f.read()
+                    display_path = str(Path(file_path).resolve())
+                    source_info = f"{display_path}:{start_line}"
+
+                    renderables.append(Text("\nCode causing the error:", style="bold"))
+                    renderables.append(
+                        Text("Source: ", style="bold")
+                        + Text(source_info, style="magenta")
+                    )
+                    renderables.append(
+                        Syntax(
+                            code,
+                            "python",
+                            line_numbers=True,
+                            line_range=(max(1, start_line - 2), end_line + 2),
+                            highlight_lines=set(range(start_line, end_line + 1)),
+                            background_color="default",
+                        )
+                    )
+                except (FileNotFoundError, OSError):
+                    pass
+
+        return renderables
 
     @classmethod
     def from_nodes(
@@ -88,8 +321,16 @@ class ERCFaultIncompatibleInterfaceConnection(ERCFault):
         target: fabll.Node,
         source_type: str,
         target_type: str,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "ERCFaultIncompatibleInterfaceConnection":
         """Create an exception for incompatible interface connection."""
+        # Try to find source location
+        source_chunk = None
+        if tg is not None:
+            source_chunk = _get_source_chunk_for_connection(
+                source.instance, target.instance, tg
+            )
+
         return cls(
             f"Incompatible interface types connected:\n"
             f"  {source.pretty_repr()} ({source_type})\n"
@@ -98,6 +339,7 @@ class ERCFaultIncompatibleInterfaceConnection(ERCFault):
             target,
             source_type,
             target_type,
+            source_chunk=source_chunk,
         )
 
 
@@ -281,6 +523,10 @@ class needs_erc_check(fabll.Node):
                         non_interface = (
                             target_py if not target_is_interface else source_py
                         )
+                        # Try to find source location for the connection
+                        source_chunk = _get_source_chunk_for_connection(
+                            source_bound, target_bound, self.tg
+                        )
                         raise ERCFaultIncompatibleInterfaceConnection(
                             f"EdgeInterfaceConnection to non-interface node:\n"
                             f"  {non_interface.pretty_repr()} is not an interface",
@@ -288,6 +534,7 @@ class needs_erc_check(fabll.Node):
                             target_py,
                             "<interface>" if source_is_interface else "<not interface>",
                             "<interface>" if target_is_interface else "<not interface>",
+                            source_chunk=source_chunk,
                         )
 
             bound_node.visit_edges_of_type(
@@ -412,6 +659,7 @@ class needs_erc_check(fabll.Node):
                         target=target_py,
                         source_type=get_type_name(source_bound) or "<unknown>",
                         target_type="<not an interface>",
+                        tg=self.tg,
                     )
                 continue
 
@@ -429,6 +677,7 @@ class needs_erc_check(fabll.Node):
                         target=target_py,
                         source_type=source_type or "<unknown>",
                         target_type=target_type or "<unknown>",
+                        tg=self.tg,
                     )
 
     def _check_additional_heuristics(self) -> None:
