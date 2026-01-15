@@ -4,7 +4,6 @@
 
 import logging
 from collections import defaultdict
-from itertools import combinations
 from typing import (
     TYPE_CHECKING,
     Callable,
@@ -525,53 +524,6 @@ class MutatorUtils:
 
             if not leaves:
                 return roots
-
-    @staticmethod
-    def get_correlations(
-        expr: F.Expressions.is_expression,
-        exclude: set[F.Expressions.is_expression] | None = None,
-    ):
-        # TODO: might want to check if expr has aliases because those are correlated too
-
-        if exclude is None:
-            exclude = set()
-
-        exclude.add(expr)
-        excluded = {
-            e for e in exclude if e.try_get_sibling_trait(F.Expressions.is_predicate)
-        }
-        excluded.update(
-            is_.is_expression.get()
-            for is_ in MutatorUtils.get_predicates_involved_in(
-                expr.as_parameter_operatable.get(), F.Expressions.Is
-            )
-        )
-
-        operables = [
-            o_po
-            for o in expr.get_operands()
-            if (o_po := o.as_parameter_operatable.try_get())
-        ]
-        op_set = set(operables)
-
-        def _get(e: F.Parameters.is_parameter_operatable):
-            vs = {e}
-            if e_expr := e.as_expression.try_get():
-                vs = e_expr.get_operand_leaves_operatable()
-            return {
-                o
-                for v in vs
-                for o in MutatorUtils.get_predicates_involved_in(v, F.Expressions.Is)
-            }
-
-        exprs = {o: _get(o) for o in op_set}
-        # check disjoint sets
-        for e1, e2 in combinations(operables, 2):
-            if e1.is_same(e2):
-                yield e1, e2, exprs[e1].difference(excluded)
-            overlap = (exprs[e1] & exprs[e2]).difference(excluded)
-            if overlap:
-                yield e1, e2, overlap
 
     @staticmethod
     def find_unique_params(
