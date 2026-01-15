@@ -607,7 +607,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                         terminate=True,
                         assert_=True,
                     )
-                    mutator.predicate_terminate(pred)
+                    mutator.terminate(e)
 
                 for inner_op_e in op_or_e.get_operands_with_trait(
                     F.Expressions.is_expression

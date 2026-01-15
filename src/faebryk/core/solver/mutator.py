@@ -52,7 +52,7 @@ IsSubset = F.Expressions.IsSubset
 
 class is_terminated(fabll.Node):
     """
-    Mark expression as terminated. (For now only for predicates).
+    Mark expression as terminated.
     Tells algorithms to not further transform the expression.
     Useful for when we already folded it maximally and want to stop processing it.
     """
@@ -88,7 +88,7 @@ class Transformations:
         list[F.Parameters.is_parameter_operatable],
     ] = field(default_factory=lambda: defaultdict(list))
     # TODO make api for contraining
-    terminated: set[F.Expressions.is_predicate] = field(default_factory=set)
+    terminated: set[F.Expressions.is_expression] = field(default_factory=set)
     asserted: set[F.Expressions.is_assertable] = field(default_factory=set)
     soft_replaced: dict[
         F.Parameters.is_parameter_operatable, F.Parameters.is_parameter_operatable
@@ -1364,7 +1364,7 @@ class Mutator:
 
         expr_pred = expr.try_get_sibling_trait(F.Expressions.is_predicate)
         assert_ = expr_pred is not None
-        terminate = assert_ and self.is_predicate_terminated(expr_pred)
+        terminate = (assert_ or not expr_pred) and self.is_terminated(expr)
 
         expr_obj = fabll.Traits(expr).get_obj_raw()
         copy_only = (
@@ -1498,24 +1498,22 @@ class Mutator:
                 if track:
                     self.transformations.asserted.add(p)
             if terminate:
-                self.predicate_terminate(
-                    p.get_sibling_trait(F.Expressions.is_predicate)
-                )
+                self.terminate(p.get_sibling_trait(F.Expressions.is_expression))
 
-    def predicate_terminate(self, pred: F.Expressions.is_predicate):
-        if self.is_predicate_terminated(pred):
+    def terminate(self, expr: F.Expressions.is_expression):
+        if self.is_terminated(expr):
             return
         new_graph = (
-            pred.g.get_self_node()
+            expr.g.get_self_node()
             .node()
             .is_same(other=self.G_out.get_self_node().node())
         )
         if new_graph:
             fabll.Traits.create_and_add_instance_to(
-                fabll.Traits(pred).get_obj_raw(), is_terminated
+                fabll.Traits(expr).get_obj_raw(), is_terminated
             )
         else:
-            self.transformations.terminated.add(pred)
+            self.transformations.terminated.add(expr)
 
     def mark_irrelevant(self, po: F.Parameters.is_parameter_operatable):
         if po.try_get_sibling_trait(is_irrelevant) is not None:
@@ -1525,10 +1523,10 @@ class Mutator:
         )
 
     # Algorithm Query ------------------------------------------------------------------
-    def is_predicate_terminated(self, pred: F.Expressions.is_predicate) -> bool:
+    def is_terminated(self, expr: F.Expressions.is_expression) -> bool:
         return (
-            pred in self.transformations.terminated
-            or pred.try_get_sibling_trait(is_terminated) is not None
+            expr in self.transformations.terminated
+            or expr.try_get_sibling_trait(is_terminated) is not None
         )
 
     def get_parameter_operatables(

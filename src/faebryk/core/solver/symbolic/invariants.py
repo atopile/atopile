@@ -756,8 +756,6 @@ def insert_expression(
     # TODO: congruence check is running on new graph only,
     #  thus expression might be incorrectly marked as new
 
-    assert not builder.terminate or builder.assert_, "terminate ⟹ assert"
-
     # * terminated expressions are already copied
     mutator._copy_terminated()
 
@@ -786,8 +784,8 @@ def insert_expression(
             congruent_assertable = congruent.get_trait(F.Expressions.is_assertable)
             mutator.assert_(congruent_assertable)
         if builder.terminate:
-            congruent_predicate = congruent.get_trait(F.Expressions.is_predicate)
-            mutator.predicate_terminate(congruent_predicate)
+            congruent_expr = congruent.get_trait(F.Expressions.is_expression)
+            mutator.terminate(congruent_expr)
         congruent_op = congruent.get_trait(F.Parameters.can_be_operand)
         congruent_po = congruent_op.as_parameter_operatable.force_get()
         if expr_already_exists_in_old_graph:

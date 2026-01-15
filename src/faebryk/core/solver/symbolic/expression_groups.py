@@ -43,8 +43,7 @@ def reflexive_predicates(mutator: Mutator):
             assert_=True,
             terminate=True,
         )
-        if pred := reflexive_e.try_get_sibling_trait(F.Expressions.is_predicate):
-            mutator.predicate_terminate(pred)
+        mutator.terminate(reflexive_e)
 
 
 @algorithm("Idempotent deduplicate", terminal=False)

@@ -273,7 +273,7 @@ def predicate_flat_terminate(mutator: Mutator):
         if mutator.utils.try_extract_superset(p_po) is None:
             continue
 
-        mutator.predicate_terminate(p_e.get_sibling_trait(F.Expressions.is_predicate))
+        mutator.terminate(p_e)
 
 
 @algorithm("Distribute literals across alias classes", terminal=False)
@@ -332,8 +332,7 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
 
     preds = mutator.get_expressions(required_traits=(F.Expressions.is_predicate,))
     for p_e in preds:
-        p = p_e.get_sibling_trait(F.Expressions.is_predicate)
-        if mutator.is_predicate_terminated(p):
+        if mutator.is_terminated(p_e):
             continue
         if mutator.utils.is_literal_expression(p_e.as_operand.get()):
             continue
@@ -351,7 +350,7 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
                     terminate=True,
                     assert_=True,
                 )
-                mutator.predicate_terminate(p)
+                mutator.terminate(p_e)
                 break
 
 

@@ -436,8 +436,8 @@ class MutatorUtils:
                     )
                     if not unfulfilled_only
                     or not (
-                        (pred := x.try_get_trait(F.Expressions.is_predicate))
-                        and self.mutator.is_predicate_terminated(pred)
+                        (expr := x.try_get_trait(F.Expressions.is_expression))
+                        and self.mutator.is_terminated(expr)
                     )
                 ]
             )
