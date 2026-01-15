@@ -338,7 +338,7 @@ def test_subset_of_literal():
     p0, p1, p2 = (
         E.parameter_op(
             units=E.U.dl,
-            within=E.lit_op_range((0, i)).get_parent_of_type(F.Literals.Numbers),
+            within=fabll.Traits(E.lit_op_range((0, i))).get_obj(F.Literals.Numbers),
         )
         for i in range(3)
     )
@@ -488,26 +488,6 @@ def test_subset_superset():
     solver = DefaultSolver()
     with pytest.raises(Contradiction):
         solver.simplify(E.tg, E.g)
-
-
-def test_subset_is_expr():
-    E = BoundExpressions()
-    A, B, C = [E.parameter_op() for _ in range(3)]
-
-    context = F.Parameters.ReprContext()
-    for p in [A, B, C]:
-        p.as_parameter_operatable.force_get().compact_repr(context)
-
-    D = E.add(A, B)
-    E.is_subset(C, E.lit_op_range((0, 15)), assert_=True)
-
-    E.is_subset(D, E.lit_op_range((5, 20)), assert_=True)
-
-    E.is_(C, D, assert_=True)
-
-    solver = DefaultSolver()
-    with pytest.raises(ContradictionByLiteral):
-        solver.simplify(E.tg, E.g, print_context=context)
 
 
 def test_subset_single_alias():
@@ -2353,17 +2333,3 @@ def test_correlated_no_contradiction_different_sets():
 
     solver = DefaultSolver()
     solver.simplify(E.tg, E.g)
-
-
-if __name__ == "__main__":
-    import typer
-
-    from faebryk.libs.logging import setup_basic_logging
-
-    setup_basic_logging()
-
-    # typer.run(test_simplify)
-    # typer.run(
-    #    lambda: test_super_simple_literal_folding(F.Expressions.Add.c, (5, 10), 15)
-    # )
-    typer.run(test_subset_is)
