@@ -1321,7 +1321,7 @@ class Mutator:
         import faebryk.core.solver.symbolic.invariants as invariants
 
         from_ops = list(set(from_ops or []))
-        c_operands = [o for op in operands if (o := self.get_copy(op))]
+        c_operands = [self.get_copy(op) for op in operands]
 
         builder = invariants.ExpressionBuilder(
             expr_factory,
@@ -1371,7 +1371,7 @@ class Mutator:
             expr_obj.isinstance(expression_factory) and operands == expr.get_operands()
         )
 
-        c_operands = [o for op in operands if (o := self.get_copy(op))]
+        c_operands = [self.get_copy(op) for op in operands]
 
         builder = invariants.ExpressionBuilder(
             factory=expression_factory,
