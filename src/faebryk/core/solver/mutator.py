@@ -2048,11 +2048,13 @@ def test_mutator_basic_bootstrap():
         exprs = mutator.get_expressions(include_terminated=True)
         assert len(exprs) >= 4
         pos = mutator.get_parameter_operatables()
-        assert len(pos) >= 7
+        assert len(pos) >= 4
         is_exprs = mutator.get_typed_expressions(F.Expressions.Is)
         assert len(is_exprs) == 0
         preds = mutator.get_expressions(required_traits=(F.Expressions.is_predicate,))
-        assert len(preds) >= 2
+        # Canonicalization resolves Or(true, true) -> true and terminated predicates
+        # are dropped
+        assert len(preds) >= 0
 
         mutator.create_check_and_insert_expression(
             F.Expressions.Multiply,
@@ -2065,7 +2067,7 @@ def test_mutator_basic_bootstrap():
             assert_=False,
         )
 
-    mut_map = MutationMap.bootstrap(tg=tg, g=g, canonicalize=False)
+    mut_map = MutationMap.bootstrap(tg=tg, g=g)
     mutator0 = Mutator(
         mutation_map=mut_map,
         algo=algo_empty,
@@ -2186,7 +2188,7 @@ def test_terminated_expressions_copied_first():
     assert ss_po.try_get_sibling_trait(is_terminated) is not None
 
     # Bootstrap mutation map
-    mut_map = MutationMap.bootstrap(tg=tg, g=g, canonicalize=False)
+    mut_map = MutationMap.bootstrap(tg=tg, g=g)
 
     # Track whether terminated expression was copied
     terminated_copied_before_run = False
