@@ -484,9 +484,7 @@ def test_assign_to_enum_param():
     )
     cap = _get_child(app_instance, "cap")
     temp_coeff = F.Capacitor.bind_instance(cap).temperature_coefficient.get()
-    lit = temp_coeff.is_parameter_operatable.get().try_extract_superset(
-        pred_type=F.Expressions.IsSubset
-    )
+    lit = temp_coeff.is_parameter_operatable.get().try_extract_superset()
     assert lit is not None
     enum_lit = fabll.Traits(lit).get_obj(F.Literals.AbstractEnums)
     assert (
@@ -611,22 +609,14 @@ def test_basic_arithmetic():
         E.lit_op_range((3, 6))
         .as_literal.force_get()
         .op_setic_equals(
-            not_none(
-                repr_map.try_extract_superset(
-                    a.is_parameter_operatable.get(), allow_subset=True
-                )
-            )
+            not_none(repr_map.try_extract_superset(a.is_parameter_operatable.get()))
         )
     )
     assert (
         E.lit_op_range((7, 10))
         .as_literal.force_get()
         .op_setic_equals(
-            not_none(
-                repr_map.try_extract_superset(
-                    b.is_parameter_operatable.get(), allow_subset=True
-                )
-            )
+            not_none(repr_map.try_extract_superset(b.is_parameter_operatable.get()))
         )
     )
 
