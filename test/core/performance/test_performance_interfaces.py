@@ -31,18 +31,17 @@ def test_performance_mifs_connect_check(node_type):
 
     type = node_type.bind_typegraph(tg)
     instances = [
-        (type.create_instance(g=g), type.create_instance(g=g))
-        for _ in range(cnt)
+        (type.create_instance(g=g), type.create_instance(g=g)) for _ in range(cnt)
     ]
-    timings.add(name, "construct")
+    timings.add(f"{name}:construct")
 
     for inst1, inst2 in instances:
         inst1._is_interface.get().connect_to(inst2)
-        timings.add(name, "connect_to")
+        timings.add(f"{name}:connect_to")
 
     for inst1, inst2 in instances:
         assert inst1._is_interface.get().is_connected_to(inst2)
-        timings.add(name, "is_connected_to")
+        timings.add(f"{name}:is_connected_to")
 
     # TODO formatting of timings is broken rn
     # logger.info(f"\n{timings}")
@@ -66,20 +65,20 @@ def test_performance_mifs_connect_hull(node_type):
 
     type = node_type.bind_typegraph(tg)
     instances = [type.create_instance(g=g) for _ in range(cnt)]
-    timings.add(name, "construct")
+    timings.add(f"{name}:construct")
 
     for other in instances[1:]:
         instances[0]._is_interface.get().connect_to(other)
-        timings.add(name, "connect_to")
+        timings.add(f"{name}:connect_to")
 
     assert instances[0]._is_interface.get().is_connected_to(instances[-1])
-    timings.add(name, "is_connected_to")
+    timings.add(f"{name}:is_connected_to")
 
     list(instances[0]._is_interface.get().get_connected())
-    timings.add(name, "get_connected")
+    timings.add(f"{name}:get_connected")
 
     assert instances[0]._is_interface.get().is_connected_to(instances[-1])
-    timings.add(name, "is_connected cached")
+    timings.add(f"{name}:is_connected cached")
 
     # TODO formatting of timings is broken rn
     # logger.info(f"\n{timings}")
