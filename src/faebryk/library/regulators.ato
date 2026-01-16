@@ -1,4 +1,5 @@
-import Regulator, ResistorVoltageDivider
+import Regulator
+import ResistorVoltageDivider
 
 module AdjustableRegulator from Regulator:
     """

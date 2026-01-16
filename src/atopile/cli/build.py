@@ -53,6 +53,8 @@ class BuildProcess:
         log_dir: Path,
         project_root: Path,
         project_name: str | None = None,
+        targets: list[str] | None = None,
+        exclude_targets: list[str] | None = None,
     ):
         self.name = build_name
         self.project_name = project_name  # For multi-project builds
@@ -62,6 +64,8 @@ class BuildProcess:
             self.display_name = build_name
         self.log_dir = log_dir
         self.project_root = project_root
+        self.targets = targets or []
+        self.exclude_targets = exclude_targets or []
         self.process: subprocess.Popen | None = None
         self.log_file: Path | None = None
         self.status_file: Path | None = None
@@ -107,6 +111,13 @@ class BuildProcess:
         from atopile.cli.logging_ import NOW
 
         env["ATO_BUILD_TIMESTAMP"] = NOW
+
+        # Pass build targets to worker subprocess via environment variables
+        # These are picked up by the --target and --exclude-target CLI options
+        if self.targets:
+            env["ATO_TARGET"] = ",".join(self.targets)
+        if self.exclude_targets:
+            env["ATO_EXCLUDE_TARGET"] = ",".join(self.exclude_targets)
 
         self.start_time = time.time()
 
@@ -373,6 +384,8 @@ class ParallelBuildManager:
         logs_base: Path,
         max_workers: int = DEFAULT_WORKER_COUNT,
         verbose: bool = False,
+        targets: list[str] | None = None,
+        exclude_targets: list[str] | None = None,
     ):
         """
         Initialize the build manager.
@@ -382,11 +395,15 @@ class ParallelBuildManager:
             logs_base: Base directory for logs
             max_workers: Maximum concurrent builds (default: CPU count)
             verbose: Show full output (runs sequentially, no live display)
+            targets: Build targets to run (passed to workers via ATO_TARGET env var)
+            exclude_targets: Build targets to exclude (passed via ATO_EXCLUDE_TARGET)
         """
         self.build_tasks = build_tasks
         self.logs_base = logs_base
         self.max_workers = max_workers
         self.verbose = verbose
+        self.targets = targets or []
+        self.exclude_targets = exclude_targets or []
 
         # Check if this is multi-project mode (any task has a project_name)
         self.multi_project_mode = any(t[2] is not None for t in build_tasks)
@@ -408,7 +425,14 @@ class ParallelBuildManager:
                 log_dir = logs_base / "archive" / NOW / project_name / build_name
             else:
                 log_dir = logs_base / "archive" / NOW / build_name
-            bp = BuildProcess(build_name, log_dir, project_root, project_name)
+            bp = BuildProcess(
+                build_name,
+                log_dir,
+                project_root,
+                project_name,
+                targets=self.targets,
+                exclude_targets=self.exclude_targets,
+            )
             self.processes[display_name] = bp
             self._task_queue.put(display_name)
 
@@ -1193,6 +1217,8 @@ def _build_all_projects(
     frozen: bool | None = None,
     selected_builds: list[str] | None = None,
     verbose: bool = False,
+    targets: list[str] | None = None,
+    exclude_targets: list[str] | None = None,
 ) -> None:
     """
     Build all projects in a directory.
@@ -1263,6 +1289,8 @@ def _build_all_projects(
         logs_base,
         max_workers=jobs,
         verbose=verbose,
+        targets=targets,
+        exclude_targets=exclude_targets,
     )
 
     results = manager.run_until_complete()
@@ -1404,6 +1432,8 @@ def build(
             frozen=frozen,
             selected_builds=selected_builds,
             verbose=verbose,
+            targets=target,
+            exclude_targets=exclude_target,
         )
         return
 
@@ -1444,6 +1474,8 @@ def build(
         config.project.paths.logs,
         max_workers=jobs,
         verbose=verbose,
+        targets=target,
+        exclude_targets=exclude_target,
     )
 
     results = manager.run_until_complete()
