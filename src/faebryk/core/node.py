@@ -1454,6 +1454,19 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         hierarchy.reverse()
         return hierarchy
 
+    def get_path_from_ancestor(self, ancestor: "NodeT") -> list[str]:
+        """
+        Get the composition-edge path from an ancestor to this node.
+
+        Returns an empty list if the ancestor is this node or is not in the
+        hierarchy.
+        """
+        hierarchy = self.get_hierarchy()
+        for idx, (node, _name) in enumerate(hierarchy):
+            if node.is_same(ancestor):
+                return [name for _node, name in hierarchy[idx + 1 :]]
+        return []
+
     def is_in_graph(self, g: graph.GraphView) -> bool:
         return Node.graphs_match(self.g, g)
 

@@ -7,6 +7,22 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
+BRIDGE_PATH_SUFFIXES = frozenset({"can_bridge", "out_", "in_", ""})
+
+
+def strip_bridge_path_suffix(path: list[str]) -> list[str]:
+    """
+    Strip can_bridge traversal suffixes from a MakeLink path.
+
+    Bridge connects store paths like ["power_3v3", "can_bridge", "out_", ""]
+    but the actual instance path is just ["power_3v3", "hv"] or similar.
+    """
+    result = list(path)
+    while result and result[-1] in BRIDGE_PATH_SUFFIXES:
+        result.pop()
+    return result
+
+
 class can_bridge(fabll.Node):
     is_trait = fabll.Traits.MakeEdge((fabll.ImplementsTrait.MakeChild())).put_on_type()
     is_immutable = fabll.Traits.MakeEdge(fabll.is_immutable.MakeChild()).put_on_type()

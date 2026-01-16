@@ -42,8 +42,8 @@ class InterfaceConnectionError:
     (to raise exceptions) and the LSP (to create diagnostics).
     """
 
-    source_node: graph.BoundNode
-    target_node: graph.BoundNode
+    source_node: fabll.Node
+    target_node: fabll.Node
     source_is_interface: bool
     target_is_interface: bool
     source_type: str | None
@@ -53,17 +53,23 @@ class InterfaceConnectionError:
     @property
     def message(self) -> str:
         """Generate a human-readable error message."""
-        if not self.source_is_interface and not self.target_is_interface:
-            return "Invalid connection: neither side is an interface"
-        elif not self.source_is_interface:
-            return "Invalid connection: left side is not an interface"
-        elif not self.target_is_interface:
-            return "Invalid connection: right side is not an interface"
-        else:
-            # Both are interfaces but types are incompatible
-            src = self.source_type or "<unknown>"
-            tgt = self.target_type or "<unknown>"
-            return f"Incompatible interface types: {src} -> {tgt}"
+        if not self.source_is_interface or not self.target_is_interface:
+            non_interface = (
+                self.source_node if not self.source_is_interface else self.target_node
+            )
+            return (
+                "EdgeInterfaceConnection to non-interface node:\n"
+                f"  {non_interface.pretty_repr()} is not an interface"
+            )
+
+        # Both are interfaces but types are incompatible
+        src = self.source_type or "<unknown>"
+        tgt = self.target_type or "<unknown>"
+        return (
+            "Incompatible interface types connected:\n"
+            f"  {self.source_node.pretty_repr()} ({src})\n"
+            f"    -> {self.target_node.pretty_repr()} ({tgt})"
+        )
 
 
 def find_interface_connection_errors(
@@ -130,15 +136,6 @@ def find_interface_connection_errors(
         f"across {len(interface_nodes)} interface nodes"
     )
 
-    # Helper to get type name
-    def get_type_name(bound_node: graph.BoundNode) -> str | None:
-        type_edge = fbrk.EdgeType.get_type_edge(bound_node=bound_node)
-        if type_edge is None:
-            return None
-        type_node = fbrk.EdgeType.get_type_node(edge=type_edge.edge())
-        type_bound = bound_node.g().bind(node=type_node)
-        return fbrk.TypeGraph.get_type_name(type_node=type_bound)
-
     # Types that are compatible despite being different
     COMPATIBLE_TYPE_PAIRS: frozenset[frozenset[str]] = frozenset(
         {frozenset({"ElectricLogic", "ElectricSignal"})}
@@ -154,28 +151,30 @@ def find_interface_connection_errors(
     # Check each edge
     for bound_edge in all_edges:
         edge = bound_edge.edge()
-        source_bound = g.bind(node=edge.source())
-        target_bound = g.bind(node=edge.target())
+        source_node = fabll.Node.bind_instance(g.bind(node=edge.source()))
+        target_node = fabll.Node.bind_instance(g.bind(node=edge.target()))
 
-        source_is_interface = source_bound.node().get_uuid() in interface_uuids
-        target_is_interface = target_bound.node().get_uuid() in interface_uuids
+        source_is_interface = source_node.instance.node().get_uuid() in interface_uuids
+        target_is_interface = target_node.instance.node().get_uuid() in interface_uuids
 
         # Check if both endpoints are interfaces
         if not source_is_interface or not target_is_interface:
-            source_chunk = _get_source_chunk_for_connection(
-                source_bound, target_bound, tg
+            from atopile.compiler.ast_visitor import ASTVisitor
+
+            source_chunk = ASTVisitor.get_source_chunk_for_connection(
+                source_node.instance, target_node.instance, tg
             )
             errors_found.append(
                 InterfaceConnectionError(
-                    source_node=source_bound,
-                    target_node=target_bound,
+                    source_node=source_node,
+                    target_node=target_node,
                     source_is_interface=source_is_interface,
                     target_is_interface=target_is_interface,
                     source_type=(
-                        get_type_name(source_bound) if source_is_interface else None
+                        source_node.get_type_name() if source_is_interface else None
                     ),
                     target_type=(
-                        get_type_name(target_bound) if target_is_interface else None
+                        target_node.get_type_name() if target_is_interface else None
                     ),
                     source_chunk=source_chunk,
                 )
@@ -183,17 +182,19 @@ def find_interface_connection_errors(
             continue
 
         # Check type compatibility
-        source_type = get_type_name(source_bound)
-        target_type = get_type_name(target_bound)
+        source_type = source_node.get_type_name()
+        target_type = target_node.get_type_name()
 
         if not are_types_compatible(source_type, target_type):
-            source_chunk = _get_source_chunk_for_connection(
-                source_bound, target_bound, tg
+            from atopile.compiler.ast_visitor import ASTVisitor
+
+            source_chunk = ASTVisitor.get_source_chunk_for_connection(
+                source_node.instance, target_node.instance, tg
             )
             errors_found.append(
                 InterfaceConnectionError(
-                    source_node=source_bound,
-                    target_node=target_bound,
+                    source_node=source_node,
+                    target_node=target_node,
                     source_is_interface=True,
                     target_is_interface=True,
                     source_type=source_type,
@@ -203,200 +204,6 @@ def find_interface_connection_errors(
             )
 
     return errors_found
-
-
-def _get_node_path_from_ancestor(
-    node: graph.BoundNode, ancestor: graph.BoundNode
-) -> list[str]:
-    """Get the path of composition edges from ancestor to node."""
-    path: list[str] = []
-    current = node
-    ancestor_uuid = ancestor.node().get_uuid()
-
-    while True:
-        if current.node().get_uuid() == ancestor_uuid:
-            path.reverse()
-            return path
-        parent_edge = fbrk.EdgeComposition.get_parent_edge(bound_node=current)
-        if parent_edge is None:
-            # Reached root without finding ancestor
-            return []
-        edge_name = fbrk.EdgeComposition.get_name(edge=parent_edge.edge())
-        path.append(edge_name)
-        current = parent_edge.g().bind(
-            node=fbrk.EdgeComposition.get_parent_node(edge=parent_edge.edge())
-        )
-
-
-def _find_common_ancestor(
-    node1: graph.BoundNode, node2: graph.BoundNode
-) -> graph.BoundNode | None:
-    """Find the first common ancestor of two nodes."""
-    # Collect all ancestors of node1
-    ancestors1: set[int] = set()
-    current = node1
-    while True:
-        ancestors1.add(current.node().get_uuid())
-        parent_edge = fbrk.EdgeComposition.get_parent_edge(bound_node=current)
-        if parent_edge is None:
-            break
-        current = parent_edge.g().bind(
-            node=fbrk.EdgeComposition.get_parent_node(edge=parent_edge.edge())
-        )
-
-    # Walk up from node2 until we find a common ancestor
-    current = node2
-    while True:
-        if current.node().get_uuid() in ancestors1:
-            return current
-        parent_edge = fbrk.EdgeComposition.get_parent_edge(bound_node=current)
-        if parent_edge is None:
-            break
-        current = parent_edge.g().bind(
-            node=fbrk.EdgeComposition.get_parent_node(edge=parent_edge.edge())
-        )
-    return None
-
-
-def _path_is_prefix_or_equal(prefix: list[str], full_path: list[str]) -> bool:
-    """Check if prefix is a prefix of (or equal to) full_path."""
-    if len(prefix) > len(full_path):
-        return False
-    return full_path[: len(prefix)] == prefix
-
-
-# Bridge connect paths include these suffixes that should be stripped for matching
-_BRIDGE_PATH_SUFFIXES = frozenset({"can_bridge", "out_", "in_", ""})
-
-
-def _strip_bridge_suffix(path: list[str]) -> list[str]:
-    """
-    Strip can_bridge traversal suffixes from a MakeLink path.
-
-    Bridge connects store paths like ["power_3v3", "can_bridge", "out_", ""]
-    but the actual instance path is just ["power_3v3", "hv"] or similar.
-
-    Returns the base path with bridge suffixes removed from the end.
-    """
-    result = list(path)
-    while result and result[-1] in _BRIDGE_PATH_SUFFIXES:
-        result.pop()
-    return result
-
-
-def _get_source_chunk_for_connection(
-    source_node: graph.BoundNode,
-    target_node: graph.BoundNode,
-    tg: fbrk.TypeGraph,
-) -> "AST.SourceChunk | None":
-    """
-    Find the source chunk for an EdgeInterfaceConnection between two nodes.
-
-    Strategy:
-    1. Find the common ancestor of both nodes
-    2. Get the type node for the common ancestor
-    3. Get all MakeLink nodes from that type
-    4. Find the MakeLink whose lhs_path and rhs_path match the relative paths
-       - First try exact match
-       - Then try prefix match (for bridge connects where actual connection
-         is between children of the declared endpoints)
-    5. Return the source chunk from that MakeLink
-    """
-    from atopile.compiler.ast_visitor import ASTVisitor
-
-    # Find common ancestor
-    ancestor = _find_common_ancestor(source_node, target_node)
-    if ancestor is None:
-        logger.info("_get_source_chunk: No common ancestor found")
-        return None
-
-    # Get paths from ancestor to each node
-    source_path = _get_node_path_from_ancestor(source_node, ancestor)
-    target_path = _get_node_path_from_ancestor(target_node, ancestor)
-    logger.info(
-        f"_get_source_chunk: source_path={source_path}, target_path={target_path}"
-    )
-
-    if not source_path and not target_path:
-        # Both nodes are the ancestor - can't determine which MakeLink
-        logger.info("_get_source_chunk: Both paths empty")
-        return None
-
-    # Get the type node for the ancestor
-    ancestor_type_edge = fbrk.EdgeType.get_type_edge(bound_node=ancestor)
-    if ancestor_type_edge is None:
-        logger.info("_get_source_chunk: No type edge for ancestor")
-        return None
-    ancestor_type = ancestor.g().bind(
-        node=fbrk.EdgeType.get_type_node(edge=ancestor_type_edge.edge())
-    )
-    type_name = fbrk.TypeGraph.get_type_name(type_node=ancestor_type)
-    logger.info(f"_get_source_chunk: ancestor_type={type_name}")
-
-    # Get all MakeLinks from the ancestor type
-    try:
-        make_links = tg.collect_make_links(type_node=ancestor_type)
-        logger.info(f"_get_source_chunk: Found {len(make_links)} MakeLinks")
-    except ValueError as e:
-        logger.info(f"_get_source_chunk: collect_make_links failed: {e}")
-        return None
-
-    # Find matching MakeLink - collect candidates with match quality scores
-    edge_tid = fbrk.EdgeInterfaceConnection.get_tid()
-    best_match: tuple["AST.SourceChunk | None", int] = (None, -1)
-
-    for make_link_node, lhs_tuple, rhs_tuple in make_links:
-        # Check if this is an EdgeInterfaceConnection type MakeLink
-        edge_type_attr = make_link_node.node().get_attr(key="edge_type")
-        if edge_type_attr is None:
-            continue
-        if edge_type_attr != edge_tid:
-            continue
-
-        # Strip bridge connect suffixes (can_bridge, out_, in_, "")
-        # These are added for ~> connections but don't match actual instance paths
-        lhs_path = _strip_bridge_suffix(list(lhs_tuple))
-        rhs_path = _strip_bridge_suffix(list(rhs_tuple))
-        logger.info(f"_get_source_chunk: MakeLink lhs={lhs_path}, rhs={rhs_path}")
-
-        # Skip if paths are empty after stripping
-        if not lhs_path and not rhs_path:
-            continue
-        if (lhs_path == source_path and rhs_path == target_path) or (
-            lhs_path == target_path and rhs_path == source_path
-        ):
-            # Exact match - return immediately
-            logger.info("_get_source_chunk: Exact match found!")
-            chunk = ASTVisitor.get_source_chunk(make_link_node)
-            logger.info(
-                f"_get_source_chunk: ASTVisitor.get_source_chunk returned {chunk}"
-            )
-            return chunk
-
-        # Try prefix match for bridge connects
-        # e.g., MakeLink: power_3v3 ~> resistor
-        #       Actual: power_3v3.hv ~ resistor.unnamed[0]
-        # The MakeLink paths are prefixes of the actual connection paths
-        match_score = 0
-
-        # Check lhs->source, rhs->target
-        if _path_is_prefix_or_equal(lhs_path, source_path) and _path_is_prefix_or_equal(
-            rhs_path, target_path
-        ):
-            match_score = len(lhs_path) + len(rhs_path)
-
-        # Check lhs->target, rhs->source (bidirectional)
-        if _path_is_prefix_or_equal(lhs_path, target_path) and _path_is_prefix_or_equal(
-            rhs_path, source_path
-        ):
-            score = len(lhs_path) + len(rhs_path)
-            match_score = max(match_score, score)
-
-        if match_score > best_match[1]:
-            best_match = (ASTVisitor.get_source_chunk(make_link_node), match_score)
-
-    return best_match[0]
-
 
 class ERCFault(errors.UserException):
     """Base class for ERC faults."""
@@ -519,7 +326,9 @@ class ERCFaultIncompatibleInterfaceConnection(ERCFault):
         # Try to find source location
         source_chunk = None
         if tg is not None:
-            source_chunk = _get_source_chunk_for_connection(
+            from atopile.compiler.ast_visitor import ASTVisitor
+
+            source_chunk = ASTVisitor.get_source_chunk_for_connection(
                 source.instance, target.instance, tg
             )
 
@@ -573,7 +382,6 @@ class needs_erc_check(fabll.Node):
     def __check_post_instantiation_design_check__(self):
         logger.info("Checking for ERC violations")
         with accumulate(ERCFault) as accumulator:
-            self._check_interface_connection_types(accumulator)
             self._check_shorted_interfaces_and_components()
             self._check_shorted_nets(accumulator)
             self._check_shorted_electric_power_sources(accumulator)
@@ -663,48 +471,17 @@ class needs_erc_check(fabll.Node):
         errors = find_interface_connection_errors(self.tg)
         for error in errors:
             with accumulator.collect():
-                source_py = fabll.Node.bind_instance(instance=error.source_node)
-                target_py = fabll.Node.bind_instance(instance=error.target_node)
-
-                # Determine which node is problematic for the message
-                if not error.source_is_interface:
-                    non_interface = source_py
-                elif not error.target_is_interface:
-                    non_interface = target_py
-                else:
-                    # Both are interfaces but types are incompatible
-                    non_interface = None
-
-                if non_interface is not None:
-                    msg = (
-                        f"EdgeInterfaceConnection to non-interface node:\n"
-                        f"  {non_interface.pretty_repr()} is not an interface"
-                    )
-                else:
-                    msg = (
-                        f"Incompatible interface types connected:\n"
-                        f"  {source_py.pretty_repr()} ({error.source_type})\n"
-                        f"    -> {target_py.pretty_repr()} ({error.target_type})"
-                    )
+                source_py = error.source_node
+                target_py = error.target_node
 
                 raise ERCFaultIncompatibleInterfaceConnection(
-                    msg,
+                    error.message,
                     source_py,
                     target_py,
                     error.source_type or "<unknown>",
                     error.target_type or "<unknown>",
                     source_chunk=error.source_chunk,
                 )
-
-    def _check_interface_connection_types(self, accumulator: accumulate) -> None:
-        """
-        Check that all interface connections have compatible types.
-
-        This is now handled by _verify_interface_connections which uses the
-        shared find_interface_connection_errors() function.
-        """
-        # All checking is now done in _verify_interface_connections
-        pass
 
     def _check_additional_heuristics(self) -> None:
         # shorted components
