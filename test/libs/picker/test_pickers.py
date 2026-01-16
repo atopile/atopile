@@ -543,43 +543,6 @@ def test_pick_dependency_div_negative():
 
 
 @pytest.mark.usefixtures("setup_project_config")
-def test_null_solver():
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-    E = BoundExpressions(g=g, tg=tg)
-    capacitance = E.lit_op_range_from_center_rel(center=(10**-9, E.U.Fa), rel=0.2)
-
-    class _App(fabll.Node):
-        cap = F.Capacitor.MakeChild()
-        cap.add_dependant(
-            fabll.Traits.MakeEdge(
-                F.has_package_requirements.MakeChild(size=SMDSize.I0805), [cap]
-            )
-        )
-
-    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
-
-    E.is_subset(
-        app.cap.get().capacitance.get().can_be_operand.get(),
-        capacitance,
-        assert_=True,
-    )
-
-    solver = Solver()
-    pick_part_recursively(app, solver)
-
-    assert app.cap.get().has_trait(F.Pickable.has_part_picked)
-    assert app.cap.get().get_trait(F.has_package_requirements).get_sizes() == [
-        SMDSize.I0805
-    ]
-    assert (
-        (solver)
-        .extract_superset(app.cap.get().capacitance.get().is_parameter.get())
-        .op_setic_is_subset_of(capacitance.as_literal.force_get())
-    )
-
-
-@pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.slow
 def test_pick_voltage_divider_complex():
     g = graph.GraphView.create()

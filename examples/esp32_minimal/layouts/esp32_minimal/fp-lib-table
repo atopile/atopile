@@ -98,4 +98,11 @@
 		(options "")
 		(descr "atopile: part lib: STMicroelectronics_USBLC6_2SC6")
 	)
+	(lib
+		(name "Espressif_Systems_ESP32_C3_MINI_1_N4")
+		(type "KiCad")
+		(uri "${KIPRJMOD}/../../.ato/modules/atopile/espressif-esp32-c3/parts/Espressif_Systems_ESP32_C3_MINI_1_N4")
+		(options "")
+		(descr "atopile: part lib: Espressif_Systems_ESP32_C3_MINI_1_N4")
+	)
 )

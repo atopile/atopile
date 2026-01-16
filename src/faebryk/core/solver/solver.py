@@ -37,19 +37,6 @@ from faebryk.libs.logging import NET_LINE_WIDTH
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import not_none
 
-
-class NotDeducibleException(Exception):
-    def __init__(
-        self,
-        predicate: F.Expressions.is_assertable,
-        not_deduced: list[F.Expressions.is_predicate],
-    ):
-        self.predicate = predicate
-        self.not_deduced = not_deduced
-
-    def __str__(self):
-        return f"Could not deduce predicate: {self.predicate}"
-
 logger = logging.getLogger(__name__)
 
 if S_LOG:
