@@ -1,3 +1,8 @@
+# SKILLS
+
+Skills are located in `.claude/skills/`.
+
+
 # 0.14 Staging branch
 
 This release will contain deep core changes. 
