@@ -253,7 +253,7 @@ class VdivSolverTests:
         E = BoundExpressions()
         g, tg = E.g, E.tg
 
-        rdiv = F.ResistorVoltageDivider.bind_typegraph(tg=tg).create_instance(g=g)
+        rdiv = ResistorVoltageDivider.bind_typegraph(tg=tg).create_instance(g=g)
 
         E.is_subset(
             rdiv.total_resistance.get().can_be_operand.get(),
@@ -280,7 +280,7 @@ class VdivSolverTests:
         E = BoundExpressions()
         g, tg = E.g, E.tg
 
-        rdiv = F.ResistorVoltageDivider.bind_typegraph(tg=tg).create_instance(g=g)
+        rdiv = ResistorVoltageDivider.bind_typegraph(tg=tg).create_instance(g=g)
 
         E.is_subset(
             rdiv.v_in.get().can_be_operand.get(),
@@ -312,7 +312,7 @@ class VdivSolverTests:
         E = BoundExpressions()
         g, tg = E.g, E.tg
 
-        rdiv = F.ResistorVoltageDivider.bind_typegraph(tg=tg).create_instance(g=g)
+        rdiv = ResistorVoltageDivider.bind_typegraph(tg=tg).create_instance(g=g)
 
         E.is_subset(
             rdiv.v_in.get().can_be_operand.get(),
@@ -380,7 +380,7 @@ class VdivSolverTests:
         pick_part_recursively(fabll.Node.bind_instance(app_instance), solver)
 
         # Check all resistors have parts picked
-        vdiv = F.ResistorVoltageDivider.bind_instance(
+        vdiv = ResistorVoltageDivider.bind_instance(
             not_none(
                 fbrk.EdgeComposition.get_child_by_identifier(
                     bound_node=app_instance, child_identifier="vdiv"
@@ -436,7 +436,7 @@ class VdivSolverTests:
         pick_part_recursively(fabll.Node.bind_instance(app_instance), solver)
 
         # Check all resistors have parts picked
-        vdiv = F.ResistorVoltageDivider.bind_instance(
+        vdiv = ResistorVoltageDivider.bind_instance(
             not_none(
                 fbrk.EdgeComposition.get_child_by_identifier(
                     bound_node=app_instance, child_identifier="vdiv"
