@@ -19,9 +19,9 @@ class implements_design_check(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     class CheckStage(Enum):
-        POST_DESIGN_VERIFY = auto()
-        POST_DESIGN_SETUP = auto()
-        POST_DESIGN = auto()
+        POST_INSTANTIATION_GRAPH_CHECK = auto()
+        POST_INSTANTIATION_SETUP = auto()
+        POST_INSTANTIATION_DESIGN_CHECK = auto()
         POST_SOLVE = auto()
         POST_PCB = auto()
 
@@ -79,11 +79,11 @@ class implements_design_check(fabll.Node):
             return self.func
 
     @staticmethod
-    def register_post_design_verify_check(
+    def register_post_instantiation_graph_check(
         func: Callable[[Any], None],
     ) -> "implements_design_check._CheckMethod":
         """
-        Register a POST_DESIGN_VERIFY check.
+        Register a POST_INSTANTIATION_GRAPH_CHECK check.
 
         These run FIRST, before any graph traversal operations. Used to validate
         graph structure integrity:
@@ -91,30 +91,35 @@ class implements_design_check(fabll.Node):
         - Catch malformed connections that would cause BFS hangs
         """
         return implements_design_check._CheckMethod(
-            func, "__check_post_design_verify__"
+            func, "__check_post_instantiation_graph_check__"
         )
 
     @staticmethod
-    def register_post_design_setup_check(
+    def register_post_instantiation_setup_check(
         func: Callable[[Any], None],
     ) -> "implements_design_check._CheckMethod":
         """
-        Register a POST_DESIGN_SETUP check.
+        Register a POST_INSTANTIATION_SETUP check.
 
-        These run after PRE_DESIGN_VERIFY and are for structure modifications like:
+        These run after POST_INSTANTIATION_GRAPH_CHECK and are for structure
+        modifications like:
         - Applying default constraints (has_default_constraint)
         - Connecting deprecated aliases (ElectricPower vcc/gnd)
         - Connecting electric references (has_single_electric_reference)
         - Setting address lines (Addressor)
         """
-        return implements_design_check._CheckMethod(func, "__check_post_design_setup__")
+        return implements_design_check._CheckMethod(
+            func, "__check_post_instantiation_setup__"
+        )
 
     @staticmethod
-    def register_post_design_check(
+    def register_post_instantiation_design_check(
         func: Callable[[Any], None],
     ) -> "implements_design_check._CheckMethod":
-        """Register a POST_DESIGN check for pure verification."""
-        return implements_design_check._CheckMethod(func, "__check_post_design__")
+        """Register a POST_INSTANTIATION_DESIGN_CHECK check for pure verification."""
+        return implements_design_check._CheckMethod(
+            func, "__check_post_instantiation_design_check__"
+        )
 
     @staticmethod
     def register_post_solve_check(
@@ -184,25 +189,25 @@ class implements_design_check(fabll.Node):
         # There should be exactly one solver in the graph
         return solver_traits[0].get_solver()
 
-    def check_post_design_verify(self):
+    def check_post_instantiation_graph_check(self):
         owner_instance, owner_class = self._get_owner_with_type()
-        if not hasattr(owner_class, "__check_post_design_verify__"):
+        if not hasattr(owner_class, "__check_post_instantiation_graph_check__"):
             return False
-        owner_class.__check_post_design_verify__(owner_instance)  # type: ignore[attr-defined]
+        owner_class.__check_post_instantiation_graph_check__(owner_instance)  # type: ignore[attr-defined]
         return True
 
-    def check_post_design_setup(self):
+    def check_post_instantiation_setup(self):
         owner_instance, owner_class = self._get_owner_with_type()
-        if not hasattr(owner_class, "__check_post_design_setup__"):
+        if not hasattr(owner_class, "__check_post_instantiation_setup__"):
             return False
-        owner_class.__check_post_design_setup__(owner_instance)  # type: ignore[attr-defined]
+        owner_class.__check_post_instantiation_setup__(owner_instance)  # type: ignore[attr-defined]
         return True
 
-    def check_post_design(self):
+    def check_post_instantiation_design_check(self):
         owner_instance, owner_class = self._get_owner_with_type()
-        if not hasattr(owner_class, "__check_post_design__"):
+        if not hasattr(owner_class, "__check_post_instantiation_design_check__"):
             return False
-        owner_class.__check_post_design__(owner_instance)  # type: ignore[attr-defined]
+        owner_class.__check_post_instantiation_design_check__(owner_instance)  # type: ignore[attr-defined]
         return True
 
     def check_post_solve(self):
@@ -221,12 +226,12 @@ class implements_design_check(fabll.Node):
 
     def run(self, stage: CheckStage) -> bool:
         match stage:
-            case implements_design_check.CheckStage.POST_DESIGN_VERIFY:
-                return self.check_post_design_verify()
-            case implements_design_check.CheckStage.POST_DESIGN_SETUP:
-                return self.check_post_design_setup()
-            case implements_design_check.CheckStage.POST_DESIGN:
-                return self.check_post_design()
+            case implements_design_check.CheckStage.POST_INSTANTIATION_GRAPH_CHECK:
+                return self.check_post_instantiation_graph_check()
+            case implements_design_check.CheckStage.POST_INSTANTIATION_SETUP:
+                return self.check_post_instantiation_setup()
+            case implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK:
+                return self.check_post_instantiation_design_check()
             case implements_design_check.CheckStage.POST_SOLVE:
                 return self.check_post_solve()
             case implements_design_check.CheckStage.POST_PCB:
@@ -235,9 +240,9 @@ class implements_design_check(fabll.Node):
     def on_check(self):
         _, owner_class = self._get_owner_with_type()
         if (
-            not hasattr(owner_class, "__check_post_design_verify__")
-            and not hasattr(owner_class, "__check_post_design_setup__")
-            and not hasattr(owner_class, "__check_post_design__")
+            not hasattr(owner_class, "__check_post_instantiation_graph_check__")
+            and not hasattr(owner_class, "__check_post_instantiation_setup__")
+            and not hasattr(owner_class, "__check_post_instantiation_design_check__")
             and not hasattr(owner_class, "__check_post_solve__")
             and not hasattr(owner_class, "__check_post_pcb__")
         ):

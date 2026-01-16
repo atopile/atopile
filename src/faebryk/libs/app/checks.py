@@ -24,7 +24,7 @@ def check_design(
 
     Args:
         app: The root application node
-        stage: Which check stage to run (POST_DESIGN_SETUP, POST_DESIGN, etc.)
+        stage: Which check stage to run (POST_INSTANTIATION_SETUP, POST_INSTANTIATION_DESIGN_CHECK, etc.)
         exclude: list of names of checks to exclude e.g:
             - `I2C.requires_unique_addresses`
     """
@@ -69,15 +69,15 @@ class Test:
         def check_log(self, value: list[str]):
             self._log_store[self.instance.node().get_uuid()] = value
 
-        @F.implements_design_check.register_post_design_setup_check
-        def __check_post_design_setup__(self):
+        @F.implements_design_check.register_post_instantiation_setup_check
+        def __check_post_instantiation_setup__(self):
             self._ensure_log()
-            self.check_log.append("post_design_setup")
+            self.check_log.append("post_instantiation_setup")
 
-        @F.implements_design_check.register_post_design_check
-        def __check_post_design__(self):
+        @F.implements_design_check.register_post_instantiation_design_check
+        def __check_post_instantiation_design_check__(self):
             self._ensure_log()
-            self.check_log.append("post_design")
+            self.check_log.append("post_instantiation_design_check")
 
         @F.implements_design_check.register_post_solve_check
         def __check_post_solve__(self):
@@ -98,31 +98,31 @@ class Test:
         a1 = app.create_instance(g=g)
         a2 = app.create_instance(g=g)
 
-        # POST_DESIGN_SETUP runs first (structure modifications)
-        check_design(a1, F.implements_design_check.CheckStage.POST_DESIGN_SETUP)
-        assert a1.check_log == ["post_design_setup"]
-        assert a2.check_log == ["post_design_setup"]
+        # POST_INSTANTIATION_SETUP runs first (structure modifications)
+        check_design(a1, F.implements_design_check.CheckStage.POST_INSTANTIATION_SETUP)
+        assert a1.check_log == ["post_instantiation_setup"]
+        assert a2.check_log == ["post_instantiation_setup"]
 
-        # POST_DESIGN runs second (pure verification)
-        check_design(a1, F.implements_design_check.CheckStage.POST_DESIGN)
-        assert a1.check_log == ["post_design_setup", "post_design"]
-        assert a2.check_log == ["post_design_setup", "post_design"]
+        # POST_INSTANTIATION_DESIGN_CHECK runs second (pure verification)
+        check_design(a1, F.implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK)
+        assert a1.check_log == ["post_instantiation_setup", "post_instantiation_design_check"]
+        assert a2.check_log == ["post_instantiation_setup", "post_instantiation_design_check"]
 
         with pytest.raises(UserDesignCheckException):
             check_design(a1, F.implements_design_check.CheckStage.POST_SOLVE)
-        assert a1.check_log == ["post_design_setup", "post_design", "post_solve"]
-        assert a2.check_log == ["post_design_setup", "post_design", "post_solve"]
+        assert a1.check_log == ["post_instantiation_setup", "post_instantiation_design_check", "post_solve"]
+        assert a2.check_log == ["post_instantiation_setup", "post_instantiation_design_check", "post_solve"]
 
         check_design(a1, F.implements_design_check.CheckStage.POST_PCB)
         assert a1.check_log == [
-            "post_design_setup",
-            "post_design",
+            "post_instantiation_setup",
+            "post_instantiation_design_check",
             "post_solve",
             "post_pcb",
         ]
         assert a2.check_log == [
-            "post_design_setup",
-            "post_design",
+            "post_instantiation_setup",
+            "post_instantiation_design_check",
             "post_solve",
             "post_pcb",
         ]

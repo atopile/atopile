@@ -576,7 +576,7 @@ class ParallelBuildDisplay:
         return f"{minutes}m {secs}s"
 
     # Fixed width for stage column to prevent jumping
-    # Longest: "Running post-design checks [12.5s] (1W)" ~40 chars
+    # Longest: "Running post-instantiation design checks [12.5s] (1W)" ~40 chars
     _STAGE_COLUMN_WIDTH = 40
 
     def _render_table(self) -> Table:

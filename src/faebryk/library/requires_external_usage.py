@@ -51,8 +51,8 @@ class requires_external_usage(fabll.Node):
                 nodes=nodes,
             )
 
-    @F.implements_design_check.register_post_design_check
-    def __check_post_design__(self):
+    @F.implements_design_check.register_post_instantiation_design_check
+    def __check_post_instantiation_design_check__(self):
         if not self.fulfilled:
             raise requires_external_usage.RequiresExternalUsageNotFulfilled(
                 nodes=[fabll.Traits(self).get_obj_raw()],
@@ -92,7 +92,7 @@ class Test:
 
         # no connections
         with pytest.raises((ExceptionGroup, UserDesignCheckException)) as excinfo:
-            check_design(app, stage=F.implements_design_check.CheckStage.POST_DESIGN)
+            check_design(app, stage=F.implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK)
         if isinstance(excinfo.value, ExceptionGroup):
             assert excinfo.group_contains(
                 UserDesignCheckException,
@@ -102,7 +102,7 @@ class Test:
         # internal connection
         outer1.a.get()._is_interface.get().connect_to(outer1.inner.get().b.get())
         with pytest.raises((ExceptionGroup, UserDesignCheckException)) as excinfo:
-            check_design(app, stage=F.implements_design_check.CheckStage.POST_DESIGN)
+            check_design(app, stage=F.implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK)
         if isinstance(excinfo.value, ExceptionGroup):
             assert excinfo.group_contains(
                 UserDesignCheckException,
@@ -112,7 +112,7 @@ class Test:
         # path to external (still internal-only for `a`)
         outer1.inner.get().b.get()._is_interface.get().connect_to(outer2.a.get())
         with pytest.raises((ExceptionGroup, UserDesignCheckException)) as excinfo:
-            check_design(app, stage=F.implements_design_check.CheckStage.POST_DESIGN)
+            check_design(app, stage=F.implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK)
         if isinstance(excinfo.value, ExceptionGroup):
             assert excinfo.group_contains(
                 UserDesignCheckException,
@@ -121,4 +121,4 @@ class Test:
 
         # direct external connection also satisfies the requirement
         outer1.a.get()._is_interface.get().connect_to(outer2.inner.get().b.get())
-        check_design(app, stage=F.implements_design_check.CheckStage.POST_DESIGN)
+        check_design(app, stage=F.implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK)

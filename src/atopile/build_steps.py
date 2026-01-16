@@ -362,13 +362,13 @@ def prepare_build(ctx: BuildStepContext, log_context: LoggingStage) -> None:
 
 
 @muster.register(
-    "post-design-verify",
-    description="Verifying graph structure",
+    "post-instantiation-graph-check",
+    description="Verifying post-instantiation graph",
     dependencies=[prepare_build],
 )
-def post_design_verify(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def post_instantiation_graph_check(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     """
-    Run POST_DESIGN_VERIFY checks for early graph validation.
+    Run POST_INSTANTIATION_GRAPH_CHECK checks for early graph validation.
 
     This runs FIRST and includes:
     - Applying default constraints (has_default_constraint)
@@ -377,19 +377,19 @@ def post_design_verify(ctx: BuildStepContext, log_context: LoggingStage) -> None
     app = ctx.require_app()
     check_design(
         app,
-        stage=F.implements_design_check.CheckStage.POST_DESIGN_VERIFY,
+        stage=F.implements_design_check.CheckStage.POST_INSTANTIATION_GRAPH_CHECK,
         exclude=tuple(set(config.build.exclude_checks)),
     )
 
 
 @muster.register(
-    "post-design-setup",
-    description="Running post-design setup",
-    dependencies=[post_design_verify],
+    "post-instantiation-setup",
+    description="Running post-instantiation setup",
+    dependencies=[post_instantiation_graph_check],
 )
-def post_design_setup(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def post_instantiation_setup(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     """
-    Run POST_DESIGN_SETUP checks which modify the graph structure.
+    Run POST_INSTANTIATION_SETUP checks which modify the graph structure.
 
     This includes:
     - Connecting deprecated aliases (ElectricPower vcc/gnd)
@@ -398,19 +398,19 @@ def post_design_setup(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     app = ctx.require_app()
     check_design(
         app,
-        stage=F.implements_design_check.CheckStage.POST_DESIGN_SETUP,
+        stage=F.implements_design_check.CheckStage.POST_INSTANTIATION_SETUP,
         exclude=tuple(set(config.build.exclude_checks)),
     )
 
 
 @muster.register(
-    "post-design-checks",
-    description="Running post-design checks",
-    dependencies=[post_design_setup],
+    "post-instantiation-design-check",
+    description="Verifying post-instantiation design",
+    dependencies=[post_instantiation_setup],
 )
-def post_design_checks(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def post_instantiation_design_check(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     """
-    Run POST_DESIGN checks for verification and late setup.
+    Run POST_INSTANTIATION_DESIGN_CHECK checks for verification and late setup.
 
     This includes:
     - Setting address lines based on solved offset (Addressor)
@@ -419,13 +419,13 @@ def post_design_checks(ctx: BuildStepContext, log_context: LoggingStage) -> None
     app = ctx.require_app()
     check_design(
         app,
-        stage=F.implements_design_check.CheckStage.POST_DESIGN,
+        stage=F.implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK,
         exclude=tuple(set(config.build.exclude_checks)),
     )
 
 
 @muster.register(
-    "load-pcb", description="Loading PCB", dependencies=[post_design_checks]
+    "load-pcb", description="Loading PCB", dependencies=[post_instantiation_design_check]
 )
 def load_pcb(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     pcb = ctx.require_pcb()

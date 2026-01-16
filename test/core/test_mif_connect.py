@@ -929,8 +929,8 @@ def test_single_electric_reference_connects_children():
     tg = fbrk.TypeGraph.create(g=g)
 
     class _WithReferences(fabll.Node):
-        power_a = F.ElectricPower.MakeChild()
-        power_b = F.ElectricPower.MakeChild()
+        logic_a = F.ElectricLogic.MakeChild()
+        logic_b = F.ElectricLogic.MakeChild()
 
         _single_electric_reference = fabll.Traits.MakeEdge(
             F.has_single_electric_reference.MakeChild()
@@ -940,9 +940,15 @@ def test_single_electric_reference_connects_children():
     app._single_electric_reference.get().connect_all_references()
     shared_ref = app._single_electric_reference.get().get_reference()
 
-    assert shared_ref._is_interface.get().is_connected_to(app.power_a.get())
-    assert shared_ref._is_interface.get().is_connected_to(app.power_b.get())
-    assert app.power_a.get()._is_interface.get().is_connected_to(app.power_b.get())
+    assert shared_ref._is_interface.get().is_connected_to(
+        app.logic_a.get().reference.get()
+    )
+    assert shared_ref._is_interface.get().is_connected_to(
+        app.logic_b.get().reference.get()
+    )
+    assert app.logic_a.get().reference.get()._is_interface.get().is_connected_to(
+        app.logic_b.get().reference.get()
+    )
 
 
 def test_shallow_bridge_full():
@@ -1484,7 +1490,8 @@ class TestElectricPowerVccGndDeprecation:
     Test deprecation warnings for vcc/gnd aliases in ElectricPower.
 
     vcc/gnd are always connected to hv/lv for backwards compatibility.
-    The post_design check warns if external connections use these deprecated aliases.
+    The post_instantiation_design_check warns if external connections use these
+    deprecated aliases.
     """
 
     def test_vcc_always_connected_to_hv(self):
@@ -1523,7 +1530,9 @@ class TestElectricPowerVccGndDeprecation:
         power = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
 
         # Should not raise any warning - vcc/gnd only have their hv/lv connections
-        check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
+        check_design(
+            power, F.implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK
+        )
 
     def test_warning_when_vcc_externally_used(self, caplog):
         """
@@ -1542,7 +1551,10 @@ class TestElectricPowerVccGndDeprecation:
 
         # Run check - should warn about vcc usage
         with caplog.at_level(logging.WARNING):
-            check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
+            check_design(
+                power,
+                F.implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK,
+            )
 
         assert "vcc" in caplog.text
         assert "Deprecated" in caplog.text
@@ -1564,7 +1576,10 @@ class TestElectricPowerVccGndDeprecation:
 
         # Run check - should warn about gnd usage
         with caplog.at_level(logging.WARNING):
-            check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
+            check_design(
+                power,
+                F.implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK,
+            )
 
         assert "gnd" in caplog.text
         assert "Deprecated" in caplog.text
@@ -1620,7 +1635,10 @@ class TestElectricPowerVccGndDeprecation:
 
         # Run check - should NOT warn
         with caplog.at_level(logging.WARNING):
-            check_design(power, F.implements_design_check.CheckStage.POST_DESIGN)
+            check_design(
+                power,
+                F.implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK,
+            )
 
         # No deprecation warning for hv/lv usage
         assert "Deprecated" not in caplog.text

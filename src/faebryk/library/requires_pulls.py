@@ -130,8 +130,8 @@ class requires_pulls(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
 
-    @F.implements_design_check.register_post_design_check
-    def __check_post_design__(self):
+    @F.implements_design_check.register_post_instantiation_design_check
+    def __check_post_instantiation_design_check__(self):
         signals = (
             F.ElectricSignal.bind_instance(signal.instance)
             for signal in self.signals.get().as_list()

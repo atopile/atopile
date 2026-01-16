@@ -557,8 +557,8 @@ class needs_erc_check(fabll.Node):
     is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
     design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
 
-    @F.implements_design_check.register_post_design_verify_check
-    def __check_post_design_verify__(self):
+    @F.implements_design_check.register_post_instantiation_graph_check
+    def __check_post_instantiation_graph_check__(self):
         """
         Early validation of graph structure before any BFS traversal.
 
@@ -569,8 +569,8 @@ class needs_erc_check(fabll.Node):
         with accumulate(ERCFault) as accumulator:
             self._verify_interface_connections(accumulator)
 
-    @F.implements_design_check.register_post_design_check
-    def __check_post_design__(self):
+    @F.implements_design_check.register_post_instantiation_design_check
+    def __check_post_instantiation_design_check__(self):
         logger.info("Checking for ERC violations")
         with accumulate(ERCFault) as accumulator:
             self._check_interface_connection_types(accumulator)
@@ -739,12 +739,12 @@ class Test:
     class _App(fabll.Node):
         is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
-    def _run_post_design_checks(self, tg: fbrk.TypeGraph) -> None:
+    def _run_post_instantiation_design_check(self, tg: fbrk.TypeGraph) -> None:
         g = tg.get_graph_view()
         app_type = self._App.bind_typegraph(tg)
         app = app_type.create_instance(g=g)
         fabll.Traits.create_and_add_instance_to(app, needs_erc_check)
-        check_design(app, F.implements_design_check.CheckStage.POST_DESIGN)
+        check_design(app, F.implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK)
 
     def test_erc_isolated_connect(self):
         g = fabll.graph.GraphView.create()
@@ -760,7 +760,7 @@ class Test:
 
         with pytest.raises(ERCPowerSourcesShortedError):
             y1._is_interface.get().connect_to(y2)
-            self._run_post_design_checks(tg)
+            self._run_post_instantiation_design_check(tg)
 
         # TODO no more LDO in fabll
         # ldo1 = F.LDO()
@@ -793,13 +793,13 @@ class Test:
         ep1._is_interface.get().connect_to(ep2)
 
         # This is okay!
-        self._run_post_design_checks(tg)
+        self._run_post_instantiation_design_check(tg)
 
         ep1.lv.get()._is_interface.get().connect_to(ep2.hv.get())
 
         # This is not okay!
         with pytest.raises(ERCFaultShortedInterfaces) as ex:
-            self._run_post_design_checks(tg)
+            self._run_post_instantiation_design_check(tg)
 
         # TODO figure out a nice way to format paths for this
         print(ex.value.path)
@@ -818,7 +818,7 @@ class Test:
         eps[0].hv.get()._is_interface.get().connect_to(eps[3].lv.get())
 
         with pytest.raises(ERCFaultShortedInterfaces):
-            self._run_post_design_checks(tg)
+            self._run_post_instantiation_design_check(tg)
 
     def test_erc_electric_power_short_via_resistor_no_short(self):
         g = fabll.graph.GraphView.create()
@@ -832,7 +832,7 @@ class Test:
         ep1.lv.get()._is_interface.get().connect_to(resistor.unnamed[1].get())
 
         # should not raise
-        self._run_post_design_checks(tg)
+        self._run_post_instantiation_design_check(tg)
 
     def test_erc_power_source_short(self):
         """
@@ -851,7 +851,7 @@ class Test:
         power_out_2.make_source()
 
         with pytest.raises(ERCPowerSourcesShortedError):
-            self._run_post_design_checks(tg)
+            self._run_post_instantiation_design_check(tg)
 
     def test_erc_power_source_no_short(self):
         """
@@ -868,7 +868,7 @@ class Test:
 
         power_out_1._is_interface.get().connect_to(power_out_2)
 
-        self._run_post_design_checks(tg)
+        self._run_post_instantiation_design_check(tg)
 
     def test_erc_interface_type_same_type_compatible(self):
         """
@@ -885,7 +885,7 @@ class Test:
         e1._is_interface.get().connect_to(e2)
 
         # Should pass - same types
-        self._run_post_design_checks(tg)
+        self._run_post_instantiation_design_check(tg)
 
     def test_erc_interface_type_electric_power_compatible(self):
         """
@@ -901,7 +901,7 @@ class Test:
         p1._is_interface.get().connect_to(p2)
 
         # Should pass - same types
-        self._run_post_design_checks(tg)
+        self._run_post_instantiation_design_check(tg)
 
     def test_erc_interface_type_electric_logic_compatible(self):
         """
@@ -917,7 +917,7 @@ class Test:
         l1._is_interface.get().connect_to(l2)
 
         # Should pass - same types
-        self._run_post_design_checks(tg)
+        self._run_post_instantiation_design_check(tg)
 
     def test_erc_interface_type_incompatible_power_to_electrical(self):
         """

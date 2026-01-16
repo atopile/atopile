@@ -22,7 +22,7 @@ class ElectricPower(fabll.Node):
 
     # Deprecated aliases for backwards compatibility.
     # These are always connected to hv/lv via the edges below.
-    # The post_design check warns if they are actually used.
+    # The post_instantiation_design_check check warns if they are actually used.
     vcc = F.Electrical.MakeChild()
     gnd = F.Electrical.MakeChild()
 
@@ -88,8 +88,8 @@ class ElectricPower(fabll.Node):
 
 
     design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
-    @F.implements_design_check.register_post_design_check
-    def __check_post_design__(self):
+    @F.implements_design_check.register_post_instantiation_design_check
+    def __check_post_instantiation_design_check__(self):
         """
         Warn if deprecated vcc/gnd aliases are being used.
 

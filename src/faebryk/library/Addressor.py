@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import logging
-from typing import Self, cast
+from typing import TYPE_CHECKING, Self, cast
 
 import pytest
 
@@ -9,9 +9,11 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core import graph
-from faebryk.libs.app.checks import check_design
 from faebryk.libs.exceptions import UserDesignCheckException
 from faebryk.libs.util import once
+
+if TYPE_CHECKING:
+    from faebryk.libs.app.checks import check_design
 
 logger = logging.getLogger(__name__)
 
@@ -71,8 +73,8 @@ class Addressor(fabll.Node):
                 nodes=[addressor],
             )
 
-    @F.implements_design_check.register_post_design_setup_check
-    def __check_post_design_setup__(self):
+    @F.implements_design_check.register_post_instantiation_setup_check
+    def __check_post_instantiation_setup__(self):
         """Set address lines based on the solved offset value."""
 
         # Try direct constraint first (returns Numbers)
@@ -326,8 +328,12 @@ def test_addressor_sets_address_lines(
     solver.simplify(g, tg)
     fabll.Traits.create_and_add_instance_to(app, F.has_solver).setup(solver)
 
-    # Run post-design-setup checks (this triggers address line setting)
-    check_design(app, stage=F.implements_design_check.CheckStage.POST_DESIGN_SETUP)
+    # Run post-instantiation-setup checks (this triggers address line setting)
+    from faebryk.libs.app import checks as checks_mod
+
+    checks_mod.check_design(
+        app, stage=F.implements_design_check.CheckStage.POST_INSTANTIATION_SETUP
+    )
 
     # Get fresh address_lines after solve
     address_lines = addressor.address_lines.get().as_list()
@@ -380,7 +386,11 @@ def test_addressor_unresolved_offset_raises():
 
     # Should raise because offset is neither directly constrained nor deducible
     with pytest.raises(UserDesignCheckException, match="offset must be constrained"):
-        check_design(app, stage=F.implements_design_check.CheckStage.POST_DESIGN_SETUP)
+        from faebryk.libs.app import checks as checks_mod
+
+        checks_mod.check_design(
+            app, stage=F.implements_design_check.CheckStage.POST_INSTANTIATION_SETUP
+        )
 
 
 def test_addressor():
@@ -407,9 +417,13 @@ def test_addressor():
     solver = DefaultSolver()
     solver.simplify(g, tg)
 
-    # Attach solver and run post-design-setup checks (which sets address lines)
+    # Attach solver and run post-instantiation-setup checks (which sets address lines)
     fabll.Traits.create_and_add_instance_to(app, F.has_solver).setup(solver)
-    check_design(app, stage=F.implements_design_check.CheckStage.POST_DESIGN_SETUP)
+    from faebryk.libs.app import checks as checks_mod
+
+    checks_mod.check_design(
+        app, stage=F.implements_design_check.CheckStage.POST_INSTANTIATION_SETUP
+    )
 
     assert solver.inspect_get_known_supersets(
         app.i2c.get().address.get().is_parameter.get()
@@ -532,7 +546,11 @@ def test_i2c_unique_addresses():
     solver.simplify(g, tg)
     fabll.Traits.create_and_add_instance_to(app, F.has_solver).setup(solver)
 
-    check_design(app, stage=F.implements_design_check.CheckStage.POST_DESIGN_SETUP)
+    from faebryk.libs.app import checks as checks_mod
+
+    checks_mod.check_design(
+        app, stage=F.implements_design_check.CheckStage.POST_INSTANTIATION_SETUP
+    )
 
 
 @pytest.mark.skip(
@@ -556,7 +574,11 @@ def test_i2c_duplicate_addresses():
 
     # with pytest.raises(F.I2C.requires_unique_addresses.DuplicateAddressException):
     with pytest.raises(ExceptionGroup) as e:
-        check_design(app, stage=F.implements_design_check.CheckStage.POST_DESIGN_SETUP)
+        from faebryk.libs.app import checks as checks_mod
+
+        checks_mod.check_design(
+            app, stage=F.implements_design_check.CheckStage.POST_INSTANTIATION_SETUP
+        )
     assert e.group_contains(
         UserDesignCheckException, match="Duplicate I2C addresses found on the bus:"
     )
@@ -587,7 +609,11 @@ def test_i2c_duplicate_addresses_isolated():
 
     # with pytest.raises(F.I2C.requires_unique_addresses.DuplicateAddressException):
     with pytest.raises(ExceptionGroup) as e:
-        check_design(app, stage=F.implements_design_check.CheckStage.POST_DESIGN_SETUP)
+        from faebryk.libs.app import checks as checks_mod
+
+        checks_mod.check_design(
+            app, stage=F.implements_design_check.CheckStage.POST_INSTANTIATION_SETUP
+        )
     assert e.group_contains(
         UserDesignCheckException, match="Duplicate I2C addresses found on the bus:"
     )

@@ -15,7 +15,7 @@ Example in ato:
     # User code
     device.max_current = 500mA  # Overrides the default, no contradiction
 
-The trait registers a POST_DESIGN check that:
+The trait registers a POST_INSTANTIATION_DESIGN_CHECK check that:
 1. Examines the parameter for explicit IsSubset/Is constraints
 2. If found: does nothing (user's constraint takes precedence)
 3. If not found: creates an IsSubset constraint from the default value
@@ -195,12 +195,12 @@ class has_default_constraint(fabll.Node):
 
         return False
 
-    @F.implements_design_check.register_post_design_verify_check
-    def __check_post_design_verify__(self):
+    @F.implements_design_check.register_post_instantiation_graph_check
+    def __check_post_instantiation_graph_check__(self):
         """
         Apply default constraint if no explicit constraint exists.
 
-        This runs in POST_DESIGN_VERIFY (earliest stage) so defaults are
+        This runs in POST_INSTANTIATION_GRAPH_CHECK (earliest stage) so defaults are
         available for subsequent stages like Addressor offset resolution.
         """
         param = self._get_target_parameter()
