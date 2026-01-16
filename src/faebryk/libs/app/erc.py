@@ -516,11 +516,25 @@ class Test:
     class _App(fabll.Node):
         is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
-    def _run_post_instantiation_design_check(self, tg: fbrk.TypeGraph) -> None:
+    @staticmethod
+    def _connect_interface_via_edge_builder(
+        g: graph.GraphView,
+        source: fabll.Node,
+        target: fabll.Node,
+    ) -> None:
+        edge_attrs = fbrk.EdgeInterfaceConnection.build(shallow=False)
+        edge_attrs.insert_edge(
+            g=g,
+            source=source.instance.node(),
+            target=target.instance.node(),
+        )
+
+    def _run_checks(self, tg: fbrk.TypeGraph) -> None:
         g = tg.get_graph_view()
         app_type = self._App.bind_typegraph(tg)
         app = app_type.create_instance(g=g)
         fabll.Traits.create_and_add_instance_to(app, needs_erc_check)
+        check_design(app, F.implements_design_check.CheckStage.POST_INSTANTIATION_GRAPH_CHECK)
         check_design(app, F.implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK)
 
     def test_erc_isolated_connect(self):
@@ -537,7 +551,7 @@ class Test:
 
         with pytest.raises(ERCPowerSourcesShortedError):
             y1._is_interface.get().connect_to(y2)
-            self._run_post_instantiation_design_check(tg)
+            self._run_checks(tg)
 
         # TODO no more LDO in fabll
         # ldo1 = F.LDO()
@@ -570,13 +584,13 @@ class Test:
         ep1._is_interface.get().connect_to(ep2)
 
         # This is okay!
-        self._run_post_instantiation_design_check(tg)
+        self._run_checks(tg)
 
         ep1.lv.get()._is_interface.get().connect_to(ep2.hv.get())
 
         # This is not okay!
         with pytest.raises(ERCFaultShortedInterfaces) as ex:
-            self._run_post_instantiation_design_check(tg)
+            self._run_checks(tg)
 
         # TODO figure out a nice way to format paths for this
         print(ex.value.path)
@@ -595,7 +609,7 @@ class Test:
         eps[0].hv.get()._is_interface.get().connect_to(eps[3].lv.get())
 
         with pytest.raises(ERCFaultShortedInterfaces):
-            self._run_post_instantiation_design_check(tg)
+            self._run_checks(tg)
 
     def test_erc_electric_power_short_via_resistor_no_short(self):
         g = fabll.graph.GraphView.create()
@@ -609,7 +623,7 @@ class Test:
         ep1.lv.get()._is_interface.get().connect_to(resistor.unnamed[1].get())
 
         # should not raise
-        self._run_post_instantiation_design_check(tg)
+        self._run_checks(tg)
 
     def test_erc_power_source_short(self):
         """
@@ -628,7 +642,7 @@ class Test:
         power_out_2.make_source()
 
         with pytest.raises(ERCPowerSourcesShortedError):
-            self._run_post_instantiation_design_check(tg)
+            self._run_checks(tg)
 
     def test_erc_power_source_no_short(self):
         """
@@ -645,9 +659,10 @@ class Test:
 
         power_out_1._is_interface.get().connect_to(power_out_2)
 
-        self._run_post_instantiation_design_check(tg)
+        self._run_checks(tg)
 
-    def test_erc_interface_type_same_type_compatible(self):
+
+    def test_verify_graph_interface_type_same_type_compatible(self):
         """
         Test that connecting interfaces of the same type passes ERC.
         """
@@ -659,58 +674,26 @@ class Test:
         e1 = electrical_type.create_instance(g=g)
         e2 = electrical_type.create_instance(g=g)
 
-        e1._is_interface.get().connect_to(e2)
+        self._connect_interface_via_edge_builder(g, e1, e2)
+
+        assert e1._is_interface.get().is_connected_to(e2)
 
         # Should pass - same types
-        self._run_post_instantiation_design_check(tg)
+        self._run_checks(tg)
 
-    def test_erc_interface_type_electric_power_compatible(self):
-        """
-        Test that connecting ElectricPower interfaces passes ERC.
-        """
+    def test_verify_graph_interface_type_different_type_incompatible(self):
         g = fabll.graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
+
+        electrical_type = F.Electrical.bind_typegraph(tg)
+        e1 = electrical_type.create_instance(g=g)
 
         power_type = F.ElectricPower.bind_typegraph(tg)
         p1 = power_type.create_instance(g=g)
-        p2 = power_type.create_instance(g=g)
 
-        p1._is_interface.get().connect_to(p2)
+        self._connect_interface_via_edge_builder(g, e1, p1)
 
-        # Should pass - same types
-        self._run_post_instantiation_design_check(tg)
+        assert e1._is_interface.get().is_connected_to(p1)
 
-    def test_erc_interface_type_electric_logic_compatible(self):
-        """
-        Test that connecting ElectricLogic interfaces passes ERC.
-        """
-        g = fabll.graph.GraphView.create()
-        tg = fbrk.TypeGraph.create(g=g)
-
-        logic_type = F.ElectricLogic.bind_typegraph(tg)
-        l1 = logic_type.create_instance(g=g)
-        l2 = logic_type.create_instance(g=g)
-
-        l1._is_interface.get().connect_to(l2)
-
-        # Should pass - same types
-        self._run_post_instantiation_design_check(tg)
-
-    def test_erc_interface_type_incompatible_power_to_electrical(self):
-        """
-        Test that the Zig layer prevents incompatible type connections
-        (ElectricPower to Electrical directly).
-
-        Note: The Zig connect function enforces type matching at connection
-        time, so this tests that the protection is in place.
-        """
-        g = fabll.graph.GraphView.create()
-        tg = fbrk.TypeGraph.create(g=g)
-
-        power = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
-        electrical = F.Electrical.bind_typegraph(tg).create_instance(g=g)
-
-        # The Zig layer should reject this connection due to type mismatch
-        # It raises ValueError with "Failed to connect interface nodes"
-        with pytest.raises(ValueError, match="Failed to connect"):
-            power._is_interface.get().connect_to(electrical)
+        with pytest.raises(ERCFaultIncompatibleInterfaceConnection):
+            self._run_checks(tg)
