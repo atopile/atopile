@@ -12,7 +12,6 @@ from atopile.compiler.ast_visitor import ASTVisitor, DslException
 from atopile.compiler.build import Linker, StdlibRegistry, build_file
 from atopile.errors import UserSyntaxError
 from faebryk.core.solver.mutator import MutationMap, Mutator
-from faebryk.core.solver.symbolic.structural import merge_intersect_subsets
 from faebryk.core.solver.utils import ContradictionByLiteral
 from faebryk.libs.util import not_none
 from test.compiler.conftest import build_instance, build_type
