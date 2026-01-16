@@ -2694,7 +2694,7 @@ class IsSuperset(fabll.Node):
 
     @classmethod
     def MakeChild(
-        cls, superset: fabll.RefPath, subset: fabll.RefPath
+        cls, superset: fabll.RefPath, subset: fabll.RefPath, assert_: bool = False
     ) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
         out.add_dependant(
@@ -2703,6 +2703,10 @@ class IsSuperset(fabll.Node):
         out.add_dependant(
             OperandPointer.MakeEdge([out, cls.zsubset], get_operand_path(subset))
         )
+        if assert_:
+            out.add_dependant(
+                fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
+            )
         return out
 
     @classmethod
