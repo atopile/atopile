@@ -53,12 +53,7 @@ class is_alias_bus_parameter(fabll.Node):
             raise NodeException(
                 self, "Bus parameter does not belong to an interface node"
             ) from ex
-
-        parent_force, name = obj.get_parent_force()
-        if parent is not parent_force:
-            raise NodeException(
-                self, "Bus parameter does not belong to an interface node"
-            )
+        _, name = obj.get_parent_force()
         return parent, name
 
     @assert_once
@@ -68,10 +63,25 @@ class is_alias_bus_parameter(fabll.Node):
 
         interface_parent, param_name = self._get_interface_parent_and_param_name()
         self_param = fabll.Traits(self).get_obj_raw()
-        if getattr(interface_parent, param_name) is not self_param:
+
+        children = fabll.Node.with_names(
+            interface_parent.get_children(
+                direct_only=True, types=fabll.Node, include_root=False
+            )
+        )
+        if param_name not in children:
+            raise NodeException(self, "Key not mapping to parameter")
+        if not children[param_name].is_same(self_param):
             raise NodeException(self, "Key not mapping to parameter")
 
-        params = [getattr(interface, param_name) for interface in interfaces]
+        params = [
+            fabll.Node.with_names(
+                interface.get_children(
+                    direct_only=True, types=fabll.Node, include_root=False
+                )
+            )[param_name]
+            for interface in interfaces
+        ]
         params_with_guard = [
             (param, param.get_trait(is_alias_bus_parameter)) for param in params
         ]
