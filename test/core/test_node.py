@@ -14,6 +14,10 @@ def node_hierarchy():
     grandchild1 = Mock(spec=fabll.Node)
     grandchild2 = Mock(spec=fabll.Node)
 
+    # Make identity checks match real Node.is_same semantics
+    for node in (root, child1, child2, grandchild1, grandchild2):
+        node.is_same = lambda other, _node=node: other is _node
+
     # Setup hierarchies
     root.get_hierarchy = lambda: [(root, "root")]
     child1.get_hierarchy = lambda: [(root, "root"), (child1, "child1")]

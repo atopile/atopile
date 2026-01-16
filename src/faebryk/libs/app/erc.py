@@ -53,6 +53,7 @@ class InterfaceConnectionError:
     @property
     def message(self) -> str:
         """Generate a human-readable error message."""
+        source_info = _format_source_info(self.source_chunk)
         if not self.source_is_interface or not self.target_is_interface:
             non_interface = (
                 self.source_node if not self.source_is_interface else self.target_node
@@ -60,6 +61,7 @@ class InterfaceConnectionError:
             return (
                 "EdgeInterfaceConnection to non-interface node:\n"
                 f"  {non_interface.pretty_repr()} is not an interface"
+                f"{source_info}"
             )
 
         # Both are interfaces but types are incompatible
@@ -69,8 +71,82 @@ class InterfaceConnectionError:
             "Incompatible interface types connected:\n"
             f"  {self.source_node.pretty_repr()} ({src})\n"
             f"    -> {self.target_node.pretty_repr()} ({tgt})"
+            f"{source_info}"
         )
 
+
+def _get_connection_source_chunk(
+    source_node: fabll.Node,
+    target_node: fabll.Node,
+    tg: fbrk.TypeGraph | None,
+    source_chunk: "AST.SourceChunk | None" = None,
+) -> "AST.SourceChunk | None":
+    if source_chunk is not None or tg is None:
+        return source_chunk
+    try:
+        from atopile.compiler.ast_visitor import ASTVisitor
+
+        return ASTVisitor.get_source_chunk_for_connection(
+            source_node.instance, target_node.instance, tg
+        )
+    except Exception:
+        return None
+
+
+def _format_source_info(source_chunk: "AST.SourceChunk | None") -> str:
+    if source_chunk is None:
+        return ""
+    try:
+        loc = source_chunk.loc.get()
+        start_line = loc.get_start_line()
+        end_line = loc.get_end_line()
+        file_path = source_chunk.get_path()
+        if not file_path:
+            return ""
+        if start_line == end_line:
+            source_header = f"\nSource: {file_path}:{start_line}"
+        else:
+            source_header = f"\nSource: {file_path}:{start_line}-{end_line}"
+
+        try:
+            with open(file_path) as f:
+                lines = f.read().splitlines()
+        except (FileNotFoundError, OSError):
+            return source_header
+
+        context = 2
+        start_idx = max(1, start_line - context)
+        end_idx = min(len(lines), end_line + context)
+        width = len(str(end_idx))
+        snippet_lines = []
+        for line_no in range(start_idx, end_idx + 1):
+            marker = ">" if start_line <= line_no <= end_line else " "
+            text = lines[line_no - 1] if line_no - 1 < len(lines) else ""
+            snippet_lines.append(f"{marker}{line_no:>{width}} | {text}")
+        snippet = "\n".join(snippet_lines)
+        return f"{source_header}\nCode causing the error:\n{snippet}"
+    except Exception:
+        return ""
+
+
+def _format_interface_connection_message(
+    title: str,
+    source_node: fabll.Node,
+    target_node: fabll.Node,
+    source_type: str | None,
+    target_type: str | None,
+    source_chunk: "AST.SourceChunk | None",
+    include_source_info: bool = True,
+) -> str:
+    src = source_type or "<unknown>"
+    tgt = target_type or "<unknown>"
+    source_info = _format_source_info(source_chunk) if include_source_info else ""
+    return (
+        f"{title}:\n"
+        f"  {source_node.pretty_repr()} ({src})\n"
+        f"    -> {target_node.pretty_repr()} ({tgt})"
+        f"{source_info}"
+    )
 
 def find_interface_connection_errors(
     tg: fbrk.TypeGraph,
@@ -159,10 +235,8 @@ def find_interface_connection_errors(
 
         # Check if both endpoints are interfaces
         if not source_is_interface or not target_is_interface:
-            from atopile.compiler.ast_visitor import ASTVisitor
-
-            source_chunk = ASTVisitor.get_source_chunk_for_connection(
-                source_node.instance, target_node.instance, tg
+            source_chunk = _get_connection_source_chunk(
+                source_node, target_node, tg
             )
             errors_found.append(
                 InterfaceConnectionError(
@@ -186,10 +260,8 @@ def find_interface_connection_errors(
         target_type = target_node.get_type_name()
 
         if not are_types_compatible(source_type, target_type):
-            from atopile.compiler.ast_visitor import ASTVisitor
-
-            source_chunk = ASTVisitor.get_source_chunk_for_connection(
-                source_node.instance, target_node.instance, tg
+            source_chunk = _get_connection_source_chunk(
+                source_node, target_node, tg
             )
             errors_found.append(
                 InterfaceConnectionError(
@@ -216,22 +288,16 @@ class ERCFaultShort(ERCFault):
 class ERCFaultShortedInterfaces(ERCFaultShort):
     """Short circuit between two Interfaces."""
 
-    def __init__(self, msg: str, path: fabll.Path, *args: object) -> None:
+    def __init__(
+        self,
+        msg: str,
+        path: fabll.Path,
+        *args: object,
+        source_chunk: "AST.SourceChunk | None" = None,
+    ) -> None:
         super().__init__(msg, path, *args, markdown=False)
         self.path = path
-
-    @classmethod
-    def from_path(cls, path: fabll.Path) -> "ERCFaultShortedInterfaces":
-        """
-        Given two shorted Interfaces, return an exception that describes the
-        narrowest path for the fault.
-        """
-
-        start = path.get_start_node().pretty_repr()
-        end = path.get_end_node().pretty_repr()
-        return cls(
-            f"Shorted:\t{start} -> {end}\nFull path:\t{path.pretty_repr()}", path
-        )
+        self.source_chunk = source_chunk
 
 
 class ERCFaultElectricPowerUndefinedVoltage(ERCFault):
@@ -272,47 +338,6 @@ class ERCFaultIncompatibleInterfaceConnection(ERCFault):
         self.target_type = target_type
         self.source_chunk = source_chunk
 
-    def __rich_console__(
-        self, console: "Console", options: "ConsoleOptions"
-    ) -> list["ConsoleRenderable"]:
-        """Render error with source location if available."""
-        # Get base rendering from parent
-        renderables = super().__rich_console__(console, options)
-
-        # Add source location if we have it
-        if self.source_chunk is not None:
-            loc = self.source_chunk.loc.get()
-            start_line = loc.get_start_line()
-            end_line = loc.get_end_line()
-            file_path = self.source_chunk.get_path()
-
-            if file_path:
-                try:
-                    with open(file_path) as f:
-                        code = f.read()
-                    display_path = str(Path(file_path).resolve())
-                    source_info = f"{display_path}:{start_line}"
-
-                    renderables.append(Text("\nCode causing the error:", style="bold"))
-                    renderables.append(
-                        Text("Source: ", style="bold")
-                        + Text(source_info, style="magenta")
-                    )
-                    renderables.append(
-                        Syntax(
-                            code,
-                            "python",
-                            line_numbers=True,
-                            line_range=(max(1, start_line - 2), end_line + 2),
-                            highlight_lines=set(range(start_line, end_line + 1)),
-                            background_color="default",
-                        )
-                    )
-                except (FileNotFoundError, OSError):
-                    pass
-
-        return renderables
-
     @classmethod
     def from_nodes(
         cls,
@@ -323,25 +348,28 @@ class ERCFaultIncompatibleInterfaceConnection(ERCFault):
         tg: fbrk.TypeGraph | None = None,
     ) -> "ERCFaultIncompatibleInterfaceConnection":
         """Create an exception for incompatible interface connection."""
-        # Try to find source location
-        source_chunk = None
-        if tg is not None:
-            from atopile.compiler.ast_visitor import ASTVisitor
-
-            source_chunk = ASTVisitor.get_source_chunk_for_connection(
-                source.instance, target.instance, tg
-            )
+        source_chunk = _get_connection_source_chunk(
+            source, target, tg
+        )
+        message = _format_interface_connection_message(
+            title="Incompatible interface types connected",
+            source_node=source,
+            target_node=target,
+            source_type=source_type,
+            target_type=target_type,
+            source_chunk=source_chunk,
+            include_source_info=True,
+        )
 
         return cls(
-            f"Incompatible interface types connected:\n"
-            f"  {source.pretty_repr()} ({source_type})\n"
-            f"    -> {target.pretty_repr()} ({target_type})",
+            message,
             source,
             target,
             source_type,
             target_type,
             source_chunk=source_chunk,
         )
+
 
 
 # TODO split this up
@@ -354,8 +382,6 @@ class needs_erc_check(fabll.Node):
         - Capacitor (unnamed[0] and unnamed[1])
         - Resistor (unnamed[0] and unnamed[1])
         - Fuse (unnamed[0] and unnamed[1])
-    - shorted nets
-    - net name collisions
 
     TODO
     - shorted ElectricPower sources
@@ -382,12 +408,11 @@ class needs_erc_check(fabll.Node):
     def __check_post_instantiation_design_check__(self):
         logger.info("Checking for ERC violations")
         with accumulate(ERCFault) as accumulator:
-            self._check_shorted_interfaces_and_components()
-            self._check_shorted_nets(accumulator)
+            self._check_shorted_interfaces_and_components(accumulator)
             self._check_shorted_electric_power_sources(accumulator)
             self._check_additional_heuristics()
 
-    def _check_shorted_interfaces_and_components(self) -> None:
+    def _check_shorted_interfaces_and_components(self, accumulator: accumulate) -> None:
         comps = fabll.Node.bind_typegraph(self.tg).nodes_of_types(
             (F.Resistor, F.Capacitor, F.Fuse, F.ElectricPower)
         )
@@ -417,26 +442,24 @@ class needs_erc_check(fabll.Node):
             if any(e1 in bus and e2 in bus for bus in electrical_buses.values()):
                 path = fabll.Path.from_connection(e1, e2)
                 assert path is not None
-                raise ERCFaultShortedInterfaces.from_path(path)
-
-    def _check_shorted_nets(self, accumulator: accumulate) -> None:
-        nets = F.Net.bind_typegraph(self.tg).get_instances(g=self.tg.get_graph_view())
-        logger.info(f"Checking {len(nets)} explicit nets")
-        for net in nets:
-            with accumulator.collect():
-                nets_on_bus = F.Net.find_nets_for_mif(net.part_of.get())
-
-                named_collisions = {
-                    neighbor_net
-                    for neighbor_net in nets_on_bus
-                    if neighbor_net.has_trait(F.has_net_name)
-                }
-
-                if named_collisions:
-                    friendly_shorted = ", ".join(
-                        n.get_full_name() for n in named_collisions
+                start_node = path.get_start_node()
+                end_node = path.get_end_node()
+                source_chunk = _get_connection_source_chunk(
+                    start_node, end_node, start_node.tg
+                )
+                message = _format_interface_connection_message(
+                    title="Shorted interfaces connected",
+                    source_node=start_node,
+                    target_node=end_node,
+                    source_type=start_node.get_type_name(),
+                    target_type=end_node.get_type_name(),
+                    source_chunk=source_chunk,
+                    include_source_info=True,
+                )
+                with accumulator.collect():
+                    raise ERCFaultShortedInterfaces(
+                        message, path, source_chunk=source_chunk
                     )
-                    raise ERCFaultShort(f"Shorted nets: {friendly_shorted}")
 
     def _check_shorted_electric_power_sources(self, accumulator: accumulate) -> None:
         # shorted power
@@ -475,7 +498,20 @@ class needs_erc_check(fabll.Node):
                 target_py = error.target_node
 
                 raise ERCFaultIncompatibleInterfaceConnection(
-                    error.message,
+                    _format_interface_connection_message(
+                        title=(
+                            "EdgeInterfaceConnection to non-interface node"
+                            if not error.source_is_interface
+                            or not error.target_is_interface
+                            else "Incompatible interface types connected"
+                        ),
+                        source_node=source_py,
+                        target_node=target_py,
+                        source_type=error.source_type,
+                        target_type=error.target_type,
+                        source_chunk=error.source_chunk,
+                        include_source_info=True,
+                    ),
                     source_py,
                     target_py,
                     error.source_type or "<unknown>",

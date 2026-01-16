@@ -977,6 +977,28 @@ class LoggingStage(Advancable):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        if exc_type is not None:
+            try:
+                from atopile.errors import _BaseBaseUserException
+                from faebryk.libs.exceptions import iter_leaf_exceptions
+
+                if isinstance(exc_val, BaseExceptionGroup):
+                    for leaf in iter_leaf_exceptions(exc_val):
+                        if isinstance(leaf, _BaseBaseUserException):
+                            msg = leaf.message
+                        else:
+                            msg = str(leaf)
+                        logger.error(msg or "Build step failed")
+                else:
+                    if isinstance(exc_val, _BaseBaseUserException):
+                        msg = exc_val.message
+                    else:
+                        msg = str(exc_val)
+                    logger.error(msg or "Build step failed")
+            except Exception:
+                msg = str(exc_val) if exc_val is not None else "Build step failed"
+                logger.error(msg or "Build step failed")
+
         self._restore_logging()
 
         if exc_type is not None or self._error_count > 0:
@@ -1105,6 +1127,7 @@ class LoggingStage(Advancable):
             file_handler = LogHandler(
                 console=file_console,
                 force_terminal=COLOR_LOGS.get(),
+                rich_tracebacks=False,
                 markup=False,
             )
             file_handler.setFormatter(_DEFAULT_FORMATTER)

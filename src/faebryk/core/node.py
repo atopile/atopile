@@ -1297,7 +1297,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         last_match = None
         for i in range(min_length):
             ref_node, ref_name = hierarchies[0][i]
-            if any(h[i][0] is not ref_node for h in hierarchies[1:]):
+            if any(not ref_node.is_same(h[i][0]) for h in hierarchies[1:]):
                 break
             last_match = (ref_node, ref_name)
 

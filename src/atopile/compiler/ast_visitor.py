@@ -1947,71 +1947,81 @@ class ASTVisitor:
         source_py = fabll.Node.bind_instance(source_node)
         target_py = fabll.Node.bind_instance(target_node)
 
-        ancestor_info = source_py.nearest_common_ancestor(target_py)
-        if ancestor_info is None:
+        source_hierarchy = source_py.get_hierarchy()
+        target_hierarchy = target_py.get_hierarchy()
+        common_len = 0
+        for i in range(min(len(source_hierarchy), len(target_hierarchy))):
+            if not source_hierarchy[i][0].is_same(target_hierarchy[i][0]):
+                break
+            common_len = i + 1
+        if common_len == 0:
             return None
-        ancestor = ancestor_info[0]
-
-        source_path = source_py.get_path_from_ancestor(ancestor)
-        target_path = target_py.get_path_from_ancestor(ancestor)
-
-        if not source_path and not target_path:
-            # Both nodes are the ancestor - can't determine which MakeLink
-            return None
-
-        ancestor_type_edge = fbrk.EdgeType.get_type_edge(bound_node=ancestor.instance)
-        if ancestor_type_edge is None:
-            return None
-        ancestor_type = ancestor.instance.g().bind(
-            node=fbrk.EdgeType.get_type_node(edge=ancestor_type_edge.edge())
-        )
-
-        try:
-            make_links = tg.collect_make_links(type_node=ancestor_type)
-        except ValueError:
-            return None
+        common_ancestors = [node for node, _name in source_hierarchy[:common_len]]
 
         edge_tid = fbrk.EdgeInterfaceConnection.get_tid()
-        best_match: tuple["AST.SourceChunk | None", int] = (None, -1)
 
         def is_prefix_or_equal(prefix: list[str], full_path: list[str]) -> bool:
             if len(prefix) > len(full_path):
                 return False
             return full_path[: len(prefix)] == prefix
 
-        for make_link_node, lhs_tuple, rhs_tuple in make_links:
-            edge_type_attr = make_link_node.node().get_attr(key="edge_type")
-            if edge_type_attr is None or edge_type_attr != edge_tid:
+        for ancestor in reversed(common_ancestors):
+            source_path = source_py.get_path_from_ancestor(ancestor)
+            target_path = target_py.get_path_from_ancestor(ancestor)
+
+            if not source_path and not target_path:
                 continue
 
-            lhs_path = strip_bridge_path_suffix(list(lhs_tuple))
-            rhs_path = strip_bridge_path_suffix(list(rhs_tuple))
+            ancestor_type_edge = fbrk.EdgeType.get_type_edge(bound_node=ancestor.instance)
+            if ancestor_type_edge is None:
+                continue
+            ancestor_type = ancestor.instance.g().bind(
+                node=fbrk.EdgeType.get_type_node(edge=ancestor_type_edge.edge())
+            )
 
-            if not lhs_path and not rhs_path:
+            try:
+                make_links = tg.collect_make_links(type_node=ancestor_type)
+            except ValueError:
                 continue
 
-            if (lhs_path == source_path and rhs_path == target_path) or (
-                lhs_path == target_path and rhs_path == source_path
-            ):
-                return ASTVisitor.get_source_chunk(make_link_node)
+            best_match: tuple["AST.SourceChunk | None", int] = (None, -1)
 
-            match_score = 0
+            for make_link_node, lhs_tuple, rhs_tuple in make_links:
+                edge_type_attr = make_link_node.node().get_attr(key="edge_type")
+                if edge_type_attr is None or edge_type_attr != edge_tid:
+                    continue
 
-            if is_prefix_or_equal(lhs_path, source_path) and is_prefix_or_equal(
-                rhs_path, target_path
-            ):
-                match_score = len(lhs_path) + len(rhs_path)
+                lhs_path = strip_bridge_path_suffix(list(lhs_tuple))
+                rhs_path = strip_bridge_path_suffix(list(rhs_tuple))
 
-            if is_prefix_or_equal(lhs_path, target_path) and is_prefix_or_equal(
-                rhs_path, source_path
-            ):
-                score = len(lhs_path) + len(rhs_path)
-                match_score = max(match_score, score)
+                if not lhs_path and not rhs_path:
+                    continue
 
-            if match_score > best_match[1]:
-                best_match = (ASTVisitor.get_source_chunk(make_link_node), match_score)
+                if (lhs_path == source_path and rhs_path == target_path) or (
+                    lhs_path == target_path and rhs_path == source_path
+                ):
+                    return ASTVisitor.get_source_chunk(make_link_node)
 
-        return best_match[0]
+                match_score = 0
+
+                if is_prefix_or_equal(lhs_path, source_path) and is_prefix_or_equal(
+                    rhs_path, target_path
+                ):
+                    match_score = len(lhs_path) + len(rhs_path)
+
+                if is_prefix_or_equal(lhs_path, target_path) and is_prefix_or_equal(
+                    rhs_path, source_path
+                ):
+                    score = len(lhs_path) + len(rhs_path)
+                    match_score = max(match_score, score)
+
+                if match_score > best_match[1]:
+                    best_match = (ASTVisitor.get_source_chunk(make_link_node), match_score)
+
+            if best_match[0] is not None:
+                return best_match[0]
+
+        return None
 
     @staticmethod
     def _extract_filepath_from_source_node(
