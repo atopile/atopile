@@ -68,7 +68,7 @@ These assertions serve two purposes: they verify design consistency and communic
 
 The syntax `100kOhm +/- 10%` in the example above specifies a resistance within a range. This notation is common in atopile because real-world components rarely have exact values due to manufacturing tolerances and environmental factors like temperature.
 
-_Important: Ensure all parameters share the same context. For example, a `5V +/-10%` power supply voltage could be interpreted as either a range from `4.5V` to `5.5V`, or from `0V` to `5.5V` if considering power-up states. Generally, choose the most comprehensive context (including startup conditions), but be aware that many engineering calculations focus on specific operating points to simplify analysis._
+*Important: Ensure all parameters share the same context. For example, a `5V +/-10%` power supply voltage could be interpreted as either a range from `4.5V` to `5.5V`, or from `0V` to `5.5V` if considering power-up states. Generally, choose the most comprehensive context (including startup conditions), but be aware that many engineering calculations focus on specific operating points to simplify analysis.*
 
 These non-variable values are called **literals** and are implemented as `Sets`. For example, `100kOhm +/- 10%` represents a set containing all real numbers between `90e3` and `110e3` Ohms. Sets are more flexible than simple intervals or single values (`100kOhm` exactly), and can represent numeric values with units, booleans, and enums.
 
@@ -91,7 +91,7 @@ Mathematically, this is expressed as:
 
 $$
 \begin{aligned}
-    \forall S \in \mathcal{P}, \forall X,Y \subseteq S, f: S \times S \to S : f(X,Y) := \{ f(x,y) \mid x \in X, y \in Y \}
+    \forall S \in \mathcal{P}, \forall X,Y \subseteq S, f: S \times S \to S : f(X,Y) :=  f(x,y) \mid x \in X, y \in Y
 \end{aligned}
 $$
 
@@ -136,7 +136,7 @@ X = Range(10*P.W, 20*P.W)
 A = Parameter()
 A.alias_is(X)
 E = A - A
-out, = DefaultSolver().simplify(E)
+out, = Solver().simplify(E)
 out[E]
 -> Single(0*P.W)
 ```
@@ -174,7 +174,7 @@ Is(A, B).assert_()
 A.alias_is(B)
 
 E = A - B
-out, = DefaultSolver().simplify(E)
+out, = Solver().simplify(E)
 out[E]
 -> Single(0*P.W)
 ```
@@ -392,12 +392,12 @@ Constraint solving is fundamental to atopile's operation. It enables part pickin
 
 The solver combines constraint solving with computer algebra and (planned) optimization. It operates in these theoretical stages:
 
-1.  Non-terminal canonicalization
-2.  Non-terminal symbolic solving
-3.  Terminal symbolic solving
-4.  Terminal symbolic optimization
-5.  Terminal numerical solving
-6.  Terminal numerical optimization
+1. Non-terminal canonicalization
+2. Non-terminal symbolic solving
+3. Terminal symbolic solving
+4. Terminal symbolic optimization
+5. Terminal numerical solving
+6. Terminal numerical optimization
 
 Currently, only phases 1-3 are implemented, which suffice for most needs. Phases 2 and 3 are currently combined.
 

@@ -26,8 +26,7 @@ from atopile.errors import (
     UserExportError,
     UserPickError,
 )
-from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.core.solver.nullsolver import NullSolver
+from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom
 from faebryk.exporters.documentation.datasheets import export_datasheets
 
@@ -65,19 +64,12 @@ from faebryk.libs.kicad.fileformats import Property, kicad
 from faebryk.libs.net_naming import attach_net_names
 from faebryk.libs.nets import bind_electricals_to_fbrk_nets
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
-from faebryk.libs.util import (
-    DAG,
-    ConfigFlag,
-    md_table,
-)
+from faebryk.libs.util import DAG, md_table
 
 logger = logging.getLogger(__name__)
 
 
 MAX_PCB_DIFF_LENGTH = 100
-
-
-SKIP_SOLVING = ConfigFlag("SKIP_SOLVING", default=False)
 
 
 class Tags(StrEnum):
@@ -333,12 +325,7 @@ def instantiate_app_step(ctx: BuildStepContext, log_context: LoggingStage) -> No
 )
 def prepare_build(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     app = ctx.require_app()
-    if ctx.solver is None:
-        if SKIP_SOLVING:
-            logger.warning("Assertion checking is disabled")
-            ctx.solver = NullSolver()
-        else:
-            ctx.solver = DefaultSolver()
+    ctx.solver = Solver()
     if ctx.pcb is None:
         ctx.pcb = (
             F.PCB.bind_typegraph(app.tg)
@@ -360,12 +347,15 @@ def prepare_build(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     # TODO remove, once erc split up
     fabll.Traits.create_and_add_instance_to(app, needs_erc_check)
 
+
 @muster.register(
     "post-instantiation-graph-check",
     description="Verifying post-instantiation graph",
     dependencies=[prepare_build],
 )
-def post_instantiation_graph_check(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def post_instantiation_graph_check(
+    ctx: BuildStepContext, log_context: LoggingStage
+) -> None:
     """
     Run POST_INSTANTIATION_GRAPH_CHECK checks for early graph validation.
 
@@ -407,7 +397,9 @@ def post_instantiation_setup(ctx: BuildStepContext, log_context: LoggingStage) -
     description="Verifying post-instantiation design",
     dependencies=[post_instantiation_setup],
 )
-def post_instantiation_design_check(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+def post_instantiation_design_check(
+    ctx: BuildStepContext, log_context: LoggingStage
+) -> None:
     """
     Run POST_INSTANTIATION_DESIGN_CHECK checks for verification and late setup.
 
@@ -424,7 +416,9 @@ def post_instantiation_design_check(ctx: BuildStepContext, log_context: LoggingS
 
 
 @muster.register(
-    "load-pcb", description="Loading PCB", dependencies=[post_instantiation_design_check]
+    "load-pcb",
+    description="Loading PCB",
+    dependencies=[post_instantiation_design_check],
 )
 def load_pcb(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     pcb = ctx.require_pcb()
