@@ -44,6 +44,10 @@ class CAN(fabll.Node):
         ),
     ]
 
+    bus_parameters = [
+        fabll.Traits.MakeEdge(F.is_alias_bus_parameter.MakeChild(), owner=[baudrate]),
+    ]
+
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(
             example="""

@@ -22,3 +22,7 @@ class CAN_TTL(fabll.Node):
     _single_electric_reference = fabll.Traits.MakeEdge(
         F.has_single_electric_reference.MakeChild()
     )
+
+    bus_parameters = [
+        fabll.Traits.MakeEdge(F.is_alias_bus_parameter.MakeChild(), owner=[baudrate]),
+    ]

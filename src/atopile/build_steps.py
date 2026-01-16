@@ -360,7 +360,6 @@ def prepare_build(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     # TODO remove, once erc split up
     fabll.Traits.create_and_add_instance_to(app, needs_erc_check)
 
-
 @muster.register(
     "post-instantiation-graph-check",
     description="Verifying post-instantiation graph",

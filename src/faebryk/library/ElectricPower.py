@@ -61,6 +61,10 @@ class ElectricPower(fabll.Node):
         ),
     ]
 
+    bus_parameters = [
+        fabll.Traits.MakeEdge(F.is_alias_bus_parameter.MakeChild(), owner=[voltage]),
+    ]
+
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(
             example="""

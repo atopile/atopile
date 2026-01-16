@@ -60,6 +60,10 @@ class I2C(fabll.Node):
             owner=[scl],
         ),
     ]
+
+    bus_parameters = [
+        fabll.Traits.MakeEdge(F.is_alias_bus_parameter.MakeChild(), owner=[frequency]),
+    ]
     # ----------------------------------------
     #                 functions
     # ----------------------------------------

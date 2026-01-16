@@ -37,3 +37,7 @@ class UART_Base(fabll.Node):
             owner=[tx],
         ),
     ]
+
+    bus_parameters = [
+        fabll.Traits.MakeEdge(F.is_alias_bus_parameter.MakeChild(), owner=[baud]),
+    ]
