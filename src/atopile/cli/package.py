@@ -312,6 +312,43 @@ class _PackageValidators:
             )
 
     @staticmethod
+    def verify_build_artifacts(config: "Config"):
+        """
+        Verify every build target has all required artifacts.
+        """
+        usage_build = config.project.builds.get("usage", None)
+        if usage_build is None:
+            raise UserBadParameterError("Missing 'usage' build target in ato.yaml")
+        builds_root = config.project.paths.build / "builds"
+        required_patterns = {
+            "glb": "*.glb",
+            "bom.csv": "*.bom.csv",
+            "gerber.zip": "*gerber.zip",
+            "step": "*step",
+        }
+        missing_by_build: dict[str, list[str]] = {}
+        for build_name in config.project.builds.keys():
+            build_dir = builds_root / build_name
+            if not build_dir.exists():
+                missing_by_build[build_name] = list(required_patterns.keys())
+                continue
+            missing: list[str] = []
+            for label, pattern in required_patterns.items():
+                if not any(build_dir.glob(pattern)):
+                    missing.append(label)
+            if missing:
+                missing_by_build[build_name] = missing
+
+        if missing_by_build:
+            missing_lines = [
+                f"{build_name}: {', '.join(missing)}"
+                for build_name, missing in sorted(missing_by_build.items())
+            ]
+            raise UserBadParameterError(
+                "Missing build artifacts per target:\n" + "\n".join(missing_lines)
+            )
+
+    @staticmethod
     def verify_3d_models(config: "Config"):
         from pathlib import Path
 
@@ -434,6 +471,7 @@ _STRICT_VALIDATORS = [
     _PackageValidators.verify_no_warnings,
     _PackageValidators.verify_usage_import,
     _PackageValidators.verify_usage_in_readme,
+    _PackageValidators.verify_build_artifacts,
 ]
 
 
