@@ -28,7 +28,6 @@ from atopile.errors import (
 )
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.nullsolver import NullSolver
-from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom
 from faebryk.exporters.documentation.datasheets import export_datasheets
 
@@ -341,9 +340,13 @@ def prepare_build(ctx: BuildStepContext, log_context: LoggingStage) -> None:
         else:
             ctx.solver = DefaultSolver()
     if ctx.pcb is None:
-        ctx.pcb = F.PCB.bind_typegraph(app.tg).create_instance(g=app.g).setup(
-            path=str(config.build.paths.layout),
-            app=app,
+        ctx.pcb = (
+            F.PCB.bind_typegraph(app.tg)
+            .create_instance(g=app.g)
+            .setup(
+                path=str(config.build.paths.layout),
+                app=app,
+            )
         )
 
     solver = ctx.require_solver()
@@ -363,14 +366,13 @@ def prepare_build(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     description="Verifying graph structure",
     dependencies=[prepare_build],
 )
-def post_design_verify(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def post_design_verify(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     """
     Run POST_DESIGN_VERIFY checks for early graph validation.
 
-    This runs FIRST before any BFS traversal to catch malformed connections
-    that would cause hangs (e.g., EdgeInterfaceConnection to non-interface nodes).
+    This runs FIRST and includes:
+    - Applying default constraints (has_default_constraint)
+    - Early graph validation to catch malformed connections
     """
     app = ctx.require_app()
     check_design(
@@ -385,17 +387,13 @@ def post_design_verify(
     description="Running post-design setup",
     dependencies=[post_design_verify],
 )
-def post_design_setup(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def post_design_setup(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     """
     Run POST_DESIGN_SETUP checks which modify the graph structure.
 
     This includes:
-    - Applying default constraints (has_default_constraint)
     - Connecting deprecated aliases (ElectricPower vcc/gnd)
     - Connecting electric references (has_single_electric_reference)
-    - Setting address lines (Addressor)
     """
     app = ctx.require_app()
     check_design(
@@ -410,10 +408,14 @@ def post_design_setup(
     description="Running post-design checks",
     dependencies=[post_design_setup],
 )
-def post_design_checks(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
-    """Run POST_DESIGN checks for pure verification."""
+def post_design_checks(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+    """
+    Run POST_DESIGN checks for verification and late setup.
+
+    This includes:
+    - Setting address lines based on solved offset (Addressor)
+    - Other verification checks
+    """
     app = ctx.require_app()
     check_design(
         app,
@@ -425,9 +427,7 @@ def post_design_checks(
 @muster.register(
     "load-pcb", description="Loading PCB", dependencies=[post_design_checks]
 )
-def load_pcb(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def load_pcb(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     pcb = ctx.require_pcb()
     pcb.run_transformer()
     if config.build.keep_designators:
@@ -435,9 +435,7 @@ def load_pcb(
 
 
 @muster.register("picker", description="Picking parts", dependencies=[load_pcb])
-def pick_parts(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def pick_parts(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     app = ctx.require_app()
     solver = ctx.require_solver()
     if config.build.keep_picked_parts:
@@ -456,9 +454,7 @@ def pick_parts(
 @muster.register(
     "prepare-nets", description="Preparing nets", dependencies=[pick_parts]
 )
-def prepare_nets(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def prepare_nets(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     app = ctx.require_app()
     pcb = ctx.require_pcb()
     logger.info("Preparing nets")
@@ -491,9 +487,7 @@ def prepare_nets(
     description="Running post-solve checks",
     dependencies=[prepare_nets],
 )
-def post_solve_checks(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def post_solve_checks(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     app = ctx.require_app()
     logger.info("Running checks")
     check_design(
@@ -506,11 +500,10 @@ def post_solve_checks(
 @muster.register(
     "update-pcb", description="Updating PCB", dependencies=[post_solve_checks]
 )
-def update_pcb(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def update_pcb(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     app = ctx.require_app()
     pcb = ctx.require_pcb()
+
     def _update_layout(
         pcb_file: kicad.pcb.PcbFile, original_pcb_file: kicad.pcb.PcbFile
     ) -> None:
@@ -644,9 +637,7 @@ def update_pcb(
 @muster.register(
     "post-pcb-checks", description="Running post-pcb checks", dependencies=[update_pcb]
 )
-def post_pcb_checks(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def post_pcb_checks(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     pcb = ctx.require_pcb()
     _ = fabll.Traits.create_and_add_instance_to(pcb, F.PCB.requires_drc_check)
     try:
@@ -660,9 +651,7 @@ def post_pcb_checks(
 
 
 @muster.register("build-design", dependencies=[post_pcb_checks], virtual=True)
-def build_design(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def build_design(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     pass
 
 
@@ -671,9 +660,7 @@ def build_design(
     dependencies=[build_design],
     produces_artifact=True,
 )
-def generate_bom(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def generate_bom(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     """Generate a BOM for the project."""
     app = ctx.require_app()
     parts = [
@@ -695,9 +682,7 @@ def generate_bom(
     dependencies=[build_design],
     produces_artifact=True,
 )
-def generate_glb(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def generate_glb(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     """Generate PCBA 3D model as GLB. Used for 3D preview in extension."""
     ctx.require_app()
     with _githash_layout(config.build.paths.layout) as tmp_layout:
@@ -717,9 +702,7 @@ def generate_glb(
     dependencies=[build_design],
     produces_artifact=True,
 )
-def generate_step(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def generate_step(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     """Generate PCBA 3D model as STEP."""
     ctx.require_app()
     with _githash_layout(config.build.paths.layout) as tmp_layout:
@@ -739,9 +722,7 @@ def generate_step(
     virtual=True,
     produces_artifact=True,
 )
-def generate_3d_models(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def generate_3d_models(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     """Generate PCBA 3D model as GLB and STEP."""
     pass
 
@@ -752,9 +733,7 @@ def generate_3d_models(
     dependencies=[build_design],
     produces_artifact=True,
 )
-def generate_3d_render(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def generate_3d_render(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     """Generate PCBA 3D rendered image."""
     ctx.require_app()
     with _githash_layout(config.build.paths.layout) as tmp_layout:
@@ -774,9 +753,7 @@ def generate_3d_render(
     dependencies=[build_design],
     produces_artifact=True,
 )
-def generate_2d_render(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def generate_2d_render(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     """Generate PCBA 2D rendered image."""
     ctx.require_app()
     with _githash_layout(config.build.paths.layout) as tmp_layout:
@@ -851,9 +828,7 @@ def generate_manufacturing_data(
     dependencies=[build_design],
     produces_artifact=True,
 )
-def generate_manifest(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def generate_manifest(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     """Generate a manifest for the project."""
     ctx.require_app()
     with accumulate() as accumulator:
@@ -881,9 +856,7 @@ def generate_manifest(
     dependencies=[build_design],
     produces_artifact=True,
 )
-def generate_variable_report(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def generate_variable_report(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     """Generate a report of all the variable values in the design."""
     app = ctx.require_app()
     solver = ctx.require_solver()
@@ -898,9 +871,7 @@ def generate_variable_report(
     dependencies=[build_design],
     produces_artifact=True,
 )
-def generate_datasheets(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def generate_datasheets(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     app = ctx.require_app()
     export_datasheets(app, config.build.paths.documentation / "datasheets")
 
@@ -931,9 +902,7 @@ def generate_datasheets(
     ],
     virtual=True,
 )
-def generate_default(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def generate_default(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     pass
 
 
@@ -947,9 +916,7 @@ def generate_default(
     ],
     virtual=True,
 )
-def generate_all(
-    ctx: BuildStepContext, log_context: LoggingStage
-) -> None:
+def generate_all(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     """Generate all targets."""
     pass
 

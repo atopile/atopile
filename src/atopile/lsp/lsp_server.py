@@ -115,6 +115,9 @@ class DocumentState:
     # Diagnostics from last build
     diagnostics: list[lsp.Diagnostic] = field(default_factory=list)
 
+    # ERC diagnostics (persisted separately, only updated on successful ERC check)
+    erc_diagnostics: list[lsp.Diagnostic] = field(default_factory=list)
+
     def ensure_graph(self) -> tuple[graph.GraphView, fbrk.TypeGraph, StdlibRegistry]:
         """Ensure graph infrastructure exists, creating if needed."""
         if self.graph_view is None:
@@ -468,13 +471,43 @@ def build_document(uri: str, source: str) -> DocumentState:
     file_path = get_file_path(uri)
     document_path = file_path.resolve()
 
-    # Clear cached types from this file to ensure full rebuild
-    # Type identifiers are formatted as "path/to/file.ato:TypeName"
-    # This ensures external_type_refs is populated on each rebuild
-    file_prefix = str(document_path) + ":"
+    # Clear ALL caches to ensure clean rebuild
+    # This prevents "Child not found" errors from stale graph references
+    from faebryk.core.node import TypeNodeBoundTG
+
+    logger.info(f"=== Starting build for {document_path} ===")
+    logger.info(f"State version before: {state.version - 1}")
+    logger.info(f"_seen_types count: {len(fabll.Node._seen_types)}")
+    logger.info(f"__TYPE_NODE_MAP__ count: {len(TypeNodeBoundTG.__TYPE_NODE_MAP__)}")
+
+    # Clear TypeNodeBoundTG map (maps graph nodes to TypeNodeBoundTG)
+    TypeNodeBoundTG.__TYPE_NODE_MAP__.clear()
+    logger.info("Cleared __TYPE_NODE_MAP__")
+
+    # Clear _type_cache for ALL Node subclasses (not just registered ones)
+    # This is critical because library types may have cached graph nodes
+    cache_count = 0
+
+    def clear_all_node_caches(cls: type) -> None:
+        nonlocal cache_count
+        if hasattr(cls, "_type_cache") and cls._type_cache:
+            count = len(cls._type_cache)
+            if count > 0:
+                cache_count += count
+            cls._type_cache.clear()
+        for subclass in cls.__subclasses__():
+            clear_all_node_caches(subclass)
+
+    clear_all_node_caches(fabll.Node)
+    logger.info(f"Cleared {cache_count} _type_cache entries")
+
+    # Clear _seen_types for types from this file (so they get re-registered)
+    # Note: type identifiers use :: separator, e.g. "/path/file.ato::ModuleName"
+    file_prefix = str(document_path) + "::"
     types_to_clear = [
         type_id for type_id in fabll.Node._seen_types if type_id.startswith(file_prefix)
     ]
+    logger.info(f"Types to clear from _seen_types: {types_to_clear}")
     for type_id in types_to_clear:
         del fabll.Node._seen_types[type_id]
         logger.debug(f"Cleared cached type: {type_id}")
@@ -487,11 +520,16 @@ def build_document(uri: str, source: str) -> DocumentState:
     with DowngradedExceptionCollector(UserException) as collector:
         try:
             # Build the source
+            logger.info("Starting build_source...")
             result = build_source(
                 g=g,
                 tg=tg,
                 source=source,
                 import_path=str(document_path),
+            )
+            logger.info(
+                f"build_source completed. type_roots: "
+                f"{list(result.state.type_roots.keys())}"
             )
             state.build_result = result
             build_succeeded = True
@@ -573,11 +611,81 @@ def build_document(uri: str, source: str) -> DocumentState:
     # If build AND linking succeeded, validate field references against typegraph
     # Only validate when linking succeeded - otherwise external types aren't resolved
     # and we'd get false positives for valid references to imported types
+    logger.info(
+        f"Build status: build_succeeded={build_succeeded}, "
+        f"linking_succeeded={linking_succeeded}, "
+        f"build_result={'yes' if state.build_result else 'no'}"
+    )
     if build_succeeded and linking_succeeded and state.build_result is not None:
         field_ref_diagnostics = _validate_field_references(
             g=g, tg=tg, build_result=state.build_result, uri=uri
         )
         diagnostics.extend(field_ref_diagnostics)
+
+        # Collect all ERC-related diagnostics
+        new_erc_diagnostics: list[lsp.Diagnostic] = []
+        erc_check_succeeded = True
+
+        # Instantiate type roots to create instance graph for ERC checking
+        # This creates EdgeInterfaceConnections that we can check
+        # TypeGraphInstantiationError is thrown for invalid connections
+        try:
+            for type_name, type_root in state.build_result.state.type_roots.items():
+                try:
+                    tg.instantiate_node(type_node=type_root, attributes={})
+                    logger.debug(f"Instantiated type root: {type_name}")
+                except fbrk.TypeGraphInstantiationError as inst_err:
+                    # This error contains the failing MakeLink node with source info
+                    logger.info(f"Instantiation error for {type_name}: {inst_err}")
+                    diag = _instantiation_error_to_diagnostic(inst_err, document_path)
+                    if diag:
+                        new_erc_diagnostics.append(diag)
+                except Exception as inst_err:
+                    # Other instantiation errors mean ERC check is incomplete
+                    # Log full details to debug why it's not TypeGraphInstantiationError
+                    import traceback
+
+                    logger.info(
+                        f"Other instantiation error for {type_name}: "
+                        f"type={type(inst_err).__module__}.{type(inst_err).__name__}, "
+                        f"msg={inst_err}"
+                    )
+                    logger.info(f"Full traceback:\n{traceback.format_exc()}")
+                    erc_check_succeeded = False
+        except Exception as e:
+            logger.debug(f"Error instantiating type roots: {e}")
+            erc_check_succeeded = False
+
+        # Run ERC checks for invalid interface connections
+        # Now we have instance graph with EdgeInterfaceConnections
+        logger.info(f"Running ERC checks for {document_path}")
+        try:
+            erc_check_diagnostics = _run_erc_checks_for_lsp(
+                tg=tg, document_path=document_path
+            )
+            logger.info(f"ERC check diagnostics found: {len(erc_check_diagnostics)}")
+            for d in erc_check_diagnostics:
+                logger.info(f"  ERC: {d.message} at line {d.range.start.line}")
+            new_erc_diagnostics.extend(erc_check_diagnostics)
+        except Exception as e:
+            logger.warning(f"ERC check failed: {e}", exc_info=True)
+            erc_check_succeeded = False
+
+        # Only update persisted ERC diagnostics if check succeeded
+        # Otherwise keep previous diagnostics
+        if erc_check_succeeded or new_erc_diagnostics:
+            state.erc_diagnostics = new_erc_diagnostics
+            logger.info(f"Updated ERC diagnostics: {len(state.erc_diagnostics)}")
+        else:
+            logger.info(
+                f"ERC check incomplete, keeping {len(state.erc_diagnostics)} "
+                "previous diagnostics"
+            )
+
+    # Always include persisted ERC diagnostics
+    logger.info(f"Including {len(state.erc_diagnostics)} persisted ERC diagnostics")
+    diagnostics.extend(state.erc_diagnostics)
+    logger.info(f"Total diagnostics to publish: {len(diagnostics)}")
 
     # If the build succeeded, commit the new graph and discard the old one
     if build_succeeded:
@@ -748,6 +856,131 @@ def _validate_field_references(
 
     except Exception as e:
         logger.debug(f"Error in field reference validation: {e}")
+
+    return diagnostics
+
+
+def _instantiation_error_to_diagnostic(
+    error: fbrk.TypeGraphInstantiationError,
+    document_path: Path,
+) -> lsp.Diagnostic | None:
+    """
+    Convert a TypeGraphInstantiationError to an LSP diagnostic.
+
+    The error.node is the failing MakeLink node which should have source info.
+    """
+    try:
+        from atopile.compiler.ast_types import SourceChunk
+        from atopile.compiler.ast_visitor import AnyAtoBlock
+
+        # Get the failing node
+        failing_bound = error.node
+
+        # Try to get source chunk via EdgePointer
+        source_ref = fbrk.EdgePointer.get_pointed_node_by_identifier(
+            bound_node=failing_bound, identifier=AnyAtoBlock._source_identifier
+        )
+
+        if source_ref is None:
+            logger.debug("No source chunk pointer on failing node")
+            return None
+
+        # Wrap as SourceChunk
+        source_chunk = SourceChunk.bind_instance(source_ref)
+        loc = source_chunk.loc.get()
+        filepath_str = loc.filepath.get().get_single()
+        source_file = Path(filepath_str)
+
+        # Only report for current document
+        if source_file.resolve() != document_path:
+            return None
+
+        # Build error message
+        message = f"Invalid connection: {error}"
+        if hasattr(error, "kind"):
+            message = f"Connection error ({error.kind}): {error}"
+
+        return lsp.Diagnostic(
+            range=lsp.Range(
+                start=lsp.Position(
+                    line=loc.get_start_line() - 1,
+                    character=loc.get_start_col(),
+                ),
+                end=lsp.Position(
+                    line=loc.get_end_line() - 1,
+                    character=loc.get_end_col(),
+                ),
+            ),
+            message=message,
+            severity=lsp.DiagnosticSeverity.Error,
+            source=TOOL_DISPLAY,
+        )
+    except Exception as e:
+        logger.debug(f"Error converting instantiation error to diagnostic: {e}")
+        return None
+
+
+def _run_erc_checks_for_lsp(
+    tg: fbrk.TypeGraph,
+    document_path: Path,
+) -> list[lsp.Diagnostic]:
+    """
+    Run ERC checks and return diagnostics for invalid interface connections.
+
+    Uses the shared find_interface_connection_errors() function from erc.py
+    to avoid duplicating the checking logic.
+
+    Returns diagnostics with source locations from the MakeLink nodes.
+    """
+    logger.info("_run_erc_checks_for_lsp called")
+    try:
+        from faebryk.libs.app.erc import find_interface_connection_errors
+    except ImportError as e:
+        logger.warning(f"Could not import ERC helpers: {e}")
+        return []
+
+    diagnostics: list[lsp.Diagnostic] = []
+
+    try:
+        # Use the shared function to find all interface connection errors
+        logger.info("Calling find_interface_connection_errors...")
+        errors = find_interface_connection_errors(tg)
+        logger.info(f"find_interface_connection_errors returned {len(errors)} errors")
+
+        for error in errors:
+            logger.info(f"Processing ERC error: {error.message}")
+            if error.source_chunk is None:
+                logger.info("  -> source_chunk is None, skipping")
+                continue
+
+            try:
+                loc = error.source_chunk.loc.get()
+                start_line = loc.get_start_line() - 1
+                start_col = loc.get_start_col()
+                end_line = loc.get_end_line() - 1
+                end_col = loc.get_end_col()
+                logger.info(
+                    f"  -> Range: ({start_line}:{start_col}) to ({end_line}:{end_col})"
+                )
+
+                # Note: LSP builds from source string so filepath may not be set
+                # All errors from this build are for the current document
+                diagnostics.append(
+                    lsp.Diagnostic(
+                        range=lsp.Range(
+                            start=lsp.Position(line=start_line, character=start_col),
+                            end=lsp.Position(line=end_line, character=end_col),
+                        ),
+                        message=error.message,
+                        severity=lsp.DiagnosticSeverity.Error,
+                        source=TOOL_DISPLAY,
+                    )
+                )
+            except Exception as e:
+                logger.info(f"  -> Error getting source location: {e}", exc_info=True)
+
+    except Exception as e:
+        logger.debug(f"ERC check error: {e}")
 
     return diagnostics
 

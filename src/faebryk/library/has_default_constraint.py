@@ -195,14 +195,13 @@ class has_default_constraint(fabll.Node):
 
         return False
 
-    @F.implements_design_check.register_post_design_setup_check
-    def __check_post_design_setup__(self):
+    @F.implements_design_check.register_post_design_verify_check
+    def __check_post_design_verify__(self):
         """
         Apply default constraint if no explicit constraint exists.
 
-        This runs in POST_DESIGN_SETUP before pure verification checks,
-        allowing default values to be set up only when the user hasn't
-        provided their own constraints.
+        This runs in POST_DESIGN_VERIFY (earliest stage) so defaults are
+        available for subsequent stages like Addressor offset resolution.
         """
         param = self._get_target_parameter()
         if param is None:

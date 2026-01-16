@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -25,6 +26,183 @@ if TYPE_CHECKING:
     from atopile.compiler import ast_types as AST
 
 logger = logging.getLogger(__name__)
+
+
+# -----------------------------------------------------------------------------
+# Shared ERC Error Data Structure
+# -----------------------------------------------------------------------------
+
+
+@dataclass
+class InterfaceConnectionError:
+    """
+    Represents an invalid interface connection error.
+
+    This is a data structure that can be used by both the ERC checker
+    (to raise exceptions) and the LSP (to create diagnostics).
+    """
+
+    source_node: graph.BoundNode
+    target_node: graph.BoundNode
+    source_is_interface: bool
+    target_is_interface: bool
+    source_type: str | None
+    target_type: str | None
+    source_chunk: "AST.SourceChunk | None"
+
+    @property
+    def message(self) -> str:
+        """Generate a human-readable error message."""
+        if not self.source_is_interface and not self.target_is_interface:
+            return "Invalid connection: neither side is an interface"
+        elif not self.source_is_interface:
+            return "Invalid connection: left side is not an interface"
+        elif not self.target_is_interface:
+            return "Invalid connection: right side is not an interface"
+        else:
+            # Both are interfaces but types are incompatible
+            src = self.source_type or "<unknown>"
+            tgt = self.target_type or "<unknown>"
+            return f"Incompatible interface types: {src} -> {tgt}"
+
+
+def find_interface_connection_errors(
+    tg: fbrk.TypeGraph,
+) -> list[InterfaceConnectionError]:
+    """
+    Find all invalid interface connections in the graph.
+
+    This is the core ERC checking function that can be used by both:
+    - The ERC checker (converts errors to exceptions)
+    - The LSP server (converts errors to diagnostics)
+
+    Returns a list of InterfaceConnectionError objects with all info needed
+    to report the error (source location, node info, etc.).
+    """
+    errors_found: list[InterfaceConnectionError] = []
+
+    g = tg.get_graph_view()
+    edge_tid = fbrk.EdgeInterfaceConnection.get_tid()
+
+    # Get the is_interface type
+    is_interface_type = tg.get_type_by_name(
+        type_identifier="is_interface.node.core.faebryk"
+    )
+    if is_interface_type is None:
+        logger.debug("No is_interface type found, skipping ERC check")
+        return errors_found
+
+    # Get all nodes that implement is_interface
+    interface_nodes: list[graph.BoundNode] = []
+
+    def collect_implementer(ctx: list[graph.BoundNode], node: graph.BoundNode) -> None:
+        ctx.append(node)
+
+    fbrk.Trait.visit_implementers(
+        trait_type=is_interface_type, ctx=interface_nodes, f=collect_implementer
+    )
+
+    # Build set of interface node UUIDs for O(1) lookup
+    interface_uuids: set[int] = {node.node().get_uuid() for node in interface_nodes}
+
+    # Collect ALL edges from interface nodes, deduplicating by edge UUID pair
+    all_edges: list[graph.BoundEdge] = []
+    seen_edges: set[tuple[int, int]] = set()
+
+    def collect_edge(
+        ctx: tuple[list[graph.BoundEdge], set[tuple[int, int]]],
+        edge: graph.BoundEdge,
+    ) -> None:
+        edges_list, seen = ctx
+        # Dedupe by (source_uuid, target_uuid) pair
+        edge_key = (edge.edge().source().get_uuid(), edge.edge().target().get_uuid())
+        if edge_key not in seen:
+            seen.add(edge_key)
+            edges_list.append(edge)
+
+    for bound_node in interface_nodes:
+        bound_node.visit_edges_of_type(
+            edge_type=edge_tid, ctx=(all_edges, seen_edges), f=collect_edge
+        )
+
+    logger.debug(
+        f"Checking {len(all_edges)} interface connections "
+        f"across {len(interface_nodes)} interface nodes"
+    )
+
+    # Helper to get type name
+    def get_type_name(bound_node: graph.BoundNode) -> str | None:
+        type_edge = fbrk.EdgeType.get_type_edge(bound_node=bound_node)
+        if type_edge is None:
+            return None
+        type_node = fbrk.EdgeType.get_type_node(edge=type_edge.edge())
+        type_bound = bound_node.g().bind(node=type_node)
+        return fbrk.TypeGraph.get_type_name(type_node=type_bound)
+
+    # Types that are compatible despite being different
+    COMPATIBLE_TYPE_PAIRS: frozenset[frozenset[str]] = frozenset(
+        {frozenset({"ElectricLogic", "ElectricSignal"})}
+    )
+
+    def are_types_compatible(type1: str | None, type2: str | None) -> bool:
+        if type1 is None or type2 is None:
+            return True
+        if type1 == type2:
+            return True
+        return frozenset({type1, type2}) in COMPATIBLE_TYPE_PAIRS
+
+    # Check each edge
+    for bound_edge in all_edges:
+        edge = bound_edge.edge()
+        source_bound = g.bind(node=edge.source())
+        target_bound = g.bind(node=edge.target())
+
+        source_is_interface = source_bound.node().get_uuid() in interface_uuids
+        target_is_interface = target_bound.node().get_uuid() in interface_uuids
+
+        # Check if both endpoints are interfaces
+        if not source_is_interface or not target_is_interface:
+            source_chunk = _get_source_chunk_for_connection(
+                source_bound, target_bound, tg
+            )
+            errors_found.append(
+                InterfaceConnectionError(
+                    source_node=source_bound,
+                    target_node=target_bound,
+                    source_is_interface=source_is_interface,
+                    target_is_interface=target_is_interface,
+                    source_type=(
+                        get_type_name(source_bound) if source_is_interface else None
+                    ),
+                    target_type=(
+                        get_type_name(target_bound) if target_is_interface else None
+                    ),
+                    source_chunk=source_chunk,
+                )
+            )
+            continue
+
+        # Check type compatibility
+        source_type = get_type_name(source_bound)
+        target_type = get_type_name(target_bound)
+
+        if not are_types_compatible(source_type, target_type):
+            source_chunk = _get_source_chunk_for_connection(
+                source_bound, target_bound, tg
+            )
+            errors_found.append(
+                InterfaceConnectionError(
+                    source_node=source_bound,
+                    target_node=target_bound,
+                    source_is_interface=True,
+                    target_is_interface=True,
+                    source_type=source_type,
+                    target_type=target_type,
+                    source_chunk=source_chunk,
+                )
+            )
+
+    return errors_found
 
 
 def _get_node_path_from_ancestor(
@@ -129,28 +307,38 @@ def _get_source_chunk_for_connection(
     # Find common ancestor
     ancestor = _find_common_ancestor(source_node, target_node)
     if ancestor is None:
+        logger.info("_get_source_chunk: No common ancestor found")
         return None
 
     # Get paths from ancestor to each node
     source_path = _get_node_path_from_ancestor(source_node, ancestor)
     target_path = _get_node_path_from_ancestor(target_node, ancestor)
+    logger.info(
+        f"_get_source_chunk: source_path={source_path}, target_path={target_path}"
+    )
 
     if not source_path and not target_path:
         # Both nodes are the ancestor - can't determine which MakeLink
+        logger.info("_get_source_chunk: Both paths empty")
         return None
 
     # Get the type node for the ancestor
     ancestor_type_edge = fbrk.EdgeType.get_type_edge(bound_node=ancestor)
     if ancestor_type_edge is None:
+        logger.info("_get_source_chunk: No type edge for ancestor")
         return None
     ancestor_type = ancestor.g().bind(
         node=fbrk.EdgeType.get_type_node(edge=ancestor_type_edge.edge())
     )
+    type_name = fbrk.TypeGraph.get_type_name(type_node=ancestor_type)
+    logger.info(f"_get_source_chunk: ancestor_type={type_name}")
 
     # Get all MakeLinks from the ancestor type
     try:
         make_links = tg.collect_make_links(type_node=ancestor_type)
-    except ValueError:
+        logger.info(f"_get_source_chunk: Found {len(make_links)} MakeLinks")
+    except ValueError as e:
+        logger.info(f"_get_source_chunk: collect_make_links failed: {e}")
         return None
 
     # Find matching MakeLink - collect candidates with match quality scores
@@ -169,17 +357,21 @@ def _get_source_chunk_for_connection(
         # These are added for ~> connections but don't match actual instance paths
         lhs_path = _strip_bridge_suffix(list(lhs_tuple))
         rhs_path = _strip_bridge_suffix(list(rhs_tuple))
+        logger.info(f"_get_source_chunk: MakeLink lhs={lhs_path}, rhs={rhs_path}")
 
         # Skip if paths are empty after stripping
         if not lhs_path and not rhs_path:
             continue
-
-        # Try exact match first (either direction)
         if (lhs_path == source_path and rhs_path == target_path) or (
             lhs_path == target_path and rhs_path == source_path
         ):
             # Exact match - return immediately
-            return ASTVisitor.get_source_chunk(make_link_node)
+            logger.info("_get_source_chunk: Exact match found!")
+            chunk = ASTVisitor.get_source_chunk(make_link_node)
+            logger.info(
+                f"_get_source_chunk: ASTVisitor.get_source_chunk returned {chunk}"
+            )
+            return chunk
 
         # Try prefix match for bridge connects
         # e.g., MakeLink: power_3v3 ~> resistor
@@ -462,223 +654,57 @@ class needs_erc_check(fabll.Node):
 
     def _verify_interface_connections(self, accumulator: accumulate) -> None:
         """
-        Verify that all EdgeInterfaceConnections are between is_interface nodes.
+        Verify that all EdgeInterfaceConnections are between is_interface nodes
+        and have compatible types.
 
-        This runs BEFORE any BFS traversal to catch malformed connections like
-        `power.lv ~ resistor` (interface to non-interface) that would cause hangs.
-
-        This is a lightweight check that doesn't traverse the graph - it just
-        validates edge endpoints.
+        Uses the shared find_interface_connection_errors() function and converts
+        any errors found to exceptions.
         """
-        g = self.tg.get_graph_view()
-        edge_tid = fbrk.EdgeInterfaceConnection.get_tid()
+        errors = find_interface_connection_errors(self.tg)
+        for error in errors:
+            with accumulator.collect():
+                source_py = fabll.Node.bind_instance(instance=error.source_node)
+                target_py = fabll.Node.bind_instance(instance=error.target_node)
 
-        # Get the is_interface type to find all nodes with the trait
-        is_interface_type = self.tg.get_type_by_name(
-            type_identifier="is_interface.node.core.faebryk"
-        )
-        if is_interface_type is None:
-            logger.debug("No is_interface type found, skipping verification")
-            return
+                # Determine which node is problematic for the message
+                if not error.source_is_interface:
+                    non_interface = source_py
+                elif not error.target_is_interface:
+                    non_interface = target_py
+                else:
+                    # Both are interfaces but types are incompatible
+                    non_interface = None
 
-        # Get all nodes that implement is_interface
-        interface_nodes: list[graph.BoundNode] = []
+                if non_interface is not None:
+                    msg = (
+                        f"EdgeInterfaceConnection to non-interface node:\n"
+                        f"  {non_interface.pretty_repr()} is not an interface"
+                    )
+                else:
+                    msg = (
+                        f"Incompatible interface types connected:\n"
+                        f"  {source_py.pretty_repr()} ({error.source_type})\n"
+                        f"    -> {target_py.pretty_repr()} ({error.target_type})"
+                    )
 
-        def collect_implementer(
-            ctx: list[graph.BoundNode], node: graph.BoundNode
-        ) -> None:
-            ctx.append(node)
-
-        fbrk.Trait.visit_implementers(
-            trait_type=is_interface_type, ctx=interface_nodes, f=collect_implementer
-        )
-
-        # Build set of interface node UUIDs for O(1) lookup
-        interface_uuids: set[int] = {node.node().get_uuid() for node in interface_nodes}
-
-        # Check all edges from interface nodes
-        edges_checked = 0
-        for bound_node in interface_nodes:
-
-            def check_edge(
-                ctx: tuple[set[int], accumulate, graph.GraphView, int],
-                edge: graph.BoundEdge,
-            ) -> None:
-                interface_uuids, acc, gv, count = ctx
-                nonlocal edges_checked
-                edges_checked += 1
-
-                source = edge.edge().source()
-                target = edge.edge().target()
-
-                source_is_interface = source.get_uuid() in interface_uuids
-                target_is_interface = target.get_uuid() in interface_uuids
-
-                if not source_is_interface or not target_is_interface:
-                    with acc.collect():
-                        source_bound = gv.bind(node=source)
-                        target_bound = gv.bind(node=target)
-                        source_py = fabll.Node.bind_instance(instance=source_bound)
-                        target_py = fabll.Node.bind_instance(instance=target_bound)
-                        non_interface = (
-                            target_py if not target_is_interface else source_py
-                        )
-                        # Try to find source location for the connection
-                        source_chunk = _get_source_chunk_for_connection(
-                            source_bound, target_bound, self.tg
-                        )
-                        raise ERCFaultIncompatibleInterfaceConnection(
-                            f"EdgeInterfaceConnection to non-interface node:\n"
-                            f"  {non_interface.pretty_repr()} is not an interface",
-                            source_py,
-                            target_py,
-                            "<interface>" if source_is_interface else "<not interface>",
-                            "<interface>" if target_is_interface else "<not interface>",
-                            source_chunk=source_chunk,
-                        )
-
-            bound_node.visit_edges_of_type(
-                edge_type=edge_tid,
-                ctx=(interface_uuids, accumulator, g, edges_checked),
-                f=check_edge,
-            )
-
-        logger.debug(f"Verified {edges_checked} interface connection edges")
+                raise ERCFaultIncompatibleInterfaceConnection(
+                    msg,
+                    source_py,
+                    target_py,
+                    error.source_type or "<unknown>",
+                    error.target_type or "<unknown>",
+                    source_chunk=error.source_chunk,
+                )
 
     def _check_interface_connection_types(self, accumulator: accumulate) -> None:
         """
         Check that all interface connections have compatible types.
 
-        This validates that EdgeInterfaceConnections only exist between nodes
-        of compatible types. Compatible types are:
-        - Same type (e.g., Electrical to Electrical)
-        - ElectricLogic <-> ElectricSignal (structurally compatible)
-
-        Raises ERCFaultIncompatibleInterfaceConnection for invalid connections.
+        This is now handled by _verify_interface_connections which uses the
+        shared find_interface_connection_errors() function.
         """
-        # Types that are compatible with each other despite being different
-        # Both have the same structure: line (Electrical) and reference (ElectricPower)
-        COMPATIBLE_TYPE_PAIRS: frozenset[frozenset[str]] = frozenset(
-            {
-                frozenset({"ElectricLogic", "ElectricSignal"}),
-            }
-        )
-
-        def are_types_compatible(type1: str | None, type2: str | None) -> bool:
-            """Check if two type names are compatible for connection."""
-            if type1 is None or type2 is None:
-                # If either type is unknown, we can't validate - allow it
-                return True
-            if type1 == type2:
-                return True
-            # Check for special compatible pairs
-            pair = frozenset({type1, type2})
-            return pair in COMPATIBLE_TYPE_PAIRS
-
-        def get_type_name(bound_node: graph.BoundNode) -> str | None:
-            """Get the type name of an instance node."""
-            type_edge = fbrk.EdgeType.get_type_edge(bound_node=bound_node)
-            if type_edge is None:
-                return None
-            type_node = fbrk.EdgeType.get_type_node(edge=type_edge.edge())
-            type_bound = bound_node.g().bind(node=type_node)
-            return fbrk.TypeGraph.get_type_name(type_node=type_bound)
-
-        g = self.tg.get_graph_view()
-        edge_tid = fbrk.EdgeInterfaceConnection.get_tid()
-
-        # Get the is_interface type to find all nodes with the trait
-        is_interface_type = self.tg.get_type_by_name(
-            type_identifier="is_interface.node.core.faebryk"
-        )
-        if is_interface_type is None:
-            logger.debug("No is_interface type found, skipping interface type check")
-            return
-
-        # Get all nodes that implement is_interface using Trait.visit_implementers
-        # This is O(number of interfaces) rather than O(all nodes)
-        interface_nodes: list[graph.BoundNode] = []
-
-        def collect_implementer(
-            ctx: list[graph.BoundNode], node: graph.BoundNode
-        ) -> None:
-            ctx.append(node)
-
-        fbrk.Trait.visit_implementers(
-            trait_type=is_interface_type, ctx=interface_nodes, f=collect_implementer
-        )
-
-        # Collect interface connection edges, only from source side to avoid dupes
-        all_edges: list[graph.BoundEdge] = []
-
-        def collect_if_source(
-            ctx: tuple[list[graph.BoundEdge], graph.BoundNode],
-            edge: graph.BoundEdge,
-        ) -> None:
-            edges_list, current_node = ctx
-            # Only collect if current node is the source - avoids duplicates
-            if edge.edge().source().is_same(other=current_node.node()):
-                edges_list.append(edge)
-
-        for bound_node in interface_nodes:
-            bound_node.visit_edges_of_type(
-                edge_type=edge_tid, ctx=(all_edges, bound_node), f=collect_if_source
-            )
-
-        logger.debug(
-            f"Checking {len(all_edges)} interface connections "
-            f"across {len(interface_nodes)} interface nodes"
-        )
-
-        # Build set of interface node references for O(1) lookup
-        interface_node_set: set[int] = {
-            node.node().get_uuid() for node in interface_nodes
-        }
-
-        def has_is_interface(bound_node: graph.BoundNode) -> bool:
-            """Check if node has is_interface trait (is in our interface set)."""
-            return bound_node.node().get_uuid() in interface_node_set
-
-        # Now check each edge exactly once
-        # Source is guaranteed to have is_interface (we collected from interface nodes)
-        for bound_edge in all_edges:
-            edge = bound_edge.edge()
-            source_bound = g.bind(node=edge.source())
-            target_bound = g.bind(node=edge.target())
-
-            # First verify both sides are interfaces - if not, skip
-            # (This can happen with malformed connections like `power.lv ~ resistor`)
-            if not has_is_interface(target_bound):
-                # Target is not an interface - this is a malformed connection
-                # Report error but don't try to get type info which might hang
-                with accumulator.collect():
-                    source_py = fabll.Node.bind_instance(instance=source_bound)
-                    target_py = fabll.Node.bind_instance(instance=target_bound)
-                    raise ERCFaultIncompatibleInterfaceConnection.from_nodes(
-                        source=source_py,
-                        target=target_py,
-                        source_type=get_type_name(source_bound) or "<unknown>",
-                        target_type="<not an interface>",
-                        tg=self.tg,
-                    )
-                continue
-
-            # Get type information
-            source_type = get_type_name(source_bound)
-            target_type = get_type_name(target_bound)
-
-            # Check type compatibility
-            if not are_types_compatible(source_type, target_type):
-                with accumulator.collect():
-                    source_py = fabll.Node.bind_instance(instance=source_bound)
-                    target_py = fabll.Node.bind_instance(instance=target_bound)
-                    raise ERCFaultIncompatibleInterfaceConnection.from_nodes(
-                        source=source_py,
-                        target=target_py,
-                        source_type=source_type or "<unknown>",
-                        target_type=target_type or "<unknown>",
-                        tg=self.tg,
-                    )
+        # All checking is now done in _verify_interface_connections
+        pass
 
     def _check_additional_heuristics(self) -> None:
         # shorted components
