@@ -12,7 +12,6 @@ class DifferentialPair(fabll.Node):
     # ----------------------------------------
     p = F.ElectricSignal.MakeChild()
     n = F.ElectricSignal.MakeChild()
-    reference = F.ElectricPower.MakeChild()
 
     impedance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
 
