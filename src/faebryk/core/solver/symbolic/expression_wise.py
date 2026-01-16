@@ -512,9 +512,6 @@ def fold_or(expr: F.Expressions.Or, mutator: Mutator):
     e = expr.is_expression.get()
     lits = e.get_operand_literals()
 
-    logger.error(
-        f"Try fold_or {expr.is_parameter_operatable.get().compact_repr(mutator.print_ctx)}, lits: {lits}"
-    )
     if not lits:
         return
 

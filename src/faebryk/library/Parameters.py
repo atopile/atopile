@@ -9,7 +9,12 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import KeyErrorAmbiguous, find_or, not_none, once, times
+from faebryk.libs.util import (
+    KeyErrorAmbiguous,
+    not_none,
+    once,
+    times,
+)
 
 if TYPE_CHECKING:
     import faebryk.library.Literals as Literals
@@ -417,13 +422,8 @@ class is_parameter(fabll.Node):
         else:
             if context is None:
                 context = ReprContext()
-            if context.variable_mapping.try_get_id(self) is None:
-                next_id = context.variable_mapping.next_id
-                context.variable_mapping.set_id(self, next_id)
-                context.variable_mapping.next_id += 1
-            letter = _param_id_to_human_str(
-                not_none(context.variable_mapping.try_get_id(self))
-            )
+
+            letter = context.get_or_create_name(self)
 
         unitstr = ""
         if numeric_param := obj.try_cast(NumericParameter):
@@ -480,6 +480,14 @@ class ReprContext:
             self.mapping[param.instance.node().get_uuid()] = id
 
     variable_mapping: VariableMapping = field(default_factory=VariableMapping)
+
+    def get_or_create_name(self, param: "is_parameter") -> str:
+        if id := self.variable_mapping.try_get_id(param):
+            return _param_id_to_human_str(id)
+        next_id = self.variable_mapping.next_id
+        self.variable_mapping.set_id(param, next_id)
+        self.variable_mapping.next_id += 1
+        return _param_id_to_human_str(next_id)
 
     def __hash__(self) -> int:
         return hash(id(self))

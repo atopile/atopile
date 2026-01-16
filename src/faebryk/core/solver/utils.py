@@ -26,8 +26,7 @@ from faebryk.libs.util import (
 )
 
 if TYPE_CHECKING:
-    from faebryk.core.solver.mutator import Mutator
-    from faebryk.core.solver.symbolic.invariants import ExpressionBuilder
+    from faebryk.core.solver.mutator import ExpressionBuilder, Mutator
 
 
 logger = logging.getLogger(__name__)
@@ -54,8 +53,8 @@ if S_LOG:
 
 
 def set_log_level(level: int):
-    from faebryk.core.solver.solver import logger as solver_logger
     from faebryk.core.solver.mutator import logger as mutator_logger
+    from faebryk.core.solver.solver import logger as solver_logger
 
     loggers = [logger, mutator_logger, solver_logger]
     for lo in loggers:
@@ -694,7 +693,7 @@ def pretty_expr(
     use_name: bool = False,
     no_lit_suffix: bool = False,
 ) -> str:
-    from faebryk.core.solver.symbolic.invariants import ExpressionBuilder
+    from faebryk.core.solver.mutator import ExpressionBuilder
 
     context = context or (mutator.print_ctx if mutator else F.Parameters.ReprContext())
 

@@ -7,7 +7,16 @@ import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Sequence, cast, overload
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterable,
+    NamedTuple,
+    Sequence,
+    cast,
+    overload,
+)
 
 from more_itertools import first
 from rich.table import Table
@@ -23,6 +32,7 @@ from faebryk.core.solver.utils import (
     SHOW_SS_IS,
     VERBOSE_TABLE,
     MutatorUtils,
+    pretty_expr,
 )
 from faebryk.libs.logging import rich_to_string
 from faebryk.libs.util import (
@@ -927,6 +937,7 @@ class MutationMap:
             all_ops_out = F.Parameters.is_parameter_operatable.bind_typegraph(
                 tg_out
             ).get_instances(g=g_out)
+
             if S_LOG:
                 logger.debug(
                     "Relevant root predicates: "
@@ -1171,6 +1182,57 @@ class AlgoResult:
     dirty: bool
 
 
+class ExpressionBuilder[
+    T: F.Expressions.ExpressionNodes = F.Expressions.ExpressionNodes
+](NamedTuple):
+    factory: type[T]
+    operands: list[F.Parameters.can_be_operand]
+    assert_: bool
+    terminate: bool
+
+    def indexed_ops(self) -> dict[int, F.Parameters.can_be_operand]:
+        return {i: o for i, o in enumerate(self.operands)}
+
+    def indexed_ops_with_trait[TR: fabll.NodeT](self, trait: type[TR]) -> dict[int, TR]:
+        return {
+            i: op
+            for i, o in self.indexed_ops().items()
+            if (op := o.try_get_sibling_trait(trait))
+        }
+
+    def indexed_lits(self) -> dict[int, F.Literals.is_literal]:
+        return self.indexed_ops_with_trait(F.Literals.is_literal)
+
+    def indexed_pos(self) -> dict[int, F.Parameters.is_parameter_operatable]:
+        return self.indexed_ops_with_trait(F.Parameters.is_parameter_operatable)
+
+    def __repr__(self) -> str:
+        return pretty_expr(self)
+
+    def matches(self, other: F.Expressions.is_expression) -> bool:
+        return (
+            fabll.Traits(other).get_obj_raw().isinstance(self.factory)
+            and other.get_operands() == self.operands
+            and self.terminate == other.has_trait(is_terminated)
+            and self.assert_ == other.has_trait(F.Expressions.is_predicate)
+        )
+
+    # TODO use this more
+    def with_(
+        self,
+        factory: type[T] | None = None,
+        operands: list[F.Parameters.can_be_operand] | None = None,
+        assert_: bool | None = None,
+        terminate: bool | None = None,
+    ) -> "ExpressionBuilder[T]":
+        return ExpressionBuilder(
+            factory or self.factory,
+            operands if operands is not None else self.operands,
+            assert_ if assert_ is not None else self.assert_,
+            terminate if terminate is not None else self.terminate,
+        )
+
+
 class Mutator:
     # Algorithm Interface --------------------------------------------------------------
     @overload
@@ -1252,10 +1314,7 @@ class Mutator:
 
     def _create_and_insert_expression[T: fabll.NodeT](
         self,
-        expr_factory: type[T],
-        *operands: F.Parameters.can_be_operand,
-        assert_: bool = False,
-        terminate: bool = False,
+        builder: ExpressionBuilder[T],
     ) -> T:
         """
         - check canonical
@@ -1264,6 +1323,7 @@ class Mutator:
         - check graph consistency
         => create expression in new graph
         """
+        expr_factory, operands, assert_, terminate = builder
 
         # check canonical
         # only after canonicalize has run

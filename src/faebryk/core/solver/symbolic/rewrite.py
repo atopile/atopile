@@ -15,7 +15,9 @@ import pytest
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
+from faebryk.library.Expressions import is_predicate
 from faebryk.libs.util import not_none
 
 if TYPE_CHECKING:
@@ -336,12 +338,25 @@ def rewrite_equation_for_variable(
         transformed_other,
         from_ops=from_ops,
         assert_=expr.try_get_sibling_trait(F.Expressions.is_predicate) is not None,
+        allow_uncorrelated_congruence_match=True,
     )
 
     return (
         fabll.Traits(result.out_operand).get_obj_raw().try_cast(Is)
         or RewriteResult.CANNOT_ISOLATE
     )
+
+
+@algorithm("permutate equation operands", terminal=False)
+def permutate_equation_operands(mutator: Mutator):
+    for equation in mutator.get_typed_expressions(
+        Is, sort_by_depth=True, required_traits=(is_predicate,)
+    ):
+        leaves = equation.is_expression.get().get_operand_leaves_operatable()
+        if len(leaves) < 2:
+            continue
+        for p in leaves:
+            rewrite_equation_for_variable(mutator, equation, p)
 
 
 # =============================================================================

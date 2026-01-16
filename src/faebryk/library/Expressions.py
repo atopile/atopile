@@ -2896,6 +2896,7 @@ class Correlated(fabll.Node):
     is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
     is_reflexive = fabll.Traits.MakeEdge(is_reflexive.MakeChild())
     has_idempotent_operands = fabll.Traits.MakeEdge(has_idempotent_operands.MakeChild())
+    is_setic = fabll.Traits.MakeEdge(is_setic.MakeChild())
 
     operands = OperandSet.MakeChild()
 

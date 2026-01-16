@@ -198,6 +198,13 @@ class VdivSolverTests:
         app.supply.get()._is_interface.get().connect_to(app.rdiv.get().power.get())
         app.rdiv.get().output.get()._is_interface.get().connect_to(app.adc_input.get())
 
+        # TODO remove once ray merge is_bus_parameter
+        E.is_(
+            app.supply.get().voltage.get().can_be_operand.get(),
+            app.rdiv.get().v_in.get().can_be_operand.get(),
+            assert_=True,
+        )
+
         # Set constraints
         E.is_subset(
             app.supply.get().voltage.get().can_be_operand.get(),

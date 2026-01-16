@@ -25,6 +25,7 @@ from faebryk.core.solver.mutator import (
 from faebryk.core.solver.symbolic import (
     expression_groups,
     expression_wise,
+    rewrite,
     structural,
 )
 from faebryk.core.solver.utils import (
@@ -61,6 +62,7 @@ class Solver:
             structural.predicate_unconstrained_operands_deduce,
             structural.transitive_subset,
             structural.upper_estimation_of_expressions_with_subsets,
+            # rewrite.permutate_equation_operands,
         ]
 
     @dataclass
