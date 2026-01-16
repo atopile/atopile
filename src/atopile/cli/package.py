@@ -316,10 +316,9 @@ class _PackageValidators:
         """
         Verify every build target has all required artifacts.
         """
-        usage_build = config.project.builds.get("usage", None)
-        if usage_build is None:
-            raise UserBadParameterError("Missing 'usage' build target in ato.yaml")
-        builds_root = config.project.paths.build / "builds"
+        from faebryk.libs.package.artifacts import Artifacts
+
+        builds_root = Artifacts.builds_dir(config.project)
         required_patterns = {
             "glb": "*.glb",
             "bom.csv": "*.bom.csv",
