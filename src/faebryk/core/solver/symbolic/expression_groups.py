@@ -9,7 +9,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
-from faebryk.libs.util import partition, unique
+from faebryk.libs.util import OrderedSet, partition, unique
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +147,7 @@ class _FlattenAssociativeResult:
     """
     Extracted operands
     """
-    destroyed_operations: set[F.Expressions.is_expression]
+    destroyed_operations: OrderedSet[F.Expressions.is_expression]
     """
     ParameterOperables that got flattened and thus are not used anymore
     """
@@ -180,7 +180,7 @@ def _flatten_associative(
 
     out = _FlattenAssociativeResult(
         extracted_operands=[],
-        destroyed_operations=set(),
+        destroyed_operations=OrderedSet(),
     )
 
     to_flatten_expr = to_flatten.get_sibling_trait(F.Expressions.is_expression)

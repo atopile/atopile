@@ -21,6 +21,7 @@ from faebryk.libs.util import (
     ConfigFlag,
     ConfigFlagFloat,
     ConfigFlagInt,
+    OrderedSet,
     not_none,
     unique_ref,
 )
@@ -447,13 +448,14 @@ class MutatorUtils:
     @staticmethod
     def get_params_for_expr(
         expr: F.Expressions.is_expression,
-    ) -> set[F.Parameters.is_parameter]:
+    ) -> OrderedSet[F.Parameters.is_parameter]:
         param_ops = expr.get_operands_with_trait(F.Parameters.is_parameter)
         expr_ops = expr.get_operands_with_trait(F.Expressions.is_expression)
 
-        return param_ops | {
-            op for e in expr_ops for op in MutatorUtils.get_params_for_expr(e)
-        }
+        result = OrderedSet(param_ops)
+        for e in expr_ops:
+            result.update(MutatorUtils.get_params_for_expr(e))
+        return result
 
     # TODO make generator
     @staticmethod
@@ -463,7 +465,7 @@ class MutatorUtils:
         include_root: bool = False,
         up_only: bool = True,
         require_trait: type[fabll.NodeT] | None = None,
-    ) -> set[T]:
+    ) -> OrderedSet[T]:
         dependants = p.get_operations(recursive=True)
         if e := p.as_expression.try_get():
             if include_root:
@@ -471,27 +473,25 @@ class MutatorUtils:
 
             if not up_only:
                 dependants.update(
-                    [
-                        fabll.Traits(op).get_obj_raw()
-                        for op in e.get_operands_with_trait(
-                            F.Expressions.is_expression, recursive=True
-                        )
-                    ]
+                    fabll.Traits(op).get_obj_raw()
+                    for op in e.get_operands_with_trait(
+                        F.Expressions.is_expression, recursive=True
+                    )
                 )
 
-        res = {
+        res: OrderedSet[T] = OrderedSet(
             t
             for p in dependants
             if (t := p.try_cast(type_filter))
             and (not require_trait or p.has_trait(require_trait))
-        }
+        )
         return res
 
     @staticmethod
     def get_predicates_involved_in[T: fabll.NodeT](
         p: F.Parameters.is_parameter_operatable,
         type_filter: type[T] = fabll.Node,
-    ) -> set[T]:
+    ) -> OrderedSet[T]:
         return MutatorUtils.get_expressions_involved_in(
             p, type_filter, require_trait=F.Expressions.is_predicate
         )
@@ -499,25 +499,31 @@ class MutatorUtils:
     @staticmethod
     def get_relevant_predicates(
         *op: F.Parameters.can_be_operand,
-    ) -> set[F.Expressions.is_predicate]:
+    ) -> OrderedSet[F.Expressions.is_predicate]:
         # get all root predicates
-        leaves = set(op)
-        roots = set[F.Expressions.is_predicate]()
+        leaves: OrderedSet[F.Parameters.can_be_operand] = OrderedSet(op)
+        roots: OrderedSet[F.Expressions.is_predicate] = OrderedSet()
         while True:
-            new_roots = {
-                e.get_sibling_trait(F.Expressions.is_predicate)
-                for e in F.Parameters.can_be_operand.get_root_operands(
-                    *leaves, predicates_only=True
+            new_roots = (
+                OrderedSet(
+                    e.get_sibling_trait(F.Expressions.is_predicate)
+                    for e in F.Parameters.can_be_operand.get_root_operands(
+                        *leaves, predicates_only=True
+                    )
                 )
-            } - roots
+                - roots
+            )
 
             # get leaves for transitive predicates
             # A >! B, B >! C => only A >! B is in roots
-            leaves = {
-                leaf.as_operand.get()
-                for root in new_roots
-                for leaf in root.as_expression.get().get_operand_leaves_operatable()
-            } - leaves
+            leaves = (
+                OrderedSet(
+                    leaf.as_operand.get()
+                    for root in new_roots
+                    for leaf in root.as_expression.get().get_operand_leaves_operatable()
+                )
+                - leaves
+            )
 
             roots.update(new_roots)
 
@@ -527,20 +533,20 @@ class MutatorUtils:
     @staticmethod
     def find_unique_params(
         po: F.Parameters.can_be_operand,
-    ) -> set[F.Parameters.is_parameter_operatable]:
+    ) -> OrderedSet[F.Parameters.is_parameter_operatable]:
         if (po_op := po.as_parameter_operatable.try_get()) and (
             po_op.as_parameter.try_get()
         ):
-            return {po_op}
+            return OrderedSet([po_op])
         if (po_op := po.as_parameter_operatable.try_get()) and (
             po_expr := po_op.as_expression.try_get()
         ):
-            return {
+            return OrderedSet(
                 p
                 for op in po_expr.get_operands()
                 for p in MutatorUtils.find_unique_params(op)
-            }
-        return set()
+            )
+        return OrderedSet()
 
     @staticmethod
     def count_param_occurrences(

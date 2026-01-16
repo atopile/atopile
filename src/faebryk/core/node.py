@@ -26,6 +26,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 from faebryk.libs.util import (
     KeyErrorNotFound,
+    OrderedSet,
     indented_container,
     not_none,
     once,
@@ -1905,11 +1906,14 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         raise NotImplementedError("nodes_with_traits is not implemented")
 
     @deprecated("Use get_instances instead")
-    def nodes_of_type[N2: Node](self, t: type[N2]) -> set[N2]:
-        return set(t.bind_typegraph(self.tg).get_instances())
+    def nodes_of_type[N2: Node](self, t: type[N2]) -> OrderedSet[N2]:
+        return OrderedSet(t.bind_typegraph(self.tg).get_instances())
 
-    def nodes_of_types(self, t: tuple[type["Node"], ...]) -> set["Node"]:
-        return {n for tn in t for n in tn.bind_typegraph(self.tg).get_instances()}
+    def nodes_of_types(self, t: tuple[type["Node"], ...]) -> OrderedSet["Node"]:
+        out: OrderedSet[Node] = OrderedSet()
+        for tn in t:
+            out.update(tn.bind_typegraph(self.tg).get_instances())
+        return out
 
     # construction ---------------------------------------------------------------------
     def MakeChild[C: NodeT](

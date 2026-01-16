@@ -36,6 +36,7 @@ from faebryk.core.solver.utils import (
 )
 from faebryk.libs.logging import rich_to_string
 from faebryk.libs.util import (
+    OrderedSet,
     duplicates,
     groupby,
     indented_container,
@@ -87,15 +88,23 @@ class Transformations:
     mutated: dict[
         F.Parameters.is_parameter_operatable, F.Parameters.is_parameter_operatable
     ] = field(default_factory=dict)
-    removed: set[F.Parameters.is_parameter_operatable] = field(default_factory=set)
-    copied: set[F.Parameters.is_parameter_operatable] = field(default_factory=set)
+    removed: OrderedSet[F.Parameters.is_parameter_operatable] = field(
+        default_factory=OrderedSet[F.Parameters.is_parameter_operatable]
+    )
+    copied: OrderedSet[F.Parameters.is_parameter_operatable] = field(
+        default_factory=OrderedSet[F.Parameters.is_parameter_operatable]
+    )
     created: dict[
         F.Parameters.is_parameter_operatable,
         list[F.Parameters.is_parameter_operatable],
     ] = field(default_factory=lambda: defaultdict(list))
     # TODO make api for contraining
-    terminated: set[F.Expressions.is_expression] = field(default_factory=set)
-    asserted: set[F.Expressions.is_assertable] = field(default_factory=set)
+    terminated: OrderedSet[F.Expressions.is_expression] = field(
+        default_factory=OrderedSet[F.Expressions.is_expression]
+    )
+    asserted: OrderedSet[F.Expressions.is_assertable] = field(
+        default_factory=OrderedSet[F.Expressions.is_assertable]
+    )
     soft_replaced: dict[
         F.Parameters.is_parameter_operatable, F.Parameters.is_parameter_operatable
     ] = field(default_factory=dict)
@@ -382,18 +391,20 @@ class MutationStage:
         self.G_in = G_in
         self.G_out = G_out
 
-        self.input_operables = {
-            po
-            for po in F.Parameters.is_parameter_operatable.bind_typegraph(
-                tg=self.tg_in
-            ).get_instances(self.G_in)
-            if not po.has_trait(is_irrelevant)
-        }
+        self.input_operables: OrderedSet[F.Parameters.is_parameter_operatable] = (
+            OrderedSet(
+                po
+                for po in F.Parameters.is_parameter_operatable.bind_typegraph(
+                    tg=self.tg_in
+                ).get_instances(self.G_in)
+                if not po.has_trait(is_irrelevant)
+            )
+        )
 
     @property
     @once
-    def output_operables(self) -> set[F.Parameters.is_parameter_operatable]:
-        return set(
+    def output_operables(self) -> OrderedSet[F.Parameters.is_parameter_operatable]:
+        return OrderedSet(
             F.Parameters.is_parameter_operatable.bind_typegraph(
                 self.tg_out
             ).get_instances(g=self.G_out)
@@ -1034,7 +1045,7 @@ class MutationMap:
         return self.last_stage.G_out
 
     @property
-    def output_operables(self) -> set[F.Parameters.is_parameter_operatable]:
+    def output_operables(self) -> OrderedSet[F.Parameters.is_parameter_operatable]:
         return self.last_stage.output_operables
 
     @property
@@ -1046,7 +1057,7 @@ class MutationMap:
         return self.first_stage.G_in
 
     @property
-    def input_operables(self) -> set[F.Parameters.is_parameter_operatable]:
+    def input_operables(self) -> OrderedSet[F.Parameters.is_parameter_operatable]:
         return self.first_stage.input_operables
 
     @property
@@ -1123,13 +1134,15 @@ class MutationMap:
 
     @property
     @once
-    def non_trivial_mutated_expressions(self) -> set[F.Expressions.is_expression]:
+    def non_trivial_mutated_expressions(
+        self,
+    ) -> OrderedSet[F.Expressions.is_expression]:
         """
         return expressions that are structurally new (did not exist in this form before)
         """
         # TODO make faster, compact repr is a pretty bad one
         # consider congruence instead, but be careful since not in same graph space
-        out = {
+        out: OrderedSet[F.Expressions.is_expression] = OrderedSet(
             v.as_expression.force_get()
             for v, ks in self.compressed_mapping_backwards.items()
             if v.try_get_sibling_trait(F.Expressions.is_canonical)
@@ -1140,7 +1153,7 @@ class MutationMap:
                 and k.compact_repr() != v.compact_repr()
                 for k in ks
             )
-        }
+        )
         return out
 
     @property
@@ -1613,15 +1626,15 @@ class Mutator:
 
         return out
 
-    def get_parameters(self) -> set[F.Parameters.is_parameter]:
-        return set(
+    def get_parameters(self) -> OrderedSet[F.Parameters.is_parameter]:
+        return OrderedSet(
             fabll.Traits.get_implementors(
                 F.Parameters.is_parameter.bind_typegraph(self.tg_in), self.G_in
             )
         )
 
-    def get_parameters_of_type[T: fabll.NodeT](self, t: type[T]) -> set[T]:
-        return set(t.bind_typegraph(self.tg_in).get_instances(self.G_in))
+    def get_parameters_of_type[T: fabll.NodeT](self, t: type[T]) -> OrderedSet[T]:
+        return OrderedSet(t.bind_typegraph(self.tg_in).get_instances(self.G_in))
 
     def get_typed_expressions[T: "fabll.NodeT"](
         self,
@@ -1633,26 +1646,26 @@ class Mutator:
         required_traits: tuple[type[fabll.NodeT], ...] = (),
         include_removed: bool = False,
         include_mutated: bool = False,
-    ) -> list[T] | set[T]:
+    ) -> list[T] | OrderedSet[T]:
         assert not new_only or not created_only
 
         if new_only:
-            out = {
+            out: OrderedSet[T] = OrderedSet(
                 ne
                 for n in self._new_operables
                 if (ne := fabll.Traits(n).get_obj_raw().try_cast(t))
-            }
+            )
         elif created_only:
-            out = {
+            out = OrderedSet(
                 ne
                 for n in self.transformations.created
                 if (ne := fabll.Traits(n).get_obj_raw().try_cast(t))
-            }
+            )
         elif t is fabll.Node:
             if len(required_traits) == 1:
                 out = cast(
-                    set[T],
-                    set(
+                    OrderedSet[T],
+                    OrderedSet(
                         fabll.Traits.get_implementor_objects(
                             required_traits[0].bind_typegraph(self.tg_in),
                             self.G_in,
@@ -1661,8 +1674,8 @@ class Mutator:
                 )
             else:
                 out = cast(
-                    set[T],
-                    set(
+                    OrderedSet[T],
+                    OrderedSet(
                         fabll.Traits.get_implementor_objects(
                             F.Expressions.is_expression.bind_typegraph(self.tg_in),
                             self.G_in,
@@ -1670,7 +1683,7 @@ class Mutator:
                     ),
                 )
         else:
-            out = set(t.bind_typegraph(self.tg_in).get_instances(self.G_in))
+            out = OrderedSet(t.bind_typegraph(self.tg_in).get_instances(self.G_in))
 
         if not include_terminated:
             terminated = fabll.Traits.get_implementor_objects(
@@ -1680,7 +1693,9 @@ class Mutator:
             out.difference_update(terminated)
 
         if required_traits and not (t is fabll.Node and len(required_traits) == 1):
-            out = {o for o in out if all(o.has_trait(t) for t in required_traits)}
+            out = OrderedSet(
+                o for o in out if all(o.has_trait(t) for t in required_traits)
+            )
 
         if not include_removed:
             out.difference_update(self.transformations.removed)
@@ -1699,7 +1714,7 @@ class Mutator:
         new_only: bool = False,
         include_terminated: bool = False,
         required_traits: tuple[type[fabll.NodeT], ...] = (),
-    ) -> set[F.Expressions.is_expression] | list[F.Expressions.is_expression]:
+    ) -> OrderedSet[F.Expressions.is_expression] | list[F.Expressions.is_expression]:
         # TODO make this first class instead of calling
         typed = self.get_typed_expressions(
             t=fabll.Node,
@@ -1709,7 +1724,7 @@ class Mutator:
             include_terminated=include_terminated,
             required_traits=required_traits,
         )
-        t = set if isinstance(typed, set) else list
+        t = OrderedSet if isinstance(typed, OrderedSet) else list
         return t(e.get_trait(F.Expressions.is_expression) for e in typed)
 
     def is_removed(self, po: F.Parameters.is_parameter_operatable) -> bool:
@@ -1734,14 +1749,14 @@ class Mutator:
         types: type[T] = fabll.Node,
         predicates_only: bool = False,
         recursive: bool = False,
-    ) -> set[T]:
-        return {
+    ) -> OrderedSet[T]:
+        return OrderedSet(
             expr
             for expr in po.get_operations(
                 types=types, predicates_only=predicates_only, recursive=recursive
             )
             if not expr.has_trait(is_irrelevant)
-        }
+        )
 
     # Solver Interface -----------------------------------------------------------------
     def __init__(
@@ -1767,7 +1782,7 @@ class Mutator:
         self.print_ctx = mutation_map.last_stage.print_ctx
         self._mutations_since_last_iteration = mutation_map.get_iteration_mutation(algo)
 
-        self._starting_operables = set(
+        self._starting_operables = OrderedSet(
             self.get_parameter_operatables(include_terminated=True)
         )
 
@@ -1780,10 +1795,12 @@ class Mutator:
 
     @property
     @once
-    def _new_operables(self) -> set[F.Parameters.is_parameter_operatable]:
-        _last_run_operables = set()
+    def _new_operables(self) -> OrderedSet[F.Parameters.is_parameter_operatable]:
+        _last_run_operables: OrderedSet[F.Parameters.is_parameter_operatable] = (
+            OrderedSet()
+        )
         if self._mutations_since_last_iteration is not None:
-            _last_run_operables = set(
+            _last_run_operables = OrderedSet(
                 self._mutations_since_last_iteration.compressed_mapping_forwards_complete.values()
             )
         assert _last_run_operables.issubset(self._starting_operables)

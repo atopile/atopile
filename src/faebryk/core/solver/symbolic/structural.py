@@ -7,7 +7,7 @@ import faebryk.library._F as F
 import faebryk.library.Expressions as Expressions
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
-from faebryk.libs.util import EquivalenceClasses
+from faebryk.libs.util import EquivalenceClasses, OrderedSet
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +55,12 @@ def resolve_alias_classes(mutator: Mutator):
         required_traits=(F.Expressions.is_predicate,),
     )
     for is_expr in is_exprs:
-        ops: set[F.Parameters.is_parameter_operatable] = {
+        ops: OrderedSet[F.Parameters.is_parameter_operatable] = OrderedSet(
             # Literal expressions are basically literals
             o
             for o in is_expr.is_expression.get().get_operand_operatables()
             if not mutator.utils.is_literal_expression(o.as_operand.get())
-        }
+        )
         # eq between non-literal operands
         full_eq.add_eq(*ops)
     p_eq_classes = full_eq.get(only_multi=True)
