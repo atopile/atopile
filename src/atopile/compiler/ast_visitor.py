@@ -122,6 +122,8 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.is_atomic_part,
         F.is_auto_generated,
         F.Pickable.is_pickable,
+        F.is_sink,
+        F.is_source,
         F.requires_external_usage,
     }
 )
