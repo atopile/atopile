@@ -35,56 +35,51 @@ def _log_remove_package(identifier: str, version: str | None):
     logger.info(f"[red]-[/] {dep_str}", extra={"markup": True})
 
 
-def _sort_registry_releases(releases: list) -> list:
-    if not releases:
-        return []
-
-    parse_failed = False
-    for release in releases:
-        try:
-            version.parse(release.version)
-        except ValueError:
-            parse_failed = True
-            break
-
-    if not parse_failed:
-        return sorted(
-            releases, key=lambda release: version.parse(release.version), reverse=True
-        )
-
-    return sorted(releases, key=lambda release: release.released_at, reverse=True)
-
-
 def _select_compatible_registry_release(
     api: PackagesAPIClient, identifier: str, requested_release: str | None
 ) -> str:
+    """
+    Select a compatible release for a package based on the installed atopile version.
+
+    The API returns releases in descending order (newest first), which is part of the
+    API contract. If the user has specified a version, we check that specific version
+    for compatibility and raise an error if it's incompatible. If no version is
+    specified, we fall back to older versions if the latest is incompatible.
+    """
     releases = api.get_package_releases(identifier)
     if not releases:
         raise errors.UserException(f"No releases found for {identifier}")
 
-    ordered_releases = _sort_registry_releases(releases)
+    # API returns releases in descending order (newest first) by contract
+    installed_version = version.get_installed_atopile_version()
+
     if requested_release is not None:
-        try:
-            requested_index = next(
-                index
-                for index, release in enumerate(ordered_releases)
-                if release.version == requested_release
-            )
-        except StopIteration as exc:
+        # User specified a version - find it and check compatibility
+        requested = next(
+            (release for release in releases if release.version == requested_release),
+            None,
+        )
+        if requested is None:
             raise errors.UserException(
                 f"Release not found: {identifier}@{requested_release}"
-            ) from exc
-        releases_to_try = ordered_releases[requested_index:]
-        latest_release = ordered_releases[requested_index]
-    else:
-        releases_to_try = ordered_releases
-        latest_release = ordered_releases[0]
+            )
 
-    installed_version = version.get_installed_atopile_version()
+        # If user explicitly specified a version, it must be compatible - no fallback
+        if not version.match(requested.requires_atopile, installed_version):
+            raise errors.UserException(
+                f"Package {identifier}@{requested_release} requires atopile "
+                f"{requested.requires_atopile}, but you have "
+                f"{version.clean_version(installed_version)} installed."
+            )
+
+        return requested.version
+
+    # No version specified - find the first compatible release (fallback behavior)
+    latest_release = releases[0]
     compatible_release = next(
         (
             release
-            for release in releases_to_try
+            for release in releases
             if version.match(release.requires_atopile, installed_version)
         ),
         None,
