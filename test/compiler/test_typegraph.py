@@ -2151,7 +2151,7 @@ class TestAssignments:
         literal = r.max_power.get().force_extract_superset()
         assert literal is not None, "max_power should have an aliased literal"
         value = literal.get_single()
-        multiplier = literal.get_is_unit()._extract_multiplier()
+        multiplier = not_none(literal.get_is_unit())._extract_multiplier()
         base_value = value * multiplier
         assert base_value == 0.003, (
             f"Expected 0.003 W, got {base_value} W "

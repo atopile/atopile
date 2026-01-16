@@ -1234,7 +1234,11 @@ def test_list_literal_basic():
     r2_node = _get_child(app_instance, "r2")
     assert fabll.Node.bind_instance(r2_node).isinstance(F.Resistor)
     r2 = F.Resistor.bind_instance(r2_node)
-    assert r2.resistance.get().try_extract_superset() is None
+    assert (
+        E.lit_op_ranges(((0, E.U.Ohm), (math.inf, E.U.Ohm)))
+        .as_literal.force_get()
+        .op_setic_equals(not_none(r2.resistance.get().try_extract_superset()))
+    )
 
     r3_node = _get_child(app_instance, "r3")
     assert fabll.Node.bind_instance(r3_node).isinstance(F.Resistor)
@@ -1275,7 +1279,11 @@ def test_list_literal_nested():
     )
 
     r2 = F.Resistor.bind_instance(_get_child(nested_node, "r2"))
-    assert r2.resistance.get().try_extract_superset() is None
+    assert (
+        E.lit_op_ranges(((0, E.U.Ohm), (math.inf, E.U.Ohm)))
+        .as_literal.force_get()
+        .op_setic_equals(not_none(r2.resistance.get().try_extract_superset()))
+    )
 
     r3 = F.Resistor.bind_instance(_get_child(nested_node, "r3"))
     assert (
@@ -1312,7 +1320,11 @@ def test_list_literal_long():
         .op_setic_equals(not_none(r1.resistance.get().try_extract_superset()))
     )
     r2 = F.Resistor.bind_instance(_get_child(app_instance, "r2"))
-    assert r2.resistance.get().try_extract_superset() is None
+    assert (
+        E.lit_op_ranges(((0, E.U.Ohm), (math.inf, E.U.Ohm)))
+        .as_literal.force_get()
+        .op_setic_equals(not_none(r2.resistance.get().try_extract_superset()))
+    )
     r3 = F.Resistor.bind_instance(_get_child(app_instance, "r3"))
     assert (
         E.lit_op_single((100, E.U.kohm))
@@ -1336,7 +1348,11 @@ def test_list_literal_empty():
     )
     assert "App" in result.state.type_roots
     r1 = F.Resistor.bind_instance(_get_child(app_instance, "r1"))
-    assert r1.resistance.get().try_extract_superset() is None
+    assert (
+        E.lit_op_ranges(((0, E.U.Ohm), (math.inf, E.U.Ohm)))
+        .as_literal.force_get()
+        .op_setic_equals(not_none(r1.resistance.get().try_extract_superset()))
+    )
 
 
 def test_list_literal_invalid():
@@ -1667,7 +1683,11 @@ def test_slice_for_loop():
     # Check that other resistors weren't assigned a value in the loop
     for r_node in resistors.as_list()[6:-3]:
         r = r_node.cast(F.Resistor)
-        assert r.resistance.get().try_extract_superset() is None
+        assert (
+            E.lit_op_ranges(((0, E.U.Ohm), (math.inf, E.U.Ohm)))
+            .as_literal.force_get()
+            .op_setic_equals(not_none(r.resistance.get().try_extract_superset()))
+        )
 
     for r_node in resistors2.as_list()[:]:
         r = r_node.cast(F.Resistor)
@@ -1769,7 +1789,11 @@ def test_slice_bigger_start_than_end():
 
     for r_node in set(resistor_list) - set(resistor_list[3:1]):
         r = r_node.cast(F.Resistor)
-        assert r.resistance.get().try_extract_superset() is None
+        assert (
+            E.lit_op_ranges(((0, E.U.Ohm), (math.inf, E.U.Ohm)))
+            .as_literal.force_get()
+            .op_setic_equals(not_none(r.resistance.get().try_extract_superset()))
+        )
 
 
 def test_directed_connect_reverse_signals():
@@ -2210,8 +2234,11 @@ def test_module_template_multiple_enum_args():
         mod1._channel.get().force_extract_singleton_typed(F.MOSFET.ChannelType)
         == F.MOSFET.ChannelType.N_CHANNEL
     )
-    # temp_coeff not constrained - check it returns None
-    assert mod1._temp_coeff.get().try_extract_superset() is None
+    # temp_coeff not constrained - check it returns the full domain
+    temp_coeff_superset = not_none(mod1._temp_coeff.get().try_extract_superset())
+    assert set(temp_coeff_superset.get_values()) == {
+        e.value for e in F.Capacitor.TemperatureCoefficient
+    }
 
     mod2 = _get_child(app_instance, "mod2")
     mod2 = _TestModule.bind_instance(mod2)
