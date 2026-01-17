@@ -1847,12 +1847,12 @@ def test_can_be_operand_pretty_print():
         tg=tg,
     )
 
-    assert singleton.can_be_operand.get().pretty() == "5.0Ω"
-    assert discrete_set.can_be_operand.get().pretty() == "{1.0, 2.0, 3.0, 4.0}Ω"
-    assert continuous_set.can_be_operand.get().pretty() == "{5.0..10.0}Ω"
+    assert singleton.can_be_operand.get().pretty() == "5Ω"
+    assert discrete_set.can_be_operand.get().pretty() == "{1, 2, 3, 4}Ω"
+    assert continuous_set.can_be_operand.get().pretty() == "{5..10}Ω"
     assert inf_set.can_be_operand.get().pretty() == "{ℝ}Ω"
-    assert continuous_set_rel.can_be_operand.get().pretty() == "5.0±0.5%Ω"
-    assert disjoint_union.can_be_operand.get().pretty() == "{5.0..10.0, 17.5±14.3%}Ω"
+    assert continuous_set_rel.can_be_operand.get().pretty() == "5±0.5%Ω"
+    assert disjoint_union.can_be_operand.get().pretty() == "{5..10, 15..20}Ω"
 
 
 def test_is_discrete_set():

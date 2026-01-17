@@ -4611,14 +4611,18 @@ class Numbers(fabll.Node):
             """
             Format and clean floats for printing.
             Handles infinity values with ∞ symbol.
+            Strips trailing zeros and unnecessary decimal points.
             """
             if math.isinf(number):
                 return "∞" if number > 0 else "-∞"
             str_num = str(number)
             if "." in str_num:
                 num, digits = str_num.split(".")
-                digits = digits[:PRINT_DIGITS]
-                str_num = f"{num}.{digits}"
+                digits = digits[:PRINT_DIGITS].rstrip("0")
+                if digits:
+                    str_num = f"{num}.{digits}"
+                else:
+                    str_num = num
             return str_num
 
         # Get unit symbol
@@ -4661,12 +4665,27 @@ class Numbers(fabll.Node):
             if not show_tolerance:
                 return f"{f(center)}"
 
+            # Format both ways and pick the cleaner one
+            range_fmt = f"{f(min_val)}..{f(max_val)}"
+
             # Use center±tolerance format for small tolerances (< 25%)
+            # but prefer range if it's cleaner (shorter or no truncation needed)
             if tolerance_rel is not None and tolerance_rel < 25:
-                return f"{f(center)}±{tolerance_rel:.1f}%"
+                center_fmt = f"{f(center)}±{tolerance_rel:.1f}%"
+                # Prefer range if min/max are cleaner (integers) while center has
+                # decimals
+                min_is_int = min_val == int(min_val)
+                max_is_int = max_val == int(max_val)
+                center_is_int = center == int(center)
+                if min_is_int and max_is_int and not center_is_int:
+                    return range_fmt
+                # Otherwise prefer the shorter representation
+                if len(range_fmt) <= len(center_fmt):
+                    return range_fmt
+                return center_fmt
 
             # For larger intervals, show as range
-            return f"{f(min_val)}..{f(max_val)}"
+            return range_fmt
 
         interval_strs = [format_interval(iv) for iv in intervals]
         # If suppressing tolerance and we have a single interval formatted as center v

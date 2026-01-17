@@ -334,7 +334,7 @@ def test_repr_chain_basic():
     )
 
     val = m._simple_repr.get().get_value()
-    assert val == "TM {10.0..20.0}V 5.0A P2 10.0V P3"
+    assert val == "TM {10..20}V 5A P2 10V P3"
 
 
 def test_repr_chain_non_number():
@@ -417,7 +417,7 @@ def test_repr_chain_no_literal():
         ),
     )
     val = m._simple_repr.get().get_value()
-    assert val == "10.0V P3: MISSING"
+    assert val == "10V P3: MISSING"
 
 
 def _make_kiloohm_unit(g: graph.GraphView, tg: fbrk.TypeGraph) -> "F.Units.is_unit":
@@ -465,8 +465,8 @@ def test_repr_display_unit_conversion():
     # format_literal_for_display should convert value and show correct unit
     formatted = param.format_literal_for_display(lit)
 
-    # Should show 47.0kΩ (converted from 47000Ω)
-    assert formatted == "47.0kΩ", f"Expected '47.0kΩ', got '{formatted}'"
+    # Should show 47kΩ (converted from 47000Ω)
+    assert formatted == "47kΩ", f"Expected '47kΩ', got '{formatted}'"
 
 
 def test_resistor_value_representation():
@@ -517,7 +517,7 @@ def test_resistor_value_representation():
     # 10kΩ converts to 10000Ω in display units
     assert (
         resistor._simple_repr.get().get_specs()[0].get_value(show_tolerance=False)
-        == "10000.0±1.0%Ω"
+        == "10000±1.0%Ω"
     )
     # Full representation: 10kΩ ±1% = 10000Ω ±1%, plus power and voltage
-    assert resistor._simple_repr.get().get_value() == "10000.0±1.0%Ω 0.125W 10.0V"
+    assert resistor._simple_repr.get().get_value() == "10000±1.0%Ω 0.125W 10V"

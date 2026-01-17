@@ -599,15 +599,17 @@ class is_unit(fabll.Node):
         vector: BasisVector,
         multiplier: float,
         offset: float,
+        symbols: tuple[str, ...] = (),
     ) -> "is_unit | None":
         # TODO: caching?
-        # TODO: generate symbol
 
         if vector == _BasisVector.ORIGIN and multiplier == 1.0 and offset == 0.0:
             return None
 
         return (
-            AnonymousUnitFactory(vector=vector, multiplier=multiplier, offset=offset)
+            AnonymousUnitFactory(
+                vector=vector, multiplier=multiplier, offset=offset, symbols=symbols
+            )
             .bind_typegraph(tg=tg)
             .create_instance(g=g)
             .cast(_AnonymousUnit, check=False)
@@ -619,13 +621,16 @@ class is_unit(fabll.Node):
         g: graph.GraphView,
         tg: fbrk.TypeGraph,
         multiplier: float,
+        symbol: str | None = None,
     ) -> "is_unit | None":
+        symbols = (symbol,) if symbol else ()
         return is_unit.new(
             g=g,
             tg=tg,
             vector=is_unit._extract_basis_vector(self),
             multiplier=multiplier * is_unit._extract_multiplier(self),
             offset=is_unit._extract_offset(self),
+            symbols=symbols,
         )
 
     def op_multiply(
@@ -1038,8 +1043,7 @@ def decode_symbol_runtime(
             else:
                 continue
 
-            # TODO: provide symbol for caching
-            return unit.scaled_copy(g=g, tg=tg, multiplier=scale_factor)
+            return unit.scaled_copy(g=g, tg=tg, multiplier=scale_factor, symbol=symbol)
 
     raise UnitNotFoundError(symbol, _get_close_matches(symbol, list(symbol_map.keys())))
 
