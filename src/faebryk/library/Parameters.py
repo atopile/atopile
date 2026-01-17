@@ -1486,9 +1486,9 @@ def test_compact_repr():
     # Parameters now show their display unit in brackets, e.g., A[V] for Volts
     expr_po = expr.as_parameter_operatable.force_get()
     exprstr = expr_po.compact_repr(context, no_lit_suffix=True)
-    assert exprstr == "((A[V] + B[V]) + 5.0V) * 10.0"
+    assert exprstr == "((A[V] + B[V]) + 5V) * 10"
     exprstr_w_lit_suffix = expr_po.compact_repr(context)
-    assert exprstr_w_lit_suffix == "((C[V]{⊆|{ℝ+}V} + B[V]{⊆|{ℝ+}V}) + 5.0V) * 10.0"
+    assert exprstr_w_lit_suffix == "((C[V]{⊆|{ℝ+}V} + B[V]{⊆|{ℝ+}V}) + 5V) * 10"
 
     # Test p2 + p1 (order matters in repr context - p2 was already assigned 'B')
     expr2 = Add.c(p2_op, p1_op)
@@ -1521,11 +1521,11 @@ def test_compact_repr():
     expr4 = And.c(expr3, ge_expr)
     expr4_po = expr4.as_parameter_operatable.force_get()
     expr4str = expr4_po.compact_repr(context, no_lit_suffix=True)
-    assert expr4str == "¬D ∧ ((((C[V] + B[V]) + 5.0V) * 10.0) ≥ 10.0V)"
+    assert expr4str == "¬D ∧ ((((C[V] + B[V]) + 5V) * 10) ≥ 10V)"
     expr4str_w_lit_suffix = expr4_po.compact_repr(context)
     assert (
         expr4str_w_lit_suffix
-        == "¬D ∧ ((((C[V]{⊆|{ℝ+}V} + B[V]{⊆|{ℝ+}V}) + 5.0V) * 10.0) ≥ 10.0V)"
+        == "¬D ∧ ((((C[V]{⊆|{ℝ+}V} + B[V]{⊆|{ℝ+}V}) + 5V) * 10) ≥ 10V)"
     )
 
     # Helper to create dimensionless numeric parameters
