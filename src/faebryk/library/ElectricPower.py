@@ -27,12 +27,10 @@ class ElectricPower(fabll.Node):
     gnd = F.Electrical.MakeChild()
 
     # Always connect vcc->hv and gnd->lv for backwards compatibility
-    _vcc_to_hv = fabll.MakeEdge(
-        [vcc], [hv], edge=fbrk.EdgeInterfaceConnection.build(shallow=False)
-    )
-    _gnd_to_lv = fabll.MakeEdge(
-        [gnd], [lv], edge=fbrk.EdgeInterfaceConnection.build(shallow=False)
-    )
+    _connections = [
+        fabll.is_interface.MakeConnectionEdge([vcc], [hv]),
+        fabll.is_interface.MakeConnectionEdge([gnd], [lv]),
+    ]
 
     # ----------------------------------------
     #                 traits
@@ -95,8 +93,8 @@ class ElectricPower(fabll.Node):
     def make_sink(self):
         fabll.Traits.create_and_add_instance_to(node=self, trait=F.is_sink).setup()
 
-
     design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
+
     @F.implements_design_check.register_post_instantiation_design_check
     def __check_post_instantiation_design_check__(self):
         """
@@ -115,8 +113,12 @@ class ElectricPower(fabll.Node):
         count_vcc: list[int] = [0]
         count_gnd: list[int] = [0]
 
-        fbrk.EdgeInterfaceConnection.visit_connected_edges(bound_node=vcc_node.instance, ctx=count_vcc, f=count_edges)
-        fbrk.EdgeInterfaceConnection.visit_connected_edges(bound_node=gnd_node.instance, ctx=count_gnd, f=count_edges)
+        fbrk.EdgeInterfaceConnection.visit_connected_edges(
+            bound_node=vcc_node.instance, ctx=count_vcc, f=count_edges
+        )
+        fbrk.EdgeInterfaceConnection.visit_connected_edges(
+            bound_node=gnd_node.instance, ctx=count_gnd, f=count_edges
+        )
 
         aliases_used: list[str] = []
 

@@ -46,83 +46,77 @@ class FilterElectricalRC(fabll.Node):
     # ----------------------------------------
     # Topology: in_.line ~> resistor ~> out.line
     #           out.line ~> capacitor ~> in_.reference.lv
-
-    # in_.line ~ resistor.unnamed[0]
-    _conn_in_to_resistor = fabll.MakeEdge(
-        [in_, "line"],
-        [resistor, "unnamed[0]"],
-        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
-    )
-
-    # resistor.unnamed[1] ~ out.line
-    _conn_resistor_to_out = fabll.MakeEdge(
-        [resistor, "unnamed[1]"],
-        [out, "line"],
-        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
-    )
-
-    # out.line ~ capacitor.unnamed[0]
-    _conn_out_to_capacitor = fabll.MakeEdge(
-        [out, "line"],
-        [capacitor, "unnamed[0]"],
-        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
-    )
-
-    # capacitor.unnamed[1] ~ in_.reference.lv
-    _conn_capacitor_to_gnd = fabll.MakeEdge(
-        [capacitor, "unnamed[1]"],
-        [in_, "reference", "lv"],
-        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
-    )
-
-    # Connect in_ and out references together
-    _conn_references = fabll.MakeEdge(
-        [in_, "reference"],
-        [out, "reference"],
-        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
-    )
+    _connections = [
+        # in_.line ~ resistor.unnamed[0]
+        fabll.is_interface.MakeConnectionEdge(
+            [in_, F.ElectricSignal.line],
+            [resistor, F.Resistor.unnamed[0]],
+        ),
+        # resistor.unnamed[1] ~ out.line
+        fabll.is_interface.MakeConnectionEdge(
+            [resistor, F.Resistor.unnamed[1]],
+            [out, F.ElectricSignal.line],
+        ),
+        # out.line ~ capacitor.unnamed[0]
+        fabll.is_interface.MakeConnectionEdge(
+            [out, F.ElectricSignal.line],
+            [capacitor, F.Capacitor.unnamed[0]],
+        ),
+        # capacitor.unnamed[1] ~ in_.reference.lv
+        fabll.is_interface.MakeConnectionEdge(
+            [capacitor, F.Capacitor.unnamed[1]],
+            [in_, F.ElectricSignal.reference, F.ElectricPower.lv],
+        ),
+        # Connect in_ and out references together
+        fabll.is_interface.MakeConnectionEdge(
+            [in_, F.ElectricSignal.reference],
+            [out, F.ElectricSignal.reference],
+        ),
+    ]
 
     # ----------------------------------------
     #            Expressions / Equations
     # ----------------------------------------
     # RC filter cutoff frequency: fc = 1 / (2 * pi * R * C)
-    # Rearranged:
-    #   C = 1 / (R * 2 * pi * fc)
-    #   R = 1 / (C * 2 * pi * fc)
-
-    # Literal for 2*pi
-    _lit_two_pi = F.Literals.Numbers.MakeChild_SingleValue(
-        value=2.0 * math.pi, unit=F.Units.Dimensionless
-    )
-
-    # R * C
-    _mul_rc = F.Expressions.Multiply.MakeChild(
-        [resistor, "resistance"], [capacitor, "capacitance"]
-    )
-
-    # 2 * pi * R * C
-    _mul_two_pi_rc = F.Expressions.Multiply.MakeChild([_lit_two_pi], [_mul_rc])
-
-    # Literal 1 for division
-    _lit_one = F.Literals.Numbers.MakeChild_SingleValue(
-        value=1.0, unit=F.Units.Dimensionless
-    )
-
-    # fc = 1 / (2 * pi * R * C)
-    _div_fc = F.Expressions.Divide.MakeChild([_lit_one], [_mul_two_pi_rc])
-    _eq_cutoff_frequency = F.Expressions.Is.MakeChild(
-        [filter, "cutoff_frequency"], [_div_fc], assert_=True
-    )
-
-    # Set filter response to LOWPASS (this is an RC low-pass filter)
-    _eq_response = F.Literals.AbstractEnums.MakeChild_SetSuperset(
-        [filter, "response"], F.Filter.Response.LOWPASS
-    )
-
-    # Set filter order to 1 (first-order RC filter)
-    _eq_order = F.Literals.Numbers.MakeChild_SetSingleton(
-        [filter, "order"], 1.0, unit=F.Units.Dimensionless
-    )
+    _equations = [
+        # fc = 1 / (2 * pi * R * C)
+        F.Expressions.Is.MakeChild(
+            [filter, F.Filter.cutoff_frequency],
+            [
+                _div_fc := F.Expressions.Divide.MakeChild(
+                    [
+                        _lit_one := F.Literals.Numbers.MakeChild_SingleValue(
+                            value=1.0, unit=F.Units.Dimensionless
+                        )
+                    ],
+                    [
+                        _mul_two_pi_rc := F.Expressions.Multiply.MakeChild(
+                            [
+                                _lit_two_pi := F.Literals.Numbers.MakeChild_SingleValue(
+                                    value=2.0 * math.pi, unit=F.Units.Dimensionless
+                                )
+                            ],
+                            [
+                                _mul_rc := F.Expressions.Multiply.MakeChild(
+                                    [resistor, F.Resistor.resistance],
+                                    [capacitor, F.Capacitor.capacitance],
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ],
+            assert_=True,
+        ),
+        # Set filter response to LOWPASS (this is an RC low-pass filter)
+        F.Literals.AbstractEnums.MakeChild_SetSuperset(
+            [filter, F.Filter.response], F.Filter.Response.LOWPASS
+        ),
+        # Set filter order to 1 (first-order RC filter)
+        F.Literals.Numbers.MakeChild_SetSingleton(
+            [filter, F.Filter.order], 1.0, unit=F.Units.Dimensionless
+        ),
+    ]
 
     # ----------------------------------------
     #            Usage Example

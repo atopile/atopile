@@ -40,14 +40,24 @@ class OpAmp(fabll.Node):
     inverting_input_lead = F.Lead.is_lead.MakeChild()
 
     # Attach leads to their respective nodes
-    power.add_dependant(fabll.Traits.MakeEdge(power_hv_lead, [power, "hv"]))
-    power.add_dependant(fabll.Traits.MakeEdge(power_lv_lead, [power, "lv"]))
+    power.add_dependant(
+        fabll.Traits.MakeEdge(power_hv_lead, [power, F.ElectricPower.hv])
+    )
+    power.add_dependant(
+        fabll.Traits.MakeEdge(power_lv_lead, [power, F.ElectricPower.lv])
+    )
     output.add_dependant(fabll.Traits.MakeEdge(output_lead, [output]))
     input.add_dependant(
-        fabll.Traits.MakeEdge(non_inverting_input_lead, [input, "p", "line"])
+        fabll.Traits.MakeEdge(
+            non_inverting_input_lead,
+            [input, F.DifferentialPair.p, F.ElectricSignal.line],
+        )
     )
     input.add_dependant(
-        fabll.Traits.MakeEdge(inverting_input_lead, [input, "n", "line"])
+        fabll.Traits.MakeEdge(
+            inverting_input_lead,
+            [input, F.DifferentialPair.n, F.ElectricSignal.line],
+        )
     )
 
     # Attach pad name matchers to the lead fields (not to unrelated nodes)

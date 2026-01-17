@@ -87,18 +87,14 @@ class MultiCapacitor(fabll.Node):
 
             # 4. Connect capacitor terminals to MultiCapacitor's unnamed interfaces
             # capacitor.unnamed[0] ~ self.unnamed[0] (parallel connection)
-            conn_0 = fabll.MakeEdge(
-                [cap, "unnamed[0]"],
-                [cls.unnamed[0]],
-                edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
+            conn_0 = fabll.is_interface.MakeConnectionEdge(
+                [cap, F.Capacitor.unnamed[0]], [cls.unnamed[0]]
             )
             ConcreteMultiCapacitor._handle_cls_attr(f"_cap_{i}_conn_0", conn_0)
 
             # capacitor.unnamed[1] ~ self.unnamed[1] (parallel connection)
-            conn_1 = fabll.MakeEdge(
-                [cap, "unnamed[1]"],
-                [cls.unnamed[1]],
-                edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
+            conn_1 = fabll.is_interface.MakeConnectionEdge(
+                [cap, F.Capacitor.unnamed[1]], [cls.unnamed[1]]
             )
             ConcreteMultiCapacitor._handle_cls_attr(f"_cap_{i}_conn_1", conn_1)
 

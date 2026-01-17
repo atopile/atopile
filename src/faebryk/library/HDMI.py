@@ -46,7 +46,7 @@ class HDMI(fabll.Node):
                     name=f"HDMI_D{i}",
                     level=F.has_net_name_suggestion.Level.SUGGESTED,
                 ),
-                owner=[diff_pair, "p"],
+                owner=[diff_pair, F.DifferentialPair.p],
             )
         )
         diff_pair.add_dependant(
@@ -55,7 +55,7 @@ class HDMI(fabll.Node):
                     name=f"HDMI_D{i}",
                     level=F.has_net_name_suggestion.Level.SUGGESTED,
                 ),
-                owner=[diff_pair, "n"],
+                owner=[diff_pair, F.DifferentialPair.n],
             )
         )
 

@@ -15,6 +15,43 @@ from faebryk.libs.util import not_none
 logger = logging.getLogger(__name__)
 
 
+class _ResistorChain(fabll.Node):
+    N = 2
+    is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+    resistors = [F.Resistor.MakeChild() for _ in range(N)]
+    terminals = [F.Electrical.MakeChild() for _ in range(2)]
+    taps = [F.Electrical.MakeChild() for _ in range(N - 1)]
+    total_resistance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+
+    _connections = [
+        fabll.is_interface.MakeConnectionEdge(
+            [terminals[0]], [resistors[0], F.Resistor.unnamed[0]]
+        ),
+        fabll.is_interface.MakeConnectionEdge(
+            [terminals[1]], [resistors[-1], F.Resistor.unnamed[1]]
+        ),
+        *[
+            fabll.is_interface.MakeConnectionEdge(
+                [tap],
+                [r_prev, F.Resistor.unnamed[1]],
+                [r_next, F.Resistor.unnamed[0]],
+            )
+            for tap, r_prev, r_next in zip(taps, resistors[:-1], resistors[1:])
+        ],
+    ]
+    _asserts = [
+        F.Expressions.Is.MakeChild(
+            [total_resistance],
+            [
+                r_sum := F.Expressions.Add.MakeChild(
+                    *[[r, F.Resistor.resistance] for r in resistors],
+                )
+            ],
+            assert_=True,
+        ),
+    ]
+
+
 class ResistorVoltageDivider(fabll.Node):
     """
     A voltage divider using two resistors.
@@ -23,124 +60,106 @@ class ResistorVoltageDivider(fabll.Node):
     power.lv ~ node[2]
     output.line ~ node[1]
     output.reference.lv ~ node[2]
+
+    ```
+       ref_in.hv
+           |
+        +--+--+
+        | r0  |
+        +--+--+
+           |
+           +------> ref_out.hv
+           |
+        +--+--+
+        | r1  |
+        +--+--+
+           |
+       ref_in.lv  | ref_out.lv
+    ```
     """
 
     is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
     # External interfaces
-    power = F.ElectricPower.MakeChild()
-    output = F.ElectricSignal.MakeChild()
+    ref_in = F.ElectricPower.MakeChild()
+    ref_out = F.ElectricPower.MakeChild()
 
     # Components
-    r_bottom = F.Resistor.MakeChild()
-    r_top = F.Resistor.MakeChild()
+    chain = _ResistorChain.MakeChild()
 
     # Variables
     v_in = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
     v_out = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
-    max_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+    current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
     total_resistance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
     ratio = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
 
-    # ----------------------------------------
-    #            Connections
-    # ----------------------------------------
-    # Topology: power.hv ~ r_top ~ output.line ~ r_bottom ~ power.lv
+    _connections = [
+        fabll.is_interface.MakeConnectionEdge(
+            [ref_in, F.ElectricPower.hv],
+            [chain, _ResistorChain.terminals[0]],
+        ),
+        fabll.is_interface.MakeConnectionEdge(
+            [ref_in, F.ElectricPower.lv],
+            [ref_out, F.ElectricPower.lv],
+            [chain, _ResistorChain.terminals[1]],
+        ),
+        fabll.is_interface.MakeConnectionEdge(
+            [ref_out, F.ElectricPower.hv],
+            [chain, _ResistorChain.taps[0]],
+        ),
+    ]
 
-    # power.hv ~ r_top.unnamed[0]
-    _conn_hv_to_rtop = fabll.MakeEdge(
-        [power, F.ElectricPower.hv],
-        [r_top, F.Resistor.unnamed[0]],
-        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
-    )
-
-    # r_top.unnamed[1] ~ output.line
-    _conn_rtop_to_output = fabll.MakeEdge(
-        [r_top, F.Resistor.unnamed[1]],
-        [output, F.ElectricSignal.line],
-        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
-    )
-
-    # output.line ~ r_bottom.unnamed[0]
-    _conn_output_to_rbottom = fabll.MakeEdge(
-        [output, F.ElectricSignal.line],
-        [r_bottom, F.Resistor.unnamed[0]],
-        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
-    )
-
-    # r_bottom.unnamed[1] ~ power.lv
-    _conn_rbottom_to_lv = fabll.MakeEdge(
-        [r_bottom, F.Resistor.unnamed[1]],
-        [power, F.ElectricPower.lv],
-        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
-    )
-
-    # Connect output signal reference to power (ground reference)
-    _conn_output_ref = fabll.MakeEdge(
-        [output, F.ElectricSignal.reference],
-        [power],
-        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
-    )
-
-    # ----------------------------------------
-    #            Expressions
-    # ----------------------------------------
     # Link interface voltages to parameters
-    # v_out is! output.reference.voltage
-    _eq_v_out_voltage = F.Expressions.Is.MakeChild(
-        [v_out],
-        [output, F.ElectricSignal.reference, F.ElectricPower.voltage],
-        assert_=True,
-    )
-    # v_in is! power.voltage
-    _eq_v_in_voltage = F.Expressions.Is.MakeChild(
-        [v_in],
-        [power, F.ElectricPower.voltage],
-        assert_=True,
-    )
-
-    # r_total is! r_top + r_bottom
-    _eq_r_total_add = F.Expressions.Add.MakeChild(
-        [r_top, F.Resistor.resistance],
-        [r_bottom, F.Resistor.resistance],
-    )
-    _eq_r_total = F.Expressions.Is.MakeChild(
-        [total_resistance],
-        [_eq_r_total_add],
-        assert_=True,
-    )
-
-    # ratio is! r_bottom / r_total
-    _eq_ratio_divide = F.Expressions.Divide.MakeChild(
-        [r_bottom, F.Resistor.resistance], [total_resistance]
-    )
-    _eq_ratio = F.Expressions.Is.MakeChild(
-        [ratio],
-        [_eq_ratio_divide],
-        assert_=True,
-    )
-
-    # ratio is! v_out / v_in
-    _eq_ratio_from_v_divide = F.Expressions.Divide.MakeChild([v_out], [v_in])
-    _eq_ratio_from_v = F.Expressions.Is.MakeChild(
-        [ratio],
-        [_eq_ratio_from_v_divide],
-        assert_=True,
-    )
-
-    # max_current is! v_in / r_total
-    _eq_max_current_divide = F.Expressions.Divide.MakeChild([v_in], [total_resistance])
-    _eq_max_current = F.Expressions.Is.MakeChild(
-        [max_current],
-        [_eq_max_current_divide],
-        assert_=True,
-    )
+    _equations = [
+        F.Expressions.Is.MakeChild(
+            [v_in],
+            [ref_in, F.ElectricPower.voltage],
+            assert_=True,
+        ),
+        F.Expressions.Is.MakeChild(
+            [v_out],
+            [ref_out, F.ElectricPower.voltage],
+            assert_=True,
+        ),
+        F.Expressions.Is.MakeChild(
+            [total_resistance],
+            [chain, _ResistorChain.total_resistance],
+            assert_=True,
+        ),
+        F.Expressions.Is.MakeChild(
+            [ratio],
+            [
+                _r_div := F.Expressions.Divide.MakeChild(
+                    [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
+                    [total_resistance],
+                )
+            ],
+            [
+                _v_div := F.Expressions.Divide.MakeChild(
+                    [v_in],
+                    [v_out],
+                )
+            ],
+            assert_=True,
+        ),
+        F.Expressions.Is.MakeChild(
+            [current],
+            [
+                _max_current_div := F.Expressions.Divide.MakeChild(
+                    [v_in],
+                    [total_resistance],
+                )
+            ],
+            assert_=True,
+        ),
+    ]
 
     _net_name = fabll.Traits.MakeEdge(
         F.has_net_name_suggestion.MakeChild(
             name="VDIV_OUTPUT", level=F.has_net_name_suggestion.Level.SUGGESTED
         ),
-        [output, "line"],
+        [ref_out, F.ElectricPower.lv],
     )
 
 
@@ -152,21 +171,6 @@ class VdivSolverTests:
         Test voltage divider for ADC input scaling.
 
         Divides ~10V supply down to ~3.1V for ADC input.
-
-                    supply (9.9V - 10.1V)
-                         |
-                      +--+--+
-                      | hv  |
-                      | r_t |
-                      +--+--+
-                         +------> adc_input (3.0V - 3.2V)
-                         |
-                      +--+--+
-                      | r_b |
-                      | lv  |
-                      +--+--+
-                         |
-                        GND
 
         Constraints:
           - v_in:  9.9V to 10.1V
@@ -190,20 +194,13 @@ class VdivSolverTests:
             _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
             supply = F.ElectricPower.MakeChild()
             rdiv = ResistorVoltageDivider.MakeChild()
-            adc_input = F.ElectricSignal.MakeChild()
+            adc_ref = F.ElectricPower.MakeChild()
 
         app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
         # Connect interfaces
-        app.supply.get()._is_interface.get().connect_to(app.rdiv.get().power.get())
-        app.rdiv.get().output.get()._is_interface.get().connect_to(app.adc_input.get())
-
-        # TODO remove once ray merge is_bus_parameter
-        E.is_(
-            app.supply.get().voltage.get().can_be_operand.get(),
-            app.rdiv.get().v_in.get().can_be_operand.get(),
-            assert_=True,
-        )
+        app.supply.get()._is_interface.get().connect_to(app.rdiv.get().ref_in.get())
+        app.rdiv.get().ref_out.get()._is_interface.get().connect_to(app.adc_ref.get())
 
         # Set constraints
         E.is_subset(
@@ -212,29 +209,37 @@ class VdivSolverTests:
             assert_=True,
         )
         E.is_subset(
-            app.adc_input.get().reference.get().voltage.get().can_be_operand.get(),
+            app.adc_ref.get().voltage.get().can_be_operand.get(),
             E.lit_op_range(((3.0, E.U.V), (3.2, E.U.V))),
             assert_=True,
         )
         E.is_subset(
-            app.rdiv.get().max_current.get().can_be_operand.get(),
+            app.rdiv.get().current.get().can_be_operand.get(),
             E.lit_op_range(((1, E.U.mA), (2, E.U.mA))),
             assert_=True,
         )
+
+        F.is_alias_bus_parameter.resolve_bus_parameters(g=g, tg=tg)
+        for p_o in F.Expressions.is_expression.bind_typegraph(tg).get_instances():
+            print(p_o.compact_repr(use_name=True))
 
         solver = Solver()
         pick_part_recursively(app, solver)
 
         r_top = (
             app.rdiv.get()
-            .r_top.get()
+            .chain.get()
+            .resistors[0]
+            .get()
             .resistance.get()
             .is_parameter_operatable.get()
             .force_extract_subset(F.Literals.Numbers)
         )
         r_bottom = (
             app.rdiv.get()
-            .r_bottom.get()
+            .chain.get()
+            .resistors[1]
+            .get()
             .resistance.get()
             .is_parameter_operatable.get()
             .force_extract_subset(F.Literals.Numbers)
@@ -293,7 +298,7 @@ class VdivSolverTests:
             assert_=True,
         )
         E.is_subset(
-            rdiv.max_current.get().can_be_operand.get(),
+            rdiv.current.get().can_be_operand.get(),
             E.lit_op_range(((1, E.U.mA), (3, E.U.mA))),
             assert_=True,
         )
@@ -325,7 +330,7 @@ class VdivSolverTests:
             assert_=True,
         )
         E.is_subset(
-            rdiv.max_current.get().can_be_operand.get(),
+            rdiv.current.get().can_be_operand.get(),
             E.lit_op_range(((1, E.U.mA), (3, E.U.mA))),
             assert_=True,
         )

@@ -920,9 +920,11 @@ class Add(fabll.Node):
     @classmethod
     def MakeChild(cls, *operands: fabll.RefPath) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
-        for operand in operands:
+        for i, operand in enumerate(operands):
             out.add_dependant(
-                OperandSet.MakeEdge([out, cls.operands], get_operand_path(operand)),
+                OperandSequence.MakeEdge(
+                    [out, cls.operands], get_operand_path(operand), i
+                ),
             )
         return out
 
@@ -1116,10 +1118,10 @@ class Divide(fabll.Node):
         out.add_dependant(
             OperandPointer.MakeEdge([out, cls.numerator], get_operand_path(numerator))
         )
-        for denominator in denominators:
+        for i, denominator in enumerate(denominators):
             out.add_dependant(
-                OperandSet.MakeEdge(
-                    [out, cls.zdenominator], get_operand_path(denominator)
+                OperandSequence.MakeEdge(
+                    [out, cls.zdenominator], get_operand_path(denominator), i
                 )
             )
         return out
@@ -1800,9 +1802,11 @@ class And(fabll.Node):
     @classmethod
     def MakeChild(cls, *operands: fabll.RefPath) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
-        for operand in operands:
+        for i, operand in enumerate(operands):
             out.add_dependant(
-                OperandSet.MakeEdge([out, cls.operands], get_operand_path(operand))
+                OperandSequence.MakeEdge(
+                    [out, cls.operands], get_operand_path(operand), i
+                )
             )
         return out
 
@@ -1981,9 +1985,11 @@ class Xor(fabll.Node):
     @classmethod
     def MakeChild(cls, *operands: fabll.RefPath) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
-        for operand in operands:
+        for i, operand in enumerate(operands):
             out.add_dependant(
-                OperandSet.MakeEdge([out, cls.operands], get_operand_path(operand))
+                OperandSequence.MakeEdge(
+                    [out, cls.operands], get_operand_path(operand), i
+                )
             )
         return out
 

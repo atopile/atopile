@@ -25,10 +25,12 @@ class DifferentialPair(fabll.Node):
 
     net_name_suffixes = [
         fabll.Traits.MakeEdge(
-            F.has_net_name_affix.MakeChild(suffix="_P"), owner=[p, "line"]
+            F.has_net_name_affix.MakeChild(suffix="_P"),
+            owner=[p, F.ElectricSignal.line],
         ),
         fabll.Traits.MakeEdge(
-            F.has_net_name_affix.MakeChild(suffix="_N"), owner=[n, "line"]
+            F.has_net_name_affix.MakeChild(suffix="_N"),
+            owner=[n, F.ElectricSignal.line],
         ),
     ]
 

@@ -58,7 +58,7 @@ class Ethernet(fabll.Node):
                 F.has_net_name_suggestion.MakeChild(
                     name=f"ETH_P{i}", level=F.has_net_name_suggestion.Level.SUGGESTED
                 ),
-                owner=[pair, "p"],
+                owner=[pair, F.DifferentialPair.p],
             )
         )
         pair.add_dependant(
@@ -66,7 +66,7 @@ class Ethernet(fabll.Node):
                 F.has_net_name_suggestion.MakeChild(
                     name=f"ETH_N{i}", level=F.has_net_name_suggestion.Level.SUGGESTED
                 ),
-                owner=[pair, "n"],
+                owner=[pair, F.DifferentialPair.n],
             )
         )
 

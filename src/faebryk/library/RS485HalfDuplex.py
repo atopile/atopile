@@ -25,10 +25,12 @@ class RS485HalfDuplex(fabll.Node):
 
     net_name_affixes = [
         fabll.Traits.MakeEdge(
-            F.has_net_name_affix.MakeChild(suffix="_A"), owner=[diff_pair, "p", "line"]
+            F.has_net_name_affix.MakeChild(suffix="_A"),
+            owner=[diff_pair, F.DifferentialPair.p, F.ElectricSignal.line],
         ),
         fabll.Traits.MakeEdge(
-            F.has_net_name_affix.MakeChild(suffix="_B"), owner=[diff_pair, "n", "line"]
+            F.has_net_name_affix.MakeChild(suffix="_B"),
+            owner=[diff_pair, F.DifferentialPair.n, F.ElectricSignal.line],
         ),
     ]
 

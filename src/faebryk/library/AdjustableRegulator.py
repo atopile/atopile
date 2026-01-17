@@ -50,12 +50,6 @@ class AdjustableRegulator(fabll.Node):
     max_current, r_total, r_bottom, or r_top
     """
 
-    _connect_feedback_power = fabll.MakeEdge(
-        [feedback_divider, "power"],
-        [power_out],
-        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
-    )
-
     # Mark as bridgeable between power_in and power_out
     _can_bridge = fabll.Traits.MakeEdge(
         F.can_bridge.MakeChild(["power_in"], ["power_out"])
@@ -65,13 +59,16 @@ class AdjustableRegulator(fabll.Node):
     # to power_in.voltage and power_out.voltage respectively
     v_in = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
     v_out = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
-    _v_in_to_power_in_voltage = fabll.MakeEdge(
-        [v_in],
-        ["power_in", "voltage"],
-        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
-    )
-    _v_out_to_power_out_voltage = fabll.MakeEdge(
-        [v_out],
-        ["power_out", "voltage"],
-        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
-    )
+
+    _connections = [
+        # feedback_divider.ref_in ~ power_out
+        fabll.is_interface.MakeConnectionEdge(
+            [feedback_divider, F.ResistorVoltageDivider.ref_in], [power_out]
+        ),
+        fabll.is_interface.MakeConnectionEdge(
+            [v_in], [power_in, F.ElectricPower.voltage]
+        ),
+        fabll.is_interface.MakeConnectionEdge(
+            [v_out], [power_out, F.ElectricPower.voltage]
+        ),
+    ]

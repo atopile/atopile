@@ -50,10 +50,10 @@ class Comparator(fabll.Node):
     )
 
     power.add_dependant(
-        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [power, "hv"])
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [power, F.ElectricPower.hv])
     )
     power.add_dependant(
-        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [power, "lv"])
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [power, F.ElectricPower.lv])
     )
     output.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [output]))
     inverting_input.add_dependant(

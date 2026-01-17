@@ -25,10 +25,10 @@ class Battery(fabll.Node):
     )
 
     power.add_dependant(
-        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [power, "hv"])
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [power, F.ElectricPower.hv])
     )
     power.add_dependant(
-        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [power, "lv"])
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [power, F.ElectricPower.lv])
     )
 
     _single_electric_reference = fabll.Traits.MakeEdge(
@@ -41,7 +41,7 @@ class Battery(fabll.Node):
             name="BAT_VCC",
             level=F.has_net_name_suggestion.Level.SUGGESTED,
         ),
-        owner=[power, "hv"],
+        owner=[power, F.ElectricPower.hv],
     )
 
     designator_prefix = fabll.Traits.MakeEdge(

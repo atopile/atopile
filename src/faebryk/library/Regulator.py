@@ -36,13 +36,12 @@ class Regulator(fabll.Node):
     # to power_in.voltage and power_out.voltage respectively
     v_in = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
     v_out = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
-    _v_in_to_power_in_voltage = fabll.MakeEdge(
-        [v_in],
-        ["power_in", "voltage"],
-        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
-    )
-    _v_out_to_power_out_voltage = fabll.MakeEdge(
-        [v_out],
-        ["power_out", "voltage"],
-        edge=fbrk.EdgeInterfaceConnection.build(shallow=False),
-    )
+
+    _connections = [
+        fabll.is_interface.MakeConnectionEdge(
+            [v_in], [power_in, F.ElectricPower.voltage]
+        ),
+        fabll.is_interface.MakeConnectionEdge(
+            [v_out], [power_out, F.ElectricPower.voltage]
+        ),
+    ]

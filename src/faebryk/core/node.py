@@ -1114,12 +1114,20 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             if cls._is_field_registered(value):
                 return
             cls._add_field(locator=name, field=value)
-        if (
-            isinstance(value, list)
-            and len(value)
-            and all(isinstance(c, Field) for c in value)
-        ):
-            cls._add_field(locator=name, field=ListField(fields=value))
+        if isinstance(value, list) and len(value):
+            # Flatten nested lists (e.g., from multiple MakeConnectionEdge calls)
+            # MakeConnectionEdge returns list[_EdgeField], so a list of those calls
+            # produces list[list[_EdgeField]] which needs flattening
+            flattened: list[Field] = []
+            for item in value:
+                if isinstance(item, Field):
+                    flattened.append(item)
+                elif isinstance(item, list) and all(
+                    isinstance(c, Field) for c in item
+                ):
+                    flattened.extend(item)
+            if flattened and all(isinstance(c, Field) for c in flattened):
+                cls._add_field(locator=name, field=ListField(fields=flattened))
 
     @classmethod
     def _is_field_registered(cls, field: Field) -> bool:
@@ -2321,6 +2329,20 @@ class is_interface(Node):
 
         return buses
 
+    @staticmethod
+    def MakeConnectionEdge(*nodes: RefPath, shallow: bool = False) -> list[_EdgeField]:
+        if not len(nodes) >= 2:
+            return []
+        src = nodes[0]
+        return [
+            MakeEdge(
+                src,
+                dst,
+                edge=fbrk.EdgeInterfaceConnection.build(shallow=shallow),
+            )
+            for dst in nodes[1:]
+        ]
+
 
 class is_abstract(Node):
     is_trait = ImplementsTrait.MakeChild().put_on_type()
@@ -2343,6 +2365,7 @@ type Module = Node
 # Rendering
 
 
+# TODO merge with/move to graph_render.py
 class TreeRenderer:
     """Renders graph trees, following composition edges."""
 

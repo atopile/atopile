@@ -34,13 +34,13 @@ class CAN(fabll.Node):
             F.has_net_name_suggestion.MakeChild(
                 name="CAN_H", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[diff_pair, "p"],
+            owner=[diff_pair, F.DifferentialPair.p],
         ),
         fabll.Traits.MakeEdge(
             F.has_net_name_suggestion.MakeChild(
                 name="CAN_L", level=F.has_net_name_suggestion.Level.SUGGESTED
             ),
-            owner=[diff_pair, "n"],
+            owner=[diff_pair, F.DifferentialPair.n],
         ),
     ]
 
