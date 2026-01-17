@@ -18,9 +18,7 @@ log.setLevel(logging.INFO)
 
 def view(
     entry: Annotated[str | None, typer.Argument()] = None,
-    build: Annotated[
-        list[str], typer.Option("--build", "-b", envvar="ATO_BUILD")
-    ] = [],
+    build: Annotated[list[str], typer.Option("--build", "-b", envvar="ATO_BUILD")] = [],
     target: Annotated[
         list[str], typer.Option("--target", "-t", envvar="ATO_TARGET")
     ] = [],
@@ -124,6 +122,7 @@ def _serve_visualizer(app, port: int):
     except Exception as e:
         log.error(f"Failed to export graph: {e}")
         import traceback
+
         traceback.print_exc()
         return
 
@@ -132,8 +131,8 @@ def _serve_visualizer(app, port: int):
     if not web_dir.exists():
         log.warning(
             f"Visualizer web app not built at {web_dir}. "
-            "Serving JSON data only. Run 'npm run build' in the visualizer/web "
-            "directory to build the full visualizer."
+            "Serving JSON data only. Run 'npm ci' then 'npm run build' in the "
+            f"{web_dir.parent} directory to build the full visualizer."
         )
         # Fall back to serving just the temp dir with JSON
         web_dir = temp_dir
@@ -154,13 +153,13 @@ def _serve_visualizer(app, port: int):
 
         def end_headers(self):
             # Add CORS headers and proper content types
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.send_header('Cache-Control', 'no-cache')
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-cache")
             super().end_headers()
 
         def guess_type(self, path):
-            if path.endswith('.json'):
-                return 'application/json'
+            if str(path).endswith(".json"):
+                return "application/json"
             return super().guess_type(path)
 
     try:

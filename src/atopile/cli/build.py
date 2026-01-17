@@ -11,9 +11,11 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, Annotated
+from typing import IO, Annotated, Callable
 
+import pathvalidate
 import typer
+from rich.console import Console
 
 from atopile.telemetry import capture
 
@@ -54,6 +56,21 @@ _STATUS_STYLE = {
 }
 
 
+def _format_stage_entry(entry: "StageEntry") -> str:
+    """Render a completed stage entry with status color and counts."""
+    icon, color = _STATUS_STYLE.get(entry.status, ("✓", "green"))
+    counts = ""
+    if entry.errors > 0:
+        counts = f"({entry.errors}E"
+        if entry.warnings > 0:
+            counts += f",{entry.warnings}W"
+        counts += ")"
+    elif entry.warnings > 0:
+        counts = f"({entry.warnings})"
+    label = f"{icon}{counts} {entry.name} [{entry.duration:.1f}s]"
+    return f"[{color}]{label}[/{color}]"
+
+
 @dataclass
 class StageEntry:
     """A completed build stage with timing and status."""
@@ -63,6 +80,7 @@ class StageEntry:
     status: str  # "success", "warning", or "failed"
     warnings: int
     errors: int
+    log_name: str
 
 
 class BuildProcess:
@@ -112,12 +130,11 @@ class BuildProcess:
         self._event_rfd: int | None = None
         self._event_wfd: int | None = None
         self._event_buffer: str = ""
+        self._stage_printer: Callable[[StageEntry, Path | None], None] | None = None
 
-    def start(self, passthrough: bool = False) -> None:
+    def start(self) -> None:
         """Start the build subprocess.
 
-        Args:
-            passthrough: If True, output goes to terminal. If False, captured to log.
         """
         # Create log directory for this build
         self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -136,12 +153,10 @@ class BuildProcess:
             "build",
             "-b",
             self.name,
-            "--parallel-worker",  # Signal this is a worker process
         ]
 
-        # Copy environment and set worker mode
+        # Copy environment and set IPC channels for worker subprocess
         env = os.environ.copy()
-        env["ATO_PARALLEL_WORKER"] = "1"
         env["ATO_BUILD_STATUS_FILE"] = str(self.status_file)
         if self._event_wfd is not None:
             env["ATO_BUILD_EVENT_FD"] = str(self._event_wfd)
@@ -167,37 +182,16 @@ class BuildProcess:
 
         self.start_time = time.time()
 
-        if passthrough:
-            # Verbose mode: output goes to terminal AND tee to log file
-            # Disable Python buffering in subprocess for real-time output
-            env["PYTHONUNBUFFERED"] = "1"
-            # Force Rich to output colors even though stdout is a pipe
-            env["FORCE_COLOR"] = "1"
-            # Disable animated progress spinners (they don't work when piped)
-            env["ATO_NO_PROGRESS_ANIMATION"] = "1"
-            self._log_handle = open(self.log_file, "w", encoding="utf-8")
-            self.process = subprocess.Popen(
-                cmd,
-                cwd=self.project_root,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                env=env,
-                bufsize=1,  # Line buffered
-                text=True,  # Text mode for proper encoding
-                encoding="utf-8",
-                pass_fds=self._get_pass_fds(),
-            )
-        else:
-            # Normal mode: output captured to log file only
-            self._log_handle = open(self.log_file, "w")
-            self.process = subprocess.Popen(
-                cmd,
-                cwd=self.project_root,
-                stdout=self._log_handle,
-                stderr=subprocess.STDOUT,
-                env=env,
-                pass_fds=self._get_pass_fds(),
-            )
+        # Capture output to log file only (parent handles display)
+        self._log_handle = open(self.log_file, "w")
+        self.process = subprocess.Popen(
+            cmd,
+            cwd=self.project_root,
+            stdout=self._log_handle,
+            stderr=subprocess.STDOUT,
+            env=env,
+            pass_fds=self._get_pass_fds(),
+        )
         self._close_event_pipe_in_parent()
 
     def poll(self) -> int | None:
@@ -218,29 +212,24 @@ class BuildProcess:
                 self._log_handle.close()
                 self._log_handle = None
             self._parse_log_for_stats()
+            # Write timing data from pipe-accumulated stage history
+            self._write_timing_json()
         return ret
 
     def wait(self) -> int:
-        """Wait for process to complete, streaming output to terminal and log.
-
-        Used in verbose mode where output should be visible in real-time.
-        """
+        """Wait for process to complete while reading stage events."""
         if self.process is None:
             return -1
 
-        # If process.stdout is piped (passthrough mode), tee to console and log
-        if self.process.stdout:
-            # Read lines and stream in real-time
-            # PYTHONUNBUFFERED=1 ensures subprocess flushes after each line
-            for line in iter(self.process.stdout.readline, ""):
-                sys.stdout.write(line)
-                sys.stdout.flush()
-                if self._log_handle:
-                    self._log_handle.write(line)
-                    self._log_handle.flush()
-                self._read_event_pipe()
+        # Poll process and read stage events until complete
+        while True:
+            ret = self.process.poll()
+            self._read_status()
+            self._read_event_pipe()
+            if ret is not None:
+                break
+            time.sleep(0.05)
 
-        ret = self.process.wait()
         self.return_code = ret
         self.end_time = time.time()
         self._finalize_stage_history()
@@ -248,6 +237,8 @@ class BuildProcess:
             self._log_handle.close()
             self._log_handle = None
         self._parse_log_for_stats()
+        # Write timing data from pipe-accumulated stage history
+        self._write_timing_json()
         return ret
 
     def _read_status(self) -> None:
@@ -325,14 +316,15 @@ class BuildProcess:
         if not line:
             return
         parts = line.split("\t")
-        if len(parts) < 5:
+        if len(parts) < 6:
             return
         try:
             duration = float(parts[0])
         except ValueError:
             return
-        name = "\t".join(parts[4:]).strip()
-        if not name:
+        log_name = parts[4].strip()
+        description = "\t".join(parts[5:]).strip()
+        if not description:
             return
         warnings = int(parts[2]) if parts[2].strip().isdigit() else 0
         errors = int(parts[3]) if parts[3].strip().isdigit() else 0
@@ -345,32 +337,37 @@ class BuildProcess:
             status = "success"
         self._stage_history.append(
             StageEntry(
-                name=name,
+                name=description,
                 duration=duration,
                 status=status,
                 warnings=warnings,
                 errors=errors,
+                log_name=log_name,
             )
         )
+        if self._stage_printer:
+            self._stage_printer(
+                self._stage_history[-1], self._stage_info_log_path(log_name)
+            )
+
+    def _stage_info_log_path(self, stage_name: str) -> Path | None:
+        """Return the info log path for a stage, if available."""
+        if not self.log_dir:
+            return None
+        sanitized = pathvalidate.sanitize_filename(stage_name)
+        return self.log_dir / f"{sanitized}.info.log"
+
+    def set_stage_printer(
+        self, printer: Callable[[StageEntry, Path | None], None] | None
+    ) -> None:
+        """Set a callback invoked for each completed stage."""
+        self._stage_printer = printer
 
     def format_stage_history(self, max_width: int, include_current: bool) -> str:
         """Return a multi-line stage history string, wrapped on step boundaries."""
         from rich.text import Text
 
-        def _render_entry(entry: StageEntry) -> str:
-            icon, color = _STATUS_STYLE.get(entry.status, ("✓", "green"))
-            counts = ""
-            if entry.errors > 0:
-                counts = f"({entry.errors}E"
-                if entry.warnings > 0:
-                    counts += f",{entry.warnings}W"
-                counts += ")"
-            elif entry.warnings > 0:
-                counts = f"({entry.warnings})"
-            label = f"{icon}{counts} {entry.name} [{entry.duration:.1f}s]"
-            return f"[{color}]{label}[/{color}]"
-
-        parts = [_render_entry(e) for e in self._stage_history]
+        parts = [_format_stage_entry(e) for e in self._stage_history]
         if include_current and self.is_running and self.current_stage:
             elapsed = (
                 time.time() - self._stage_start_time if self._stage_start_time else 0.0
@@ -411,6 +408,37 @@ class BuildProcess:
                 self.errors = content.lower().count("error")
             except Exception:
                 pass
+
+    def _write_timing_json(self) -> None:
+        """Write stage timing data from pipe-accumulated history to JSON file."""
+        import json
+
+        if not self.log_dir or not self._stage_history:
+            return
+
+        from atopile.cli.logging_ import LoggingStage
+
+        timing_file = self.log_dir / LoggingStage.TIMING_FILE
+
+        # Convert StageEntry objects to JSON format
+        timing_data = {
+            "stages": [
+                {
+                    "name": entry.name,
+                    "description": entry.name,  # Same as name for display
+                    "elapsed_seconds": round(entry.duration, 3),
+                    "status": entry.status,
+                    "warnings": entry.warnings,
+                    "errors": entry.errors,
+                }
+                for entry in self._stage_history
+            ]
+        }
+
+        try:
+            timing_file.write_text(json.dumps(timing_data, indent=2))
+        except Exception:
+            pass  # Don't fail the build if timing persistence fails
 
     def get_error_message(self) -> str | None:
         """Extract a brief error summary for inline display."""
@@ -697,13 +725,20 @@ class ParallelBuildManager:
             self._active_workers.add(display_name)
         return True
 
-    def _fill_worker_slots(self) -> None:
+    def _fill_worker_slots(
+        self,
+        start_next_build: Callable[[], bool] | None = None,
+        max_workers: int | None = None,
+    ) -> None:
         """Start builds to fill available worker slots."""
+        start_fn = start_next_build or self._start_next_build
+        target_workers = max_workers or self.max_workers
+
         with self._lock:
             active_count = len(self._active_workers)
 
-        while active_count < self.max_workers:
-            if not self._start_next_build():
+        while active_count < target_workers:
+            if not start_fn():
                 break
             with self._lock:
                 active_count = len(self._active_workers)
@@ -1027,6 +1062,44 @@ class ParallelBuildManager:
 
         return "  ".join(parts) if parts else "Starting..."
 
+    _VERBOSE_INDENT = 20
+
+    def _print_verbose_stage(self, entry: StageEntry, log_path: Path | None) -> None:
+        """Print a single verbose stage line with its log path."""
+        log_text = ""
+        if log_path is not None:
+            try:
+                log_path = log_path.relative_to(Path.cwd())
+            except ValueError:
+                pass
+            log_text = f"  {log_path}"
+
+        self._console.print(
+            f"{'':>{self._VERBOSE_INDENT}}{_format_stage_entry(entry)}{log_text}"
+        )
+
+    def _print_failure_details(
+        self, display_name: str, bp: "BuildProcess", console: "Console"
+    ) -> None:
+        """Print failure details similar to parallel mode output."""
+        error_details = bp.get_error_details()
+        error_msg = bp.get_error_message()
+
+        console.print(f"[red bold]✗ {display_name}[/red bold]")
+        if error_details:
+            for line in error_details:
+                line = self._linkify_paths(line)
+                console.print(f"  {line}")
+        elif error_msg:
+            console.print(f"  {error_msg}")
+
+        if bp.log_file and bp.log_file.exists():
+            log_path = bp.log_file.absolute()
+            uri = self._make_file_uri(log_path)
+            link = f"[link={uri}]View full log[/link]"
+            console.print(f"  [dim]→ {link}[/dim]")
+        console.print("")
+
     def _display_loop(self) -> None:
         """Background thread that updates display."""
         from rich.console import Group
@@ -1052,57 +1125,72 @@ class ParallelBuildManager:
             return self._run_verbose()
         return self._run_parallel()
 
+    def _print_build_result(
+        self, display_name: str, bp: "BuildProcess", ret: int, console: "Console"
+    ) -> None:
+        """Print per-build success/failure summary with details."""
+        if ret == 0:
+            if bp.warnings > 0:
+                console.print(
+                    f"\n[yellow]⚠ {display_name} completed with "
+                    f"{bp.warnings} warning(s)[/yellow]"
+                )
+            else:
+                console.print(f"\n[green]✓ {display_name} completed[/green]")
+        else:
+            console.print(f"\n[red]✗ {display_name} failed[/red]")
+            self._print_failure_details(display_name, bp, console)
+
     def _run_verbose(self) -> dict[str, int]:
         """Run builds sequentially with full output visible."""
-        results: dict[str, int] = {}
+        return self._run_parallel(
+            live=False,
+            max_workers=1,
+            print_headers=True,
+            print_results=True,
+            stage_printer=self._print_verbose_stage,
+        )
 
-        for display_name, bp in self.processes.items():
-            self._console.print(f"\n[bold cyan]▶ Building {display_name}[/bold cyan]")
-            self._console.print(f"[dim]  Logs: {bp.log_dir}[/dim]\n")
-
-            # Start the build with stdout/stderr passed through
-            bp.start(passthrough=True)
-
-            # Wait for completion
-            ret = bp.wait()
-            results[display_name] = ret
-
-            if ret == 0:
-                if bp.warnings > 0:
-                    self._console.print(
-                        f"\n[yellow]⚠ {display_name} completed with "
-                        f"{bp.warnings} warning(s)[/yellow]"
-                    )
-                else:
-                    self._console.print(f"\n[green]✓ {display_name} completed[/green]")
-            else:
-                self._console.print(f"\n[red]✗ {display_name} failed[/red]")
-
-        return results
-
-    def _run_parallel(self) -> dict[str, int]:
-        """Run builds in parallel with live progress display."""
+    def _run_parallel(
+        self,
+        *,
+        live: bool = True,
+        max_workers: int | None = None,
+        print_headers: bool = False,
+        print_results: bool = False,
+        stage_printer: Callable[[StageEntry, Path | None], None] | None = None,
+    ) -> dict[str, int]:
+        """Run builds with an optional live progress display."""
         from rich.console import Group
         from rich.live import Live
 
         results: dict[str, int] = {}
 
-        with Live(
-            self._render_table(),
-            console=self._console,
-            refresh_per_second=2,
-        ) as live:
-            self._live = live
+        def start_next_build() -> bool:
+            try:
+                display_name = self._task_queue.get_nowait()
+            except queue.Empty:
+                return False
 
-            # Start display update thread
-            self._display_thread = threading.Thread(
-                target=self._display_loop, daemon=True
-            )
-            self._display_thread.start()
+            bp = self.processes[display_name]
+            if print_headers:
+                self._console.print(
+                    f"\n[bold cyan]▶ Building {display_name}[/bold cyan]"
+                )
+                self._console.print(f"[dim]  Logs: {bp.log_dir}[/dim]\n")
+            if stage_printer is not None:
+                bp.set_stage_printer(stage_printer)
+            bp.start()
+            with self._lock:
+                self._active_workers.add(display_name)
+            return True
 
+        def run_loop(console: "Console") -> dict[str, int]:
             try:
                 # Fill initial worker slots
-                self._fill_worker_slots()
+                self._fill_worker_slots(
+                    start_next_build=start_next_build, max_workers=max_workers
+                )
 
                 # Poll until all processes complete
                 while True:
@@ -1117,32 +1205,25 @@ class ParallelBuildManager:
                                 results[display_name] = ret
                                 completed_this_round.append(display_name)
 
-                                # Print error immediately if build failed
-                                if ret != 0 and not bp._error_reported:
+                                if stage_printer is not None:
+                                    bp.set_stage_printer(None)
+
+                                if print_results:
+                                    self._print_build_result(
+                                        display_name, bp, ret, console
+                                    )
                                     bp._error_reported = True
-                                    error_details = bp.get_error_details()
-                                    error_msg = bp.get_error_message()
-
-                                    # Print error above display (lock to sync)
-                                    with self._display_lock:
-                                        live.console.print(
-                                            f"[red bold]✗ {display_name}[/red bold]"
+                                elif ret != 0 and not bp._error_reported:
+                                    bp._error_reported = True
+                                    if live:
+                                        with self._display_lock:
+                                            self._print_failure_details(
+                                                display_name, bp, console
+                                            )
+                                    else:
+                                        self._print_failure_details(
+                                            display_name, bp, console
                                         )
-                                        if error_details:
-                                            for line in error_details:
-                                                # Make file paths clickable
-                                                line = self._linkify_paths(line)
-                                                live.console.print(f"  {line}")
-                                        elif error_msg:
-                                            live.console.print(f"  {error_msg}")
-
-                                        # Add link to full log at the end
-                                        if bp.log_file and bp.log_file.exists():
-                                            log_path = bp.log_file.absolute()
-                                            uri = self._make_file_uri(log_path)
-                                            link = f"[link={uri}]View full log[/link]"
-                                            live.console.print(f"  [dim]→ {link}[/dim]")
-                                        live.console.print("")  # Blank line
 
                         # Remove completed builds from active set
                         for name in completed_this_round:
@@ -1150,7 +1231,9 @@ class ParallelBuildManager:
 
                     # Fill any freed worker slots
                     if completed_this_round:
-                        self._fill_worker_slots()
+                        self._fill_worker_slots(
+                            start_next_build=start_next_build, max_workers=max_workers
+                        )
 
                     # Check if all builds are done
                     all_done = (
@@ -1167,15 +1250,36 @@ class ParallelBuildManager:
                     bp.terminate()
                 raise
 
-            finally:
-                self._stop_display.set()
-                if self._display_thread:
-                    self._display_thread.join(timeout=1.0)
+            return results
 
-            # Final update
-            table = self._render_table()
-            summary = self._render_summary()
-            live.update(Group(table, "", summary))
+        if live:
+            with Live(
+                self._render_table(),
+                console=self._console,
+                refresh_per_second=2,
+            ) as live_display:
+                self._live = live_display
+                self._stop_display.clear()
+
+                # Start display update thread
+                self._display_thread = threading.Thread(
+                    target=self._display_loop, daemon=True
+                )
+                self._display_thread.start()
+
+                try:
+                    run_loop(live_display.console)
+                finally:
+                    self._stop_display.set()
+                    if self._display_thread:
+                        self._display_thread.join(timeout=1.0)
+
+                # Final update
+                table = self._render_table()
+                summary = self._render_summary()
+                live_display.update(Group(table, "", summary))
+        else:
+            run_loop(self._console)
 
         return results
 
@@ -1216,6 +1320,7 @@ class ParallelBuildManager:
                 "success": "✅",
                 "warning": "⚠️",
                 "failure": "❌",
+                "failed": "❌",
             }.get(status, "❓")
 
             lines.append(f"| {name} | {elapsed:.2f}s | {status_emoji} |")
@@ -1377,6 +1482,7 @@ class ParallelBuildManager:
                     "success": "✅",
                     "warning": "⚠️",
                     "failure": "❌",
+                    "failed": "❌",
                 }.get(status, "❓")
 
                 lines.append(f"| {name} | {elapsed:.2f}s | {status_emoji} |")
@@ -1486,7 +1592,7 @@ def _run_single_build(frozen: bool | None = None) -> None:
     """
     Run a single build target (worker mode).
 
-    This is called when --parallel-worker flag is set.
+    This is called when IPC env vars are set by the parent process.
     """
     from atopile import buildutil
     from atopile.config import config
@@ -1667,9 +1773,6 @@ def build(
     open_layout: Annotated[
         bool | None, typer.Option("--open", envvar="ATO_OPEN_LAYOUT")
     ] = None,
-    parallel_worker: Annotated[
-        bool, typer.Option("--parallel-worker", hidden=True)
-    ] = False,
     all_projects: Annotated[
         bool,
         typer.Option(
@@ -1709,7 +1812,7 @@ def build(
     from faebryk.libs.project.dependencies import ProjectDependencies
 
     # Worker mode - run single build directly (no config needed yet)
-    if parallel_worker or os.environ.get("ATO_PARALLEL_WORKER") == "1":
+    if os.environ.get("ATO_BUILD_EVENT_FD") or os.environ.get("ATO_BUILD_STATUS_FILE"):
         config.apply_options(
             entry=entry,
             selected_builds=selected_builds,
