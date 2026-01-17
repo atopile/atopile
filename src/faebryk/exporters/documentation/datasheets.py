@@ -5,7 +5,7 @@ import logging
 import re
 from pathlib import Path
 
-from httpx import HTTPStatusError, RequestError
+from httpx import HTTPStatusError, RequestError, TimeoutException
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -91,6 +91,7 @@ def _download_datasheet(url: str, path: Path):
     """
     Download the datasheet of the given module and save it to the given path.
     """
+    TIMEOUT_S = 15  # datasheet download timeout
     if not url.endswith(".pdf"):
         raise DatasheetDownloadException(f"Datasheet URL {url} is probably not a PDF")
     if not url.startswith(("http://", "https://")):
@@ -104,26 +105,35 @@ def _download_datasheet(url: str, path: Path):
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36"
         }
         with http_client(headers=user_agent_headers) as client:
-            response = client.get(url)
+            response = client.get(url, timeout=TIMEOUT_S, follow_redirects=False)
+
+            # Handle redirects explicitly (httpx doesn't treat 3xx as errors).
+            if response.status_code == 301:
+                # Some LCSC datasheets are moved; map to the stable wmsc URL.
+                if "lcsc.com" in url:
+                    lcsc_id_regex = r"_(C\d{4,8})"
+                    match = re.search(lcsc_id_regex, url)
+                    if match:
+                        lcsc_id = match.group(1)
+                        redirected_url = f"https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/{lcsc_id}.pdf"
+                        logger.info(f"LCSC 301 redirect: {url} -> {redirected_url}")
+                        _download_datasheet(redirected_url, path)
+                        return  # Exit after successful recursive download
+
+                # Otherwise, follow the Location header if present.
+                location = response.headers.get("location")
+                if location:
+                    _download_datasheet(location, path)
+                    return
+
             response.raise_for_status()
     except HTTPStatusError as e:
-        # Some LCSC datasheets are moved, follow the redirect manually
-        if e.response.status_code == 301:
-            if "lcsc.com" in url:
-                # get the lcsc id from the url
-                lcsc_id_regex = r"_(C\d{4,8})"
-                match = re.search(lcsc_id_regex, url)
-                if match:
-                    lcsc_id = match.group(1)
-                    redirected_url = (
-                        f"https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/{lcsc_id}.pdf"
-                    )
-                    logger.info(f"LCSC 301 redirect: {url} -> {redirected_url}")
-                    _download_datasheet(redirected_url, path)
-                    return  # Exit after successful recursive download
-        # Re-raise if we couldn't handle the redirect
         raise DatasheetDownloadException(
             f"HTTP error downloading datasheet from {url}: {e}"
+        ) from e
+    except TimeoutException as e:
+        raise DatasheetDownloadException(
+            f"Timed out (>{TIMEOUT_S}s) downloading datasheet from {url}: {e}"
         ) from e
     except RequestError as e:
         raise DatasheetDownloadException(
