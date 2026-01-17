@@ -3316,24 +3316,19 @@ def test_copy_into_basic():
 def test_type_name_collision_raises_error():
     """
     Test that registering two different classes with the same name raises an error.
-    """
 
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
+    The collision is detected at class definition time via __init_subclass__ ->
+    _register_type().
+    """
 
     class MyType(Node):  # type: ignore[no-redef]
         pass
 
-    # First registration should succeed
-    TypeNodeBoundTG.get_or_create_type_in_tg(tg, MyType)
+    # Second class definition with same name should raise immediately
+    with pytest.raises(FabLLException, match="already registered"):
 
-    # Define a different class with the same __name__
-    class MyType(Node):  # noqa: F811
-        some_field: int = 42
-
-    # Second registration with same name but different class should raise
-    with pytest.raises(FabLLException, match="Type name collision"):
-        TypeNodeBoundTG.get_or_create_type_in_tg(tg, MyType)
+        class MyType(Node):  # noqa: F811
+            some_field: int = 42
 
 
 def test_same_class_multiple_get_or_create_type_succeeds():
