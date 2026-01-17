@@ -151,7 +151,7 @@ class ContradictionByLiteral(Contradiction):
         parts = [super().__str__()]
 
         if self.constraint_sources:
-            context = self.mutator.mutation_map.input_print_context
+            context = self.mutator.mutation_map.print_ctx
 
             def _has_bounded_literal(
                 expr: F.Parameters.is_parameter_operatable,

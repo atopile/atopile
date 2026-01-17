@@ -3767,9 +3767,8 @@ def test_contradiction_empty_intersection_has_sources():
         assert resistance within 0ohm to 5ohm
         assert resistance within 10ohm to 12ohm
     """
-    mutator = _build_mutator(source)
     with pytest.raises(ContradictionByLiteral, match="Empty intersection") as exc:
-        mutator.get_literal_mappings(new_only=False, allow_subset=True)
+        _build_mutator(source)
     msg = str(exc.value)
     assert "Constraints:" in msg
     assert "<unknown>:" in msg
