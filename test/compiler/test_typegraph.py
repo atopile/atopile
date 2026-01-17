@@ -12,7 +12,7 @@ from atopile.compiler.ast_visitor import ASTVisitor, DslException
 from atopile.compiler.build import Linker, StdlibRegistry, build_file
 from atopile.errors import UserSyntaxError
 from faebryk.core.solver.mutator import MutationMap, Mutator
-from faebryk.core.solver.symbolic.structural import merge_intersect_subsets
+from faebryk.core.solver.symbolic.structural import transitive_subset
 from faebryk.core.solver.utils import ContradictionByLiteral
 from faebryk.libs.util import not_none
 from test.compiler.conftest import build_instance, build_type
@@ -2024,7 +2024,7 @@ class TestTraitStatements:
             ) -> fabll._ChildField:
                 out = fabll._ChildField(cls)
                 out.add_dependant(
-                    F.Literals.Numbers.MakeChild_ConstrainToSingleton(
+                    F.Literals.Numbers.MakeChild_SetSingleton(
                         param_ref=[out, cls.count],
                         value=float(count),
                         unit=F.Units.Dimensionless,
@@ -2033,7 +2033,7 @@ class TestTraitStatements:
                 return out
 
             def get_count(self) -> int:
-                return int(self.count.get().force_extract_literal().get_single())
+                return int(self.count.get().force_extract_superset().get_single())
 
         # Register the trait and build the ato code
         g, tg, stdlib, result, instance = build_instance(
@@ -2108,7 +2108,7 @@ class TestAssignments:
         param = F.Parameters.NumericParameter.bind_instance(not_none(param_bnode))
 
         # The parameter should have an aliased literal with expected values
-        literal = param.force_extract_literal_subset()
+        literal = param.force_extract_superset()
         assert literal is not None, (
             f"Parameter '{param_name}' should have an aliased literal"
         )
@@ -2149,10 +2149,10 @@ class TestAssignments:
         # Assignments create Is constraints, use try_extract_aliased_literal
         # Value should be 3 mW = 0.003 W in base SI units
         # Due to test order dependency, values may be stored in mW or W
-        literal = r.max_power.get().force_extract_literal_subset()
+        literal = r.max_power.get().force_extract_superset()
         assert literal is not None, "max_power should have an aliased literal"
         value = literal.get_single()
-        multiplier = literal.get_is_unit()._extract_multiplier()
+        multiplier = not_none(literal.get_is_unit())._extract_multiplier()
         base_value = value * multiplier
         assert base_value == 0.003, (
             f"Expected 0.003 W, got {base_value} W "
@@ -2191,7 +2191,7 @@ class TestAssignments:
         r = F.Resistor.bind_instance(not_none(r_bnode))
 
         # 100 ohm +/- 5% = [95, 105]
-        literal = r.resistance.get().force_extract_literal_subset()
+        literal = r.resistance.get().force_extract_superset()
         assert literal is not None, "resistance should have an aliased literal"
         assert literal.get_values() == [95.0, 105.0]
 
@@ -2225,7 +2225,7 @@ class TestAssignments:
         )
         r = F.Resistor.bind_instance(not_none(r_bnode))
 
-        literal = r.max_power.get().force_extract_literal_subset()
+        literal = r.max_power.get().force_extract_superset()
         assert literal is not None, "max_power should have an aliased literal"
         assert literal.get_values() == [3.0, 5.0]
 
@@ -2268,7 +2268,7 @@ class TestAssignments:
         # The values should be stored in the unit of the start value (uA)
         # 2.1 uA -> 2.1
         # 12 mA -> 12000 uA
-        literal = power.max_current.get().force_extract_literal_subset()
+        literal = power.max_current.get().force_extract_superset()
         assert literal is not None, "current should have an aliased literal"
         values = power.max_current.get().get_values()
         assert len(values) == 2
@@ -2308,7 +2308,7 @@ class TestAssignments:
         )
         r = F.Resistor.bind_instance(not_none(r_bnode))
 
-        assert r.max_voltage.get().force_extract_literal_subset().get_values() == [
+        assert r.max_voltage.get().force_extract_superset().get_values() == [
             25.0,
             100.0,
         ]
@@ -2343,9 +2343,12 @@ class TestAssignments:
         )
         r = F.Resistor.bind_instance(not_none(r_bnode))
 
-        # 100kV +/- 1% = [99kV, 101kV] = [99000V, 101000V] in base SI units
-        # NumericParameter.get_values() returns values in display units (Volts for
-        # max_voltage), so values are already in base SI units.
+        # 100kV +/- 1% = [99000, 101000] V in base SI units
+        # Due to test order dependency, values may be stored in kV or V
+        # Check the actual value in base units (value * multiplier)
+        literal = r.max_voltage.get().force_extract_superset()
+        multiplier = not_none(literal.get_is_unit())._extract_multiplier()
+
         values = r.max_voltage.get().get_values()
         assert values == [99000.0, 101000.0], (
             f"Expected [99000.0, 101000.0] V, got {values} V"
@@ -2388,14 +2391,14 @@ class TestAssignments:
         r = F.Resistor.bind_instance(not_none(r_bnode))
 
         # Components use Is constraint, so force_extract_literal should work
-        resistance_literal = r.resistance.get().force_extract_literal()
+        resistance_literal = r.resistance.get().force_extract_subset()
         assert resistance_literal is not None, (
             "resistance should have an Is-constrained literal"
         )
         # 100 ohm +/- 5% = [95, 105]
         assert resistance_literal.get_values() == [95.0, 105.0]
 
-        max_power_literal = r.max_power.get().force_extract_literal()
+        max_power_literal = r.max_power.get().force_extract_subset()
         assert max_power_literal is not None, (
             "max_power should have an Is-constrained literal"
         )
@@ -2437,7 +2440,7 @@ class TestAssignments:
         r = F.Resistor.bind_instance(not_none(r_bnode))
 
         # Modules use IsSubset constraint, so force_extract_literal_subset works
-        resistance_literal = r.resistance.get().force_extract_literal_subset()
+        resistance_literal = r.resistance.get().force_extract_superset()
         assert resistance_literal is not None, (
             "resistance should have an IsSubset literal"
         )
@@ -3487,7 +3490,7 @@ class TestSoftHardMakeChild:
             bound_node=app_instance.instance, child_identifier="resistance"
         )
         param = F.Parameters.NumericParameter.bind_instance(not_none(param_bnode))
-        literal = param.force_extract_literal_subset()
+        literal = param.force_extract_superset()
         assert literal is not None
         assert literal.get_values() == [10.0, 10.0]
 
@@ -3531,7 +3534,7 @@ class TestSoftHardMakeChild:
             bound_node=app_instance.instance, child_identifier="resistance"
         )
         param = F.Parameters.NumericParameter.bind_instance(not_none(param_bnode))
-        literal = param.force_extract_literal_subset()
+        literal = param.force_extract_superset()
         assert literal is not None
         assert param.get_values() == [10000.0, 10000.0]
         assert param.force_get_display_units().get_symbols() == ["Ω", "ohm", "ohms"]
@@ -3610,7 +3613,7 @@ class TestSoftHardMakeChild:
                     )
                 )
             )
-            .force_extract_literal_subset()
+            .force_extract_superset()
             .get_numeric_set()
             .get_intervals()
             == []
@@ -3668,7 +3671,7 @@ class TestSoftHardMakeChild:
                     )
                 )
             )
-            .force_extract_literal_subset()
+            .force_extract_superset()
             .get_numeric_set()
             .get_intervals()
             == []
@@ -3728,7 +3731,7 @@ def _build_mutator(source: str) -> Mutator:
     )
     return Mutator(
         mutation_map=mutation_map,
-        algo=merge_intersect_subsets,
+        algo=transitive_subset,
         iteration=0,
         terminal=False,
     )
@@ -3750,7 +3753,7 @@ def _build_numeric_param_mutator() -> tuple[
     )
     mutator = Mutator(
         mutation_map=mutation_map,
-        algo=merge_intersect_subsets,
+        algo=transitive_subset,
         iteration=0,
         terminal=False,
     )

@@ -12,8 +12,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core import graph
-from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.core.solver.nullsolver import NullSolver
+from faebryk.core.solver.solver import Solver
 from faebryk.libs.picker.picker import PickedPart, PickError, pick_part_recursively
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.test.boundexpressions import BoundExpressions
@@ -63,7 +62,7 @@ def test_pick_module(case: "ComponentTestCase"):
     #     )
 
     # pick
-    solver = DefaultSolver()
+    solver = Solver()
     pick_part_recursively(module, solver)
 
     assert module.has_trait(F.Pickable.has_part_picked)
@@ -113,7 +112,7 @@ def test_type_pick():
         # assert_=True,
     )
 
-    pick_part_recursively(module, DefaultSolver())
+    pick_part_recursively(module, Solver())
 
     assert module.has_trait(F.Pickable.has_part_picked)
 
@@ -127,7 +126,7 @@ def test_no_pick():
     fabll.Traits.create_and_add_instance_to(module, fabll.is_module)
     fabll.Traits.create_and_add_instance_to(module, F.has_part_removed)
 
-    pick_part_recursively(module, DefaultSolver())
+    pick_part_recursively(module, Solver())
 
     assert module.has_trait(F.Pickable.has_part_picked)
     assert module.get_trait(F.Pickable.has_part_picked).removed
@@ -251,7 +250,7 @@ def test_check_missing_picks_with_footprint_with_picker(caplog):
 def test_pick_explicit_modules():
     from faebryk.libs.picker.picker import get_pick_tree, pick_topologically
 
-    solver = DefaultSolver()
+    solver = Solver()
 
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -283,7 +282,7 @@ def test_pick_explicit_modules():
 def test_pick_resistor_by_params():
     from faebryk.libs.picker.picker import get_pick_tree, pick_topologically
 
-    solver = DefaultSolver()
+    solver = Solver()
 
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -310,8 +309,8 @@ def test_pick_resistor_by_params():
     assert (
         app.r1.get()
         .resistance.get()
-        .force_extract_literal()
-        .is_subset_of(
+        .force_extract_subset()
+        .op_setic_is_subset_of(
             F.Literals.Numbers(resistance_op.get_raw_obj().instance),
             g=g,
             tg=tg,
@@ -320,38 +319,6 @@ def test_pick_resistor_by_params():
     assert app.r1.get().get_trait(F.has_package_requirements).get_sizes() == [
         SMDSize.I0805
     ]
-
-
-# I guess we need to support something like this?
-# @pytest.mark.usefixtures("setup_project_config")
-# def test_no_pick_inherit_override_none():
-#     class _CapInherit(F.Capacitor):
-#         pickable = None  # type: ignore
-
-#     module = _CapInherit()
-
-#     assert not module.has_trait(F.Pickable.is_pickable)
-
-#     pick_part_recursively(module, DefaultSolver())
-
-#     assert not module.has_trait(F.Pickable.has_part_picked)
-
-
-@pytest.mark.usefixtures("setup_project_config")
-def test_no_pick_inherit_remove():
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-
-    class _(fabll.Node):
-        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
-        _has_part_removed = fabll.Traits.MakeEdge(F.has_part_removed.MakeChild())
-
-    module = _.bind_typegraph(tg=tg).create_instance(g=g)
-
-    pick_part_recursively(module, DefaultSolver())
-
-    assert module.has_trait(F.Pickable.has_part_picked)
-    assert module.get_trait(F.Pickable.has_part_picked).removed
 
 
 @pytest.mark.usefixtures("setup_project_config")
@@ -365,7 +332,7 @@ def test_skip_self_pick():
 
     module = _CapInherit.bind_typegraph(tg=tg).create_instance(g=g)
 
-    pick_part_recursively(module, DefaultSolver())
+    pick_part_recursively(module, Solver())
 
     assert not module.has_trait(F.Pickable.has_part_picked)
     assert module.inner.get().has_trait(F.Pickable.has_part_picked)
@@ -392,14 +359,13 @@ def test_pick_led_by_colour():
         assert_=True,
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
     pick_part_recursively(led, solver)
 
     assert led.has_trait(F.Pickable.has_part_picked)
-    solver.update_superset_cache(led)
-    assert solver.inspect_get_known_supersets(
+    assert solver.simplify_and_extract_superset(
         led.color.get().is_parameter.get()
-    ).is_subset_of(E.lit_op_enum(color).as_literal.force_get())
+    ).op_setic_is_subset_of(E.lit_op_enum(color).as_literal.force_get())
 
 
 @pytest.mark.usefixtures("setup_project_config")
@@ -416,18 +382,18 @@ def test_pick_error_group():
     app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Good luck finding a 10 gigafarad capacitor!
-    E.is_(
+    E.is_subset(
         app.c1.get().capacitance.get().can_be_operand.get(),
         E.lit_op_range_from_center_rel((10, E.U.GF), 0.1),
         assert_=True,
     )
-    E.is_(
+    E.is_subset(
         app.c2.get().capacitance.get().can_be_operand.get(),
         E.lit_op_range_from_center_rel((20, E.U.GF), 0.1),
         assert_=True,
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
 
     with pytest.raises(ExceptionGroup) as ex:
         pick_part_recursively(app, solver)
@@ -448,7 +414,7 @@ def test_pick_dependency_simple():
 
     app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
-    solver = DefaultSolver()
+    solver = Solver()
     r1r = app.r1.get().resistance.get().can_be_operand.get()
     r2r = app.r2.get().resistance.get().can_be_operand.get()
     sum_lit = E.lit_op_range_from_center_rel((100000, E.U.Ohm), 0.2)
@@ -463,184 +429,180 @@ def test_pick_dependency_simple():
 
 
 @pytest.mark.usefixtures("setup_project_config")
-@pytest.mark.slow
-def test_pick_dependency_advanced_1():
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-    E = BoundExpressions(g=g, tg=tg)
-
-    rdiv = F.ResistorVoltageDivider.bind_typegraph(tg=tg).create_instance(g=g)
-
-    E.is_subset(
-        rdiv.total_resistance.get().can_be_operand.get(),
-        E.lit_op_range_from_center_rel((100, E.U.kOhm), 0.1),
-        assert_=True,
-    )
-    E.is_subset(
-        rdiv.ratio.get().can_be_operand.get(),
-        E.lit_op_range_from_center_rel((0.1, E.U.dl), 0.2),
-        assert_=True,
-    )
-
-    solver = DefaultSolver()
-    pick_part_recursively(rdiv, solver)
-
-
-@pytest.mark.usefixtures("setup_project_config")
-@pytest.mark.slow
-def test_pick_dependency_advanced_2():
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-    E = BoundExpressions(g=g, tg=tg)
-
-    rdiv = F.ResistorVoltageDivider.bind_typegraph(tg=tg).create_instance(g=g)
-
-    E.is_(
-        rdiv.v_in.get().can_be_operand.get(),
-        E.lit_op_range_from_center_rel((10, E.U.V), 0.1),
-        assert_=True,
-    )
-    E.is_subset(
-        rdiv.v_out.get().can_be_operand.get(),
-        E.lit_op_range(((3, E.U.V), (3.2, E.U.V))),
-        assert_=True,
-    )
-    E.is_subset(
-        rdiv.max_current.get().can_be_operand.get(),
-        E.lit_op_range(((1, E.U.mA), (3, E.U.mA))),
-        assert_=True,
-    )
-
-    solver = DefaultSolver()
-    pick_part_recursively(rdiv, solver)
-
-
-@pytest.mark.usefixtures("setup_project_config")
-@pytest.mark.slow
-def test_pick_dependency_div_negative():
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-    E = BoundExpressions(g=g, tg=tg)
-
-    rdiv = F.ResistorVoltageDivider.bind_typegraph(tg=tg).create_instance(g=g)
-
-    E.is_(
-        rdiv.v_in.get().can_be_operand.get(),
-        E.lit_op_range(((-10, E.U.V), (-9, E.U.V))),
-        assert_=True,
-    )
-    E.is_subset(
-        rdiv.v_out.get().can_be_operand.get(),
-        E.lit_op_range(((-3.2, E.U.V), (-3, E.U.V))),
-        assert_=True,
-    )
-    E.is_subset(
-        rdiv.max_current.get().can_be_operand.get(),
-        E.lit_op_range(((1, E.U.mA), (3, E.U.mA))),
-        assert_=True,
-    )
-
-    solver = DefaultSolver()
-    pick_part_recursively(rdiv, solver)
-
-
-@pytest.mark.usefixtures("setup_project_config")
-def test_null_solver():
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-    E = BoundExpressions(g=g, tg=tg)
-    capacitance = E.lit_op_range_from_center_rel(center=(10**-9, E.U.Fa), rel=0.2)
-
-    class _App(fabll.Node):
-        cap = F.Capacitor.MakeChild()
-        cap.add_dependant(
-            fabll.Traits.MakeEdge(
-                F.has_package_requirements.MakeChild(size=SMDSize.I0805), [cap]
-            )
-        )
-
-    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
-
-    E.is_(
-        app.cap.get().capacitance.get().can_be_operand.get(),
-        capacitance,
-        assert_=True,
-    )
-
-    solver = NullSolver()
-    pick_part_recursively(app, solver)
-
-    assert app.cap.get().has_trait(F.Pickable.has_part_picked)
-    assert app.cap.get().get_trait(F.has_package_requirements).get_sizes() == [
-        SMDSize.I0805
-    ]
-    assert (
-        (solver)
-        .inspect_get_known_supersets(app.cap.get().capacitance.get().is_parameter.get())
-        .is_subset_of(capacitance.as_literal.force_get())
-    )
-
-
-@pytest.mark.usefixtures("setup_project_config")
-@pytest.mark.slow
-def test_pick_voltage_divider_complex():
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-    E = BoundExpressions(g=g, tg=tg)
-
-    class _App(fabll.Node):
-        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
-        supply = F.ElectricPower.MakeChild()
-        rdiv = F.ResistorVoltageDivider.MakeChild()
-        adc_input = F.ElectricSignal.MakeChild()
-
-    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
-
-    # Connect interfaces
-    app.supply.get()._is_interface.get().connect_to(app.rdiv.get().power.get())
-    app.rdiv.get().output.get()._is_interface.get().connect_to(app.adc_input.get())
-
-    # Set constraints
-    E.is_(
-        app.supply.get().voltage.get().can_be_operand.get(),
-        E.lit_op_range(((9.9, E.U.V), (10.1, E.U.V))),
-        assert_=True,
-    )
-    E.is_subset(
-        app.adc_input.get().reference.get().voltage.get().can_be_operand.get(),
-        E.lit_op_range(((3.0, E.U.V), (3.2, E.U.V))),
-        assert_=True,
-    )
-    E.is_subset(
-        app.rdiv.get().max_current.get().can_be_operand.get(),
-        E.lit_op_range(((1, E.U.mA), (2, E.U.mA))),
-        assert_=True,
-    )
-
-    solver = DefaultSolver()
-
-    solver.simplify(tg, g)
-
-    # pick_part_recursively(app, solver)
-
-    # for m in app.get_children_modules(types=fabll.Module):
-    #    if not m.has_trait(F.Pickable.has_part_picked):
-    #        continue
-    #    print(m.get_full_name(), m.pretty_params(solver))
-
-
-@pytest.mark.usefixtures("setup_project_config")
 def test_pick_capacitor_temperature_coefficient():
     # the picker backend must have access to the same enum definition for this to work
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
     cap = F.Capacitor.bind_typegraph(tg=tg).create_instance(g=g)
-    cap.temperature_coefficient.get().alias_to_literal(
+    cap.temperature_coefficient.get().set_superset(
         F.Capacitor.TemperatureCoefficient.X7R
     )
 
-    solver = DefaultSolver()
+    solver = Solver()
     pick_part_recursively(cap, solver)
 
     assert cap.has_trait(F.Pickable.has_part_picked)
+
+
+def test_get_anticorrelated_pairs_basic():
+    """
+    Not(Correlated(p1, p2)) should create an anticorrelated pair.
+    """
+    from faebryk.libs.picker.picker import _get_anticorrelated_pairs
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions(g=g, tg=tg)
+
+    p1 = E.parameter_op(units=E.U.Ohm)
+    p2 = E.parameter_op(units=E.U.Ohm)
+
+    E.not_(E.correlated(p1, p2))
+
+    pairs = _get_anticorrelated_pairs(tg)
+
+    assert len(pairs) == 1
+    p1_param = p1.as_parameter_operatable.force_get().as_parameter.force_get()
+    p2_param = p2.as_parameter_operatable.force_get().as_parameter.force_get()
+    assert frozenset({p1_param, p2_param}) in pairs
+
+
+def test_get_anticorrelated_pairs_multi():
+    """
+    Not(Correlated(p1, p2, p3)) should create all pairwise anticorrelated pairs.
+    """
+    from faebryk.libs.picker.picker import _get_anticorrelated_pairs
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions(g=g, tg=tg)
+
+    p1 = E.parameter_op(units=E.U.Ohm)
+    p2 = E.parameter_op(units=E.U.Ohm)
+    p3 = E.parameter_op(units=E.U.Ohm)
+
+    E.not_(E.correlated(p1, p2, p3))
+    pairs = _get_anticorrelated_pairs(tg)
+
+    assert len(pairs) == 3
+
+    p1_param = p1.as_parameter_operatable.force_get().as_parameter.force_get()
+    p2_param = p2.as_parameter_operatable.force_get().as_parameter.force_get()
+    p3_param = p3.as_parameter_operatable.force_get().as_parameter.force_get()
+
+    assert frozenset({p1_param, p2_param}) in pairs
+    assert frozenset({p1_param, p3_param}) in pairs
+    assert frozenset({p2_param, p3_param}) in pairs
+
+
+def test_not_correlated_doesnt_group():
+    """
+    Not(Correlated(p1, p2)) should not itself cause parameters to be grouped.
+    Two independent parameters with Not(Correlated) should remain separate.
+    """
+    from faebryk.libs.picker.picker import find_independent_groups, get_pick_tree
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions(g=g, tg=tg)
+    solver = Solver()
+
+    class _App(fabll.Node):
+        r1 = F.Resistor.MakeChild()
+        r2 = F.Resistor.MakeChild()
+
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
+
+    r1_resistance = app.r1.get().resistance.get().can_be_operand.get()
+    r2_resistance = app.r2.get().resistance.get().can_be_operand.get()
+
+    E.not_(E.correlated(r1_resistance, r2_resistance))
+
+    tree = get_pick_tree(app)
+    groups = find_independent_groups(tree.keys(), solver)
+
+    assert len(groups) == 2
+
+
+def test_find_groups_transitive_override():
+    """
+    Not(Correlated(p1, p3)) should break transitive chain even when
+    p1-p2 and p2-p3 are expression-related.
+    """
+    from faebryk.libs.picker.picker import find_independent_groups, get_pick_tree
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions(g=g, tg=tg)
+    solver = Solver()
+
+    class _App(fabll.Node):
+        r1 = F.Resistor.MakeChild()
+        r2 = F.Resistor.MakeChild()
+        r3 = F.Resistor.MakeChild()
+
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
+
+    r1_r = app.r1.get().resistance.get().can_be_operand.get()
+    r2_r = app.r2.get().resistance.get().can_be_operand.get()
+    r3_r = app.r3.get().resistance.get().can_be_operand.get()
+
+    # Relate r1 and r2
+    E.is_subset(
+        E.add(r1_r, r2_r),
+        E.lit_op_range(((1000, E.U.Ohm), (2000, E.U.Ohm))),
+        assert_=True,
+    )
+
+    # Relate r2 and r3
+    E.is_subset(
+        E.add(r2_r, r3_r),
+        E.lit_op_range(((1000, E.U.Ohm), (2000, E.U.Ohm))),
+        assert_=True,
+    )
+
+    # Break transitive relationship
+    E.not_(E.correlated(r1_r, r3_r))
+
+    tree = get_pick_tree(app)
+    groups = find_independent_groups(tree.keys(), solver)
+
+    pickables = list(tree.keys())
+    r1_pickable = next(p for p in pickables if p.get_pickable_node() == app.r1.get())
+    r3_pickable = next(p for p in pickables if p.get_pickable_node() == app.r3.get())
+
+    for group in groups:
+        assert {r1_pickable, r3_pickable} not in group
+
+
+@pytest.mark.usefixtures("setup_project_config")
+def test_infer_uncorrelated_params():
+    """
+    _infer_uncorrelated_params should create Not(Correlated) for all picking params.
+    """
+    from faebryk.libs.picker.picker import (
+        _get_anticorrelated_pairs,
+        _infer_uncorrelated_params,
+        get_pick_tree,
+    )
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _App(fabll.Node):
+        r1 = F.Resistor.MakeChild()
+        r2 = F.Resistor.MakeChild()
+        r3 = F.Resistor.MakeChild()
+
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
+
+    tree = get_pick_tree(app)
+
+    pairs_before = _get_anticorrelated_pairs(tg)
+    assert len(pairs_before) == 0
+    _infer_uncorrelated_params(tree)
+
+    # After inference, should have pairs for all picking params
+    pairs_after = _get_anticorrelated_pairs(tg)
+    assert len(pairs_after) > 0

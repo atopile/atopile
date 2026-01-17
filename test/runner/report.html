@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <title>Test Execution Report</title>
     <style>
-      /* Catppuccin Mocha Palette */
+      /* Catppuccin Mocha Palette (Dark) */
       :root {
         --ctp-rosewater: #f5e0dc;
         --ctp-flamingo: #f2cdcd;
@@ -32,6 +32,38 @@
         --ctp-base: #1e1e2e;
         --ctp-mantle: #181825;
         --ctp-crust: #11111b;
+        --modal-bg-overlay: rgba(17, 17, 27, 0.8);
+      }
+
+      /* Catppuccin Latte Palette (Light) */
+      [data-theme="light"] {
+        --ctp-rosewater: #dc8a78;
+        --ctp-flamingo: #dd7878;
+        --ctp-pink: #ea76cb;
+        --ctp-mauve: #8839ef;
+        --ctp-red: #d20f39;
+        --ctp-maroon: #e64553;
+        --ctp-peach: #fe640b;
+        --ctp-yellow: #df8e1d;
+        --ctp-green: #40a02b;
+        --ctp-teal: #179299;
+        --ctp-sky: #04a5e5;
+        --ctp-sapphire: #209fb5;
+        --ctp-blue: #1e66f5;
+        --ctp-lavender: #7287fd;
+        --ctp-text: #4c4f69;
+        --ctp-subtext1: #5c5f77;
+        --ctp-subtext0: #6c6f85;
+        --ctp-overlay2: #7c7f93;
+        --ctp-overlay1: #8c8fa1;
+        --ctp-overlay0: #9ca0b0;
+        --ctp-surface2: #acb0be;
+        --ctp-surface1: #bcc0cc;
+        --ctp-surface0: #ccd0da;
+        --ctp-base: #eff1f5;
+        --ctp-mantle: #e6e9ef;
+        --ctp-crust: #dce0e8;
+        --modal-bg-overlay: rgba(220, 224, 232, 0.8);
       }
 
       html {
@@ -85,6 +117,12 @@
         line-height: 15px;
         font-size: 10px;
         font-weight: bold;
+      }
+
+      .log-note {
+        font-size: 0.9em;
+        color: var(--ctp-subtext0);
+        margin-bottom: 4px;
       }
 
       table {
@@ -336,7 +374,7 @@
         width: 100%;
         height: 100%;
         overflow: auto;
-        background-color: rgba(17, 17, 27, 0.8);
+        background-color: var(--modal-bg-overlay);
       }
 
       .modal-content {
@@ -374,7 +412,7 @@
         color: var(--ctp-text);
         border-radius: 4px;
         border: 1px solid var(--ctp-surface0);
-        max-height: 35vh;
+        max-height: 75vh;
         margin: 0;
       }
 
@@ -511,10 +549,103 @@
         border: 1px solid var(--ctp-surface0);
         object-fit: contain;
       }
+
+      /* Theme toggle button */
+      .theme-toggle {
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        z-index: 100;
+        padding: 6px 10px;
+        font-size: 14px;
+        background-color: var(--ctp-surface0);
+        color: var(--ctp-text);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: 5px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: background-color 0.2s;
+      }
+
+      .theme-toggle:hover {
+        background-color: var(--ctp-surface1);
+      }
+
+      .theme-toggle .icon {
+        font-size: 16px;
+      }
     </style>
     <script>
       var currentSortColumn = -1;
       var currentSortDir = "asc";
+
+      // Theme handling
+      function getSystemTheme() {
+        return window.matchMedia("(prefers-color-scheme: light)").matches
+          ? "light"
+          : "dark";
+      }
+
+      function getStoredTheme() {
+        return localStorage.getItem("theme");
+      }
+
+      function setStoredTheme(theme) {
+        localStorage.setItem("theme", theme);
+      }
+
+      function applyTheme(theme) {
+        if (theme === "light") {
+          document.documentElement.setAttribute("data-theme", "light");
+        } else {
+          document.documentElement.removeAttribute("data-theme");
+        }
+        updateThemeButton(theme);
+      }
+
+      function updateThemeButton(theme) {
+        var btn = document.getElementById("themeToggle");
+        if (btn) {
+          var icon = btn.querySelector(".icon");
+          var text = btn.querySelector(".text");
+          if (theme === "light") {
+            icon.textContent = "\u263E"; // Moon symbol
+            text.textContent = "Dark";
+          } else {
+            icon.textContent = "\u2600"; // Sun symbol
+            text.textContent = "Light";
+          }
+        }
+      }
+
+      function toggleTheme() {
+        var currentTheme = document.documentElement.hasAttribute("data-theme")
+          ? "light"
+          : "dark";
+        var newTheme = currentTheme === "light" ? "dark" : "light";
+        applyTheme(newTheme);
+        setStoredTheme(newTheme);
+      }
+
+      function initTheme() {
+        var storedTheme = getStoredTheme();
+        var theme = storedTheme || getSystemTheme();
+        applyTheme(theme);
+
+        // Listen for system theme changes (only if user hasn't set preference)
+        window
+          .matchMedia("(prefers-color-scheme: light)")
+          .addEventListener("change", function (e) {
+            if (!getStoredTheme()) {
+              applyTheme(e.matches ? "light" : "dark");
+            }
+          });
+      }
+
+      // Initialize theme immediately to prevent flash
+      initTheme();
 
       document.addEventListener("DOMContentLoaded", function () {
         document.querySelectorAll(".outcome-filter").forEach((cb) => {
@@ -524,6 +655,12 @@
         if (deltaOnly) {
           deltaOnly.addEventListener("change", filterTable);
         }
+
+        // Initialize theme button state
+        var currentTheme = document.documentElement.hasAttribute("data-theme")
+          ? "light"
+          : "dark";
+        updateThemeButton(currentTheme);
 
         // Scale logo to match text content height
         scaleLogoToText();
@@ -820,6 +957,10 @@
     </script>
   </head>
   <body>
+    <button id="themeToggle" class="theme-toggle" onclick="toggleTheme()">
+      <span class="icon">&#9728;</span>
+      <span class="text">Light</span>
+    </button>
     <h1>Test Execution Report</h1>
 
     <div class="summary">
@@ -980,9 +1121,10 @@
           <th onclick="sortTable(4)">Outcome</th>
           <th onclick="sortTable(5)">Delta</th>
           <th onclick="sortTable(6)">Duration</th>
-          <th onclick="sortTable(7)">Memory</th>
-          <th onclick="sortTable(8)">Peak Mem</th>
-          <th onclick="sortTable(9)">Error</th>
+          <th onclick="sortTable(7)">Speedup</th>
+          <th onclick="sortTable(8)">Memory</th>
+          <th onclick="sortTable(9)">Peak Mem</th>
+          <th onclick="sortTable(10)">Error</th>
           <th>Logs</th>
         </tr>
       </thead>

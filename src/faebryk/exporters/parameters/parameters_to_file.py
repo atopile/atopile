@@ -250,7 +250,7 @@ def export_parameters_to_file(module: fabll.Node, solver: Solver, path: Path):
         param_name_values = [
             (
                 param.get_full_name().split(".")[-1],
-                solver.inspect_get_known_supersets(
+                solver.extract_superset(
                     param.get_trait(F.Parameters.is_parameter)
                 ).pretty_str(),
             )

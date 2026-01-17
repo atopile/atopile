@@ -19,10 +19,10 @@ class App(fabll.Node):
     can = F.CAN.MakeChild()
 
     constraints = [
-        F.Literals.Numbers.MakeChild_ConstrainToSubsetLiteral(
+        F.Literals.Numbers.MakeChild_SetSuperset(
             [res1, F.Resistor.resistance], 200, 400, unit=F.Units.Ohm
         ),
-        F.Literals.Numbers.MakeChild_ConstrainToSubsetLiteral(
+        F.Literals.Numbers.MakeChild_SetSuperset(
             [res2, F.Resistor.resistance], 15, 40, unit=F.Units.Ohm
         ),
     ]

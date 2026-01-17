@@ -1251,29 +1251,10 @@ class UnitExpression(fabll.Node):
             exponent_param = (
                 F.Parameters.NumericParameter.bind_typegraph(tg=tg)
                 .create_instance(g=g)
-                .setup(
-                    is_unit=Dimensionless.bind_typegraph(tg=tg)
-                    .create_instance(g=g)
-                    .is_unit.get()
-                )
+                .setup(is_unit=None)
             )
 
-            exponent_lit = (
-                F.Literals.Numbers.bind_typegraph(tg=tg)
-                .create_instance(g=g)
-                .setup_from_singleton(
-                    value=float(exponent),
-                    unit=Dimensionless.bind_typegraph(tg=tg)
-                    .create_instance(g=g)
-                    .is_unit.get(),
-                )
-            )
-
-            F.Expressions.Is.bind_typegraph(tg=tg).create_instance(g=g).setup(
-                exponent_param.can_be_operand.get(),
-                exponent_lit.is_literal.get().as_operand.get(),
-                assert_=True,
-            )
+            exponent_param.set_superset(g, float(exponent))
 
             power_node = (
                 Power.bind_typegraph(tg=tg)
@@ -1301,30 +1282,23 @@ class UnitExpression(fabll.Node):
         term_fields = list[fabll.RefPath]()
 
         for unit, exponent in cls._unit_vector_arg:
-            unit_field = unit.MakeChild()
-            out.add_dependant(unit_field)
+            unit_field = unit.MakeChild().add_as_dependant(out)
 
             exponent_field = F.Parameters.NumericParameter.MakeChild(
-                unit=Dimensionless,
+                unit=None,
                 domain=F.NumberDomain.Args(negative=True, integer=True),
-            )
-            out.add_dependant(exponent_field)
+            ).add_as_dependant(out)
 
-            exponent_lit = F.Literals.Numbers.MakeChild(
-                min=exponent, max=exponent, unit=Dimensionless
-            )
-            exponent_is_expr = F.Expressions.Is.MakeChild(
-                [exponent_field], [exponent_lit], assert_=True
-            )
-            exponent_is_expr.add_dependant(exponent_lit, identifier="lit", before=True)
-            out.add_dependant(exponent_is_expr)
+            F.Literals.Numbers.MakeChild_SetSingleton(
+                [exponent_field], exponent
+            ).add_as_dependant(out)
 
-            term_field = Power.MakeChild([unit_field], [exponent_field])
-            out.add_dependant(term_field)
+            term_field = Power.MakeChild(
+                [unit_field], [exponent_field]
+            ).add_as_dependant(out)
             term_fields.append([term_field])
 
-        expr_field = Multiply.MakeChild(*term_fields)
-        out.add_dependant(expr_field)
+        expr_field = Multiply.MakeChild(*term_fields).add_as_dependant(out)
         out.add_dependant(F.Collections.Pointer.MakeEdge([out, cls.expr], [expr_field]))
 
         return out
@@ -1566,7 +1540,7 @@ class _UnitExpressionResolver:
 
         exponent_lit = (
             not_none(exponent_node.try_get_trait(F.Parameters.is_parameter_operatable))
-            .force_extract_literal()
+            .force_extract_superset()
             .switch_cast()
         )
 
@@ -3286,7 +3260,7 @@ class TestUnitExpressions(_TestWithContext):
             is_unit=ctx.Dimensionless.is_unit.get()
         )
 
-        exponent_param.alias_to_literal(
+        exponent_param.set_superset(
             g=ctx.g,
             value=ctx.literals.Numbers.setup_from_singleton(
                 value=2.0, unit=ctx.Dimensionless.is_unit.get()
@@ -3338,7 +3312,7 @@ class TestUnitExpressions(_TestWithContext):
         exponent_param = ctx.NumericParameter.setup(
             is_unit=ctx.Dimensionless.is_unit.get()
         )
-        exponent_param.alias_to_literal(
+        exponent_param.set_superset(
             g=ctx.g,
             value=ctx.literals.Numbers.setup_from_singleton(
                 value=1.5, unit=ctx.Dimensionless.is_unit.get()

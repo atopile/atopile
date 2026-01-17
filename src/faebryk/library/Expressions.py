@@ -86,22 +86,10 @@ def get_operand_path(owner_ref: fabll.RefPath) -> fabll.RefPath:
     return [*owner_ref, "can_be_operand"]
 
 
-class is_expression(fabll.Node):
+class is_expression_type(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     repr_placement = F.Collections.Pointer.MakeChild()
     repr_symbol = F.Collections.Pointer.MakeChild()
-
-    as_parameter_operatable = fabll.Traits.ImpliedTrait(
-        F.Parameters.is_parameter_operatable
-    )
-    as_operand = fabll.Traits.ImpliedTrait(F.Parameters.can_be_operand)
-
-    as_canonical: fabll.Traits.OptionalImpliedTrait["is_canonical"] = (
-        fabll.Traits.OptionalImpliedTrait(lambda: is_canonical)
-    )
-    as_assertable: fabll.Traits.OptionalImpliedTrait["is_assertable"] = (
-        fabll.Traits.OptionalImpliedTrait(lambda: is_assertable)
-    )
 
     @dataclass
     class ReprStyle(fabll.NodeAttributes):
@@ -157,14 +145,39 @@ class is_expression(fabll.Node):
             self.repr_placement.get()
             .deref()
             .cast(type(self)._repr_enum)
-            .get_single_value_typed(is_expression.ReprStyle.Placement)
+            .get_single_value_typed(is_expression_type.ReprStyle.Placement)
         )
         symbol = not_none(
             self.repr_symbol.get().deref().cast(F.Literals.Strings)
         ).get_values()[0]
         if symbol == "<NONE>":
             symbol = None
-        return is_expression.ReprStyle(placement=placement, symbol=symbol)
+        return is_expression_type.ReprStyle(placement=placement, symbol=symbol)
+
+
+class is_expression(fabll.Node):
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+    as_parameter_operatable = fabll.Traits.ImpliedTrait(
+        F.Parameters.is_parameter_operatable
+    )
+    as_operand = fabll.Traits.ImpliedTrait(F.Parameters.can_be_operand)
+
+    as_canonical: fabll.Traits.OptionalImpliedTrait["is_canonical"] = (
+        fabll.Traits.OptionalImpliedTrait(lambda: is_canonical)
+    )
+    as_assertable: fabll.Traits.OptionalImpliedTrait["is_assertable"] = (
+        fabll.Traits.OptionalImpliedTrait(lambda: is_assertable)
+    )
+
+    def get_repr_style(self) -> is_expression_type.ReprStyle:
+        type_node = not_none(fabll.Traits(self).get_obj_raw().get_type_node())
+        is_expr_type = fabll.TypeNodeBoundTG.try_get_trait_of_type(
+            is_expression_type, type_node
+        )
+        if is_expr_type is None:
+            raise ValueError(f"No is_expression_type trait for {self}")
+        return is_expr_type.get_repr_style()
 
     @once
     def get_operands(self) -> list["F.Parameters.can_be_operand"]:
@@ -262,35 +275,29 @@ class is_expression(fabll.Node):
                 result.add(operand_po)
         return result
 
-    def compact_repr(
-        self,
-        context: "F.Parameters.ReprContext | None" = None,
-        use_name: bool = False,
-        no_lit_suffix: bool = False,
-    ) -> str:
+    @staticmethod
+    def _compact_repr(
+        context: F.Parameters.ReprContext,
+        style: is_expression_type.ReprStyle,
+        symbol: str,
+        is_predicate: bool,
+        is_terminated: bool,
+        lit_suffix: str,
+        use_name: bool,
+        expr_name: str,
+        operands: Sequence["F.Parameters.can_be_operand"],
+        no_lit_suffix: bool,
+    ):
         """Return compact math repr with symbols (+, *, ≥, ¬, ∧) and precedence."""
-        if context is None:
-            context = F.Parameters.ReprContext()
-
-        style = self.get_repr_style()
-        symbol = style.symbol
-        if symbol is None:
-            symbol = type(self).__name__
-
         symbol_suffix = ""
-        if self.try_get_sibling_trait(is_predicate):
+        if is_predicate:
             # symbol = f"\033[4m{symbol}!\033[0m"
             symbol_suffix += "!"
-            from faebryk.core.solver.mutator import is_terminated
 
-            if self.try_get_sibling_trait(is_terminated):
+            if is_terminated:
                 symbol_suffix += "$"
+
         symbol += symbol_suffix
-        lit_suffix = (
-            self.as_parameter_operatable.get()._get_lit_suffix()
-            if not no_lit_suffix
-            else ""
-        )
         symbol += lit_suffix
 
         def format_operand(op: "F.Parameters.can_be_operand"):
@@ -307,20 +314,18 @@ class is_expression(fabll.Node):
                 return op_out
             return str(op)
 
-        expr_name = fabll.Traits(self).get_obj_raw().get_type_name()
-
-        formatted_operands = [format_operand(op) for op in self.get_operands()]
+        formatted_operands = [format_operand(op) for op in operands]
         out = ""
-        if style.placement == is_expression.ReprStyle.Placement.PREFIX:
+        if style.placement == is_expression_type.ReprStyle.Placement.PREFIX:
             if len(formatted_operands) == 1:
                 out = f"{symbol}{formatted_operands[0]}"
             else:
                 out = f"{symbol}({', '.join(formatted_operands)})"
-        elif style.placement == is_expression.ReprStyle.Placement.EMBRACE:
+        elif style.placement == is_expression_type.ReprStyle.Placement.EMBRACE:
             out = f"{symbol}{', '.join(formatted_operands)}{style.symbol}"
         elif len(formatted_operands) == 0:
             out = f"{expr_name}{symbol_suffix}()"
-        elif style.placement == is_expression.ReprStyle.Placement.POSTFIX:
+        elif style.placement == is_expression_type.ReprStyle.Placement.POSTFIX:
             if len(formatted_operands) == 1:
                 out = f"{formatted_operands[0]}{symbol}"
             else:
@@ -332,10 +337,10 @@ class is_expression(fabll.Node):
                 f"{expr_name}{symbol_suffix}{lit_suffix}"
                 f"({', '.join(formatted_operands)})"
             )
-        elif style.placement == is_expression.ReprStyle.Placement.INFIX:
+        elif style.placement == is_expression_type.ReprStyle.Placement.INFIX:
             symbol = f" {symbol} "
             out = f"{symbol.join(formatted_operands)}"
-        elif style.placement == is_expression.ReprStyle.Placement.INFIX_FIRST:
+        elif style.placement == is_expression_type.ReprStyle.Placement.INFIX_FIRST:
             if len(formatted_operands) == 2:
                 out = f"{formatted_operands[0]} {symbol} {formatted_operands[1]}"
             else:
@@ -351,6 +356,33 @@ class is_expression(fabll.Node):
 
         return out
 
+    def compact_repr(
+        self,
+        context: "F.Parameters.ReprContext | None" = None,
+        use_name: bool = False,
+        no_lit_suffix: bool = False,
+    ) -> str:
+        """Return compact math repr with symbols (+, *, ≥, ¬, ∧) and precedence."""
+        from faebryk.core.solver.mutator import is_terminated
+
+        style = self.get_repr_style()
+        return self._compact_repr(
+            context if context is not None else F.Parameters.ReprContext(),
+            style,
+            style.symbol if style.symbol is not None else type(self).__name__,
+            bool(self.try_get_sibling_trait(is_predicate)),
+            bool(self.try_get_sibling_trait(is_terminated)),
+            lit_suffix=(
+                self.as_parameter_operatable.get()._get_lit_suffix()
+                if not no_lit_suffix
+                else ""
+            ),
+            use_name=use_name,
+            expr_name=not_none(fabll.Traits(self).get_obj_raw().get_type_name()),
+            operands=self.get_operands(),
+            no_lit_suffix=no_lit_suffix,
+        )
+
     def is_congruent_to_factory(
         self,
         other_factory: "type[fabll.NodeT]",
@@ -359,6 +391,7 @@ class is_expression(fabll.Node):
         tg: fbrk.TypeGraph,
         allow_uncorrelated: bool = False,
         check_constrained: bool = True,
+        recursive: bool = True,
     ) -> bool:
         """
         Check if this expression is congruent to an expression that would be
@@ -384,10 +417,8 @@ class is_expression(fabll.Node):
             return False
 
         # Check if the factory type is commutative
-        type_node = self_obj.bind_typegraph_from_instance(self_obj.instance)
-        commutative = (
-            is_commutative.is_commutative_type(type_node) if type_node else False
-        )
+        type_node = not_none(self_obj.get_type_node())
+        commutative = is_commutative.is_commutative_type(type_node)
 
         # Check operand congruence
         out = is_expression.are_pos_congruent(
@@ -398,6 +429,7 @@ class is_expression(fabll.Node):
             tg=tg,
             allow_uncorrelated=allow_uncorrelated,
             check_constrained=check_constrained,
+            recursive=recursive,
         )
         return out
 
@@ -548,6 +580,7 @@ class is_expression(fabll.Node):
         commutative: bool = False,
         allow_uncorrelated: bool = False,
         check_constrained: bool = True,
+        recursive: bool = True,
     ) -> bool:
         """
         Check if two sequences of operands are positionally congruent.
@@ -593,9 +626,9 @@ class is_expression(fabll.Node):
                     lit1.is_not_correlatable() or lit2.is_not_correlatable()
                 ):
                     return False
-                return lit1.equals(lit2, g=g, tg=tg)
+                return lit1.op_setic_equals(lit2, g=g, tg=tg)
 
-            if expr1 := op1_obj.try_get_trait(is_expression):
+            if recursive and (expr1 := op1_obj.try_get_trait(is_expression)):
                 expr2 = op2_obj.get_trait(is_expression)
                 return expr1.is_congruent_to(
                     expr2,
@@ -650,7 +683,7 @@ class is_expression(fabll.Node):
         else:
             return all(operands_congruent(le, ri) for le, ri in zip(left, right))
 
-    def get_depth(self) -> int:
+    def get_depth(self) -> float:
         """
         Returns depth of longest expression tree from this expression.
         ```
@@ -664,9 +697,7 @@ class is_expression(fabll.Node):
          1 2    3 1
         ```
         """
-        return 1 + max(
-            [op.get_depth() for op in self.get_operands_with_trait(is_expression)] + [0]
-        )
+        return 1 + max([op.get_depth() for op in self.get_operands()] + [0])
 
     def switch_cast(self) -> "ExpressionNodes":
         """
@@ -702,14 +733,13 @@ class is_assertable(fabll.Node):
     # TODO: solver_terminated flag, has to be attr
 
     def assert_(self):
-        parent = self.get_parent_force()[0]
-        if parent.has_trait(is_predicate):
+        obj = fabll.Traits(self).get_obj_raw()
+        if obj.has_trait(is_predicate):
             return
-        return fabll.Traits.create_and_add_instance_to(node=parent, trait=is_predicate)
+        return fabll.Traits.create_and_add_instance_to(node=obj, trait=is_predicate)
 
     def is_asserted(self) -> bool:
-        parent = self.get_parent_force()[0]
-        return bool(parent.has_trait(is_predicate))
+        return self.try_get_sibling_trait(is_predicate) is not None
 
 
 class is_predicate(fabll.Node):
@@ -771,10 +801,6 @@ class is_numeric_predicate(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
-class is_setic_predicate(fabll.Node):
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
-
-
 class has_side_effects(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
@@ -809,7 +835,7 @@ class is_idempotent(fabll.Node):
 
 class has_idempotent_operands(fabll.Node):
     """
-    f(x,x) == x
+    f(x,x) == f(x)
     """
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
@@ -823,8 +849,10 @@ class is_commutative(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     @classmethod
-    def is_commutative_type(cls, node_type: fabll.TypeNodeBoundTG[Any, Any]) -> bool:
-        return node_type.check_if_instance_of_type_has_trait(is_commutative)
+    def is_commutative_type(cls, typenode: graph.BoundNode) -> bool:
+        return fabll.TypeNodeBoundTG.has_instance_of_type_has_trait(
+            typenode, is_commutative
+        )
 
 
 class has_unary_identity(fabll.Node):
@@ -869,14 +897,14 @@ class Add(fabll.Node):
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
     )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="+",
-                placement=is_expression.ReprStyle.Placement.INFIX,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="+", placement=is_expression_type.ReprStyle.Placement.INFIX
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
     has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
@@ -923,17 +951,17 @@ class Subtract(fabll.Node):
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
     )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="-",
-                placement=is_expression.ReprStyle.Placement.INFIX,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="-", placement=is_expression_type.ReprStyle.Placement.INFIX
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
     minuend = OperandPointer.MakeChild()
-    subtrahends = OperandSet.MakeChild()
+    subtrahends = OperandSequence.MakeChild()
 
     def setup(
         self,
@@ -953,10 +981,10 @@ class Subtract(fabll.Node):
         out.add_dependant(
             OperandPointer.MakeEdge([out, cls.minuend], get_operand_path(minuend)),
         )
-        for subtrahend in subtrahends:
+        for i, subtrahend in enumerate(subtrahends):
             out.add_dependant(
-                OperandSet.MakeEdge(
-                    [out, cls.subtrahends], get_operand_path(subtrahend)
+                OperandSequence.MakeEdge(
+                    [out, cls.subtrahends], get_operand_path(subtrahend), i
                 ),
             )
         return out
@@ -989,30 +1017,30 @@ class Multiply(fabll.Node):
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
     )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="*",
-                placement=is_expression.ReprStyle.Placement.INFIX,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="*", placement=is_expression_type.ReprStyle.Placement.INFIX
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
     has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
     is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
     is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
-    operands = OperandSet.MakeChild()
+    operands = OperandSequence.MakeChild()
 
     @classmethod
     def MakeChild(cls, *operands: fabll.RefPath) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
 
-        for operand_field in operands:
+        for i, operand_field in enumerate(operands):
             out.add_dependant(
-                OperandSet.MakeEdge(
-                    [out, cls.operands], get_operand_path(operand_field)
+                OperandSequence.MakeEdge(
+                    [out, cls.operands], get_operand_path(operand_field), i
                 )
             )
 
@@ -1053,14 +1081,14 @@ class Divide(fabll.Node):
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
     )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="/",
-                placement=is_expression.ReprStyle.Placement.INFIX,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="/", placement=is_expression_type.ReprStyle.Placement.INFIX
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     # denominator not zero
     has_implicit_constraints = fabll.Traits.MakeEdge(
         has_implicit_constraints.MakeChild()
@@ -1124,14 +1152,14 @@ class Sqrt(fabll.Node):
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
     )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="√",
-                placement=is_expression.ReprStyle.Placement.PREFIX,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="√", placement=is_expression_type.ReprStyle.Placement.PREFIX
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     # non-negative
     has_implicit_constraints = fabll.Traits.MakeEdge(
         has_implicit_constraints.MakeChild()
@@ -1176,14 +1204,14 @@ class Power(fabll.Node):
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
     )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="^",
-                placement=is_expression.ReprStyle.Placement.INFIX_FIRST,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="^", placement=is_expression_type.ReprStyle.Placement.INFIX_FIRST
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     # TODO
     # is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
@@ -1252,14 +1280,14 @@ class Log(fabll.Node):
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
     )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="log",
-                placement=is_expression.ReprStyle.Placement.PREFIX,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="log", placement=is_expression_type.ReprStyle.Placement.PREFIX
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
 
     # non-negative
@@ -1279,7 +1307,7 @@ class Log(fabll.Node):
         self.operand.get().point(operand)
         if base is None:
             base = (
-                F.Literals.make_simple_lit_singleton(g=self.g, tg=self.tg, value=math.e)
+                F.Literals.make_singleton(g=self.g, tg=self.tg, value=math.e)
                 .is_literal.get()
                 .as_operand.get()
             )
@@ -1327,14 +1355,14 @@ class Sin(fabll.Node):
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
     )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="sin",
-                placement=is_expression.ReprStyle.Placement.PREFIX,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="sin", placement=is_expression_type.ReprStyle.Placement.PREFIX
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
 
     operand = OperandPointer.MakeChild()
@@ -1376,14 +1404,14 @@ class Cos(fabll.Node):
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
     )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="cos",
-                placement=is_expression.ReprStyle.Placement.PREFIX,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="cos", placement=is_expression_type.ReprStyle.Placement.PREFIX
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     operand = OperandPointer.MakeChild()
 
     def setup(self, operand: "F.Parameters.can_be_operand") -> Self:
@@ -1423,14 +1451,14 @@ class Abs(fabll.Node):
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
     )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="|",
-                placement=is_expression.ReprStyle.Placement.EMBRACE,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="|", placement=is_expression_type.ReprStyle.Placement.EMBRACE
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     is_idempotent = fabll.Traits.MakeEdge(is_idempotent.MakeChild())
 
@@ -1473,14 +1501,14 @@ class Round(fabll.Node):
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
     )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="round",
-                placement=is_expression.ReprStyle.Placement.PREFIX,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="round", placement=is_expression_type.ReprStyle.Placement.PREFIX
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     is_idempotent = fabll.Traits.MakeEdge(is_idempotent.MakeChild())
 
@@ -1523,14 +1551,14 @@ class Floor(fabll.Node):
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
     )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="⌊",
-                placement=is_expression.ReprStyle.Placement.PREFIX,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="⌊", placement=is_expression_type.ReprStyle.Placement.PREFIX
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
 
     operand = OperandPointer.MakeChild()
 
@@ -1571,14 +1599,14 @@ class Ceil(fabll.Node):
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
     )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="⌈",
-                placement=is_expression.ReprStyle.Placement.PREFIX,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="⌈", placement=is_expression_type.ReprStyle.Placement.PREFIX
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
 
     operand = OperandPointer.MakeChild()
 
@@ -1614,117 +1642,19 @@ class Ceil(fabll.Node):
         return _op(cls.from_operands(operand, g=g, tg=tg))
 
 
-class Min(fabll.Node):
-    can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
-    is_parameter_operatable = fabll.Traits.MakeEdge(
-        F.Parameters.is_parameter_operatable.MakeChild()
-    )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="min",
-                placement=is_expression.ReprStyle.Placement.PREFIX,
-            )
-        )
-    )
-
-    operands = OperandSequence.MakeChild()
-
-    def setup(self, *operands: "F.Parameters.can_be_operand") -> Self:
-        self.operands.get().append(*operands)
-        return self
-
-    @classmethod
-    def MakeChild(cls, *operands: fabll.RefPath) -> fabll._ChildField[Self]:
-        out = fabll._ChildField(cls)
-        for operand in operands:
-            out.add_dependant(
-                OperandSet.MakeEdge([out, cls.operands], get_operand_path(operand))
-            )
-        return out
-
-    @classmethod
-    def from_operands(
-        cls,
-        *operands: "F.Parameters.can_be_operand",
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
-    ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, operands, g=g, tg=tg)
-        return instance.setup(*operands)
-
-    @classmethod
-    def c(
-        cls,
-        *operands: "F.Parameters.can_be_operand",
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
-    ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(*operands, g=g, tg=tg))
-
-
-class Max(fabll.Node):
-    can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
-    is_parameter_operatable = fabll.Traits.MakeEdge(
-        F.Parameters.is_parameter_operatable.MakeChild()
-    )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="max",
-                placement=is_expression.ReprStyle.Placement.PREFIX,
-            )
-        )
-    )
-
-    operands = OperandSequence.MakeChild()
-
-    def setup(self, *operands: "F.Parameters.can_be_operand") -> Self:
-        self.operands.get().append(*operands)
-        return self
-
-    @classmethod
-    def MakeChild(cls, *operands: fabll.RefPath) -> fabll._ChildField[Self]:
-        out = fabll._ChildField(cls)
-        for operand in operands:
-            out.add_dependant(
-                OperandSet.MakeEdge([out, cls.operands], get_operand_path(operand))
-            )
-        return out
-
-    @classmethod
-    def from_operands(
-        cls,
-        *operands: "F.Parameters.can_be_operand",
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
-    ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, operands, g=g, tg=tg)
-        return instance.setup(*operands)
-
-    @classmethod
-    def c(
-        cls,
-        *operands: "F.Parameters.can_be_operand",
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
-    ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(*operands, g=g, tg=tg))
-
-
 class Integrate(fabll.Node):
     can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
     )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="∫",
-                placement=is_expression.ReprStyle.Placement.PREFIX,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="∫", placement=is_expression_type.ReprStyle.Placement.PREFIX
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
 
     function = OperandPointer.MakeChild()
     variable = OperandPointer.MakeChild()  # Variable to integrate with respect to
@@ -1780,14 +1710,14 @@ class Differentiate(fabll.Node):
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
     )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="d",
-                placement=is_expression.ReprStyle.Placement.PREFIX,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="d", placement=is_expression_type.ReprStyle.Placement.PREFIX
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
 
     function = OperandPointer.MakeChild()
     variable = OperandPointer.MakeChild()  # Variable to differentiate with respect to
@@ -1844,14 +1774,14 @@ class And(fabll.Node):
         F.Parameters.is_parameter_operatable.MakeChild()
     )
     is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="∧",
-                placement=is_expression.ReprStyle.Placement.INFIX,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="∧", placement=is_expression_type.ReprStyle.Placement.INFIX
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
     is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
@@ -1904,14 +1834,14 @@ class Or(fabll.Node):
         F.Parameters.is_parameter_operatable.MakeChild()
     )
     is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="∨",
-                placement=is_expression.ReprStyle.Placement.INFIX,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="∨", placement=is_expression_type.ReprStyle.Placement.INFIX
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     has_idempotent_operands = fabll.Traits.MakeEdge(has_idempotent_operands.MakeChild())
     is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
@@ -1919,7 +1849,7 @@ class Or(fabll.Node):
     is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
     is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
-    operands = OperandSequence.MakeChild()
+    operands = OperandSet.MakeChild()
 
     def setup(
         self,
@@ -1968,14 +1898,14 @@ class Not(fabll.Node):
         F.Parameters.is_parameter_operatable.MakeChild()
     )
     is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="¬",
-                placement=is_expression.ReprStyle.Placement.PREFIX,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="¬", placement=is_expression_type.ReprStyle.Placement.PREFIX
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     is_involutory = fabll.Traits.MakeEdge(is_involutory.MakeChild())
 
@@ -2025,14 +1955,14 @@ class Xor(fabll.Node):
         F.Parameters.is_parameter_operatable.MakeChild()
     )
     is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="⊕",
-                placement=is_expression.ReprStyle.Placement.INFIX,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="⊕", placement=is_expression_type.ReprStyle.Placement.INFIX
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
     is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
 
@@ -2085,14 +2015,14 @@ class Implies(fabll.Node):
         F.Parameters.is_parameter_operatable.MakeChild()
     )
     is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="⇒",
-                placement=is_expression.ReprStyle.Placement.INFIX_FIRST,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="⇒", placement=is_expression_type.ReprStyle.Placement.INFIX_FIRST
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
 
     antecedent = OperandPointer.MakeChild()
     consequent = OperandPointer.MakeChild()
@@ -2152,14 +2082,14 @@ class Implies(fabll.Node):
 
 class IfThenElse(fabll.Node):
     has_side_effects = fabll.Traits.MakeEdge(has_side_effects.MakeChild())
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="?:",
-                placement=is_expression.ReprStyle.Placement.INFIX,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="?:", placement=is_expression_type.ReprStyle.Placement.INFIX
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
 
     condition = OperandPointer.MakeChild()
     then_value = OperandPointer.MakeChild()
@@ -2225,260 +2155,20 @@ class IfThenElse(fabll.Node):
         pass
 
 
-class Union(fabll.Node):
-    can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
-    is_parameter_operatable = fabll.Traits.MakeEdge(
-        F.Parameters.is_parameter_operatable.MakeChild()
-    )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="∪",
-                placement=is_expression.ReprStyle.Placement.INFIX,
-            )
-        )
-    )
-    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
-    has_idempotent_operands = fabll.Traits.MakeEdge(has_idempotent_operands.MakeChild())
-    is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
-    has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
-    is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
-    is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
-
-    operands = OperandSequence.MakeChild()
-
-    def setup(self, *operands: "F.Parameters.can_be_operand") -> Self:
-        self.operands.get().append(*operands)
-        return self
-
-    @classmethod
-    def MakeChild(cls, *operands: fabll.RefPath) -> fabll._ChildField[Self]:
-        out = fabll._ChildField(cls)
-        for operand in operands:
-            out.add_dependant(
-                OperandSet.MakeEdge([out, cls.operands], get_operand_path(operand))
-            )
-        return out
-
-    @classmethod
-    def from_operands(
-        cls,
-        *operands: "F.Parameters.can_be_operand",
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
-    ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, operands, g=g, tg=tg)
-        return instance.setup(*operands)
-
-    @classmethod
-    def c(
-        cls,
-        *operands: "F.Parameters.can_be_operand",
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
-    ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(*operands, g=g, tg=tg))
-
-
-class Intersection(fabll.Node):
-    can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
-    is_parameter_operatable = fabll.Traits.MakeEdge(
-        F.Parameters.is_parameter_operatable.MakeChild()
-    )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="∩",
-                placement=is_expression.ReprStyle.Placement.INFIX,
-            )
-        )
-    )
-    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
-    has_idempotent_operands = fabll.Traits.MakeEdge(has_idempotent_operands.MakeChild())
-    is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
-    has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
-    is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
-    is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
-
-    operands = OperandSequence.MakeChild()
-
-    def setup(self, *operands: "F.Parameters.can_be_operand") -> Self:
-        self.operands.get().append(*operands)
-        return self
-
-    @classmethod
-    def MakeChild(cls, *operands: fabll.RefPath) -> fabll._ChildField[Self]:
-        out = fabll._ChildField(cls)
-        for operand in operands:
-            out.add_dependant(
-                OperandSet.MakeEdge([out, cls.operands], get_operand_path(operand))
-            )
-        return out
-
-    @classmethod
-    def from_operands(
-        cls,
-        *operands: "F.Parameters.can_be_operand",
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
-    ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, operands, g=g, tg=tg)
-        return instance.setup(*operands)
-
-    @classmethod
-    def c(
-        cls,
-        *operands: "F.Parameters.can_be_operand",
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
-    ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(*operands, g=g, tg=tg))
-
-
-class Difference(fabll.Node):
-    can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
-    is_parameter_operatable = fabll.Traits.MakeEdge(
-        F.Parameters.is_parameter_operatable.MakeChild()
-    )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="−",
-                placement=is_expression.ReprStyle.Placement.INFIX,
-            )
-        )
-    )
-    is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
-    minuend = OperandPointer.MakeChild()
-    subtrahends = OperandSequence.MakeChild()
-
-    def setup(
-        self,
-        minuend: "F.Parameters.can_be_operand",
-        *subtrahends: "F.Parameters.can_be_operand",
-    ) -> Self:
-        self.minuend.get().point(minuend)
-        for subtrahend in subtrahends:
-            self.subtrahends.get().append(subtrahend)
-        return self
-
-    @classmethod
-    def from_operands(
-        cls,
-        minuend: "F.Parameters.can_be_operand",
-        *subtrahends: "F.Parameters.can_be_operand",
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
-    ) -> Self:
-        instance = _make_instance_from_operand_instance(
-            cls, (minuend, *subtrahends), g=g, tg=tg
-        )
-        return instance.setup(minuend, *subtrahends)
-
-    @classmethod
-    def MakeChild(
-        cls, minuend: fabll.RefPath, *subtrahends: fabll.RefPath
-    ) -> fabll._ChildField[Self]:
-        out = fabll._ChildField(cls)
-        out.add_dependant(
-            OperandPointer.MakeEdge([out, cls.minuend], get_operand_path(minuend))
-        )
-        for subtrahend in subtrahends:
-            out.add_dependant(
-                OperandSet.MakeEdge(
-                    [out, cls.subtrahends], get_operand_path(subtrahend)
-                )
-            )
-        return out
-
-    @classmethod
-    def c(
-        cls,
-        minuend: "F.Parameters.can_be_operand",
-        *subtrahends: "F.Parameters.can_be_operand",
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
-    ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(minuend, *subtrahends, g=g, tg=tg))
-
-
-class SymmetricDifference(fabll.Node):
-    can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
-    is_parameter_operatable = fabll.Traits.MakeEdge(
-        F.Parameters.is_parameter_operatable.MakeChild()
-    )
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="△",
-                placement=is_expression.ReprStyle.Placement.INFIX,
-            )
-        )
-    )
-    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
-    is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
-
-    left = OperandPointer.MakeChild()
-    right = OperandPointer.MakeChild()
-
-    def setup(
-        self,
-        left: "F.Parameters.can_be_operand",
-        right: "F.Parameters.can_be_operand",
-    ) -> Self:
-        self.left.get().point(left)
-        self.right.get().point(right)
-        return self
-
-    @classmethod
-    def from_operands(
-        cls,
-        left: "F.Parameters.can_be_operand",
-        right: "F.Parameters.can_be_operand",
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
-    ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (left, right), g=g, tg=tg)
-        return instance.setup(left, right)
-
-    @classmethod
-    def MakeChild(
-        cls, left: fabll.RefPath, right: fabll.RefPath
-    ) -> fabll._ChildField[Self]:
-        out = fabll._ChildField(cls)
-        out.add_dependant(
-            OperandPointer.MakeEdge([out, cls.left], get_operand_path(left))
-        )
-        out.add_dependant(
-            OperandPointer.MakeEdge([out, cls.right], get_operand_path(right))
-        )
-        return out
-
-    @classmethod
-    def c(
-        cls,
-        left: "F.Parameters.can_be_operand",
-        right: "F.Parameters.can_be_operand",
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
-    ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(left, right, g=g, tg=tg))
-
-
 class LessThan(fabll.Node):
     can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
     )
     is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="<",
-                placement=is_expression.ReprStyle.Placement.INFIX_FIRST,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="<", placement=is_expression_type.ReprStyle.Placement.INFIX_FIRST
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
 
     left = OperandPointer.MakeChild()
     right = OperandPointer.MakeChild()
@@ -2542,14 +2232,14 @@ class GreaterThan(fabll.Node):
         F.Parameters.is_parameter_operatable.MakeChild()
     )
     is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol=">",
-                placement=is_expression.ReprStyle.Placement.INFIX_FIRST,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol=">", placement=is_expression_type.ReprStyle.Placement.INFIX_FIRST
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
 
     left = OperandPointer.MakeChild()
@@ -2614,14 +2304,14 @@ class LessOrEqual(fabll.Node):
         F.Parameters.is_parameter_operatable.MakeChild()
     )
     is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="≤",
-                placement=is_expression.ReprStyle.Placement.INFIX_FIRST,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="≤", placement=is_expression_type.ReprStyle.Placement.INFIX_FIRST
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
 
     left = OperandPointer.MakeChild()
     right = OperandPointer.MakeChild()
@@ -2685,14 +2375,14 @@ class GreaterOrEqual(fabll.Node):
         F.Parameters.is_parameter_operatable.MakeChild()
     )
     is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="≥",
-                placement=is_expression.ReprStyle.Placement.INFIX_FIRST,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="≥", placement=is_expression_type.ReprStyle.Placement.INFIX_FIRST
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     is_reflexive = fabll.Traits.MakeEdge(is_reflexive.MakeChild())
 
@@ -2758,14 +2448,14 @@ class NotEqual(fabll.Node):
         F.Parameters.is_parameter_operatable.MakeChild()
     )
     is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="≠",
-                placement=is_expression.ReprStyle.Placement.INFIX_FIRST,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="≠", placement=is_expression_type.ReprStyle.Placement.INFIX_FIRST
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
 
     left = OperandPointer.MakeChild()
     right = OperandPointer.MakeChild()
@@ -2825,14 +2515,14 @@ class IsBitSet(fabll.Node):
         F.Parameters.is_parameter_operatable.MakeChild()
     )
     is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="b[]",
-                placement=is_expression.ReprStyle.Placement.INFIX,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="b[]", placement=is_expression_type.ReprStyle.Placement.INFIX
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
 
     value = OperandPointer.MakeChild()
@@ -2895,19 +2585,26 @@ class IsSubset(fabll.Node):
         F.Parameters.is_parameter_operatable.MakeChild()
     )
     is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="⊆",
-                placement=is_expression.ReprStyle.Placement.INFIX_FIRST,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="⊆", placement=is_expression_type.ReprStyle.Placement.INFIX_FIRST
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     is_reflexive = fabll.Traits.MakeEdge(is_reflexive.MakeChild())
+    is_setic = fabll.Traits.MakeEdge(is_setic.MakeChild())
 
     subset = OperandPointer.MakeChild()
     superset = OperandPointer.MakeChild()
+
+    def get_subset_operand(self) -> "F.Parameters.can_be_operand":
+        return self.subset.get().deref().cast(F.Parameters.can_be_operand)
+
+    def get_superset_operand(self) -> "F.Parameters.can_be_operand":
+        return self.superset.get().deref().cast(F.Parameters.can_be_operand)
 
     @classmethod
     def MakeChild(
@@ -2970,14 +2667,15 @@ class IsSuperset(fabll.Node):
         F.Parameters.is_parameter_operatable.MakeChild()
     )
     is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="⊇",
-                placement=is_expression.ReprStyle.Placement.INFIX_FIRST,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="⊇", placement=is_expression_type.ReprStyle.Placement.INFIX_FIRST
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
+    is_setic = fabll.Traits.MakeEdge(is_setic.MakeChild())
 
     superset = OperandPointer.MakeChild()
     zsubset = OperandPointer.MakeChild()
@@ -2996,7 +2694,7 @@ class IsSuperset(fabll.Node):
 
     @classmethod
     def MakeChild(
-        cls, superset: fabll.RefPath, subset: fabll.RefPath
+        cls, superset: fabll.RefPath, subset: fabll.RefPath, assert_: bool = False
     ) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
         out.add_dependant(
@@ -3005,6 +2703,10 @@ class IsSuperset(fabll.Node):
         out.add_dependant(
             OperandPointer.MakeEdge([out, cls.zsubset], get_operand_path(subset))
         )
+        if assert_:
+            out.add_dependant(
+                fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
+            )
         return out
 
     @classmethod
@@ -3039,14 +2741,14 @@ class Cardinality(fabll.Node):
         F.Parameters.is_parameter_operatable.MakeChild()
     )
     is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
-                symbol="||",
-                placement=is_expression.ReprStyle.Placement.PREFIX,
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="||", placement=is_expression_type.ReprStyle.Placement.PREFIX
             )
         )
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
 
     set = OperandPointer.MakeChild()
     cardinality = OperandPointer.MakeChild()
@@ -3111,16 +2813,18 @@ class Is(fabll.Node):
     )
     is_reflexive = fabll.Traits.MakeEdge(is_reflexive.MakeChild())
     is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    is_expression = fabll.Traits.MakeEdge(
-        is_expression.MakeChild(
-            repr_style=is_expression.ReprStyle(
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
                 symbol="is",
-                placement=is_expression.ReprStyle.Placement.INFIX_FIRST,
+                placement=is_expression_type.ReprStyle.Placement.INFIX_FIRST,
             )
-        )
+        ).put_on_type()
     )
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
+    is_setic = fabll.Traits.MakeEdge(is_setic.MakeChild())
 
     operands = OperandSet.MakeChild()
 
@@ -3129,6 +2833,9 @@ class Is(fabll.Node):
         *operands: "F.Parameters.can_be_operand",
         assert_: bool = False,
     ) -> Self:
+        if any(op.try_get_sibling_trait(Literals.is_literal) for op in operands):
+            raise ValueError("Is expression cannot have literal operands")
+
         self.operands.get().append(*operands)
         if assert_:
             self.is_assertable.get().assert_()
@@ -3148,18 +2855,6 @@ class Is(fabll.Node):
                 OperandSet.MakeEdge([out, cls.operands], get_operand_path(operand)),
             )
         return out
-
-    def get_other_operand(
-        self, operand: "F.Parameters.can_be_operand"
-    ) -> "F.Parameters.can_be_operand | None":
-        return next(
-            (
-                op
-                for op in self.is_expression.get().get_operands()
-                if not op.is_same(operand)
-            ),
-            None,
-        )
 
     @classmethod
     def from_operands(
@@ -3186,6 +2881,74 @@ class Is(fabll.Node):
         return _op(cls.from_operands(*operands, g=g, tg=tg, assert_=assert_))
 
 
+class Correlated(fabll.Node):
+    can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
+        F.Parameters.is_parameter_operatable.MakeChild()
+    )
+    is_expression_type = fabll.Traits.MakeEdge(
+        is_expression_type.MakeChild(
+            repr_style=is_expression_type.ReprStyle(
+                symbol="~", placement=is_expression_type.ReprStyle.Placement.INFIX
+            )
+        ).put_on_type()
+    )
+    is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
+    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
+    is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
+    is_expression = fabll.Traits.MakeEdge(is_expression.MakeChild())
+    is_flattenable = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
+    is_reflexive = fabll.Traits.MakeEdge(is_reflexive.MakeChild())
+    has_idempotent_operands = fabll.Traits.MakeEdge(has_idempotent_operands.MakeChild())
+    is_setic = fabll.Traits.MakeEdge(is_setic.MakeChild())
+
+    operands = OperandSet.MakeChild()
+
+    def setup(
+        self, *operands: "F.Parameters.can_be_operand", assert_: bool = False
+    ) -> Self:
+        self.operands.get().append(*operands)
+        if assert_:
+            self.is_assertable.get().assert_()
+        return self
+
+    @classmethod
+    def MakeChild(
+        cls, *operands: fabll.RefPath, assert_: bool = False
+    ) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        if assert_:
+            out.add_dependant(
+                fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
+            )
+        for operand in operands:
+            out.add_dependant(
+                OperandSet.MakeEdge([out, cls.operands], get_operand_path(operand))
+            )
+        return out
+
+    @classmethod
+    def from_operands(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+        assert_: bool = False,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, operands, g=g, tg=tg)
+        return instance.setup(*operands, assert_=assert_)
+
+    @classmethod
+    def c(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+        assert_: bool = False,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(*operands, g=g, tg=tg, assert_=assert_))
+
+
 ExpressionNodes = (
     Add
     | Subtract
@@ -3200,8 +2963,6 @@ ExpressionNodes = (
     | Round
     | Floor
     | Ceil
-    | Min
-    | Max
     | Integrate
     | Differentiate
     | And
@@ -3210,10 +2971,6 @@ ExpressionNodes = (
     | Xor
     | Implies
     | IfThenElse
-    | Union
-    | Intersection
-    | Difference
-    | SymmetricDifference
     | LessThan
     | GreaterThan
     | LessOrEqual
@@ -3224,6 +2981,7 @@ ExpressionNodes = (
     | Cardinality
     | IsBitSet
     | Is
+    | Correlated
 )
 
 # Macro Expressions --------------------------------------------------------------------
@@ -3308,7 +3066,7 @@ def test_repr_style():
     or_ = Or.bind_typegraph(tg=tg).create_instance(g=g)
 
     or_repr = or_.is_expression.get().get_repr_style()
-    assert or_repr.placement == is_expression.ReprStyle.Placement.INFIX
+    assert or_repr.placement == is_expression_type.ReprStyle.Placement.INFIX
     assert or_repr.symbol == "∨"
 
 
@@ -3406,7 +3164,6 @@ def test_compact_repr_memory_leak():
         Power,
         Log,
         Implies,
-        Difference,
         LessThan,
         GreaterThan,
         LessOrEqual,

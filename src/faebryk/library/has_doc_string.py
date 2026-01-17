@@ -31,15 +31,13 @@ class has_doc_string(fabll.Node):
     @property
     def doc_string(self) -> str:
         """Get the docstring text."""
-        return str(self.doc_string_.get().force_extract_literal().get_values()[0])
+        return str(self.doc_string_.get().extract_singleton())
 
     @classmethod
     def MakeChild(cls, doc_string: str) -> fabll._ChildField[Any]:  # type: ignore[override]
         """Create a has_doc_string trait with the given docstring text."""
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.doc_string_], doc_string
-            )
+            F.Literals.Strings.MakeChild_SetSuperset([out, cls.doc_string_], doc_string)
         )
         return out

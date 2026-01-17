@@ -24,11 +24,11 @@ class SubPCB(fabll.Node):
         cls, tg: "fbrk.TypeGraph", g: "graph.GraphView", path: Path
     ) -> "SubPCB":
         out = super()._create_instance(tg, g)
-        out.path.get().alias_to_single(g=g, value=str(path))
+        out.path.get().set_singleton(g=g, value=str(path))
         return out
 
     def get_path(self) -> Path:
-        return Path(self.path.get().force_extract_literal().get_single())
+        return Path(self.path.get().extract_singleton())
 
 
 class has_subpcb(fabll.Node):

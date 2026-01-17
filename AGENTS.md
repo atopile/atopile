@@ -1,3 +1,8 @@
+# SKILLS
+
+Skills are located in `.claude/skills/`.
+
+
 # 0.14 Staging branch
 
 This release will contain deep core changes. 
@@ -153,6 +158,29 @@ Zig wrappers use "crash on error" philosophy - simplifies error handling by usin
 
 ## Testing
 ### Overall
-Run `pytest` in root folder
+Run `ato dev test --llm` in root folder
 ### Zig Core
 `zig build test` 
+
+## Test Reports (LLM + Tools)
+`ato dev test` writes a single source-of-truth JSON report at `artifacts/test-report.json`.
+Derived artifacts:
+- `artifacts/test-report.html` (human dashboard)
+- `artifacts/test-report.llm.json` (LLM-friendly; ANSI stripped, includes full tests + outputs)
+
+Key fields in `artifacts/test-report.json`:
+- `summary` (counts, regressions/fixed/new/removed, truncation stats)
+- `run` (argv, pytest args, environment subset, git info, worker stats)
+- `tests[]` (nodeid, file/class/function, status/outcome, duration, output preview, output_full logs, memory, worker log path)
+- `derived` (failures/regressions/slowest/memory_heaviest/collection_errors)
+- `llm` (jq recipes + recommended commands)
+
+LLM usage:
+- Prefer JSON over pytest output or HTML; it contains full stdout/stderr/logs/tracebacks (see `output_full`) plus truncation metadata.
+- Use jq for precise queries (examples are embedded in the `llm.jq_recipes` field).
+- `artifacts/test-report.llm.json` is always generated and has ANSI stripped logs.
+- Use `ato dev test --llm` to print a concise summary + schema + jq hints in stdout.
+- For LLMs, prefer `ato dev test --llm` over raw `pytest` to get structured context.
+- Auto-LLM is enabled for claude-code/codex-cli/cursor; force via `FBRK_TEST_LLM=1` or `FBRK_TEST_LLM=0`.
+- Use `ato dev test --reuse --baseline <commit>` to rebuild JSON/HTML/LLM against a new baseline without rerunning tests.
+- Use `ato dev test --keep-open` to keep the live report server running after tests finish.

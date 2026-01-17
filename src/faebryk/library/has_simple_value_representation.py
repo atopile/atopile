@@ -42,50 +42,57 @@ class has_simple_value_representation(fabll.Node):
 
         @property
         def prefix(self) -> str:
-            literal = F.Parameters.StringParameter.bind_instance(
-                self.prefix_.get().instance
-            ).try_extract_constrained_literal()
-            return "" if literal is None else literal.get_values()[0]
+            return (
+                F.Parameters.StringParameter.bind_instance(
+                    self.prefix_.get().instance
+                ).try_extract_singleton()
+                or ""
+            )
 
         @property
         def suffix(self) -> str:
-            literal = F.Parameters.StringParameter.bind_instance(
-                self.suffix_.get().instance
-            ).try_extract_constrained_literal()
-            return "" if literal is None else literal.get_values()[0]
+            return (
+                F.Parameters.StringParameter.bind_instance(
+                    self.suffix_.get().instance
+                ).try_extract_singleton()
+                or ""
+            )
 
         @property
         def default(self) -> str:
-            literal = F.Parameters.StringParameter.bind_instance(
-                self.default_.get().instance
-            ).try_extract_constrained_literal()
-            return "" if literal is None else literal.get_values()[0]
+            return (
+                F.Parameters.StringParameter.bind_instance(
+                    self.default_.get().instance
+                ).try_extract_singleton()
+                or ""
+            )
 
         def _get_value(self, show_tolerance: bool = True) -> str:
             lit = self.param.get_trait(
                 F.Parameters.is_parameter_operatable
-            ).try_get_subset_or_alias_literal()
+            ).try_extract_superset()
             if lit is None:
                 raise ValueError(f"No literal found for {self.param}")
 
-            show_tolerance_lit = F.Parameters.BooleanParameter.bind_instance(
-                self.tolerance_.get().instance
-            ).try_extract_constrained_literal()
-            _show_tolerance = (
-                show_tolerance_lit is not None and show_tolerance_lit.get_values()[0]
-            ) and show_tolerance
+            show_tolerance = (
+                show_tolerance
+                or F.Parameters.BooleanParameter.bind_instance(
+                    self.tolerance_.get().instance
+                ).try_extract_singleton()
+                is True
+            )
 
             # NumericParameter handles display unit conversion (e.g., kohm not ohm)
             numeric_param = self.param.try_cast(F.Parameters.NumericParameter)
             numbers_lit = lit.switch_cast().try_cast(F.Literals.Numbers)
             if numeric_param and numbers_lit:
                 return numeric_param.format_literal_for_display(
-                    numbers_lit, show_tolerance=_show_tolerance
+                    numbers_lit, show_tolerance=show_tolerance
                 )
 
             # Numbers literal without NumericParameter context
             if numbers_lit:
-                return numbers_lit.pretty_str(show_tolerance=_show_tolerance)
+                return numbers_lit.pretty_str(show_tolerance=show_tolerance)
 
             return lit.pretty_str()
 
@@ -174,23 +181,23 @@ class has_simple_value_representation(fabll.Node):
 
             # Constrain literals
             out.add_dependant(
-                F.Literals.Booleans.MakeChild_ConstrainToLiteral(
+                F.Literals.Booleans.MakeChild_SetSuperset(
                     [out, cls.tolerance_], spec.tolerance
                 )
             )
             out.add_dependant(
-                F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                F.Literals.Strings.MakeChild_SetSuperset(
                     [out, cls.prefix_], spec.prefix
                 )
             )
             out.add_dependant(
-                F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                F.Literals.Strings.MakeChild_SetSuperset(
                     [out, cls.suffix_], spec.suffix
                 )
             )
             if spec.default is not None:
                 out.add_dependant(
-                    F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                    F.Literals.Strings.MakeChild_SetSuperset(
                         [out, cls.default_], spec.default
                     )
                 )
@@ -233,18 +240,22 @@ class has_simple_value_representation(fabll.Node):
         return self.get_specs()
 
     @property
-    def prefix(self) -> fabll.LiteralT | None:
-        literal = F.Parameters.StringParameter.bind_instance(
-            self.prefix_.get().instance
-        ).try_extract_constrained_literal()
-        return "" if literal is None else str(literal)
+    def prefix(self) -> str:
+        return (
+            F.Parameters.StringParameter.bind_instance(
+                self.prefix_.get().instance
+            ).try_extract_singleton()
+            or ""
+        )
 
     @property
-    def suffix(self) -> fabll.LiteralT | None:
-        literal = F.Parameters.StringParameter.bind_instance(
-            self.suffix_.get().instance
-        ).try_extract_constrained_literal()
-        return "" if literal is None else str(literal)
+    def suffix(self) -> str:
+        return (
+            F.Parameters.StringParameter.bind_instance(
+                self.suffix_.get().instance
+            ).try_extract_singleton()
+            or ""
+        )
 
     @classmethod
     def MakeChild(cls, *specs: Spec):
@@ -291,7 +302,7 @@ def test_repr_chain_basic():
         )
 
     m = _TestModule.bind_typegraph(tg).create_instance(g=g)
-    m.param1.get().alias_to_literal(
+    m.param1.get().set_superset(
         g=g,
         value=F.Literals.Numbers.bind_typegraph(tg)
         .create_instance(g=g)
@@ -301,7 +312,7 @@ def test_repr_chain_basic():
             unit=F.Units.Volt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
         ),
     )
-    m.param2.get().alias_to_literal(
+    m.param2.get().set_superset(
         g=g,
         value=F.Literals.Numbers.bind_typegraph(tg)
         .create_instance(g=g)
@@ -312,7 +323,7 @@ def test_repr_chain_basic():
             .is_unit.get(),
         ),
     )
-    m.param3.get().alias_to_literal(
+    m.param3.get().set_superset(
         g=g,
         value=F.Literals.Numbers.bind_typegraph(tg)
         .create_instance(g=g)
@@ -355,11 +366,11 @@ def test_repr_chain_non_number():
         .create_instance(g=g)
         .setup(TestEnum.A)
     )
-    m.param1.get().is_parameter_operatable.get().alias_to_literal(
+    m.param1.get().is_parameter_operatable.get().set_superset(
         g=g,
         value=test_enum_lit,
     )
-    m.param2.get().alias_to_single(value=True)
+    m.param2.get().set_singleton(value=True)
 
     val = m._simple_repr.get().get_value()
     assert val == "A P2: true"
@@ -396,7 +407,7 @@ def test_repr_chain_no_literal():
     val = m._simple_repr.get().get_value()
     assert val == "P3: MISSING"
 
-    m.param1.get().alias_to_literal(
+    m.param1.get().set_superset(
         g=g,
         value=F.Literals.Numbers.bind_typegraph(tg)
         .create_instance(g=g)
@@ -449,7 +460,7 @@ def test_repr_display_unit_conversion():
         .create_instance(g=g)
         .setup_from_singleton(value=47000.0, unit=base_ohm)
     )
-    param.alias_to_literal(g=g, value=lit)
+    param.set_superset(g=g, value=lit)
 
     # format_literal_for_display should convert value and show correct unit
     formatted = param.format_literal_for_display(lit)
@@ -475,7 +486,7 @@ def test_resistor_value_representation():
     # Create kΩ unit for the literal value (10kΩ ±1%)
     kohm_unit = _make_kiloohm_unit(g=g, tg=tg)
 
-    resistor.resistance.get().alias_to_literal(
+    resistor.resistance.get().set_superset(
         g=g,
         value=F.Literals.Numbers.bind_typegraph(tg)
         .create_instance(g=g)
@@ -485,7 +496,7 @@ def test_resistor_value_representation():
             unit=kohm_unit,
         ),
     )
-    resistor.max_power.get().alias_to_literal(
+    resistor.max_power.get().set_superset(
         g=g,
         value=F.Literals.Numbers.bind_typegraph(tg)
         .create_instance(g=g)
@@ -494,7 +505,7 @@ def test_resistor_value_representation():
             unit=F.Units.Watt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
         ),
     )
-    resistor.max_voltage.get().alias_to_literal(
+    resistor.max_voltage.get().set_superset(
         g=g,
         value=F.Literals.Numbers.bind_typegraph(tg)
         .create_instance(g=g)
@@ -506,7 +517,7 @@ def test_resistor_value_representation():
     # 10kΩ converts to 10000Ω in display units
     assert (
         resistor._simple_repr.get().get_specs()[0].get_value(show_tolerance=False)
-        == "10000.0Ω"
+        == "10000.0±1.0%Ω"
     )
     # Full representation: 10kΩ ±1% = 10000Ω ±1%, plus power and voltage
     assert resistor._simple_repr.get().get_value() == "10000.0±1.0%Ω 0.125W 10.0V"

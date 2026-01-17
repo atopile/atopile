@@ -16,13 +16,11 @@ And = F.Expressions.And
 Cardinality = F.Expressions.Cardinality
 Ceil = F.Expressions.Ceil
 Cos = F.Expressions.Cos
-Difference = F.Expressions.Difference
 Divide = F.Expressions.Divide
 Floor = F.Expressions.Floor
 GreaterOrEqual = F.Expressions.GreaterOrEqual
 GreaterThan = F.Expressions.GreaterThan
 Implies = F.Expressions.Implies
-Intersection = F.Expressions.Intersection
 is_predicate = F.Expressions.is_predicate
 IsSubset = F.Expressions.IsSubset
 IsSuperset = F.Expressions.IsSuperset
@@ -36,30 +34,11 @@ Round = F.Expressions.Round
 Sin = F.Expressions.Sin
 Sqrt = F.Expressions.Sqrt
 Subtract = F.Expressions.Subtract
-SymmetricDifference = F.Expressions.SymmetricDifference
-Union = F.Expressions.Union
 Xor = F.Expressions.Xor
 
 logger = logging.getLogger(__name__)
 
 # NumericLiteralR = (*QuantityLikeR, Quantity_Interval_Disjoint, Quantity_Interval)
-
-
-@algorithm("Alias predicates to true", single=True, terminal=False)
-def alias_predicates_to_true(mutator: Mutator):
-    """
-    Alias predicates to True since we need to assume they are true.
-    """
-
-    # TODO do we need this? can this go into mutator for all predicates?
-    # or alternatively move it to the canonicalize
-
-    for predicate in mutator.get_expressions(required_traits=(is_predicate,)):
-        new_predicate = mutator.mutate_expression(predicate)
-        mutator.utils.alias_to(
-            new_predicate.as_operand.get(),
-            mutator.make_lit(True).can_be_operand.get(),
-        )
 
 
 @algorithm("Canonicalize", single=True, terminal=False)
@@ -103,20 +82,21 @@ def convert_to_canonical_operations(mutator: Mutator):
 
     def c(
         op: type[fabll.NodeT], *operands: F.Parameters.can_be_operand
-    ) -> F.Parameters.can_be_operand:
-        return mutator.create_expression(
+    ) -> F.Parameters.can_be_operand | None:
+        return mutator.create_check_and_insert_expression(
             op,
             *operands,
             from_ops=getattr(c, "from_ops", None),
-        ).as_operand.get()
+        ).out_operand
 
     def curry(e_type: type[fabll.NodeT]):
-        def _(*operands: F.Parameters.can_be_operand | F.Literals.LiteralValues):
+        def _(*operands: F.Parameters.can_be_operand | F.Literals.LiteralValues | None):
             _operands = [
-                mutator.make_lit(o).can_be_operand.get()
+                mutator.make_singleton(o).can_be_operand.get()
                 if not isinstance(o, fabll.Node)
                 else o
                 for o in operands
+                if o is not None
             ]
             return c(e_type, *_operands)
 
@@ -135,11 +115,6 @@ def convert_to_canonical_operations(mutator: Mutator):
     Or_ = curry(Or)
     Not_ = curry(Not)
 
-    # CanonicalSetic
-    # Intersection_ = curry(Intersection)
-    Union_ = curry(Union)
-    SymmetricDifference_ = curry(SymmetricDifference)
-
     # CanonicalPredicate
     # GreaterOrEqual_ = curry(GreaterOrEqual)
     # IsSubset_ = curry(IsSubset)
@@ -151,7 +126,8 @@ def convert_to_canonical_operations(mutator: Mutator):
             type[fabll.NodeT],
             type[fabll.NodeT],
             Callable[
-                [list[F.Parameters.can_be_operand]], list[F.Parameters.can_be_operand]
+                [list[F.Parameters.can_be_operand]],
+                list[F.Parameters.can_be_operand | None],
             ],
         ]
     ] = [
@@ -202,7 +178,7 @@ def convert_to_canonical_operations(mutator: Mutator):
             Sqrt,
             lambda operands: [
                 *operands,
-                mutator.make_lit(0.5).can_be_operand.get(),
+                mutator.make_singleton(0.5).can_be_operand.get(),
             ],
         ),
         (
@@ -227,16 +203,6 @@ def convert_to_canonical_operations(mutator: Mutator):
             IsSubset,
             IsSuperset,
             lambda operands: list(reversed(operands)),
-        ),
-        (
-            # A - B - C = A - (B | C)
-            # = A & (A ^ (B | C))
-            Intersection,
-            Difference,
-            lambda operands: [
-                operands[0],
-                SymmetricDifference_(operands[0], Union_(*operands)),
-            ],
         ),
     ]
 
@@ -314,7 +280,7 @@ def convert_to_canonical_operations(mutator: Mutator):
 
         if e_type_uuid in _UnsupportedOperations:
             replacement = _UnsupportedOperations[e_type_uuid]
-            rep = e.compact_repr(mutator.output_print_context)
+            rep = e.compact_repr(mutator.print_ctx)
             if replacement is None:
                 logger.warning(f"{type(e)}({rep}) not supported by solver, skipping")
                 mutator.remove(e.as_parameter_operatable.get())
@@ -326,49 +292,6 @@ def convert_to_canonical_operations(mutator: Mutator):
 
         operands = [_strip_units(o) for o in e.get_operands()]
         from_ops = [e_po]
-        # TODO move up, by implementing Parameter Target
-        # Min, Max
-        if e.isinstance(F.Expressions.Min, F.Expressions.Max):
-            p = (
-                F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
-                .create_instance(mutator.G_out)
-                .setup(
-                    is_unit=mutator.utils.dimensionless(),
-                    domain=F.Parameters.NumericParameter.DOMAIN_SKIP,
-                )
-            )
-            p_p = p.is_parameter.get()
-            p_po = p.is_parameter_operatable.get()
-            p_op = p_po.as_operand.get()
-            mutator.register_created_parameter(p_p, from_ops=from_ops)
-            union = (
-                Union.bind_typegraph(mutator.tg_out)
-                .create_instance(mutator.G_out)
-                .setup(*[mutator.get_copy(o) for o in operands])
-            )
-            mutator.create_expression(
-                IsSubset,
-                p_op,
-                union.is_expression.get().as_operand.get(),
-                from_ops=from_ops,
-                assert_=True,
-            )
-            if e.isinstance(F.Expressions.Min):
-                mutator.create_expression(
-                    GreaterOrEqual,
-                    union.is_expression.get().as_operand.get(),
-                    p_op,
-                    from_ops=from_ops,
-                )
-            else:
-                mutator.create_expression(
-                    GreaterOrEqual,
-                    p_op,
-                    union.is_expression.get().as_operand.get(),
-                    from_ops=from_ops,
-                )
-            mutator._mutate(e_po, p_po)
-            continue
 
         # Canonical-expressions need to be mutated to strip the units
         if e_type_uuid not in lookup:
@@ -379,12 +302,29 @@ def convert_to_canonical_operations(mutator: Mutator):
         Target, Converter = lookup[e_type_uuid]
 
         setattr(c, "from_ops", from_ops)
+        converted = [op for op in Converter(operands) if op]
         mutator.mutate_expression(
             e,
-            Converter(operands),
+            converted,
             expression_factory=Target,
             # TODO: copy-pasted this from convert_to_canonical_literals
             # need to ignore existing because non-canonical literals
             # are congruent to canonical
             # ignore_existing=True,
         )
+
+
+@algorithm("Fix ss lit invariants", single=True, terminal=False, force_copy=True)
+def fix_ss_lit_invariants(mutator: Mutator):
+    """
+    Makes sure all subset lit exprs are passed through the invariants algorithm.
+    """
+
+    for e in mutator.get_typed_expressions(
+        F.Expressions.IsSubset,
+        sort_by_depth=True,
+        required_traits=(F.Expressions.is_predicate,),
+        # terminated one's get automatically handled
+        include_terminated=False,
+    ):
+        mutator.mutate_expression(e.is_expression.get())

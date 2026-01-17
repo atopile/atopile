@@ -3,7 +3,7 @@
 
 
 import logging
-from collections import Counter
+from collections import Counter, defaultdict
 from typing import Callable
 
 import faebryk.core.node as fabll
@@ -12,8 +12,9 @@ from faebryk.core.solver.algorithm import SolverAlgorithm, algorithm
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     Contradiction,
+    MutatorUtils,
 )
-from faebryk.libs.util import partition_as_list
+from faebryk.libs.util import not_none, partition_as_list
 
 logger = logging.getLogger(__name__)
 
@@ -49,19 +50,12 @@ def fold_literals[T: fabll.NodeT](
     Not(Not(A)) -> neutralize=replace: A
     ```
     """
-    exprs = mutator.get_typed_expressions(expr_type, sort_by_depth=True, new_only=False)
+    exprs = mutator.get_typed_expressions(expr_type, sort_by_depth=True)
     for expr in exprs:
-        if mutator.has_been_mutated(
-            expr.get_trait(F.Parameters.is_parameter_operatable)
-        ) or mutator.is_removed(expr.get_trait(F.Parameters.is_parameter_operatable)):
-            continue
-
-        # covered by pure literal folding
         if mutator.utils.is_pure_literal_expression(
             expr.get_trait(F.Parameters.can_be_operand)
         ):
             continue
-
         f(expr, mutator)
 
 
@@ -106,16 +100,98 @@ def expression_wise_algorithm[T: fabll.NodeT](expr_type: type[T]):
     return wrap
 
 
-# TODO REMOVE JUST A TEST
-@algorithm("NOOOP")
-def noop(mutator: Mutator):
-    pass
-
-
-fold_algorithms.append(noop)
-
-
 # Arithmetic ---------------------------------------------------------------------------
+
+
+def _collect_factors[T: F.Expressions.Multiply | F.Expressions.Power](
+    mutator: Mutator,
+    counter: Counter[F.Parameters.is_parameter_operatable],
+    collect_type: type[T],
+) -> tuple[
+    dict[F.Parameters.is_parameter_operatable, F.Literals.Numbers],
+    list[F.Parameters.is_parameter_operatable],
+]:
+    # Convert the counter to a dict for easy manipulation
+    factors: dict[
+        F.Parameters.is_parameter_operatable,
+        F.Literals.Numbers,
+    ] = {op: mutator.make_singleton(count) for op, count in counter.items()}
+    # Store operations of type collect_type grouped by their non-literal operand
+    same_literal_factors: dict[
+        F.Parameters.is_parameter_operatable,
+        list[F.Parameters.is_parameter_operatable],
+    ] = defaultdict(list)
+
+    # Look for operations matching collect_type and gather them
+    for collect_op in set(factors.keys()):
+        if not collect_op.get_obj().isinstance(collect_type):
+            continue
+        expr = collect_op.as_expression.force_get()
+        # Skip if operation doesn't have exactly two operands
+        # TODO unnecessary strict
+        if len(expr.get_operands()) != 2:
+            continue
+        # handled by lit fold first
+        if len(expr.get_operand_literals()) > 1:
+            continue
+        if not expr.get_operand_literals():
+            continue
+        # handled by lit fold completely
+        if MutatorUtils.is_pure_literal_expression(collect_op.as_operand.get()):
+            continue
+        if not F.Expressions.is_commutative.is_commutative_type(
+            collect_type.bind_typegraph(mutator.tg_in).get_or_create_type()
+        ):
+            if collect_type is not F.Expressions.Power:
+                raise NotImplementedError(
+                    f"Non-commutative {collect_type.__name__} not implemented"
+                )
+            # For power, ensure second operand is literal
+            if not MutatorUtils.is_literal(expr.get_operands()[1]):
+                continue
+
+        # pick non-literal operand
+        paramop = next(iter(expr.get_operand_operatables()))
+        # Collect these factors under the non-literal operand
+        same_literal_factors[paramop].append(collect_op)
+        # If this operand isn't in factors yet, initialize it with 0
+        if paramop not in factors:
+            factors[paramop] = mutator.make_singleton(0)
+        # Remove this operation from the main factors
+        del factors[collect_op]
+
+    # new_factors: combined literal counts, old_factors: leftover items
+    new_factors: dict[F.Parameters.is_parameter_operatable, F.Literals.Numbers] = {}
+    old_factors = list[F.Parameters.is_parameter_operatable]()
+
+    # Combine literals for each non-literal operand
+    for var, count in factors.items():
+        muls = same_literal_factors[var]
+        # If no effective multiplier or only a single factor, treat as leftover
+        if count.try_get_single() == 0 and len(muls) <= 1:
+            old_factors.extend(muls)
+            continue
+
+        # If only count=1 and no additional factors, just keep the variable
+        if count.try_get_single() == 1 and not muls:
+            old_factors.append(var)
+            continue
+
+        # Extract literal parts from collected operations
+        mul_lits = [
+            next(
+                fabll.Traits(o_lit).get_obj(F.Literals.Numbers)
+                for o_lit in mul.as_expression.force_get()
+                .get_operand_literals()
+                .values()
+            )
+            for mul in muls
+        ]
+
+        # Sum all literal multipliers plus the leftover count
+        new_factors[var] = count.op_add_intervals(*mul_lits)
+
+    return new_factors, old_factors
 
 
 @expression_wise_algorithm(F.Expressions.Add)
@@ -153,23 +229,23 @@ def fold_add(expr: F.Expressions.Add, mutator: Mutator):
         0,
     )
 
-    new_factors, old_factors = mutator.utils.collect_factors(
-        replacable_nonliteral_operands,
-        F.Expressions.Multiply,
+    new_factors, old_factors = _collect_factors(
+        mutator, replacable_nonliteral_operands, F.Expressions.Multiply
     )
 
     # if non-lit factors all 1 and no literal folding, nothing to do
     if not new_factors and len(literal_sum) == len(literal_operands):
         return
 
-    # Careful, modifying old graph, but should be ok
     factored_operands = [
-        mutator.create_expression(
-            F.Expressions.Multiply,
-            n.as_operand.get(),
-            m.can_be_operand.get(),
-            from_ops=[expr.is_parameter_operatable.get()],
-        ).as_operand.get()
+        not_none(
+            mutator.create_check_and_insert_expression(
+                F.Expressions.Multiply,
+                n.as_operand.get(),
+                m.can_be_operand.get(),
+                from_ops=[expr.is_parameter_operatable.get()],
+            ).out_operand
+        )
         for n, m in new_factors.items()
     ]
 
@@ -187,19 +263,12 @@ def fold_add(expr: F.Expressions.Add, mutator: Mutator):
     if len(new_operands) == 1 and (
         no_po := new_operands[0].as_parameter_operatable.try_get()
     ):
-        mutator.mutate_unpack_expression(e, [no_po])
+        mutator.utils.mutate_unpack_expression(e, [no_po])
         return
 
-    new_expr = mutator.mutate_expression(
+    mutator.mutate_expression(
         e, operands=new_operands, expression_factory=F.Expressions.Add
     )
-    # if only one literal operand, equal to it
-    if len(new_operands) == 1:
-        mutator.utils.alias_to(
-            new_expr.as_operand.get(),
-            new_operands[0],
-            terminate=True,
-        )
 
 
 @expression_wise_algorithm(F.Expressions.Multiply)
@@ -226,8 +295,8 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
         1,
     )
 
-    new_powers, old_powers = mutator.utils.collect_factors(
-        replacable_nonliteral_operands, F.Expressions.Power
+    new_powers, old_powers = _collect_factors(
+        mutator, replacable_nonliteral_operands, F.Expressions.Power
     )
 
     # if non-lit powers all 1 and no literal folding, nothing to do
@@ -236,7 +305,7 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
         and len(literal_prod) == len(literal_operands)
         and not (
             literal_prod
-            and literal_prod[0].equals_singleton(0)
+            and literal_prod[0].op_setic_equals_singleton(0)
             and len(replacable_nonliteral_operands)
             + len(non_replacable_nonliteral_operands)
             > 0
@@ -244,13 +313,16 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
     ):
         # Careful, modifying old graph, but should be ok
         powered_operands = [
-            mutator.create_expression(
-                F.Expressions.Power,
-                n.as_operand.get(),
-                m.can_be_operand.get(),
-                from_ops=[e_po],
-            ).as_operand.get()
+            pe
             for n, m in new_powers.items()
+            if (
+                pe := mutator.create_check_and_insert_expression(
+                    F.Expressions.Power,
+                    n.as_operand.get(),
+                    m.can_be_operand.get(),
+                    from_ops=[e_po],
+                ).out_operand
+            )
         ]
 
         new_operands: list[F.Parameters.can_be_operand] = [
@@ -262,32 +334,25 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
 
         # 0 * A -> 0
         if any(
-            x_lit.equals_singleton(0)
+            x_lit.op_setic_equals_singleton(0)
             for x in new_operands
             if (x_lit := mutator.utils.is_literal(x))
         ):
-            new_operands = [mutator.make_lit(0).can_be_operand.get()]
+            new_operands = [mutator.make_singleton(0).can_be_operand.get()]
             # convert_operable_aliased_to_single_into_literal takes care of rest
 
         # unpack if single operand (operatable)
         if len(new_operands) == 1 and (
             no_po := new_operands[0].as_parameter_operatable.try_get()
         ):
-            mutator.mutate_unpack_expression(e, [no_po])
+            mutator.utils.mutate_unpack_expression(e, [no_po])
             return
 
         if new_operands != expr.operands:
-            new_expr = mutator.mutate_expression(
+            mutator.mutate_expression(
                 e, operands=new_operands, expression_factory=F.Expressions.Multiply
             )
 
-            # if only one literal operand, equal to it
-            if len(new_operands) == 1:
-                mutator.utils.alias_to(
-                    new_expr.as_operand.get(),
-                    new_operands[0],
-                    terminate=True,
-                )
             return
 
     # if len(expr.operands) == 2:
@@ -344,51 +409,39 @@ def fold_pow(expr: F.Expressions.Power, mutator: Mutator):
     e_op = e.as_operand.get()
     base, exp = expr.is_expression.get().get_operands()
 
-    # All literals
-    if (base_n := mutator.utils.is_numeric_literal(base)) and (
-        exp_n := mutator.utils.is_numeric_literal(exp)
-    ):
-        try:
-            result = base_n.op_pow_intervals(
-                exponent=exp_n, g=mutator.G_transient, tg=mutator.tg_out
-            )
-        except NotImplementedError:
-            # TODO either fix or raise a warning
-            return
-        mutator.utils.alias_to(
-            e.as_operand.get(),
-            result.can_be_operand.get(),
-            terminate=True,
-        )
-        return
-
     if exp_lit := mutator.utils.is_literal(exp):
-        if exp_lit.equals_singleton(1):
-            mutator.mutate_unpack_expression(e)
+        if exp_lit.op_setic_equals_singleton(1):
+            mutator.utils.mutate_unpack_expression(e)
             return
 
         # in python 0**0 is also 1
-        if exp_lit.equals_singleton(0):
-            mutator.utils.alias_to(
+        if exp_lit.op_setic_equals_singleton(0):
+            mutator.create_check_and_insert_expression(
+                F.Expressions.IsSubset,
                 e_op,
-                mutator.make_lit(1).can_be_operand.get(),
+                mutator.make_singleton(1).can_be_operand.get(),
                 terminate=True,
+                assert_=True,
             )
             return
     if base_lit := mutator.utils.is_literal(base):
-        if base_lit.equals_singleton(0):
-            mutator.utils.alias_to(
+        if base_lit.op_setic_equals_singleton(0):
+            mutator.create_check_and_insert_expression(
+                F.Expressions.IsSubset,
                 e_op,
-                mutator.make_lit(0).can_be_operand.get(),
+                mutator.make_singleton(0).can_be_operand.get(),
                 terminate=True,
+                assert_=True,
             )
             # FIXME: exp >! 0
             return
-        if base_lit.equals_singleton(1):
-            mutator.utils.alias_to(
+        if base_lit.op_setic_equals_singleton(1):
+            mutator.create_check_and_insert_expression(
+                F.Expressions.IsSubset,
                 e_op,
-                mutator.make_lit(1).can_be_operand.get(),
+                mutator.make_singleton(1).can_be_operand.get(),
                 terminate=True,
+                assert_=True,
             )
             return
 
@@ -428,41 +481,13 @@ def fold_sin(expr: F.Expressions.Sin, mutator: Mutator):
     #TODO Sin(A + 2*pi) -> Sin(A)
     #TODO Sin(A+B) -> Sin(A)*Cos(B) + Cos(A)*Sin(B)
     """
-    mutator.utils.subset_to(
+    mutator.create_check_and_insert_expression(
+        F.Expressions.IsSubset,
         expr.is_expression.get().as_operand.get(),
         mutator.utils.make_number_literal_from_range(-1, 1).can_be_operand.get(),
         from_ops=[expr.is_parameter_operatable.get()],
+        assert_=True,
     )
-
-
-# Setic --------------------------------------------------------------------------------
-
-
-# @expression_wise_algorithm(Intersection)
-def fold_intersect(expr: F.Expressions.Intersection, mutator: Mutator):
-    """
-    Intersection(A) -> A (implicit)
-    """
-
-    return
-
-
-# @expression_wise_algorithm(Union)
-def fold_union(expr: F.Expressions.Union, mutator: Mutator):
-    """
-    Union(A) -> A (implicit)
-    """
-
-    return
-
-
-# @expression_wise_algorithm(SymmetricDifference)
-def fold_symmetric_difference(
-    expr: F.Expressions.SymmetricDifference, mutator: Mutator
-):
-    """ """
-
-    return
 
 
 # Constrainable ------------------------------------------------------------------------
@@ -472,10 +497,11 @@ def fold_symmetric_difference(
 def fold_or(expr: F.Expressions.Or, mutator: Mutator):
     """
     ```
-    Or(A, B, C, True) -> True
+    Or(A, B, C, True) -> True; if predicate then terminate
     Or(A, B, C, False) -> Or(A, B, C)
     Or(A, B, A) -> Or(A, B)
     Or() -> False
+    Or(A, B, {True, False}) -> Or(A, B)
     ```
     """
 
@@ -485,17 +511,24 @@ def fold_or(expr: F.Expressions.Or, mutator: Mutator):
 
     e = expr.is_expression.get()
     lits = e.get_operand_literals()
+
     if not lits:
         return
 
     # Or(A, B, C, True) -> True
-    if any(lit.equals_singleton(True) for lit in lits.values()):
-        mutator.utils.alias_is_literal_and_check_predicate_eval(
-            e, mutator.make_lit(True).is_literal.get()
+    if any(lit.op_setic_equals_singleton(True) for lit in lits.values()):
+        # if e.try_get_sibling_trait(F.Expressions.is_predicate):
+        #     return
+        mutator.create_check_and_insert_expression(
+            F.Expressions.IsSubset,
+            e.as_operand.get(),
+            mutator.make_singleton(True).can_be_operand.get(),
+            terminate=True,
+            assert_=True,
         )
         return
 
-    # Or(A, B, C, False) -> Or(A, B, C)
+    # Or(A, B, C, False/{True, False}) -> Or(A, B, C)
     filtered_operands = [op.as_operand.get() for op in e.get_operand_operatables()]
     # Rebuild without False literals
     mutator.mutate_expression(e, operands=filtered_operands)
@@ -533,32 +566,46 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                 involved=[op_po],
                 mutator=mutator,
             )
-        mutator.utils.alias_to(
+        mutator.create_check_and_insert_expression(
+            F.Expressions.IsSubset,
             e.as_operand.get(),
-            mutator.make_lit(False).can_be_operand.get(),
+            mutator.make_singleton(False).can_be_operand.get(),
             terminate=True,
+            assert_=True,
         )
         return
 
     if not mutator.has_been_mutated(op_po):
         # TODO this is kinda ugly, should be in Or fold if it aliases to false
         # ¬!(¬A v ¬B v C) -> ¬!(¬!A v ¬!B v C), ¬!C
-        if expr.try_get_trait(F.Expressions.is_predicate):
+        if pred := expr.try_get_trait(F.Expressions.is_predicate):
             # ¬!( v )
             if op_or := fabll.Traits(op).get_obj_raw().try_cast(F.Expressions.Or):
                 # FIXME remove this shortcut
                 # should be handle in more general way
                 # maybe we need to terminate non-predicates too
                 op_or_e = op_or.is_expression.get()
+                # TODO this should not be needed
+                # ¬!Or() -> True
                 if not op_or_e.get_operands():
-                    mutator.utils.alias_is_literal_and_check_predicate_eval(
-                        e, mutator.make_lit(True).is_literal.get()
+                    mutator.create_check_and_insert_expression(
+                        F.Expressions.IsSubset,
+                        e.as_operand.get(),
+                        mutator.make_singleton(True).can_be_operand.get(),
+                        terminate=True,
+                        assert_=True,
                     )
+                    mutator.terminate(e)
+
                 for inner_op_e in op_or_e.get_operands_with_trait(
                     F.Expressions.is_expression
                 ):
                     # ¬!(¬A v ...)
-                    if inner_op_e.try_cast(F.Expressions.Not):
+                    if (
+                        fabll.Traits(inner_op_e)
+                        .get_obj_raw()
+                        .try_cast(F.Expressions.Not)
+                    ):
                         for not_op in inner_op_e.get_operands():
                             if (
                                 (not_op_po := not_op.as_parameter_operatable.try_get())
@@ -568,12 +615,13 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                                     F.Expressions.is_predicate
                                 )
                             ):
-                                mutator.assert_(
-                                    mutator.get_copy(not_op)
-                                    .as_parameter_operatable.force_get()
-                                    .as_expression.force_get()
-                                    .as_assertable.force_get()
-                                )
+                                copy = mutator.get_copy(not_op)
+                                if copy:
+                                    mutator.assert_(
+                                        copy.as_parameter_operatable.force_get()
+                                        .as_expression.force_get()
+                                        .as_assertable.force_get()
+                                    )
 
                     # ¬!(A v ...)
                     elif inner_op_e.as_assertable.try_get():
@@ -583,21 +631,28 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                             for n in parent_nots:
                                 mutator.assert_(n.is_assertable.get())
                         else:
-                            mutator.create_expression(
+                            mutator.create_check_and_insert_expression(
                                 F.Expressions.Not,
                                 inner_op_e.as_operand.get(),
                                 from_ops=[expr_po],
                                 assert_=True,
                             )
 
-    if expr.try_get_trait(F.Expressions.is_predicate):
-        false = mutator.make_lit(False).is_literal.get()
-        if (op_op := op.as_parameter_operatable.try_get()) and (
-            op_e := op_op.as_expression.try_get()
-        ):
-            mutator.utils.alias_is_literal_and_check_predicate_eval(op_e, false)
-        else:
-            mutator.utils.alias_to(op, false.as_operand.get(), terminate=True)
+    if (
+        superset := mutator.utils.try_extract_superset(op_po)
+    ) is not None and superset.op_setic_is_singleton():
+        negated = (
+            fabll.Traits(superset)
+            .get_obj(F.Literals.Booleans)
+            .op_not(g=mutator.G_transient, tg=mutator.tg_in)
+        )
+        mutator.create_check_and_insert_expression(
+            F.Expressions.IsSubset,
+            e.as_operand.get(),
+            negated.can_be_operand.get(),
+            terminate=True,
+            assert_=True,
+        )
 
 
 @expression_wise_algorithm(F.Expressions.Is)
@@ -610,7 +665,7 @@ def fold_is(expr: F.Expressions.Is, mutator: Mutator):
 
     e = expr.is_expression.get()
     is_true_alias = expr.try_get_trait(F.Expressions.is_predicate) and any(
-        lit.equals_singleton(True) for lit in e.get_operand_literals().values()
+        lit.op_setic_equals_singleton(True) for lit in e.get_operand_literals().values()
     )
     if is_true_alias:
         # P1 is! True -> P1!
@@ -624,8 +679,6 @@ def fold_subset(expr: F.Expressions.IsSubset, mutator: Mutator):
     """
     ```
     A is B, A ss B | B non(ex)literal -> repr(B, A)
-    A ss ([X]) -> A is ([X])
-    A ss {} -> A is {}
     # predicates
     P ss! True -> P!
     P ss! False -> ¬!P
@@ -643,23 +696,17 @@ def fold_subset(expr: F.Expressions.IsSubset, mutator: Mutator):
     if not (B_lit := B.as_literal.try_get()):
         return
 
-    # A ss ([X]) -> A is ([X])
-    # A ss {} -> A is {}
-    if B_lit.is_singleton() or B_lit.is_empty():
-        mutator.mutate_expression(e, expression_factory=F.Expressions.Is)
-        return
-
     if e.try_get_trait(F.Expressions.is_predicate):
         # P1 ss! True -> P1!
-        if B_lit.equals_singleton(True):
+        if B_lit.op_setic_equals_singleton(True):
             mutator.assert_(
                 A.as_parameter_operatable.force_get()
                 .as_expression.force_get()
                 .as_assertable.force_get()
             )
         # P ss! False -> ¬!P
-        if B_lit.equals_singleton(False):
-            mutator.create_expression(
+        if B_lit.op_setic_equals_singleton(False):
+            mutator.create_check_and_insert_expression(
                 F.Expressions.Not,
                 A,
                 from_ops=[expr.is_parameter_operatable.get()],
@@ -691,7 +738,7 @@ def fold_ge(expr: F.Expressions.GreaterOrEqual, mutator: Mutator):
         assert len(literal_operands) == 1
         lit = literal_operands[0]
         lit_n = fabll.Traits(lit).get_obj(F.Literals.Numbers)
-        if not lit.is_singleton() and not lit.is_empty():
+        if not lit.op_setic_is_singleton() and not lit.op_setic_is_empty():
             lit_op = lit.as_operand.get()
             if left.is_same(lit_op):
                 mutator.mutate_expression(

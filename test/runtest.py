@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 import typer
+from rich.console import Console
+from rich.traceback import Traceback
 
 from faebryk.libs.logging import FLOG_FMT, setup_basic_logging
 from faebryk.libs.util import indented_container
@@ -48,6 +50,26 @@ def create_method_wrapper(cls, method_name):
     return wrapper
 
 
+def _get_package_module_name(fp: Path) -> str | None:
+    """
+    If the file is under src/faebryk or src/atopile, return the proper
+    package module name. Otherwise return None.
+    """
+    parts = fp.parts
+    for pkg_name in ("faebryk", "atopile"):
+        if "src" in parts and pkg_name in parts:
+            src_idx = parts.index("src")
+            pkg_idx = parts.index(pkg_name)
+            # Make sure pkg is directly under src
+            if pkg_idx == src_idx + 1:
+                # Build module name from package onwards, excluding .py extension
+                module_parts = list(parts[pkg_idx:])
+                # Remove .py extension from last part
+                module_parts[-1] = fp.stem
+                return ".".join(module_parts)
+    return None
+
+
 def discover_tests(
     filepaths: list[Path], test_pattern: str
 ) -> list[tuple[Path, Callable]]:
@@ -55,23 +77,36 @@ def discover_tests(
     Manual test discovery by loading modules and finding matching functions.
     Note: This does NOT discover parametrized test variants.
     """
+    from rich import print
+
     matches = []
+    import_errors = {}
     for fp in filepaths:
+        if not re.search(test_pattern, fp.read_text(encoding="utf-8")):
+            continue
         try:
-            if not re.search(test_pattern, fp.read_text(encoding="utf-8")):
-                continue
-            spec = importlib.util.spec_from_file_location("test_module", fp)
-            if spec is None:
-                continue
-            module = importlib.util.module_from_spec(spec)
-            if spec.loader is None:
-                continue
-            # redirect_stderr and redirect_stdout to devnull
-            # with redirect_stdout(open(os.devnull, "w")):
-            #   with redirect_stderr(open(os.devnull, "w")):
-            spec.loader.exec_module(module)
+            # Check if file is in src/faebryk or src/atopile - load as package module
+            package_module_name = _get_package_module_name(fp)
+            if package_module_name:
+                module = importlib.import_module(package_module_name)
+            else:
+                # Fall back to file-based loading for test files
+                module_name = f"test_module_{fp.stem}"
+                spec = importlib.util.spec_from_file_location(module_name, fp)
+                if spec is None:
+                    continue
+                module = importlib.util.module_from_spec(spec)
+                if spec.loader is None:
+                    continue
+                # Register module in sys.modules before exec to allow forward references
+                # in dataclasses to resolve correctly
+                sys.modules[module_name] = module
+                spec.loader.exec_module(module)
         except Exception:
-            print("Error importing", fp)
+            from rich import traceback
+
+            # TODO suppress doesn't seem to work
+            import_errors[fp] = traceback.Traceback(suppress=[__name__])
             continue
         for v in vars(module).values():
             if not hasattr(v, "__name__"):
@@ -103,6 +138,10 @@ def discover_tests(
             elif callable(v):
                 if re.search(test_pattern, v.__name__):
                     matches.append((fp, v))
+    if not matches:
+        for fp, tb in import_errors.items():
+            print(f"Error importing {fp}")
+            print(tb)
     return matches
 
 
@@ -153,9 +192,16 @@ def run_tests(matches: list[tuple[Path, Callable]]) -> None:
         if hasattr(test_func, "pytestmark"):
             for mark in test_func.pytestmark:
                 if mark.name == "parametrize":
+                    from _pytest.mark import ParameterSet
+
+                    raw_values = mark.args[1]
+                    values = [
+                        v.values if isinstance(v, ParameterSet) else v
+                        for v in raw_values
+                    ]
                     arg_def = _PytestArgDef(
                         names=[name.strip() for name in mark.args[0].split(",")],
-                        values=list(mark.args[1]),
+                        values=values,
                         id_fn=mark.kwargs.get("ids"),
                     )
                 if mark.name == "usefixtures":
@@ -189,7 +235,30 @@ def run_tests(matches: list[tuple[Path, Callable]]) -> None:
                 print(f"Running {test_func.__name__} with {kwargs}")
                 test_func(**kwargs)
 
-        typer.run(fn)
+        try:
+            fn()
+        except Exception:
+            # Print Rich traceback with locals and suppressed internals
+            console = Console(stderr=True)
+            tb = Traceback.from_exception(
+                *sys.exc_info(),
+                show_locals=True,
+                suppress=[typer, "click", __file__],
+            )
+            console.print(tb)
+            raise SystemExit(1)
+
+
+class TestNotFound(Exception):
+    pass
+
+
+class TestFileNotFound(TestNotFound):
+    pass
+
+
+class TestCaseNotFound(TestNotFound):
+    pass
 
 
 def run(
@@ -199,7 +268,7 @@ def run(
     test_files: list[Path] = []
     for filepath in filepaths:
         if not filepath.exists():
-            raise ValueError(f"Filepath {filepath} does not exist")
+            raise TestFileNotFound(f"Filepath {filepath} does not exist")
         if not filepath.is_dir():
             test_files.append(filepath)
         else:
@@ -207,7 +276,7 @@ def run(
 
     matches = discover_tests(test_files, test_name)
     if not matches:
-        raise ValueError(f"Test function '{test_name}' not found in {filepaths}")
+        raise TestCaseNotFound(f"Test function '{test_name}' not found in {filepaths}")
     run_tests(matches)
 
 

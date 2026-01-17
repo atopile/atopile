@@ -23,23 +23,19 @@ class is_auto_generated(fabll.Node):
 
     @property
     def source(self) -> str | None:
-        literal = self.source_.get().try_extract_constrained_literal()
-        return None if literal is None else literal.get_values()[0]
+        return self.source_.get().try_extract_singleton()
 
     @property
     def system(self) -> str | None:
-        literal = self.system_.get().try_extract_constrained_literal()
-        return None if literal is None else literal.get_values()[0]
+        return self.system_.get().try_extract_singleton()
 
     @property
     def date(self) -> str | None:
-        literal = self.date_.get().try_extract_constrained_literal()
-        return None if literal is None else literal.get_values()[0]
+        return self.date_.get().try_extract_singleton()
 
     @property
     def checksum(self) -> str | None:
-        literal = self.checksum_.get().try_extract_constrained_literal()
-        return None if literal is None else literal.get_values()[0]
+        return self.checksum_.get().try_extract_singleton()
 
     @staticmethod
     def verify(stated_checksum: str, file_contents: str):
@@ -67,25 +63,19 @@ class is_auto_generated(fabll.Node):
         out = fabll._ChildField(cls)
         if source is not None:
             out.add_dependant(
-                F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                    [out, cls.source_], source
-                )
+                F.Literals.Strings.MakeChild_SetSuperset([out, cls.source_], source)
             )
         if system is not None:
             out.add_dependant(
-                F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                    [out, cls.system_], system
-                )
+                F.Literals.Strings.MakeChild_SetSuperset([out, cls.system_], system)
             )
         if date is not None:
             out.add_dependant(
-                F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.date_], date)
+                F.Literals.Strings.MakeChild_SetSuperset([out, cls.date_], date)
             )
         if checksum is not None:
             out.add_dependant(
-                F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                    [out, cls.checksum_], checksum
-                )
+                F.Literals.Strings.MakeChild_SetSuperset([out, cls.checksum_], checksum)
             )
         return out
 
@@ -97,11 +87,11 @@ class is_auto_generated(fabll.Node):
         checksum: str | None = None,
     ) -> Self:
         if source is not None:
-            self.source_.get().alias_to_single(source)
+            self.source_.get().set_singleton(source)
         if system is not None:
-            self.system_.get().alias_to_single(system)
+            self.system_.get().set_singleton(system)
         if date is not None:
-            self.date_.get().alias_to_single(date)
+            self.date_.get().set_singleton(date)
         if checksum is not None:
-            self.checksum_.get().alias_to_single(checksum)
+            self.checksum_.get().set_singleton(checksum)
         return self

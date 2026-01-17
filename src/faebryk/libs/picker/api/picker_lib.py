@@ -30,9 +30,7 @@ from faebryk.libs.picker.lcsc import (
     attach,
     check_attachable,
 )
-from faebryk.libs.picker.picker import (
-    PickError,
-)
+from faebryk.libs.picker.picker import PickError
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
@@ -138,7 +136,7 @@ def _prepare_query(
         params_t = make_params_for_type(module_node)
 
         if pkg_t := module_node.try_get_trait(F.has_package_requirements):
-            package_constraint = solver.inspect_get_known_supersets(
+            package_constraint = solver.extract_superset(
                 pkg_t.size.get().is_parameter.get(), g=g, tg=tg
             )
             package = (
@@ -163,7 +161,7 @@ def _prepare_query(
             trait.get_params(),
         )
         cmp_params = {
-            fabll.Traits(p).get_obj_raw(): solver.inspect_get_known_supersets(
+            fabll.Traits(p).get_obj_raw(): solver.extract_superset(
                 # FIXME g
                 p  # , g=g, tg=tg
             )
@@ -202,6 +200,8 @@ def _prepare_query(
 def _process_candidates(
     module: F.Pickable.is_pickable, candidates: list[Component]
 ) -> list[Component]:
+    timings = Times(name="process_candidates")
+
     # Filter parts with weird pinmaps
     it = iter(candidates)
     filtered_candidates = []
@@ -213,9 +213,12 @@ def _process_candidates(
             component_node,
         )
     module_with_fp = component_node.get_trait(F.Footprints.can_attach_to_footprint)
-    for c in it:
+    timings.add("setup")
+
+    for idx, c in enumerate(it):
         try:
-            attach(module_with_fp, c.lcsc_display, check_only=True, get_3d_model=False)
+            with timings.measure(f"attach_check_{idx}"):
+                attach(module_with_fp, c.lcsc_display, check_only=True, get_3d_model=False)
             filtered_candidates.append(c)
             # If we found one that's ok, just continue since likely enough
             filtered_candidates.extend(it)
@@ -235,6 +238,7 @@ def _process_candidates(
             if not filtered_candidates and candidates[-1] is c:
                 raise
 
+    timings.add("filter_done")
     return filtered_candidates
 
 

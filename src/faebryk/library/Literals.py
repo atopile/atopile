@@ -4,7 +4,7 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from enum import Enum, IntEnum, StrEnum
 from operator import ge
-from typing import TYPE_CHECKING, Iterable, Self, cast
+from typing import TYPE_CHECKING, Iterable, Self, cast, overload
 from warnings import deprecated
 
 import pytest
@@ -22,6 +22,8 @@ REL_DIGITS = 7  # 99.99999% precision
 ABS_DIGITS = 15  # femto
 EPSILON_REL = 10 ** -(REL_DIGITS - 1)
 EPSILON_ABS = 10**-ABS_DIGITS
+# TODO set to -1
+PRINT_DIGITS = 3
 
 # TODO all creating functions need g as param
 
@@ -118,24 +120,53 @@ class is_literal(fabll.Node):
             return None
         return cast(LiteralNodesPair, (obj1, obj2))
 
-    def is_subset_of(
+    def op_setic_is_subset_of(
         self: "is_literal | LiteralNodes",
         other: "is_literal | LiteralNodes",
         *,
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> bool:
+        """
+        X ss Y := ∀x ∈ X, ∃y ∈ Y, x == y
+        """
         g = g or self.g
         tg = tg or self.tg
         if objs := is_literal._cmp(self, other):
-            return objs[0].is_subset_of(
-                objs[1],  # type: ignore # stupid pylance
+            return objs[0].op_setic_is_subset_of(
+                objs[1],  # type: ignore # stupid pyright
                 g=g,
                 tg=tg,
             )
         raise IncompatibleTypesError()
 
-    def op_intersect_intervals(
+    def uncertainty_equals(
+        self: "is_literal | LiteralNodes",
+        other: "is_literal | LiteralNodes",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+    ) -> "Booleans":
+        """
+        Check if elements of this set match elements of another.
+        X ueq Y := { x==y | ∀x ∈ X, ∀y ∈ Y }
+
+        Returns a Booleans set based on pairwise element comparison:
+        - {True} if both are identical singletons (all pairs equal)
+        - {False} if sets are disjoint (no equal pairs)
+        - {True, False} if there's overlap but not identical singletons
+        """
+        g = g or self.g
+        tg = tg or self.tg
+        if objs := is_literal._cmp(self, other):
+            return objs[0].uncertainty_equals(
+                objs[1],  # type: ignore # stupid pyright
+                g=g,
+                tg=tg,
+            )
+        raise IncompatibleTypesError()
+
+    def op_setic_intersect(
         self: "is_literal | LiteralNodes",
         *others: "is_literal | LiteralNodes",
         g: graph.GraphView | None = None,
@@ -158,7 +189,7 @@ class is_literal(fabll.Node):
             .is_literal.get()
         )
 
-    def op_union_intervals(
+    def op_setic_union(
         self: "is_literal | LiteralNodes",
         *others: "is_literal | LiteralNodes",
         g: graph.GraphView | None = None,
@@ -181,7 +212,7 @@ class is_literal(fabll.Node):
             .is_literal.get()
         )
 
-    def op_symmetric_difference_intervals(
+    def op_setic_symmetric_difference(
         self: "is_literal | LiteralNodes",
         other: "is_literal | LiteralNodes",
         *,
@@ -202,16 +233,16 @@ class is_literal(fabll.Node):
             )
         raise IncompatibleTypesError()
 
-    def in_container(
+    def setic_in_container(
         self,
         other: Iterable["is_literal | LiteralNodes"],
         *,
         g: graph.GraphView,
         tg: fbrk.TypeGraph,
     ) -> bool:
-        return any(self.equals(other, g=g, tg=tg) for other in other)
+        return any(self.op_setic_equals(other, g=g, tg=tg) for other in other)
 
-    def multi_equals(
+    def multi_setic_equals(
         self: "is_literal | LiteralNodes",
         *others: "is_literal | LiteralNodes",
         g: graph.GraphView | None = None,
@@ -224,7 +255,7 @@ class is_literal(fabll.Node):
         for i, other_c in enumerate(other_nodes):
             if type(self_c) is not type(other_c):
                 continue
-            if self_c.equals(
+            if self_c.op_setic_equals(
                 other_c,  # type: ignore # stupid pylance
                 g=g,
                 tg=tg,
@@ -232,18 +263,27 @@ class is_literal(fabll.Node):
                 return i, other_c.is_literal.get()
         return None
 
-    def equals(
+    def op_setic_equals(
         self: "is_literal | LiteralNodes",
-        other: "is_literal | LiteralNodes",
+        other: "is_literal | LiteralNodes | LiteralValues",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> bool:
+        """
+        X seq Y := X ⊆ Y and Y ⊆ X
+        """
+        if not isinstance(other, fabll.Node):
+            return is_literal.op_setic_equals_singleton(self, other)
+
         g = g or self.g
         tg = tg or self.tg
-        return bool(is_literal.multi_equals(self, other, g=g, tg=tg))
 
-    def equals_singleton(self, singleton: "LiteralValues") -> bool:
-        obj = self.switch_cast()
+        return bool(is_literal.multi_setic_equals(self, other, g=g, tg=tg))
+
+    def op_setic_equals_singleton(
+        self: "is_literal | LiteralNodes", singleton: "LiteralValues"
+    ) -> bool:
+        (obj,) = is_literal._to_nodes(self)
         if not obj.is_singleton():
             return False
         single = obj.get_single()
@@ -251,10 +291,10 @@ class is_literal(fabll.Node):
             return single is singleton
         return single == singleton
 
-    def is_singleton(self) -> bool:
+    def op_setic_is_singleton(self) -> bool:
         return self.switch_cast().is_singleton()
 
-    def is_empty(self) -> bool:
+    def op_setic_is_empty(self) -> bool:
         return self.switch_cast().is_empty()
 
     def any(self) -> "LiteralValues":
@@ -297,7 +337,7 @@ class is_literal(fabll.Node):
         return self.switch_cast().pretty_str()
 
     def is_not_correlatable(self) -> bool:
-        return not self.is_singleton() and not self.is_empty()
+        return not self.op_setic_is_singleton() and not self.op_setic_is_empty()
 
     def serialize(self) -> dict[str, str | dict] | None:
         """Serialize literal to JSON-compatible dict for API/disk storage."""
@@ -348,6 +388,28 @@ class is_literal(fabll.Node):
 
 # --------------------------------------------------------------------------------------
 LiteralValues = float | bool | Enum | str
+
+
+def _countable_uncertainty_equals[T: LiteralValues](
+    elems1: set[T],
+    elems2: set[T],
+    g: graph.GraphView,
+    tg: fbrk.TypeGraph,
+) -> "Booleans":
+    """
+    Returns a Booleans set based on pairwise element comparison:
+    - {True} if both are identical singletons (all pairs equal)
+    - {False} if sets are disjoint (no equal pairs)
+    - {True, False} if there's overlap but not identical singletons
+    """
+
+    out: list[bool] = []
+    if not len(elems1) == len(elems2) == 1:
+        out.append(False)
+    if elems1 & elems2:
+        out.append(True)
+
+    return Booleans.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(*out)
 
 
 @dataclass
@@ -407,24 +469,13 @@ class Strings(fabll.Node):
         return out
 
     @classmethod
-    def MakeChild_ConstrainToLiteralSubset(
+    def MakeChild_SetSuperset(
         cls, ref: fabll.RefPath, *values: str
     ) -> fabll._ChildField[Self]:
         from faebryk.library.Expressions import IsSubset
 
         lit = cls.MakeChild(*values)
         out = IsSubset.MakeChild(ref, [lit], assert_=True)
-        out.add_dependant(lit, before=True)
-        return out
-
-    @classmethod
-    def MakeChild_ConstrainToLiteral(
-        cls, ref: fabll.RefPath, *values: str
-    ) -> fabll._ChildField[Self]:
-        from faebryk.library.Expressions import Is
-
-        lit = cls.MakeChild(*values)
-        out = Is.MakeChild(ref, [lit], assert_=True)
         out.add_dependant(lit, before=True)
         return out
 
@@ -448,7 +499,7 @@ class Strings(fabll.Node):
     def is_empty(self) -> bool:
         return not self.get_values()
 
-    def equals(
+    def op_setic_equals(
         self,
         other: "Strings",
         *,
@@ -460,13 +511,27 @@ class Strings(fabll.Node):
     def any(self) -> str:
         return next(iter(self.get_values()))
 
-    def is_subset_of(
+    def op_setic_is_subset_of(
         self,
         other: "Strings",
+        *,
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> bool:
         return set(self.get_values()) <= set(other.get_values())
+
+    def uncertainty_equals(
+        self,
+        other: "Strings",
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+    ) -> "Booleans":
+        return _countable_uncertainty_equals(
+            set(self.get_values()),
+            set(other.get_values()),
+            g=g or self.g,
+            tg=tg or self.tg,
+        )
 
     def op_intersect_intervals(
         self,
@@ -751,9 +816,61 @@ class NumericInterval(fabll.Node):
         rel = abs(rel)
         return center, rel  # type: ignore
 
-    def is_subset_of(self, other: "NumericInterval") -> bool:
+    def op_is_subset_of(
+        self,
+        other: "NumericInterval",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+    ) -> bool:
         return ge(self.get_min_value(), other.get_min_value()) and ge(
             other.get_max_value(), self.get_max_value()
+        )
+
+    def uncertainty_equals(
+        self,
+        other: "NumericInterval",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+    ) -> "Booleans":
+        g = g or self.g
+        tg = tg or self.tg
+
+        self_min = self.get_min_value()
+        self_max = self.get_max_value()
+        other_min = other.get_min_value()
+        other_max = other.get_max_value()
+
+        # Check if both are identical singletons
+        is_self_singleton = ge(self_min, self_max) and ge(self_max, self_min)
+        is_other_singleton = ge(other_min, other_max) and ge(other_max, other_min)
+        identical_singletons = (
+            is_self_singleton
+            and is_other_singleton
+            and ge(self_min, other_min)
+            and ge(other_min, self_min)
+        )
+
+        # Check if disjoint (no overlap)
+        disjoint = self_max < other_min or self_min > other_max
+
+        result: list[bool] = []
+        if identical_singletons:
+            # Only equal pairs exist
+            result.append(True)
+        elif disjoint:
+            # No equal pairs, only unequal pairs
+            result.append(False)
+        else:
+            # Overlap exists: equal pairs exist (in intersection)
+            # Unequal pairs also exist (since not identical singletons)
+            result.extend([True, False])
+
+        return (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(*result)
         )
 
     def op_add(
@@ -1181,7 +1298,7 @@ class NumericInterval(fabll.Node):
             return False
         return ge(self.get_max_value(), item) and ge(item, self.get_min_value())
 
-    def equals(
+    def op_setic_equals(
         self,
         other: "NumericInterval",
     ) -> bool:
@@ -1338,31 +1455,40 @@ class TestNumericInterval:
         numeric_interval.setup(min=min_value, max=max_value)
         assert numeric_interval.as_center_rel() == (0.5, 1.0)
 
-    def test_is_subset_of_true(self):
+    def test_uncertainty_equals_identical_singletons(self):
+        """Identical singletons should return {True}."""
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
-        min_value = 0.0
-        max_value = 1.0
-        numeric_interval.setup(min=min_value, max=max_value)
+        numeric_interval.setup(min=1.0, max=1.0)
         other = NumericInterval.create_instance(g=g, tg=tg)
-        other_min_value = -0.5
-        other_max_value = 1.5
-        other.setup(min=other_min_value, max=other_max_value)
-        assert numeric_interval.is_subset_of(other)
+        other.setup(min=1.0, max=1.0)
+        assert numeric_interval.uncertainty_equals(
+            other, g=g, tg=tg
+        ).op_setic_equals_singleton(True)
 
-    def test_is_subset_of_false(self):
+    def test_uncertainty_equals_disjoint(self):
+        """Disjoint intervals should return {False}."""
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
-        min_value = 0.0
-        max_value = 1.0
-        numeric_interval.setup(min=min_value, max=max_value)
+        numeric_interval.setup(min=0.0, max=1.0)
         other = NumericInterval.create_instance(g=g, tg=tg)
-        other_min_value = 1.5
-        other_max_value = 2.5
-        other.setup(min=other_min_value, max=other_max_value)
-        assert not numeric_interval.is_subset_of(other)
+        other.setup(min=1.5, max=2.5)
+        assert numeric_interval.uncertainty_equals(
+            other, g=g, tg=tg
+        ).op_setic_equals_singleton(False)
+
+    def test_uncertainty_equals_overlapping(self):
+        """Overlapping non-singleton intervals should return {True, False}."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+        numeric_interval.setup(min=0.0, max=1.0)
+        other = NumericInterval.create_instance(g=g, tg=tg)
+        other.setup(min=-0.5, max=1.5)
+        result = numeric_interval.uncertainty_equals(other, g=g, tg=tg)
+        assert set(result.get_values()) == {True, False}
 
     def test_op_add(self):
         g = graph.GraphView.create()
@@ -1763,7 +1889,7 @@ class TestNumericInterval:
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
         numeric_set_1.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         numeric_set_2.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
-        assert numeric_set_1.equals(numeric_set_2)
+        assert numeric_set_1.op_setic_equals(numeric_set_2)
 
 
 class NumericSet(fabll.Node):
@@ -1942,12 +2068,53 @@ class NumericSet(fabll.Node):
     def is_superset_of(
         self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericSet"
     ) -> bool:
-        return other.equals(other.op_intersect_intervals(g=g, tg=tg, other=self))
+        return other.op_setic_equals(
+            other.op_intersect_intervals(self, g=g, tg=tg), g=g, tg=tg
+        )
 
     def is_subset_of(
         self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericSet"
     ) -> bool:
         return other.is_superset_of(g=g, tg=tg, other=self)
+
+    def uncertainty_equals(
+        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericSet"
+    ) -> "Booleans":
+        """
+        Check if elements of this set match elements of another.
+
+        Returns a Booleans set based on pairwise element comparison:
+        - {True} if both are identical singletons (all pairs equal)
+        - {False} if sets are disjoint (no equal pairs)
+        - {True, False} if there's overlap but not identical singletons
+        """
+        intersection = self.op_intersect_intervals(other, g=g, tg=tg)
+
+        # Check if disjoint (no overlap)
+        disjoint = intersection.is_empty()
+
+        # Check if both are identical singletons
+        identical_singletons = (
+            self.is_singleton() and other.is_singleton() and self.op_setic_equals(other)
+        )
+
+        result: list[bool] = []
+        if identical_singletons:
+            # Only equal pairs exist
+            result.append(True)
+        elif disjoint:
+            # No equal pairs, only unequal pairs
+            result.append(False)
+        else:
+            # Overlap exists: equal pairs exist (in intersection)
+            # Unequal pairs also exist (since not identical singletons)
+            result.extend([True, False])
+
+        return (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(*result)
+        )
 
     def op_intersect(
         self,
@@ -2352,7 +2519,7 @@ class NumericSet(fabll.Node):
                 return True
         return False
 
-    def equals(
+    def op_setic_equals(
         self,
         value: "NumericSet",
         g: graph.GraphView | None = None,
@@ -2367,7 +2534,7 @@ class NumericSet(fabll.Node):
         if len(self_intervals) != len(value_intervals):
             return False
         for r1, r2 in zip(self_intervals, value_intervals):
-            if not r1.equals(r2):
+            if not r1.op_setic_equals(r2):
                 return False
         return True
 
@@ -2535,41 +2702,60 @@ class TestNumericSet:
         numeric_set.setup_from_values(values=[(0.0, 1.0), (1.0, 2.0)])
         assert not numeric_set.is_empty()
 
-    def test_is_superset_of_true(self):
+    def test_is_superset_of_identical_singletons(self):
+        """Identical singleton sets should be supersets of each other."""
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_1.setup_from_singleton(value=1.0)
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_2.setup_from_singleton(value=1.0)
         assert numeric_set_1.is_superset_of(g=g, tg=tg, other=numeric_set_2)
 
-    def test_is_superset_of_false(self):
+    def test_is_superset_of_disjoint(self):
+        """Disjoint sets should return {False}."""
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_1.setup_from_values(values=[(0.0, 1.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(values=[(0.0, 1.5), (2.0, 3.0)])
+        numeric_set_2.setup_from_values(values=[(2.0, 3.0)])
         assert not numeric_set_1.is_superset_of(g=g, tg=tg, other=numeric_set_2)
 
-    def test_is_subset_of_true(self):
+    def test_uncertainty_equals_identical_singletons(self):
+        """Identical singleton sets should return {True}."""
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_1.setup_from_singleton(value=1.0)
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
-        assert numeric_set_1.is_subset_of(g=g, tg=tg, other=numeric_set_2)
+        numeric_set_2.setup_from_singleton(value=1.0)
+        assert numeric_set_1.uncertainty_equals(
+            g=g, tg=tg, other=numeric_set_2
+        ).op_setic_equals_singleton(True)
 
-    def test_is_subset_of_false(self):
+    def test_uncertainty_equals_disjoint(self):
+        """Disjoint sets should return {False}."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+        numeric_set_1.setup_from_values(values=[(0.0, 1.0)])
+        numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+        numeric_set_2.setup_from_values(values=[(2.0, 3.0)])
+        assert numeric_set_1.uncertainty_equals(
+            g=g, tg=tg, other=numeric_set_2
+        ).op_setic_equals_singleton(False)
+
+    def test_uncertainty_equals_overlapping(self):
+        """Overlapping non-singleton sets should return {True, False}."""
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
         numeric_set_1.setup_from_values(values=[(0.0, 1.5), (2.0, 3.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
         numeric_set_2.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
-        assert not numeric_set_1.is_subset_of(g=g, tg=tg, other=numeric_set_2)
+        result = numeric_set_1.uncertainty_equals(g=g, tg=tg, other=numeric_set_2)
+        assert set(result.get_values()) == {True, False}
 
     def test_op_intersect_intervals_partially_covered(self):
         g = graph.GraphView.create()
@@ -2951,10 +3137,10 @@ class TestNumericSet:
         numeric_set_1.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
         numeric_set_2.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
-        assert numeric_set_1.equals(numeric_set_2)
+        assert numeric_set_1.op_setic_equals(numeric_set_2)
         numeric_set_3 = NumericSet.create_instance(g=g, tg=tg)
         numeric_set_3.setup_from_values(values=[(0.0, 1.0), (2.0, 4.0)])
-        assert not numeric_set_1.equals(numeric_set_3)
+        assert not numeric_set_1.op_setic_equals(numeric_set_3)
 
     def test_repr(self):
         g = graph.GraphView.create()
@@ -3052,7 +3238,18 @@ class Numbers(fabll.Node):
         return cls.MakeChild(min=value, max=value, unit=unit)
 
     @classmethod
-    def MakeChild_ConstrainToSubsetLiteral(
+    def MakeChild_FromCenterRel(
+        cls,
+        center: float,
+        rel: float,
+        unit: type[fabll.Node] | None = None,
+    ) -> fabll._ChildField[Self]:
+        return cls.MakeChild(
+            min=center - rel * center, max=center + rel * center, unit=unit
+        )
+
+    @classmethod
+    def MakeChild_SetSuperset(
         cls,
         param_ref: fabll.RefPath,
         min: float,
@@ -3067,51 +3264,12 @@ class Numbers(fabll.Node):
         return out
 
     @classmethod
-    def MakeChild_ConstrainToLiteral(
-        cls,
-        param_ref: fabll.RefPath,
-        min: float,
-        max: float,
-        unit: type[fabll.Node] | None = None,
-    ) -> fabll._ChildField["F.Expressions.Is"]:
-        """
-        Create a Numbers literal and constrain a parameter to it.
-        Works at type definition time (no g/tg needed).
-
-        Args:
-            param_ref: Reference path to the parameter to constrain
-            min: Minimum value of the interval (or the singleton value if max is None)
-            max: Maximum value of the interval (if None, uses min for singleton)
-            unit: Unit type for the quantity (if None, no has_unit trait is added)
-
-        Returns:
-            A _ChildField representing the Is constraint expression
-        """
-        from faebryk.library.Expressions import Is
-
-        lit = cls.MakeChild(min=min, max=max, unit=unit)
-        out = Is.MakeChild(param_ref, [lit], assert_=True)
-        out.add_dependant(lit, before=True)
-        return out
-
-    @classmethod
-    def MakeChild_FromCenterRel(
-        cls,
-        center: float,
-        rel: float,
-        unit: type[fabll.Node] | None = None,
-    ) -> fabll._ChildField[Self]:
-        return cls.MakeChild(
-            min=center - rel * center, max=center + rel * center, unit=unit
-        )
-
-    @classmethod
-    def MakeChild_ConstrainToSingleton(
+    def MakeChild_SetSingleton(
         cls,
         param_ref: fabll.RefPath,
         value: float,
         unit: type[fabll.Node] | None = None,
-    ) -> fabll._ChildField["F.Expressions.Is"]:
+    ) -> fabll._ChildField["F.Expressions.IsSubset"]:
         """
         Create a singleton Numbers literal and constrain a parameter to it.
         Works at type definition time (no g/tg needed).
@@ -3124,7 +3282,7 @@ class Numbers(fabll.Node):
         Returns:
             A _ChildField representing the Is constraint expression
         """
-        return cls.MakeChild_ConstrainToLiteral(
+        return cls.MakeChild_SetSuperset(
             param_ref=param_ref, min=value, max=value, unit=unit
         )
 
@@ -3316,35 +3474,46 @@ class Numbers(fabll.Node):
 
         return is_unit.is_commensurable_with(self.get_is_unit(), unit)
 
-    def is_superset_of(
+    def op_setic_is_superset_of(
         self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> bool:
-        """
-        Check if this quantity set is a superset of another.
-        Returns False if units are not commensurable.
-        """
         from faebryk.library.Units import is_unit
 
         if not is_unit.is_commensurable_with(self.get_is_unit(), other.get_is_unit()):
+            # Different units means values can never be equal
             return False
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         return self.get_numeric_set().is_superset_of(
             g=g, tg=tg, other=other_converted.get_numeric_set()
         )
 
-    def is_subset_of(
+    def op_setic_is_subset_of(
         self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> bool:
-        """
-        Check if this quantity set is a subset of another.
-        Returns False if units are not commensurable.
-        """
         from faebryk.library.Units import is_unit
 
         if not is_unit.is_commensurable_with(self.get_is_unit(), other.get_is_unit()):
+            # Different units means values can never be equal
             return False
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         return self.get_numeric_set().is_subset_of(
+            g=g, tg=tg, other=other_converted.get_numeric_set()
+        )
+
+    def uncertainty_equals(
+        self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
+    ) -> "Booleans":
+        from faebryk.library.Units import is_unit
+
+        if not is_unit.is_commensurable_with(self.get_is_unit(), other.get_is_unit()):
+            # Different units means values can never be equal
+            return (
+                Booleans.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .setup_from_values(False)
+            )
+        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
+        return self.get_numeric_set().uncertainty_equals(
             g=g, tg=tg, other=other_converted.get_numeric_set()
         )
 
@@ -4230,7 +4399,7 @@ class Numbers(fabll.Node):
         """Return a string representation (same as __repr__ for Numbers)."""
         return self.__repr__()
 
-    def equals(
+    def op_setic_equals(
         self,
         other: "Numbers",
         g: graph.GraphView | None = None,
@@ -4248,7 +4417,7 @@ class Numbers(fabll.Node):
             other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         except UnitsNotCommensurableError:
             return False
-        return self.get_numeric_set().equals(other_converted.get_numeric_set())
+        return self.get_numeric_set().op_setic_equals(other_converted.get_numeric_set())
 
     def contains(
         self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
@@ -4445,7 +4614,12 @@ class Numbers(fabll.Node):
             """
             if math.isinf(number):
                 return "∞" if number > 0 else "-∞"
-            return str(number)
+            str_num = str(number)
+            if "." in str_num:
+                num, digits = str_num.split(".")
+                digits = digits[:PRINT_DIGITS]
+                str_num = f"{num}.{digits}"
+            return str_num
 
         # Get unit symbol
         try:
@@ -5185,8 +5359,8 @@ class TestNumbers:
         with pytest.raises(ValueError, match="target must be a single value"):
             quantity_set.closest_elem(g=g, tg=tg, target=target)
 
-    def test_is_superset_of(self):
-        """Test superset check."""
+    def test_uncertainty_equals_overlapping(self):
+        """Test uncertainty_equals with overlapping ranges."""
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
@@ -5197,35 +5371,64 @@ class TestNumbers:
         quantity_set_1.setup_from_min_max(
             min=0.0, max=10.0, unit=meter_instance.is_unit.get()
         )
-        # Set 2: [2, 5] - smaller
+        # Set 2: [2, 5] - smaller but overlapping
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
             min=2.0, max=5.0, unit=meter_instance.is_unit.get()
         )
 
-        assert quantity_set_1.is_superset_of(g=g, tg=tg, other=quantity_set_2) is True
-        assert quantity_set_2.is_superset_of(g=g, tg=tg, other=quantity_set_1) is False
+        # Overlapping non-singleton ranges should return {True, False}
+        result = quantity_set_1.uncertainty_equals(g=g, tg=tg, other=quantity_set_2)
+        assert set(result.get_values()) == {True, False}
 
-    def test_is_subset_of(self):
-        """Test subset check."""
+    def test_uncertainty_equals(self):
+        """Test uncertainty_equals with identical singletons."""
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         from faebryk.library.Units import Meter
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
-        # Set 1: [0, 10] - larger
+        # Set 1: [5, 5] singleton
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            min=0.0, max=10.0, unit=meter_instance.is_unit.get()
+            min=5.0, max=5.0, unit=meter_instance.is_unit.get()
         )
-        # Set 2: [2, 5] - smaller
+        # Set 2: [5, 5] identical singleton
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            min=2.0, max=5.0, unit=meter_instance.is_unit.get()
+            min=5.0, max=5.0, unit=meter_instance.is_unit.get()
         )
 
-        assert quantity_set_2.is_subset_of(g=g, tg=tg, other=quantity_set_1) is True
-        assert quantity_set_1.is_subset_of(g=g, tg=tg, other=quantity_set_2) is False
+        # Identical singletons should return {True}
+        assert quantity_set_1.uncertainty_equals(
+            g=g, tg=tg, other=quantity_set_2
+        ).op_setic_equals_singleton(True)
+        assert quantity_set_2.uncertainty_equals(
+            g=g, tg=tg, other=quantity_set_1
+        ).op_setic_equals_singleton(True)
+
+    def test_uncertainty_equals_disjoint(self):
+        """Test uncertainty_equals with disjoint ranges."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        from faebryk.library.Units import Meter
+
+        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        # Set 1: [0, 5]
+        quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
+        quantity_set_1.setup_from_min_max(
+            min=0.0, max=5.0, unit=meter_instance.is_unit.get()
+        )
+        # Set 2: [10, 15] - disjoint
+        quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
+        quantity_set_2.setup_from_min_max(
+            min=10.0, max=15.0, unit=meter_instance.is_unit.get()
+        )
+
+        # Disjoint ranges should return {False}
+        assert quantity_set_1.uncertainty_equals(
+            g=g, tg=tg, other=quantity_set_2
+        ).op_setic_equals_singleton(False)
 
     def test_op_intersect(self):
         """Test intersection of two quantity sets."""
@@ -5504,7 +5707,7 @@ class TestNumbers:
         qs1.setup_from_min_max(min=2.0, max=5.0, unit=meter_instance.is_unit.get())
         qs2 = Numbers.create_instance(g=g, tg=tg)
         qs2.setup_from_min_max(min=2.0, max=5.0, unit=meter_instance.is_unit.get())
-        assert qs1.equals(g=g, tg=tg, other=qs2)
+        assert qs1.op_setic_equals(g=g, tg=tg, other=qs2)
 
     def test_eq_different_values(self):
         """Test inequality when values differ."""
@@ -5517,7 +5720,7 @@ class TestNumbers:
         qs1.setup_from_min_max(min=2.0, max=5.0, unit=meter_instance.is_unit.get())
         qs2 = Numbers.create_instance(g=g, tg=tg)
         qs2.setup_from_min_max(min=3.0, max=6.0, unit=meter_instance.is_unit.get())
-        assert not qs1.equals(g=g, tg=tg, other=qs2)
+        assert not qs1.op_setic_equals(g=g, tg=tg, other=qs2)
 
     def test_eq_incompatible_units(self):
         """Test inequality when units are incompatible."""
@@ -5532,7 +5735,7 @@ class TestNumbers:
         qs2 = Numbers.create_instance(g=g, tg=tg)
         qs2.setup_from_min_max(min=2.0, max=5.0, unit=second_instance.is_unit.get())
         # could argue that it should throw, but equals should not throw
-        assert not qs1.equals(qs2, g=g, tg=tg)
+        assert not qs1.op_setic_equals(qs2, g=g, tg=tg)
 
     def test_serialize_api_format(self):
         """Test serialization to API format (Quantity_Interval_Disjoint).
@@ -6083,7 +6286,7 @@ class Counts(fabll.Node):
     def __repr__(self) -> str:
         return f"Counts({self.get_values()})"
 
-    def is_subset_of(
+    def op_setic_is_subset_of(
         self,
         other: "Counts",
         g: graph.GraphView | None = None,
@@ -6091,10 +6294,23 @@ class Counts(fabll.Node):
     ) -> bool:
         return set(self.get_values()) <= set(other.get_values())
 
+    def uncertainty_equals(
+        self,
+        other: "Counts",
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+    ) -> "Booleans":
+        return _countable_uncertainty_equals(
+            set(self.get_values()),
+            set(other.get_values()),
+            g=g or self.g,
+            tg=tg or self.tg,
+        )
+
     def any(self) -> int:
         return next(iter(self.get_values()))
 
-    def equals(
+    def op_setic_equals(
         self,
         other: "Counts",
         g: graph.GraphView | None = None,
@@ -6554,6 +6770,12 @@ class Booleans(fabll.Node):
             )
         return values[0]
 
+    def op_setic_equals_singleton(self, singleton: bool) -> bool:
+        """Check if this Booleans set equals a singleton boolean value."""
+        if not self.is_singleton():
+            return False
+        return self.get_single() is singleton
+
     @classmethod
     def MakeChild(cls, *values: bool) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
         out = fabll._ChildField(cls)
@@ -6568,13 +6790,13 @@ class Booleans(fabll.Node):
         return out
 
     @classmethod
-    def MakeChild_ConstrainToLiteral(
+    def MakeChild_SetSuperset(
         cls, ref: fabll.RefPath, *values: bool
     ) -> fabll._ChildField:
-        from faebryk.library.Expressions import Is
+        from faebryk.library.Expressions import IsSubset
 
         lit = cls.MakeChild(*values)
-        out = Is.MakeChild(ref, [lit], assert_=True)
+        out = IsSubset.MakeChild(ref, [lit], assert_=True)
         out.add_dependant(lit, before=True)
         return out
 
@@ -6703,7 +6925,7 @@ class Booleans(fabll.Node):
         """Check if this set contains only False."""
         return self.get_values() == [False]
 
-    def equals(
+    def op_setic_equals(
         self,
         other: "Booleans",
         *,
@@ -6725,13 +6947,26 @@ class Booleans(fabll.Node):
     def any(self) -> bool:
         return next(iter(self.get_values()))
 
-    def is_subset_of(
+    def op_setic_is_subset_of(
         self,
         other: "Booleans",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> bool:
         return set(self.get_values()) <= set(other.get_values())
+
+    def uncertainty_equals(
+        self,
+        other: "Booleans",
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+    ) -> "Booleans":
+        return _countable_uncertainty_equals(
+            set(self.get_values()),
+            set(other.get_values()),
+            g=g or self.g,
+            tg=tg or self.tg,
+        )
 
     def op_intersect_intervals(
         self,
@@ -6921,18 +7156,20 @@ class AbstractEnums(fabll.Node):
     def is_singleton(self) -> bool:
         return len(self.get_values()) == 1
 
-    def get_single(self) -> str | None:
+    def get_single(self) -> str:
         vals = self.get_values()
         if len(vals) != 1:
-            return None
+            raise ValueError("AbstractEnums is not a singleton")
         return next(iter(vals))
 
     def get_values_typed[T: Enum](self, EnumType: type[T]) -> list[T]:
         return [EnumType(value) for value in self.get_values()]
 
-    def get_single_value_typed[T: Enum](self, EnumType: type[T]) -> T | None:
+    def get_single_value_typed[T: Enum](self, EnumType: type[T]) -> T:
         values = self.get_values()
-        return None if len(values) == 0 else EnumType(values[0])
+        if len(values) != 1:
+            raise ValueError("AbstractEnums is not a singleton")
+        return EnumType(values[0])
 
     @staticmethod
     def get_all_members_of_enum_type(
@@ -6952,7 +7189,7 @@ class AbstractEnums(fabll.Node):
             tg=self.tg,
         )
 
-    def constrain_to_values(self, *values: str) -> Self:
+    def set_superset(self, *values: str) -> Self:
         enum_type_node = AbstractEnums(not_none(self.get_type_node()))
         for value in values:
             self.values.get().append(
@@ -6997,15 +7234,15 @@ class AbstractEnums(fabll.Node):
         return out
 
     @classmethod
-    def MakeChild_ConstrainToLiteral(
+    def MakeChild_SetSuperset(
         cls,
         enum_parameter_ref: fabll.RefPath,
         *enum_members: Enum,
-    ) -> fabll._ChildField["F.Expressions.Is"]:
-        from faebryk.library.Expressions import Is
+    ) -> fabll._ChildField["F.Expressions.IsSubset"]:
+        from faebryk.library.Expressions import IsSubset
 
         lit = cls.MakeChild(*enum_members)
-        out = Is.MakeChild(enum_parameter_ref, [lit], assert_=True)
+        out = IsSubset.MakeChild(enum_parameter_ref, [lit], assert_=True)
         out.add_dependant(lit, before=True)
         return out
 
@@ -7015,7 +7252,7 @@ class AbstractEnums(fabll.Node):
     def is_empty(self) -> bool:
         return not self.get_values()
 
-    def equals(
+    def op_setic_equals(
         self,
         other: "AbstractEnums",
         g: graph.GraphView | None = None,
@@ -7128,17 +7365,30 @@ class AbstractEnums(fabll.Node):
         ]
 
         if selected_values:
-            enum_instance.constrain_to_values(*selected_values)
+            enum_instance.set_superset(*selected_values)
 
         return enum_instance
 
-    def is_subset_of(
+    def op_setic_is_subset_of(
         self,
         other: "AbstractEnums",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> bool:
         return set(self.get_values()) <= set(other.get_values())
+
+    def uncertainty_equals(
+        self,
+        other: "AbstractEnums",
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+    ) -> "Booleans":
+        return _countable_uncertainty_equals(
+            set(self.get_values()),
+            set(other.get_values()),
+            g=g or self.g,
+            tg=tg or self.tg,
+        )
 
     def op_intersect_intervals(
         self,
@@ -7170,7 +7420,7 @@ class AbstractEnums(fabll.Node):
 
         # Constrain the new enum literal to the result
         result_enum_lit = AbstractEnums(self.create_instance_of_same_type())
-        result_enum_lit.constrain_to_values(*result)
+        result_enum_lit.set_superset(*result)
 
         return result_enum_lit
 
@@ -7259,7 +7509,29 @@ LiteralNodesPair = (
 LiteralLike = LiteralValues | LiteralNodes | is_literal
 
 
-def make_simple_lit_singleton(
+@overload
+def make_singleton(
+    g: graph.GraphView, tg: fbrk.TypeGraph, value: bool
+) -> "Booleans": ...
+
+
+@overload
+def make_singleton(
+    g: graph.GraphView, tg: fbrk.TypeGraph, value: float
+) -> "Numbers": ...
+
+
+@overload
+def make_singleton(
+    g: graph.GraphView, tg: fbrk.TypeGraph, value: Enum
+) -> "AbstractEnums": ...
+
+
+@overload
+def make_singleton(g: graph.GraphView, tg: fbrk.TypeGraph, value: str) -> "Strings": ...
+
+
+def make_singleton(
     g: graph.GraphView, tg: fbrk.TypeGraph, value: LiteralValues
 ) -> LiteralNodes:
     if value is True or value is False:
@@ -7453,7 +7725,7 @@ class TestStringLiterals:
         assert type_level_string_set.get_values() == values
 
     def test_string_literal_alias_to_literal(self):
-        from faebryk.library.Parameters import StringParameter, is_parameter_operatable
+        from faebryk.library.Parameters import StringParameter
 
         values = ["a", "b", "c"]
         g = graph.GraphView.create()
@@ -7466,9 +7738,7 @@ class TestStringLiterals:
             def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
                 out = fabll._ChildField(cls)
                 out.add_dependant(
-                    Strings.MakeChild_ConstrainToLiteral(
-                        [out, cls.string_param], *values
-                    )
+                    Strings.MakeChild_SetSuperset([out, cls.string_param], *values)
                 )
                 return out
 
@@ -7477,13 +7747,7 @@ class TestStringLiterals:
 
         my_type_outer = _MyTypeOuter.bind_typegraph(tg=tg).create_instance(g=g)
 
-        lit = is_parameter_operatable.try_get_constrained_literal(
-            my_type_outer.my_type.get()
-            .string_param.get()
-            .is_parameter_operatable.get(),
-            Strings,
-        )
-        assert lit
+        lit = my_type_outer.my_type.get().string_param.get().force_extract_superset()
         assert lit.get_values() == values
 
     def test_string_literal_is_singleton(self):

@@ -23,13 +23,13 @@ class has_net_name_suggestion(fabll.Node):
     def MakeChild(cls, name: str, level: "Level | str") -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.name_], name)
+            F.Literals.Strings.MakeChild_SetSuperset([out, cls.name_], name)
         )
         # Accept string from ato template syntax and convert to enum
         if isinstance(level, str):
             level = cls.Level[level]
         out.add_dependant(
-            F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+            F.Literals.AbstractEnums.MakeChild_SetSuperset(
                 [out, cls.level_],
                 level,
             )
@@ -38,11 +38,8 @@ class has_net_name_suggestion(fabll.Node):
 
     @property
     def name(self) -> str:
-        return self.name_.get().force_extract_literal().get_values()[0]
+        return self.name_.get().extract_singleton()
 
     @property
     def level(self) -> Level | None:
-        level_literal = self.level_.get().try_extract_constrained_literal()
-        if level_literal is None:
-            return None
-        return self.Level(level_literal.get_values()[0])
+        return self.level_.get().try_extract_singleton_typed(self.Level)

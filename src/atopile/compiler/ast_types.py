@@ -382,7 +382,7 @@ class BinaryExpression(fabll.Node):
     ) -> Self:
         operator_ = self.BinaryOperator(operator)
         self.source.get().setup(source_info=source_info)
-        self.operator.get().alias_to_literal(operator_)
+        self.operator.get().set_superset(operator_)
 
         lhs_node = fabll.Traits(lhs).get_obj_raw()
         self.lhs.get().point(lhs_node)
@@ -401,7 +401,7 @@ class BinaryExpression(fabll.Node):
         return self.rhs.get().deref().get_trait(is_arithmetic)
 
     def get_operator(self) -> "BinaryExpression.BinaryOperator":
-        value = self.operator.get().force_extract_literal().get_single()
+        value = self.operator.get().force_extract_singleton()
         return self.BinaryOperator(value)
 
 
@@ -444,7 +444,7 @@ class ComparisonClause(fabll.Node):
     ) -> Self:
         operator_ = self.ComparisonOperator(operator)
         self.source.get().setup(source_info=source_info)
-        self.operator.get().alias_to_literal(operator_)
+        self.operator.get().set_superset(operator_)
         rhs_node = fabll.Traits(rhs).get_obj_raw()
         self.rhs.get().point(rhs_node)
         _add_anon_child(self, rhs_node)
@@ -453,8 +453,8 @@ class ComparisonClause(fabll.Node):
     def get_rhs(self) -> is_arithmetic:
         return self.rhs.get().deref().get_trait(is_arithmetic)
 
-    def get_operator(self) -> str | None:
-        return self.operator.get().force_extract_literal().get_single()
+    def get_operator(self) -> str:
+        return self.operator.get().force_extract_singleton()
 
 
 class ComparisonExpression(fabll.Node):
@@ -628,7 +628,7 @@ class BlockDefinition(fabll.Node):
     ) -> Self:
         block_type_ = self.BlockType(block_type)
         self.source.get().setup(source_info=source_info)
-        self.block_type.get().alias_to_literal(block_type_)
+        self.block_type.get().set_superset(block_type_)
 
         self.type_ref.get().setup(name=type_ref_name, source_info=type_ref_source_info)
 
@@ -642,7 +642,7 @@ class BlockDefinition(fabll.Node):
         return self
 
     def get_block_type(self) -> BlockType:
-        block_type = self.block_type.get().force_extract_literal().get_single_value()
+        block_type = self.block_type.get().force_extract_singleton()
         return self.BlockType(block_type)
 
     def get_type_ref_name(self) -> str:
@@ -851,7 +851,7 @@ class TemplateArg(fabll.Node):
     ) -> Self:
         self.source.get().setup(source_info=source_info)
         self.name.get().setup_from_values(name)
-        lit = F.Literals.make_simple_lit_singleton(g=self.g, tg=self.tg, value=value)
+        lit = F.Literals.make_singleton(g=self.g, tg=self.tg, value=value)
         self.value.get().point(lit)
         _add_anon_child(self, lit)
         return self
@@ -1122,12 +1122,10 @@ class PinDeclaration(fabll.Node):
         label_value: "LiteralT | None" = None,
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.kind.get().alias_to_literal(kind)
+        self.kind.get().set_superset(kind)
 
         if label_value is not None:
-            lit = F.Literals.make_simple_lit_singleton(
-                g=self.g, tg=self.tg, value=label_value
-            )
+            lit = F.Literals.make_singleton(g=self.g, tg=self.tg, value=label_value)
             self.label.get().point(lit)
             _add_anon_child(self, lit)
 

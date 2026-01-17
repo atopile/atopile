@@ -7,7 +7,6 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.app.designators import attach_random_designators
-from faebryk.libs.util import not_none
 
 
 class has_designator(fabll.Node):
@@ -15,21 +14,18 @@ class has_designator(fabll.Node):
     designator_ = F.Parameters.StringParameter.MakeChild()
 
     def get_designator(self) -> str:
-        literal = self.designator_.get().try_extract_constrained_literal()
-        return not_none(literal).get_single()
+        return self.designator_.get().extract_singleton()
 
     @classmethod
     def MakeChild(cls, designator: str) -> fabll._ChildField:
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.designator_], designator
-            )
+            F.Literals.Strings.MakeChild_SetSuperset([out, cls.designator_], designator)
         )
         return out
 
     def setup(self, designator: str) -> Self:
-        self.designator_.get().alias_to_single(value=designator)
+        self.designator_.get().set_singleton(value=designator)
         return self
 
 

@@ -1877,31 +1877,26 @@ pub const TypeGraph = struct {
                         // 2.4) Copy node attributes from MakeChild node to child instance
                         MakeChildNode.Attributes.of(info.make_child).load_node_attributes(child.node);
 
-                        // 2.5) If MakeChild has a has_source_chunk trait, copy it onto the child instance
-                        if (self.type_graph.get_type_by_name("has_source_chunk")) |has_source_chunk_type| {
-                            if (Trait.try_get_trait(info.make_child, has_source_chunk_type)) |source_trait| {
-                                // Extract the source chunk node from the MakeChild trait pointer
-                                if (EdgeComposition.get_child_by_identifier(source_trait, "source_ptr")) |source_ptr| {
-                                    if (EdgePointer.get_pointed_node_by_identifier(source_ptr, "source")) |source_chunk| {
-                                        // Instantiate the trait on the child instance
-                                        switch (self.type_graph.instantiate_node(has_source_chunk_type)) {
-                                            .ok => |trait_instance| {
-                                                // Attach trait to the child instance
-                                                const trait_edge = EdgeTrait.add_trait_instance(child, trait_instance.node);
-                                                trait_edge.edge.set_attribute_name("has_source_chunk");
+                        // 2.5) If MakeChild has a source pointer, attach has_source_chunk trait
+                        if (EdgePointer.get_pointed_node_by_identifier(info.make_child, "source")) |source_chunk| {
+                            if (self.type_graph.get_type_by_name("has_source_chunk")) |has_source_chunk_type| {
+                                // Instantiate the trait
+                                switch (self.type_graph.instantiate_node(has_source_chunk_type)) {
+                                    .ok => |trait_instance| {
+                                        // Attach trait to the child instance
+                                        const trait_edge = EdgeTrait.add_trait_instance(child, trait_instance.node);
+                                        trait_edge.edge.set_attribute_name("has_source_chunk");
 
-                                                // TODO: remove hardcoded source pointer and pointer edge identifiers
-                                                // Find the source_ptr child of the trait and point it to the source chunk
-                                                if (EdgeComposition.get_child_by_identifier(trait_instance, "source_ptr")) |trait_source_ptr| {
-                                                    _ = EdgePointer.point_to(trait_source_ptr, source_chunk.node, "source", null);
-                                                }
-                                            },
-                                            .err => {
-                                                std.debug.print("Failed to instantiate has_source_chunk trait while executing MakeChild\n", .{});
-                                                return visitor.VisitResult(void){ .ERROR = error.InstantiationFailed };
-                                            },
+                                        // TODO: remove hardcoded source pointer and pointer edge identifiers
+                                        // Find the source_ptr child of the trait and point it to the source chunk
+                                        if (EdgeComposition.get_child_by_identifier(trait_instance, "source_ptr")) |source_ptr| {
+                                            _ = EdgePointer.point_to(source_ptr, source_chunk.node, "source", null);
                                         }
-                                    }
+                                    },
+                                    .err => {
+                                        std.debug.print("Failed to instantiate has_source_chunk trait while executing MakeChild\n", .{});
+                                        return visitor.VisitResult(void){ .ERROR = error.InstantiationFailed };
+                                    },
                                 }
                             }
                         }

@@ -26,6 +26,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 from faebryk.libs.util import (
     KeyErrorNotFound,
+    OrderedSet,
     indented_container,
     not_none,
     once,
@@ -246,9 +247,23 @@ class _ChildField[T: NodeT](Field, ChildAccessor[T]):
             else:
                 self._dependants.append(d)
 
+    def add_as_dependant(
+        self,
+        to: "_ChildField[Any]",
+        identifier: str | None = None,
+        before: bool = False,
+    ) -> Self:
+        to.add_dependant(self, identifier=identifier, before=before)
+        return self
+
     def __repr__(self) -> str:
+        nodetype_name = (
+            self.nodetype.__qualname__
+            if isinstance(self.nodetype, type)
+            else self.nodetype
+        )
         return (
-            f"ChildField(nodetype={self.nodetype.__qualname__},"
+            f"ChildField(nodetype={nodetype_name},"
             f" identifier={self.identifier}, attributes={self.attributes})"
             f" dependants={indented_container(self._dependants)}, "
             f"prepend_dependants={indented_container(self._prepend_dependants)})"
@@ -1548,7 +1563,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
         def _to_str(p: NodeT) -> str:
             return (
-                solver.inspect_get_known_supersets(
+                solver.extract_superset(
                     p.get_trait(Parameters.is_parameter)
                 ).pretty_str()
                 if solver
@@ -1891,11 +1906,14 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         raise NotImplementedError("nodes_with_traits is not implemented")
 
     @deprecated("Use get_instances instead")
-    def nodes_of_type[N2: Node](self, t: type[N2]) -> set[N2]:
-        return set(t.bind_typegraph(self.tg).get_instances())
+    def nodes_of_type[N2: Node](self, t: type[N2]) -> OrderedSet[N2]:
+        return OrderedSet(t.bind_typegraph(self.tg).get_instances())
 
-    def nodes_of_types(self, t: tuple[type["Node"], ...]) -> set["Node"]:
-        return {n for tn in t for n in tn.bind_typegraph(self.tg).get_instances()}
+    def nodes_of_types(self, t: tuple[type["Node"], ...]) -> OrderedSet["Node"]:
+        out: OrderedSet[Node] = OrderedSet()
+        for tn in t:
+            out.update(tn.bind_typegraph(self.tg).get_instances())
+        return out
 
     # construction ---------------------------------------------------------------------
     def MakeChild[C: NodeT](
@@ -1955,16 +1973,26 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
             edge_attributes=edge,
         )
 
-    def check_if_instance_of_type_has_trait(self, trait: type[NodeT]) -> bool:
-        children = Node.bind_instance(instance=self.get_or_create_type()).get_children(
-            direct_only=True, types=MakeChild, tg=self.tg
+    @staticmethod
+    def has_instance_of_type_has_trait(
+        type_node: graph.BoundNode, trait: type[NodeT]
+    ) -> bool:
+        tg = fbrk.TypeGraph.of_type(type_node=type_node)
+        assert tg
+        children = Node.bind_instance(instance=type_node).get_children(
+            direct_only=True, types=MakeChild, tg=tg
         )
-        bound_trait = TypeNodeBoundTG.get_or_create_type_in_tg(self.tg, trait)
+        bound_trait = TypeNodeBoundTG.get_or_create_type_in_tg(tg, trait)
         for child in children:
             child_type = child.get_child_type()
             if child_type.node().is_same(other=bound_trait.node()):
                 return True
         return False
+
+    def check_if_instance_of_type_has_trait(self, trait: type[NodeT]) -> bool:
+        return self.has_instance_of_type_has_trait(
+            type_node=self.get_or_create_type(), trait=trait
+        )
 
     @staticmethod
     def try_get_trait_of_type[T: NodeT](
@@ -2940,20 +2968,17 @@ def test_string_param():
     ctx = F.Parameters.BoundParameterContext(tg=tg, g=g)
 
     string_p = ctx.StringParameter
-    string_p.alias_to_single(value="IG constrained")
-    assert string_p.force_extract_literal().get_values()[0] == "IG constrained"
+    string_p.set_singleton(value="IG constrained")
+    assert string_p.extract_singleton() == "IG constrained"
 
     class ExampleStringParameter(Node):
         string_p_tg = F.Parameters.StringParameter.MakeChild()
-        constraint = F.Literals.Strings.MakeChild_ConstrainToLiteral(
+        constraint = F.Literals.Strings.MakeChild_SetSuperset(
             [string_p_tg], "TG constrained"
         )
 
     esp = ExampleStringParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    assert (
-        esp.string_p_tg.get().force_extract_literal().get_values()[0]
-        == "TG constrained"
-    )
+    assert esp.string_p_tg.get().extract_singleton() == "TG constrained"
 
 
 def test_boolean_param():
@@ -2961,17 +2986,15 @@ def test_boolean_param():
     import faebryk.library._F as F
 
     boolean_p = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    boolean_p.alias_to_single(value=True)
-    assert boolean_p.force_extract_literal().get_values()
+    boolean_p.set_singleton(value=True)
+    assert boolean_p.force_extract_superset().get_values()
 
     class ExampleBooleanParameter(Node):
         boolean_p_tg = F.Parameters.BooleanParameter.MakeChild()
-        constraint = F.Literals.Booleans.MakeChild_ConstrainToLiteral(
-            [boolean_p_tg], True
-        )
+        constraint = F.Literals.Booleans.MakeChild_SetSuperset([boolean_p_tg], True)
 
     ebp = ExampleBooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    assert ebp.boolean_p_tg.get().force_extract_literal().get_values()
+    assert ebp.boolean_p_tg.get().force_extract_superset().get_values()
 
 
 def test_node_equality():

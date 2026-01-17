@@ -22,22 +22,20 @@ class has_usage_example(fabll.Node):
 
     @property
     def example(self) -> str:
-        return str(self.example_.get().force_extract_literal().get_values()[0])
+        return self.example_.get().extract_singleton()
 
     @property
-    def language(self) -> str:
-        return str(self.language_.get().force_extract_literal().get_values()[0])
+    def language(self) -> Language:
+        return self.language_.get().force_extract_singleton_typed(self.Language)
 
     @classmethod
     def MakeChild(cls, example: str, language: Language) -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.example_], example
-            )
+            F.Literals.Strings.MakeChild_SetSuperset([out, cls.example_], example)
         )
         out.add_dependant(
-            F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+            F.Literals.AbstractEnums.MakeChild_SetSuperset(
                 [out, cls.language_], language
             )
         )

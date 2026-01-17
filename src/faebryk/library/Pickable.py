@@ -24,12 +24,12 @@ class has_mpn_assigned(fabll.Node):
     def MakeChild(cls, mpn: str) -> fabll._ChildField:
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.mpn_], mpn)
+            F.Literals.Strings.MakeChild_SetSuperset([out, cls.mpn_], mpn)
         )
         return out
 
     def get_mpn(self) -> str:
-        return self.mpn_.get().force_extract_literal().get_single()
+        return self.mpn_.get().extract_singleton()
 
 
 class has_mfr_assigned(fabll.Node):
@@ -40,12 +40,12 @@ class has_mfr_assigned(fabll.Node):
     def MakeChild(cls, mfr: str) -> fabll._ChildField:
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.mfr_], mfr)
+            F.Literals.Strings.MakeChild_SetSuperset([out, cls.mfr_], mfr)
         )
         return out
 
     def get_manufacturer(self) -> str:
-        return self.mfr_.get().force_extract_literal().get_single()
+        return self.mfr_.get().extract_singleton()
 
 
 class is_pickable(fabll.Node):
@@ -110,7 +110,7 @@ class is_pickable_by_type(fabll.Node):
 
     @property
     def endpoint(self) -> str:
-        return str(self.endpoint_.get().force_extract_literal().get_single())
+        return self.endpoint_.get().force_extract_singleton()
 
     @property
     def pick_type(self) -> graph.BoundNode:
@@ -124,7 +124,7 @@ class is_pickable_by_type(fabll.Node):
     def MakeChild(cls, endpoint: Endpoint, params: dict[str, fabll._ChildField]):
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+            F.Literals.AbstractEnums.MakeChild_SetSuperset(
                 [out, cls.endpoint_], endpoint
             )
         )
@@ -168,16 +168,16 @@ class is_pickable_by_supplier_id(fabll.Node):
         LCSC = auto()
 
     def get_supplier_part_id(self) -> str:
-        return str(self.supplier_part_id_.get().force_extract_literal().get_values()[0])
+        return str(self.supplier_part_id_.get().extract_singleton())
 
     def get_supplier(self) -> str:
-        return str(self.supplier_.get().force_extract_literal().get_values()[0])
+        return str(self.supplier_.get().extract_singleton())
 
     def setup(
         self, supplier_part_id: str, supplier: "is_pickable_by_supplier_id.Supplier"
     ) -> Self:
-        self.supplier_part_id_.get().alias_to_literal(supplier_part_id)
-        self.supplier_.get().alias_to_literal(supplier.name)
+        self.supplier_part_id_.get().set_superset(supplier_part_id)
+        self.supplier_.get().set_superset(supplier.name)
         return self
 
     @classmethod
@@ -186,12 +186,12 @@ class is_pickable_by_supplier_id(fabll.Node):
     ) -> fabll._ChildField:
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_SetSuperset(
                 [out, cls.supplier_part_id_], supplier_part_id
             )
         )
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_SetSuperset(
                 [out, cls.supplier_], supplier.name
             )
         )
@@ -225,26 +225,26 @@ class is_pickable_by_part_number(fabll.Node):
         return None
 
     def get_manufacturer(self) -> str:
-        return self.manufacturer_.get().force_extract_literal().get_values()[0]
+        return self.manufacturer_.get().extract_singleton()
 
     def get_partno(self) -> str:
-        return self.partno_.get().force_extract_literal().get_values()[0]
+        return self.partno_.get().extract_singleton()
 
     def setup(self, manufacturer: str, partno: str) -> Self:
-        self.manufacturer_.get().alias_to_literal(manufacturer)
-        self.partno_.get().alias_to_literal(partno)
+        self.manufacturer_.get().set_superset(manufacturer)
+        self.partno_.get().set_superset(partno)
         return self
 
     @classmethod
     def MakeChild(cls, manufacturer: str, partno: str) -> fabll._ChildField:
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_SetSuperset(
                 [out, cls.manufacturer_], manufacturer
             )
         )
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.partno_], partno)
+            F.Literals.Strings.MakeChild_SetSuperset([out, cls.partno_], partno)
         )
         return out
 
@@ -264,32 +264,21 @@ class has_part_picked(fabll.Node):
     def try_get_part(self) -> "PickedPart | None":
         from faebryk.libs.picker.lcsc import PickedPartLCSC
 
-        if manufacturer := self.manufacturer.get().try_extract_constrained_literal():
-            manufacturer = manufacturer.get_values()[0]
-        else:
+        if not (manufacturer := self.manufacturer.get().try_extract_singleton()):
             return None
 
-        if partno := self.partno.get().try_extract_constrained_literal():
-            partno = partno.get_values()[0]
-        else:
+        if not (partno := self.partno.get().try_extract_singleton()):
             return None
 
-        if (
-            supplier_partno
-            := self.supplier_partno.get().try_extract_constrained_literal()
-        ):
-            supplier_partno = supplier_partno.get_values()[0]
-        else:
+        if not (supplier_partno := self.supplier_partno.get().try_extract_singleton()):
             return None
 
-        if (
-            not (
-                supplier_id := self.supplier_id.get().try_extract_constrained_literal()
-            )
-            or not supplier_id.is_singleton()
-            or supplier_id.get_single() != "lcsc"
-        ):
+        if not (supplier_id := self.supplier_id.get().try_extract_singleton()):
+            return None
+
+        if supplier_id != "lcsc":
             raise ValueError(f"Supplier {supplier_id} not supported")
+
         return PickedPartLCSC(
             manufacturer=manufacturer,
             partno=partno,
@@ -311,30 +300,30 @@ class has_part_picked(fabll.Node):
         """Create a child field with part info constraints."""
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_SetSuperset(
                 [out, cls.manufacturer], manufacturer
             )
         )
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.partno], partno)
+            F.Literals.Strings.MakeChild_SetSuperset([out, cls.partno], partno)
         )
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_SetSuperset(
                 [out, cls.supplier_partno], supplier_partno
             )
         )
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_SetSuperset(
                 [out, cls.supplier_id], supplier_id
             )
         )
         return out
 
     def setup(self, picked_part: "PickedPart") -> Self:
-        self.manufacturer.get().alias_to_single(value=picked_part.manufacturer)
-        self.partno.get().alias_to_single(value=picked_part.partno)
-        self.supplier_partno.get().alias_to_single(value=picked_part.supplier_partno)
-        self.supplier_id.get().alias_to_single(value=picked_part.supplier.supplier_id)
+        self.manufacturer.get().set_singleton(value=picked_part.manufacturer)
+        self.partno.get().set_singleton(value=picked_part.partno)
+        self.supplier_partno.get().set_singleton(value=picked_part.supplier_partno)
+        self.supplier_id.get().set_singleton(value=picked_part.supplier.supplier_id)
         return self
 
     def by_supplier(
@@ -344,10 +333,10 @@ class has_part_picked(fabll.Node):
         Instance method alternative to the classmethod factory.
         Used by AtoCodeParse when parsing traits from ato files.
         """
-        self.manufacturer.get().alias_to_single(value=manufacturer)
-        self.partno.get().alias_to_single(value=partno)
-        self.supplier_partno.get().alias_to_single(value=supplier_partno)
-        self.supplier_id.get().alias_to_single(value=supplier_id)
+        self.manufacturer.get().set_singleton(value=manufacturer)
+        self.partno.get().set_singleton(value=partno)
+        self.supplier_partno.get().set_singleton(value=supplier_partno)
+        self.supplier_id.get().set_singleton(value=supplier_id)
         return self
 
 

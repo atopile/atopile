@@ -51,12 +51,12 @@ class has_associated_kicad_pcb_footprint(fabll.Node):
 
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_SetSuperset(
                 [out, cls.kicad_identifier_], kicad_identifier
             )
         )
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_SetSuperset(
                 [out, cls.library_name_], library_name
             )
         )
@@ -77,34 +77,30 @@ class has_associated_kicad_pcb_footprint(fabll.Node):
         self._footprint_registry[id(footprint)] = footprint
         self._transformer_registry[id(transformer)] = transformer
 
-        self.footprint_.get().alias_to_single(value=str(id(footprint)))
-        self.transformer_.get().alias_to_single(value=str(id(transformer)))
+        self.footprint_.get().set_singleton(value=str(id(footprint)))
+        self.transformer_.get().set_singleton(value=str(id(transformer)))
 
         kicad_identifier = footprint.name
         library_name = footprint.name.split(":")[0]
-        self.kicad_identifier_.get().alias_to_single(value=kicad_identifier)
-        self.library_name_.get().alias_to_single(value=library_name)
+        self.kicad_identifier_.get().set_singleton(value=kicad_identifier)
+        self.library_name_.get().set_singleton(value=library_name)
         return self
 
     def get_footprint(self) -> KiCadPCBFootprint:
-        footprint_id = int(
-            self.footprint_.get().force_extract_literal().get_values()[0]
-        )
+        footprint_id = int(self.footprint_.get().extract_singleton())
         return ctypes.cast(footprint_id, ctypes.py_object).value
 
     def get_transformer(self) -> "PCB_Transformer":
-        transformer_id = int(
-            self.transformer_.get().force_extract_literal().get_values()[0]
-        )
+        transformer_id = int(self.transformer_.get().extract_singleton())
         return ctypes.cast(transformer_id, ctypes.py_object).value
 
     @property
     def kicad_identifier(self) -> str:
-        return self.kicad_identifier_.get().force_extract_literal().get_values()[0]
+        return self.kicad_identifier_.get().extract_singleton()
 
     @property
     def library_name(self) -> str:
-        return self.library_name_.get().force_extract_literal().get_values()[0]
+        return self.library_name_.get().extract_singleton()
 
 
 class has_associated_kicad_pcb_pad(fabll.Node):
@@ -157,29 +153,25 @@ class has_associated_kicad_pcb_pad(fabll.Node):
         self._pad_registry[id(pads)] = pads
         self._transformer_registry[id(transformer)] = transformer
 
-        self.footprint_.get().alias_to_single(value=str(id(footprint)))
-        self.transformer_.get().alias_to_single(value=str(id(transformer)))
-        self.pad_.get().alias_to_single(value=str(id(pads)))
+        self.footprint_.get().set_singleton(value=str(id(footprint)))
+        self.transformer_.get().set_singleton(value=str(id(transformer)))
+        self.pad_.get().set_singleton(value=str(id(pads)))
         return self
 
     def get_pads(self) -> tuple[KiCadPCBFootprint, list[KiCadPCBPad]]:
-        footprint_id = int(
-            self.footprint_.get().force_extract_literal().get_values()[0]
-        )
-        pad_id = int(self.pad_.get().force_extract_literal().get_values()[0])
+        footprint_id = int(self.footprint_.get().extract_singleton())
+        pad_id = int(self.pad_.get().extract_singleton())
         return (
             ctypes.cast(footprint_id, ctypes.py_object).value,
             ctypes.cast(pad_id, ctypes.py_object).value,
         )
 
     def get_pad(self) -> KiCadPCBPad:
-        pad_id = int(self.pad_.get().force_extract_literal().get_values()[0])
+        pad_id = int(self.pad_.get().extract_singleton())
         return ctypes.cast(pad_id, ctypes.py_object).value[0]
 
     def get_transformer(self) -> "PCB_Transformer":
-        transformer_id = int(
-            self.transformer_.get().force_extract_literal().get_values()[0]
-        )
+        transformer_id = int(self.transformer_.get().extract_singleton())
         return ctypes.cast(transformer_id, ctypes.py_object).value
 
 
@@ -218,18 +210,16 @@ class has_associated_kicad_pcb_net(fabll.Node):
         self._net_registry[id(net)] = net
         self._transformer_registry[id(transformer)] = transformer
 
-        self.net_.get().alias_to_single(value=str(id(net)))
-        self.transformer_.get().alias_to_single(value=str(id(transformer)))
+        self.net_.get().set_singleton(value=str(id(net)))
+        self.transformer_.get().set_singleton(value=str(id(transformer)))
         return self
 
     def get_net(self) -> KiCadPCBNet:
-        net_id = int(self.net_.get().force_extract_literal().get_values()[0])
+        net_id = int(self.net_.get().extract_singleton())
         return ctypes.cast(net_id, ctypes.py_object).value
 
     def get_transformer(self) -> "PCB_Transformer":
-        transformer_id = int(
-            self.transformer_.get().force_extract_literal().get_values()[0]
-        )
+        transformer_id = int(self.transformer_.get().extract_singleton())
         return ctypes.cast(transformer_id, ctypes.py_object).value
 
 
@@ -240,22 +230,22 @@ class has_associated_kicad_library_footprint(fabll.Node):
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
     kicad_footprint_file_path_ = F.Parameters.StringParameter.MakeChild()
-    pad_names_ = F.Parameters.StringParameter.MakeChild()
+    pad_names_ = F.Collections.PointerSequence.MakeChild()
     kicad_identifier_ = F.Parameters.StringParameter.MakeChild()
     library_name_ = F.Parameters.StringParameter.MakeChild()
 
     @property
     def library_name(self) -> str:
-        lit = self.library_name_.get().try_extract_constrained_literal()
+        lit = self.library_name_.get().try_extract_singleton()
         if lit is not None:
-            return lit.get_values()[0]
+            return lit
         return Path(self.kicad_footprint_file_path).parent.name
 
     @property
     def kicad_identifier(self) -> str:
-        lit = self.kicad_identifier_.get().try_extract_constrained_literal()
+        lit = self.kicad_identifier_.get().try_extract_singleton()
         if lit is not None:
-            return lit.get_values()[0]
+            return lit
         return f"{self.library_name}:{Path(self.kicad_footprint_file_path).stem}"
 
     @property
@@ -269,8 +259,8 @@ class has_associated_kicad_library_footprint(fabll.Node):
         """
         param = self.kicad_footprint_file_path_.get()
 
-        if lit := param.try_extract_constrained_literal():
-            return lit.get_values()[0]
+        if lit := param.try_extract_singleton():
+            return lit
 
         raise ValueError(
             "kicad_footprint_file_path not set. "
@@ -279,7 +269,10 @@ class has_associated_kicad_library_footprint(fabll.Node):
 
     @property
     def pad_names(self) -> list[str]:
-        return self.pad_names_.get().force_extract_literal().get_values()
+        return [
+            lit.cast(F.Literals.Strings).get_single()
+            for lit in self.pad_names_.get().as_list()
+        ]
 
     @staticmethod
     def _extract_pad_names_from_kicad_footprint_file(
@@ -333,7 +326,7 @@ class has_associated_kicad_library_footprint(fabll.Node):
         fp_path = Path(kicad_footprint_file_path)
 
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_SetSuperset(
                 [out, cls.kicad_footprint_file_path_], kicad_footprint_file_path
             )
         )
@@ -345,20 +338,16 @@ class has_associated_kicad_library_footprint(fabll.Node):
         )
 
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_SetSuperset(
                 [out, cls.kicad_identifier_], kicad_identifier
             )
         )
         pad_names = cls._extract_pad_names_from_kicad_footprint_file(fp_file)
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.pad_names_], *pad_names
-            )
+            F.Literals.Strings.MakeChild_SetSuperset([out, cls.pad_names_], *pad_names)
         )
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.library_name_], lib_name
-            )
+            F.Literals.Strings.MakeChild_SetSuperset([out, cls.library_name_], lib_name)
         )
         return out
 
@@ -368,18 +357,22 @@ class has_associated_kicad_library_footprint(fabll.Node):
         library_name: str | None,
     ) -> Self:
         fp_path = Path(kicad_footprint_file_path)
-        self.kicad_footprint_file_path_.get().alias_to_literal(
-            kicad_footprint_file_path
-        )
+        self.kicad_footprint_file_path_.get().set_superset(kicad_footprint_file_path)
 
         fp_file = kicad.loads(kicad.footprint.FootprintFile, fp_path)
         pad_names = self._extract_pad_names_from_kicad_footprint_file(fp_file)
-        self.pad_names_.get().alias_to_literal(*pad_names)
+        pad_name_lits = [
+            F.Literals.Strings.bind_typegraph_from_instance(instance=self.instance)
+            .create_instance(g=self.instance.g())
+            .setup_from_values(name)
+            for name in pad_names
+        ]
+        self.pad_names_.get().append(*pad_name_lits)
         kicad_identifier, lib_name = self._create_kicad_identifier(
             fp_file, library_name, kicad_footprint_file_path
         )
-        self.kicad_identifier_.get().alias_to_literal(kicad_identifier)
-        self.library_name_.get().alias_to_literal(lib_name)
+        self.kicad_identifier_.get().set_superset(kicad_identifier)
+        self.library_name_.get().set_superset(lib_name)
         return self
 
 

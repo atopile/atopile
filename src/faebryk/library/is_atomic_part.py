@@ -54,26 +54,22 @@ class is_atomic_part(fabll.Node):
 
         # Constrain string parameters
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_SetSuperset(
                 [out, cls.manufacturer], manufacturer
             )
         )
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.partnumber], partnumber
-            )
+            F.Literals.Strings.MakeChild_SetSuperset([out, cls.partnumber], partnumber)
         )
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.footprint], footprint
-            )
+            F.Literals.Strings.MakeChild_SetSuperset([out, cls.footprint], footprint)
         )
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.symbol], symbol)
+            F.Literals.Strings.MakeChild_SetSuperset([out, cls.symbol], symbol)
         )
         if model is not None:
             out.add_dependant(
-                F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.model], model)
+                F.Literals.Strings.MakeChild_SetSuperset([out, cls.model], model)
             )
 
         owner_path: fabll.RefPath = fabll.SELF_OWNER_PLACEHOLDER
@@ -95,20 +91,19 @@ class is_atomic_part(fabll.Node):
         return out
 
     def get_manufacturer(self) -> str:
-        return self.manufacturer.get().force_extract_literal().get_values()[0]
+        return self.manufacturer.get().extract_singleton()
 
     def get_partnumber(self) -> str:
-        return self.partnumber.get().force_extract_literal().get_values()[0]
+        return self.partnumber.get().extract_singleton()
 
     def get_footprint(self) -> str:
-        return self.footprint.get().force_extract_literal().get_values()[0]
+        return self.footprint.get().extract_singleton()
 
     def get_symbol(self) -> str:
-        return self.symbol.get().force_extract_literal().get_values()[0]
+        return self.symbol.get().extract_singleton()
 
     def get_model(self) -> str | None:
-        literal = self.model.get().try_extract_constrained_literal()
-        return None if literal is None else literal.get_values()[0]
+        return self.model.get().try_extract_singleton()
 
     def get_source_dir(self) -> Path:
         """Get source directory from owner's is_ato_block trait."""
@@ -135,7 +130,7 @@ class is_atomic_part(fabll.Node):
         )
 
         # Check if already set up (has literal value)
-        if kicad_lib_fp.kicad_footprint_file_path_.get().try_extract_constrained_literal():  # noqa: E501
+        if kicad_lib_fp.kicad_footprint_file_path_.get().try_extract_singleton():
             return kicad_lib_fp
 
         # Lazily set up the trait with computed values
@@ -154,10 +149,10 @@ class is_atomic_part(fabll.Node):
         symbol: str,
         model: str | None = None,
     ) -> Self:
-        self.manufacturer.get().alias_to_single(value=manufacturer)
-        self.partnumber.get().alias_to_single(value=partnumber)
-        self.footprint.get().alias_to_single(value=footprint)
-        self.symbol.get().alias_to_single(value=symbol)
+        self.manufacturer.get().set_singleton(value=manufacturer)
+        self.partnumber.get().set_singleton(value=partnumber)
+        self.footprint.get().set_singleton(value=footprint)
+        self.symbol.get().set_singleton(value=symbol)
         if model is not None:
-            self.model.get().alias_to_single(value=model)
+            self.model.get().set_singleton(value=model)
         return self

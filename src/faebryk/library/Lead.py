@@ -105,10 +105,8 @@ class can_attach_to_pad_by_name(fabll.Node):
 
     @property
     def compiled_regex(self) -> re.Pattern:
-        case_sensitive = (
-            self.case_sensitive_.get().force_extract_literal().get_boolean_values()[0]
-        )
-        regex = self.regex_.get().force_extract_literal().get_values()[0]
+        case_sensitive = self.case_sensitive_.get().force_extract_singleton()
+        regex = self.regex_.get().extract_singleton()
         try:
             return re.compile(
                 regex,
@@ -125,18 +123,18 @@ class can_attach_to_pad_by_name(fabll.Node):
     ) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.regex_], regex)
+            F.Literals.Strings.MakeChild_SetSuperset([out, cls.regex_], regex)
         )
         out.add_dependant(
-            F.Literals.Booleans.MakeChild_ConstrainToLiteral(
+            F.Literals.Booleans.MakeChild_SetSuperset(
                 [out, cls.case_sensitive_], case_sensitive
             )
         )
         return out
 
     def setup(self, regex: str, case_sensitive: bool = False) -> Self:
-        self.regex_.get().alias_to_single(value=regex)
-        self.case_sensitive_.get().alias_to_single(value=case_sensitive)
+        self.regex_.get().set_singleton(value=regex)
+        self.case_sensitive_.get().set_singleton(value=case_sensitive)
         return self
 
     def find_matching_pad(

@@ -44,10 +44,10 @@ class has_single_electric_reference(fabll.Node):
     @property
     def ground_only(self) -> bool:
         """Whether to only connect grounds (lv), not full power rails."""
-        literal = self.ground_only_.get().try_extract_constrained_literal()
-        if literal is None:
+        result = self.ground_only_.get().try_extract_singleton()
+        if result is None:
             return False
-        return literal.get_single()
+        return result
 
     @F.implements_design_check.register_post_instantiation_setup_check
     def __check_post_instantiation_setup__(self):
@@ -85,7 +85,7 @@ class has_single_electric_reference(fabll.Node):
     ) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Literals.Booleans.MakeChild_ConstrainToLiteral(
+            F.Literals.Booleans.MakeChild_SetSuperset(
                 [out, cls.ground_only_], ground_only
             )
         )

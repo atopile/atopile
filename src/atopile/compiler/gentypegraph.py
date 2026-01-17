@@ -278,7 +278,7 @@ class ActionsFactory:
             for param_name, value in template_args.items():
                 if isinstance(value, str):
                     if (attr := getattr(trait_type, param_name, None)) is not None:
-                        constraint = F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                        constraint = F.Literals.Strings.MakeChild_SetSuperset(
                             [field, attr], value
                         )
                         field.add_dependant(constraint)

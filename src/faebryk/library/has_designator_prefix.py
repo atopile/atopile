@@ -234,12 +234,12 @@ class has_designator_prefix(fabll.Node):
             prefix = prefix.value
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.prefix], prefix)
+            F.Literals.Strings.MakeChild_SetSuperset([out, cls.prefix], prefix)
         )
         return out
 
     def get_prefix(self) -> str:
-        return str(self.prefix.get().force_extract_literal().get_values()[0])
+        return str(self.prefix.get().extract_singleton())
 
 
 def test_has_designator_prefix():

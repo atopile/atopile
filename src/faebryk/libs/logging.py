@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import sys
+import time
 
 import rich
 from rich.console import Console
@@ -63,7 +64,19 @@ TERMINAL_WIDTH = ConfigFlagInt(
     default=get_terminal_width(),
     descr="Width of the terminal",
 )
-NET_LINE_WIDTH = int(TERMINAL_WIDTH) - 40
+
+
+LOG_TIME = ConfigFlag("LOG_TIME", default=True, descr="Enable logging of time")
+LOG_FILEINFO = ConfigFlag(
+    "LOG_FILEINFO", default=True, descr="Enable logging of file info"
+)
+
+TIME_LEN = 5 + 2 if LOG_TIME else 0
+LEVEL_LEN = 1
+FILE_LEN = 12 + 4 if LOG_FILEINFO else 0
+FMT_HEADER_LEN = TIME_LEN + 1 + LEVEL_LEN + 1 + FILE_LEN + 1
+
+NET_LINE_WIDTH = min(120, int(TERMINAL_WIDTH) - FMT_HEADER_LEN)
 
 
 class NestedConsole(Console):
@@ -82,24 +95,69 @@ def rich_to_string(rich_obj: Table | Tree) -> str:
     return str(console)
 
 
+# Abbreviated level names with Rich color markup
+_LEVEL_ABBREV = {
+    "DEBUG": "[cyan]D[/cyan]",
+    "INFO": "[green]I[/green]",
+    "WARNING": "[yellow]W[/yellow]",
+    "ERROR": "[red]E[/red]",
+    "CRITICAL": "[bold red]C[/bold red]",
+}
+
+
+class RelativeTimeFormatter(logging.Formatter):
+    """Custom formatter with ms-since-start timestamp and abbreviated colored levels."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.start_time = time.perf_counter()
+
+    def format(self, record: logging.LogRecord) -> str:
+        # Calculate ms since logging started
+        elapsed_s = time.perf_counter() - self.start_time
+        record.elapsed_ms = f"{elapsed_s:3.2f}s"
+
+        # Replace level name with abbreviated colored version
+        record.level_abbrev = _LEVEL_ABBREV.get(record.levelname, record.levelname)
+
+        INDENT = " " * (FMT_HEADER_LEN + 1)
+        record.nmessage = record.getMessage().replace("\n", f"\n{INDENT}")
+
+        # fileinfo
+        filename, ext = record.filename.rsplit(".", 1)
+        if len(filename) > 12:
+            filename = filename[:5] + "..." + filename[-4:]
+        lineno = record.lineno
+        fileinfo = f"{filename}:{lineno}"
+        record.fileinfo = f"{fileinfo:16s}"
+
+        return super().format(record)
+
+
 def setup_basic_logging():
     if FLOG_FMT:
-        logging.basicConfig(
-            format="%(message)s",
-            level=logging.INFO,
-            datefmt="[%H:%M:%S]",
-            handlers=[
-                RichHandler(
-                    console=Console(
-                        safe_box=False,
-                        theme=theme,
-                        force_terminal=True,
-                        width=int(TERMINAL_WIDTH),
-                    ),
-                    highlighter=NodeHighlighter(),
-                )
-            ],
+        handler = RichHandler(
+            console=Console(
+                safe_box=False,
+                theme=theme,
+                force_terminal=True,
+                width=int(TERMINAL_WIDTH),
+            ),
+            highlighter=NodeHighlighter(),
+            show_path=False,  # Disable path column, we include it in format
+            show_level=False,  # Disable level column, we include it in format
+            show_time=False,  # Disable time column, we include it in format
+            markup=True,  # Enable Rich markup in format string
         )
+        handler.setFormatter(
+            RelativeTimeFormatter(
+                ("[dim]%(fileinfo)s[/dim] " if LOG_FILEINFO else "")
+                + ("[dim]%(elapsed_ms)s[/dim] " if LOG_TIME else "")
+                + "%(level_abbrev)s %(nmessage)s"
+            )
+        )
+        # force=True clears existing handlers so our formatter is used
+        logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)
 
     if PLOG:
         from faebryk.libs.picker.picker import logger as plog

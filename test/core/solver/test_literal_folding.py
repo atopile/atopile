@@ -3,7 +3,6 @@ import logging
 import sys
 import warnings
 from collections import defaultdict
-from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from math import inf
@@ -23,7 +22,7 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.core import Namespace
-from faebryk.core.solver.defaultsolver import DefaultSolver
+from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.utils import Contradiction
 from faebryk.libs.test.boundexpressions import BoundExpressions
 from faebryk.libs.test.times import Times
@@ -49,8 +48,6 @@ Log = F.Expressions.Log
 Cos = F.Expressions.Cos
 Floor = F.Expressions.Floor
 Ceil = F.Expressions.Ceil
-Min = F.Expressions.Min
-Max = F.Expressions.Max
 
 # Workaround: for large repr generation of hypothesis strategies,
 LazyStrategy.__repr__ = lambda self: str(id(self))
@@ -94,7 +91,7 @@ def eval_pure_literal_expression(
             operands_literals.append(num)
         # Check if it's a NumericParameter - extract its literal value
         elif param := obj.try_cast(F.Parameters.NumericParameter):
-            operands_literals.append(param.force_extract_literal())
+            operands_literals.append(param.force_extract_superset())
         # Check if it's a nested expression - recursively evaluate
         elif expr_trait := obj.try_get_trait(F.Expressions.is_expression):
             nested_result = eval_pure_literal_expression(
@@ -133,10 +130,6 @@ def eval_pure_literal_expression(
     elif expr_type is Ceil:
         return operands_literals[0].op_ceil(g=g, tg=tg)
     # Variadic operations (currently disabled in EXPR_TYPES)
-    elif expr_type is Min:
-        return operands_literals[0].op_min(g=g, tg=tg)
-    elif expr_type is Max:
-        return operands_literals[0].op_max(g=g, tg=tg)
     else:
         raise NotImplementedError(f"Expression type {expr_type} not supported")
 
@@ -227,7 +220,7 @@ class Builders(Namespace):
         # print("literal: ", literal.as_literal.force_get().pretty_str())
         E = BoundExpressions(g=global_g, tg=global_tg)
         p = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
-        E.is_(p, literal, assert_=True)
+        E.is_subset(p, literal, assert_=True)
 
         return p
 
@@ -290,7 +283,7 @@ class Filters(Namespace):
         obj = fabll.Traits(value).get_obj_raw()
         if np := obj.try_cast(F.Parameters.NumericParameter):
             try:
-                return np.force_extract_literal()
+                return np.force_extract_superset()
             except Exception as e:
                 raise Filters._EvaluationError(e) from e
         elif expr := obj.try_get_trait(F.Expressions.is_expression):
@@ -560,9 +553,6 @@ EXPR_TYPES = [
     ExprType(Round, st_values.values, Extension.single, check_overflow=False),
     ExprType(Floor, st_values.values, Extension.single, check_overflow=False),
     ExprType(Ceil, st_values.values, Extension.single, check_overflow=False),
-    # TODO
-    ExprType(Min, st_values.lists, Extension.tuples, disable=True),
-    ExprType(Max, st_values.lists, Extension.tuples, disable=True),
 ]
 
 
@@ -620,7 +610,7 @@ def evaluate_e_p_l(
         return np
 
     if p := obj.try_cast(F.Parameters.NumericParameter):
-        return p.force_extract_literal()
+        return p.force_extract_superset()
 
     expr = operand.get_sibling_trait(F.Expressions.is_expression).switch_cast()
 
@@ -728,7 +718,7 @@ def test_discover_literal_folding_local(expr: F.Parameters.can_be_operand):
             )
         )
 
-    solver = DefaultSolver()
+    solver = Solver()
 
     test_g = graph.GraphView.create()
     global_tg.copy_into(target_graph=test_g, minimal=False)
@@ -756,14 +746,13 @@ def test_discover_literal_folding_local(expr: F.Parameters.can_be_operand):
     assert isinstance(evaluated_expr, F.Literals.Numbers)
 
     # Run the solver
-    solver.update_superset_cache(root)
-    solver_result = solver.inspect_get_known_supersets(
+    solver_result = solver.simplify_and_extract_superset(
         root.get_sibling_trait(F.Parameters.is_parameter)
     )
     solver_result_num = fabll.Traits(solver_result).get_obj(F.Literals.Numbers)
 
     # Compare results (need to pass g and tg for Numbers.equals)
-    match = solver_result_num.equals(evaluated_expr, g=test_g, tg=test_tg)
+    match = solver_result_num.op_setic_equals(evaluated_expr, g=test_g, tg=test_tg)
     print("\n" + "=" * 70)
     print("COMPARISON")
     print("=" * 70)
@@ -777,7 +766,7 @@ def test_discover_literal_folding_local(expr: F.Parameters.can_be_operand):
     print("=" * 70 + "\n")
     # assert match, f"Solver: {solver_result_num} != Test: {evaluated_expr}"
     # solver_result.g.destroy()
-    assert solver_result_num.equals(evaluated_expr, g=test_g, tg=test_tg)
+    assert solver_result_num.op_setic_equals(evaluated_expr, g=test_g, tg=test_tg)
 
 
 # Examples -----------------------------------------------------------------------------
@@ -813,7 +802,7 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
     python ./test/runtest.py -k "debug_fix_literal_folding"
     ```
     """
-    solver = DefaultSolver()
+    solver = Solver()
     test_g = graph.GraphView.create()
     global_tg.copy_into(target_graph=test_g, minimal=False)
     test_expr = expr.copy_into(test_g)
@@ -828,8 +817,7 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
     evaluated_expr = evaluate_e_p_l(test_expr)
     logger.info(f"evaluated_expr: {evaluated_expr}")
 
-    solver.update_superset_cache(root)
-    solver_result = solver.inspect_get_known_supersets(
+    solver_result = solver.simplify_and_extract_superset(
         root.get_sibling_trait(F.Parameters.is_parameter)
     )
 
@@ -1025,7 +1013,7 @@ def test_regression_literal_folding(
     expr = expr_factory().copy_into(g)
     tg = expr.tg
 
-    solver = DefaultSolver()
+    solver = Solver()
 
     # Get the expression node that owns the can_be_operand trait, then copy that
     E = BoundExpressions(g=g, tg=tg)
@@ -1043,14 +1031,13 @@ def test_regression_literal_folding(
     assert isinstance(evaluated_expr, F.Literals.Numbers)
 
     # Run the solver
-    solver.update_superset_cache(root)
-    solver_result = solver.inspect_get_known_supersets(
+    solver_result = solver.simplify_and_extract_superset(
         root.get_sibling_trait(F.Parameters.is_parameter)
     )
     solver_result_num = fabll.Traits(solver_result).get_obj(F.Literals.Numbers)
 
     # Compare results (need to pass g and tg for Numbers.equals)
-    match = solver_result_num.equals(evaluated_expr, g=g, tg=tg)
+    match = solver_result_num.op_setic_equals(evaluated_expr, g=g, tg=tg)
     print("\n" + "=" * 70)
     print("COMPARISON")
     print("=" * 70)
@@ -1060,7 +1047,7 @@ def test_regression_literal_folding(
     print(f"Match:          {'✓ PASS' if match else '✗ FAIL'}")
     print("=" * 70 + "\n")
     # assert match, f"Solver: {solver_result_num} != Test: {evaluated_expr}"
-    ok = solver_result_num.equals(evaluated_expr, g=g, tg=tg)
+    ok = solver_result_num.op_setic_equals(evaluated_expr, g=g, tg=tg)
 
     assert ok
     g.destroy()
@@ -1078,8 +1065,8 @@ class Stats:
     def __init__(self):
         self.exprs: dict[F.Expressions.is_expression, set[str]] = defaultdict(set)
         self.events: dict[str, set[F.Expressions.is_expression]] = defaultdict(set)
-        self.times = Times(multi_sample_strategy=Times.MultiSampleStrategy.ALL)
-        self._total = self.times.context("total")
+        self.times = Times(strategy=Times.Strategy.ALL)
+        self._total = self.times.measure("total")
         self._total.__enter__()
 
     def print(self):
@@ -1182,7 +1169,7 @@ def test_folding_statistics(expr: F.Expressions.is_expression):
     test_expr = expr.copy_into(test_g)
     test_tg = test_expr.tg
     stats.event("generate", test_expr, terminal=False)
-    solver = DefaultSolver()
+    solver = Solver()
     E = BoundExpressions(g=test_g, tg=test_tg)
     root = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
     E.is_(root, test_expr.get_sibling_trait(F.Parameters.can_be_operand), assert_=True)
@@ -1202,8 +1189,7 @@ def test_folding_statistics(expr: F.Expressions.is_expression):
     assert isinstance(evaluated_expr, F.Literals.Numbers)
 
     try:
-        solver.update_superset_cache(root)
-        solver_result = solver.inspect_get_known_supersets(
+        solver_result = solver.simplify_and_extract_superset(
             root.get_sibling_trait(F.Parameters.is_parameter)
         )
         assert isinstance(solver_result, F.Literals.Numbers)

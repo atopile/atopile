@@ -10,6 +10,7 @@ import faebryk.library._F as F
 from faebryk.core.solver.solver import Solver
 from atopile.config import BuildType, config
 from atopile.errors import UserToolNotAvailableError
+from faebryk.core.solver.solver import Solver
 from faebryk.libs.exceptions import accumulate
 from faebryk.libs.util import once
 
@@ -86,7 +87,10 @@ def run_build_targets(ctx: BuildStepContext) -> None:
                 logger.warning(f"Skipping excluded build step '{target.name}'")
                 continue
 
-            if build_steps.Tags.REQUIRES_KICAD in target.tags and not _check_kicad_cli():
+            if (
+                build_steps.Tags.REQUIRES_KICAD in target.tags
+                and not _check_kicad_cli()
+            ):
                 if target.implicit:
                     logger.warning(
                         f"Skipping target '{target.name}' because kicad-cli "

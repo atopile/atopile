@@ -20,10 +20,10 @@ class SerializableMetadata(fabll.Node):
         def MakeChild(cls, key: str, value: str) -> fabll._ChildField[Self]:
             out = fabll._ChildField(cls)
             out.add_dependant(
-                F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.key], key)
+                F.Literals.Strings.MakeChild_SetSuperset([out, cls.key], key)
             )
             out.add_dependant(
-                F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.value], value)
+                F.Literals.Strings.MakeChild_SetSuperset([out, cls.value], value)
             )
             return out
 
@@ -38,8 +38,8 @@ class SerializableMetadata(fabll.Node):
         if trait_obj:
             for data in trait_obj.data.get().as_list():
                 data = data.cast(cls.MetaDataNode)
-                properties[data.key.get().force_extract_literal().get_values()[0]] = (
-                    data.value.get().force_extract_literal().get_values()[0]
+                properties[data.key.get().extract_singleton()] = (
+                    data.value.get().extract_singleton()
                 )
         return dict(sorted(properties.items()))
 
@@ -58,8 +58,8 @@ class SerializableMetadata(fabll.Node):
             data_node = self.MetaDataNode.bind_typegraph_from_instance(
                 self.instance
             ).create_instance(g=self.instance.g())
-            data_node.key.get().alias_to_single(value=key)
-            data_node.value.get().alias_to_single(value=value)
+            data_node.key.get().set_singleton(value=key)
+            data_node.value.get().set_singleton(value=value)
             self.add_child(data_node)
             self.data.get().append(data_node)
 

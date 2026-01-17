@@ -3223,3 +3223,67 @@ class _LazyProxy:
 
     def __repr__(self) -> str:
         return f"_LazyProxy({self.__f}, {self.__parent})"
+
+
+class OrderedSet[T: Hashable](collections.abc.MutableSet[T]):
+    __slots__ = ("_data",)
+
+    def __init__(self, iterable: Iterable[T] = ()):
+        self._data: dict[T, None] = dict.fromkeys(iterable)
+
+    def __contains__(self, x: object, /) -> bool:
+        return x in self._data
+
+    def __iter__(self) -> Iterator[T]:
+        return iter(self._data)
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def add(self, value: T, /) -> None:
+        self._data[value] = None
+
+    def discard(self, value: T, /) -> None:
+        self._data.pop(value, None)
+
+    def update(self, *iterables: Iterable[T]) -> None:
+        for it in iterables:
+            self._data.update(dict.fromkeys(it))
+
+    def difference_update(self, *others: Iterable[object]) -> None:
+        for other in others:
+            for x in other:
+                self._data.pop(x, None)
+
+    def intersection_update(self, *others: Iterable[object]) -> None:
+        if not others:
+            return
+        rhs = [set(o) for o in others]
+        for k in list(self._data):
+            if not all(k in s for s in rhs):
+                self._data.pop(k, None)
+
+    def difference(self, *others: Iterable[object]) -> "OrderedSet[T]":
+        out = OrderedSet[T](self)
+        out.difference_update(*others)
+        return out
+
+    def intersection(self, *others: Iterable[object]) -> "OrderedSet[T]":
+        out = OrderedSet[T](self)
+        out.intersection_update(*others)
+        return out
+
+    def union(self, *iterables: Iterable[T]) -> "OrderedSet[T]":
+        out = OrderedSet[T](self)
+        out.update(*iterables)
+        return out
+
+    def issubset(self, other: Iterable[object]) -> bool:
+        c = other if isinstance(other, collections.abc.Container) else set(other)
+        return all(k in c for k in self._data)
+
+    def issuperset(self, other: Iterable[object]) -> bool:
+        return all(x in self._data for x in other)
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({list(self._data)})"

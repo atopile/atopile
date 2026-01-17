@@ -19,10 +19,10 @@ class CAN(fabll.Node):
     # TODO constrain CAN baudrate between 10kbps to 1Mbps
     # F.Expressions.Is.MakeChild_Constrain()
 
-    impedance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
-    impedance_constraint = F.Literals.Numbers.MakeChild_ConstrainToLiteral(
-        [impedance], min=120.0, max=120.0, unit=F.Units.Ohm
-    )
+    # impedance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+    # _impedance_constraint = F.Literals.Numbers.MakeChild_ConstrainToSubsetLiteral(
+    #    [impedance], min=120.0, max=120.0, unit=F.Units.Ohm
+    # )
 
     # ----------------------------------------
     #                 traits

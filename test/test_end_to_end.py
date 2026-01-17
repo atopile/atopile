@@ -14,7 +14,7 @@ from atopile import config
 from atopile.build_steps import muster
 from atopile.compiler.build import _build_from_ctx
 from atopile.compiler.parse import parse_text_as_file
-from faebryk.core.solver.nullsolver import NullSolver
+from faebryk.core.solver.solver import Solver
 from faebryk.libs.kicad.fileformats import kicad
 
 
@@ -51,8 +51,7 @@ def test_memory_usage():
         mem_measurement[name] = mem_gain
         return mem_new
 
-    # solver = DefaultSolver()
-    solver = NullSolver()
+    solver = Solver()
     mem = psutil.Process().memory_info().rss
 
     COUNT = 1000
