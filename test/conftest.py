@@ -72,6 +72,7 @@ def clear_node_type_caches():
         for cls in list(Node._seen_types.values()):
             if hasattr(cls, "_type_cache"):
                 cls._type_cache.clear()
+        Node._seen_types.clear()
 
     _clear_type_caches()
     yield
