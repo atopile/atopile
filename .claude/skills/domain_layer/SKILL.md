@@ -49,7 +49,7 @@ ato build
 ### Testing
 - **Integration Tests**: Since this layer orchestrates the whole flow, it is best tested via end-to-end tests or integration tests in `test/end_to_end/` or `test/integration/`.
 - **Manual Verification**: Run `ato build` on a sample project and inspect the generated artifacts (Gerbers, BOM csv).
-- **Muster unit tests**: `pytest test/test_muster.py -q`
+- **Muster unit tests**: `ato dev test --llm test/test_muster.py -q`
 
 ## Best Practices
 - **Idempotency**: Build steps should generally be idempotent.

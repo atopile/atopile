@@ -100,8 +100,8 @@ The solver cannot “edit” an expression in-place. Instead it:
 
 Run a tight loop while iterating:
 
-- `pytest test/core/solver -k invariant -q`
-- `pytest test/core/solver/test_solver.py::test_simplify -q`
+- `ato dev test --llm test/core/solver -k invariant -q`
+- `ato dev test --llm test/core/solver/test_solver.py::test_simplify -q`
 
 ## Best Practices
 

@@ -42,7 +42,7 @@ python -m atopile.lsp.lsp_server
 2) Run completion tests (fast loop) and verify GraphView cleanup paths.
 
 ### Testing
-- Integration-style tests: `pytest test/test_lsp_completion.py -q`
+- Integration-style tests: `ato dev test --llm test/test_lsp_completion.py -q`
 
 ## Best Practices
 - **Robustness**: Never let the server crash. Catch all exceptions in handlers and log them.

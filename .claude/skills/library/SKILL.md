@@ -50,7 +50,7 @@ resistor = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
 ### Testing
 - Library tests live under `test/library/` (including `test/library/nodes/`).
 - A good smoke test for new modules is:
-  - `pytest test/library/test_instance_library_modules.py -q`
+  - `ato dev test --llm test/library/test_instance_library_modules.py -q`
 
 ## Best Practices
 - **Atomic Parts**: Mark leaf components (specifically verified part numbers) with the `is_atomic_part` trait.

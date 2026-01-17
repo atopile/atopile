@@ -15,7 +15,7 @@ This skill is the canonical repo-local language guide (replacing various editor/
 - If you need syntax gated behind experiments, enable it with `#pragma experiment("<NAME>")` (see below).
 - To validate a change quickly in-repo:
   - `ato build` (project-level build)
-  - `ato dev test -k ato` (if you’re touching compiler/lsp behavior; adjust `-k`)
+  - `ato dev test --llm -k ato` (if you’re touching compiler/lsp behavior; adjust `-k`)
 
 ## Mental Model (What ATO “Is”)
 
@@ -140,4 +140,3 @@ Do not write (or assume) any of these exist:
 - Prefer constraints with tolerances when they drive selection (exact values can make picking impossible).
 - If you introduce gated syntax, add the matching `#pragma experiment("...")` near the top of the file.
 - When editing `.ato`, verify the change through the compiler surface (`ato build` / targeted tests), not by eyeballing.
-

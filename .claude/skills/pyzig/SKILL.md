@@ -62,7 +62,7 @@ python -c "import faebryk.core.zig; import faebryk.core.graph"
 ### Testing
 - Smoke tests are usually through downstream modules:
   - `python -m faebryk.core.graph` (GraphView allocation/cleanup stress)
-  - `pytest test/core/solver` (heavy user of graph + bindings via many subsystems)
+  - `ato dev test --llm test/core/solver` (heavy user of graph + bindings via many subsystems)
 
 ## Best Practices
 - **Assume mistakes segfault**: treat changes here like unsafe systems programming.

@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import subprocess
 import tempfile
 import webbrowser
@@ -107,6 +108,45 @@ def _is_configflag_ctor(call) -> str | None:
     if name in {"ConfigFlag", "ConfigFlagInt", "ConfigFlagFloat", "ConfigFlagString"}:
         return name
     return None
+
+
+def _env_truthy(name: str) -> bool | None:
+    val = os.getenv(name)
+    if val is None:
+        return None
+    val_norm = val.strip().lower()
+    if val_norm in {"0", "false", "no", "off"}:
+        return False
+    return True
+
+
+def _detect_llm_agent() -> bool:
+    agent_env_vars = [
+        "CLAUDE_CODE",
+        "ANTHROPIC_CLAUDE_CODE",
+        "CLAUDE_CODE_SESSION",
+        "CODEX_CLI",
+        "OPENAI_CODEX",
+        "OPENAI_CODEX_CLI",
+        "CURSOR",
+        "CURSOR_IDE",
+        "CURSOR_TRACE_ID",
+    ]
+    if any(os.getenv(k) for k in agent_env_vars):
+        return True
+    term_program = (os.getenv("TERM_PROGRAM") or "").lower()
+    return "cursor" in term_program
+
+
+def _resolve_llm_flag(llm_cli: bool) -> bool:
+    if llm_cli:
+        return True
+    override = _env_truthy("FBRK_TEST_LLM")
+    if override is not None:
+        return override
+    if _env_truthy("CI") or _env_truthy("GITHUB_ACTIONS"):
+        return False
+    return _detect_llm_agent()
 
 
 def _find_configflags_in_assignment(value, *, file: Path, line: int, python_name: str):
@@ -509,6 +549,22 @@ def test(
         "--open",
         help="Automatically open the live test report in your browser",
     ),
+    llm: bool = typer.Option(
+        False,
+        "--llm",
+        help="Print LLM-friendly summary + jq hints (uses artifacts/test-report.json)",
+    ),
+    reuse: bool = typer.Option(
+        False,
+        "--reuse",
+        help="Reuse artifacts/test-report.json and rebuild with a new baseline without rerunning tests",
+    ),
+    keep_open: bool = typer.Option(
+        False,
+        "--keep-open",
+        "-o",
+        help="Keep the live report server running after tests finish",
+    ),
 ):
     import sys
 
@@ -536,6 +592,49 @@ def test(
 
     sys.path.insert(0, str(repo_root()))
 
+    # Convert number to HEAD~N format (e.g. "3" -> "HEAD~3")
+    baseline_commit = baseline
+    if baseline is not None:
+        try:
+            n = int(baseline)
+            if n > 0:
+                baseline_commit = f"HEAD~{n}"
+        except ValueError:
+            pass
+        if baseline_commit and (
+            baseline_commit == "HEAD" or baseline_commit.startswith("HEAD~")
+        ):
+            try:
+                result = subprocess.run(
+                    ["git", "rev-parse", baseline_commit],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if result.returncode == 0:
+                    baseline_commit = result.stdout.strip()
+            except Exception:
+                pass
+
+    llm_effective = _resolve_llm_flag(llm)
+
+    if reuse:
+        if direct:
+            raise ValueError("--reuse cannot be combined with --direct")
+        from test.runner.main import _print_llm_summary, rebuild_reports_from_existing
+
+        updated = rebuild_reports_from_existing(
+            report_path=Path("artifacts/test-report.json"),
+            baseline_commit=baseline_commit,
+        )
+        if llm_effective:
+            _print_llm_summary(updated)
+        if keep_open:
+            from test.runner.main import run_report_server
+
+            run_report_server(open_browser=open_browser)
+        return
+
     if direct:
         from test.runtest import TestNotFound, run
         from test.runtest import logger as runtest_logger
@@ -562,18 +661,13 @@ def test(
     if test_name:
         args.extend(["-k", test_name])
 
-    # Convert number to HEAD~N format (e.g. "3" -> "HEAD~3")
-    baseline_commit = baseline
-    if baseline is not None:
-        # Check if it's a plain number
-        try:
-            n = int(baseline)
-            if n > 0:
-                baseline_commit = f"HEAD~{n}"
-        except ValueError:
-            pass  # Not a number, use as-is
-
-    main(args=args, baseline_commit=baseline_commit, open_browser=open_browser)
+    main(
+        args=args,
+        baseline_commit=baseline_commit,
+        open_browser=open_browser,
+        llm=llm_effective,
+        keep_open=keep_open,
+    )
 
 
 @dev_app.command(

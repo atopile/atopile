@@ -11,7 +11,9 @@ import datetime
 import html
 import json
 import os
+import platform
 import queue
+import re
 import shutil
 import socket
 import subprocess
@@ -40,7 +42,6 @@ from test.runner.common import (
     EventRequest,
     EventType,
     Outcome,
-    Report,
 )
 
 
@@ -71,8 +72,12 @@ class CompareStatus(StrEnum):
 class RemoteBaseline:
     """Holds remote test results for comparison."""
 
-    tests: dict[str, str] = field(default_factory=dict)  # nodeid -> outcome
+    tests: dict[str, dict[str, Any]] = field(default_factory=dict)  # nodeid -> info
     commit_hash: Optional[str] = None
+    commit_hash_full: Optional[str] = None
+    commit_author: Optional[str] = None
+    commit_message: Optional[str] = None
+    commit_time: Optional[str] = None
     branch: Optional[str] = None
     loaded: bool = False
     error: Optional[str] = None
@@ -284,9 +289,34 @@ def fetch_remote_report(commit_hash: Optional[str] = None) -> RemoteBaseline:
                 return baseline
 
             # Parse the report
-            report = Report.from_json(report_path.read_text())
-            baseline.tests = {t.fullnodeid: t.outcome for t in report.tests}
+            report_data = json.loads(report_path.read_text())
+            tests = {}
+            for t in report_data.get("tests", []):
+                nodeid = t.get("nodeid") or t.get("fullnodeid")
+                outcome = t.get("outcome") or t.get("status")
+                if not nodeid or not outcome:
+                    continue
+                tests[nodeid] = {
+                    "outcome": str(outcome).lower(),
+                    "duration_s": t.get("duration_s") or t.get("duration"),
+                    "memory_usage_mb": t.get("memory_usage_mb", 0.0),
+                    "memory_peak_mb": t.get("memory_peak_mb", 0.0),
+                }
+            baseline.tests = tests
             baseline.loaded = True
+
+            commit_info_data = report_data.get("commit") or {}
+            if not baseline.commit_hash and commit_info_data.get("short_hash"):
+                baseline.commit_hash = commit_info_data.get("short_hash")
+            if commit_info_data.get("hash"):
+                baseline.commit_hash_full = commit_info_data.get("hash")
+            elif baseline.commit_hash:
+                baseline.commit_hash_full = baseline.commit_hash
+            baseline.commit_author = commit_info_data.get("author")
+            baseline.commit_message = commit_info_data.get("message")
+            baseline.commit_time = commit_info_data.get("time")
+            if not baseline.branch and report_data.get("baseline", {}).get("branch"):
+                baseline.branch = report_data.get("baseline", {}).get("branch")
 
         except Exception as e:
             baseline.error = f"Error downloading/parsing artifact: {e}"
@@ -551,6 +581,30 @@ elif WORKER_COUNT < 0:
 # Generate HTML report
 GENERATE_HTML = os.getenv("FBRK_TEST_GENERATE_HTML", "1") == "1"
 GENERATE_PERIODIC_HTML = os.getenv("FBRK_TEST_PERIODIC_HTML", "1") == "1"
+ORCHESTRATOR_BIND_HOST = os.getenv("FBRK_TEST_BIND_HOST", "0.0.0.0")
+ORCHESTRATOR_REPORT_HOST = os.getenv(
+    "FBRK_TEST_REPORT_HOST", ORCHESTRATOR_BIND_HOST
+)
+
+# Perf compare thresholds (baseline vs current)
+PERF_THRESHOLD_PERCENT = float(os.getenv("FBRK_TEST_PERF_THRESHOLD_PERCENT", "0.30"))
+PERF_MIN_TIME_DIFF_S = float(os.getenv("FBRK_TEST_PERF_MIN_TIME_DIFF_S", "1.0"))
+PERF_MIN_MEMORY_DIFF_MB = float(
+    os.getenv("FBRK_TEST_PERF_MIN_MEMORY_DIFF_MB", "50.0")
+)
+
+# Report config
+REPORT_SCHEMA_VERSION = "4"
+REPORT_JSON_PATH = Path("artifacts/test-report.json")
+REPORT_LLM_JSON_PATH = Path("artifacts/test-report.llm.json")
+REPORT_HTML_PATH = Path("artifacts/test-report.html")
+
+# Output truncation config (0 = no truncation)
+OUTPUT_MAX_BYTES = int(os.getenv("FBRK_TEST_OUTPUT_MAX_BYTES", "0"))
+OUTPUT_TRUNCATE_MODE = os.getenv("FBRK_TEST_OUTPUT_TRUNCATE_MODE", "tail")
+
+# LLM summary output (only when --llm)
+LLM_SUMMARY_MAX_ITEMS = int(os.getenv("FBRK_TEST_LLM_SUMMARY_MAX_ITEMS", "10"))
 
 # Global state
 test_queue = queue.Queue[str]()
@@ -574,6 +628,376 @@ def extract_params(s: str) -> tuple[str, str]:
     return s, ""
 
 
+def split_nodeid(nodeid: str) -> tuple[str, str, str, str]:
+    parts = nodeid.split("::")
+    file_path = parts[0]
+    rest = parts[1:]
+    class_name = ""
+    function_name = ""
+    params = ""
+    if len(rest) > 0:
+        if len(rest) > 1:
+            class_name = "::".join(rest[:-1])
+            function_name, params = extract_params(rest[-1])
+        else:
+            function_name, params = extract_params(rest[0])
+    return file_path, class_name, function_name, params
+
+
+def _safe_iso(dt: datetime.datetime | None) -> str | None:
+    if dt is None:
+        return None
+    return dt.isoformat(sep=" ", timespec="seconds")
+
+
+def _collect_env_subset() -> dict[str, str]:
+    env = {}
+    keys = {
+        "CI",
+        "GITHUB_ACTIONS",
+        "PYTEST_ADDOPTS",
+        "PYTHONHASHSEED",
+    }
+    for k, v in os.environ.items():
+        if k.startswith("FBRK_TEST_") or k in keys:
+            env[k] = v
+    return env
+
+
+def _get_git_info() -> dict[str, Any] | None:
+    branch = get_current_branch()
+    if not branch:
+        return None
+    info: dict[str, Any] = {"branch": branch}
+    info["remote_tracking"] = get_remote_tracking_branch()
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        if result.returncode == 0:
+            info["dirty"] = bool(result.stdout.strip())
+    except Exception:
+        pass
+    return info
+
+
+_ANSI_PATTERN = re.compile(
+    r"(?:\x1B\[[0-?]*[ -/]*[@-~])|(?:\x1B\].*?(?:\x07|\x1b\\))"
+)
+
+
+def _strip_ansi(text: str) -> str:
+    if not text:
+        return text
+    return _ANSI_PATTERN.sub("", text)
+
+
+def _sanitize_output(output: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not output:
+        return output
+    cleaned: dict[str, Any] = {}
+    for key, value in output.items():
+        cleaned[key] = _strip_ansi(value) if isinstance(value, str) else value
+    return cleaned
+
+
+def _truncate_text(text: str) -> tuple[str, dict[str, Any]]:
+    raw = text.encode("utf-8", errors="replace")
+    total = len(raw)
+    meta = {
+        "bytes_total": total,
+        "bytes_kept": total,
+        "truncated": False,
+        "limit": OUTPUT_MAX_BYTES,
+        "mode": OUTPUT_TRUNCATE_MODE,
+    }
+    if OUTPUT_MAX_BYTES <= 0 or total <= OUTPUT_MAX_BYTES:
+        return text, meta
+
+    kept = raw
+    if OUTPUT_TRUNCATE_MODE == "head":
+        kept = raw[:OUTPUT_MAX_BYTES]
+        marker = f"\n...[truncated {total - OUTPUT_MAX_BYTES} bytes]...\n"
+        text_out = kept.decode("utf-8", errors="replace") + marker
+    else:
+        kept = raw[-OUTPUT_MAX_BYTES:]
+        marker = f"\n...[truncated {total - OUTPUT_MAX_BYTES} bytes]...\n"
+        text_out = marker + kept.decode("utf-8", errors="replace")
+
+    meta["bytes_kept"] = len(kept)
+    meta["truncated"] = True
+    return text_out, meta
+
+
+def _apply_output_limits(
+    output: dict[str, str] | None,
+) -> tuple[dict[str, str] | None, dict[str, dict[str, Any]] | None]:
+    if not output:
+        return None, None
+    limited = {}
+    meta = {}
+    for key, value in output.items():
+        if value is None:
+            continue
+        limited_value, info = _truncate_text(value)
+        limited[key] = limited_value
+        meta[key] = info
+    return limited, meta
+
+
+def _percentiles(values: list[float], percentiles: list[int]) -> dict[str, float]:
+    if not values:
+        return {}
+    values = sorted(values)
+    out: dict[str, float] = {}
+    for p in percentiles:
+        if len(values) == 1:
+            out[f"p{p}"] = values[0]
+            continue
+        k = (len(values) - 1) * (p / 100)
+        f = int(k)
+        c = min(f + 1, len(values) - 1)
+        if f == c:
+            out[f"p{p}"] = values[f]
+        else:
+            d = k - f
+            out[f"p{p}"] = values[f] + (values[c] - values[f]) * d
+    return out
+
+
+def _outcome_to_str(outcome: Outcome | str | None) -> str | None:
+    if outcome is None:
+        return None
+    if isinstance(outcome, Outcome):
+        return outcome.name.lower()
+    return str(outcome).lower()
+
+
+def _compare_to_str(compare: CompareStatus | str | None) -> str | None:
+    if compare is None:
+        return None
+    if isinstance(compare, CompareStatus):
+        return compare.name.lower()
+    return str(compare).lower()
+
+
+def _baseline_record(
+    baseline_map: dict[str, dict[str, Any]], nodeid: str
+) -> dict[str, Any] | None:
+    if not baseline_map:
+        return None
+    record = baseline_map.get(nodeid)
+    if not record:
+        return None
+    if isinstance(record, str):
+        return {"outcome": record}
+    return record
+
+
+def _compare_status(current: str | None, baseline: str | None) -> str | None:
+    if baseline is None:
+        return "new"
+    if current is None:
+        return None
+    valid = {"passed", "failed", "error", "crashed", "skipped"}
+    if current not in valid:
+        return None
+    if current == baseline:
+        return "same"
+    if baseline == "passed" and current in ("failed", "error", "crashed"):
+        return "regression"
+    if baseline in ("failed", "error", "crashed") and current == "passed":
+        return "fixed"
+    return "same"
+
+
+def _perf_change(
+    current: float | None,
+    baseline: float | None,
+    min_diff: float,
+    threshold_percent: float,
+) -> tuple[float | None, float | None, bool]:
+    if not current or not baseline or baseline <= 0 or current <= 0:
+        return None, None, False
+    diff = current - baseline
+    pct = diff / baseline
+    significant = abs(diff) >= min_diff and abs(pct) >= threshold_percent
+    return diff, pct, significant
+
+
+def _default_llm_section() -> dict[str, Any]:
+    return {
+        "source_of_truth": str(REPORT_JSON_PATH),
+        "note": "This JSON is the single source of truth for test results.",
+        "why_use_this": [
+            "Contains stdout/stderr/logs/traceback + truncation metadata.",
+            "Use test.output_full for complete logs; test.output is the HTML preview.",
+            "Includes baseline comparisons (regressions/fixed/new/removed).",
+            "Captures memory usage and worker log paths.",
+            "Includes collection errors and run metadata.",
+        ],
+        "jq_recipes": [
+            f"jq '.summary' {REPORT_JSON_PATH}",
+            "jq -r '.derived.failures[] | \"\\(.nodeid) :: \\(.error_message)\"' "
+            f"{REPORT_JSON_PATH}",
+            "jq -r '.tests[] | select(.status!=\"passed\") "
+            "| {nodeid,output_full}' "
+            f"{REPORT_JSON_PATH}",
+            "jq -r '.tests[] | select(.status!=\"passed\") "
+            "| {nodeid,status,error_message}' "
+            f"{REPORT_JSON_PATH}",
+            "jq -r '.tests | sort_by(.duration_s) | reverse | .[:10] "
+            "| .[] | {nodeid,duration_s}' "
+            f"{REPORT_JSON_PATH}",
+            "jq -r '.derived.perf_regressions[] "
+            "| {nodeid,duration_delta_s,speedup_pct}' "
+            f"{REPORT_JSON_PATH}",
+            "jq -r '.tests[] | select(.compare_status==\"regression\") | .nodeid' "
+            f"{REPORT_JSON_PATH}",
+        ],
+        "recommended_commands": [],
+    }
+
+
+def _split_error_message(error_message: str | None) -> tuple[str | None, str | None]:
+    if not error_message:
+        return None, None
+    msg = error_message.strip()
+    if ": " in msg:
+        left, right = msg.split(": ", 1)
+        if left and " " not in left and len(left) < 64:
+            return left, right
+    return None, msg
+
+
+def _print_llm_summary(report: dict[str, Any]) -> None:
+    summary = report.get("summary", {})
+    baseline = report.get("baseline", {})
+    derived = report.get("derived", {})
+    llm = report.get("llm", {})
+
+    print("\nLLM summary (from artifacts/test-report.json)")
+    print("Note: JSON is the source of truth; HTML/LLM JSON are derived.")
+    print(f"LLM JSON (derived): {REPORT_LLM_JSON_PATH}")
+    print(
+        "Summary: "
+        f"passed={summary.get('passed', 0)} "
+        f"failed={summary.get('failed', 0)} "
+        f"errors={summary.get('errors', 0)} "
+        f"crashed={summary.get('crashed', 0)} "
+        f"skipped={summary.get('skipped', 0)} "
+        f"running={summary.get('running', 0)} "
+        f"queued={summary.get('queued', 0)} "
+        f"collection_errors={summary.get('collection_errors', 0)} "
+        f"perf_regressions={summary.get('perf_regressions', 0)} "
+        f"truncated_outputs={summary.get('output_truncated_tests', 0)}"
+    )
+    if report.get("run", {}).get("selection_applied"):
+        print("Selection: filtered run (test args applied)")
+
+    if baseline.get("loaded"):
+        scope = summary.get("baseline_scope", "full")
+        removed = summary.get("removed", 0)
+        removed_total = summary.get("removed_total", removed)
+        print(
+            "Baseline: "
+            f"commit={baseline.get('commit_hash')} "
+            f"branch={baseline.get('branch')} "
+            f"regressions={summary.get('regressions', 0)} "
+            f"fixed={summary.get('fixed', 0)} "
+            f"new={summary.get('new_tests', 0)} "
+            f"removed={removed}"
+        )
+        if scope != "full" and removed_total:
+            print(
+                f"Baseline scope: {scope} (filtered run; removed_total={removed_total})"
+            )
+    elif baseline.get("error"):
+        print(f"Baseline: error={baseline.get('error')}")
+
+    why = llm.get("why_use_this", [])
+    if why:
+        print("\nWhy use the report JSON:")
+        for line in why:
+            print(f"- {line}")
+
+    def _print_items(label: str, items: list[dict[str, Any]]):
+        if not items:
+            return
+        print(f"\n{label} (top {min(len(items), LLM_SUMMARY_MAX_ITEMS)}):")
+        for item in items[:LLM_SUMMARY_MAX_ITEMS]:
+            nodeid = item.get("nodeid", "<unknown>")
+            status = item.get("status") or item.get("compare_status") or ""
+            error_message = item.get("error_summary") or item.get("error_message") or ""
+            if error_message:
+                print(f"- {nodeid} [{status}] :: {error_message}")
+            elif status:
+                print(f"- {nodeid} [{status}]")
+            else:
+                print(f"- {nodeid}")
+
+    _print_items("Failures", derived.get("failures", []))
+    _print_items("Regressions", derived.get("regressions", []))
+    _print_items("Collection Errors", derived.get("collection_errors", []))
+
+    perf_regs = derived.get("perf_regressions", [])
+    if perf_regs:
+        print(f"\nPerf regressions (top {min(len(perf_regs), LLM_SUMMARY_MAX_ITEMS)}):")
+        for item in perf_regs[:LLM_SUMMARY_MAX_ITEMS]:
+            nodeid = item.get("nodeid", "<unknown>")
+            delta = item.get("duration_delta_s")
+            pct = item.get("speedup_pct")
+            if delta is not None and pct is not None:
+                print(f"- {nodeid} (+{delta:.2f}s, {pct:.1f}%)")
+            else:
+                print(f"- {nodeid}")
+
+    slowest = derived.get("slowest", [])
+    if slowest:
+        print(f"\nSlowest tests (top {min(len(slowest), LLM_SUMMARY_MAX_ITEMS)}):")
+        for item in slowest[:LLM_SUMMARY_MAX_ITEMS]:
+            nodeid = item.get("nodeid", "<unknown>")
+            duration = item.get("duration_s", 0.0)
+            print(f"- {nodeid} ({duration:.2f}s)")
+
+    recommended = llm.get("recommended_commands", [])
+    if recommended:
+        print("\nRecommended commands (top 6):")
+        for rec in recommended[:6]:
+            desc = rec.get("description", "")
+            cmd = rec.get("command", "")
+            if desc:
+                print(f"- {desc}: {cmd}")
+            else:
+                print(f"- {cmd}")
+
+    print("\nSchema (top-level keys):")
+    print(
+        "schema_version, generated_at, run, summary, commit, ci, baseline, "
+        "artifacts, collection_errors, tests, derived, llm"
+    )
+    print("Schema (run keys):")
+    print(
+        "start_time, end_time, duration_s, pytest_args, selection_applied, "
+        "env, git, orchestrator_report_url, output_limits, perf"
+    )
+    print("Schema (test keys):")
+    print(
+        "nodeid, file, class, function, params, status, outcome, duration_s, "
+        "error_message, output, output_full, output_meta, memory_usage_mb, "
+        "memory_peak_mb, compare_status, speedup_pct"
+    )
+
+    recipes = llm.get("jq_recipes", [])
+    if recipes:
+        print("\nJQ tips:")
+        for recipe in recipes:
+            print(recipe)
+
+
 @dataclass
 class TestState:
     __test__ = False
@@ -591,6 +1015,7 @@ class TestState:
     memory_peak_mb: float = 0.0
     compare_status: CompareStatus | None = None
     baseline_outcome: str | None = None
+    collection_error: bool = False
 
 
 def _ts() -> str:
@@ -617,15 +1042,27 @@ class TestAggregator:
 
     __test__ = False
 
-    def __init__(self, all_tests: list[str], baseline: RemoteBaseline):
+    def __init__(
+        self,
+        all_tests: list[str],
+        baseline: RemoteBaseline,
+        pytest_args: list[str] | None = None,
+        baseline_requested: str | None = None,
+        collection_errors: dict[str, str] | None = None,
+    ):
         self._baseline = baseline
         self._tests: dict[str, TestState] = {}
+        self._pytest_args = list(pytest_args or [])
+        self._baseline_requested = baseline_requested
+        self._collection_errors = collection_errors or {}
+        self._orchestrator_url: str | None = None
+        self._orchestrator_report_url: str | None = None
         for t in all_tests:
             state = TestState(nodeid=t, pid=None, start_time=None)
             # Set baseline info if available
             if baseline.loaded:
                 if t in baseline.tests:
-                    state.baseline_outcome = baseline.tests[t]
+                    state.baseline_outcome = baseline.tests[t].get("outcome")
                 else:
                     # Test is new (not in baseline)
                     state.compare_status = CompareStatus.NEW
@@ -640,6 +1077,12 @@ class TestAggregator:
         # Maps worker PID to worker ID (for log file access)
         self._pid_to_worker_id: dict[int, int] = {}
         self.start_time = datetime.datetime.now()
+
+    def set_orchestrator_url(self, url: str) -> None:
+        self._orchestrator_url = url
+
+    def set_orchestrator_report_url(self, url: str) -> None:
+        self._orchestrator_report_url = url
 
     def register_worker(self, worker_id: int, pid: int) -> None:
         """Register a worker's PID to worker_id mapping for log file access."""
@@ -697,7 +1140,7 @@ class TestAggregator:
             # Update all tests with baseline info and recompute comparisons
             for nodeid, test in self._tests.items():
                 if nodeid in baseline.tests:
-                    test.baseline_outcome = baseline.tests[nodeid]
+                    test.baseline_outcome = baseline.tests[nodeid].get("outcome")
                     # Reset compare_status so it can be recomputed
                     test.compare_status = None
                 else:
@@ -893,143 +1336,667 @@ class TestAggregator:
                 for t in self._tests.values()
             )
 
-    def generate_html_report(self, output_path: str = "artifacts/test-report.html"):
+    def build_report_data(self) -> dict[str, Any]:
+        now = datetime.datetime.now()
+        with self._lock:
+            tests_snapshot = [
+                {
+                    "nodeid": t.nodeid,
+                    "pid": t.pid,
+                    "start_time": t.start_time,
+                    "finish_time": t.finish_time,
+                    "outcome": t.outcome,
+                    "output": t.output,
+                    "error_message": t.error_message,
+                    "memory_usage_mb": t.memory_usage_mb,
+                    "memory_peak_mb": t.memory_peak_mb,
+                    "compare_status": t.compare_status,
+                    "baseline_outcome": t.baseline_outcome,
+                    "claim_attempts": t.claim_attempts,
+                    "requeues": t.requeues,
+                    "collection_error": t.collection_error,
+                }
+                for t in self._tests.values()
+            ]
+            workers_active = len(self._active_pids)
+            workers_exited = len(self._exited_pids)
+            pid_to_worker_id = dict(self._pid_to_worker_id)
+            baseline = self._baseline
+            pytest_args = list(self._pytest_args)
+            baseline_requested = self._baseline_requested
+            collection_errors = dict(self._collection_errors)
+            start_time = self.start_time
+
+        passed = failed = errors = crashed = skipped = 0
+        running = queued = 0
+        regressions = fixed = new_tests = 0
+        perf_regressions = 0
+        perf_improvements = 0
+        memory_regressions = 0
+        sum_test_durations = 0.0
+        durations: list[float] = []
+        memory_usage_values: list[float] = []
+        memory_peak_values: list[float] = []
+        truncated_tests = 0
+        truncated_bytes = 0
+
+        test_entries: list[dict[str, Any]] = []
+
+        def _build_status(t: dict[str, Any]) -> tuple[str, str | None]:
+            outcome = _outcome_to_str(t["outcome"])
+            if t["collection_error"]:
+                return "collection_error", outcome or "error"
+            if outcome is None:
+                return ("running", None) if t["start_time"] else ("queued", None)
+            return "finished", outcome
+
+        for t in tests_snapshot:
+            state, outcome = _build_status(t)
+            status = outcome or state
+
+            if outcome == "passed":
+                passed += 1
+            elif outcome == "failed":
+                failed += 1
+            elif outcome == "error":
+                errors += 1
+            elif outcome == "crashed":
+                crashed += 1
+            elif outcome == "skipped":
+                skipped += 1
+            elif state == "running":
+                running += 1
+            elif state == "queued":
+                queued += 1
+
+
+            duration_s = 0.0
+            if t["start_time"] and t["finish_time"]:
+                duration_s = (
+                    t["finish_time"] - t["start_time"]
+                ).total_seconds()
+                durations.append(duration_s)
+                sum_test_durations += duration_s
+            elif t["start_time"] and t["finish_time"] is None:
+                duration_s = (now - t["start_time"]).total_seconds()
+
+            if t["memory_usage_mb"] > 0:
+                memory_usage_values.append(t["memory_usage_mb"])
+            if t["memory_peak_mb"] > 0:
+                memory_peak_values.append(t["memory_peak_mb"])
+
+            output_full = cast(dict[str, str] | None, t["output"])
+            output, output_meta = _apply_output_limits(output_full)
+
+            if state == "running" and t["pid"]:
+                worker_log = self.get_worker_log(t["pid"])
+                if worker_log:
+                    live_output, live_meta = _apply_output_limits(
+                        {"live": worker_log}
+                    )
+                    if live_output:
+                        if output is None:
+                            output = {}
+                            output_meta = {}
+                        output["live"] = live_output["live"]
+                        output_meta["live"] = live_meta["live"]
+
+            if output_meta:
+                test_truncated = False
+                for meta in output_meta.values():
+                    if meta.get("truncated"):
+                        test_truncated = True
+                        truncated_bytes += int(
+                            meta.get("bytes_total", 0) - meta.get("bytes_kept", 0)
+                        )
+                if test_truncated:
+                    truncated_tests += 1
+
+            worker_id = pid_to_worker_id.get(t["pid"]) if t["pid"] else None
+            worker_log_path = None
+            if worker_id is not None:
+                worker_log_path = str(get_log_file(worker_id))
+
+            file_path, class_name, function_name, params = split_nodeid(t["nodeid"])
+            error_type, error_summary = _split_error_message(t["error_message"])
+            baseline_rec = _baseline_record(baseline.tests, t["nodeid"])
+            baseline_outcome = (
+                baseline_rec.get("outcome") if baseline_rec else t["baseline_outcome"]
+            )
+            baseline_duration_s = (
+                baseline_rec.get("duration_s") if baseline_rec else None
+            )
+            baseline_memory_usage_mb = (
+                baseline_rec.get("memory_usage_mb") if baseline_rec else None
+            )
+            baseline_memory_peak_mb = (
+                baseline_rec.get("memory_peak_mb") if baseline_rec else None
+            )
+
+            if baseline_outcome and not t["baseline_outcome"]:
+                t["baseline_outcome"] = baseline_outcome
+            compare_status = _compare_status(status, baseline_outcome)
+            if compare_status == "regression":
+                regressions += 1
+            elif compare_status == "fixed":
+                fixed += 1
+            elif compare_status == "new":
+                new_tests += 1
+
+            duration_delta_s, duration_delta_pct, duration_sig = _perf_change(
+                duration_s, baseline_duration_s, PERF_MIN_TIME_DIFF_S, PERF_THRESHOLD_PERCENT
+            )
+            speedup_ratio = None
+            speedup_pct = None
+            if baseline_duration_s and duration_s > 0:
+                speedup_ratio = baseline_duration_s / duration_s
+                speedup_pct = ((baseline_duration_s - duration_s) / baseline_duration_s) * 100
+
+            memory_delta_mb, memory_delta_pct, memory_sig = _perf_change(
+                t["memory_peak_mb"],
+                baseline_memory_peak_mb,
+                PERF_MIN_MEMORY_DIFF_MB,
+                PERF_THRESHOLD_PERCENT,
+            )
+
+            perf_status = None
+            if duration_delta_pct is not None:
+                if duration_delta_pct > 0:
+                    perf_status = "slower"
+                elif duration_delta_pct < 0:
+                    perf_status = "faster"
+                else:
+                    perf_status = "same"
+
+            if duration_sig and duration_delta_pct:
+                if duration_delta_pct > 0:
+                    perf_regressions += 1
+                elif duration_delta_pct < 0:
+                    perf_improvements += 1
+            if memory_sig and memory_delta_pct and memory_delta_pct > 0:
+                memory_regressions += 1
+
+            test_entries.append(
+                {
+                    "nodeid": t["nodeid"],
+                    "file": file_path,
+                    "class": class_name,
+                    "function": function_name,
+                    "params": params,
+                    "state": state,
+                    "status": status,
+                    "outcome": outcome,
+                    "duration_s": duration_s,
+                    "duration_human": format_duration(duration_s)
+                    if duration_s > 0
+                    else ("-" if state == "queued" else "0ms"),
+                    "start_time": _safe_iso(t["start_time"]),
+                    "finish_time": _safe_iso(t["finish_time"]),
+                    "error_message": t["error_message"],
+                    "error_type": error_type,
+                    "error_summary": error_summary,
+                    "output": output,
+                    "output_full": output_full,
+                    "output_meta": output_meta,
+                    "memory_usage_mb": t["memory_usage_mb"],
+                    "memory_peak_mb": t["memory_peak_mb"],
+                    "worker_pid": t["pid"],
+                    "worker_id": worker_id,
+                    "worker_log": worker_log_path,
+                    "compare_status": compare_status,
+                    "baseline_outcome": baseline_outcome or t["baseline_outcome"],
+                    "baseline_duration_s": baseline_duration_s,
+                    "baseline_memory_usage_mb": baseline_memory_usage_mb,
+                    "baseline_memory_peak_mb": baseline_memory_peak_mb,
+                    "duration_delta_s": duration_delta_s,
+                    "duration_delta_pct": duration_delta_pct,
+                    "speedup_ratio": speedup_ratio,
+                    "speedup_pct": speedup_pct,
+                    "memory_delta_mb": memory_delta_mb,
+                    "memory_delta_pct": memory_delta_pct,
+                    "perf_status": perf_status,
+                    "perf_regression": bool(duration_sig and duration_delta_pct and duration_delta_pct > 0),
+                    "perf_improvement": bool(duration_sig and duration_delta_pct and duration_delta_pct < 0),
+                    "memory_regression": bool(memory_sig and memory_delta_pct and memory_delta_pct > 0),
+                    "claim_attempts": t["claim_attempts"],
+                    "requeues": t["requeues"],
+                    "collection_error": t["collection_error"],
+                }
+            )
+
+        test_entries.sort(key=lambda x: x["nodeid"])
+
+        total_tests = len(test_entries)
+        total_duration = (now - start_time).total_seconds()
+        total_memory_mb = sum(t["memory_usage_mb"] for t in test_entries)
+        workers_used = workers_active + workers_exited
+
+        total_finished = passed + failed + errors + crashed + skipped
+        progress_percent = (
+            int((total_finished / total_tests) * 100) if total_tests > 0 else 0
+        )
+
+        removed_tests = 0
+        removed_total = 0
+        selection_applied = bool(pytest_args)
+        if baseline.loaded:
+            removed_total = len(
+                set(baseline.tests) - {t["nodeid"] for t in test_entries}
+            )
+            removed_tests = 0 if selection_applied else removed_total
+
+        duration_percentiles = _percentiles(durations, [50, 90, 95, 99])
+        memory_usage_percentiles = _percentiles(memory_usage_values, [50, 90, 95, 99])
+        memory_peak_percentiles = _percentiles(memory_peak_values, [50, 90, 95, 99])
+
+        collection_error_entries = [
+            {
+                "nodeid": nodeid,
+                "error": error,
+                "error_message": error.splitlines()[-1].strip()
+                if error
+                else None,
+            }
+            for nodeid, error in collection_errors.items()
+        ]
+
+        derived = {
+            "failures": [
+                {
+                    "nodeid": t["nodeid"],
+                    "file": t["file"],
+                    "class": t["class"],
+                    "function": t["function"],
+                    "params": t["params"],
+                    "status": t["status"],
+                    "error_message": t["error_message"],
+                    "error_type": t["error_type"],
+                    "error_summary": t["error_summary"],
+                    "duration_s": t["duration_s"],
+                    "compare_status": t["compare_status"],
+                    "baseline_outcome": t["baseline_outcome"],
+                }
+                for t in test_entries
+                if t["status"] in {"failed", "error", "crashed"}
+            ],
+            "regressions": [
+                {
+                    "nodeid": t["nodeid"],
+                    "file": t["file"],
+                    "class": t["class"],
+                    "function": t["function"],
+                    "params": t["params"],
+                    "status": t["status"],
+                    "error_message": t["error_message"],
+                    "error_type": t["error_type"],
+                    "error_summary": t["error_summary"],
+                    "duration_s": t["duration_s"],
+                }
+                for t in test_entries
+                if t["compare_status"] == "regression"
+            ],
+            "fixed": [
+                {"nodeid": t["nodeid"], "status": t["status"]}
+                for t in test_entries
+                if t["compare_status"] == "fixed"
+            ],
+            "new_tests": [
+                {"nodeid": t["nodeid"], "status": t["status"]}
+                for t in test_entries
+                if t["compare_status"] == "new"
+            ],
+            "perf_regressions": [
+                {
+                    "nodeid": t["nodeid"],
+                    "duration_delta_s": t["duration_delta_s"],
+                    "duration_delta_pct": t["duration_delta_pct"],
+                    "speedup_pct": t["speedup_pct"],
+                    "baseline_duration_s": t["baseline_duration_s"],
+                    "duration_s": t["duration_s"],
+                }
+                for t in test_entries
+                if t["perf_regression"]
+            ],
+            "perf_improvements": [
+                {
+                    "nodeid": t["nodeid"],
+                    "duration_delta_s": t["duration_delta_s"],
+                    "duration_delta_pct": t["duration_delta_pct"],
+                    "speedup_pct": t["speedup_pct"],
+                    "baseline_duration_s": t["baseline_duration_s"],
+                    "duration_s": t["duration_s"],
+                }
+                for t in test_entries
+                if t["perf_improvement"]
+            ],
+            "memory_regressions": [
+                {
+                    "nodeid": t["nodeid"],
+                    "memory_delta_mb": t["memory_delta_mb"],
+                    "memory_delta_pct": t["memory_delta_pct"],
+                    "baseline_memory_peak_mb": t["baseline_memory_peak_mb"],
+                    "memory_peak_mb": t["memory_peak_mb"],
+                }
+                for t in test_entries
+                if t["memory_regression"]
+            ],
+            "slowest": [
+                {"nodeid": t["nodeid"], "duration_s": t["duration_s"]}
+                for t in sorted(
+                    [t for t in test_entries if t["duration_s"] > 0],
+                    key=lambda x: x["duration_s"],
+                    reverse=True,
+                )[:10]
+            ],
+            "memory_heaviest": [
+                {
+                    "nodeid": t["nodeid"],
+                    "memory_peak_mb": t["memory_peak_mb"],
+                    "memory_usage_mb": t["memory_usage_mb"],
+                }
+                for t in sorted(
+                    [t for t in test_entries if t["memory_peak_mb"] > 0],
+                    key=lambda x: x["memory_peak_mb"],
+                    reverse=True,
+                )[:10]
+            ],
+            "flaky": [
+                {
+                    "nodeid": t["nodeid"],
+                    "claim_attempts": t["claim_attempts"],
+                    "requeues": t["requeues"],
+                }
+                for t in test_entries
+                if t["claim_attempts"] > 1 or t["requeues"] > 0
+            ],
+            "collection_errors": collection_error_entries,
+        }
+
+        try:
+            import pytest as _pytest
+
+            pytest_version = _pytest.__version__
+        except Exception:
+            pytest_version = None
+
+        llm_section = _default_llm_section()
+
+        report = {
+            "schema_version": REPORT_SCHEMA_VERSION,
+            "generated_at": _safe_iso(now),
+            "run": {
+                "start_time": _safe_iso(start_time),
+                "end_time": _safe_iso(now if running == 0 and queued == 0 else None),
+                "duration_s": total_duration,
+                "runner_argv": list(sys.argv),
+                "pytest_args": pytest_args,
+                "selection_applied": selection_applied,
+                "collected_tests": total_tests,
+                "cwd": os.getcwd(),
+                "hostname": socket.gethostname(),
+                "python_executable": sys.executable,
+                "python_version": platform.python_version(),
+                "platform": platform.platform(),
+                "pytest_version": pytest_version,
+                "report_interval_s": REPORT_INTERVAL_SECONDS,
+                "long_test_threshold_s": int(LONG_TEST_THRESHOLD.total_seconds()),
+                "workers_requested": WORKER_COUNT,
+                "workers_active": workers_active,
+                "workers_exited": workers_exited,
+                "generate_html": GENERATE_HTML,
+                "periodic_html": GENERATE_PERIODIC_HTML,
+                "baseline_requested": baseline_requested,
+                "env": _collect_env_subset(),
+                "git": _get_git_info(),
+                "orchestrator_bind": ORCHESTRATOR_BIND_HOST,
+                "orchestrator_url": self._orchestrator_url,
+                "orchestrator_report_url": self._orchestrator_report_url,
+                "output_limits": {
+                    "max_bytes": OUTPUT_MAX_BYTES,
+                    "truncate_mode": OUTPUT_TRUNCATE_MODE,
+                },
+                "perf": {
+                    "threshold_percent": PERF_THRESHOLD_PERCENT,
+                    "min_time_diff_s": PERF_MIN_TIME_DIFF_S,
+                    "min_memory_diff_mb": PERF_MIN_MEMORY_DIFF_MB,
+                },
+            },
+            "summary": {
+                "passed": passed,
+                "failed": failed,
+                "errors": errors,
+                "crashed": crashed,
+                "skipped": skipped,
+                "running": running,
+                "queued": queued,
+                "total": total_tests,
+                "collection_errors": len(collection_error_entries),
+                "regressions": regressions,
+                "fixed": fixed,
+                "new_tests": new_tests,
+                "removed": removed_tests,
+                "removed_total": removed_total,
+                "baseline_scope": "partial" if selection_applied else "full",
+                "perf_regressions": perf_regressions,
+                "perf_improvements": perf_improvements,
+                "memory_regressions": memory_regressions,
+                "output_truncated_tests": truncated_tests,
+                "output_truncated_bytes": truncated_bytes,
+                "progress_percent": progress_percent,
+                "total_duration_s": total_duration,
+                "total_summed_duration_s": sum_test_durations,
+                "total_memory_mb": total_memory_mb,
+                "workers_used": workers_used,
+                "duration_percentiles_s": duration_percentiles,
+                "memory_usage_percentiles_mb": memory_usage_percentiles,
+                "memory_peak_percentiles_mb": memory_peak_percentiles,
+            },
+            "commit": {
+                "hash": commit_info.hash,
+                "short_hash": commit_info.short_hash,
+                "author": commit_info.author,
+                "message": commit_info.message,
+                "time": commit_info.time,
+            }
+            if commit_info.hash
+            else None,
+            "ci": {
+                "is_ci": ci_info.is_ci,
+                "run_id": ci_info.run_id,
+                "run_number": ci_info.run_number,
+                "workflow": ci_info.workflow,
+                "job": ci_info.job,
+                "runner_name": ci_info.runner_name,
+                "runner_os": ci_info.runner_os,
+                "actor": ci_info.actor,
+                "repository": ci_info.repository,
+                "ref": ci_info.ref,
+            }
+            if ci_info.is_ci
+            else None,
+            "baseline": {
+                "loaded": baseline.loaded,
+                "commit_hash": baseline.commit_hash,
+                "commit_hash_full": baseline.commit_hash_full,
+                "commit_author": baseline.commit_author,
+                "commit_message": baseline.commit_message,
+                "commit_time": baseline.commit_time,
+                "branch": baseline.branch,
+                "tests_total": len(baseline.tests) if baseline.tests else 0,
+                "error": baseline.error,
+            },
+            "artifacts": {
+                "json": str(REPORT_JSON_PATH),
+                "html": str(REPORT_HTML_PATH),
+                "llm_json": str(REPORT_LLM_JSON_PATH),
+                "logs_dir": str(LOG_DIR),
+            },
+            "collection_errors": collection_error_entries,
+            "tests": test_entries,
+            "derived": derived,
+            "llm": llm_section,
+        }
+
+        recommended = []
+        for item in derived["failures"][:LLM_SUMMARY_MAX_ITEMS]:
+            nodeid = item["nodeid"]
+            recommended.append(
+                {
+                    "description": "Re-run single test (orchestrated)",
+                    "command": f"ato dev test --llm -k \"{nodeid}\"",
+                }
+            )
+            recommended.append(
+                {
+                    "description": "Re-run single test (direct, tight loop; no report)",
+                    "command": f"ato dev test --direct -k \"{nodeid}\"",
+                }
+            )
+        report["llm"]["recommended_commands"] = recommended
+
+        return report
+
+    def write_json_report(self, report: dict[str, Any], output_path: Path):
+        try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        except Exception as e:
+            print(f"Failed to write JSON report: {e}")
+
+    def write_llm_report(self, report: dict[str, Any], output_path: Path):
+        llm_data = dict(report.get("llm") or {})
+        llm_data["output_sanitized"] = True
+        llm_data["contains_full_tests"] = True
+        tests = []
+        for t in report.get("tests", []):
+            entry = dict(t)
+            output = entry.get("output")
+            output_full = entry.get("output_full")
+            sanitized = False
+            if output is not None:
+                entry["output"] = _sanitize_output(output)
+                sanitized = True
+            if output_full is not None:
+                entry["output_full"] = _sanitize_output(output_full)
+                sanitized = True
+            if sanitized:
+                entry["output_sanitized"] = True
+            tests.append(entry)
+        llm_report = {
+            "schema_version": REPORT_SCHEMA_VERSION,
+            "generated_at": report.get("generated_at"),
+            "run": report.get("run"),
+            "summary": report.get("summary"),
+            "baseline": report.get("baseline"),
+            "commit": report.get("commit"),
+            "ci": report.get("ci"),
+            "derived": report.get("derived"),
+            "llm": llm_data,
+            "tests": tests,
+            "collection_errors": report.get("collection_errors", []),
+            "artifacts": report.get("artifacts", {}),
+            "paths": {
+                "json": str(REPORT_JSON_PATH),
+                "html": str(REPORT_HTML_PATH),
+                "logs_dir": str(LOG_DIR),
+            },
+        }
+        try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(json.dumps(llm_report, indent=2), encoding="utf-8")
+        except Exception as e:
+            print(f"Failed to write LLM JSON report: {e}")
+
+    def generate_html_report(
+        self, report: dict[str, Any], output_path: Path = REPORT_HTML_PATH
+    ):
         if not GENERATE_HTML:
             return
 
-        with self._lock:
-            # Create a copy of the values to avoid modification during iteration if any
-            tests = list(self._tests.values())
-            workers_active = len(self._active_pids)
+        tests = report["tests"]
+        summary = report["summary"]
 
-        passed = sum(1 for t in tests if t.outcome == Outcome.PASSED)
-        failed = sum(1 for t in tests if t.outcome == Outcome.FAILED)
-        errors = sum(1 for t in tests if t.outcome == Outcome.ERROR)
-        crashed = sum(1 for t in tests if t.outcome == Outcome.CRASHED)
-        skipped = sum(1 for t in tests if t.outcome == Outcome.SKIPPED)
-        running = sum(
-            1 for t in tests if t.start_time is not None and t.outcome is None
-        )
-        queued = sum(1 for t in tests if t.start_time is None and t.outcome is None)
-
-        # Comparison counts
-        regressions = sum(
-            1 for t in tests if t.compare_status == CompareStatus.REGRESSION
-        )
-        fixed = sum(1 for t in tests if t.compare_status == CompareStatus.FIXED)
-        new_tests = sum(1 for t in tests if t.compare_status == CompareStatus.NEW)
-
-        tests_count = len(tests)
-        total_finished = passed + failed + errors + crashed + skipped
-        progress_percent = (
-            int((total_finished / tests_count) * 100) if tests_count > 0 else 0
-        )
-
-        # Calculate percentiles
-        durations = []
-        memories = []
-        peaks = []
-        sum_test_durations = 0.0
-        for t in tests:
-            if t.finish_time and t.start_time:
-                d = (t.finish_time - t.start_time).total_seconds()
-                durations.append(d)
-                sum_test_durations += d
-            if t.memory_usage_mb > 0:
-                memories.append(t.memory_usage_mb)
-            if t.memory_peak_mb > 0:
-                peaks.append(t.memory_peak_mb)
+        durations = [t["duration_s"] for t in tests if t["duration_s"] > 0]
+        memories = [t["memory_usage_mb"] for t in tests if t["memory_usage_mb"] > 0]
+        peaks = [t["memory_peak_mb"] for t in tests if t["memory_peak_mb"] > 0]
         durations.sort()
         memories.sort()
         peaks.sort()
 
-        total_memory_mb = sum(t.memory_usage_mb for t in tests)
-
         rows = []
 
-        # Sort by nodeid (name) as requested for default view
         def sort_key(t):
-            return t.nodeid
+            return t["nodeid"]
 
         for t in sorted(tests, key=sort_key):
-            duration = ""
-            duration_val = 0.0
+            duration_val = t["duration_s"]
+            if t["state"] == "queued":
+                duration_val = -1.0
             duration_style = ""
-            if t.finish_time and t.start_time:
-                d = (t.finish_time - t.start_time).total_seconds()
-                duration_val = d
-                duration = format_duration(d)
+            if duration_val > 0:
+                duration = format_duration(duration_val)
                 if durations:
-                    rank = bisect.bisect_left(durations, d)
+                    rank = bisect.bisect_left(durations, duration_val)
                     pct = rank / (len(durations) - 1) if len(durations) > 1 else 0
-                    # Catppuccin Mocha: green (#a6e3a1) -> red (#f38ba8)
-                    # Interpolate RGB values
                     r = int(166 + (243 - 166) * pct)
                     g = int(227 + (139 - 227) * pct)
                     b = int(161 + (168 - 161) * pct)
                     duration_style = f"background-color: rgba({r}, {g}, {b}, 0.25)"
-            elif t.start_time:
-                duration_val = (datetime.datetime.now() - t.start_time).total_seconds()
-                duration = f"{format_duration(duration_val)} (running)"
             else:
-                duration = "-"
-                duration_val = -1.0  # For sorting purposes, or handle separately
+                duration = t["duration_human"]
+                if t["state"] == "running":
+                    duration = f"{duration} (running)"
 
-            outcome_class = (
-                str(t.outcome).lower()
-                if t.outcome
-                else ("running" if t.start_time else "queued")
-            )
-            outcome_text = (
-                str(t.outcome)
-                if t.outcome
-                else ("RUNNING" if t.start_time else "QUEUED")
-            )
+            outcome_class = t["status"]
+            outcome_text = t["status"].upper()
 
-            # Logs
             log_button = ""
             log_modal = ""
             log_content = ""
 
-            if t.output:
-                # Finished test - use captured output
-                if "stdout" in t.output and t.output["stdout"]:
-                    stdout = ansi_to_html(t.output["stdout"])
-                    log_content += (
-                        f'<div class="log-section"><h3>STDOUT</h3>'
-                        f"<pre>{stdout}</pre></div>"
+            output = t.get("output") or {}
+            output_meta = t.get("output_meta") or {}
+
+            def _append_log_section(title: str, content: str, key: str):
+                nonlocal log_content
+                meta = output_meta.get(key, {})
+                note = ""
+                if meta.get("truncated"):
+                    note = (
+                        f'<div class="log-note">truncated: kept '
+                        f'{meta.get("bytes_kept")} of {meta.get("bytes_total")} bytes'
+                        f"</div>"
                     )
-                if "stderr" in t.output and t.output["stderr"]:
-                    stderr = ansi_to_html(t.output["stderr"])
-                    log_content += (
-                        f'<div class="log-section"><h3>STDERR</h3>'
-                        f"<pre>{stderr}</pre></div>"
-                    )
-                if "error" in t.output and t.output["error"]:
-                    error = ansi_to_html(t.output["error"])
-                    log_content += (
-                        f'<div class="log-section"><h3>ERROR</h3>'
-                        f"<pre>{error}</pre></div>"
-                    )
-            elif t.start_time and t.outcome is None and t.pid:
-                # Running test - read worker log file
-                worker_log = self.get_worker_log(t.pid)
-                if worker_log:
-                    log_html = ansi_to_html(worker_log)
-                    log_content = (
-                        f'<div class="log-section"><h3>LIVE OUTPUT</h3>'
-                        f"<pre>{log_html}</pre></div>"
+                log_content += (
+                    f'<div class="log-section"><h3>{title}</h3>'
+                    f"{note}<pre>{content}</pre></div>"
+                )
+
+            if output:
+                if output.get("stdout"):
+                    _append_log_section("STDOUT", ansi_to_html(output["stdout"]), "stdout")
+                if output.get("stderr"):
+                    _append_log_section("STDERR", ansi_to_html(output["stderr"]), "stderr")
+                if output.get("log"):
+                    _append_log_section("LOG", ansi_to_html(output["log"]), "log")
+                if output.get("error"):
+                    _append_log_section("ERROR", ansi_to_html(output["error"]), "error")
+                if output.get("live"):
+                    _append_log_section(
+                        "LIVE OUTPUT", ansi_to_html(output["live"]), "live"
                     )
 
             if log_content:
-                safe_nodeid = html.escape(t.nodeid)
+                safe_nodeid = html.escape(t["nodeid"])
                 modal_id = f"modal_{safe_nodeid}"
-                log_button = f"<button onclick=\"openModal('{modal_id}')\">View Logs</button>"  # noqa: E501
+                log_button = (
+                    f"<button onclick=\"openModal('{modal_id}')\">View Logs</button>"
+                )
                 log_modal = f"""
                 <div id="{modal_id}" class="modal">
                   <div class="modal-content">
                     <div class="modal-header">
-                      <h2>Logs for {t.nodeid}</h2>
+                      <h2>Logs for {t['nodeid']}</h2>
                       <div class="modal-buttons">
                         <button class="copy-btn" onclick="copyLogs('{modal_id}')">Copy</button>
                         <button class="close-btn" onclick="closeModal('{modal_id}')">&times;</button>
@@ -1040,60 +2007,55 @@ class TestAggregator:
                 </div>
                 """  # noqa: E501
 
-            # Split nodeid
-            # Format: path/to/file.py::test_name[param] or path/to/file.py::TestClass::test_method[param]  # noqa: E501
-            parts = t.nodeid.split("::")
-            file_path = parts[0]
+            worker_info = (
+                f"Worker PID: {t['worker_pid']}" if t.get("worker_pid") else ""
+            )
+            duration_cell = (
+                f'<td style="{duration_style}" title="{worker_info}" '
+                f'data-value="{duration_val}">{duration}</td>'
+            )
 
-            # Extract parametrization from the last part if present
-            params = ""
+            speedup_pct = t.get("speedup_pct")
+            speedup_ratio = t.get("speedup_ratio")
+            speedup_cell = "<td>-</td>"
+            if speedup_pct is not None and speedup_ratio is not None:
+                sign = "+" if speedup_pct > 0 else ""
+                speedup_text = f"{sign}{speedup_pct:.1f}%"
+                speedup_style = ""
+                if speedup_pct > 0:
+                    speedup_style = "color: var(--ctp-green); font-weight: bold;"
+                elif speedup_pct < 0:
+                    speedup_style = "color: var(--ctp-red); font-weight: bold;"
+                speedup_title = (
+                    f"speedup x{speedup_ratio:.2f} "
+                    f"(baseline {t.get('baseline_duration_s')}, current {t.get('duration_s')})"
+                )
+                speedup_cell = (
+                    f'<td style="{speedup_style}" data-value="{speedup_pct}" '
+                    f'title="{speedup_title}">{speedup_text}</td>'
+                )
 
-            # Reconstruct the rest
-            rest = parts[1:]
-
-            class_name = ""
-            function_name = ""
-
-            if len(rest) > 0:
-                # If there are 2+ parts (Class::Method), the last one is function
-                if len(rest) > 1:
-                    class_name = "::".join(rest[:-1])
-                    function_name, params = extract_params(rest[-1])
-                else:
-                    # Just function (no class)
-                    class_name = ""
-                    function_name, params = extract_params(rest[0])
-
-            worker_info = f"Worker PID: {t.pid}" if t.pid else ""
-            # We add a data-value attribute for sorting
-            duration_cell = f'<td style="{duration_style}" title="{worker_info}" data-value="{duration_val}">{duration}</td>'  # noqa: E501
-
-            # Memory
-            memory_val = t.memory_usage_mb
+            memory_val = t["memory_usage_mb"]
             memory_str = f"{memory_val:.2f} MB" if memory_val > 0 else "-"
             memory_style = ""
             if memories and memory_val > 0:
                 rank = bisect.bisect_left(memories, memory_val)
                 pct = rank / (len(memories) - 1) if len(memories) > 1 else 0
-                # Catppuccin Mocha: green (#a6e3a1) -> red (#f38ba8)
                 r = int(166 + (243 - 166) * pct)
                 g = int(227 + (139 - 227) * pct)
                 b = int(161 + (168 - 161) * pct)
                 memory_style = f"background-color: rgba({r}, {g}, {b}, 0.25)"
 
             memory_cell = (
-                f'<td style="{memory_style}" data-value="{memory_val}">'
-                f"{memory_str}</td>"
+                f'<td style="{memory_style}" data-value="{memory_val}">{memory_str}</td>'
             )
 
-            # Peak Memory
-            peak_val = t.memory_peak_mb
+            peak_val = t["memory_peak_mb"]
             peak_str = f"{peak_val:.2f} MB" if peak_val > 0 else "-"
             peak_style = ""
             if peaks and peak_val > 0:
                 rank = bisect.bisect_left(peaks, peak_val)
                 pct = rank / (len(peaks) - 1) if len(peaks) > 1 else 0
-                # Catppuccin Mocha: green (#a6e3a1) -> red (#f38ba8)
                 r = int(166 + (243 - 166) * pct)
                 g = int(227 + (139 - 227) * pct)
                 b = int(161 + (168 - 161) * pct)
@@ -1103,17 +2065,14 @@ class TestAggregator:
                 f'<td style="{peak_style}" data-value="{peak_val}">{peak_str}</td>'
             )
 
-            # Error message cell
-            error_msg = t.error_message or ""
+            error_msg = t.get("error_message") or ""
             if error_msg:
-                # Escape HTML in error message
                 error_msg_escaped = (
                     error_msg.replace("&", "&amp;")
                     .replace("<", "&lt;")
                     .replace(">", "&gt;")
                     .replace('"', "&quot;")
                 )
-                # Truncate for display if too long
                 error_msg_display = (
                     error_msg_escaped[:100] + "..."
                     if len(error_msg_escaped) > 100
@@ -1128,131 +2087,145 @@ class TestAggregator:
 
             row_class = f"row-{outcome_class}"
 
-            # Comparison status cell
             compare_cell = ""
-            if self._baseline.loaded:
-                cmp = t.compare_status
-                if cmp == CompareStatus.REGRESSION:
+            baseline = report.get("baseline") or {}
+            if baseline.get("loaded"):
+                cmp = t.get("compare_status")
+                if cmp == "regression":
                     compare_cell = '<td class="compare-regression">regression</td>'
                     row_class += " row-regression"
-                elif cmp == CompareStatus.FIXED:
+                elif cmp == "fixed":
                     compare_cell = '<td class="compare-fixed">fixed</td>'
                     row_class += " row-fixed"
-                elif cmp == CompareStatus.NEW:
+                elif cmp == "new":
                     compare_cell = '<td class="compare-new">new</td>'
                     row_class += " row-new"
-                elif cmp == CompareStatus.SAME:
+                elif cmp == "same":
                     compare_cell = '<td class="compare-same">-</td>'
                 else:
                     compare_cell = "<td>-</td>"
             else:
                 compare_cell = '<td class="compare-na">-</td>'
 
-            rows.append(f"""
+            rows.append(
+                f"""
             <tr class="{row_class}">
-                <td>{file_path}</td>
-                <td>{class_name}</td>
-                <td>{function_name}</td>
-                <td>{params}</td>
+                <td>{t['file']}</td>
+                <td>{t['class']}</td>
+                <td>{t['function']}</td>
+                <td>{t['params']}</td>
                 <td class="{outcome_class}">{outcome_text}</td>
                 {compare_cell}
                 {duration_cell}
+                {speedup_cell}
                 {memory_cell}
                 {peak_cell}
                 {error_cell}
                 <td>{log_button} {log_modal}</td>
             </tr>
-            """)
+            """
+            )
 
         try:
-            total_duration_sec = (
-                datetime.datetime.now() - self.start_time
-            ).total_seconds()
-            total_duration_str = format_duration(total_duration_sec)
+            total_duration_str = format_duration(summary["total_duration_s"])
 
-            # Build commit info HTML
             commit_info_html = ""
-            if commit_info.hash:
-                commit_parts = []
-                if commit_info.short_hash:
-                    commit_parts.append(
-                        f"<strong>Commit:</strong> <code>{commit_info.short_hash}</code>"  # noqa: E501
-                    )
-                if commit_info.author:
-                    commit_parts.append(
-                        f"<strong>Author:</strong> {commit_info.author}"
-                    )
-                if commit_info.time:
-                    commit_parts.append(f"<strong>Time:</strong> {commit_info.time}")
-                if commit_parts:
-                    commit_info_html = "<br>" + " | ".join(commit_parts)
-                if commit_info.message:
-                    # Escape HTML in message
-                    escaped_msg = (
-                        commit_info.message.replace("&", "&amp;")
-                        .replace("<", "&lt;")
-                        .replace(">", "&gt;")
-                        .replace('"', "&quot;")
-                    )
-                    commit_info_html += (
-                        f'<br><strong>Message:</strong> <em>"{escaped_msg}"</em>'
-                    )
+            commit = report.get("commit") or {}
+            if commit.get("hash"):
+                short_hash = html.escape(str(commit.get("short_hash") or ""))
+                full_hash = html.escape(str(commit.get("hash") or ""))
+                author = html.escape(str(commit.get("author") or ""))
+                time_str = html.escape(str(commit.get("time") or ""))
+                message = html.escape(str(commit.get("message") or ""), quote=True)
+                parts = [f"<code>{short_hash}</code>"]
+                if full_hash and full_hash != short_hash:
+                    parts.append(f"full {full_hash}")
+                if author:
+                    parts.append(f"author {author}")
+                if time_str:
+                    parts.append(f"date {time_str}")
+                if message:
+                    parts.append(f'msg <em>"{message}"</em>')
+                commit_info_html = (
+                    f"<br><strong>HEAD:</strong> " + " | ".join(parts)
+                )
 
-            # Build CI info HTML
             ci_info_html = ""
-            if ci_info.is_ci:
+            ci = report.get("ci") or {}
+            if ci.get("is_ci"):
                 ci_parts = []
-                if ci_info.workflow:
-                    ci_parts.append(f"Workflow: {ci_info.workflow}")
-                if ci_info.job:
-                    ci_parts.append(f"Job: {ci_info.job}")
-                if ci_info.run_id:
-                    ci_parts.append(f"Run ID: {ci_info.run_id}")
-                if ci_info.runner_name:
-                    ci_parts.append(f"Runner: {ci_info.runner_name}")
-                if ci_info.runner_os:
-                    ci_parts.append(f"({ci_info.runner_os})")
+                if ci.get("workflow"):
+                    ci_parts.append(f"Workflow: {ci.get('workflow')}")
+                if ci.get("job"):
+                    ci_parts.append(f"Job: {ci.get('job')}")
+                if ci.get("run_id"):
+                    ci_parts.append(f"Run ID: {ci.get('run_id')}")
+                if ci.get("runner_name"):
+                    ci_parts.append(f"Runner: {ci.get('runner_name')}")
+                if ci.get("runner_os"):
+                    ci_parts.append(f"({ci.get('runner_os')})")
                 if ci_parts:
                     ci_info_html = "<strong>CI:</strong> " + " | ".join(ci_parts)
 
-            # Build baseline info HTML
             baseline_info_html = ""
-            if self._baseline.loaded:
-                baseline_info_html = (
-                    f"<br><strong>Baseline:</strong> "
-                    f"<code>{self._baseline.commit_hash}</code> "
-                    f"on <code>{self._baseline.branch}</code> "
-                    f"({len(self._baseline.tests)} tests)"
+            if baseline.get("loaded"):
+                baseline_short = html.escape(str(baseline.get("commit_hash") or ""))
+                baseline_full = html.escape(
+                    str(baseline.get("commit_hash_full") or "")
                 )
-            elif self._baseline.error:
+                baseline_author = html.escape(
+                    str(baseline.get("commit_author") or "")
+                )
+                baseline_time = html.escape(str(baseline.get("commit_time") or ""))
+                baseline_message = html.escape(
+                    str(baseline.get("commit_message") or ""), quote=True
+                )
+                baseline_branch = html.escape(str(baseline.get("branch") or ""))
+                tests_total = baseline.get("tests_total", 0)
+                parts = [f"<code>{baseline_short}</code>"]
+                if baseline_full and baseline_full != baseline_short:
+                    parts.append(f"full {baseline_full}")
+                if baseline_branch:
+                    parts.append(f"branch <code>{baseline_branch}</code>")
+                if baseline_author:
+                    parts.append(f"author {baseline_author}")
+                if baseline_time:
+                    parts.append(f"date {baseline_time}")
+                if baseline_message:
+                    parts.append(f'msg <em>"{baseline_message}"</em>')
+                parts.append(f"{tests_total} tests")
+                baseline_info_html = (
+                    f"<br><strong>Baseline:</strong> " + " | ".join(parts)
+                )
+            elif baseline.get("error"):
                 baseline_info_html = (
                     f'<br><span class="baseline-error">'
-                    f"<strong>Baseline:</strong> {self._baseline.error}</span>"
+                    f"<strong>Baseline:</strong> {baseline.get('error')}</span>"
                 )
 
-            finishing_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
             html_ = HTML_TEMPLATE.render(
-                status="Running" if running > 0 or queued > 0 else "Finished",
-                workers_active=workers_active,
-                workers_total=WORKER_COUNT,
-                passed=passed,
-                failed=failed,
-                errors=errors,
-                crashed=crashed,
-                skipped=skipped,
-                running=running,
-                remaining=queued,
-                regressions=regressions,
-                fixed=fixed,
-                new_tests=new_tests,
-                progress_percent=progress_percent,
+                status="Running"
+                if summary["running"] > 0 or summary["queued"] > 0
+                else "Finished",
+                workers_active=report["run"]["workers_active"],
+                workers_total=report["run"].get("workers_requested", WORKER_COUNT),
+                passed=summary["passed"],
+                failed=summary["failed"],
+                errors=summary["errors"],
+                crashed=summary["crashed"],
+                skipped=summary["skipped"],
+                running=summary["running"],
+                remaining=summary["queued"],
+                regressions=summary["regressions"],
+                fixed=summary["fixed"],
+                new_tests=summary["new_tests"],
+                progress_percent=summary["progress_percent"],
                 rows="\n".join(rows),
-                timestamp=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                finishing_time=finishing_time,
+                timestamp=report["generated_at"],
+                finishing_time=report["run"]["end_time"] or report["generated_at"],
                 total_duration=total_duration_str,
-                total_summed_duration=format_duration(sum_test_durations),
-                total_memory=f"{total_memory_mb:.2f} MB",
+                total_summed_duration=format_duration(summary["total_summed_duration_s"]),
+                total_memory=f"{summary['total_memory_mb']:.2f} MB",
                 refresh_meta="",
                 commit_info_html=commit_info_html,
                 ci_info_html=ci_info_html,
@@ -1263,120 +2236,362 @@ class TestAggregator:
             return
 
         try:
-            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-            with open(output_path, "w") as f:
-                f.write(html_)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(html_, encoding="utf-8")
         except Exception as e:
             print(f"Failed to write HTML report: {e}")
 
-    def generate_json_report(self, output_path: str = "artifacts/test-report.json"):
-        with self._lock:
-            tests = list(self._tests.values())
-            workers_used = len(self._active_pids) + len(self._exited_pids)
+    def generate_reports(
+        self,
+        periodic: bool = False,
+    ) -> dict[str, Any]:
+        report = self.build_report_data()
+        self.write_json_report(report, REPORT_JSON_PATH)
+        if not periodic or GENERATE_PERIODIC_HTML:
+            self.generate_html_report(report, REPORT_HTML_PATH)
+        self.write_llm_report(report, REPORT_LLM_JSON_PATH)
+        return report
 
-            # Count outcomes
-            passed = sum(1 for t in tests if t.outcome == Outcome.PASSED)
-            failed = sum(1 for t in tests if t.outcome == Outcome.FAILED)
-            errors = sum(1 for t in tests if t.outcome == Outcome.ERROR)
-            crashed = sum(1 for t in tests if t.outcome == Outcome.CRASHED)
-            skipped = sum(1 for t in tests if t.outcome == Outcome.SKIPPED)
 
-            total_duration = (datetime.datetime.now() - self.start_time).total_seconds()
+def _rebuild_report_with_baseline(
+    report: dict[str, Any], baseline: RemoteBaseline, baseline_commit: str | None
+) -> dict[str, Any]:
+    now = datetime.datetime.now()
+    tests = report.get("tests", [])
+    summary = report.get("summary", {}) or {}
+    run = report.get("run", {}) or {}
 
-            test_results: list[Report.Test] = []
-            sum_test_durations = 0.0
+    selection_applied = run.get("selection_applied")
+    if selection_applied is None:
+        selection_applied = bool(run.get("pytest_args"))
+        run["selection_applied"] = selection_applied
 
-            for t in tests:
-                # Calculate duration
-                duration = 0.0
-                if t.finish_time and t.start_time:
-                    duration = (t.finish_time - t.start_time).total_seconds()
-                sum_test_durations += duration
+    passed = failed = errors = crashed = skipped = 0
+    running = queued = 0
+    regressions = fixed = new_tests = 0
+    perf_regressions = 0
+    perf_improvements = 0
+    memory_regressions = 0
+    sum_test_durations = 0.0
+    durations: list[float] = []
+    memory_usage_values: list[float] = []
+    memory_peak_values: list[float] = []
 
-                # Split nodeid logic (reused from HTML)
-                parts = t.nodeid.split("::")
-                file_path = parts[0]
-                rest = parts[1:]
+    for t in tests:
+        nodeid = t.get("nodeid")
+        outcome = _outcome_to_str(t.get("outcome") or t.get("status"))
+        status = t.get("status") or outcome or "queued"
 
-                class_name = ""
-                function_name = ""
-                params = ""
+        if status == "passed":
+            passed += 1
+        elif status == "failed":
+            failed += 1
+        elif status == "error":
+            errors += 1
+        elif status == "crashed":
+            crashed += 1
+        elif status == "skipped":
+            skipped += 1
+        elif status == "running":
+            running += 1
+        elif status == "queued":
+            queued += 1
 
-                if len(rest) > 0:
-                    if len(rest) > 1:
-                        class_name = "::".join(rest[:-1])
-                        function_name, params = extract_params(rest[-1])
-                    else:
-                        class_name = ""
-                        function_name, params = extract_params(rest[0])
+        duration_s = t.get("duration_s") or 0.0
+        if duration_s:
+            durations.append(duration_s)
+            sum_test_durations += duration_s
 
-                test_results.append(
-                    Report.Test(
-                        file=file_path,
-                        class_=class_name,
-                        function=function_name,
-                        outcome=str(t.outcome) if t.outcome else "QUEUED",
-                        duration=duration,
-                        error_message=t.error_message,
-                        memory_usage_mb=t.memory_usage_mb,
-                        memory_peak_mb=t.memory_peak_mb,
-                        worker_pid=t.pid,
-                        params=params,
-                        fullnodeid=t.nodeid,
-                    )
-                )
+        mem_usage = t.get("memory_usage_mb") or 0.0
+        mem_peak = t.get("memory_peak_mb") or 0.0
+        if mem_usage:
+            memory_usage_values.append(mem_usage)
+        if mem_peak:
+            memory_peak_values.append(mem_peak)
 
-            # Build commit info (only if we have any data)
-            report_commit = None
-            if commit_info.hash:
-                report_commit = Report.Commit(
-                    hash=commit_info.hash,
-                    short_hash=commit_info.short_hash,
-                    author=commit_info.author,
-                    message=commit_info.message,
-                    time=commit_info.time,
-                )
+        baseline_rec = _baseline_record(baseline.tests, nodeid) if nodeid else None
+        baseline_outcome = baseline_rec.get("outcome") if baseline_rec else None
+        compare_status = _compare_status(status, baseline_outcome) if baseline.loaded else None
+        t["compare_status"] = compare_status
+        t["baseline_outcome"] = baseline_outcome
 
-            # Build CI info (only if running in CI)
-            report_ci = None
-            if ci_info.is_ci:
-                report_ci = Report.Ci(
-                    is_ci=True,
-                    run_id=ci_info.run_id,
-                    run_number=ci_info.run_number,
-                    workflow=ci_info.workflow,
-                    job=ci_info.job,
-                    runner_name=ci_info.runner_name,
-                    runner_os=ci_info.runner_os,
-                    actor=ci_info.actor,
-                    repository=ci_info.repository,
-                    ref=ci_info.ref,
-                )
+        if compare_status == "regression":
+            regressions += 1
+        elif compare_status == "fixed":
+            fixed += 1
+        elif compare_status == "new":
+            new_tests += 1
 
-            report = Report(
-                summary=Report.Summary(
-                    passed=passed,
-                    failed=failed,
-                    errors=errors,
-                    crashed=crashed,
-                    skipped=skipped,
-                    total=len(tests),
-                    total_duration=total_duration,
-                    total_summed_duration=sum_test_durations,
-                    total_memory_mb=sum(t.memory_usage_mb for t in tests),
-                    workers_used=workers_used,
-                ),
-                commit=report_commit,
-                ci=report_ci,
-                tests=test_results,
-            )
+        baseline_duration_s = baseline_rec.get("duration_s") if baseline_rec else None
+        baseline_memory_usage_mb = (
+            baseline_rec.get("memory_usage_mb") if baseline_rec else None
+        )
+        baseline_memory_peak_mb = (
+            baseline_rec.get("memory_peak_mb") if baseline_rec else None
+        )
 
-            try:
-                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-                with open(output_path, "w") as f:
-                    f.write(report.to_json(indent=2))
-            except Exception as e:
-                print(f"Failed to write JSON report: {e}")
+        t["baseline_duration_s"] = baseline_duration_s
+        t["baseline_memory_usage_mb"] = baseline_memory_usage_mb
+        t["baseline_memory_peak_mb"] = baseline_memory_peak_mb
+
+        duration_delta_s, duration_delta_pct, duration_sig = _perf_change(
+            duration_s, baseline_duration_s, PERF_MIN_TIME_DIFF_S, PERF_THRESHOLD_PERCENT
+        )
+        speedup_ratio = None
+        speedup_pct = None
+        if baseline_duration_s and duration_s:
+            speedup_ratio = baseline_duration_s / duration_s
+            speedup_pct = ((baseline_duration_s - duration_s) / baseline_duration_s) * 100
+
+        memory_delta_mb, memory_delta_pct, memory_sig = _perf_change(
+            mem_peak, baseline_memory_peak_mb, PERF_MIN_MEMORY_DIFF_MB, PERF_THRESHOLD_PERCENT
+        )
+
+        t["duration_delta_s"] = duration_delta_s
+        t["duration_delta_pct"] = duration_delta_pct
+        t["speedup_ratio"] = speedup_ratio
+        t["speedup_pct"] = speedup_pct
+        t["memory_delta_mb"] = memory_delta_mb
+        t["memory_delta_pct"] = memory_delta_pct
+        t["perf_status"] = None
+        if duration_delta_pct is not None:
+            if duration_delta_pct > 0:
+                t["perf_status"] = "slower"
+            elif duration_delta_pct < 0:
+                t["perf_status"] = "faster"
+            else:
+                t["perf_status"] = "same"
+
+        t["perf_regression"] = bool(duration_sig and duration_delta_pct and duration_delta_pct > 0)
+        t["perf_improvement"] = bool(duration_sig and duration_delta_pct and duration_delta_pct < 0)
+        t["memory_regression"] = bool(memory_sig and memory_delta_pct and memory_delta_pct > 0)
+
+        if t["perf_regression"]:
+            perf_regressions += 1
+        if t["perf_improvement"]:
+            perf_improvements += 1
+        if t["memory_regression"]:
+            memory_regressions += 1
+
+    removed_total = 0
+    removed_tests = 0
+    if baseline.loaded:
+        removed_total = len(set(baseline.tests) - {t.get("nodeid") for t in tests})
+        removed_tests = 0 if selection_applied else removed_total
+
+    duration_percentiles = _percentiles(durations, [50, 90, 95, 99])
+    memory_usage_percentiles = _percentiles(memory_usage_values, [50, 90, 95, 99])
+    memory_peak_percentiles = _percentiles(memory_peak_values, [50, 90, 95, 99])
+
+    total_duration = summary.get("total_duration_s")
+    if total_duration is None:
+        total_duration = run.get("duration_s", 0.0)
+    total_memory_mb = sum(t.get("memory_usage_mb", 0.0) for t in tests)
+
+    total_tests = len(tests)
+    total_finished = passed + failed + errors + crashed + skipped
+    progress_percent = int((total_finished / total_tests) * 100) if total_tests else 0
+
+    report["generated_at"] = _safe_iso(now)
+    report["summary"] = {
+        "passed": passed,
+        "failed": failed,
+        "errors": errors,
+        "crashed": crashed,
+        "skipped": skipped,
+        "running": running,
+        "queued": queued,
+        "total": total_tests,
+        "collection_errors": len(report.get("collection_errors", [])),
+        "regressions": regressions,
+        "fixed": fixed,
+        "new_tests": new_tests,
+        "removed": removed_tests,
+        "removed_total": removed_total,
+        "baseline_scope": "partial" if selection_applied else "full",
+        "perf_regressions": perf_regressions,
+        "perf_improvements": perf_improvements,
+        "memory_regressions": memory_regressions,
+        "output_truncated_tests": summary.get("output_truncated_tests", 0),
+        "output_truncated_bytes": summary.get("output_truncated_bytes", 0),
+        "progress_percent": progress_percent,
+        "total_duration_s": total_duration,
+        "total_summed_duration_s": sum_test_durations,
+        "total_memory_mb": total_memory_mb,
+        "workers_used": summary.get("workers_used", 0),
+        "duration_percentiles_s": duration_percentiles,
+        "memory_usage_percentiles_mb": memory_usage_percentiles,
+        "memory_peak_percentiles_mb": memory_peak_percentiles,
+    }
+
+    report["baseline"] = {
+        "loaded": baseline.loaded,
+        "commit_hash": baseline.commit_hash,
+        "commit_hash_full": baseline.commit_hash_full,
+        "commit_author": baseline.commit_author,
+        "commit_message": baseline.commit_message,
+        "commit_time": baseline.commit_time,
+        "branch": baseline.branch,
+        "tests_total": len(baseline.tests) if baseline.tests else 0,
+        "error": baseline.error,
+    }
+
+    run["baseline_requested"] = baseline_commit
+    run["perf"] = {
+        "threshold_percent": PERF_THRESHOLD_PERCENT,
+        "min_time_diff_s": PERF_MIN_TIME_DIFF_S,
+        "min_memory_diff_mb": PERF_MIN_MEMORY_DIFF_MB,
+    }
+    report["run"] = run
+
+    report["derived"] = {
+        "failures": [
+            {
+                "nodeid": t.get("nodeid"),
+                "file": t.get("file"),
+                "class": t.get("class"),
+                "function": t.get("function"),
+                "params": t.get("params"),
+                "status": t.get("status"),
+                "error_message": t.get("error_message"),
+                "error_type": t.get("error_type"),
+                "error_summary": t.get("error_summary"),
+                "duration_s": t.get("duration_s"),
+                "compare_status": t.get("compare_status"),
+                "baseline_outcome": t.get("baseline_outcome"),
+            }
+            for t in tests
+            if t.get("status") in {"failed", "error", "crashed"}
+        ],
+        "regressions": [
+            {
+                "nodeid": t.get("nodeid"),
+                "file": t.get("file"),
+                "class": t.get("class"),
+                "function": t.get("function"),
+                "params": t.get("params"),
+                "status": t.get("status"),
+                "error_message": t.get("error_message"),
+                "error_type": t.get("error_type"),
+                "error_summary": t.get("error_summary"),
+                "duration_s": t.get("duration_s"),
+            }
+            for t in tests
+            if t.get("compare_status") == "regression"
+        ],
+        "fixed": [
+            {"nodeid": t.get("nodeid"), "status": t.get("status")}
+            for t in tests
+            if t.get("compare_status") == "fixed"
+        ],
+        "new_tests": [
+            {"nodeid": t.get("nodeid"), "status": t.get("status")}
+            for t in tests
+            if t.get("compare_status") == "new"
+        ],
+        "perf_regressions": [
+            {
+                "nodeid": t.get("nodeid"),
+                "duration_delta_s": t.get("duration_delta_s"),
+                "duration_delta_pct": t.get("duration_delta_pct"),
+                "speedup_pct": t.get("speedup_pct"),
+                "baseline_duration_s": t.get("baseline_duration_s"),
+                "duration_s": t.get("duration_s"),
+            }
+            for t in tests
+            if t.get("perf_regression")
+        ],
+        "perf_improvements": [
+            {
+                "nodeid": t.get("nodeid"),
+                "duration_delta_s": t.get("duration_delta_s"),
+                "duration_delta_pct": t.get("duration_delta_pct"),
+                "speedup_pct": t.get("speedup_pct"),
+                "baseline_duration_s": t.get("baseline_duration_s"),
+                "duration_s": t.get("duration_s"),
+            }
+            for t in tests
+            if t.get("perf_improvement")
+        ],
+        "memory_regressions": [
+            {
+                "nodeid": t.get("nodeid"),
+                "memory_delta_mb": t.get("memory_delta_mb"),
+                "memory_delta_pct": t.get("memory_delta_pct"),
+                "baseline_memory_peak_mb": t.get("baseline_memory_peak_mb"),
+                "memory_peak_mb": t.get("memory_peak_mb"),
+            }
+            for t in tests
+            if t.get("memory_regression")
+        ],
+        "slowest": [
+            {"nodeid": t.get("nodeid"), "duration_s": t.get("duration_s")}
+            for t in sorted(
+                [t for t in tests if t.get("duration_s", 0) > 0],
+                key=lambda x: x.get("duration_s", 0),
+                reverse=True,
+            )[:10]
+        ],
+        "memory_heaviest": [
+            {
+                "nodeid": t.get("nodeid"),
+                "memory_peak_mb": t.get("memory_peak_mb"),
+                "memory_usage_mb": t.get("memory_usage_mb"),
+            }
+            for t in sorted(
+                [t for t in tests if t.get("memory_peak_mb", 0) > 0],
+                key=lambda x: x.get("memory_peak_mb", 0),
+                reverse=True,
+            )[:10]
+        ],
+        "flaky": [
+            {
+                "nodeid": t.get("nodeid"),
+                "claim_attempts": t.get("claim_attempts", 0),
+                "requeues": t.get("requeues", 0),
+            }
+            for t in tests
+            if t.get("claim_attempts", 0) > 1 or t.get("requeues", 0) > 0
+        ],
+        "collection_errors": report.get("collection_errors", []),
+    }
+
+    llm_section = _default_llm_section()
+    recommended = []
+    for item in report["derived"]["failures"][:LLM_SUMMARY_MAX_ITEMS]:
+        nodeid = item["nodeid"]
+        recommended.append(
+            {
+                "description": "Re-run single test (orchestrated)",
+                "command": f"ato dev test --llm -k \"{nodeid}\"",
+            }
+        )
+        recommended.append(
+            {
+                "description": "Re-run single test (direct, tight loop; no report)",
+                "command": f"ato dev test --direct -k \"{nodeid}\"",
+            }
+        )
+    llm_section["recommended_commands"] = recommended
+    report["llm"] = llm_section
+    return report
+
+
+def rebuild_reports_from_existing(
+    report_path: Path,
+    baseline_commit: str | None = None,
+):
+    if not report_path.exists():
+        raise FileNotFoundError(f"Report not found: {report_path}")
+    report = json.loads(report_path.read_text())
+    baseline = fetch_remote_report(commit_hash=baseline_commit)
+    if not baseline.loaded:
+        raise RuntimeError(baseline.error or "Failed to load baseline")
+    updated = _rebuild_report_with_baseline(report, baseline, baseline_commit)
+    TestAggregator([], RemoteBaseline()).write_json_report(updated, REPORT_JSON_PATH)
+    TestAggregator([], RemoteBaseline()).generate_html_report(updated, REPORT_HTML_PATH)
+    TestAggregator([], RemoteBaseline()).write_llm_report(updated, REPORT_LLM_JSON_PATH)
+    return updated
 
 
 # IMPORTANT: TestAggregator instantiation moved to main()
@@ -1415,7 +2630,7 @@ async def report_redirect():
 @app.get("/report")
 async def serve_report():
     """Serve the test report HTML file."""
-    report_path = Path("artifacts/test-report.html")
+    report_path = REPORT_HTML_PATH
     if report_path.exists():
         # Read file into memory to avoid race condition with regeneration
         try:
@@ -1453,8 +2668,7 @@ class ReportTimer:
 
         while self._running:
             _print(self._aggregator.get_report())
-            if GENERATE_PERIODIC_HTML:
-                self._aggregator.generate_html_report()
+            self._aggregator.generate_reports(periodic=True)
             time.sleep(self._interval)
 
     def stop(self):
@@ -1469,14 +2683,14 @@ def get_free_port(start_port: int = 50000, max_attempts: int = 100) -> int:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                s.bind(("127.0.0.1", port))
+                s.bind((ORCHESTRATOR_BIND_HOST, port))
                 return port
         except OSError:
             continue
     # Fallback to OS-assigned port if all preferred ports are taken
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind(("", 0))
+        s.bind((ORCHESTRATOR_BIND_HOST, 0))
         return s.getsockname()[1]
 
 
@@ -1542,7 +2756,11 @@ def collect_tests(pytest_args: list[str]) -> tuple[list[str], dict[str, str]]:
 
 def start_server(port) -> uvicorn.Server:
     config = uvicorn.Config(
-        app, host="127.0.0.1", port=port, log_level="error", access_log=False
+        app,
+        host=ORCHESTRATOR_BIND_HOST,
+        port=port,
+        log_level="error",
+        access_log=False,
     )
     server = uvicorn.Server(config)
 
@@ -1561,10 +2779,42 @@ def get_log_file(worker_id: int) -> Path:
 LOG_DIR = Path("artifacts/logs")
 
 
+def run_report_server(open_browser: bool = False) -> None:
+    port = get_free_port()
+    url = f"http://127.0.0.1:{port}"
+    report_url = f"http://{ORCHESTRATOR_REPORT_HOST}:{port}/report"
+    local_report_url = f"http://127.0.0.1:{port}/report"
+    _print(f"Starting report server at {url}")
+    server = start_server(port)
+
+    clickable_link = f"\033]8;;{report_url}\033\\📊 {report_url}\033]8;;\033\\"
+    _print(f"Live report: {clickable_link}")
+    if ORCHESTRATOR_REPORT_HOST == "0.0.0.0":
+        local_clickable = (
+            f"\033]8;;{local_report_url}\033\\📍 {local_report_url}\033]8;;\033\\"
+        )
+        _print(f"Local report: {local_clickable}")
+
+    if open_browser:
+        import webbrowser
+
+        webbrowser.open(local_report_url)
+
+    _print("Keep-open enabled. Press Ctrl+C to stop the report server.")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        _print("Stopping report server...")
+        server.should_exit = True
+
+
 def main(
     args: list[str] | None = None,
     baseline_commit: str | None = None,
     open_browser: bool = False,
+    llm: bool = False,
+    keep_open: bool = False,
 ):
     global tests_total, commit_info, ci_info, workers
 
@@ -1621,7 +2871,13 @@ def main(
 
     # Initialize aggregator with empty baseline (will be updated when fetch completes)
     global aggregator
-    aggregator = TestAggregator(tests, RemoteBaseline())
+    aggregator = TestAggregator(
+        tests,
+        RemoteBaseline(),
+        pytest_args=pytest_args,
+        baseline_requested=baseline_commit,
+        collection_errors=errors,
+    )
 
     for error_key, error_value in errors.items():
         aggregator._tests[error_key] = TestState(
@@ -1631,6 +2887,7 @@ def main(
             output={"stderr": error_value},
             outcome=Outcome.ERROR,
             error_message=error_value.splitlines()[-1].strip(),
+            collection_error=True,
         )
 
     for t in tests:
@@ -1639,20 +2896,28 @@ def main(
     # 2. Start Orchestrator
     port = get_free_port()
     url = f"http://127.0.0.1:{port}"
+    report_url = f"http://{ORCHESTRATOR_REPORT_HOST}:{port}/report"
+    local_report_url = f"http://127.0.0.1:{port}/report"
+    aggregator.set_orchestrator_url(url)
     _print(f"Starting orchestrator at {url}")
+    aggregator.set_orchestrator_report_url(report_url)
     server = start_server(port)
 
     # Print clickable link to the report (ANSI hyperlink format for terminals)
-    report_url = f"{url}/report"
     # Use OSC 8 hyperlink escape sequence for clickable links in modern terminals
     clickable_link = f"\033]8;;{report_url}\033\\📊 {report_url}\033]8;;\033\\"
     _print(f"Live report: {clickable_link}")
+    if ORCHESTRATOR_REPORT_HOST == "0.0.0.0":
+        local_clickable = (
+            f"\033]8;;{local_report_url}\033\\📍 {local_report_url}\033]8;;\033\\"
+        )
+        _print(f"Local report: {local_clickable}")
 
     # Open browser if requested
     if open_browser:
         import webbrowser
 
-        webbrowser.open(report_url)
+        webbrowser.open(local_report_url)
 
     # 3. Start Workers
     worker_script = Path(__file__).parent / "worker.py"
@@ -1759,7 +3024,8 @@ def main(
         timer.stop()
 
         # Shutdown the HTTP server to release the port
-        server.should_exit = True
+        if not keep_open:
+            server.should_exit = True
 
         # Kill remaining workers
         for p in workers.values():
@@ -1783,19 +3049,30 @@ def main(
     total_duration = (datetime.datetime.now() - aggregator.start_time).total_seconds()
     _print(f"Total time: {format_duration(total_duration)}")
 
-    aggregator.generate_html_report()
-    aggregator.generate_json_report()
+    report = aggregator.generate_reports(periodic=False)
 
     # Print link to the static report file
-    report_path = Path("artifacts/test-report.html").resolve()
+    report_path = REPORT_HTML_PATH.resolve()
     file_url = f"file://{report_path}"
     clickable_file = f"\033]8;;{file_url}\033\\📄 {report_path}\033]8;;\033\\"
     _print(f"Report saved: {clickable_file}")
 
-    if aggregator.has_failures():
-        sys.exit(1)
+    if llm:
+        _print_llm_summary(report)
 
-    sys.exit(0)
+    exit_code = 1 if aggregator.has_failures() else 0
+
+    if keep_open:
+        _print("Keep-open enabled. Press Ctrl+C to stop the report server.")
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            _print("Stopping report server...")
+            server.should_exit = True
+        sys.exit(exit_code)
+
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":

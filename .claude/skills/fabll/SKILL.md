@@ -55,7 +55,7 @@ app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 3) Keep an eye on invariants enforced at class creation time (metaclass + `__init_subclass__`).
 
 ### Testing
-- Core tests: `pytest test/core/test_node.py -q` and `pytest test/library/test_traits.py -q`
+- Core tests: `ato dev test --llm test/core/test_node.py -q` and `ato dev test --llm test/library/test_traits.py -q`
 
 ## Best Practices
 - **Prefer Traits**: Don't add methods to `Node` subclasses if they can be a Trait. This allows them to be applied to different component families.

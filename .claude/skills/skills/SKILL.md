@@ -61,7 +61,7 @@ Quick Start should be:
 - avoids placeholders like `src/.../something.zig`
 
 Good patterns:
-- CLI snippet for user-facing flows (`ato build`, `ato dev test`)
+- CLI snippet for user-facing flows (`ato build`, `ato dev test --llm`)
 - Python snippet for core APIs (`GraphView.create()` / `TypeGraph.create(...)`)
 
 ### 5) Validation checklist (required)
@@ -82,4 +82,3 @@ Prefer this ordering:
 6) `## Best Practices` / `## Invariants` (when applicable)
 
 Keep the doc concise and “repo-local”: avoid external links unless they’re stable standards docs.
-

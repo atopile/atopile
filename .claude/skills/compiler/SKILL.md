@@ -74,9 +74,9 @@ app = fabll.Node.bind_instance(app_root)
    - `src/atopile/compiler/build.py` / `src/atopile/compiler/deferred_executor.py`
 
 ### Testing
-- Compiler tests: `pytest test/compiler -q`
-- Linker behavior: `pytest test/compiler/test_linker.py -q`
-- End-to-end smoke: `pytest test/test_end_to_end.py -q`
+- Compiler tests: `ato dev test --llm test/compiler -q`
+- Linker behavior: `ato dev test --llm test/compiler/test_linker.py -q`
+- End-to-end smoke: `ato dev test --llm test/test_end_to_end.py -q`
 
 ## Best Practices
 - Keep errors source-attached: raise `DslRichException`/`UserException` with AST source info when possible.

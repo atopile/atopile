@@ -66,10 +66,10 @@ tg = fbrk.TypeGraph.create(g=g)
 
 ### Testing
 - TypeGraph-heavy tests live in compiler/runtime suites:
-  - `pytest test/compiler/test_typegraph.py -q`
-  - `pytest test/compiler/test_runtime.py -q`
+  - `ato dev test --llm test/compiler/test_typegraph.py -q`
+  - `ato dev test --llm test/compiler/test_runtime.py -q`
 - Zig-backed traversal tests:
-  - `pytest test/core/zig/test_interface_pathfinder.py -q`
+  - `ato dev test --llm test/core/zig/test_interface_pathfinder.py -q`
 
 ## Best Practices
 - Import edges/TypeGraph via `faebryk.core.faebrykpy` (so callers get Python helpers, not just raw generated types).

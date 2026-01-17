@@ -205,6 +205,8 @@ def pytest_runtest_logreport(report: pytest.TestReport):
             output["stdout"] = report.capstdout
         if hasattr(report, "capstderr"):
             output["stderr"] = report.capstderr
+        if hasattr(report, "caplog") and report.caplog:
+            output["log"] = report.caplog
 
         # Use Rich traceback if we captured the exception, else fall back to longreprtext
         if report.nodeid in _captured_exc_info:

@@ -12,7 +12,7 @@ This skill is the canonical guidance for automated and interactive code reviews 
 - Read the PR description and ensure it matches `.github/pull_request_template.md`.
 - Review the diff focusing on invariants, correctness, and performance-sensitive hotspots.
 - If you can run commands locally, prefer targeted verification:
-  - `ato dev test -k <area>` (fast filter)
+  - `ato dev test --llm -k <area>` (fast filter)
   - `ato dev compile` (if Zig/bindings changed)
   - `ato dev flags` (if behavior depends on ConfigFlags)
 - When summarizing failures/regressions, prefer `artifacts/test-report.json` over HTML.
@@ -37,7 +37,7 @@ This skill is the canonical guidance for automated and interactive code reviews 
 
 ## Repo-Specific Review Anchors
 
-- **Dev workflow + reports**: `ato dev test` writes `artifacts/test-report.json` and optionally `artifacts/test-report.html` (see `test/runner/main.py`).
+- **Dev workflow + reports**: `ato dev test --llm` writes `artifacts/test-report.json` and `artifacts/test-report.llm.json`, and optionally `artifacts/test-report.html` (see `test/runner/main.py`).
 - **ConfigFlags**: inventory via `ato dev flags`; prefer code-driven discovery over hand-maintained docs.
 - **Graph/fabll redesign**: see `AGENTS.md` and the relevant `.claude/skills/*` docs for the area you’re reviewing.
 - **Solver invariants**: `src/faebryk/core/solver/README.md` + `src/faebryk/core/solver/symbolic/invariants.py`.
@@ -51,4 +51,3 @@ This skill is the canonical guidance for automated and interactive code reviews 
   - **Nice-to-have** (style/ergonomics)
 - Prefer actionable suggestions (what to change + why + where).
 - If you’re uncertain, ask a concrete question and point to the ambiguous code.
-
