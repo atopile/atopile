@@ -51,6 +51,7 @@ from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.PCB import PCB
 from faebryk.library.has_default_constraint import has_default_constraint
 from faebryk.library.is_alias_bus_parameter import is_alias_bus_parameter
+from faebryk.library.is_sum_bus_parameter import is_sum_bus_parameter
 from faebryk.library.Filter import Filter
 import faebryk.library.Lead as Lead
 from faebryk.library.XtalIF import XtalIF
@@ -150,6 +151,7 @@ __all__ = [
     "PCB",
     "has_default_constraint",
     "is_alias_bus_parameter",
+    "is_sum_bus_parameter",
     "Filter",
     "Lead",
     "XtalIF",

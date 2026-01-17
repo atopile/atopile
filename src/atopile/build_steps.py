@@ -33,6 +33,7 @@ from faebryk.exporters.documentation.datasheets import export_datasheets
 
 # from faebryk.exporters.documentation.i2c import export_i2c_tree
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
+from faebryk.exporters.power_tree.power_tree import export_power_tree
 from faebryk.exporters.pcb.kicad.artifacts import (
     KicadCliExportError,
     export_3d_board_render,
@@ -866,6 +867,23 @@ def generate_variable_report(ctx: BuildStepContext, log_context: LoggingStage) -
 
 
 @muster.register(
+    "power-tree",
+    dependencies=[build_design],
+    produces_artifact=True,
+)
+def generate_power_tree(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+    """Generate power tree visualization and data exports."""
+    app = ctx.require_app()
+    solver = ctx.require_solver()
+    output_dir = config.build.paths.output_base.parent
+    export_power_tree(
+        app,
+        solver,
+        mermaid_path=output_dir / "power_tree.md",
+    )
+
+
+@muster.register(
     "datasheets",
     dependencies=[build_design],
     produces_artifact=True,
@@ -896,6 +914,7 @@ def generate_datasheets(ctx: BuildStepContext, log_context: LoggingStage) -> Non
         generate_bom,
         generate_manifest,
         generate_variable_report,
+        generate_power_tree,
         generate_datasheets,
         # generate_i2c_tree,
     ],

@@ -19,6 +19,7 @@ class Resistor(fabll.Node):
     #                 traits
     # ----------------------------------------
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+    _is_sink = fabll.Traits.MakeEdge(F.is_sink.MakeChild())
 
     _can_attatch_to_footprint = fabll.Traits.MakeEdge(
         F.Footprints.can_attach_to_footprint.MakeChild()

@@ -39,10 +39,13 @@ class ElectricPower(fabll.Node):
     # ----------------------------------------
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
+    # _is_source = fabll.Traits.MakeEdge(F.is_source.MakeChild())
+
     voltage = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Volt,
     )
     max_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+    max_power = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Watt)
 
     can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(in_=[""], out_=[""]))
 
@@ -63,6 +66,8 @@ class ElectricPower(fabll.Node):
 
     bus_parameters = [
         fabll.Traits.MakeEdge(F.is_alias_bus_parameter.MakeChild(), owner=[voltage]),
+        fabll.Traits.MakeEdge(F.is_sum_bus_parameter.MakeChild(), owner=[max_current]),
+        fabll.Traits.MakeEdge(F.is_sum_bus_parameter.MakeChild(), owner=[max_power]),
     ]
 
     usage_example = fabll.Traits.MakeEdge(
