@@ -33,7 +33,7 @@ def _get_non_excluded_project_files(cfg: atopile.config.ProjectConfig) -> list[P
     from git import Repo
 
     prjroot = cfg.paths.root
-    repo = Repo(search_parent_directories=True)
+    repo = Repo(prjroot, search_parent_directories=True)
 
     # For gitignore patterns, we need to get all files and filter out the matched ones,
     # since gitignore patterns specify which files to exclude
