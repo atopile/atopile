@@ -9,8 +9,7 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.library.bus_parameter_utils import collect_bus_params, get_bus_param_owner
-from faebryk.libs.test.times import Times
-from faebryk.libs.util import groupby
+from faebryk.libs.util import groupby, once
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +22,6 @@ class is_alias_bus_parameter(fabll.Node):
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
-    _resolved_graphs: set[int] = set()
 
     def resolve(self, interfaces: set[fabll.Node]):
         _, _, self_param = get_bus_param_owner(self)
@@ -43,6 +41,7 @@ class is_alias_bus_parameter(fabll.Node):
             )
 
     @staticmethod
+    @once
     def resolve_bus_parameters(g: graph.GraphView, tg: fbrk.TypeGraph):
         bus_parameters = cast(
             list[tuple[fabll.Node, is_alias_bus_parameter]],
@@ -53,8 +52,6 @@ class is_alias_bus_parameter(fabll.Node):
                 )
             ],
         )
-
-        times = Times()
 
         params_grouped_by_interface = groupby(
             bus_parameters, lambda p: get_bus_param_owner(p[1])[0]
@@ -80,8 +77,6 @@ class is_alias_bus_parameter(fabll.Node):
                         params_grouped_by_interface[interface]
                     )
 
-        times.add("get parameter connections")
-
         processed_busses_params: set[tuple[frozenset[fabll.Node], str]] = set()
 
         for _, trait in param_bus_representatives:
@@ -94,16 +89,3 @@ class is_alias_bus_parameter(fabll.Node):
                 continue
             trait.resolve(param_bus)
             processed_busses_params.add(bus_id)
-
-        times.add("merge parameters")
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(times)
-
-    @F.implements_design_check.register_post_instantiation_setup_check
-    def __check_post_instantiation_setup__(self):
-        obj = fabll.Traits(self).get_obj_raw()
-        graph_id = id(obj.g)
-        if graph_id in self._resolved_graphs:
-            return
-        self._resolved_graphs.add(graph_id)
-        self.resolve_bus_parameters(obj.g, obj.tg)

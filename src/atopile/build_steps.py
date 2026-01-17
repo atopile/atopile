@@ -392,6 +392,9 @@ def post_instantiation_setup(ctx: BuildStepContext, log_context: LoggingStage) -
         exclude=tuple(set(config.build.exclude_checks)),
     )
 
+    F.is_alias_bus_parameter.resolve_bus_parameters(app.g, app.tg)
+    F.is_sum_bus_parameter.resolve_bus_parameters(app.g, app.tg)
+
 
 @muster.register(
     "post-instantiation-design-check",
