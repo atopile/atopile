@@ -665,6 +665,9 @@
         // Scale logo to match text content height
         scaleLogoToText();
 
+        // Apply initial filter state
+        filterTable();
+
         // Start polling if running
         setInterval(checkAndReload, 2000);
       });
@@ -1004,7 +1007,7 @@
 
     <div class="controls">
       <label
-        ><input type="checkbox" id="deltaOnly" onchange="filterTable()" /> Delta
+        ><input type="checkbox" id="deltaOnly" onchange="filterTable()" checked /> Delta
         only</label
       >
       <div class="outcome-filters">
@@ -1013,7 +1016,6 @@
             type="checkbox"
             class="outcome-filter"
             value="passed"
-            checked
           />
           Passed</label
         >
@@ -1049,7 +1051,6 @@
             type="checkbox"
             class="outcome-filter"
             value="skipped"
-            checked
           />
           Skipped</label
         >
@@ -1058,7 +1059,6 @@
             type="checkbox"
             class="outcome-filter"
             value="running"
-            checked
           />
           Running</label
         >
@@ -1067,7 +1067,6 @@
             type="checkbox"
             class="outcome-filter"
             value="queued"
-            checked
           />
           Queued</label
         >
