@@ -3767,11 +3767,12 @@ def test_contradiction_empty_intersection_has_sources():
         assert resistance within 0ohm to 5ohm
         assert resistance within 10ohm to 12ohm
     """
-    with pytest.raises(ContradictionByLiteral, match="Empty intersection") as exc:
+    with pytest.raises(ContradictionByLiteral, match="Empty superset") as exc:
         _build_mutator(source)
     msg = str(exc.value)
     assert "Constraints:" in msg
-    assert "<unknown>:" in msg
+    # Verify that the constraint range appears (shows tracing is working)
+    assert "{0..5}" in msg
 
 
 def test_contradiction_alias_incompatible_with_subset_has_sources():
@@ -3793,17 +3794,21 @@ def test_contradiction_alias_incompatible_with_subset_has_sources():
                 assert_=True,
             )
         )
-        literal = mutator.make_lit(10.0).is_literal.get()
+        literal = (
+            F.Literals.Numbers.bind_typegraph(mutator.tg_in)
+            .create_instance(mutator.G_in)
+            .setup_from_singleton(value=10.0, unit=unit)
+        ).is_literal.get()
         raise ContradictionByLiteral(
             "Tried alias to literal incompatible with subset",
             involved=[param.is_parameter_operatable.get()],
             literals=[subset_lit.is_literal.get(), literal],
             mutator=mutator,
-            constraint_expr_pairs=[(subset_lit.is_literal.get(), subset_expr)],
+            constraint_sources=[subset_expr.is_parameter_operatable.get()],
         )
     msg = str(exc.value)
     assert "Constraints:" in msg
-    assert "{0.0..5.0}" in msg
+    assert "{0..5}" in msg
 
 
 def test_contradiction_subset_to_different_literal_has_sources():
@@ -3814,14 +3819,14 @@ def test_contradiction_subset_to_different_literal_has_sources():
         literal = (
             F.Literals.Numbers.bind_typegraph(mutator.tg_in)
             .create_instance(mutator.G_in)
-            .setup_from_singleton(value=10, unit=unit)
+            .setup_from_singleton(value=10.0, unit=unit)
         )
         is_expr = (
-            F.Expressions.Is.bind_typegraph(mutator.tg_in)
+            F.Expressions.IsSubset.bind_typegraph(mutator.tg_in)
             .create_instance(mutator.G_in)
             .setup(
-                param.is_parameter_operatable.get().as_operand.get(),
-                literal.is_literal.get().as_operand.get(),
+                subset=param.is_parameter_operatable.get().as_operand.get(),
+                superset=literal.is_literal.get().as_operand.get(),
                 assert_=True,
             )
         )
@@ -3839,4 +3844,4 @@ def test_contradiction_subset_to_different_literal_has_sources():
         )
     msg = str(exc.value)
     assert "Constraints:" in msg
-    assert "10.0" in msg
+    assert "10" in msg

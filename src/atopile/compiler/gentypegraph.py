@@ -234,7 +234,6 @@ class ActionsFactory:
                 lhs_path=target_path if target_path else [],
                 rhs_path=[trait_identifier],
                 edge=fbrk.EdgeTrait.build(),
-                source_chunk_node=source_chunk_node,
             ),
         ]
 
@@ -336,7 +335,6 @@ class ActionsFactory:
         lhs_link_path: LinkPath,
         rhs_link_path: LinkPath,
         direction: AST.DirectedConnectStmt.Direction,
-        source_chunk_node: AST.SourceChunk | None = None,
     ) -> "AddMakeLinkAction":
         """
         Create a link action for directed (~> or <~) connections via can_bridge.
@@ -359,7 +357,6 @@ class ActionsFactory:
         return AddMakeLinkAction(
             lhs_path=lhs_bridge_path,
             rhs_path=rhs_bridge_path,
-            source_chunk_node=source_chunk_node,
         )
 
     @staticmethod
@@ -467,7 +464,6 @@ class ActionsFactory:
                     lhs_path=list(target_path.identifiers()),
                     rhs_path=list(element_path.identifiers()),
                     edge=edge_attrs,
-                    source_chunk_node=source_chunk_node,
                 )
             )
 
@@ -591,7 +587,6 @@ class AddMakeLinkAction:
     lhs_path: LinkPath
     rhs_path: LinkPath
     edge: fbrk.EdgeCreationAttributes | None = None
-    source_chunk_node: AST.SourceChunk | None = None
 
 
 @dataclass(frozen=True)

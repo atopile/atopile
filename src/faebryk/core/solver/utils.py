@@ -123,7 +123,14 @@ class ContradictionByLiteral(Contradiction):
         self.literals = literals
         sources: list[F.Parameters.is_parameter_operatable] = []
         if constraint_sources is not None:
-            sources.extend(constraint_sources)
+            # Trace back constraint sources through the mutation map to find
+            # the original expressions in the instance graph with source chunks
+            for src in constraint_sources:
+                traced = mutator.mutation_map.map_backward(src)
+                if traced:
+                    sources.extend(traced)
+                else:
+                    sources.append(src)
         if constraint_expr_pairs is not None:
             sources.extend(
                 self.get_original_constraints(constraint_expr_pairs, mutator)

@@ -5,8 +5,12 @@
 Trait for nodes that have an associated source chunk from the AST.
 
 This trait stores a pointer to the source chunk node that defines where
-this instance was created in the source code. The trait is automatically
-attached during instantiation when the MakeChild node has a source pointer.
+this node was defined in the source code.
+
+For MakeChild nodes: A "source" pointer is set on the MakeChild, and the
+typegraph creates this trait on the instance during instantiation.
+
+For other nodes (instances, types): This trait is created directly by fabll.
 
 The trait is specifically designed to NOT be copied during solver bootstrap,
 preventing the entire AST subgraph from being copied into the solver graph.

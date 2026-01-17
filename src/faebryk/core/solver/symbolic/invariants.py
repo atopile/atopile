@@ -340,10 +340,16 @@ def _no_empty_superset(
         and lit.op_setic_is_empty()
         and (po := operands[0].as_parameter_operatable.try_get())
     ):
-        raise Contradiction(
+        constraint_ops = [
+            op.is_parameter_operatable.get()
+            for op in po.get_operations(types=IsSubset, predicates_only=True)
+        ]
+        raise ContradictionByLiteral(
             "Empty superset for parameter operatable",
-            [po],
-            mutator,
+            involved=[po],
+            literals=[lit],
+            mutator=mutator,
+            constraint_sources=constraint_ops if constraint_ops else [po],
         )
 
 

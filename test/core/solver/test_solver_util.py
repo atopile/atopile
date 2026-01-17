@@ -11,15 +11,14 @@ import pytest
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
-from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.mutator import (
     MutationMap,
     MutationStage,
     Mutator,
     Transformations,
 )
+from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.utils import (
-    Contradiction,
     ContradictionByLiteral,
     MutatorUtils,
 )
@@ -450,7 +449,7 @@ def test_contradiction_message_subset():
 
     solver = Solver()
 
-    with pytest.raises(Contradiction, match="Empty superset for parameter operatable"):
+    with pytest.raises(ContradictionByLiteral, match="Empty superset"):
         solver.simplify(E.tg, E.g, print_context=context, terminal=True)
 
 

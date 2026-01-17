@@ -1037,7 +1037,8 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     child=child_instance.instance.node(),
                     child_identifier=identifier,
                 )
-                child_instance.point_to_source_chunk(source_chunk_node)
+                if source_chunk_node is not None:
+                    child_instance.add_source_chunk_trait(source_chunk_node)
             else:
                 mc = t.MakeChild(
                     nodetype=field.nodetype,
@@ -1046,7 +1047,8 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     soft_create=field._soft_create,
                 )
                 makechild = mc._add_to_typegraph()
-                cls(makechild).point_to_source_chunk(source_chunk_node)
+                if source_chunk_node is not None:
+                    cls(makechild).set_source_pointer(source_chunk_node)
             for dependant in field._dependants:
                 cls._exec_field(
                     t=t,
@@ -1075,12 +1077,11 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                 )
                 type_node.g().insert_edge(edge=edge_instance)
             else:
-                ml = t.MakeEdge(
+                t.MakeEdge(
                     lhs_reference_path=field.lhs_resolved(),
                     rhs_reference_path=field.rhs_resolved(),
                     edge=field.edge,
                 )
-                cls(ml).point_to_source_chunk(source_chunk_node)
 
     @classmethod
     def _create_type(cls, t: "TypeNodeBoundTG[Self, T]") -> None:
@@ -1122,9 +1123,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             for item in value:
                 if isinstance(item, Field):
                     flattened.append(item)
-                elif isinstance(item, list) and all(
-                    isinstance(c, Field) for c in item
-                ):
+                elif isinstance(item, list) and all(isinstance(c, Field) for c in item):
                     flattened.extend(item)
             if flattened and all(isinstance(c, Field) for c in flattened):
                 cls._add_field(locator=name, field=ListField(fields=flattened))
@@ -1783,13 +1782,21 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             return None
         return TypeNodeBoundTG.try_get_trait_of_type(trait=trait, type_node=type_node)
 
-    def point_to_source_chunk(self, source_chunk_node: "Node | None") -> None:
+    def set_source_pointer(self, source_chunk_node: "Node") -> None:
+        """Set source pointer on MakeChild for typegraph to read during instantiation"""
+        fbrk.EdgePointer.point_to(
+            bound_node=self.instance,
+            target_node=source_chunk_node.instance.node(),
+            identifier="source",
+            index=None,
+        )
+
+    def add_source_chunk_trait(self, source_chunk_node: "Node") -> None:
         import faebryk.library._F as F
 
-        if source_chunk_node is not None:
-            Traits.create_and_add_instance_to(
-                node=self, trait=F.has_source_chunk
-            ).setup(source_chunk_node=source_chunk_node.instance.node())
+        Traits.create_and_add_instance_to(node=self, trait=F.has_source_chunk).setup(
+            source_chunk_node=source_chunk_node.instance.node()
+        )
 
 
 type NodeT = Node[Any]

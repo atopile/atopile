@@ -500,7 +500,16 @@ class MutationStage:
         return self.transformations.mutated.get(param)
 
     @property
-    # FIXME not sure why but this breaks stuff, but is very necessary for speed
+    @once
+    def backwards_mutated(
+        self,
+    ) -> dict[
+        F.Parameters.is_parameter_operatable,
+        list[F.Parameters.is_parameter_operatable],
+    ]:
+        return invert_dict(self.transformations.mutated)
+
+    @property
     @once
     def backwards_mapping(
         self,
@@ -508,7 +517,21 @@ class MutationStage:
         F.Parameters.is_parameter_operatable,
         list[F.Parameters.is_parameter_operatable],
     ]:
-        return invert_dict(self.transformations.mutated)
+        """Complete backward mapping including mutated, created, and soft_replaced."""
+        result = dict(self.backwards_mutated)
+        # created is already new → sources
+        for new_expr, sources in self.transformations.created.items():
+            if new_expr in result:
+                result[new_expr] = result[new_expr] + sources
+            else:
+                result[new_expr] = list(sources)
+        # soft_replaced needs inversion
+        for src, dest in self.transformations.soft_replaced.items():
+            if dest in result:
+                result[dest].append(src)
+            else:
+                result[dest] = [src]
+        return result
 
     def map_backward(
         self, param: F.Parameters.is_parameter_operatable
