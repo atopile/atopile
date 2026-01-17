@@ -2,6 +2,7 @@ import io
 import logging
 import os
 import shutil
+import sys
 import time
 from collections.abc import Iterable
 from contextlib import contextmanager
@@ -255,10 +256,13 @@ class LogHandler(RichHandler):
 
     def emit(self, record: logging.LogRecord) -> None:
         """Invoked by logging."""
-        # Worker subprocesses always suppress console output (parent handles display).
-        if os.environ.get("ATO_BUILD_EVENT_FD") or os.environ.get(
-            "ATO_BUILD_STATUS_FILE"
-        ):
+        # Worker subprocesses always suppress console output.
+        is_worker = bool(
+            os.environ.get("ATO_BUILD_EVENT_FD")
+            or os.environ.get("ATO_BUILD_STATUS_FILE")
+        )
+        is_console = self.console.file in (sys.stdout, sys.stderr)
+        if is_worker and is_console:
             return
 
         hashable = self._get_hashable(record)

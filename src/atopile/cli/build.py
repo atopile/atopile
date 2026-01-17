@@ -15,6 +15,7 @@ from typing import IO, Annotated, Callable
 
 import pathvalidate
 import typer
+from rich.console import Console
 
 from atopile.telemetry import capture
 
@@ -724,13 +725,20 @@ class ParallelBuildManager:
             self._active_workers.add(display_name)
         return True
 
-    def _fill_worker_slots(self) -> None:
+    def _fill_worker_slots(
+        self,
+        start_next_build: Callable[[], bool] | None = None,
+        max_workers: int | None = None,
+    ) -> None:
         """Start builds to fill available worker slots."""
+        start_fn = start_next_build or self._start_next_build
+        target_workers = max_workers or self.max_workers
+
         with self._lock:
             active_count = len(self._active_workers)
 
-        while active_count < self.max_workers:
-            if not self._start_next_build():
+        while active_count < target_workers:
+            if not start_fn():
                 break
             with self._lock:
                 active_count = len(self._active_workers)
@@ -1070,6 +1078,28 @@ class ParallelBuildManager:
             f"{'':>{self._VERBOSE_INDENT}}{_format_stage_entry(entry)}{log_text}"
         )
 
+    def _print_failure_details(
+        self, display_name: str, bp: "BuildProcess", console: "Console"
+    ) -> None:
+        """Print failure details similar to parallel mode output."""
+        error_details = bp.get_error_details()
+        error_msg = bp.get_error_message()
+
+        console.print(f"[red bold]✗ {display_name}[/red bold]")
+        if error_details:
+            for line in error_details:
+                line = self._linkify_paths(line)
+                console.print(f"  {line}")
+        elif error_msg:
+            console.print(f"  {error_msg}")
+
+        if bp.log_file and bp.log_file.exists():
+            log_path = bp.log_file.absolute()
+            uri = self._make_file_uri(log_path)
+            link = f"[link={uri}]View full log[/link]"
+            console.print(f"  [dim]→ {link}[/dim]")
+        console.print("")
+
     def _display_loop(self) -> None:
         """Background thread that updates display."""
         from rich.console import Group
@@ -1095,59 +1125,72 @@ class ParallelBuildManager:
             return self._run_verbose()
         return self._run_parallel()
 
+    def _print_build_result(
+        self, display_name: str, bp: "BuildProcess", ret: int, console: "Console"
+    ) -> None:
+        """Print per-build success/failure summary with details."""
+        if ret == 0:
+            if bp.warnings > 0:
+                console.print(
+                    f"\n[yellow]⚠ {display_name} completed with "
+                    f"{bp.warnings} warning(s)[/yellow]"
+                )
+            else:
+                console.print(f"\n[green]✓ {display_name} completed[/green]")
+        else:
+            console.print(f"\n[red]✗ {display_name} failed[/red]")
+            self._print_failure_details(display_name, bp, console)
+
     def _run_verbose(self) -> dict[str, int]:
         """Run builds sequentially with full output visible."""
-        results: dict[str, int] = {}
+        return self._run_parallel(
+            live=False,
+            max_workers=1,
+            print_headers=True,
+            print_results=True,
+            stage_printer=self._print_verbose_stage,
+        )
 
-        for display_name, bp in self.processes.items():
-            self._console.print(f"\n[bold cyan]▶ Building {display_name}[/bold cyan]")
-            self._console.print(f"[dim]  Logs: {bp.log_dir}[/dim]\n")
-
-            # Print stage updates as they complete
-            bp.set_stage_printer(self._print_verbose_stage)
-            bp.start()
-
-            # Wait for completion
-            ret = bp.wait()
-            bp.set_stage_printer(None)
-            results[display_name] = ret
-
-            if ret == 0:
-                if bp.warnings > 0:
-                    self._console.print(
-                        f"\n[yellow]⚠ {display_name} completed with "
-                        f"{bp.warnings} warning(s)[/yellow]"
-                    )
-                else:
-                    self._console.print(f"\n[green]✓ {display_name} completed[/green]")
-            else:
-                self._console.print(f"\n[red]✗ {display_name} failed[/red]")
-
-        return results
-
-    def _run_parallel(self) -> dict[str, int]:
-        """Run builds in parallel with live progress display."""
+    def _run_parallel(
+        self,
+        *,
+        live: bool = True,
+        max_workers: int | None = None,
+        print_headers: bool = False,
+        print_results: bool = False,
+        stage_printer: Callable[[StageEntry, Path | None], None] | None = None,
+    ) -> dict[str, int]:
+        """Run builds with an optional live progress display."""
         from rich.console import Group
         from rich.live import Live
 
         results: dict[str, int] = {}
 
-        with Live(
-            self._render_table(),
-            console=self._console,
-            refresh_per_second=2,
-        ) as live:
-            self._live = live
+        def start_next_build() -> bool:
+            try:
+                display_name = self._task_queue.get_nowait()
+            except queue.Empty:
+                return False
 
-            # Start display update thread
-            self._display_thread = threading.Thread(
-                target=self._display_loop, daemon=True
-            )
-            self._display_thread.start()
+            bp = self.processes[display_name]
+            if print_headers:
+                self._console.print(
+                    f"\n[bold cyan]▶ Building {display_name}[/bold cyan]"
+                )
+                self._console.print(f"[dim]  Logs: {bp.log_dir}[/dim]\n")
+            if stage_printer is not None:
+                bp.set_stage_printer(stage_printer)
+            bp.start()
+            with self._lock:
+                self._active_workers.add(display_name)
+            return True
 
+        def run_loop(console: "Console") -> dict[str, int]:
             try:
                 # Fill initial worker slots
-                self._fill_worker_slots()
+                self._fill_worker_slots(
+                    start_next_build=start_next_build, max_workers=max_workers
+                )
 
                 # Poll until all processes complete
                 while True:
@@ -1162,32 +1205,25 @@ class ParallelBuildManager:
                                 results[display_name] = ret
                                 completed_this_round.append(display_name)
 
-                                # Print error immediately if build failed
-                                if ret != 0 and not bp._error_reported:
+                                if stage_printer is not None:
+                                    bp.set_stage_printer(None)
+
+                                if print_results:
+                                    self._print_build_result(
+                                        display_name, bp, ret, console
+                                    )
                                     bp._error_reported = True
-                                    error_details = bp.get_error_details()
-                                    error_msg = bp.get_error_message()
-
-                                    # Print error above display (lock to sync)
-                                    with self._display_lock:
-                                        live.console.print(
-                                            f"[red bold]✗ {display_name}[/red bold]"
+                                elif ret != 0 and not bp._error_reported:
+                                    bp._error_reported = True
+                                    if live:
+                                        with self._display_lock:
+                                            self._print_failure_details(
+                                                display_name, bp, console
+                                            )
+                                    else:
+                                        self._print_failure_details(
+                                            display_name, bp, console
                                         )
-                                        if error_details:
-                                            for line in error_details:
-                                                # Make file paths clickable
-                                                line = self._linkify_paths(line)
-                                                live.console.print(f"  {line}")
-                                        elif error_msg:
-                                            live.console.print(f"  {error_msg}")
-
-                                        # Add link to full log at the end
-                                        if bp.log_file and bp.log_file.exists():
-                                            log_path = bp.log_file.absolute()
-                                            uri = self._make_file_uri(log_path)
-                                            link = f"[link={uri}]View full log[/link]"
-                                            live.console.print(f"  [dim]→ {link}[/dim]")
-                                        live.console.print("")  # Blank line
 
                         # Remove completed builds from active set
                         for name in completed_this_round:
@@ -1195,7 +1231,9 @@ class ParallelBuildManager:
 
                     # Fill any freed worker slots
                     if completed_this_round:
-                        self._fill_worker_slots()
+                        self._fill_worker_slots(
+                            start_next_build=start_next_build, max_workers=max_workers
+                        )
 
                     # Check if all builds are done
                     all_done = (
@@ -1212,15 +1250,36 @@ class ParallelBuildManager:
                     bp.terminate()
                 raise
 
-            finally:
-                self._stop_display.set()
-                if self._display_thread:
-                    self._display_thread.join(timeout=1.0)
+            return results
 
-            # Final update
-            table = self._render_table()
-            summary = self._render_summary()
-            live.update(Group(table, "", summary))
+        if live:
+            with Live(
+                self._render_table(),
+                console=self._console,
+                refresh_per_second=2,
+            ) as live_display:
+                self._live = live_display
+                self._stop_display.clear()
+
+                # Start display update thread
+                self._display_thread = threading.Thread(
+                    target=self._display_loop, daemon=True
+                )
+                self._display_thread.start()
+
+                try:
+                    run_loop(live_display.console)
+                finally:
+                    self._stop_display.set()
+                    if self._display_thread:
+                        self._display_thread.join(timeout=1.0)
+
+                # Final update
+                table = self._render_table()
+                summary = self._render_summary()
+                live_display.update(Group(table, "", summary))
+        else:
+            run_loop(self._console)
 
         return results
 
