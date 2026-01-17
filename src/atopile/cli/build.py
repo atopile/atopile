@@ -1016,6 +1016,52 @@ class ParallelBuildManager:
 
         return results
 
+    def _read_timing_data(self, log_dir: Path) -> list[dict] | None:
+        """Read stage timing data from the timing JSON file."""
+        import json
+
+        from atopile.cli.logging_ import LoggingStage
+
+        timing_file = log_dir / LoggingStage.TIMING_FILE
+        if not timing_file.exists():
+            return None
+
+        try:
+            data = json.loads(timing_file.read_text())
+            return data.get("stages", [])
+        except Exception:
+            return None
+
+    def _format_timing_section(self, timing_data: list[dict]) -> list[str]:
+        """Format stage timing data as a markdown section."""
+        lines = [
+            "## Stage Timing",
+            "",
+            "| Stage | Time | Status |",
+            "|-------|------|--------|",
+        ]
+
+        total_time = 0.0
+        for stage in timing_data:
+            name = stage.get("name", "unknown")
+            elapsed = stage.get("elapsed_seconds", 0.0)
+            status = stage.get("status", "unknown")
+            total_time += elapsed
+
+            # Format status with emoji
+            status_emoji = {
+                "success": "✅",
+                "warning": "⚠️",
+                "failure": "❌",
+            }.get(status, "❓")
+
+            lines.append(f"| {name} | {elapsed:.2f}s | {status_emoji} |")
+
+        # Add total row
+        lines.append(f"| **Total** | **{total_time:.2f}s** | |")
+
+        return lines
+
     def _generate_build_summary(self, bp: "BuildProcess", summary_dir: Path) -> None:
         """Generate per-build summary with log file listings."""
         build_summary_file = bp.log_dir / "summary.md"
@@ -1037,6 +1083,12 @@ class ParallelBuildManager:
             f"**Errors:** {bp.errors}",
             "",
         ]
+
+        # Add stage timing stats if available
+        timing_data = self._read_timing_data(bp.log_dir)
+        if timing_data:
+            lines.extend(self._format_timing_section(timing_data))
+            lines.append("")
 
         # Extract errors from log files
         errors = self._extract_log_messages(bp.log_dir, "error")
@@ -1133,6 +1185,44 @@ class ParallelBuildManager:
 
         return messages
 
+    def _generate_per_build_timing_sections(self) -> list[str]:
+        """Generate timing statistics sections for each build target."""
+        lines = []
+
+        for display_name, bp in self.processes.items():
+            if not bp.log_dir or not bp.log_dir.exists():
+                continue
+
+            timing_data = self._read_timing_data(bp.log_dir)
+            if not timing_data:
+                continue
+
+            lines.append(f"### {display_name}")
+            lines.append("")
+            lines.append("| Stage | Time | Status |")
+            lines.append("|-------|------|--------|")
+
+            total_time = 0.0
+            for stage in timing_data:
+                name = stage.get("name", "unknown")
+                elapsed = stage.get("elapsed_seconds", 0.0)
+                status = stage.get("status", "unknown")
+                total_time += elapsed
+
+                # Format status with emoji
+                status_emoji = {
+                    "success": "✅",
+                    "warning": "⚠️",
+                    "failure": "❌",
+                }.get(status, "❓")
+
+                lines.append(f"| {name} | {elapsed:.2f}s | {status_emoji} |")
+
+            lines.append(f"| **Total** | **{total_time:.2f}s** | |")
+            lines.append("")
+
+        return lines
+
     def generate_summary(self) -> Path:
         """Generate summary markdown file."""
         from atopile.cli.logging_ import NOW
@@ -1184,6 +1274,14 @@ class ParallelBuildManager:
             # Generate per-build summary with log file listing
             if bp.log_dir and bp.log_dir.exists():
                 self._generate_build_summary(bp, summary_dir)
+
+        # Add per-build timing statistics
+        timing_sections = self._generate_per_build_timing_sections()
+        if timing_sections:
+            lines.append("")
+            lines.append("## Stage Timing by Build")
+            lines.append("")
+            lines.extend(timing_sections)
 
         # Summary stats
         total = len(self.processes)

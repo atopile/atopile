@@ -783,6 +783,9 @@ class LoggingStage(Advancable):
         logging.ERROR: "error",
     }
 
+    # Timing file name constant
+    TIMING_FILE = "stage_timings.json"
+
     def __init__(
         self, name: str, description: str, steps: int | None = None, indent: int = 20
     ):
@@ -801,6 +804,7 @@ class LoggingStage(Advancable):
         self._sanitized_name = pathvalidate.sanitize_filename(self.name)
         self._result = None
         self._log_dir: Path | None = None
+        self._stage_start_time: float = 0.0
 
         # Check if we're in parallel mode (skip per-stage progress display)
         self._parallel_display = get_parallel_display()
@@ -952,6 +956,9 @@ class LoggingStage(Advancable):
         self._setup_logging()
         self._current_progress = 0
 
+        # Always track stage start time for timing data
+        self._stage_start_time = time.time()
+
         # Write status to file if in worker mode (subprocess parallelism)
         self._write_status_file()
 
@@ -966,7 +973,7 @@ class LoggingStage(Advancable):
                 )
         elif self._no_animation:
             # No-animation mode: no progress bar, just track internally
-            self._stage_start_time = time.time()
+            pass  # Start time already set above
         else:
             self._update_columns()
             self._progress.start()
@@ -1047,6 +1054,55 @@ class LoggingStage(Advancable):
 
             self.refresh()
             self._progress.stop()
+
+        # Persist stage timing data for summary reports
+        self._save_timing_data(status)
+
+    def _save_timing_data(self, status: "CompletableSpinnerColumn.Status") -> None:
+        """Save stage timing data to JSON file for summary generation."""
+        import json
+
+        if not self._log_dir:
+            return
+
+        elapsed = time.time() - self._stage_start_time
+
+        # Map status to string for JSON serialization
+        status_map = {
+            CompletableSpinnerColumn.Status.SUCCESS: "success",
+            CompletableSpinnerColumn.Status.WARNING: "warning",
+            CompletableSpinnerColumn.Status.FAILURE: "failure",
+        }
+        status_str = status_map.get(status, "unknown")
+
+        timing_entry = {
+            "name": self.name,
+            "description": self.description,
+            "elapsed_seconds": round(elapsed, 3),
+            "status": status_str,
+            "warnings": self._warning_count,
+            "errors": self._error_count,
+        }
+
+        timing_file = self._log_dir / self.TIMING_FILE
+
+        try:
+            # Load existing timing data if present
+            if timing_file.exists():
+                existing_data = json.loads(timing_file.read_text())
+                if not isinstance(existing_data, dict):
+                    existing_data = {"stages": []}
+            else:
+                existing_data = {"stages": []}
+
+            # Append this stage's timing
+            existing_data["stages"].append(timing_entry)
+
+            # Write updated timing data
+            timing_file.write_text(json.dumps(existing_data, indent=2))
+        except Exception:
+            # Don't fail the build if timing persistence fails
+            pass
 
     def _create_log_dir(self) -> Path:
         from atopile.config import config
