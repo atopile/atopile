@@ -46,7 +46,7 @@ def export_power_tree(
         voltage_param_obj = not_none(
             voltage_param.try_cast(F.Parameters.NumericParameter)
         )
-        voltage_literal = solver.inspect_get_known_supersets(
+        voltage_literal = solver.extract_superset(
             voltage_param.get_trait(F.Parameters.is_parameter)
         )
         voltage_numbers = not_none(
@@ -65,7 +65,7 @@ def export_power_tree(
         max_current_param_obj = not_none(
             max_current_param.try_cast(F.Parameters.NumericParameter)
         )
-        max_current_literal = solver.inspect_get_known_supersets(
+        max_current_literal = solver.extract_superset(
             max_current_param.get_trait(F.Parameters.is_parameter)
         )
         max_current_numbers = not_none(
@@ -79,7 +79,7 @@ def export_power_tree(
         max_power_param_obj = not_none(
             max_power_param.try_cast(F.Parameters.NumericParameter)
         )
-        max_power_literal = solver.inspect_get_known_supersets(
+        max_power_literal = solver.extract_superset(
             max_power_param.get_trait(F.Parameters.is_parameter)
         )
         max_power_numbers = not_none(
@@ -92,9 +92,7 @@ def export_power_tree(
         power_node_label = (
             f"{power_label}<br/>V={voltage}<br/>Imax={max_current}<br/>Pmax={max_power}"
         )
-        mermaid_lines.append(
-            f'    {power_node_id}["{escape_label(power_node_label)}"]'
-        )
+        mermaid_lines.append(f'    {power_node_id}["{escape_label(power_node_label)}"]')
 
         if power.has_trait(F.is_source):
             hv_connected = list(
@@ -146,7 +144,7 @@ def export_power_tree(
                     resistance_param_obj = not_none(
                         resistance_param.try_cast(F.Parameters.NumericParameter)
                     )
-                    resistance_literal = solver.inspect_get_known_supersets(
+                    resistance_literal = solver.extract_superset(
                         resistance_param.get_trait(F.Parameters.is_parameter)
                     )
                     resistance_numbers = not_none(
@@ -170,7 +168,7 @@ def export_power_tree(
                     max_current_param_obj = not_none(
                         max_current_param.try_cast(F.Parameters.NumericParameter)
                     )
-                    max_current_literal = solver.inspect_get_known_supersets(
+                    max_current_literal = solver.extract_superset(
                         max_current_param.get_trait(F.Parameters.is_parameter)
                     )
                     max_current_numbers = not_none(
@@ -178,8 +176,10 @@ def export_power_tree(
                         .get_obj_raw()
                         .try_cast(F.Literals.Numbers)
                     )
-                    sink_max_current_value = max_current_param_obj.format_literal_for_display(
-                        max_current_numbers, show_tolerance=True
+                    sink_max_current_value = (
+                        max_current_param_obj.format_literal_for_display(
+                            max_current_numbers, show_tolerance=True
+                        )
                     )
                     label_lines.append(f"Imax={sink_max_current_value}")
 
@@ -187,7 +187,7 @@ def export_power_tree(
                     max_power_param_obj = not_none(
                         max_power_param.try_cast(F.Parameters.NumericParameter)
                     )
-                    max_power_literal = solver.inspect_get_known_supersets(
+                    max_power_literal = solver.extract_superset(
                         max_power_param.get_trait(F.Parameters.is_parameter)
                     )
                     max_power_numbers = not_none(
@@ -195,8 +195,10 @@ def export_power_tree(
                         .get_obj_raw()
                         .try_cast(F.Literals.Numbers)
                     )
-                    sink_max_power_value = max_power_param_obj.format_literal_for_display(
-                        max_power_numbers, show_tolerance=True
+                    sink_max_power_value = (
+                        max_power_param_obj.format_literal_for_display(
+                            max_power_numbers, show_tolerance=True
+                        )
                     )
                     label_lines.append(f"Pmax={sink_max_power_value}")
 

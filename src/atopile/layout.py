@@ -170,7 +170,7 @@ def attach_sub_pcbs_to_entry_points(app: fabll.Node):
     def get_or_create_subpcb(path: Path) -> SubPCB:
         if path not in subpcb_cache:
             out = SubPCB._create_instance(tg, g)
-            out.path.get().alias_to_single(g=g, value=str(path))
+            out.path.get().set_singleton(g=g, value=str(path))
             subpcb_cache[path] = out
         return subpcb_cache[path]
 
