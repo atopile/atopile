@@ -47,6 +47,7 @@ from atopile.compiler.gentypegraph import (
 from atopile.compiler.overrides import ReferenceOverrideRegistry, TraitOverrideRegistry
 from faebryk.core.faebrykpy import EdgeTraversal
 from faebryk.library.Units import UnitsNotCommensurableError
+from faebryk.libs.exceptions import DeprecatedException, downgrade
 from faebryk.libs.util import cast_assert, groupby, import_from_path, not_none
 
 _Quantity = tuple[float, fabll._ChildField]
@@ -1302,6 +1303,13 @@ class ASTVisitor:
 
         operator = root_comparison_clause.get_operator()
 
+        rhs_node = fabll.Traits(root_comparison_clause.get_rhs()).get_obj_raw()
+        rhs_is_literal = (
+            rhs_node.isinstance(AST.Quantity)
+            or rhs_node.isinstance(AST.BilateralQuantity)
+            or rhs_node.isinstance(AST.BoundedQuantity)
+        )
+
         match operator:
             case AST.ComparisonClause.ComparisonOperator.GREATER_THAN:
                 expr_type = F.Expressions.GreaterThan
@@ -1314,7 +1322,15 @@ class ASTVisitor:
             case AST.ComparisonClause.ComparisonOperator.WITHIN:
                 expr_type = F.Expressions.IsSubset
             case AST.ComparisonClause.ComparisonOperator.IS:
-                expr_type = F.Expressions.Is
+                if rhs_is_literal:
+                    with downgrade(DeprecatedException):
+                        raise DeprecatedException(
+                            "`assert x is <literal>` is deprecated. "
+                            "Use `assert x within <literal>` instead."
+                        )
+                    expr_type = F.Expressions.IsSubset
+                else:
+                    expr_type = F.Expressions.Is
             case _:
                 self._raise(
                     DslSyntaxError, f"Unknown comparison operator: {operator}", node
