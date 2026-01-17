@@ -136,9 +136,12 @@ def _prepare_query(
         params_t = make_params_for_type(module_node)
 
         if pkg_t := module_node.try_get_trait(F.has_package_requirements):
-            package_constraint = solver.extract_superset(
-                pkg_t.size.get().is_parameter.get(), g=g, tg=tg
-            )
+            package_constraint = pkg_t.size.get().try_extract_superset()
+            if package_constraint is None:
+                raise PickError(
+                    f"Module `{module_node}` has no constrained package requirements",
+                    module_node,
+                )
             package = (
                 F.Literals.EnumsFactory(BackendPackage)  # type: ignore[arg-type]
                 .bind_typegraph(tg=tg)
@@ -147,7 +150,7 @@ def _prepare_query(
                     *[
                         BackendPackage.from_smd_size(SMDSize[s], trait.pick_type)  # type: ignore[attr-defined]
                         for s in F.Literals.AbstractEnums(
-                            package_constraint.switch_cast().instance
+                            package_constraint.instance
                         ).get_names()
                     ]
                 )
@@ -218,7 +221,9 @@ def _process_candidates(
     for idx, c in enumerate(it):
         try:
             with timings.measure(f"attach_check_{idx}"):
-                attach(module_with_fp, c.lcsc_display, check_only=True, get_3d_model=False)
+                attach(
+                    module_with_fp, c.lcsc_display, check_only=True, get_3d_model=False
+                )
             filtered_candidates.append(c)
             # If we found one that's ok, just continue since likely enough
             filtered_candidates.extend(it)
