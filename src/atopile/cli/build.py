@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Annotated
 
@@ -42,6 +43,26 @@ def discover_projects(root: Path) -> list[Path]:
         projects.append(path.parent)
 
     return sorted(projects)
+
+
+# Semantic status -> (icon, color)
+_STATUS_STYLE = {
+    "success": ("✓", "green"),
+    "warning": ("⚠", "yellow"),
+    "failed": ("✗", "red"),
+    "running": ("●", "blue"),
+}
+
+
+@dataclass
+class StageEntry:
+    """A completed build stage with timing and status."""
+
+    name: str
+    duration: float
+    status: str  # "success", "warning", or "failed"
+    warnings: int
+    errors: int
 
 
 class BuildProcess:
@@ -85,6 +106,12 @@ class BuildProcess:
         self.errors: int = 0
         self._log_handle: IO | None = None
         self._error_reported: bool = False  # Track if error was already printed
+        self._stage_history: list[StageEntry] = []
+        self._stage_start_time: float = 0.0
+        self._stage_finalized: bool = False
+        self._event_rfd: int | None = None
+        self._event_wfd: int | None = None
+        self._event_buffer: str = ""
 
     def start(self, passthrough: bool = False) -> None:
         """Start the build subprocess.
@@ -99,6 +126,7 @@ class BuildProcess:
 
         # Initialize status file
         self.status_file.write_text("Starting...")
+        self._setup_event_pipe()
 
         # Build the command - run ato build for just this target
         cmd = [
@@ -115,6 +143,8 @@ class BuildProcess:
         env = os.environ.copy()
         env["ATO_PARALLEL_WORKER"] = "1"
         env["ATO_BUILD_STATUS_FILE"] = str(self.status_file)
+        if self._event_wfd is not None:
+            env["ATO_BUILD_EVENT_FD"] = str(self._event_wfd)
         # Pass timestamp so worker writes logs to same directory as parent
         from atopile.cli.logging_ import NOW
 
@@ -155,6 +185,7 @@ class BuildProcess:
                 bufsize=1,  # Line buffered
                 text=True,  # Text mode for proper encoding
                 encoding="utf-8",
+                pass_fds=self._get_pass_fds(),
             )
         else:
             # Normal mode: output captured to log file only
@@ -165,7 +196,9 @@ class BuildProcess:
                 stdout=self._log_handle,
                 stderr=subprocess.STDOUT,
                 env=env,
+                pass_fds=self._get_pass_fds(),
             )
+        self._close_event_pipe_in_parent()
 
     def poll(self) -> int | None:
         """Check if process has finished. Returns exit code or None if still running."""
@@ -174,11 +207,13 @@ class BuildProcess:
 
         # Read current stage from status file
         self._read_status()
+        self._read_event_pipe()
 
         ret = self.process.poll()
         if ret is not None and self.return_code is None:
             self.return_code = ret
             self.end_time = time.time()
+            self._finalize_stage_history()
             if self._log_handle:
                 self._log_handle.close()
                 self._log_handle = None
@@ -203,10 +238,12 @@ class BuildProcess:
                 if self._log_handle:
                     self._log_handle.write(line)
                     self._log_handle.flush()
+                self._read_event_pipe()
 
         ret = self.process.wait()
         self.return_code = ret
         self.end_time = time.time()
+        self._finalize_stage_history()
         if self._log_handle:
             self._log_handle.close()
             self._log_handle = None
@@ -215,16 +252,154 @@ class BuildProcess:
 
     def _read_status(self) -> None:
         """Read current stage from status file."""
-        if self.status_file and self.status_file.exists():
-            try:
-                import re
+        if not (self.status_file and self.status_file.exists()):
+            return
+        try:
+            import re
 
-                status = self.status_file.read_text().strip()
-                # Strip Rich markup like [green]...[/green]
-                status = re.sub(r"\[/?[a-z_]+\]", "", status)
+            status = self.status_file.read_text().strip()
+            # Strip Rich markup like [green]...[/green]
+            status = re.sub(r"\[/?[a-z_]+\]", "", status)
+            if status and status != self.current_stage:
+                self._stage_start_time = time.time()
                 self.current_stage = status
-            except Exception:
-                pass  # File might be being written to
+        except Exception:
+            pass  # File might be being written to
+
+    def _finalize_stage_history(self) -> None:
+        if self._stage_finalized:
+            return
+        self._read_event_pipe()
+        if self._event_rfd is not None:
+            try:
+                os.close(self._event_rfd)
+            except OSError:
+                pass
+            self._event_rfd = None
+        self._stage_finalized = True
+
+    def _setup_event_pipe(self) -> None:
+        try:
+            rfd, wfd = os.pipe()
+            os.set_blocking(rfd, False)
+            os.set_inheritable(wfd, True)
+            self._event_rfd = rfd
+            self._event_wfd = wfd
+        except Exception:
+            self._event_rfd = None
+            self._event_wfd = None
+
+    def _get_pass_fds(self) -> tuple[int, ...]:
+        if self._event_wfd is None:
+            return ()
+        return (self._event_wfd,)
+
+    def _close_event_pipe_in_parent(self) -> None:
+        if self._event_wfd is None:
+            return
+        try:
+            os.close(self._event_wfd)
+        except OSError:
+            pass
+        self._event_wfd = None
+
+    def _read_event_pipe(self) -> None:
+        if self._event_rfd is None:
+            return
+        while True:
+            try:
+                chunk = os.read(self._event_rfd, 4096)
+            except BlockingIOError:
+                break
+            except OSError:
+                break
+            if not chunk:
+                break
+            self._event_buffer += chunk.decode(errors="ignore")
+            while "\n" in self._event_buffer:
+                line, _, rest = self._event_buffer.partition("\n")
+                self._event_buffer = rest
+                self._parse_event_line(line)
+
+    def _parse_event_line(self, line: str) -> None:
+        if not line:
+            return
+        parts = line.split("\t")
+        if len(parts) < 5:
+            return
+        try:
+            duration = float(parts[0])
+        except ValueError:
+            return
+        name = "\t".join(parts[4:]).strip()
+        if not name:
+            return
+        warnings = int(parts[2]) if parts[2].strip().isdigit() else 0
+        errors = int(parts[3]) if parts[3].strip().isdigit() else 0
+        # Derive semantic status from errors/warnings counts
+        if errors > 0:
+            status = "failed"
+        elif warnings > 0:
+            status = "warning"
+        else:
+            status = "success"
+        self._stage_history.append(
+            StageEntry(
+                name=name,
+                duration=duration,
+                status=status,
+                warnings=warnings,
+                errors=errors,
+            )
+        )
+
+    def format_stage_history(self, max_width: int, include_current: bool) -> str:
+        """Return a multi-line stage history string, wrapped on step boundaries."""
+        from rich.text import Text
+
+        def _render_entry(entry: StageEntry) -> str:
+            icon, color = _STATUS_STYLE.get(entry.status, ("✓", "green"))
+            counts = ""
+            if entry.errors > 0:
+                counts = f"({entry.errors}E"
+                if entry.warnings > 0:
+                    counts += f",{entry.warnings}W"
+                counts += ")"
+            elif entry.warnings > 0:
+                counts = f"({entry.warnings})"
+            label = f"{icon}{counts} {entry.name} [{entry.duration:.1f}s]"
+            return f"[{color}]{label}[/{color}]"
+
+        parts = [_render_entry(e) for e in self._stage_history]
+        if include_current and self.is_running and self.current_stage:
+            elapsed = (
+                time.time() - self._stage_start_time if self._stage_start_time else 0.0
+            )
+            icon, color = _STATUS_STYLE["running"]
+            parts.append(
+                f"[{color}]{icon} {self.current_stage} [{elapsed:.1f}s][/{color}]"
+            )
+
+        if not parts:
+            return ""
+
+        sep = " -> "
+        lines: list[str] = []
+        current = ""
+        for part in parts:
+            if not current:
+                current = part
+                continue
+            candidate = f"{current}{sep}{part}"
+            if Text.from_markup(candidate).cell_len <= max_width:
+                current = candidate
+            else:
+                lines.append(current)
+                current = part
+        if current:
+            lines.append(current)
+
+        return "\n".join(lines)
 
     def _parse_log_for_stats(self) -> None:
         """Parse log file for warnings/errors count."""
@@ -619,51 +794,36 @@ class ParallelBuildManager:
         # Get terminal size
         term_size = shutil.get_terminal_size()
         term_height = term_size.lines
-        term_width = term_size.columns
+        term_width = self._console.width or term_size.columns
         max_rows = max(term_height - 10, 10)  # At least 10 rows
 
         # Determine max target name length for dynamic column width
         max_name_len = max(len(bp.display_name) for bp in self.processes.values())
-        target_width = min(max(max_name_len, 12), 30)  # Clamp between 12 and 30
+        target_width = min(max(max_name_len, 12), 40)  # Clamp between 12 and 40
 
         # Calculate available width for status column
         # Fixed widths: icon(1) + time(5) + padding(~10)
         fixed_width = 1 + target_width + 5 + 10
         status_width = max(self._STAGE_WIDTH, term_width - fixed_width)
-        status_width = min(status_width, 50)  # Cap at reasonable max
 
         table = self._Table(
             show_header=True,
             header_style="bold dim",
             box=SIMPLE,
             padding=(0, 1),
-            expand=False,
+            expand=True,
         )
 
         table.add_column("", width=1)  # Status icon
         table.add_column("Target", width=target_width, style="cyan")
-        table.add_column("Status", width=status_width)
+        table.add_column("Status", width=status_width, no_wrap=True, overflow="ignore")
         table.add_column("Time", width=5, justify="right")
 
         with self._lock:
-            # Sort builds by priority: building > failed > warning > success > queued
-            priority_order = {
-                "building": 0,
-                "failed": 1,
-                "warning": 2,
-                "success": 3,
-                "queued": 4,
-            }
-            sorted_builds = sorted(
-                self.processes.items(),
-                key=lambda x: (priority_order.get(x[1].status, 5), x[0]),
-            )
-
-            # Determine which rows to show
             rows_shown = 0
             hidden_queued = 0
 
-            for display_name, bp in sorted_builds:
+            for display_name, bp in self.processes.items():
                 status = bp.status
 
                 # If we've hit the limit, only skip queued items
@@ -677,16 +837,30 @@ class ParallelBuildManager:
 
                 # Format stage text with colors
                 if status == "building":
-                    stage_name = bp.current_stage or "Building..."
-                    # Truncate based on available status width
-                    max_stage = status_width - 3  # Leave room for "..."
-                    if len(stage_name) > max_stage:
-                        stage_name = stage_name[: max_stage - 3] + "..."
-                    stage_text = f"[blue]{stage_name}[/blue]"
+                    stage_name = bp.format_stage_history(
+                        status_width, include_current=True
+                    )
+                    if not stage_name:
+                        stage_name = bp.current_stage or "Building..."
+                        stage_text = f"[blue]{stage_name}[/blue]"
+                    else:
+                        stage_text = stage_name
                 elif status in ("success", "warning"):
-                    stage_text = "[green]Completed[/green]"
+                    stage_name = bp.format_stage_history(
+                        status_width, include_current=False
+                    )
+                    if stage_name:
+                        stage_text = stage_name
+                    else:
+                        stage_text = "[green]Completed[/green]"
                 elif status == "failed":
-                    stage_text = "[red]Failed[/red]"
+                    stage_name = bp.format_stage_history(
+                        status_width, include_current=False
+                    )
+                    if stage_name:
+                        stage_text = stage_name
+                    else:
+                        stage_text = "[red]Failed[/red]"
                 elif status == "queued":
                     stage_text = "[dim]Queued[/dim]"
                 else:
@@ -704,6 +878,8 @@ class ParallelBuildManager:
 
                 table.add_row(icon, display_name, stage_text, time_text)
                 rows_shown += 1
+                if rows_shown < max_rows:
+                    table.add_row("", "", "", "")
 
             # Add a summary row for hidden queued items
             if hidden_queued > 0:
@@ -725,51 +901,36 @@ class ParallelBuildManager:
 
         term_size = shutil.get_terminal_size()
         term_height = term_size.lines
-        term_width = term_size.columns
+        term_width = self._console.width or term_size.columns
         max_rows = max(term_height - 10, 10)
 
         # Find max project name length
         projects = self._get_project_states()
         max_name_len = max(len(name) for name in projects.keys())
-        project_width = min(max(max_name_len, 12), 28)
+        project_width = min(max(max_name_len, 12), 40)
 
         # Calculate available width for status column
         # Fixed widths: icon(1) + time(5) + padding(~10)
         fixed_width = 1 + project_width + 5 + 10
         status_width = max(self._STAGE_WIDTH + 12, term_width - fixed_width)
-        # Cap at reasonable max to avoid super long lines
-        status_width = min(status_width, 60)
 
         table = self._Table(
             show_header=True,
             header_style="bold dim",
             box=SIMPLE,
             padding=(0, 1),
-            expand=False,
+            expand=True,
         )
 
         table.add_column("", width=1)  # Status icon
         table.add_column("Project", width=project_width, style="cyan")
-        table.add_column("Status", width=status_width)
+        table.add_column("Status", width=status_width, no_wrap=True, overflow="ignore")
         table.add_column("Time", width=5, justify="right")
-
-        # Sort projects by priority
-        priority_order = {
-            "building": 0,
-            "failed": 1,
-            "warning": 2,
-            "success": 3,
-            "queued": 4,
-        }
-        sorted_projects = sorted(
-            projects.items(),
-            key=lambda x: (priority_order.get(x[1]["status"], 5), x[0]),
-        )
 
         rows_shown = 0
         hidden_queued = 0
 
-        for project_name, p in sorted_projects:
+        for project_name, p in projects.items():
             status = p["status"]
 
             # Limit rows, but always show non-queued
@@ -824,6 +985,8 @@ class ParallelBuildManager:
 
             table.add_row(icon, project_name, status_text, time_text)
             rows_shown += 1
+            if rows_shown < max_rows:
+                table.add_row("", "", "", "")
 
         if hidden_queued > 0:
             table.add_row(

@@ -955,6 +955,7 @@ class LoggingStage(Advancable):
     def __enter__(self) -> "LoggingStage":
         self._setup_logging()
         self._current_progress = 0
+        self._stage_start_time = time.time()
 
         # Always track stage start time for timing data
         self._stage_start_time = time.time()
@@ -984,6 +985,7 @@ class LoggingStage(Advancable):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        elapsed = time.time() - getattr(self, "_stage_start_time", time.time())
         if exc_type is not None:
             try:
                 from atopile.errors import _BaseBaseUserException
@@ -1006,14 +1008,15 @@ class LoggingStage(Advancable):
                 msg = str(exc_val) if exc_val is not None else "Build step failed"
                 logger.error(msg or "Build step failed")
 
-        self._restore_logging()
-
         if exc_type is not None or self._error_count > 0:
             status = CompletableSpinnerColumn.Status.FAILURE
         elif self._warning_count > 0:
             status = CompletableSpinnerColumn.Status.WARNING
         else:
             status = CompletableSpinnerColumn.Status.SUCCESS
+
+        self._restore_logging()
+        self._emit_stage_event(elapsed, status)
 
         if self._in_parallel_mode:
             # Update parallel display with stage completion
@@ -1058,7 +1061,26 @@ class LoggingStage(Advancable):
         # Persist stage timing data for summary reports
         self._save_timing_data(status)
 
-    def _save_timing_data(self, status: "CompletableSpinnerColumn.Status") -> None:
+    def _emit_stage_event(
+        self, elapsed: float, status: CompletableSpinnerColumn.Status
+    ) -> None:
+        event_fd = os.environ.get("ATO_BUILD_EVENT_FD")
+        if not event_fd:
+            return
+        try:
+            fd = int(event_fd)
+        except ValueError:
+            return
+        try:
+            line = (
+                f"{elapsed:.3f}\t{status}\t{self._warning_count}\t"
+                f"{self._error_count}\t{self.description}\n"
+            )
+            os.write(fd, line.encode())
+        except Exception:
+            pass
+
+    def _save_timing_data(self, status: CompletableSpinnerColumn.Status) -> None:
         """Save stage timing data to JSON file for summary generation."""
         import json
 
@@ -1067,7 +1089,6 @@ class LoggingStage(Advancable):
 
         elapsed = time.time() - self._stage_start_time
 
-        # Map status to string for JSON serialization
         status_map = {
             CompletableSpinnerColumn.Status.SUCCESS: "success",
             CompletableSpinnerColumn.Status.WARNING: "warning",
@@ -1087,7 +1108,6 @@ class LoggingStage(Advancable):
         timing_file = self._log_dir / self.TIMING_FILE
 
         try:
-            # Load existing timing data if present
             if timing_file.exists():
                 existing_data = json.loads(timing_file.read_text())
                 if not isinstance(existing_data, dict):
@@ -1095,14 +1115,10 @@ class LoggingStage(Advancable):
             else:
                 existing_data = {"stages": []}
 
-            # Append this stage's timing
             existing_data["stages"].append(timing_entry)
-
-            # Write updated timing data
             timing_file.write_text(json.dumps(existing_data, indent=2))
         except Exception:
-            # Don't fail the build if timing persistence fails
-            pass
+            pass  # Don't fail the build if timing persistence fails
 
     def _create_log_dir(self) -> Path:
         from atopile.config import config

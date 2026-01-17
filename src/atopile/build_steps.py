@@ -257,7 +257,7 @@ def init_build_context_step(ctx: BuildStepContext, log_context: LoggingStage) ->
 
 @muster.register(
     "modify-typegraph",
-    description="Modifying typegraph",
+    description="Modify type graph",
     dependencies=[init_build_context_step],
 )
 def modify_typegraph(ctx: BuildStepContext, log_context: LoggingStage) -> None:
@@ -268,7 +268,7 @@ def modify_typegraph(ctx: BuildStepContext, log_context: LoggingStage) -> None:
 
 @muster.register(
     "instantiate-app",
-    description="Instantiating app",
+    description="Instantiate app",
     dependencies=[modify_typegraph],
 )
 def instantiate_app_step(ctx: BuildStepContext, log_context: LoggingStage) -> None:
@@ -355,7 +355,7 @@ def prepare_build(ctx: BuildStepContext, log_context: LoggingStage) -> None:
 
 @muster.register(
     "post-instantiation-graph-check",
-    description="Verifying post-instantiation graph",
+    description="Verify instance graph",
     dependencies=[prepare_build],
 )
 def post_instantiation_graph_check(
@@ -378,7 +378,7 @@ def post_instantiation_graph_check(
 
 @muster.register(
     "post-instantiation-setup",
-    description="Running post-instantiation setup",
+    description="Modify instance graph",
     dependencies=[post_instantiation_graph_check],
 )
 def post_instantiation_setup(ctx: BuildStepContext, log_context: LoggingStage) -> None:
@@ -402,7 +402,7 @@ def post_instantiation_setup(ctx: BuildStepContext, log_context: LoggingStage) -
 
 @muster.register(
     "post-instantiation-design-check",
-    description="Verifying post-instantiation design",
+    description="Verify electrical design",
     dependencies=[post_instantiation_setup],
 )
 def post_instantiation_design_check(
