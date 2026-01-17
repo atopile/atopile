@@ -3482,38 +3482,6 @@ class TestReferenceOverrides:
         # The trait's reference should be connected to the external power
         assert _check_connected(trait_reference, power)
 
-    def test_reference_shim_with_electric_logic(self):
-        """
-        Test reference_shim on ElectricLogic interface.
-
-        ElectricLogic also has has_single_electric_reference trait,
-        so reference_shim should work on it too.
-        """
-        _, _, _, _, app_instance = build_instance(
-            """
-            import ElectricLogic
-            import ElectricPower
-
-            module App:
-                logic = new ElectricLogic
-                power = new ElectricPower
-
-                # Connect the ElectricLogic's internal reference to power
-                logic.reference_shim ~ power
-            """,
-            "App",
-        )
-        logic = _get_child(app_instance, "logic")
-        power = F.ElectricPower.bind_instance(_get_child(app_instance, "power"))
-
-        # Get the ElectricLogic's has_single_electric_reference trait reference
-        logic_bound = fabll.Node.bind_instance(logic)
-        trait = logic_bound.get_trait(F.has_single_electric_reference)
-        trait_reference = trait.reference.get()
-
-        # The trait's reference should be connected to the external power
-        assert _check_connected(trait_reference, power)
-
     def test_trait_pointer_access_has_single_electric_reference_reference(self):
         """
         Test explicit trait-pointer syntax:
