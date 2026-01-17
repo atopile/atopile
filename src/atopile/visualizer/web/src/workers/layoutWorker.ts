@@ -186,13 +186,40 @@ function computeLayout(
     positions[nodeId].y = (positions[nodeId].y - centerY) * scale;
   }
 
+  // Anchor: ensure the depth-0 node is exactly at the origin.
+  // (If multiple depth-0 nodes exist, anchor on the first.)
+  const rootNodeId = nodes.find((n) => n.depth === 0)?.id ?? nodes[0]?.id ?? null;
+  if (rootNodeId && positions[rootNodeId]) {
+    const offsetX = positions[rootNodeId].x;
+    const offsetY = positions[rootNodeId].y;
+    const offsetZ = positions[rootNodeId].z;
+
+    for (const nodeId of Object.keys(positions)) {
+      positions[nodeId].x -= offsetX;
+      positions[nodeId].y -= offsetY;
+      positions[nodeId].z -= offsetZ;
+    }
+  }
+
+  // Recompute bounds after normalization + anchoring
+  minX = Infinity;
+  maxX = -Infinity;
+  minY = Infinity;
+  maxY = -Infinity;
+  for (const pos of Object.values(positions)) {
+    if (pos.x < minX) minX = pos.x;
+    if (pos.x > maxX) maxX = pos.x;
+    if (pos.y < minY) minY = pos.y;
+    if (pos.y > maxY) maxY = pos.y;
+  }
+
   return {
     positions,
     bounds: {
-      minX: -250,
-      maxX: 250,
-      minY: -250,
-      maxY: 250,
+      minX,
+      maxX,
+      minY,
+      maxY,
     },
   };
 }

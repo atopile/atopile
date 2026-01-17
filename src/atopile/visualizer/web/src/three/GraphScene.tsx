@@ -318,7 +318,6 @@ function SceneContent() {
       <TrackballControls
         ref={controlsRef}
         zoomSpeed={0.6}
-        enableRotate
         rotateSpeed={0.5}
         minDistance={20}
         maxDistance={3000}
@@ -362,7 +361,7 @@ function SceneContent() {
       {/* Grid helper for orientation (subtle) */}
       <gridHelper
         args={[1000, 50, '#1e293b', '#0f172a']}
-        position={[0, -50, 0]}
+        position={[0, 0, 0]}
         rotation={[0, 0, 0]}
       />
     </>
