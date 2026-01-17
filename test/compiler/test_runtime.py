@@ -2149,7 +2149,7 @@ def test_module_template_enum_scenarios(
     # Use get_single_value_typed for enum comparison
     assert (
         mod._value.get()
-        .force_extract_literal()
+        .force_extract_superset()
         .get_single_value_typed(type(expected_value))
         == expected_value
     )

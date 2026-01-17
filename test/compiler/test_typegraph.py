@@ -12,6 +12,7 @@ from atopile.compiler.ast_visitor import ASTVisitor, DslException
 from atopile.compiler.build import Linker, StdlibRegistry, build_file
 from atopile.errors import UserSyntaxError
 from faebryk.core.solver.mutator import MutationMap, Mutator
+from faebryk.core.solver.symbolic.structural import transitive_subset
 from faebryk.core.solver.utils import ContradictionByLiteral
 from faebryk.libs.util import not_none
 from test.compiler.conftest import build_instance, build_type
@@ -3730,7 +3731,7 @@ def _build_mutator(source: str) -> Mutator:
     )
     return Mutator(
         mutation_map=mutation_map,
-        algo=merge_intersect_subsets,
+        algo=transitive_subset,
         iteration=0,
         terminal=False,
     )
@@ -3752,7 +3753,7 @@ def _build_numeric_param_mutator() -> tuple[
     )
     mutator = Mutator(
         mutation_map=mutation_map,
-        algo=merge_intersect_subsets,
+        algo=transitive_subset,
         iteration=0,
         terminal=False,
     )

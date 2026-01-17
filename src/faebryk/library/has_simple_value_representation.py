@@ -486,7 +486,7 @@ def test_resistor_value_representation():
     # Create kΩ unit for the literal value (10kΩ ±1%)
     kohm_unit = _make_kiloohm_unit(g=g, tg=tg)
 
-    resistor.resistance.get().alias_to_literal(
+    resistor.resistance.get().set_superset(
         g=g,
         value=F.Literals.Numbers.bind_typegraph(tg)
         .create_instance(g=g)
@@ -496,7 +496,7 @@ def test_resistor_value_representation():
             unit=kohm_unit,
         ),
     )
-    resistor.max_power.get().alias_to_literal(
+    resistor.max_power.get().set_superset(
         g=g,
         value=F.Literals.Numbers.bind_typegraph(tg)
         .create_instance(g=g)
@@ -505,7 +505,7 @@ def test_resistor_value_representation():
             unit=F.Units.Watt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
         ),
     )
-    resistor.max_voltage.get().alias_to_literal(
+    resistor.max_voltage.get().set_superset(
         g=g,
         value=F.Literals.Numbers.bind_typegraph(tg)
         .create_instance(g=g)

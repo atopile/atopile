@@ -142,7 +142,7 @@ def test_electric_signal_parallel_pull_resistance():
     lit_trait = (
         module.signal.get()
         .pull_resistance.get_trait(F.Parameters.is_parameter_operatable)
-        .try_get_subset_or_alias_literal()
+        .try_extract_superset()
     )
     assert lit_trait is not None
     lit = fabll.Traits(lit_trait).get_obj(F.Literals.Numbers)
@@ -195,7 +195,7 @@ def test_electric_signal_single_pull_resistance():
     lit_trait = (
         module.signal.get()
         .pull_resistance.get_trait(F.Parameters.is_parameter_operatable)
-        .try_get_subset_or_alias_literal()
+        .try_extract_superset()
     )
     assert lit_trait is not None
     lit = fabll.Traits(lit_trait).get_obj(F.Literals.Numbers)

@@ -307,7 +307,7 @@ class TestFilterElectricalRC:
         )
 
         # Check order is constrained to 1
-        order_result = solver.inspect_get_known_supersets(
+        order_result = solver.extract_superset(
             order_param.can_be_operand.get()
             .as_parameter_operatable.force_get()
             .as_parameter.force_get()
