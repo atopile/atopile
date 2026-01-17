@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT
 
 import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.zig.gen.graph.graph import BoundEdge
 from faebryk.libs.exceptions import DeprecatedException, downgrade
 
 
@@ -104,7 +104,7 @@ class ElectricPower(fabll.Node):
         If they have more than 1 connection, something external is using them.
         """
 
-        def count_edges(count: list[int], edge: BoundEdge):
+        def count_edges(count: list[int], edge: graph.BoundEdge):
             count[0] += 1
 
         vcc_node = self.vcc.get()
