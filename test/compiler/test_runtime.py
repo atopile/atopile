@@ -1872,7 +1872,7 @@ def test_directed_connect_reverse_resistor_to_signal():
 def test_directed_connect_mixed_directions():
     with pytest.raises(
         DslException,
-        match="Only one type of connection direction per statement allowed",
+        match="Only one connection direction per statement allowed",
     ):
         build_instance(
             """
