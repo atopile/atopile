@@ -152,6 +152,6 @@ def init_app() -> fabll.Node:
     from atopile.build_steps import muster
 
     ctx = BuildStepContext(build=None, app=None)
-    for target in muster.select({"instantiate-app"}):
+    for target in muster.select({"post-instantiation-setup"}):
         target(ctx)
     return ctx.require_app()
