@@ -55,6 +55,10 @@ class BuildProcess:
         project_name: str | None = None,
         targets: list[str] | None = None,
         exclude_targets: list[str] | None = None,
+        frozen: bool | None = None,
+        keep_picked_parts: bool | None = None,
+        keep_net_names: bool | None = None,
+        keep_designators: bool | None = None,
     ):
         self.name = build_name
         self.project_name = project_name  # For multi-project builds
@@ -66,6 +70,10 @@ class BuildProcess:
         self.project_root = project_root
         self.targets = targets or []
         self.exclude_targets = exclude_targets or []
+        self.frozen = frozen
+        self.keep_picked_parts = keep_picked_parts
+        self.keep_net_names = keep_net_names
+        self.keep_designators = keep_designators
         self.process: subprocess.Popen | None = None
         self.log_file: Path | None = None
         self.status_file: Path | None = None
@@ -112,12 +120,20 @@ class BuildProcess:
 
         env["ATO_BUILD_TIMESTAMP"] = NOW
 
-        # Pass build targets to worker subprocess via environment variables
-        # These are picked up by the --target and --exclude-target CLI options
+        # Pass build options to worker subprocess via environment variables
+        # These are picked up by the corresponding CLI options
         if self.targets:
             env["ATO_TARGET"] = ",".join(self.targets)
         if self.exclude_targets:
             env["ATO_EXCLUDE_TARGET"] = ",".join(self.exclude_targets)
+        if self.frozen is not None:
+            env["ATO_FROZEN"] = "1" if self.frozen else "0"
+        if self.keep_picked_parts is not None:
+            env["ATO_KEEP_PICKED_PARTS"] = "1" if self.keep_picked_parts else "0"
+        if self.keep_net_names is not None:
+            env["ATO_KEEP_NET_NAMES"] = "1" if self.keep_net_names else "0"
+        if self.keep_designators is not None:
+            env["ATO_KEEP_DESIGNATORS"] = "1" if self.keep_designators else "0"
 
         self.start_time = time.time()
 
@@ -386,6 +402,10 @@ class ParallelBuildManager:
         verbose: bool = False,
         targets: list[str] | None = None,
         exclude_targets: list[str] | None = None,
+        frozen: bool | None = None,
+        keep_picked_parts: bool | None = None,
+        keep_net_names: bool | None = None,
+        keep_designators: bool | None = None,
     ):
         """
         Initialize the build manager.
@@ -397,6 +417,10 @@ class ParallelBuildManager:
             verbose: Show full output (runs sequentially, no live display)
             targets: Build targets to run (passed to workers via ATO_TARGET env var)
             exclude_targets: Build targets to exclude (passed via ATO_EXCLUDE_TARGET)
+            frozen: If True, fail if PCB changes. Pass to workers via ATO_FROZEN env var
+            keep_picked_parts: Keep previously picked parts from PCB
+            keep_net_names: Keep net names from PCB
+            keep_designators: Keep designators from PCB
         """
         self.build_tasks = build_tasks
         self.logs_base = logs_base
@@ -404,6 +428,10 @@ class ParallelBuildManager:
         self.verbose = verbose
         self.targets = targets or []
         self.exclude_targets = exclude_targets or []
+        self.frozen = frozen
+        self.keep_picked_parts = keep_picked_parts
+        self.keep_net_names = keep_net_names
+        self.keep_designators = keep_designators
 
         # Check if this is multi-project mode (any task has a project_name)
         self.multi_project_mode = any(t[2] is not None for t in build_tasks)
@@ -432,6 +460,10 @@ class ParallelBuildManager:
                 project_name,
                 targets=self.targets,
                 exclude_targets=self.exclude_targets,
+                frozen=self.frozen,
+                keep_picked_parts=self.keep_picked_parts,
+                keep_net_names=self.keep_net_names,
+                keep_designators=self.keep_designators,
             )
             self.processes[display_name] = bp
             self._task_queue.put(display_name)
@@ -1219,6 +1251,9 @@ def _build_all_projects(
     verbose: bool = False,
     targets: list[str] | None = None,
     exclude_targets: list[str] | None = None,
+    keep_picked_parts: bool | None = None,
+    keep_net_names: bool | None = None,
+    keep_designators: bool | None = None,
 ) -> None:
     """
     Build all projects in a directory.
@@ -1291,6 +1326,10 @@ def _build_all_projects(
         verbose=verbose,
         targets=targets,
         exclude_targets=exclude_targets,
+        frozen=frozen,
+        keep_picked_parts=keep_picked_parts,
+        keep_net_names=keep_net_names,
+        keep_designators=keep_designators,
     )
 
     results = manager.run_until_complete()
@@ -1342,9 +1381,27 @@ def build(
             envvar="ATO_FROZEN",
         ),
     ] = None,
-    keep_picked_parts: bool | None = None,
-    keep_net_names: bool | None = None,
-    keep_designators: bool | None = None,
+    keep_picked_parts: Annotated[
+        bool | None,
+        typer.Option(
+            help="Keep previously picked parts from PCB",
+            envvar="ATO_KEEP_PICKED_PARTS",
+        ),
+    ] = None,
+    keep_net_names: Annotated[
+        bool | None,
+        typer.Option(
+            help="Keep net names from PCB",
+            envvar="ATO_KEEP_NET_NAMES",
+        ),
+    ] = None,
+    keep_designators: Annotated[
+        bool | None,
+        typer.Option(
+            help="Keep designators from PCB",
+            envvar="ATO_KEEP_DESIGNATORS",
+        ),
+    ] = None,
     standalone: bool = False,
     open_layout: Annotated[
         bool | None, typer.Option("--open", envvar="ATO_OPEN_LAYOUT")
@@ -1434,6 +1491,9 @@ def build(
             verbose=verbose,
             targets=target,
             exclude_targets=exclude_target,
+            keep_picked_parts=keep_picked_parts,
+            keep_net_names=keep_net_names,
+            keep_designators=keep_designators,
         )
         return
 
@@ -1476,6 +1536,10 @@ def build(
         verbose=verbose,
         targets=target,
         exclude_targets=exclude_target,
+        frozen=frozen,
+        keep_picked_parts=keep_picked_parts,
+        keep_net_names=keep_net_names,
+        keep_designators=keep_designators,
     )
 
     results = manager.run_until_complete()
