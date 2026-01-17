@@ -7,7 +7,7 @@
 
 import { useEffect, useCallback, useRef } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
+import { TrackballControls, PerspectiveCamera } from '@react-three/drei';
 import * as THREE from 'three';
 import { useGraphStore } from '../stores/graphStore';
 import { useViewStore } from '../stores/viewStore';
@@ -291,7 +291,7 @@ function SceneContent() {
 
       const handleChange = () => {
         // Calculate zoom based on camera distance
-        const distance = camera.position.length();
+        const distance = camera.position.distanceTo(controls.target);
         const zoom = 500 / distance;
         setZoom(zoom);
       };
@@ -315,13 +315,8 @@ function SceneContent() {
         far={10000}
       />
 
-      <OrbitControls
+      <TrackballControls
         ref={controlsRef}
-        enableDamping
-        dampingFactor={0.1}
-        enablePan
-        panSpeed={1}
-        enableZoom
         zoomSpeed={0.6}
         enableRotate
         rotateSpeed={0.5}
