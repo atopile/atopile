@@ -87,6 +87,8 @@ class LogHandler(RichHandler):
         ),
         traceback_level: int = logging.ERROR,
         force_terminal: bool = False,
+        allow_worker_console: bool = False,
+        no_wrap: bool = False,
         **kwargs,
     ):
         super().__init__(
@@ -104,6 +106,8 @@ class LogHandler(RichHandler):
         self.traceback_level = traceback_level
         self._logged_exceptions = set()
         self._is_terminal = force_terminal or console.is_terminal
+        self._allow_worker_console = allow_worker_console
+        self._no_wrap = no_wrap
 
         self.addFilter(
             lambda record: record.name.startswith("atopile")
@@ -262,7 +266,7 @@ class LogHandler(RichHandler):
             or os.environ.get("ATO_BUILD_STATUS_FILE")
         )
         is_console = self.console.file in (sys.stdout, sys.stderr)
-        if is_worker and is_console:
+        if is_worker and is_console and not self._allow_worker_console:
             return
 
         hashable = self._get_hashable(record)
@@ -278,7 +282,12 @@ class LogHandler(RichHandler):
             self.handleError(record)
         else:
             try:
-                self.console.print(log_renderable)
+                if self._no_wrap:
+                    self.console.print(
+                        log_renderable, no_wrap=True, overflow="ignore"
+                    )
+                else:
+                    self.console.print(log_renderable)
             except Exception:
                 self.handleError(record)
             finally:
@@ -320,6 +329,8 @@ class LiveLogHandler(LogHandler):
                 self._logged_exceptions.add(hashable)
 
 
+
+
 class CaptureLogHandler(LogHandler):
     def __init__(self, status: "LoggingStage", console: Console, *args, **kwargs):
         super().__init__(*args, console=console, **kwargs)
@@ -337,6 +348,26 @@ class CaptureLogHandler(LogHandler):
         finally:
             if hashable:
                 self._logged_exceptions.add(hashable)
+
+
+class PlainStreamHandler(logging.StreamHandler):
+    def __init__(self, *args, allow_worker_console: bool = False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._allow_worker_console = allow_worker_console
+        self.addFilter(
+            lambda record: record.name.startswith("atopile")
+            or record.name.startswith("faebryk")
+        )
+
+    def emit(self, record: logging.LogRecord) -> None:
+        is_worker = bool(
+            os.environ.get("ATO_BUILD_EVENT_FD")
+            or os.environ.get("ATO_BUILD_STATUS_FILE")
+        )
+        is_console = self.stream in (sys.stdout, sys.stderr)
+        if is_worker and is_console and not self._allow_worker_console:
+            return
+        super().emit(record)
 
 
 class IndentedProgress(Progress):
@@ -467,6 +498,7 @@ class LoggingStage(Advancable):
         self._console = console.error_console
         self._warning_count = 0
         self._error_count = 0
+        self._stream_handler: logging.Handler | None = None
         self._info_log_path = None
         self._log_handler = None
         self._capture_log_handler = None
@@ -761,6 +793,34 @@ class LoggingStage(Advancable):
             self._capture_log_handler.setFormatter(_DEFAULT_FORMATTER)
             self._capture_log_handler.setLevel(logging.INFO)
 
+        if os.environ.get("ATO_VERBOSE_STREAM") == "1":
+            width = os.environ.get("ATO_VERBOSE_WIDTH")
+            try:
+                width_val = int(width) if width else None
+            except ValueError:
+                width_val = None
+            stream_console = Console(
+                file=sys.stdout,
+                width=width_val,
+                force_terminal=COLOR_LOGS.get(),
+            )
+            self._stream_handler = LogHandler(
+                console=stream_console,
+                force_terminal=COLOR_LOGS.get(),
+                rich_tracebacks=False,
+                markup=False,
+                allow_worker_console=True,
+            )
+            self._stream_handler.setFormatter(_DEFAULT_FORMATTER)
+            self._stream_handler.setLevel(logging.INFO)
+        elif os.environ.get("ATO_VERBOSE_ERRORS_ONLY") == "1":
+            stream_handler = PlainStreamHandler(sys.stdout, allow_worker_console=True)
+            stream_handler.setFormatter(
+                logging.Formatter("%(levelname)s %(message)s", datefmt="[%X]")
+            )
+            stream_handler.setLevel(logging.ERROR)
+            self._stream_handler = stream_handler
+
         log_dir = self._create_log_dir()
 
         for handler in root_logger.handlers.copy():
@@ -769,6 +829,8 @@ class LoggingStage(Advancable):
         root_logger.addHandler(self._log_handler)
         if self._capture_log_handler is not None:
             root_logger.addHandler(self._capture_log_handler)
+        if self._stream_handler is not None:
+            root_logger.addHandler(self._stream_handler)
 
         self._file_handlers = []
         self._file_handles = {}
@@ -779,7 +841,7 @@ class LoggingStage(Advancable):
             self._file_handles[level_name] = log_file.open("w", encoding="utf-8")
             file_console = Console(
                 file=self._file_handles[level_name],
-                width=500,
+                width=150,
                 force_terminal=COLOR_LOGS.get(),
             )
             file_handler = LogHandler(
@@ -813,6 +875,8 @@ class LoggingStage(Advancable):
 
         if self._capture_log_handler in root_logger.handlers:
             root_logger.removeHandler(self._capture_log_handler)
+        if self._stream_handler in root_logger.handlers:
+            root_logger.removeHandler(self._stream_handler)
 
         for file_handler in self._file_handlers:
             if file_handler in root_logger.handlers:

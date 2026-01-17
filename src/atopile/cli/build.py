@@ -131,8 +131,18 @@ class BuildProcess:
         self._event_wfd: int | None = None
         self._event_buffer: str = ""
         self._stage_printer: Callable[[StageEntry, Path | None], None] | None = None
+        self._stream_thread: threading.Thread | None = None
+        self._stream_console: Console | None = None
+        self._buffer_stream_output: bool = False
+        self._stream_buffer: list[str] = []
 
-    def start(self) -> None:
+    def start(
+        self,
+        *,
+        stream_output: bool = False,
+        stream_console: Console | None = None,
+        error_only_console: Console | None = None,
+    ) -> None:
         """Start the build subprocess.
 
         """
@@ -179,19 +189,39 @@ class BuildProcess:
             env["ATO_KEEP_NET_NAMES"] = "1" if self.keep_net_names else "0"
         if self.keep_designators is not None:
             env["ATO_KEEP_DESIGNATORS"] = "1" if self.keep_designators else "0"
+        if stream_output and error_only_console is None:
+            env["ATO_VERBOSE_STREAM"] = "1"
+            if stream_console is not None and stream_console.width:
+                env["ATO_VERBOSE_WIDTH"] = str(stream_console.width)
+        if error_only_console is not None:
+            env["ATO_VERBOSE_ERRORS_ONLY"] = "1"
 
         self.start_time = time.time()
 
-        # Capture output to log file only (parent handles display)
-        self._log_handle = open(self.log_file, "w")
-        self.process = subprocess.Popen(
-            cmd,
-            cwd=self.project_root,
-            stdout=self._log_handle,
-            stderr=subprocess.STDOUT,
-            env=env,
-            pass_fds=self._get_pass_fds(),
-        )
+        if stream_output:
+            self._log_handle = open(self.log_file, "w")
+            self._stream_console = stream_console
+            self._buffer_stream_output = error_only_console is not None
+            self.process = subprocess.Popen(
+                cmd,
+                cwd=self.project_root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                env=env,
+                pass_fds=self._get_pass_fds(),
+            )
+            self._start_output_stream()
+        else:
+            # Capture output to log file only (parent handles display)
+            self._log_handle = open(self.log_file, "w")
+            self.process = subprocess.Popen(
+                cmd,
+                cwd=self.project_root,
+                stdout=self._log_handle,
+                stderr=subprocess.STDOUT,
+                env=env,
+                pass_fds=self._get_pass_fds(),
+            )
         self._close_event_pipe_in_parent()
 
     def poll(self) -> int | None:
@@ -208,6 +238,9 @@ class BuildProcess:
             self.return_code = ret
             self.end_time = time.time()
             self._finalize_stage_history()
+            if self._buffer_stream_output:
+                self._stop_output_stream()
+                self._flush_stream_buffer()
             if self._log_handle:
                 self._log_handle.close()
                 self._log_handle = None
@@ -233,6 +266,9 @@ class BuildProcess:
         self.return_code = ret
         self.end_time = time.time()
         self._finalize_stage_history()
+        self._stop_output_stream()
+        if self._buffer_stream_output:
+            self._flush_stream_buffer()
         if self._log_handle:
             self._log_handle.close()
             self._log_handle = None
@@ -579,6 +615,44 @@ class BuildProcess:
                 self.process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self.process.kill()
+            self._stop_output_stream()
+
+    def _start_output_stream(self) -> None:
+        if not self.process or self.process.stdout is None:
+            return
+        stdout = self.process.stdout
+
+        def stream() -> None:
+            while True:
+                chunk = stdout.readline()
+                if not chunk:
+                    break
+                text = chunk.decode(errors="replace")
+                if self._log_handle:
+                    self._log_handle.write(text)
+                    self._log_handle.flush()
+                if self._buffer_stream_output:
+                    self._stream_buffer.append(text)
+                elif self._stream_console:
+                    self._stream_console.file.write(text)
+                    self._stream_console.file.flush()
+
+        self._stream_thread = threading.Thread(target=stream, daemon=True)
+        self._stream_thread.start()
+
+    def _stop_output_stream(self) -> None:
+        if self._stream_thread:
+            self._stream_thread.join(timeout=1.0)
+            self._stream_thread = None
+
+    def _flush_stream_buffer(self) -> None:
+        if not self._stream_buffer or not self._stream_console:
+            self._stream_buffer.clear()
+            return
+        for text in self._stream_buffer:
+            self._stream_console.file.write(text)
+        self._stream_console.file.flush()
+        self._stream_buffer.clear()
 
 
 class ParallelBuildManager:
@@ -1083,6 +1157,8 @@ class ParallelBuildManager:
     ) -> None:
         """Print failure details similar to parallel mode output."""
         error_details = bp.get_error_details()
+        if not error_details and bp.log_dir:
+            error_details = self._extract_log_messages(bp.log_dir, "error")
         error_msg = bp.get_error_message()
 
         console.print(f"[red bold]✗ {display_name}[/red bold]")
@@ -1126,30 +1202,50 @@ class ParallelBuildManager:
         return self._run_parallel()
 
     def _print_build_result(
-        self, display_name: str, bp: "BuildProcess", ret: int, console: "Console"
+        self,
+        display_name: str,
+        bp: "BuildProcess",
+        ret: int,
+        console: "Console",
+        show_failure_details: bool,
     ) -> None:
         """Print per-build success/failure summary with details."""
         if ret == 0:
             if bp.warnings > 0:
                 console.print(
-                    f"\n[yellow]⚠ {display_name} completed with "
+                    f"[yellow]⚠ {display_name} completed with "
                     f"{bp.warnings} warning(s)[/yellow]"
                 )
             else:
-                console.print(f"\n[green]✓ {display_name} completed[/green]")
+                console.print(f"[green]✓ {display_name} completed[/green]")
         else:
-            console.print(f"\n[red]✗ {display_name} failed[/red]")
-            self._print_failure_details(display_name, bp, console)
+            if show_failure_details:
+                self._print_failure_details(display_name, bp, console)
+            console.print(f"[red]✗ {display_name} failed[/red]")
 
     def _run_verbose(self) -> dict[str, int]:
         """Run builds sequentially with full output visible."""
+        console = self._get_full_width_console()
         return self._run_parallel(
             live=False,
             max_workers=1,
             print_headers=True,
             print_results=True,
             stage_printer=self._print_verbose_stage,
+            console=console,
+            stream_output=True,
+            show_failure_details=False,
+            error_only_console=console,
         )
+
+    @staticmethod
+    def _get_full_width_console() -> "Console":
+        import shutil
+
+        from rich.console import Console
+
+        width = shutil.get_terminal_size(fallback=(120, 24)).columns
+        return Console(width=width)
 
     def _run_parallel(
         self,
@@ -1159,12 +1255,17 @@ class ParallelBuildManager:
         print_headers: bool = False,
         print_results: bool = False,
         stage_printer: Callable[[StageEntry, Path | None], None] | None = None,
+        console: Console | None = None,
+        stream_output: bool = False,
+        show_failure_details: bool = True,
+        error_only_console: Console | None = None,
     ) -> dict[str, int]:
         """Run builds with an optional live progress display."""
         from rich.console import Group
         from rich.live import Live
 
         results: dict[str, int] = {}
+        console = console or self._console
 
         def start_next_build() -> bool:
             try:
@@ -1174,13 +1275,15 @@ class ParallelBuildManager:
 
             bp = self.processes[display_name]
             if print_headers:
-                self._console.print(
-                    f"\n[bold cyan]▶ Building {display_name}[/bold cyan]"
-                )
-                self._console.print(f"[dim]  Logs: {bp.log_dir}[/dim]\n")
+                console.print(f"[bold cyan]▶ Building {display_name}[/bold cyan]")
+                console.print(f"[dim]  Logs: {bp.log_dir}[/dim]\n")
             if stage_printer is not None:
                 bp.set_stage_printer(stage_printer)
-            bp.start()
+            bp.start(
+                stream_output=stream_output,
+                stream_console=console,
+                error_only_console=error_only_console,
+            )
             with self._lock:
                 self._active_workers.add(display_name)
             return True
@@ -1210,20 +1313,15 @@ class ParallelBuildManager:
 
                                 if print_results:
                                     self._print_build_result(
-                                        display_name, bp, ret, console
+                                        display_name,
+                                        bp,
+                                        ret,
+                                        console,
+                                        show_failure_details,
                                     )
                                     bp._error_reported = True
                                 elif ret != 0 and not bp._error_reported:
                                     bp._error_reported = True
-                                    if live:
-                                        with self._display_lock:
-                                            self._print_failure_details(
-                                                display_name, bp, console
-                                            )
-                                    else:
-                                        self._print_failure_details(
-                                            display_name, bp, console
-                                        )
 
                         # Remove completed builds from active set
                         for name in completed_this_round:
@@ -1255,7 +1353,7 @@ class ParallelBuildManager:
         if live:
             with Live(
                 self._render_table(),
-                console=self._console,
+                console=console,
                 refresh_per_second=2,
             ) as live_display:
                 self._live = live_display
@@ -1810,6 +1908,8 @@ def build(
     from faebryk.libs.app.pcb import open_pcb
     from faebryk.libs.kicad.ipc import reload_pcb
     from faebryk.libs.project.dependencies import ProjectDependencies
+    if verbose:
+        logging.getLogger().setLevel(logging.ERROR)
 
     # Worker mode - run single build directly (no config needed yet)
     if os.environ.get("ATO_BUILD_EVENT_FD") or os.environ.get("ATO_BUILD_STATUS_FILE"):
