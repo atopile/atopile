@@ -141,3 +141,17 @@ def build(app: fabll.Node | None = None) -> fabll.Node:
     ctx = BuildStepContext(build=None, app=app)
     run_build_targets(ctx)
     return ctx.require_app()
+
+
+def init_app() -> fabll.Node:
+    """
+    Instantiate the app graph with the minimal build steps.
+
+    This is intended for graph export/visualization tooling.
+    """
+    from atopile.build_steps import muster
+
+    ctx = BuildStepContext(build=None, app=None)
+    for target in muster.select({"instantiate-app"}):
+        target(ctx)
+    return ctx.require_app()

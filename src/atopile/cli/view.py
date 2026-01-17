@@ -69,7 +69,7 @@ def view(
         serve = True
 
     # Build the app to get the graph - use first selected build
-    from atopile.build import init_app
+    from atopile.buildutil import init_app
 
     build_name = list(config.selected_builds)[0]
     log.info(f"Building {build_name}...")
