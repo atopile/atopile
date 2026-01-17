@@ -32,7 +32,6 @@ from faebryk.exporters.documentation.datasheets import export_datasheets
 
 # from faebryk.exporters.documentation.i2c import export_i2c_tree
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
-from faebryk.exporters.power_tree.power_tree import export_power_tree
 from faebryk.exporters.pcb.kicad.artifacts import (
     KicadCliExportError,
     export_3d_board_render,
@@ -49,6 +48,7 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
 )
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
+from faebryk.exporters.power_tree.power_tree import export_power_tree
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.app.designators import (
     attach_random_designators,
@@ -64,7 +64,11 @@ from faebryk.libs.exceptions import accumulate, iter_leaf_exceptions
 from faebryk.libs.kicad.fileformats import Property, kicad
 from faebryk.libs.net_naming import attach_net_names
 from faebryk.libs.nets import bind_electricals_to_fbrk_nets
-from faebryk.libs.picker.picker import PickError, pick_part_recursively
+from faebryk.libs.picker.picker import (
+    PickError,
+    get_relevant_pickable_params,
+    pick_part_recursively,
+)
 from faebryk.libs.util import DAG, md_table
 
 logger = logging.getLogger(__name__)
@@ -429,6 +433,8 @@ def load_pcb(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     pcb.run_transformer()
     if config.build.keep_designators:
         load_kicad_pcb_designators(pcb.tg, attach=True)
+    if config.build.keep_picked_parts:
+        pcb.transformer.create_footprints_from_pcb()
 
 
 @muster.register("picker", description="Picking parts", dependencies=[load_pcb])
@@ -437,7 +443,9 @@ def pick_parts(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     solver = ctx.require_solver()
     if config.build.keep_picked_parts:
         load_part_info_from_pcb(app.tg)
-        solver.simplify(app.g, app.tg)
+        relevant = get_relevant_pickable_params(app)
+        if relevant:
+            solver.simplify(app.g, app.tg, terminal=True, relevant=relevant)
     try:
         pick_part_recursively(app, solver, progress=log_context)
     except* PickError as ex:

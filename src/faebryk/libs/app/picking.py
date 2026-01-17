@@ -105,7 +105,7 @@ def load_part_info_from_pcb(tg: fbrk.TypeGraph):
         else:
             raise ValueError(f"No part info found for {node.get_name()}")
 
-        if lcsc_id:
+        if lcsc_id and not node.has_trait(F.Footprints.has_associated_footprint):
             module_with_fp = node.try_get_trait(F.Footprints.can_attach_to_footprint)
             if module_with_fp is None:
                 raise Exception(
@@ -121,6 +121,9 @@ def load_part_info_from_pcb(tg: fbrk.TypeGraph):
             ).setup(datasheet=fp_props["Datasheet"])
 
         # Load saved parameters from descriptive properties
+        if node.has_trait(F.Pickable.has_part_picked):
+            continue
+
         for key, value in props.items():
             if not key.startswith(Properties.param_prefix):
                 logger.warning(
