@@ -1901,7 +1901,7 @@ class Not(fabll.Node):
     is_expression_type = fabll.Traits.MakeEdge(
         is_expression_type.MakeChild(
             repr_style=is_expression_type.ReprStyle(
-                symbol="⊕", placement=is_expression_type.ReprStyle.Placement.INFIX
+                symbol="¬", placement=is_expression_type.ReprStyle.Placement.PREFIX
             )
         ).put_on_type()
     )

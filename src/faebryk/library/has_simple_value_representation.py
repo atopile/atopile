@@ -517,7 +517,7 @@ def test_resistor_value_representation():
     # 10kΩ converts to 10000Ω in display units
     assert (
         resistor._simple_repr.get().get_specs()[0].get_value(show_tolerance=False)
-        == "10000.0Ω"
+        == "10000.0±1.0%Ω"
     )
     # Full representation: 10kΩ ±1% = 10000Ω ±1%, plus power and voltage
     assert resistor._simple_repr.get().get_value() == "10000.0±1.0%Ω 0.125W 10.0V"
