@@ -186,8 +186,8 @@ class TestFilterElectricalRC:
         R_param = rc_filter.resistor.get().resistance.get().can_be_operand.get()
 
         # Constrain C and fc
-        E.is_(C_param, E.lit_op_single((C_value, E.U.Fa)), assert_=True)
-        E.is_(fc_param, E.lit_op_single((fc_value, E.U.Hz)), assert_=True)
+        E.is_subset(C_param, E.lit_op_single((C_value, E.U.Fa)), assert_=True)
+        E.is_subset(fc_param, E.lit_op_single((fc_value, E.U.Hz)), assert_=True)
 
         # Manually calculate expected resistance: R = 1 / (2 * pi * C * fc)
         expected_R = 1 / (2 * math.pi * C_value * fc_value)
@@ -238,8 +238,8 @@ class TestFilterElectricalRC:
         R_param = rc_filter.resistor.get().resistance.get().can_be_operand.get()
 
         # Constrain R and fc
-        E.is_(R_param, E.lit_op_single((R_value, E.U.Ohm)), assert_=True)
-        E.is_(fc_param, E.lit_op_single((fc_value, E.U.Hz)), assert_=True)
+        E.is_subset(R_param, E.lit_op_single((R_value, E.U.Ohm)), assert_=True)
+        E.is_subset(fc_param, E.lit_op_single((fc_value, E.U.Hz)), assert_=True)
 
         # Manually calculate expected capacitance: C = 1 / (2 * pi * R * fc)
         expected_C = 1 / (2 * math.pi * R_value * fc_value)

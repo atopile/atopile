@@ -3393,19 +3393,16 @@ class TestResolvePendingParameterUnits(_TestWithContext):
         # (Note: In real use, parameter would be created without unit)
         # For this test, we verify the resolver can find and attach units
 
-        # Create a literal with Volt unit
         lit = ctx.literals.Numbers.setup_from_singleton(
             value=5.0, unit=ctx.Volt.is_unit.get()
         )
 
-        # Constrain param to literal via Is
-        F.Expressions.Is.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g).setup(
+        F.Expressions.IsSubset.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g).setup(
             param.can_be_operand.get(),
             lit.is_literal.get().as_operand.get(),
             assert_=True,
         )
 
-        # The literal should have has_unit
         assert lit.try_get_trait(has_unit) is not None
 
     def test_resolve_add_expression_units(self, ctx: BoundUnitsContext):
