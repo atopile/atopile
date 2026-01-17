@@ -611,9 +611,13 @@ class EnumParameter(fabll.Node):
     def try_extract_superset[T: "F.Literals.AbstractEnums"](
         self,
     ) -> "F.Literals.AbstractEnums | None":
-        return self.is_parameter_operatable.get().try_extract_superset(
-            lit_type=F.Literals.AbstractEnums
-        )
+        if (
+            result := self.is_parameter_operatable.get().try_extract_superset(
+                lit_type=F.Literals.AbstractEnums
+            )
+        ) is not None:
+            return result
+        return self.domain_set(g=self.g, tg=self.tg)
 
     def force_extract_superset(self) -> "F.Literals.AbstractEnums":
         return (
