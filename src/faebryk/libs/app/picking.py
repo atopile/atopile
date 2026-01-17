@@ -8,9 +8,8 @@ from enum import StrEnum
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.kicad.fileformats import Property
+from faebryk.libs.kicad.fileformats import Property, kicad
 from faebryk.libs.picker.lcsc import PickedPart, PickedPartLCSC
-from faebryk.libs.picker.lcsc import attach as lcsc_attach
 
 NO_LCSC_DISPLAY = "No LCSC number"
 
@@ -26,135 +25,92 @@ class Properties(StrEnum):
     param_wildcard = "PARAM_*"
 
 
-def load_part_info_from_pcb(tg: fbrk.TypeGraph):
+def load_part_info_from_pcb(pcb: kicad.pcb.KicadPcb, tg: fbrk.TypeGraph):
     """
-    Load descriptive properties from footprints and saved parameters.
-    """
-    nodes_with_fp = [
-        (n, n.get_trait(F.Footprints.has_associated_footprint).get_footprint())
-        for n in fabll.Traits.get_implementor_objects(
-            F.Footprints.has_associated_footprint.bind_typegraph(tg)
-        )
-    ]
+    Load part constraints from PCB properties and set them on modules.
 
-    for node, fp_t in nodes_with_fp:
-        assert node.has_trait(fabll.is_module)
+    This reads LCSC IDs and saved parameters from PCB footprint properties
+    and sets them as constraints. The normal picker flow will then handle
+    part selection and footprint creation via the part lifecycle manager.
+    """
+    from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+
+    # Map modules to PCB footprints by atopile address
+    footprint_map = PCB_Transformer.map_footprints(tg, pcb)
+
+    for node, pcb_fp in footprint_map.items():
         if node.has_trait(F.Pickable.has_part_picked):
-            logger.debug(f"Skipping {node.get_name()} because it has part picked")
+            logger.debug(f"Skipping {node.get_name()} - already has part picked")
             continue
         if node.has_trait(F.has_part_removed):
-            logger.debug(f"Skipping {node.get_name()} because it has part removed")
-            continue
-        assert F.SerializableMetadata.get_properties(node), "Should load when linking"
-
-        part_props = [
-            Properties.supplier_partno,
-            Properties.manufacturer,
-            Properties.manufacturer_partno,
-        ]
-        if not (
-            k_pcb_fp_t := fp_t.try_get_trait(
-                F.KiCadFootprints.has_associated_kicad_pcb_footprint
-            )
-        ):
-            logger.warning(
-                f"Skipping {node.get_name()} because it has no PCB footprint"
-            )
-            continue
-        fp = k_pcb_fp_t.get_footprint()
-        fp_props = {
-            k.value: v
-            for k in part_props
-            if (v := Property.try_get_property(fp.propertys, k.value))
-        }
-        if fp_props.get(Properties.supplier_partno) == NO_LCSC_DISPLAY:
-            del fp_props[Properties.supplier_partno]
-        props = F.SerializableMetadata.get_properties(node)
-
-        # check if node has changed
-        if any(props.get(k.value) != fp_props.get(k.value) for k in part_props):
-            logger.warning(f"Skipping {node.get_name()} because it has changed")
+            logger.debug(f"Skipping {node.get_name()} - has part removed")
             continue
 
-        lcsc_id = props.get(Properties.supplier_partno)
-        manufacturer = props.get(Properties.manufacturer)
-        partno = props.get(Properties.manufacturer_partno)
+        # Read part properties from PCB footprint
+        lcsc_id = Property.try_get_property(
+            pcb_fp.propertys, Properties.supplier_partno
+        )
+        if lcsc_id == NO_LCSC_DISPLAY:
+            lcsc_id = None
 
-        # Load Part from PCB
-        if lcsc_id and manufacturer and partno:
-            fabll.Traits.create_and_add_instance_to(
-                node=node, trait=F.Pickable.has_part_picked
-            ).setup(
-                PickedPartLCSC(
-                    supplier_partno=lcsc_id,
-                    manufacturer=manufacturer,
-                    partno=partno,
-                )
-            )
-        elif lcsc_id:
+        manufacturer = Property.try_get_property(
+            pcb_fp.propertys, Properties.manufacturer
+        )
+        partno = Property.try_get_property(
+            pcb_fp.propertys, Properties.manufacturer_partno
+        )
+
+        # Set picking constraint based on available info
+        if lcsc_id:
             fabll.Traits.create_and_add_instance_to(
                 node=node, trait=F.Pickable.is_pickable_by_supplier_id
             ).setup(
                 supplier_part_id=lcsc_id,
                 supplier=F.Pickable.is_pickable_by_supplier_id.Supplier.LCSC,
             )
+            logger.debug(f"Set LCSC constraint {lcsc_id} on {node.get_name()}")
         elif manufacturer and partno:
             fabll.Traits.create_and_add_instance_to(
                 node=node, trait=F.Pickable.is_pickable_by_part_number
             ).setup(manufacturer=manufacturer, partno=partno)
+            logger.debug(
+                f"Set part number constraint {manufacturer}/{partno} "
+                f"on {node.get_name()}"
+            )
         else:
-            raise ValueError(f"No part info found for {node.get_name()}")
-
-        if lcsc_id and not node.has_trait(F.Footprints.has_associated_footprint):
-            module_with_fp = node.try_get_trait(F.Footprints.can_attach_to_footprint)
-            if module_with_fp is None:
-                raise Exception(
-                    f"Module {node.get_full_name(types=True)} does not have "
-                    "can_attach_to_footprint trait",
-                    node,
-                )
-            lcsc_attach(module_with_fp, lcsc_id)
-
-        if "Datasheet" in fp_props:
-            fabll.Traits.create_and_add_instance_to(
-                node=node, trait=F.has_datasheet
-            ).setup(datasheet=fp_props["Datasheet"])
-
-        # Load saved parameters from descriptive properties
-        if node.has_trait(F.Pickable.has_part_picked):
+            logger.warning(f"No part info found in PCB for {node.get_name()}")
             continue
 
-        for key, value in props.items():
-            if not key.startswith(Properties.param_prefix):
-                logger.warning(
-                    f"Skipping {key} because it doesn't start with "
-                    f"{Properties.param_prefix}"
-                )
+        # Load saved parameters as subset constraints
+        for prop in pcb_fp.propertys:
+            if not prop.name.startswith(Properties.param_prefix):
                 continue
 
-            param_name = key.removeprefix(Properties.param_prefix)
+            param_name = prop.name.removeprefix(Properties.param_prefix)
             # Skip if parameter doesn't exist in node
             param_child = fbrk.EdgeComposition.get_child_by_identifier(
                 bound_node=node.instance, child_identifier=param_name
             )
             if param_child is None:
-                logger.warning(
+                logger.debug(
                     f"Parameter {param_name} not found in node {node.get_name()}"
                 )
                 continue
             param = fabll.Node.bind_instance(param_child)
             # Skip if not a parameter
             if not param.has_trait(F.Parameters.is_parameter):
-                logger.warning(f"{param_name} in {node.get_name()} is not a parameter")
+                logger.debug(f"{param_name} in {node.get_name()} is not a parameter")
                 continue
-            param_value = json.loads(value)
+
+            param_value = json.loads(prop.value)
             param_lit = F.Literals.is_literal.deserialize(
                 param_value, g=node.g, tg=node.tg
             )
-            # Alias the parameter to the deserialized literal
+            # Constrain the parameter to the saved literal
             param.get_trait(F.Parameters.is_parameter_operatable).set_subset(
                 g=node.g, value=param_lit.switch_cast()
             )
+            logger.debug(f"Set parameter constraint {param_name} on {node.get_name()}")
 
 
 def save_part_info_to_pcb(app: fabll.Node):
@@ -232,8 +188,6 @@ def test_save_part_info_to_pcb():
 
 
 def test_load_part_info_from_pcb():
-    from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
-    from faebryk.libs.kicad.fileformats import kicad
     from faebryk.libs.test.fileformats import PCBFILE
 
     pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE).kicad_pcb
@@ -241,8 +195,6 @@ def test_load_part_info_from_pcb():
 
     # Add required part properties to the footprint
     test_lcsc = "C123456"
-    test_mfr = "blaze-it-inc"
-    test_partno = "69420"
     at = kicad.pcb.Xyr(x=0, y=0, r=0)
     k_pcb_fp.propertys.append(
         kicad.pcb.Property(
@@ -256,22 +208,11 @@ def test_load_part_info_from_pcb():
             unlocked=None,
         )
     )
+    # Add atopile_address property to match the node
     k_pcb_fp.propertys.append(
         kicad.pcb.Property(
-            name="Manufacturer",
-            value=test_mfr,
-            at=at,
-            layer="F.Fab",
-            uuid=kicad.gen_uuid(),
-            hide=True,
-            effects=None,
-            unlocked=None,
-        )
-    )
-    k_pcb_fp.propertys.append(
-        kicad.pcb.Property(
-            name="Partnumber",
-            value=test_partno,
+            name="atopile_address",
+            value="res",
             at=at,
             layer="F.Fab",
             uuid=kicad.gen_uuid(),
@@ -291,41 +232,14 @@ def test_load_part_info_from_pcb():
     app = _TestApp.bind_typegraph(tg).create_instance(g=g)
     res_node = app.res.get()
 
-    # Add SerializableMetadata as traits to simulate previous build
-    data = {
-        Properties.supplier_partno.value: test_lcsc,
-        Properties.manufacturer.value: test_mfr,
-        Properties.manufacturer_partno.value: test_partno,
-    }
-    fabll.Traits.create_and_add_instance_to(res_node, F.SerializableMetadata).setup(
-        data
+    # Call load_part_info_from_pcb - now it sets is_pickable_by_supplier_id
+    load_part_info_from_pcb(pcb, tg)
+
+    # Check that is_pickable_by_supplier_id was set (not has_part_picked)
+    pickable_trait = res_node.try_get_trait(F.Pickable.is_pickable_by_supplier_id)
+    assert pickable_trait is not None
+    assert pickable_trait.get_supplier_part_id() == test_lcsc
+    assert (
+        pickable_trait.get_supplier()
+        == F.Pickable.is_pickable_by_supplier_id.Supplier.LCSC.name
     )
-
-    fp_node = fabll.Node.bind_typegraph(tg).create_instance(g=g)
-    fp = fabll.Traits.create_and_add_instance_to(fp_node, F.Footprints.is_footprint)
-
-    transformer = PCB_Transformer(pcb, app)
-
-    fabll.Traits.create_and_add_instance_to(
-        fp, F.KiCadFootprints.has_associated_kicad_pcb_footprint
-    ).setup(k_pcb_fp, transformer)
-    fabll.Traits.create_and_add_instance_to(
-        res_node, F.Footprints.has_associated_footprint
-    ).setup(footprint=fp)
-
-    # Mock lcsc_attach to avoid network calls and project config requirements
-    # Since this test is in the same module, we need to replace the global directly
-    original_lcsc_attach = globals()["lcsc_attach"]
-    globals()["lcsc_attach"] = lambda *args, **kwargs: None
-    try:
-        load_part_info_from_pcb(tg)
-    finally:
-        globals()["lcsc_attach"] = original_lcsc_attach
-
-    picked_trait = res_node.get_trait(F.Pickable.has_part_picked)
-    assert picked_trait is not None
-    part = picked_trait.try_get_part()
-    assert part is not None
-    assert part.supplier_partno == test_lcsc
-    assert part.manufacturer == test_mfr
-    assert part.partno == test_partno

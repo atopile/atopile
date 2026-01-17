@@ -339,16 +339,6 @@ def _infer_uncorrelated_params(tree: Tree["F.Pickable.is_pickable"]):
     )
 
 
-def get_relevant_pickable_params(
-    app: fabll.Node,
-) -> list["F.Parameters.can_be_operand"]:
-    relevant: list[F.Parameters.can_be_operand] = []
-    for pbt in F.Pickable.is_pickable_by_type.bind_typegraph(app.tg).get_instances():
-        for p in pbt.get_params():
-            relevant.append(p.as_operand.get())
-    return relevant
-
-
 def pick_topologically(
     tree: Tree["F.Pickable.is_pickable"],
     solver: Solver,

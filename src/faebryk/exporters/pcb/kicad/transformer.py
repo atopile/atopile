@@ -153,38 +153,6 @@ def get_all_geos(obj: KiCadPCB | KiCadPCBFootprint) -> list[Geom]:
     return [geo for geos, _ in candidates for geo in geos]
 
 
-def _create_pads_from_kicad_footprint(
-    kicad_fp: kicad.pcb.Footprint,
-    g: fabll.graph.GraphView,
-    tg: fbrk.TypeGraph,
-) -> list[F.Footprints.is_pad]:
-    """
-    Create pad nodes with is_pad traits from a KiCad footprint's pads.
-    This is the canonical way to create pads from KiCad footprint data,
-    used by create_footprints_from_pcb for frozen builds.
-    """
-    pads: list[F.Footprints.is_pad] = []
-    created_pad_names: set[str] = set()
-
-    for pad in kicad_fp.pads:
-        # Only process copper pads
-        if not any("Cu" in layer for layer in pad.layers):
-            continue
-        # Skip duplicate pad names
-        if pad.name in created_pad_names:
-            continue
-        created_pad_names.add(pad.name)
-
-        # Create pad node and is_pad trait
-        pad_node = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
-        pad_trait = fabll.Traits.create_and_add_instance_to(
-            node=pad_node, trait=F.Footprints.is_pad
-        ).setup(pad_number=pad.name, pad_name=pad.name)
-        pads.append(pad_trait)
-
-    return pads
-
-
 class PCB_Transformer:
     def __init__(self, pcb: KiCadPCB, app: fabll.Node) -> None:
         self.pcb = pcb
@@ -289,81 +257,6 @@ class PCB_Transformer:
 
         # net attach
         bind_fbrk_nets_to_kicad_nets(self.tg, self.g, self)
-
-    def create_footprints_from_pcb(self):
-        """
-        Create footprint structures from PCB data for modules that don't have
-        has_associated_footprint yet but have a matching footprint in the PCB.
-
-        This is used for frozen/keep_picked_parts builds where we want to reload
-        footprints from the PCB rather than re-picking parts.
-        """
-        import faebryk.library._F as F
-        from faebryk.libs.util import re_in
-
-        footprint_map = PCB_Transformer.map_footprints(self.tg, self.pcb)
-
-        for node, pcb_fp in footprint_map.items():
-            # Skip modules that already have a footprint
-            if node.has_trait(F.Footprints.has_associated_footprint):
-                continue
-
-            # Skip modules that can't attach to a footprint
-            if not node.has_trait(F.Footprints.can_attach_to_footprint):
-                logger.debug(f"Skipping {node.get_name()} - cannot attach to footprint")
-                continue
-
-            logger.debug(f"Creating footprint from PCB for {node.get_name()}")
-
-            # Create pad nodes from PCB footprint pads
-            pads = _create_pads_from_kicad_footprint(pcb_fp, self.g, self.tg)
-
-            # Create footprint node and is_footprint trait
-            fp_node = fabll.Node.bind_typegraph(tg=self.tg).create_instance(g=self.g)
-            fp_trait = fabll.Traits.create_and_add_instance_to(
-                node=fp_node, trait=F.Footprints.is_footprint
-            )
-
-            # Add pads as children of footprint
-            for pad in pads:
-                fp_node.add_child(pad.get_pad_node())
-
-            # Create has_associated_footprint trait
-            fabll.Traits.create_and_add_instance_to(
-                node=node, trait=F.Footprints.has_associated_footprint
-            ).setup(fp_trait)
-
-            # Match leads to pads
-            lead_nodes = node.get_children(
-                direct_only=False, types=fabll.Node, required_trait=F.Lead.is_lead
-            )
-            leads_t = [n.get_trait(F.Lead.is_lead) for n in lead_nodes]
-            for lead_t in leads_t:
-                if not lead_t.has_trait(F.Lead.has_associated_pads):
-                    try:
-                        lead_t.find_matching_pad(pads)
-                    except F.Lead.LeadPadMatchException:
-                        logger.warning(
-                            f"Could not match lead {lead_t.get_lead_name()} to pad"
-                        )
-
-            # Bind the PCB footprint
-            self.bind_footprint(pcb_fp, node)
-
-            # Load SerializableMetadata from PCB footprint properties
-            # This is needed for load_part_info_from_pcb to work correctly
-            properties_to_include = (
-                PCB_Transformer.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB()
-            )
-            metadata: dict[str, str] = {}
-            for prop in pcb_fp.propertys:
-                if re_in(prop.name, properties_to_include):
-                    metadata[prop.name] = prop.value
-
-            if metadata:
-                fabll.Traits.create_and_add_instance_to(
-                    node=node, trait=F.SerializableMetadata
-                ).setup(metadata)
 
     def check_unattached_fps(self):
         """

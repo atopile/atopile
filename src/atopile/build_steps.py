@@ -66,7 +66,6 @@ from faebryk.libs.net_naming import attach_net_names
 from faebryk.libs.nets import bind_electricals_to_fbrk_nets
 from faebryk.libs.picker.picker import (
     PickError,
-    get_relevant_pickable_params,
     pick_part_recursively,
 )
 from faebryk.libs.util import DAG, md_table
@@ -433,8 +432,6 @@ def load_pcb(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     pcb.run_transformer()
     if config.build.keep_designators:
         load_kicad_pcb_designators(pcb.tg, attach=True)
-    if config.build.keep_picked_parts:
-        pcb.transformer.create_footprints_from_pcb()
 
 
 @muster.register("picker", description="Picking parts", dependencies=[load_pcb])
@@ -442,10 +439,8 @@ def pick_parts(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     app = ctx.require_app()
     solver = ctx.require_solver()
     if config.build.keep_picked_parts:
-        load_part_info_from_pcb(app.tg)
-        relevant = get_relevant_pickable_params(app)
-        if relevant:
-            solver.simplify(app.g, app.tg, terminal=True, relevant=relevant)
+        pcb = ctx.require_pcb()
+        load_part_info_from_pcb(pcb.transformer.pcb, app.tg)
     try:
         pick_part_recursively(app, solver, progress=log_context)
     except* PickError as ex:
