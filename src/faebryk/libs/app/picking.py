@@ -42,6 +42,9 @@ def load_part_info_from_pcb(tg: fbrk.TypeGraph):
         if node.has_trait(F.Pickable.has_part_picked):
             logger.debug(f"Skipping {node.get_name()} because it has part picked")
             continue
+        if node.has_trait(F.has_part_removed):
+            logger.debug(f"Skipping {node.get_name()} because it has part removed")
+            continue
         assert F.SerializableMetadata.get_properties(node), "Should load when linking"
 
         part_props = [
