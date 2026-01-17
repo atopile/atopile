@@ -2019,17 +2019,25 @@ class TestAggregator:
             speedup_ratio = t.get("speedup_ratio")
             speedup_cell = "<td>-</td>"
             if speedup_pct is not None and speedup_ratio is not None:
-                sign = "+" if speedup_pct > 0 else ""
-                speedup_text = f"{sign}{speedup_pct:.1f}%"
                 speedup_style = ""
                 if speedup_pct > 0:
                     speedup_style = "color: var(--ctp-green); font-weight: bold;"
                 elif speedup_pct < 0:
                     speedup_style = "color: var(--ctp-red); font-weight: bold;"
-                speedup_title = (
-                    f"speedup x{speedup_ratio:.2f} "
-                    f"(baseline {t.get('baseline_duration_s')}, current {t.get('duration_s')})"
+
+                if speedup_ratio >= 1:
+                    speedup_text = f"{speedup_ratio:.1f}x"
+                    speedup_title = f"{speedup_pct:+.1f}% ({speedup_ratio:.2f}x)"
+                else:
+                    slowdown = 1 / speedup_ratio if speedup_ratio else 0.0
+                    speedup_text = f"-{slowdown:.1f}x"
+                    speedup_title = f"{speedup_pct:+.1f}% (-{slowdown:.2f}x)"
+
+                speedup_title += (
+                    f" baseline {t.get('baseline_duration_s')},"
+                    f" current {t.get('duration_s')}"
                 )
+
                 speedup_cell = (
                     f'<td style="{speedup_style}" data-value="{speedup_pct}" '
                     f'title="{speedup_title}">{speedup_text}</td>'
