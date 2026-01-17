@@ -4,30 +4,6 @@ from faebryk.core.faebrykpy import EdgeInterfaceConnection as interface
 
 
 class App(fabll.Node):
-    # diode = F.Diode.MakeChild()
-    # diode.add_dependant(
-    #     fabll.Traits.MakeEdge(
-    #         F.Pickable.is_pickable_by_supplier_id.MakeChild(supplier_part_id="C64885"),
-    #         owner=[diode],
-    #     )
-    # )
-
-    # polarized_cap = F.CapacitorPolarized.MakeChild()
-    # polarized_cap.add_dependant(
-    #     fabll.Traits.MakeEdge(
-    #         F.Pickable.is_pickable_by_supplier_id.MakeChild(supplier_part_id="C16133"),
-    #         owner=[polarized_cap],
-    #     )
-    # )
-
-    # led = F.LED.MakeChild()
-    # led.add_dependant(
-    #     fabll.Traits.MakeEdge(
-    #         F.Pickable.is_pickable_by_supplier_id.MakeChild(supplier_part_id="C2286"),
-    #         owner=[led],
-    #     )
-    # )
-
     cap1 = F.Capacitor.MakeChild()
 
     res1 = F.Resistor.MakeChild()
@@ -80,7 +56,9 @@ class App(fabll.Node):
         fabll.MakeEdge([power_5v, "lv"], [gnd], edge=interface.build(shallow=False)),
         fabll.MakeEdge([power_3v3, "lv"], [gnd], edge=interface.build(shallow=False)),
         fabll.MakeEdge(
-            [diff_pair, "reference", "lv"], [gnd], edge=interface.build(shallow=False)
+            [diff_pair, "_single_electric_reference", "reference", "lv"],
+            [gnd],
+            edge=interface.build(shallow=False),
         ),
     ]
 
@@ -98,7 +76,6 @@ class App(fabll.Node):
             [res2, "unnamed[1]"], [power_3v3, "hv"], edge=interface.build(shallow=False)
         ),
     ]
-
     connections2 = [
         fabll.MakeEdge(
             [diff_pair, "p", "line"],
@@ -121,3 +98,4 @@ class App(fabll.Node):
             edge=interface.build(shallow=False),
         ),
     ]
+
