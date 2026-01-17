@@ -26,13 +26,19 @@ class is_alias_bus_parameter(fabll.Node):
     def resolve(self, interfaces: set[fabll.Node]):
         _, _, self_param = get_bus_param_owner(self)
         params = [param for _, param in collect_bus_params(self, interfaces)]
+
+        if len(params) < 2:
+            # Need at least 2 parameters to create equality constraints
+            return
+
         self_operand = self_param.get_trait(F.Parameters.can_be_operand)
         g = self_param.g
         tg = self_param.tg
+
         for param in params:
             if self_param.is_same(param):
                 continue
-            F.Expressions.Is.c(
+            _ = F.Expressions.Is.c(
                 self_operand,
                 param.get_trait(F.Parameters.can_be_operand),
                 g=g,

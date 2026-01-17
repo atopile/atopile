@@ -322,7 +322,7 @@ function SceneContent() {
         enablePan
         panSpeed={1}
         enableZoom
-        zoomSpeed={1.2}
+        zoomSpeed={0.6}
         enableRotate
         rotateSpeed={0.5}
         minDistance={20}
