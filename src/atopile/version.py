@@ -42,9 +42,11 @@ def parse(version_str: str) -> Version:
         version = Version.parse(version_str)
     except ValueError:
         dot_split = version_str.split(".")
-        version_str = "-".join(
-            ".".join(fragments) for fragments in (dot_split[:3], dot_split[3:])
-        )
+        if len(dot_split) < 3:
+            dot_split += ["0"] * (3 - len(dot_split))
+        base = ".".join(dot_split[:3])
+        rest = ".".join(dot_split[3:])
+        version_str = f"{base}-{rest}" if rest else base
         version = Version.parse(version_str)
 
     return version
