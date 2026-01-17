@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import logging
-from typing import TYPE_CHECKING, Self, cast
+from typing import Self
 
 import pytest
 
@@ -11,9 +11,6 @@ import faebryk.library._F as F
 from faebryk.core import graph
 from faebryk.libs.exceptions import UserDesignCheckException
 from faebryk.libs.util import once
-
-if TYPE_CHECKING:
-    from faebryk.libs.app.checks import check_design
 
 logger = logging.getLogger(__name__)
 
@@ -126,15 +123,15 @@ class Addressor(fabll.Node):
         ConcreteAddressor = cls.factory(address_bits)
         out = fabll._ChildField(ConcreteAddressor)
 
-        # Setup constraint: address is! base + offset
-        F.Expressions.Is.MakeChild(
+        # Setup constraint: offset is! address - base
+        address_minus_base = F.Expressions.Subtract.MakeChild(
             [out, ConcreteAddressor.address],
-            [
-                F.Expressions.Add.MakeChild(
-                    [out, ConcreteAddressor.base],
-                    [out, ConcreteAddressor.offset],
-                ).add_as_dependant(out)
-            ],
+            [out, ConcreteAddressor.base],
+        ).add_as_dependant(out)
+
+        F.Expressions.Is.MakeChild(
+            [out, ConcreteAddressor.offset],
+            [address_minus_base],
             assert_=True,
         ).add_as_dependant(out)
 

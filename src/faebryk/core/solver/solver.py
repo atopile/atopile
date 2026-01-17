@@ -25,7 +25,6 @@ from faebryk.core.solver.mutator import (
 from faebryk.core.solver.symbolic import (
     expression_groups,
     expression_wise,
-    rewrite,
     structural,
 )
 from faebryk.core.solver.utils import (
@@ -168,7 +167,7 @@ class Solver:
             # if you copy it into the stripped graph its going to be missing
             # check what is easier:
             # 1. handle that detail
-            # 2. add the stripping to the canonicalization algorithm, where the mutator will take care of the rest
+            # 2. add the stripping to the canonicalization algorithm, where the mutator will take care of the rest #noqa: E501
 
             return Solver.SolverState(
                 data=Solver.IterationData(
@@ -365,8 +364,9 @@ class Solver:
                 ).ljust(NET_LINE_WIDTH, "=")
             )
 
-        if not terminal:
-            self.reusable_state = self.state
+        # Partial solving not supported yet
+        # if not terminal:
+        #     self.reusable_state = self.state
 
         G_out = self.state.data.mutation_map.last_stage.G_out
         ifs = F.Expressions.IfThenElse.bind_typegraph(tg).get_instances(G_out)

@@ -24,6 +24,7 @@ from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.Signal import Signal
 from faebryk.library.is_app_root import is_app_root
+import faebryk.library.bus_parameter_utils as bus_parameter_utils
 import faebryk.library.Literals as Literals
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.has_source_chunk import has_source_chunk
@@ -124,6 +125,7 @@ __all__ = [
     "Mechanical",
     "Signal",
     "is_app_root",
+    "bus_parameter_utils",
     "Literals",
     "can_bridge",
     "has_source_chunk",
