@@ -2,22 +2,18 @@ import io
 import logging
 import os
 import shutil
-import threading
 import time
 from collections.abc import Iterable
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 from types import ModuleType, TracebackType
-from typing import Literal
 
 import pathvalidate
 from rich._null_file import NullFile
 from rich.console import Console, ConsoleRenderable, RenderableType
-from rich.live import Live
 from rich.logging import RichHandler
 from rich.markdown import Markdown
 from rich.padding import Padding
@@ -31,7 +27,7 @@ from rich.progress import (
     TextColumn,
     TimeElapsedColumn,
 )
-from rich.table import Column, Table
+from rich.table import Column
 from rich.text import Text
 from rich.traceback import Traceback
 
@@ -259,8 +255,10 @@ class LogHandler(RichHandler):
 
     def emit(self, record: logging.LogRecord) -> None:
         """Invoked by logging."""
-        # In parallel mode, suppress all console output (logs go to files only)
-        if get_parallel_display() is not None:
+        # Worker subprocesses always suppress console output (parent handles display).
+        if os.environ.get("ATO_BUILD_EVENT_FD") or os.environ.get(
+            "ATO_BUILD_STATUS_FILE"
+        ):
             return
 
         hashable = self._get_hashable(record)
@@ -288,8 +286,8 @@ class LiveLogHandler(LogHandler):
     def __init__(self, status: "LoggingStage", *args, **kwargs):
         super().__init__(*args, console=status._console, **kwargs)
         self.status = status
-        # In parallel mode, we only count warnings/errors but don't print to console
-        self._suppress_output = status._in_parallel_mode
+        # In worker mode, we only count warnings/errors but don't print to console
+        self._suppress_output = status._in_worker_mode
 
     def emit(self, record: logging.LogRecord) -> None:
         hashable = self._get_hashable(record)
@@ -412,337 +410,6 @@ class StaticIndicatorColumn(ProgressColumn):
         return Text.from_markup("[blue]●[/blue]")  # Static "in progress" indicator
 
 
-# =============================================================================
-# Parallel Build Display
-# =============================================================================
-
-BuildStatus = Literal["pending", "building", "success", "warning", "failed"]
-
-
-@dataclass
-class BuildTargetState:
-    """Thread-safe state for a single build target in parallel builds."""
-
-    name: str
-    current_stage: str = ""
-    stage_start_time: float = 0.0
-    stages_completed: int = 0
-    stages_total: int = 12  # Default estimate, updated during build
-    start_time: float = 0.0
-    status: BuildStatus = "pending"
-    warnings: int = 0
-    errors: int = 0
-    log_dir: Path | None = None
-    exception: BaseException | None = None
-
-    @property
-    def stage_elapsed(self) -> float:
-        """Time elapsed in current stage."""
-        if self.stage_start_time == 0.0:
-            return 0.0
-        return time.time() - self.stage_start_time
-
-    @property
-    def total_elapsed(self) -> float:
-        """Total time elapsed since build started."""
-        if self.start_time == 0.0:
-            return 0.0
-        return time.time() - self.start_time
-
-
-def _make_hyperlink(path: Path, text: str) -> str:
-    """Create an OSC8 terminal hyperlink for clickable paths."""
-    url = path.absolute().as_uri()
-    return f"\x1b]8;;{url}\x1b\\{text}\x1b]8;;\x1b\\"
-
-
-# ContextVar to hold the current parallel display (if any)
-_parallel_display_var: ContextVar["ParallelBuildDisplay | None"] = ContextVar(
-    "parallel_display", default=None
-)
-
-
-class ParallelBuildDisplay:
-    """
-    A live-updating table display for parallel builds.
-
-    Uses rich.live.Live to render a table showing all build targets
-    with their current stage, progress, elapsed time, and status.
-    """
-
-    # Status indicators for the table
-    _STATUS_ICONS = {
-        "pending": "[dim]○[/dim]",
-        "building": "[blue]●[/blue]",
-        "success": "[green]✓[/green]",
-        "warning": "[yellow]⚠[/yellow]",
-        "failed": "[red]✗[/red]",
-    }
-
-    def __init__(self, build_names: list[str], console: Console | None = None):
-        """
-        Initialize the parallel build display.
-
-        Args:
-            build_names: List of build target names to track
-            console: Rich console to use (defaults to error_console)
-        """
-        from . import console as console_module
-
-        self._console = console or console_module.error_console
-        self._lock = threading.Lock()
-        self._states: dict[str, BuildTargetState] = {
-            name: BuildTargetState(name=name) for name in build_names
-        }
-        self._live: Live | None = None
-        self._token: object | None = None
-
-    def update_target(
-        self,
-        name: str,
-        *,
-        current_stage: str | None = None,
-        stages_completed: int | None = None,
-        stages_total: int | None = None,
-        status: BuildStatus | None = None,
-        warnings: int | None = None,
-        errors: int | None = None,
-        log_dir: Path | None = None,
-        exception: BaseException | None = None,
-        reset_stage_time: bool = False,
-        start_build: bool = False,
-    ) -> None:
-        """
-        Thread-safe update of a build target's state.
-
-        Args:
-            name: The build target name
-            current_stage: Current stage description
-            stages_completed: Number of completed stages
-            stages_total: Total number of stages
-            status: Build status
-            warnings: Warning count
-            errors: Error count
-            log_dir: Path to log directory
-            exception: Exception if build failed
-            reset_stage_time: Reset the stage start time (for new stages)
-            start_build: Set to True to mark the build as started (sets start_time)
-        """
-        with self._lock:
-            if name not in self._states:
-                return
-
-            state = self._states[name]
-
-            if current_stage is not None:
-                state.current_stage = current_stage
-            if stages_completed is not None:
-                state.stages_completed = stages_completed
-            if stages_total is not None:
-                state.stages_total = stages_total
-            if status is not None:
-                state.status = status
-            if start_build or (status == "building" and state.start_time == 0.0):
-                state.start_time = time.time()
-            if warnings is not None:
-                state.warnings = warnings
-            if errors is not None:
-                state.errors = errors
-            if log_dir is not None:
-                state.log_dir = log_dir
-            if exception is not None:
-                state.exception = exception
-            if reset_stage_time:
-                state.stage_start_time = time.time()
-
-    def increment_warnings(self, name: str) -> None:
-        """Thread-safe increment of warning count."""
-        with self._lock:
-            if name in self._states:
-                self._states[name].warnings += 1
-
-    def increment_errors(self, name: str) -> None:
-        """Thread-safe increment of error count."""
-        with self._lock:
-            if name in self._states:
-                self._states[name].errors += 1
-
-    def _format_time(self, seconds: float) -> str:
-        """Format elapsed time as human-readable string."""
-        if seconds < 60:
-            return f"{seconds:.0f}s"
-        minutes = int(seconds // 60)
-        secs = int(seconds % 60)
-        return f"{minutes}m {secs}s"
-
-    # Fixed width for stage column to prevent jumping
-    # Longest: "Running post-instantiation design checks [12.5s] (1W)" ~40 chars
-    _STAGE_COLUMN_WIDTH = 40
-
-    def _render_table(self) -> Table:
-        """Render the current state as a rich Table."""
-        table = Table(
-            show_header=False,  # Cleaner without header
-            box=None,
-            padding=(0, 1),
-            expand=False,
-        )
-
-        table.add_column("", width=1)  # Status icon
-        table.add_column("", width=12, style="cyan")  # Target (max ~12 chars)
-        table.add_column("", width=self._STAGE_COLUMN_WIDTH)  # Stage (fixed width)
-        table.add_column("", width=5, justify="right")  # Time
-
-        with self._lock:
-            for state in self._states.values():
-                status_icon = self._STATUS_ICONS.get(state.status, "○")
-
-                # Format stage with elapsed time
-                if state.status == "building" and state.current_stage:
-                    stage_text = (
-                        f"{state.current_stage} [dim][{state.stage_elapsed:.1f}s][/dim]"
-                    )
-                elif state.status in ("success", "warning"):
-                    stage_text = "[green]Completed[/green]"
-                elif state.status == "failed":
-                    stage_text = "[red]Failed[/red]"
-                else:
-                    stage_text = "[dim]Waiting...[/dim]"
-
-                # Add problems indicator
-                problems = []
-                if state.errors > 0:
-                    problems.append(f"[red]{state.errors}E[/red]")
-                if state.warnings > 0:
-                    problems.append(f"[yellow]{state.warnings}W[/yellow]")
-                if problems:
-                    stage_text += f" ({', '.join(problems)})"
-
-                # Format total time
-                if state.status in ("success", "warning", "failed"):
-                    time_text = self._format_time(state.total_elapsed)
-                elif state.status == "building":
-                    time_text = f"[blue]{self._format_time(state.total_elapsed)}[/blue]"
-                else:
-                    time_text = "[dim]-[/dim]"
-
-                table.add_row(
-                    status_icon,
-                    state.name,
-                    stage_text,
-                    time_text,
-                )
-
-        return table
-
-    def _render_summary(self) -> Text:
-        """Render a summary line below the table."""
-        with self._lock:
-            completed = sum(
-                1 for s in self._states.values() if s.status in ("success", "warning")
-            )
-            in_progress = sum(
-                1 for s in self._states.values() if s.status == "building"
-            )
-            failed = sum(1 for s in self._states.values() if s.status == "failed")
-            pending = sum(1 for s in self._states.values() if s.status == "pending")
-            total_warnings = sum(s.warnings for s in self._states.values())
-            total_errors = sum(s.errors for s in self._states.values())
-
-        parts = []
-        if completed > 0:
-            parts.append(f"[green]Completed: {completed}[/green]")
-        if in_progress > 0:
-            parts.append(f"[blue]Building: {in_progress}[/blue]")
-        if pending > 0:
-            parts.append(f"[dim]Pending: {pending}[/dim]")
-        if failed > 0:
-            parts.append(f"[red]Failed: {failed}[/red]")
-        if total_warnings > 0:
-            parts.append(f"[yellow]Warnings: {total_warnings}[/yellow]")
-        if total_errors > 0:
-            parts.append(f"[red]Errors: {total_errors}[/red]")
-
-        return Text.from_markup("  ".join(parts))
-
-    def _render(self) -> RenderableType:
-        """Render the full display (table + summary)."""
-        from rich.console import Group
-
-        return Group(
-            self._render_table(),
-            Text(""),  # Spacer
-            self._render_summary(),
-        )
-
-    def __enter__(self) -> "ParallelBuildDisplay":
-        """Start the live display and set as current parallel display."""
-        self._live = Live(
-            self._render(),
-            console=self._console,
-            refresh_per_second=10,
-            transient=False,
-        )
-        self._live.start()
-        self._token = _parallel_display_var.set(self)
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Stop the live display and clear the context."""
-        if self._live:
-            # Final render before stopping
-            self._live.update(self._render())
-            self._live.stop()
-            self._live = None
-        if self._token is not None:
-            _parallel_display_var.reset(self._token)
-            self._token = None
-
-    def refresh(self) -> None:
-        """Manually refresh the display."""
-        if self._live:
-            self._live.update(self._render())
-
-    def get_state(self, name: str) -> BuildTargetState | None:
-        """Get a copy of the state for a build target."""
-        with self._lock:
-            return self._states.get(name)
-
-    @property
-    def all_completed(self) -> bool:
-        """Check if all builds have finished (success, warning, or failed)."""
-        with self._lock:
-            return all(
-                s.status in ("success", "warning", "failed")
-                for s in self._states.values()
-            )
-
-    @property
-    def any_failed(self) -> bool:
-        """Check if any build has failed."""
-        with self._lock:
-            return any(s.status == "failed" for s in self._states.values())
-
-    @property
-    def failed_builds(self) -> list[str]:
-        """Get list of failed build names."""
-        with self._lock:
-            return [s.name for s in self._states.values() if s.status == "failed"]
-
-    @property
-    def exceptions(self) -> dict[str, BaseException]:
-        """Get mapping of build names to their exceptions."""
-        with self._lock:
-            return {
-                s.name: s.exception
-                for s in self._states.values()
-                if s.exception is not None
-            }
-
-
-def get_parallel_display() -> "ParallelBuildDisplay | None":
-    """Get the current parallel build display, if any."""
-    return _parallel_display_var.get()
 
 
 _log_sink_var = ContextVar[io.StringIO | None]("log_sink", default=None)
@@ -806,15 +473,14 @@ class LoggingStage(Advancable):
         self._log_dir: Path | None = None
         self._stage_start_time: float = 0.0
 
-        # Check if we're in parallel mode (skip per-stage progress display)
-        self._parallel_display = get_parallel_display()
-        self._in_parallel_mode = self._parallel_display is not None
+        # Worker subprocesses are identified by IPC env vars set by the parent.
+        self._in_worker_mode = bool(
+            os.environ.get("ATO_BUILD_EVENT_FD")
+            or os.environ.get("ATO_BUILD_STATUS_FILE")
+        )
 
-        # Check if animations should be disabled (verbose mode via pipe)
-        self._no_animation = os.environ.get("ATO_NO_PROGRESS_ANIMATION") == "1"
-
-        # Only create progress bar if not in parallel mode and not in no-animation mode
-        if not self._in_parallel_mode and not self._no_animation:
+        # Only create progress bar for non-worker (single-process) runs
+        if not self._in_worker_mode:
             self._progress = IndentedProgress(
                 *self._get_columns(),
                 console=self._console,
@@ -832,11 +498,7 @@ class LoggingStage(Advancable):
             self._info_log_path and self._console.width >= _SHOW_LOG_FILE_PATH_THRESHOLD
         )
 
-        # Use static indicator (no animation) when piped for verbose mode
-        if self._no_animation:
-            indicator_col = StaticIndicatorColumn()
-        else:
-            indicator_col = CompletableSpinnerColumn()
+        indicator_col = CompletableSpinnerColumn()
         self._indicator_col = indicator_col
 
         return tuple(
@@ -861,8 +523,8 @@ class LoggingStage(Advancable):
             self._progress.columns = self._get_columns()
 
     def alert(self, message: str) -> None:
-        # In parallel mode, alerts are suppressed (logged to file only)
-        if self._in_parallel_mode:
+        # In worker mode, alerts are suppressed (logged to file only)
+        if self._in_worker_mode:
             return
 
         message = f"[bold][yellow]![/yellow] {message}[/bold]"
@@ -886,13 +548,7 @@ class LoggingStage(Advancable):
         return f"{self.description}{problems_text}"
 
     def refresh(self) -> None:
-        if self._in_parallel_mode:
-            # In parallel mode, refresh the parallel display instead
-            if self._parallel_display:
-                self._parallel_display.refresh()
-            return
-
-        if self._no_animation:
+        if self._in_worker_mode:
             return  # No progress bar to refresh
 
         if not hasattr(self, "_task_id"):
@@ -907,8 +563,8 @@ class LoggingStage(Advancable):
         # Write progress to status file if in worker mode
         self._write_status_file()
 
-        if self._in_parallel_mode or self._no_animation:
-            # In parallel/no-animation mode, don't update progress bar
+        if self._in_worker_mode:
+            # In worker mode, don't update progress bar
             return
 
         self._update_columns()
@@ -921,7 +577,7 @@ class LoggingStage(Advancable):
         # Write progress to status file if in worker mode
         self._write_status_file()
 
-        if self._in_parallel_mode or self._no_animation:
+        if self._in_worker_mode:
             return  # Progress tracking handled differently
         assert self.steps is not None
         self._progress.advance(self._task_id, advance)
@@ -963,17 +619,8 @@ class LoggingStage(Advancable):
         # Write status to file if in worker mode (subprocess parallelism)
         self._write_status_file()
 
-        if self._in_parallel_mode:
-            # Update parallel display with new stage
-            if self._parallel_display:
-                self._parallel_display.update_target(
-                    self._get_build_name(),
-                    current_stage=self.description,
-                    log_dir=self._log_dir,
-                    reset_stage_time=True,
-                )
-        elif self._no_animation:
-            # No-animation mode: no progress bar, just track internally
+        if self._in_worker_mode:
+            # Worker mode: no progress bar, just track internally
             pass  # Start time already set above
         else:
             self._update_columns()
@@ -1018,39 +665,11 @@ class LoggingStage(Advancable):
         self._restore_logging()
         self._emit_stage_event(elapsed, status)
 
-        if self._in_parallel_mode:
-            # Update parallel display with stage completion
-            if self._parallel_display:
-                build_name = self._get_build_name()
-                state = self._parallel_display.get_state(build_name)
-                if state:
-                    self._parallel_display.update_target(
-                        build_name,
-                        stages_completed=state.stages_completed + 1,
-                        warnings=state.warnings + self._warning_count,
-                        errors=state.errors + self._error_count,
-                    )
-        elif self._no_animation:
-            # No-animation mode: print single completion line
-            elapsed = time.time() - getattr(self, "_stage_start_time", time.time())
-            status_icon = {
-                CompletableSpinnerColumn.Status.SUCCESS: "[green]✓[/green]",
-                CompletableSpinnerColumn.Status.WARNING: "[yellow]⚠[/yellow]",
-                CompletableSpinnerColumn.Status.FAILURE: "[red]✗[/red]",
-            }.get(status, "●")
-
-            # Build description with warning count if any
-            desc = self.description
-            if self._warning_count > 0:
-                desc = f"{desc} ({self._warning_count} warning)"
-
-            # Print completion line
-            log_path = self._info_log_path or ""
-            self._console.print(
-                f"{'':>{self.indent}}{status_icon} {desc} [{elapsed:.1f}s]"
-                f"{'':>10}{log_path}"
-            )
+        if self._in_worker_mode:
+            # Worker mode: no display updates (handled by parent process)
+            pass
         else:
+            # Normal mode: update progress bar
             for column in self._progress.columns:
                 if isinstance(column, CompletableSpinnerColumn):
                     column.complete(status)
@@ -1058,12 +677,15 @@ class LoggingStage(Advancable):
             self.refresh()
             self._progress.stop()
 
-        # Persist stage timing data for summary reports
-        self._save_timing_data(status)
-
     def _emit_stage_event(
         self, elapsed: float, status: CompletableSpinnerColumn.Status
     ) -> None:
+        """
+        Emit stage completion event to pipe for parent process.
+
+        The parent process reads these events to build stage history,
+        which is later written to JSON at build completion.
+        """
         event_fd = os.environ.get("ATO_BUILD_EVENT_FD")
         if not event_fd:
             return
@@ -1074,51 +696,11 @@ class LoggingStage(Advancable):
         try:
             line = (
                 f"{elapsed:.3f}\t{status}\t{self._warning_count}\t"
-                f"{self._error_count}\t{self.description}\n"
+                f"{self._error_count}\t{self.name}\t{self.description}\n"
             )
             os.write(fd, line.encode())
         except Exception:
             pass
-
-    def _save_timing_data(self, status: CompletableSpinnerColumn.Status) -> None:
-        """Save stage timing data to JSON file for summary generation."""
-        import json
-
-        if not self._log_dir:
-            return
-
-        elapsed = time.time() - self._stage_start_time
-
-        status_map = {
-            CompletableSpinnerColumn.Status.SUCCESS: "success",
-            CompletableSpinnerColumn.Status.WARNING: "warning",
-            CompletableSpinnerColumn.Status.FAILURE: "failure",
-        }
-        status_str = status_map.get(status, "unknown")
-
-        timing_entry = {
-            "name": self.name,
-            "description": self.description,
-            "elapsed_seconds": round(elapsed, 3),
-            "status": status_str,
-            "warnings": self._warning_count,
-            "errors": self._error_count,
-        }
-
-        timing_file = self._log_dir / self.TIMING_FILE
-
-        try:
-            if timing_file.exists():
-                existing_data = json.loads(timing_file.read_text())
-                if not isinstance(existing_data, dict):
-                    existing_data = {"stages": []}
-            else:
-                existing_data = {"stages": []}
-
-            existing_data["stages"].append(timing_entry)
-            timing_file.write_text(json.dumps(existing_data, indent=2))
-        except Exception:
-            pass  # Don't fail the build if timing persistence fails
 
     def _create_log_dir(self) -> Path:
         from atopile.config import config
@@ -1136,8 +718,8 @@ class LoggingStage(Advancable):
         # Store log directory for parallel display
         self._log_dir = log_dir
 
-        # Skip symlink update in parallel mode - it's handled by the summary generator
-        if self._in_parallel_mode:
+        # Skip symlink update in worker mode - it's handled by the summary generator
+        if self._in_worker_mode:
             return log_dir
 
         # Update the latest symlink (single-threaded mode only)
