@@ -908,9 +908,8 @@ def generate_datasheets(ctx: BuildStepContext, log_context: LoggingStage) -> Non
         generate_bom,
         generate_manifest,
         generate_variable_report,
-        generate_power_tree,
+        # generate_power_tree,
         generate_datasheets,
-        # generate_i2c_tree,
     ],
     virtual=True,
 )
