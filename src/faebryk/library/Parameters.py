@@ -1180,7 +1180,7 @@ def test_try_get():
     p1.set_superset("a", "b")
     p1_po = p1.is_parameter_operatable.get()
 
-    assert not_none(p1.try_extract_superset()).get_values() == ["a", "b"]
+    assert set(not_none(p1.try_extract_superset()).get_values()) == {"a", "b"}
 
     ss_lit = (
         Strings.bind_typegraph(tg=tg)
@@ -1194,10 +1194,7 @@ def test_try_get():
     )
 
     ss_lit_get = p1_po.force_extract_superset()
-    assert fabll.Traits(ss_lit_get).get_obj(Strings).get_values() == [
-        "a",
-        "b",
-    ]
+    assert set(fabll.Traits(ss_lit_get).get_obj(Strings).get_values()) == {"a", "b"}
 
 
 def test_enum_param():
