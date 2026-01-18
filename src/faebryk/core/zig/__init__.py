@@ -1,12 +1,13 @@
 import importlib.util
 import logging
 import sys
+from enum import StrEnum
 from pathlib import Path
 from types import ModuleType
 
 from faebryk.libs.util import (
     ConfigFlag,
-    ConfigFlagString,
+    ConfigFlagEnum,
     FileChangedWatcher,
     debug_perf,
     get_python_lib,
@@ -22,7 +23,24 @@ _thisdir = _thisfile.parent
 _build_dir = _thisdir / "zig-out" / "lib"
 _pyi_dir = _build_dir / "gen"
 
-RELEASEMODE = ConfigFlagString("ZIG_RELEASEMODE", default="ReleaseFast")
+
+class ReleaseMode(StrEnum):
+    DEBUG = "Debug"
+    """Optimizations off and safety on (default)"""
+    RELEASE_SAFE = "ReleaseSafe"
+    """Optimizations on and safety on"""
+    RELEASE_FAST = "ReleaseFast"
+    """Optimizations on and safety off"""
+    RELEASE_SMALL = "ReleaseSmall"
+    """Size optimizations on and safety off"""
+
+
+RELEASEMODE = ConfigFlagEnum(
+    "ZIG_RELEASEMODE",
+    default=ReleaseMode.RELEASE_FAST,
+    enum=ReleaseMode,
+    descr="https://ziglang.org/documentation/0.15.2/#Build-Mode",
+)
 NORECOMPILE = ConfigFlag("ZIG_NORECOMPILE", default=False)
 
 

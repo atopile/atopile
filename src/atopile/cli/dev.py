@@ -24,17 +24,20 @@ def compile(
     target: str = typer.Argument(
         "all",
         help="Build target: all, zig, or visualizer.",
-    )
+    ),
 ):
     target = target.lower()
     valid_targets = {"all", "zig", "visualizer"}
     if target not in valid_targets:
-        raise typer.BadParameter(f"target must be one of: {', '.join(sorted(valid_targets))}")
+        raise typer.BadParameter(
+            f"target must be one of: {', '.join(sorted(valid_targets))}"
+        )
 
     if target in {"all", "zig"}:
         print("compiling zig")
         # import will trigger compilation
         import faebryk.core.zig
+
         _ = faebryk.core.zig
 
     if target in {"all", "visualizer"}:
@@ -105,6 +108,9 @@ def _extract_literal_repr(node) -> str | None:
         case ast.Name(id=name):
             # best-effort: many defaults are literals; if not, still provide identifier
             return name
+        case ast.Attribute(value=ast.Name(id=obj_name), attr=attr_name):
+            # Handle Enum.MEMBER style attribute access
+            return f"{obj_name}.{attr_name}"
         case ast.UnaryOp(op=ast.USub(), operand=ast.Constant(value=v)) if isinstance(
             v, (int, float)
         ):
@@ -129,7 +135,13 @@ def _is_configflag_ctor(call) -> str | None:
     elif isinstance(fn, ast.Attribute):
         name = fn.attr
 
-    if name in {"ConfigFlag", "ConfigFlagInt", "ConfigFlagFloat", "ConfigFlagString"}:
+    if name in {
+        "ConfigFlag",
+        "ConfigFlagInt",
+        "ConfigFlagFloat",
+        "ConfigFlagString",
+        "ConfigFlagEnum",
+    }:
         return name
     return None
 
@@ -286,7 +298,8 @@ def _count_callsites(
     Implementation:
     - tokenize all `.py` files under roots
     - count NAME tokens matching each flag's python_name
-    - subtract occurrences on the definition line (so the assignment isn't counted as a use)
+    - subtract occurrences on the definition line (so the assignment isn't counted
+      as a use)
     """
     import io
     import tokenize
@@ -348,21 +361,34 @@ def flags():
     - discovery is AST-based (no imports, no side effects)
     - callsite counts are token-based (no external tools)
     """
+    import re
+
     from rich.console import Console
     from rich.table import Table
+
+    def _linkify_urls(text: str) -> str:
+        """Convert URLs to Rich hyperlinks with shorter display text."""
+        url_pattern = r"(https?://[^\s]+)"
+
+        def replace_url(match: re.Match) -> str:
+            url = match.group(1)
+            return f"[link={url}]{'link'}[/link]"
+
+        return re.sub(url_pattern, replace_url, text)
 
     roots = [Path("src/atopile"), Path("src/faebryk")]
     discovered = _discover_configflags(*roots)
     uses_by_def = _count_callsites(discovered, roots=roots)
 
     table = Table(title="ConfigFlags", show_lines=True)
-    table.add_column("Env", style="bold")
-    table.add_column("Type")
-    table.add_column("Py Name")
-    table.add_column("Default")
-    table.add_column("Descr", overflow="fold")
-    table.add_column("Location", style="dim")
-    table.add_column("Uses", justify="right")
+    table.add_column("Env", style="bold", no_wrap=True)
+    table.add_column("Type", overflow="fold")
+    table.add_column("Py Name", overflow="fold")
+    table.add_column("Default", overflow="fold")
+    table.add_column("Current", style="cyan", overflow="fold")
+    table.add_column("Descr", overflow="fold", max_width=20)
+    table.add_column("Location", style="dim", overflow="fold")
+    table.add_column("Uses", justify="right", overflow="fold")
 
     for f in discovered:
         loc = f"{f.file}:{f.line}"
@@ -370,12 +396,19 @@ def flags():
         if f.python_name and f.python_name.isidentifier():
             uses = str(uses_by_def.get((f.file.resolve(), f.line, f.python_name), 0))
 
+        # Get current value from environment
+        current = os.getenv(f"{f.env_name}", "")
+
+        # Convert URLs to clickable hyperlinks
+        descr = _linkify_urls(f.descr) if f.descr else ""
+
         table.add_row(
             f.env_name,
             f.kind,
             f.python_name or "",
             f.default or "",
-            f.descr or "",
+            current,
+            descr,
             loc,
             uses,
         )
@@ -581,7 +614,8 @@ def test(
     reuse: bool = typer.Option(
         False,
         "--reuse",
-        help="Reuse artifacts/test-report.json and rebuild with a new baseline without rerunning tests",
+        help="Reuse artifacts/test-report.json and rebuild with a new baseline without "
+        "rerunning tests",
     ),
     keep_open: bool = typer.Option(
         False,

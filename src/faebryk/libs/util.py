@@ -990,7 +990,7 @@ class ConfigFlag(_ConfigFlagBase[bool]):
 
 
 class ConfigFlagEnum[E: StrEnum](_ConfigFlagBase[E]):
-    def __init__(self, enum: type[E], name: str, default: E, descr: str = "") -> None:
+    def __init__(self, name: str, default: E, enum: type[E], descr: str = "") -> None:
         self.enum = enum
         super().__init__(name, default, descr)
 
