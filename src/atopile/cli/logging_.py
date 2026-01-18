@@ -1,14 +1,17 @@
 import io
 import logging
 import os
+import pickle
 import shutil
+import struct
 import sys
 import time
 from collections.abc import Iterable
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass, field
 from datetime import datetime
-from enum import StrEnum
+from enum import Enum, StrEnum
 from pathlib import Path
 from types import ModuleType, TracebackType
 
@@ -61,6 +64,63 @@ ALERT = logging.INFO + 5
 logging.addLevelName(ALERT, "ALERT")
 
 
+class Status(str, Enum):
+    """Build status states."""
+
+    QUEUED = "queued"
+    BUILDING = "building"
+    SUCCESS = "success"
+    WARNING = "warning"
+    FAILED = "failed"
+
+
+@dataclass
+class ProjectState:
+    """Aggregate state for a project containing multiple builds."""
+
+    builds: list["BuildProcess"] = field(default_factory=list)
+    status: Status = Status.QUEUED
+    completed: int = 0
+    failed: int = 0
+    warnings: int = 0
+    building: int = 0
+    queued: int = 0
+    total: int = 0
+    current_build: str | None = None
+    current_stage: str | None = None
+    elapsed: float = 0.0
+    log_dir: Path | None = None
+
+
+@dataclass(frozen=True)
+class StageStatusEvent:
+    name: str
+    description: str
+    progress: int
+    total: int | None
+
+
+@dataclass(frozen=True)
+class StageCompleteEvent:
+    duration: float
+    status: str
+    warnings: int
+    errors: int
+    log_name: str
+    description: str
+
+
+def _emit_event(
+    fd: int, event: StageStatusEvent | StageCompleteEvent
+) -> None:
+    payload = pickle.dumps(event, protocol=pickle.HIGHEST_PROTOCOL)
+    header = struct.pack(">I", len(payload))
+    data = header + payload
+    offset = 0
+    while offset < len(data):
+        offset += os.write(fd, data[offset:])
+
+
 class LogHandler(RichHandler):
     """
     A logging handler that renders output with Rich.
@@ -87,7 +147,6 @@ class LogHandler(RichHandler):
         ),
         traceback_level: int = logging.ERROR,
         force_terminal: bool = False,
-        allow_worker_console: bool = False,
         **kwargs,
     ):
         super().__init__(
@@ -105,7 +164,6 @@ class LogHandler(RichHandler):
         self.traceback_level = traceback_level
         self._logged_exceptions = set()
         self._is_terminal = force_terminal or console.is_terminal
-        self._allow_worker_console = allow_worker_console
 
         self.addFilter(
             lambda record: record.name.startswith("atopile")
@@ -258,13 +316,12 @@ class LogHandler(RichHandler):
 
     def emit(self, record: logging.LogRecord) -> None:
         """Invoked by logging."""
-        # Worker subprocesses always suppress console output.
+        # Worker subprocesses suppress console output, except for errors
         is_worker = bool(
             os.environ.get("ATO_BUILD_EVENT_FD")
-            or os.environ.get("ATO_BUILD_STATUS_FILE")
         )
         is_console = self.console.file in (sys.stdout, sys.stderr)
-        if is_worker and is_console and not self._allow_worker_console:
+        if is_worker and is_console and record.levelno < logging.ERROR:
             return
 
         hashable = self._get_hashable(record)
@@ -308,12 +365,16 @@ class LiveLogHandler(LogHandler):
 
             self.status.refresh()
 
-            # In parallel mode, don't print alerts or other console output
+            # In worker mode, only print errors to console
             if self._suppress_output:
+                if record.levelno >= logging.ERROR:
+                    super().emit(record)
                 return
 
             if record.levelno == ALERT:
                 self.status.alert(record.getMessage())
+            elif record.levelno >= logging.ERROR:
+                super().emit(record)
 
         except Exception:
             self.handleError(record)
@@ -339,26 +400,6 @@ class CaptureLogHandler(LogHandler):
         finally:
             if hashable:
                 self._logged_exceptions.add(hashable)
-
-
-class PlainStreamHandler(logging.StreamHandler):
-    def __init__(self, *args, allow_worker_console: bool = False, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._allow_worker_console = allow_worker_console
-        self.addFilter(
-            lambda record: record.name.startswith("atopile")
-            or record.name.startswith("faebryk")
-        )
-
-    def emit(self, record: logging.LogRecord) -> None:
-        is_worker = bool(
-            os.environ.get("ATO_BUILD_EVENT_FD")
-            or os.environ.get("ATO_BUILD_STATUS_FILE")
-        )
-        is_console = self.stream in (sys.stdout, sys.stderr)
-        if is_worker and is_console and not self._allow_worker_console:
-            return
-        super().emit(record)
 
 
 class IndentedProgress(Progress):
@@ -415,27 +456,6 @@ class CompletableSpinnerColumn(SpinnerColumn):
         return text
 
 
-class StaticIndicatorColumn(ProgressColumn):
-    """Non-animated indicator that shows status without spinning."""
-
-    class Status(StrEnum):
-        SUCCESS = "[green]✓[/green]"
-        FAILURE = "[red]✗[/red]"
-        WARNING = "[yellow]⚠[/yellow]"
-
-    def __init__(self):
-        super().__init__()
-        self.status: str | None = None
-
-    def complete(self, status: Status) -> None:
-        self.status = status
-
-    def render(self, task: "Task") -> RenderableType:
-        if self.status is not None:
-            return Text.from_markup(self.status)
-        return Text.from_markup("[blue]●[/blue]")  # Static "in progress" indicator
-
-
 _log_sink_var = ContextVar[io.StringIO | None]("log_sink", default=None)
 
 
@@ -487,7 +507,6 @@ class LoggingStage(Advancable):
         self._console = console.error_console
         self._warning_count = 0
         self._error_count = 0
-        self._stream_handler: logging.Handler | None = None
         self._info_log_path = None
         self._log_handler = None
         self._capture_log_handler = None
@@ -501,7 +520,6 @@ class LoggingStage(Advancable):
         # Worker subprocesses are identified by IPC env vars set by the parent.
         self._in_worker_mode = bool(
             os.environ.get("ATO_BUILD_EVENT_FD")
-            or os.environ.get("ATO_BUILD_STATUS_FILE")
         )
 
         # Only create progress bar for non-worker (single-process) runs
@@ -585,8 +603,8 @@ class LoggingStage(Advancable):
         self.steps = total
         self._current_progress = 0
 
-        # Write progress to status file if in worker mode
-        self._write_status_file()
+        # Write progress to IPC if in worker mode
+        self._emit_status_event()
 
         if self._in_worker_mode:
             # In worker mode, don't update progress bar
@@ -599,50 +617,47 @@ class LoggingStage(Advancable):
     def advance(self, advance: int = 1) -> None:
         self._current_progress = getattr(self, "_current_progress", 0) + advance
 
-        # Write progress to status file if in worker mode
-        self._write_status_file()
+        # Write progress to IPC if in worker mode
+        self._emit_status_event()
 
         if self._in_worker_mode:
             return  # Progress tracking handled differently
         assert self.steps is not None
         self._progress.advance(self._task_id, advance)
 
-    def _write_status_file(self) -> None:
-        """Write current stage and progress to status file for IPC."""
-        status_file = os.environ.get("ATO_BUILD_STATUS_FILE")
-        if not status_file:
+    def _emit_status_event(self) -> None:
+        """Emit current stage and progress over IPC."""
+        event_fd = os.environ.get("ATO_BUILD_EVENT_FD")
+        if not event_fd:
+            return
+
+        try:
+            fd = int(event_fd)
+        except ValueError:
             return
 
         try:
             progress = getattr(self, "_current_progress", 0)
             total = self.steps
-            if total and total > 1:
-                status = f"{self.description} {progress}/{total}"
-            else:
-                status = self.description
-            Path(status_file).write_text(status)
+            _emit_event(
+                fd,
+                StageStatusEvent(
+                    name=self.name,
+                    description=self.description,
+                    progress=progress,
+                    total=total,
+                ),
+            )
         except Exception:
             pass  # Don't fail if we can't write status
-
-    def _get_build_name(self) -> str:
-        """Get the current build name from config."""
-        try:
-            from atopile.config import config
-
-            return config.build.name
-        except (RuntimeError, ImportError):
-            return "unknown"
 
     def __enter__(self) -> "LoggingStage":
         self._setup_logging()
         self._current_progress = 0
         self._stage_start_time = time.time()
 
-        # Always track stage start time for timing data
-        self._stage_start_time = time.time()
-
-        # Write status to file if in worker mode (subprocess parallelism)
-        self._write_status_file()
+        # Write status to IPC if in worker mode (subprocess parallelism)
+        self._emit_status_event()
 
         if self._in_worker_mode:
             # Worker mode: no progress bar, just track internally
@@ -731,11 +746,23 @@ class LoggingStage(Advancable):
         except ValueError:
             return
         try:
-            line = (
-                f"{elapsed:.3f}\t{status}\t{self._warning_count}\t"
-                f"{self._error_count}\t{self.name}\t{self.description}\n"
+            if status == CompletableSpinnerColumn.Status.FAILURE:
+                status_text = "failed"
+            elif status == CompletableSpinnerColumn.Status.WARNING:
+                status_text = "warning"
+            else:
+                status_text = "success"
+            _emit_event(
+                fd,
+                StageCompleteEvent(
+                    duration=elapsed,
+                    status=status_text,
+                    warnings=self._warning_count,
+                    errors=self._error_count,
+                    log_name=self.name,
+                    description=self.description,
+                ),
             )
-            os.write(fd, line.encode())
         except Exception:
             pass
 
@@ -794,41 +821,6 @@ class LoggingStage(Advancable):
             self._capture_log_handler.setFormatter(_DEFAULT_FORMATTER)
             self._capture_log_handler.setLevel(logging.INFO)
 
-        if os.environ.get("ATO_VERBOSE_STREAM") == "1":
-            width = os.environ.get("ATO_VERBOSE_WIDTH")
-            try:
-                width_val = int(width) if width else None
-            except ValueError:
-                width_val = None
-            stream_console = Console(
-                file=sys.stdout,
-                width=width_val,
-                force_terminal=COLOR_LOGS.get(),
-            )
-            self._stream_handler = LogHandler(
-                console=stream_console,
-                force_terminal=COLOR_LOGS.get(),
-                rich_tracebacks=False,
-                markup=False,
-                allow_worker_console=True,
-            )
-            self._stream_handler.setFormatter(_DEFAULT_FORMATTER)
-            self._stream_handler.setLevel(logging.INFO)
-        elif os.environ.get("ATO_VERBOSE_ERRORS_ONLY") == "1":
-            stream_console = Console(
-                file=sys.stdout,
-                force_terminal=COLOR_LOGS.get(),
-            )
-            self._stream_handler = LogHandler(
-                console=stream_console,
-                force_terminal=COLOR_LOGS.get(),
-                rich_tracebacks=False,
-                markup=False,
-                allow_worker_console=True,
-            )
-            self._stream_handler.setFormatter(_DEFAULT_FORMATTER)
-            self._stream_handler.setLevel(logging.ERROR)
-
         log_dir = self._create_log_dir()
 
         for handler in root_logger.handlers.copy():
@@ -837,8 +829,6 @@ class LoggingStage(Advancable):
         root_logger.addHandler(self._log_handler)
         if self._capture_log_handler is not None:
             root_logger.addHandler(self._capture_log_handler)
-        if self._stream_handler is not None:
-            root_logger.addHandler(self._stream_handler)
 
         self._file_handlers = []
         self._file_handles = {}
@@ -883,9 +873,6 @@ class LoggingStage(Advancable):
 
         if self._capture_log_handler in root_logger.handlers:
             root_logger.removeHandler(self._capture_log_handler)
-        if self._stream_handler in root_logger.handlers:
-            root_logger.removeHandler(self._stream_handler)
-
         for file_handler in self._file_handlers:
             if file_handler in root_logger.handlers:
                 root_logger.removeHandler(file_handler)
