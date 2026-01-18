@@ -341,12 +341,11 @@ async function atoBuild() {
         return;
     }
 
-    // Open the dashboard webview immediately - it will connect when the server starts
+    // Open the dashboard webview (uses URL from settings)
     const { openDashboard } = await import('./dashboard');
-    openDashboard('http://localhost:8501');
+    openDashboard();
 
-    // Build all selected targets with a single command
-    // Use multiple --build flags for each target
+    // Run build in terminal with --ui flag (starts the backend server)
     const buildArgs = ['build', '--ui'];
     for (const build of builds) {
         buildArgs.push('--build', build.name);

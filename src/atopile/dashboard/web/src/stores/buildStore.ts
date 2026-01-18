@@ -10,6 +10,22 @@ import type { BuildSummary, Build, BuildStage, LogEntry, LogLevel } from '../typ
 // Set of enabled log levels (DEBUG off by default)
 type EnabledLevels = Set<LogLevel>;
 
+// API base URL - set by VS Code webview or defaults to current origin
+declare global {
+  interface Window {
+    __ATO_API_URL__?: string;
+  }
+}
+
+function getApiBaseUrl(): string {
+  // Check for URL set by VS Code webview
+  if (window.__ATO_API_URL__) {
+    return window.__ATO_API_URL__;
+  }
+  // Default to current origin (for standalone/dev use)
+  return '';
+}
+
 interface BuildState {
   // Data
   summary: BuildSummary | null;
@@ -75,7 +91,7 @@ export const useBuildStore = create<BuildState>((set, get) => ({
     set({ isLoading: true, loadError: null });
 
     try {
-      const response = await fetch('/api/summary');
+      const response = await fetch(`${getApiBaseUrl()}/api/summary`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -128,7 +144,7 @@ export const useBuildStore = create<BuildState>((set, get) => ({
       // Extract just the filename from the full path
       const filename = logFile.split('/').pop() || logFile;
 
-      const response = await fetch(`/api/logs/${encodeURIComponent(buildName)}/${encodeURIComponent(filename)}`);
+      const response = await fetch(`${getApiBaseUrl()}/api/logs/${encodeURIComponent(buildName)}/${encodeURIComponent(filename)}`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
