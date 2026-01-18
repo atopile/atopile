@@ -323,7 +323,7 @@ class BuildProcess:
         if not self.log_dir:
             return None
         sanitized = pathvalidate.sanitize_filename(stage_name)
-        return self.log_dir / f"{sanitized}.info.log"
+        return self.log_dir / f"{sanitized}.info.jsonl"
 
     def set_stage_printer(
         self, printer: Callable[[StageCompleteEvent, Path | None], None] | None
@@ -838,7 +838,7 @@ class ParallelBuildManager:
 
         return "  ".join(parts) if parts else "Starting..."
 
-    _VERBOSE_INDENT = 20
+    _VERBOSE_INDENT = 10
 
     def _print_verbose_stage(
         self, entry: StageCompleteEvent, log_path: Path | None
@@ -1128,7 +1128,7 @@ class ParallelBuildManager:
 
             # Collect all log files grouped by stage and log type
             log_files_by_stage: dict[str, dict[str, str]] = {}
-            for log_file in sorted(bp.log_dir.glob("*.log")):
+            for log_file in sorted(bp.log_dir.glob("*.jsonl")):
                 parts = log_file.stem.split(".")
                 if len(parts) >= 2:
                     stage = parts[0]

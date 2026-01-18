@@ -7,6 +7,22 @@ export type BuildStatus = 'queued' | 'building' | 'success' | 'warning' | 'faile
 
 export type StageStatus = 'success' | 'warning' | 'failed';
 
+export type LogLevel = 'DEBUG' | 'INFO' | 'WARNING' | 'ERROR' | 'ALERT';
+
+/**
+ * A single log entry from a JSON Lines log file.
+ */
+export interface LogEntry {
+  timestamp: string;
+  level: LogLevel;
+  logger: string;
+  message: string;
+  /** Ato-specific traceback with source locations and code context */
+  ato_traceback?: string;
+  /** Python traceback for debugging */
+  exc_info?: string;
+}
+
 export interface LogFiles {
   info?: string;
   error?: string;

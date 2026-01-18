@@ -5,7 +5,7 @@
  */
 
 import { create } from 'zustand';
-import type { BuildSummary, Build, BuildStage } from '../types/build';
+import type { BuildSummary, Build, BuildStage, LogEntry } from '../types/build';
 
 interface BuildState {
   // Data
@@ -18,8 +18,8 @@ interface BuildState {
   selectedBuild: string | null;
   selectedStage: string | null;
 
-  // Log content
-  logContent: string | null;
+  // Log content (structured JSON Lines)
+  logEntries: LogEntry[] | null;
   logLoading: boolean;
   logError: string | null;
 
@@ -51,7 +51,7 @@ export const useBuildStore = create<BuildState>((set, get) => ({
   selectedBuild: null,
   selectedStage: null,
 
-  logContent: null,
+  logEntries: null,
   logLoading: false,
   logError: null,
 
@@ -95,11 +95,11 @@ export const useBuildStore = create<BuildState>((set, get) => ({
   },
 
   selectBuild: (buildName: string | null) => {
-    set({ selectedBuild: buildName, selectedStage: null, logContent: null });
+    set({ selectedBuild: buildName, selectedStage: null, logEntries: null });
   },
 
   selectStage: (stageName: string | null) => {
-    set({ selectedStage: stageName, logContent: null });
+    set({ selectedStage: stageName, logEntries: null });
   },
 
   fetchLog: async (buildName: string, stage: BuildStage, logType: string) => {
@@ -121,8 +121,27 @@ export const useBuildStore = create<BuildState>((set, get) => ({
       }
 
       const content = await response.text();
+
+      // Parse JSON Lines format
+      const entries: LogEntry[] = content
+        .split('\n')
+        .filter((line) => line.trim())
+        .map((line) => {
+          try {
+            return JSON.parse(line) as LogEntry;
+          } catch {
+            // If parsing fails, create a fallback entry
+            return {
+              timestamp: new Date().toISOString(),
+              level: 'INFO' as const,
+              logger: 'unknown',
+              message: line,
+            };
+          }
+        });
+
       set({
-        logContent: content,
+        logEntries: entries,
         logLoading: false,
       });
     } catch (e) {

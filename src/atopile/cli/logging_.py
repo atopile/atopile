@@ -1,4 +1,5 @@
 import io
+import json
 import logging
 import os
 import pickle
@@ -6,6 +7,7 @@ import shutil
 import struct
 import sys
 import time
+import traceback
 from collections.abc import Iterable
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -400,6 +402,126 @@ class CaptureLogHandler(LogHandler):
         finally:
             if hashable:
                 self._logged_exceptions.add(hashable)
+
+
+class JSONLinesFileHandler(logging.Handler):
+    """
+    A logging handler that writes structured JSON Lines to a file.
+
+    Each log entry is a JSON object on a single line with:
+    - timestamp: ISO format timestamp
+    - level: Log level name (DEBUG, INFO, WARNING, ERROR)
+    - logger: Logger name
+    - message: The log message (or exception title for errors)
+    - ato_traceback: Optional ato source context for user exceptions
+    - exc_info: Optional Python traceback string
+    """
+
+    def __init__(self, file_path: Path, level: int = logging.DEBUG):
+        super().__init__(level)
+        self._file_path = file_path
+        self._file = file_path.open("w", encoding="utf-8")
+        self._logged_exceptions: set[tuple] = set()
+
+        # Filter to atopile/faebryk logs only
+        self.addFilter(
+            lambda record: record.name.startswith("atopile")
+            or record.name.startswith("faebryk")
+        )
+
+    def _get_hashable(self, record: logging.LogRecord) -> tuple | None:
+        """Get hashable representation of exception to deduplicate."""
+        if exc_info := getattr(record, "exc_info", None):
+            _, exc_value, _ = exc_info
+            if exc_value and isinstance(exc_value, _BaseBaseUserException):
+                return exc_value.get_frozen()
+        return None
+
+    def _extract_ato_traceback(self, exc: _BaseBaseUserException) -> str | None:
+        """
+        Extract the ato-specific traceback info (source location, code context).
+
+        This renders the exception using Rich to a string buffer to capture
+        the user-facing context like source file paths and code snippets.
+        """
+        try:
+            from io import StringIO
+
+            from rich.console import Console as RichConsole
+
+            # Create a string buffer console to capture the rich output
+            buffer = StringIO()
+            temp_console = RichConsole(
+                file=buffer,
+                width=120,
+                force_terminal=False,
+                no_color=True,
+            )
+
+            # Render the exception using its __rich_console__ method
+            if hasattr(exc, "__rich_console__"):
+                renderables = exc.__rich_console__(temp_console, temp_console.options)
+                # Skip the first renderable (title) since we use it as message
+                for renderable in renderables[1:]:
+                    temp_console.print(renderable)
+
+            result = buffer.getvalue().strip()
+            return result if result else None
+        except Exception:
+            return None
+
+    def emit(self, record: logging.LogRecord) -> None:
+        # Deduplicate exceptions
+        hashable = self._get_hashable(record)
+        if hashable and hashable in self._logged_exceptions:
+            return
+
+        try:
+            entry: dict[str, str] = {
+                "timestamp": datetime.fromtimestamp(record.created).isoformat(),
+                "level": record.levelname,
+                "logger": record.name,
+            }
+
+            # Handle user exceptions specially
+            exc_value = None
+            if record.exc_info and record.exc_info[1] is not None:
+                exc_value = record.exc_info[1]
+
+            if exc_value and isinstance(exc_value, _BaseBaseUserException):
+                # Use exception title as message (e.g., "Ercfault Shorted Interfaces")
+                entry["message"] = exc_value.title or type(exc_value).__name__
+
+                # Extract ato-specific context (source locations, code snippets)
+                if ato_tb := self._extract_ato_traceback(exc_value):
+                    entry["ato_traceback"] = ato_tb
+
+                # Add Python traceback for debugging
+                entry["exc_info"] = "".join(
+                    traceback.format_exception(*record.exc_info)
+                )
+            else:
+                # Regular log message
+                entry["message"] = record.getMessage()
+
+                # Add Python traceback if present
+                if record.exc_info and record.exc_info[1] is not None:
+                    entry["exc_info"] = "".join(
+                        traceback.format_exception(*record.exc_info)
+                    )
+
+            self._file.write(json.dumps(entry) + "\n")
+            self._file.flush()
+
+            if hashable:
+                self._logged_exceptions.add(hashable)
+        except Exception:
+            self.handleError(record)
+
+    def close(self) -> None:
+        if hasattr(self, "_file") and self._file:
+            self._file.close()
+        super().close()
 
 
 class IndentedProgress(Progress):
@@ -831,25 +953,11 @@ class LoggingStage(Advancable):
             root_logger.addHandler(self._capture_log_handler)
 
         self._file_handlers = []
-        self._file_handles = {}
 
         for level, level_name in self._LOG_LEVELS.items():
-            log_file = log_dir / f"{self._sanitized_name}.{level_name}.log"
+            log_file = log_dir / f"{self._sanitized_name}.{level_name}.jsonl"
 
-            self._file_handles[level_name] = log_file.open("w", encoding="utf-8")
-            file_console = Console(
-                file=self._file_handles[level_name],
-                width=150,
-                force_terminal=COLOR_LOGS.get(),
-            )
-            file_handler = LogHandler(
-                console=file_console,
-                force_terminal=COLOR_LOGS.get(),
-                rich_tracebacks=False,
-                markup=False,
-            )
-            file_handler.setFormatter(_DEFAULT_FORMATTER)
-            file_handler.setLevel(level)
+            file_handler = JSONLinesFileHandler(log_file, level=level)
             self._file_handlers.append(file_handler)
             root_logger.addHandler(file_handler)
 
@@ -877,9 +985,6 @@ class LoggingStage(Advancable):
             if file_handler in root_logger.handlers:
                 root_logger.removeHandler(file_handler)
                 file_handler.close()
-
-        for file_handle in self._file_handles.values():
-            file_handle.close()
 
         for handler in root_logger.handlers.copy():
             root_logger.removeHandler(handler)
