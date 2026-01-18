@@ -1,6 +1,6 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import { Copy, Check, ChevronDown, ChevronRight, Bot, Wrench, AlertCircle, Terminal, CheckCircle, RotateCcw, User } from 'lucide-react';
-import type { OutputChunk } from '@/api/types';
+import type { OutputChunk } from '@/logic';
 
 interface PromptInfo {
   run: number;

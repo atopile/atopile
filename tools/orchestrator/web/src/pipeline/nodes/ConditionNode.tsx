@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { GitBranch } from 'lucide-react';
-import type { ConditionNodeData } from '@/api/types';
+import type { ConditionNodeData } from '@/logic/api/types';
 import { NodeStatusLabel } from './NodeStatusLabel';
 
 interface ConditionNodeProps {

@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Play } from 'lucide-react';
-import type { AgentBackendType, AgentConfig, BackendInfo } from '@/api/types';
-import { api } from '@/api/client';
-import { useAgentStore } from '@/stores';
+import type { AgentBackendType, BackendInfo } from '@/logic/api/types';
+import { useDispatch, useLoading, useLogic } from '@/hooks';
 
 interface SpawnAgentDialogProps {
   open: boolean;
@@ -10,7 +9,9 @@ interface SpawnAgentDialogProps {
 }
 
 export function SpawnAgentDialog({ open, onClose }: SpawnAgentDialogProps) {
-  const { spawnAgent, loading } = useAgentStore();
+  const dispatch = useDispatch();
+  const logic = useLogic();
+  const loading = useLoading('spawn');
   const [backends, setBackends] = useState<BackendInfo[]>([]);
 
   // Form state
@@ -26,31 +27,30 @@ export function SpawnAgentDialog({ open, onClose }: SpawnAgentDialogProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
-    api.backends().then((res) => setBackends(res.backends));
-  }, []);
+    logic.api.backends().then((res) => setBackends(res.backends));
+  }, [logic.api]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const config: AgentConfig = {
-      backend,
-      prompt,
-      max_turns: maxTurns ? parseInt(maxTurns, 10) : undefined,
-      max_budget_usd: maxBudget ? parseFloat(maxBudget) : undefined,
-      working_directory: workingDir || undefined,
-      system_prompt: systemPrompt || undefined,
-      model: model || undefined,
-      disallowed_tools: disallowedTools
-        ? disallowedTools.split(',').map((t) => t.trim())
-        : undefined,
-    };
-
     try {
-      await spawnAgent(config, name || undefined);
+      await dispatch({
+        type: 'agents.spawn',
+        payload: {
+          backend,
+          prompt,
+          name: name || undefined,
+          maxTurns: maxTurns ? parseInt(maxTurns, 10) : undefined,
+          maxBudgetUsd: maxBudget ? parseFloat(maxBudget) : undefined,
+          workingDirectory: workingDir || undefined,
+          systemPrompt: systemPrompt || undefined,
+          model: model || undefined,
+        },
+      });
       resetForm();
       onClose();
     } catch (e) {
-      // Error is handled in store
+      // Error is handled in logic layer
     }
   };
 

@@ -1,8 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Square, Trash2, RefreshCw, Clock, CheckCircle, XCircle, StopCircle } from 'lucide-react';
-import { api } from '@/api/client';
-import { usePipelineStore } from '@/stores';
-import type { PipelineSession } from '@/api/types';
+import { useDispatch, useUIState, usePipelineSessions } from '@/hooks';
 import { StatusBadge } from './StatusBadge';
 
 interface PipelineSessionsPanelProps {
@@ -11,52 +9,52 @@ interface PipelineSessionsPanelProps {
 }
 
 export function PipelineSessionsPanel({ pipelineId, onClose }: PipelineSessionsPanelProps) {
-  const { selectedSessionId, selectSession } = usePipelineStore();
-  const [sessions, setSessions] = useState<PipelineSession[]>([]);
+  const dispatch = useDispatch();
+  const state = useUIState();
+  const sessions = usePipelineSessions(pipelineId);
+  const selectedSessionId = state.selectedSessionId;
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
 
-  const fetchSessions = async () => {
+  const fetchSessions = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await api.pipelines.listSessions(pipelineId);
-      setSessions(response.sessions);
+      await dispatch({ type: 'sessions.fetch', payload: { pipelineId } });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load sessions');
     } finally {
       setLoading(false);
     }
-  };
+  }, [dispatch, pipelineId]);
 
   useEffect(() => {
+    // Initial fetch - updates will come via WebSocket
     fetchSessions();
-    // Poll for updates every 5 seconds
-    const interval = setInterval(fetchSessions, 5000);
-    return () => clearInterval(interval);
-  }, [pipelineId]);
+  }, [fetchSessions]);
 
-  const handleStop = async (sessionId: string, e: React.MouseEvent) => {
+  const handleStop = useCallback(async (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
       setActionInProgress(sessionId);
-      await api.pipelines.stopSession(pipelineId, sessionId, true);
+      await dispatch({ type: 'sessions.stop', payload: { pipelineId, sessionId, force: true } });
       await fetchSessions();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to stop session');
     } finally {
       setActionInProgress(null);
     }
-  };
+  }, [dispatch, pipelineId, fetchSessions]);
 
-  const handleDelete = async (sessionId: string, e: React.MouseEvent) => {
+  const handleDelete = useCallback(async (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
       setActionInProgress(sessionId);
-      await api.pipelines.deleteSession(pipelineId, sessionId, true);
+      await dispatch({ type: 'sessions.delete', payload: { pipelineId, sessionId, force: true } });
       if (selectedSessionId === sessionId) {
-        selectSession(null);
+        dispatch({ type: 'sessions.select', payload: { sessionId: null } });
       }
       await fetchSessions();
     } catch (err) {
@@ -64,7 +62,7 @@ export function PipelineSessionsPanel({ pipelineId, onClose }: PipelineSessionsP
     } finally {
       setActionInProgress(null);
     }
-  };
+  }, [dispatch, pipelineId, selectedSessionId, fetchSessions]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -167,7 +165,7 @@ export function PipelineSessionsPanel({ pipelineId, onClose }: PipelineSessionsP
                   className={`card p-3 cursor-pointer transition-all ${
                     isSelected ? 'ring-2 ring-blue-500' : 'hover:border-gray-600'
                   } ${actionInProgress === session.id ? 'opacity-50' : ''}`}
-                  onClick={() => selectSession(session.id)}
+                  onClick={() => dispatch({ type: 'sessions.select', payload: { sessionId: session.id } })}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
@@ -182,11 +180,11 @@ export function PipelineSessionsPanel({ pipelineId, onClose }: PipelineSessionsP
                   <div className="text-xs text-gray-500 mb-2">
                     <div className="flex justify-between">
                       <span>Started:</span>
-                      <span>{formatTime(session.started_at)}</span>
+                      <span>{formatTime(session.startedAt)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Duration:</span>
-                      <span>{formatDuration(session.started_at, session.finished_at, session.status === 'running')}</span>
+                      <span>{formatDuration(session.startedAt, session.finishedAt, session.status === 'running')}</span>
                     </div>
                   </div>
 
@@ -194,7 +192,7 @@ export function PipelineSessionsPanel({ pipelineId, onClose }: PipelineSessionsP
                   <div className="text-xs mb-2">
                     <div className="text-gray-500 mb-1">Nodes:</div>
                     <div className="flex flex-wrap gap-1">
-                      {Object.entries(session.node_status).map(([nodeId, status]) => (
+                      {Object.entries(session.nodeStatus).map(([nodeId, status]) => (
                         <span
                           key={nodeId}
                           className={`px-1.5 py-0.5 rounded text-xs ${

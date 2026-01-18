@@ -9,7 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from ...core import AgentStateStore, ProcessManager
-from ...models import StreamEvent, StreamEventType
+from ...models import GlobalEvent, GlobalEventType, StreamEvent, StreamEventType
 from ..dependencies import (
     ConnectionManager,
     get_agent_store,
@@ -151,3 +151,54 @@ def _status_to_event_type(status) -> StreamEventType:
         AgentStatus.FAILED: StreamEventType.AGENT_FAILED,
         AgentStatus.TERMINATED: StreamEventType.AGENT_TERMINATED,
     }.get(status, StreamEventType.AGENT_OUTPUT)
+
+
+@router.websocket("/ws/events")
+async def websocket_global_events(websocket: WebSocket):
+    """WebSocket endpoint for global state change events.
+
+    Connect to receive real-time updates about:
+    - Agent spawned, status changes, deleted
+    - Pipeline session created, status changes, node status changes, deleted
+    - Pipeline created, updated, deleted
+
+    This replaces polling for state updates.
+    """
+    ws_manager = get_ws_manager()
+
+    # Accept connection
+    await ws_manager.connect_global(websocket)
+
+    try:
+        # Send connected event
+        connected_event = GlobalEvent(
+            type=GlobalEventType.CONNECTED,
+            data={"message": "Connected to global events stream"},
+        )
+        await websocket.send_json(connected_event.model_dump(mode="json"))
+
+        # Keep connection alive and handle incoming messages
+        while True:
+            try:
+                # Wait for messages (ping/pong)
+                message = await asyncio.wait_for(
+                    websocket.receive_json(),
+                    timeout=30.0,
+                )
+
+                # Handle ping
+                if message.get("type") == "ping":
+                    pong = GlobalEvent(type=GlobalEventType.PONG)
+                    await websocket.send_json(pong.model_dump(mode="json"))
+
+            except asyncio.TimeoutError:
+                # Send ping to keep connection alive
+                ping = GlobalEvent(type=GlobalEventType.PING)
+                await websocket.send_json(ping.model_dump(mode="json"))
+
+    except WebSocketDisconnect:
+        logger.info("Global events WebSocket disconnected")
+    except Exception as e:
+        logger.warning(f"Global events WebSocket error: {e}")
+    finally:
+        ws_manager.disconnect_global(websocket)

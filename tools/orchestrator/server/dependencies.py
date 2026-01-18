@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from ..core import AgentStateStore, PipelineExecutor, PipelineSessionStore, PipelineStateStore, ProcessManager, SessionManager
-from ..models import AgentState, AgentStatus, OutputChunk
+from ..models import AgentState, AgentStatus, GlobalEvent, GlobalEventType, OutputChunk
 
 if TYPE_CHECKING:
     pass
@@ -44,6 +44,7 @@ class OrchestratorState:
             pipeline_store=self._pipeline_store,
             pipeline_session_store=self._pipeline_session_store,
             on_node_status_change=self._handle_node_status_change,
+            on_session_status_change=self._handle_session_status_change,
         )
         self._ws_manager: "ConnectionManager | None" = None
         self._monitor_thread: threading.Thread | None = None
@@ -243,15 +244,31 @@ class OrchestratorState:
             import asyncio
 
             try:
+                # Broadcast to agent-specific connections
                 asyncio.run_coroutine_threadsafe(
                     self._ws_manager.broadcast_status(agent_id, status),
+                    self._event_loop
+                )
+
+                # Also broadcast as global event
+                agent = self._agent_store.get(agent_id)
+                global_event = GlobalEvent(
+                    type=GlobalEventType.AGENT_STATUS_CHANGED,
+                    agent_id=agent_id,
+                    data={
+                        "status": str(status),
+                        "agent": agent.model_dump(mode="json") if agent else None,
+                    },
+                )
+                asyncio.run_coroutine_threadsafe(
+                    self._ws_manager.broadcast_global(global_event),
                     self._event_loop
                 )
             except Exception as e:
                 logger.debug(f"Failed to broadcast status: {e}")
 
     def _handle_node_status_change(
-        self, pipeline_id: str, node_id: str, status: str
+        self, pipeline_id: str, node_id: str, status: str, session_id: str | None = None
     ) -> None:
         """Handle pipeline node status change."""
         logger.debug(f"Pipeline {pipeline_id} node {node_id} status: {status}")
@@ -264,7 +281,60 @@ class OrchestratorState:
 
         self._pipeline_store.update(pipeline_id, updater)
 
-        # Could broadcast via WebSocket here for real-time updates
+        # Broadcast via WebSocket for real-time updates
+        if self._ws_manager and self._event_loop:
+            import asyncio
+
+            try:
+                # Get the session for full data
+                session = None
+                if session_id:
+                    session = self._pipeline_session_store.get(session_id)
+
+                global_event = GlobalEvent(
+                    type=GlobalEventType.SESSION_NODE_STATUS_CHANGED,
+                    pipeline_id=pipeline_id,
+                    session_id=session_id,
+                    node_id=node_id,
+                    data={
+                        "status": status,
+                        "session": session.model_dump(mode="json") if session else None,
+                    },
+                )
+                asyncio.run_coroutine_threadsafe(
+                    self._ws_manager.broadcast_global(global_event),
+                    self._event_loop
+                )
+            except Exception as e:
+                logger.debug(f"Failed to broadcast node status: {e}")
+
+    def _handle_session_status_change(
+        self, pipeline_id: str, session_id: str, status: str
+    ) -> None:
+        """Handle pipeline session status change."""
+        logger.info(f"Session {session_id} status changed to {status}")
+
+        # Broadcast via WebSocket for real-time updates
+        if self._ws_manager and self._event_loop:
+            import asyncio
+
+            try:
+                session = self._pipeline_session_store.get(session_id)
+                global_event = GlobalEvent(
+                    type=GlobalEventType.SESSION_STATUS_CHANGED,
+                    pipeline_id=pipeline_id,
+                    session_id=session_id,
+                    data={
+                        "status": status,
+                        "session": session.model_dump(mode="json") if session else None,
+                    },
+                )
+                asyncio.run_coroutine_threadsafe(
+                    self._ws_manager.broadcast_global(global_event),
+                    self._event_loop
+                )
+            except Exception as e:
+                logger.debug(f"Failed to broadcast session status: {e}")
 
     def shutdown(self) -> None:
         """Shutdown all components."""
@@ -310,26 +380,56 @@ def get_pipeline_executor() -> PipelineExecutor:
     return get_orchestrator_state().pipeline_executor
 
 
+def broadcast_agent_spawned(agent_id: str) -> None:
+    """Broadcast an agent spawned event."""
+    state = get_orchestrator_state()
+    if state._ws_manager and state._event_loop:
+        import asyncio
+
+        try:
+            agent = state._agent_store.get(agent_id)
+            global_event = GlobalEvent(
+                type=GlobalEventType.AGENT_SPAWNED,
+                agent_id=agent_id,
+                data={
+                    "agent": agent.model_dump(mode="json") if agent else None,
+                },
+            )
+            asyncio.run_coroutine_threadsafe(
+                state._ws_manager.broadcast_global(global_event),
+                state._event_loop
+            )
+        except Exception as e:
+            logger.debug(f"Failed to broadcast agent spawned: {e}")
+
+
 # WebSocket connection manager (imported lazily to avoid circular imports)
 
 
 class ConnectionManager:
-    """Manages WebSocket connections for streaming output."""
+    """Manages WebSocket connections for streaming output and global events."""
 
     def __init__(self) -> None:
         self._connections: dict[str, list] = {}  # agent_id -> list of WebSocket
+        self._global_connections: list = []  # Global event subscribers
         self._lock = threading.Lock()
 
     async def connect(self, websocket, agent_id: str) -> None:
-        """Register a new WebSocket connection."""
+        """Register a new WebSocket connection for agent output."""
         await websocket.accept()
         with self._lock:
             if agent_id not in self._connections:
                 self._connections[agent_id] = []
             self._connections[agent_id].append(websocket)
 
+    async def connect_global(self, websocket) -> None:
+        """Register a new WebSocket connection for global events."""
+        await websocket.accept()
+        with self._lock:
+            self._global_connections.append(websocket)
+
     def disconnect(self, websocket, agent_id: str) -> None:
-        """Remove a WebSocket connection."""
+        """Remove a WebSocket connection for agent output."""
         with self._lock:
             if agent_id in self._connections:
                 try:
@@ -338,6 +438,14 @@ class ConnectionManager:
                     pass
                 if not self._connections[agent_id]:
                     del self._connections[agent_id]
+
+    def disconnect_global(self, websocket) -> None:
+        """Remove a global WebSocket connection."""
+        with self._lock:
+            try:
+                self._global_connections.remove(websocket)
+            except ValueError:
+                pass
 
     async def broadcast_output(self, agent_id: str, chunk: OutputChunk) -> None:
         """Broadcast an output chunk to all connections for an agent."""
@@ -384,9 +492,27 @@ class ConnectionManager:
             except Exception:
                 self.disconnect(websocket, agent_id)
 
+    async def broadcast_global(self, event: GlobalEvent) -> None:
+        """Broadcast a global event to all global subscribers."""
+        with self._lock:
+            connections = list(self._global_connections)
+
+        logger.info(f"Broadcasting global event {event.type} to {len(connections)} connections")
+        for websocket in connections:
+            try:
+                await websocket.send_json(event.model_dump(mode="json"))
+            except Exception as e:
+                logger.warning(f"Failed to send global event: {e}")
+                self.disconnect_global(websocket)
+
     def get_connection_count(self, agent_id: str | None = None) -> int:
         """Get number of connections."""
         with self._lock:
             if agent_id:
                 return len(self._connections.get(agent_id, []))
             return sum(len(conns) for conns in self._connections.values())
+
+    def get_global_connection_count(self) -> int:
+        """Get number of global event connections."""
+        with self._lock:
+            return len(self._global_connections)

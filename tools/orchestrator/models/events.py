@@ -75,6 +75,33 @@ class StreamEventType(StrEnum):
     PONG = auto()
 
 
+class GlobalEventType(StrEnum):
+    """Type of global state change event."""
+
+    # Connection
+    CONNECTED = auto()
+
+    # Agent events
+    AGENT_SPAWNED = auto()
+    AGENT_STATUS_CHANGED = auto()
+    AGENT_DELETED = auto()
+
+    # Pipeline session events
+    SESSION_CREATED = auto()
+    SESSION_STATUS_CHANGED = auto()
+    SESSION_NODE_STATUS_CHANGED = auto()
+    SESSION_DELETED = auto()
+
+    # Pipeline events
+    PIPELINE_CREATED = auto()
+    PIPELINE_UPDATED = auto()
+    PIPELINE_DELETED = auto()
+
+    # Heartbeat
+    PING = auto()
+    PONG = auto()
+
+
 class StreamEvent(BaseModel):
     """Event sent over WebSocket connection."""
 
@@ -84,6 +111,20 @@ class StreamEvent(BaseModel):
     data: dict[str, Any] | None = None
     chunk: OutputChunk | None = None
     message: str | None = None
+
+
+class GlobalEvent(BaseModel):
+    """Global state change event sent over the events WebSocket."""
+
+    type: GlobalEventType
+    timestamp: datetime = Field(default_factory=datetime.now)
+    data: dict[str, Any] | None = None
+
+    # Entity identifiers (at least one should be set based on event type)
+    agent_id: str | None = None
+    session_id: str | None = None
+    pipeline_id: str | None = None
+    node_id: str | None = None
 
 
 class ClaudeCodeMessage(BaseModel):

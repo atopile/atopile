@@ -1,68 +1,69 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Plus, Trash2, ChevronRight, Play, CheckSquare, Square as SquareIcon, History } from 'lucide-react';
-import { usePipelineStore } from '@/stores';
+import { usePipelines, useUIState, useDispatch } from '@/hooks';
 import { PipelineEditor, PipelineToolbar } from '@/pipeline';
 import { PipelineSessionsPanel } from '@/components';
 
 export function Pipelines() {
-  const {
-    pipelines,
-    selectedPipelineId,
-    fetchPipelines,
-    fetchSessions,
-    selectPipeline,
-    deletePipeline,
-    runPipeline,
-    resetEditor,
-    getRunningSessionCount,
-  } = usePipelineStore();
+  const dispatch = useDispatch();
+  const pipelines = usePipelines();
+  const state = useUIState();
+  const selectedPipelineId = state.selectedPipelineId;
 
   const [showList, setShowList] = useState(true);
-  const [showSessions, setShowSessions] = useState(true);  // Default to showing sessions
+  const [showSessions, setShowSessions] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // Load pipelines and sessions on mount
   useEffect(() => {
-    fetchPipelines();
-  }, [fetchPipelines]);
+    dispatch({ type: 'pipelines.refresh' });
+  }, [dispatch]);
 
   // Fetch sessions for all pipelines to compute display status
   useEffect(() => {
-    pipelines.forEach((_, pipelineId) => {
-      fetchSessions(pipelineId);
+    pipelines.forEach((pipeline) => {
+      dispatch({ type: 'sessions.fetch', payload: { pipelineId: pipeline.id } });
     });
-  }, [pipelines, fetchSessions]);
+  }, [pipelines, dispatch]);
 
-  const sortedPipelines = Array.from(pipelines.values()).sort((a, b) => {
-    // Running pipelines first (based on running session count)
-    const aRunning = getRunningSessionCount(a.id);
-    const bRunning = getRunningSessionCount(b.id);
-    if (aRunning > 0 && bRunning === 0) return -1;
-    if (aRunning === 0 && bRunning > 0) return 1;
-    // Then by updated_at descending
-    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-  });
+  const getRunningSessionCount = useCallback((pipelineId: string) => {
+    const sessions = state.pipelineSessions.get(pipelineId) || [];
+    return sessions.filter(s => s.status === 'running').length;
+  }, [state.pipelineSessions]);
 
-  const handleSelectPipeline = (id: string) => {
-    selectPipeline(id);
+  const sortedPipelines = useMemo(() => {
+    return [...pipelines].sort((a, b) => {
+      // Running pipelines first (based on running session count)
+      const aRunning = getRunningSessionCount(a.id);
+      const bRunning = getRunningSessionCount(b.id);
+      if (aRunning > 0 && bRunning === 0) return -1;
+      if (aRunning === 0 && bRunning > 0) return 1;
+      // Then by updated_at descending
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    });
+  }, [pipelines, getRunningSessionCount]);
+
+  const handleSelectPipeline = useCallback((id: string) => {
+    dispatch({ type: 'pipelines.select', payload: { pipelineId: id } });
     setShowList(false);
-  };
+  }, [dispatch]);
 
-  const handleNewPipeline = () => {
-    resetEditor();
+  const handleNewPipeline = useCallback(() => {
+    dispatch({ type: 'editor.reset' });
     setShowList(false);
-  };
+  }, [dispatch]);
 
-  const handleDeletePipeline = async (id: string, e: React.MouseEvent) => {
+  const handleDeletePipeline = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm('Are you sure you want to delete this pipeline?')) {
-      await deletePipeline(id);
+      await dispatch({ type: 'pipelines.delete', payload: { pipelineId: id } });
       selectedIds.delete(id);
       setSelectedIds(new Set(selectedIds));
     }
-  };
+  }, [dispatch, selectedIds]);
 
-  const toggleSelection = (id: string, e: React.MouseEvent) => {
+  const toggleSelection = useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const newSelected = new Set(selectedIds);
     if (newSelected.has(id)) {
@@ -71,46 +72,43 @@ export function Pipelines() {
       newSelected.add(id);
     }
     setSelectedIds(newSelected);
-  };
+  }, [selectedIds]);
 
-  const toggleSelectAll = () => {
+  const toggleSelectAll = useCallback(() => {
     if (selectedIds.size === sortedPipelines.length) {
       setSelectedIds(new Set());
     } else {
       setSelectedIds(new Set(sortedPipelines.map(p => p.id)));
     }
-  };
+  }, [selectedIds.size, sortedPipelines]);
 
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = useCallback(async () => {
     if (selectedIds.size === 0) return;
     if (!confirm(`Are you sure you want to delete ${selectedIds.size} pipeline(s)?`)) return;
 
     setIsProcessing(true);
     try {
       for (const id of selectedIds) {
-        await deletePipeline(id);
+        await dispatch({ type: 'pipelines.delete', payload: { pipelineId: id } });
       }
       setSelectedIds(new Set());
     } finally {
       setIsProcessing(false);
     }
-  };
+  }, [dispatch, selectedIds]);
 
-  const handleBulkRun = async () => {
+  const handleBulkRun = useCallback(async () => {
     if (selectedIds.size === 0) return;
 
     setIsProcessing(true);
     try {
       for (const id of selectedIds) {
-        const pipeline = pipelines.get(id);
-        if (pipeline) {
-          await runPipeline(id);
-        }
+        await dispatch({ type: 'pipelines.run', payload: { pipelineId: id } });
       }
     } finally {
       setIsProcessing(false);
     }
-  };
+  }, [dispatch, selectedIds]);
 
   const hasSelection = selectedIds.size > 0;
   const allSelected = selectedIds.size === sortedPipelines.length && sortedPipelines.length > 0;
@@ -227,13 +225,13 @@ export function Pipelines() {
                     </div>
 
                     <div className="flex items-center justify-between text-xs text-gray-500 pl-6">
-                      <span>{pipeline.nodes.length} nodes</span>
+                      <span>{pipeline.nodeCount} nodes</span>
                       <div className="flex items-center gap-1">
                         <button
                           className="p-1 hover:bg-gray-700 rounded"
                           onClick={(e) => {
                             e.stopPropagation();
-                            selectPipeline(pipeline.id);
+                            dispatch({ type: 'pipelines.select', payload: { pipelineId: pipeline.id } });
                             setShowSessions(true);
                           }}
                           title="View sessions"

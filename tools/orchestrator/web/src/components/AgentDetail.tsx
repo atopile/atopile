@@ -1,96 +1,85 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Square, Send, X, Clock, Cpu, Hash, Code, RotateCcw, Pencil, Check, History } from 'lucide-react';
-import type { AgentState } from '@/api/types';
-import { useAgentStore, useOutputStore } from '@/stores';
+import type { AgentViewModel } from '@/logic/viewmodels';
+import { useDispatch, useAgentOutput, useLoading } from '@/hooks';
 import { StatusBadge } from './StatusBadge';
 import { OutputStream } from './OutputStream';
 
 interface AgentDetailProps {
-  agent: AgentState;
+  agent: AgentViewModel;
   onClose?: () => void;
 }
 
 export function AgentDetail({ agent, onClose }: AgentDetailProps) {
-  const { terminateAgent, sendInput, resumeAgent, renameAgent } = useAgentStore();
-  const { connectToAgent, disconnectFromAgent, fetchOutput, fetchFullHistory, isConnected, setCurrentRunNumber, addPrompt } = useOutputStore();
-  // Subscribe directly to chunks for this agent - this ensures re-renders on updates
-  const chunks = useOutputStore((state) => state.outputs.get(agent.id) || []);
-  const prompts = useOutputStore((state) => state.prompts.get(agent.id) || []);
-  const historyLoaded = useOutputStore((state) => state.historyLoaded.has(agent.id));
+  const dispatch = useDispatch();
+  const output = useAgentOutput(agent.id);
+  const loadingResume = useLoading(`resume-${agent.id}`);
+
   const [inputValue, setInputValue] = useState('');
   const [sending, setSending] = useState(false);
   const [verbose, setVerbose] = useState(false);
   const [resumePrompt, setResumePrompt] = useState('');
-  const [resuming, setResuming] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(agent.name || '');
-  const connected = isConnected(agent.id);
-  const isRunning = agent.status === 'running' || agent.status === 'starting' || agent.status === 'pending';
-  const isFinished = agent.status === 'completed' || agent.status === 'failed' || agent.status === 'terminated';
-  const canResume = isFinished && !!agent.session_id;
-  const runCount = agent.run_count ?? 0;
-  const hasMultipleRuns = runCount > 0;
+
+  const hasMultipleRuns = agent.runCount > 0;
 
   // Initial data fetch - only runs when agent.id changes
   useEffect(() => {
     // Set the current run number so new WebSocket chunks get tagged correctly
-    setCurrentRunNumber(agent.id, runCount);
+    dispatch({
+      type: 'output.setRunNumber',
+      payload: { agentId: agent.id, runNumber: agent.runCount },
+    });
 
     // For agents with multiple runs, load full history to see all runs
     if (hasMultipleRuns) {
-      fetchFullHistory(agent.id);
+      dispatch({ type: 'output.fetchHistory', payload: { agentId: agent.id } });
     } else {
       // Single-run agent - fetch current output
-      fetchOutput(agent.id, runCount);
+      dispatch({
+        type: 'output.fetch',
+        payload: { agentId: agent.id, runNumber: agent.runCount },
+      });
     }
-    // Note: We intentionally only depend on agent.id to avoid re-fetching
-    // when other properties change. The runCount and hasMultipleRuns are
-    // captured at the time of the effect run.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agent.id]);
 
-  // Add initial prompt for single-run agents (separate effect to avoid re-fetch)
-  useEffect(() => {
-    if (!hasMultipleRuns && agent.config.prompt && prompts.length === 0) {
-      addPrompt(agent.id, 0, agent.config.prompt);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agent.id, hasMultipleRuns]);
-
   // WebSocket connection - separate effect for running state
   useEffect(() => {
-    if (isRunning) {
-      connectToAgent(agent.id);
+    if (agent.isRunning) {
+      dispatch({ type: 'output.connect', payload: { agentId: agent.id } });
     }
 
     return () => {
-      disconnectFromAgent(agent.id);
+      dispatch({ type: 'output.disconnect', payload: { agentId: agent.id } });
     };
-  }, [agent.id, isRunning, connectToAgent, disconnectFromAgent]);
+  }, [agent.id, agent.isRunning, dispatch]);
 
-  const handleLoadHistory = async () => {
+  const handleLoadHistory = useCallback(async () => {
     setLoadingHistory(true);
     try {
-      await fetchFullHistory(agent.id);
+      await dispatch({ type: 'output.fetchHistory', payload: { agentId: agent.id } });
     } finally {
       setLoadingHistory(false);
     }
-  };
+  }, [dispatch, agent.id]);
 
-  const handleSendInput = async () => {
-    if (!inputValue.trim() || !isRunning) return;
+  const handleSendInput = useCallback(async () => {
+    if (!inputValue.trim() || !agent.isRunning) return;
 
     setSending(true);
     try {
-      const success = await sendInput(agent.id, inputValue);
-      if (success) {
-        setInputValue('');
-      }
+      await dispatch({
+        type: 'agents.sendInput',
+        payload: { agentId: agent.id, input: inputValue },
+      });
+      setInputValue('');
     } finally {
       setSending(false);
     }
-  };
+  }, [dispatch, agent.id, agent.isRunning, inputValue]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -106,37 +95,35 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
     }
   };
 
-  const handleResume = async () => {
-    if (!resumePrompt.trim() || !canResume) return;
+  const handleResume = useCallback(async () => {
+    if (!resumePrompt.trim() || !agent.canResume) return;
 
     const promptText = resumePrompt.trim();
-    const nextRunNumber = runCount + 1;
-
-    // Immediately show the prompt in UI for instant feedback
-    addPrompt(agent.id, nextRunNumber, promptText);
-    setCurrentRunNumber(agent.id, nextRunNumber);
     setResumePrompt('');
-    setResuming(true);
 
     try {
-      await resumeAgent(agent.id, promptText);
-      // The useEffect will reconnect to WebSocket and fetch new output
-      // when agent.status changes to 'running'
-    } finally {
-      setResuming(false);
+      await dispatch({
+        type: 'agents.resume',
+        payload: { agentId: agent.id, prompt: promptText },
+      });
+    } catch (e) {
+      // Error is handled in logic layer
     }
-  };
+  }, [dispatch, agent.id, agent.canResume, resumePrompt]);
 
-  const handleSaveName = async () => {
+  const handleSaveName = useCallback(async () => {
     if (editedName.trim() !== (agent.name || '')) {
       try {
-        await renameAgent(agent.id, editedName.trim());
+        await dispatch({
+          type: 'agents.rename',
+          payload: { agentId: agent.id, name: editedName.trim() },
+        });
       } catch (e) {
-        // Error is handled in store
+        // Error is handled in logic layer
       }
     }
     setIsEditingName(false);
-  };
+  }, [dispatch, agent.id, agent.name, editedName]);
 
   const handleNameKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -148,20 +135,24 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
     }
   };
 
-  const formatDuration = () => {
-    if (!agent.started_at) return '—';
+  const handleTerminate = useCallback(() => {
+    dispatch({ type: 'agents.terminate', payload: { agentId: agent.id } });
+  }, [dispatch, agent.id]);
 
-    const start = new Date(agent.started_at).getTime();
+  const formatDuration = () => {
+    if (!agent.startedAt) return '—';
+
+    const start = new Date(agent.startedAt).getTime();
     if (isNaN(start)) return '—';
 
     let end: number;
-    if (agent.finished_at) {
-      end = new Date(agent.finished_at).getTime();
+    if (agent.finishedAt) {
+      end = new Date(agent.finishedAt).getTime();
       if (isNaN(end)) return '—';
-    } else if (isRunning) {
+    } else if (agent.isRunning) {
       end = Date.now();
     } else {
-      return '—'; // Finished but no end time
+      return '—';
     }
 
     const seconds = Math.floor((end - start) / 1000);
@@ -225,8 +216,8 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
             </div>
             <div className="flex items-center gap-2">
               <code className="text-xs font-mono text-gray-500">{agent.id.slice(0, 8)}</code>
-              <StatusBadge status={agent.status} />
-              {connected && (
+              <StatusBadge status={agent.status} isAgent />
+              {output.isConnected && (
                 <span className="flex items-center gap-1 text-xs text-green-400">
                   <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
                   Live
@@ -237,10 +228,10 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          {isRunning && (
+          {agent.canTerminate && (
             <button
               className="btn btn-danger btn-sm"
-              onClick={() => terminateAgent(agent.id)}
+              onClick={handleTerminate}
             >
               <Square className="w-4 h-4 mr-1" />
               Terminate
@@ -262,7 +253,7 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-1.5 text-gray-400">
             <Cpu className="w-4 h-4" />
-            <span>{agent.config.backend}</span>
+            <span>{agent.backend}</span>
           </div>
           <div className="flex items-center gap-1.5 text-gray-400">
             <Clock className="w-4 h-4" />
@@ -270,17 +261,17 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
           </div>
           <div className="flex items-center gap-1.5 text-gray-400">
             <Hash className="w-4 h-4" />
-            <span>{chunks.length} chunks</span>
+            <span>{output.chunks.length} chunks</span>
           </div>
           {hasMultipleRuns && (
             <div className="flex items-center gap-1.5 text-blue-400">
               <RotateCcw className="w-4 h-4" />
-              <span>Run {runCount + 1}</span>
+              <span>Run {agent.runCount + 1}</span>
             </div>
           )}
-          {agent.config.max_turns && (
+          {agent.maxTurns && (
             <div className="text-gray-400">
-              Max turns: {agent.config.max_turns}
+              Max turns: {agent.maxTurns}
             </div>
           )}
           {agent.pid && (
@@ -290,7 +281,7 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
           )}
         </div>
         <div className="flex items-center gap-4">
-          {hasMultipleRuns && !historyLoaded && (
+          {hasMultipleRuns && !output.hasHistory && (
             <button
               className="flex items-center gap-1.5 text-blue-400 hover:text-blue-300 text-xs"
               onClick={handleLoadHistory}
@@ -304,7 +295,7 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
               <span>Load Full History</span>
             </button>
           )}
-          {historyLoaded && (
+          {output.hasHistory && (
             <span className="flex items-center gap-1.5 text-green-400 text-xs">
               <History className="w-3.5 h-3.5" />
               <span>Full History</span>
@@ -326,16 +317,16 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
       {/* Output stream */}
       <div className="flex-1 overflow-hidden">
         <OutputStream
-          chunks={chunks}
-          prompts={prompts}
-          initialPrompt={agent.config.prompt}
-          autoScroll={isRunning}
+          chunks={output.chunks}
+          prompts={output.prompts}
+          initialPrompt={agent.prompt}
+          autoScroll={agent.isRunning}
           verbose={verbose}
         />
       </div>
 
       {/* Input bar (only for running agents that support input) */}
-      {isRunning && (
+      {agent.isRunning && (
         <div className="p-4 border-t border-gray-700">
           <div className="flex items-center gap-2">
             <input
@@ -362,12 +353,12 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
       )}
 
       {/* Resume bar (for finished agents with session) */}
-      {canResume && (
+      {agent.canResume && (
         <div className="p-4 border-t border-gray-700 bg-gray-800/30">
           <div className="flex items-center gap-2 mb-2">
             <RotateCcw className="w-4 h-4 text-blue-400" />
             <span className="text-sm text-gray-300">Resume this session</span>
-            <span className="text-xs text-gray-500">(session: {agent.session_id?.slice(0, 8)}...)</span>
+            <span className="text-xs text-gray-500">(session: {agent.sessionId?.slice(0, 8)}...)</span>
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -377,15 +368,15 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
               value={resumePrompt}
               onChange={(e) => setResumePrompt(e.target.value)}
               onKeyDown={handleResumeKeyDown}
-              disabled={resuming}
+              disabled={loadingResume}
             />
             <button
               className="btn btn-primary"
               onClick={handleResume}
-              disabled={!resumePrompt.trim() || resuming}
+              disabled={!resumePrompt.trim() || loadingResume}
               title="Send (Cmd/Ctrl+Enter)"
             >
-              {resuming ? (
+              {loadingResume ? (
                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
                 <Send className="w-4 h-4" />
@@ -400,10 +391,10 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
       )}
 
       {/* Error message */}
-      {agent.error_message && (
+      {agent.errorMessage && (
         <div className="p-4 bg-red-900/20 border-t border-red-800">
           <div className="text-sm text-red-400">
-            <strong>Error:</strong> {agent.error_message}
+            <strong>Error:</strong> {agent.errorMessage}
           </div>
         </div>
       )}

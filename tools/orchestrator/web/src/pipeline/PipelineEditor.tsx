@@ -16,11 +16,11 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { usePipelineStore, useAgentStore } from '@/stores';
+import { useEditor, useSelectedSession, useDispatch, useAgent } from '@/hooks';
 import { nodeTypes } from './nodes';
 import { NodeConfigPanel } from './NodeConfigPanel';
 import { AgentDetail } from '@/components/AgentDetail';
-import type { PipelineNode, PipelineEdge } from '@/api/types';
+import type { PipelineNode, PipelineEdge } from '@/logic/api/types';
 
 // Convert pipeline nodes to React Flow nodes
 function toFlowNodes(
@@ -78,8 +78,9 @@ function toPipelineEdges(flowEdges: Edge[]): PipelineEdge[] {
 }
 
 export function PipelineEditor() {
-  const { editorNodes, editorEdges, setEditorNodes, setEditorEdges, getSelectedSession } = usePipelineStore();
-  const { agents, fetchAgent } = useAgentStore();
+  const editor = useEditor();
+  const selectedSession = useSelectedSession();
+  const dispatch = useDispatch();
 
   // Track external updates vs internal changes
   const isInternalChange = useRef(false);
@@ -91,39 +92,52 @@ export function PipelineEditor() {
 
   // Agent view mode (when viewing agent detail from pipeline)
   const [viewingAgentId, setViewingAgentId] = useState<string | null>(null);
-
-  // Get the selected session for node status (only show status when a session is selected)
-  const selectedSession = getSelectedSession();
+  const viewingAgent = useAgent(viewingAgentId);
 
   // Only show node status when a session is selected
-  const nodeStatus = selectedSession?.node_status;
-  const nodeAgentMap = selectedSession?.node_agent_map;
-  const loopIterations = selectedSession?.loop_iterations;
+  const nodeStatus = selectedSession?.nodeStatus;
+  const nodeAgentMap = selectedSession?.nodeAgentMap;
+  const loopIterations = selectedSession?.loopIterations;
+
+  // Helper to update editor nodes via dispatch
+  const setEditorNodes = useCallback((nodes: PipelineNode[]) => {
+    dispatch({ type: 'editor.setNodes', payload: { nodes } });
+  }, [dispatch]);
+
+  // Helper to update editor edges via dispatch
+  const setEditorEdges = useCallback((edges: PipelineEdge[]) => {
+    dispatch({ type: 'editor.setEdges', payload: { edges } });
+  }, [dispatch]);
 
   // Initialize React Flow state from store
   const [nodes, setNodes, onNodesChange] = useNodesState(
-    toFlowNodes(editorNodes, nodeStatus, nodeAgentMap, loopIterations)
+    toFlowNodes(editor.nodes, nodeStatus, nodeAgentMap, loopIterations)
   );
-  const [edges, setEdges, onEdgesChange] = useEdgesState(toFlowEdges(editorEdges));
+  const [edges, setEdges, onEdgesChange] = useEdgesState(toFlowEdges(editor.edges));
 
-  // Only sync from store when external changes occur (not from our own updates)
+  // Sync from store when external changes occur (not from our own updates)
   useEffect(() => {
-    const nodesJson = JSON.stringify(editorNodes);
+    const nodesJson = JSON.stringify(editor.nodes);
     if (nodesJson !== lastExternalNodes.current && !isInternalChange.current) {
       lastExternalNodes.current = nodesJson;
-      setNodes(toFlowNodes(editorNodes, nodeStatus, nodeAgentMap, loopIterations));
+      setNodes(toFlowNodes(editor.nodes, nodeStatus, nodeAgentMap, loopIterations));
     }
     isInternalChange.current = false;
-  }, [editorNodes, setNodes, nodeStatus, nodeAgentMap, loopIterations]);
+  }, [editor.nodes, setNodes, nodeStatus, nodeAgentMap, loopIterations]);
+
+  // Update node display when selected session changes (status, agent map, iterations)
+  useEffect(() => {
+    setNodes(toFlowNodes(editor.nodes, nodeStatus, nodeAgentMap, loopIterations));
+  }, [selectedSession?.id, nodeStatus, nodeAgentMap, loopIterations, editor.nodes, setNodes]);
 
   useEffect(() => {
-    const edgesJson = JSON.stringify(editorEdges);
+    const edgesJson = JSON.stringify(editor.edges);
     if (edgesJson !== lastExternalEdges.current && !isInternalChange.current) {
       lastExternalEdges.current = edgesJson;
-      setEdges(toFlowEdges(editorEdges));
+      setEdges(toFlowEdges(editor.edges));
     }
     isInternalChange.current = false;
-  }, [editorEdges, setEdges]);
+  }, [editor.edges, setEdges]);
 
   // Handle all node changes (drag, select, etc.)
   const handleNodesChange = useCallback(
@@ -231,14 +245,14 @@ export function PipelineEditor() {
       const agentId = nodeAgentMap?.[node.id];
       if (agentId) {
         // Fetch agent data and show detail view
-        fetchAgent(agentId);
+        dispatch({ type: 'agents.refreshOne', payload: { agentId } });
         setViewingAgentId(agentId);
         return;
       }
     }
     // Otherwise, show config panel
     setSelectedNodeId(node.id);
-  }, [nodeAgentMap, fetchAgent]);
+  }, [nodeAgentMap, dispatch]);
 
   // Handle node selection
   const onSelectionChange = useCallback(({ nodes: selectedNodes }: { nodes: Node[] }) => {
@@ -265,7 +279,6 @@ export function PipelineEditor() {
   );
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId);
-  const viewingAgent = viewingAgentId ? agents.get(viewingAgentId) : null;
 
   return (
     <div className="h-full w-full flex">

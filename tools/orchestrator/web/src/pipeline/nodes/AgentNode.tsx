@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Bot, FileText } from 'lucide-react';
-import type { AgentNodeData } from '@/api/types';
+import type { AgentNodeData } from '@/logic/api/types';
 import { NodeStatusLabel } from './NodeStatusLabel';
 
 interface AgentNodeProps {

@@ -34,7 +34,7 @@ export interface AgentState {
   finished_at?: string;
   output_chunks: number;
   last_activity_at?: string;
-  run_count?: number;  // May not exist for older agents, defaults to 0
+  run_count?: number;
   metadata: Record<string, unknown>;
 }
 
@@ -49,7 +49,7 @@ export interface OutputChunk {
   timestamp: string;
   sequence: number;
   is_error?: boolean;
-  run_number?: number;  // Which run this chunk belongs to (for history view)
+  run_number?: number;
 }
 
 // Session types
@@ -94,7 +94,7 @@ export interface AgentOutputResponse {
 
 export interface RunOutput {
   run_number: number;
-  prompt?: string;  // The prompt that started this run
+  prompt?: string;
   chunks: OutputChunk[];
   started_at?: string;
 }
@@ -282,8 +282,8 @@ export interface Pipeline {
   status: PipelineStatus;
   current_node_id?: string;
   execution_history: string[];
-  node_agent_map: Record<string, string>;  // node_id -> agent_id
-  node_status: Record<string, string>;     // node_id -> status
+  node_agent_map: Record<string, string>;
+  node_status: Record<string, string>;
   created_at: string;
   updated_at: string;
   started_at?: string;
@@ -310,10 +310,10 @@ export interface PipelineSession {
   id: string;
   pipeline_id: string;
   status: PipelineSessionStatus;
-  node_agent_map: Record<string, string>;  // node_id -> agent_id
-  node_status: Record<string, string>;     // node_id -> status
-  loop_iterations: Record<string, number>; // node_id -> iteration count
-  execution_order: string[];               // Order nodes were executed
+  node_agent_map: Record<string, string>;
+  node_status: Record<string, string>;
+  loop_iterations: Record<string, number>;
+  execution_order: string[];
   started_at: string;
   finished_at?: string;
   error_message?: string;
@@ -326,4 +326,35 @@ export interface PipelineSessionListResponse {
 
 export interface PipelineSessionResponse {
   session: PipelineSession;
+}
+
+// Global events WebSocket types
+export type GlobalEventType =
+  | 'connected'
+  | 'agent_spawned'
+  | 'agent_status_changed'
+  | 'agent_deleted'
+  | 'session_created'
+  | 'session_status_changed'
+  | 'session_node_status_changed'
+  | 'session_deleted'
+  | 'pipeline_created'
+  | 'pipeline_updated'
+  | 'pipeline_deleted'
+  | 'ping'
+  | 'pong';
+
+export interface GlobalEvent {
+  type: GlobalEventType;
+  timestamp: string;
+  data?: {
+    status?: string;
+    agent?: AgentState;
+    session?: PipelineSession;
+    [key: string]: unknown;
+  };
+  agent_id?: string;
+  session_id?: string;
+  pipeline_id?: string;
+  node_id?: string;
 }

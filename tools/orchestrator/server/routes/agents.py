@@ -28,7 +28,7 @@ from ...models import (
     TerminateAgentResponse,
     UpdateAgentRequest,
 )
-from ..dependencies import get_agent_store, get_process_manager
+from ..dependencies import broadcast_agent_spawned, get_agent_store, get_process_manager
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +71,9 @@ async def spawn_agent(
             return a
 
         agent_store.update(agent.id, updater)
+
+        # Broadcast agent spawned event
+        broadcast_agent_spawned(agent.id)
 
         return SpawnAgentResponse(
             agent_id=agent.id,

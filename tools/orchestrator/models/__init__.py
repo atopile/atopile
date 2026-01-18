@@ -22,6 +22,8 @@ from .agents import (
 )
 from .events import (
     ClaudeCodeMessage,
+    GlobalEvent,
+    GlobalEventType,
     OutputChunk,
     OutputType,
     StreamEvent,
@@ -81,6 +83,8 @@ __all__ = [
     "UpdateAgentRequest",
     # Event models
     "ClaudeCodeMessage",
+    "GlobalEvent",
+    "GlobalEventType",
     "OutputChunk",
     "OutputType",
     "StreamEvent",

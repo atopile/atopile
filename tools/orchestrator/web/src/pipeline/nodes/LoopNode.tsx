@@ -1,12 +1,10 @@
 import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Repeat } from 'lucide-react';
-import type { LoopNodeData } from '@/api/types';
-import { NodeStatusLabel } from './NodeStatusLabel';
+import type { LoopNodeData } from '@/logic/api/types';
 
 interface LoopNodeProps {
   data: LoopNodeData & {
-    _nodeStatus?: string;
     _loopIteration?: number;
   };
   selected?: boolean;
@@ -47,15 +45,12 @@ export const LoopNode = memo(({ data, selected }: LoopNodeProps) => {
         </div>
       </div>
 
-      {/* Loop iteration counter and status */}
-      {(data._loopIteration !== undefined || data._nodeStatus) && (
-        <div className="mt-2 pt-2 border-t border-gray-700 space-y-1">
-          {data._loopIteration !== undefined && (
-            <div className="text-xs font-medium text-purple-400">
-              Iteration: {data._loopIteration}{data.max_iterations ? ` / ${data.max_iterations}` : ''}
-            </div>
-          )}
-          {data._nodeStatus && <NodeStatusLabel status={data._nodeStatus} />}
+      {/* Loop iteration counter */}
+      {data._loopIteration !== undefined && (
+        <div className="mt-2 pt-2 border-t border-gray-700">
+          <div className="text-xs font-medium text-purple-400">
+            Iteration: {data._loopIteration}{data.max_iterations ? ` / ${data.max_iterations}` : ''}
+          </div>
         </div>
       )}
 

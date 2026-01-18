@@ -1,13 +1,10 @@
 import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Play, Clock, Webhook } from 'lucide-react';
-import type { TriggerNodeData } from '@/api/types';
-import { NodeStatusLabel } from './NodeStatusLabel';
+import type { TriggerNodeData } from '@/logic/api/types';
 
 interface TriggerNodeProps {
-  data: TriggerNodeData & {
-    _nodeStatus?: string;
-  };
+  data: TriggerNodeData;
   selected?: boolean;
 }
 
@@ -50,13 +47,6 @@ export const TriggerNode = memo(({ data, selected }: TriggerNodeProps) => {
       <div className="mt-2 text-xs text-gray-500">
         {getLabel()}
       </div>
-
-      {/* Status label at bottom */}
-      {data._nodeStatus && (
-        <div className="mt-2 pt-2 border-t border-gray-700">
-          <NodeStatusLabel status={data._nodeStatus} />
-        </div>
-      )}
 
       <Handle type="source" position={Position.Bottom} className="!bg-gray-500" />
     </div>

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Clock, Cpu, Trash2, Square } from 'lucide-react';
-import type { AgentState } from '@/api/types';
+import type { AgentViewModel } from '@/logic/viewmodels';
 import { StatusBadge } from './StatusBadge';
 
 interface AgentCardProps {
-  agent: AgentState;
+  agent: AgentViewModel;
   selected?: boolean;
   onClick?: () => void;
   onTerminate?: () => void;
@@ -18,20 +18,20 @@ export function AgentCard({ agent, selected, onClick, onTerminate, onDelete }: A
 
   useEffect(() => {
     const updateDuration = () => {
-      if (!agent.started_at) {
+      if (!agent.startedAt) {
         setDuration('—');
         return;
       }
 
-      const start = new Date(agent.started_at).getTime();
+      const start = new Date(agent.startedAt).getTime();
       if (isNaN(start)) {
         setDuration('—');
         return;
       }
 
       let end: number;
-      if (agent.finished_at) {
-        end = new Date(agent.finished_at).getTime();
+      if (agent.finishedAt) {
+        end = new Date(agent.finishedAt).getTime();
         if (isNaN(end)) {
           setDuration('—');
           return;
@@ -65,9 +65,7 @@ export function AgentCard({ agent, selected, onClick, onTerminate, onDelete }: A
       const interval = setInterval(updateDuration, 1000);
       return () => clearInterval(interval);
     }
-  }, [agent.started_at, agent.finished_at, agent.status, isActivelyRunning]);
-
-  const isRunning = agent.status === 'running' || agent.status === 'starting' || agent.status === 'pending';
+  }, [agent.startedAt, agent.finishedAt, agent.status, isActivelyRunning]);
 
   return (
     <div
@@ -88,13 +86,13 @@ export function AgentCard({ agent, selected, onClick, onTerminate, onDelete }: A
             {agent.id.slice(0, 8)}
           </code>
         </div>
-        <StatusBadge status={agent.status} size="sm" />
+        <StatusBadge status={agent.status} size="sm" isAgent />
       </div>
 
       {/* Backend */}
       <div className="flex items-center gap-1.5 text-sm text-gray-300 mb-2">
         <Cpu className="w-4 h-4 text-gray-500" />
-        <span>{agent.config.backend}</span>
+        <span>{agent.backend}</span>
       </div>
 
       {/* Stats */}
@@ -104,7 +102,7 @@ export function AgentCard({ agent, selected, onClick, onTerminate, onDelete }: A
           <span>{duration || '-'}</span>
         </div>
         <div className="flex items-center gap-1">
-          {isRunning && onTerminate && (
+          {agent.canTerminate && onTerminate && (
             <button
               className="p-1 hover:bg-gray-700 rounded transition-colors"
               onClick={(e) => {
@@ -116,7 +114,7 @@ export function AgentCard({ agent, selected, onClick, onTerminate, onDelete }: A
               <Square className="w-3.5 h-3.5 text-red-400" />
             </button>
           )}
-          {!isRunning && onDelete && (
+          {agent.canDelete && onDelete && (
             <button
               className="p-1 hover:bg-gray-700 rounded transition-colors"
               onClick={(e) => {
@@ -133,8 +131,8 @@ export function AgentCard({ agent, selected, onClick, onTerminate, onDelete }: A
 
       {/* Prompt preview */}
       <div className="mt-2 pt-2 border-t border-gray-700">
-        <p className="text-xs text-gray-500 truncate" title={agent.config.prompt}>
-          {agent.config.prompt}
+        <p className="text-xs text-gray-500 truncate" title={agent.prompt}>
+          {agent.prompt}
         </p>
       </div>
     </div>

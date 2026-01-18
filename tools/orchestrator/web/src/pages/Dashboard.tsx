@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { Terminal } from 'lucide-react';
-import { useAgentStore } from '@/stores';
+import { useSelectedAgent, useDispatch } from '@/hooks';
 import { AgentList, AgentDetail, SpawnAgentDialog } from '@/components';
 
 export function Dashboard() {
-  const selectAgent = useAgentStore((state) => state.selectAgent);
-  const selectedAgent = useAgentStore((state) =>
-    state.selectedAgentId ? state.agents.get(state.selectedAgentId) : undefined
-  );
+  const dispatch = useDispatch();
+  const selectedAgent = useSelectedAgent();
   const [spawnDialogOpen, setSpawnDialogOpen] = useState(false);
+
+  const handleClose = () => {
+    dispatch({ type: 'agents.select', payload: { agentId: null } });
+  };
 
   return (
     <div className="flex h-full">
@@ -22,7 +24,7 @@ export function Dashboard() {
         {selectedAgent ? (
           <AgentDetail
             agent={selectedAgent}
-            onClose={() => selectAgent(null)}
+            onClose={handleClose}
           />
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-gray-500">

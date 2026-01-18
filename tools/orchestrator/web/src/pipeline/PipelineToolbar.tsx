@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   Save,
   Play,
@@ -10,8 +10,8 @@ import {
   FolderOpen,
   History,
 } from 'lucide-react';
-import { usePipelineStore } from '@/stores';
-import type { PipelineNode, AgentNodeData, TriggerNodeData, LoopNodeData, ConditionNodeData } from '@/api/types';
+import { useEditor, useDispatch, useUIState, useLoading } from '@/hooks';
+import type { PipelineNode, AgentNodeData, TriggerNodeData, LoopNodeData, ConditionNodeData } from '@/logic/api/types';
 
 interface PipelineToolbarProps {
   onOpenPipelineList?: () => void;
@@ -20,38 +20,34 @@ interface PipelineToolbarProps {
 }
 
 export function PipelineToolbar({ onOpenPipelineList, onToggleSessions, showSessions }: PipelineToolbarProps) {
-  const {
-    selectedPipelineId,
-    editorName,
-    editorNodes,
-    hasUnsavedChanges,
-    setEditorName,
-    setEditorNodes,
-    saveEditorPipeline,
-    runPipeline,
-    resetEditor,
-    loading,
-  } = usePipelineStore();
+  const dispatch = useDispatch();
+  const editor = useEditor();
+  const state = useUIState();
+  const loading = useLoading('pipelines');
 
   const [saving, setSaving] = useState(false);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     setSaving(true);
     try {
-      await saveEditorPipeline();
+      await dispatch({ type: 'editor.save' });
     } finally {
       setSaving(false);
     }
-  };
+  }, [dispatch]);
 
-  const handleRun = async () => {
-    if (selectedPipelineId) {
-      await runPipeline(selectedPipelineId);
+  const handleRun = useCallback(async () => {
+    if (state.selectedPipelineId) {
+      await dispatch({ type: 'pipelines.run', payload: { pipelineId: state.selectedPipelineId } });
     }
-  };
+  }, [dispatch, state.selectedPipelineId]);
 
-  const addNode = (type: PipelineNode['type']) => {
-    const basePosition = { x: 100 + editorNodes.length * 50, y: 100 + editorNodes.length * 50 };
+  const handleReset = useCallback(() => {
+    dispatch({ type: 'editor.reset' });
+  }, [dispatch]);
+
+  const addNode = useCallback((type: PipelineNode['type']) => {
+    const basePosition = { x: 100 + editor.nodes.length * 50, y: 100 + editor.nodes.length * 50 };
 
     let data: PipelineNode['data'];
     switch (type) {
@@ -90,8 +86,15 @@ export function PipelineToolbar({ onOpenPipelineList, onToggleSessions, showSess
       data,
     };
 
-    setEditorNodes([...editorNodes, newNode]);
-  };
+    dispatch({
+      type: 'editor.setNodes',
+      payload: { nodes: [...editor.nodes, newNode] },
+    });
+  }, [dispatch, editor.nodes]);
+
+  const handleSetName = useCallback((name: string) => {
+    dispatch({ type: 'editor.setName', payload: { name } });
+  }, [dispatch]);
 
   return (
     <div className="flex items-center justify-between p-3 bg-gray-800 border-b border-gray-700">
@@ -110,21 +113,21 @@ export function PipelineToolbar({ onOpenPipelineList, onToggleSessions, showSess
         <input
           type="text"
           className="input input-sm w-48"
-          value={editorName}
-          onChange={(e) => setEditorName(e.target.value)}
+          value={editor.name}
+          onChange={(e) => handleSetName(e.target.value)}
           placeholder="Pipeline name"
         />
 
         <button
           className="btn btn-primary btn-sm"
           onClick={handleSave}
-          disabled={saving || !editorName.trim()}
+          disabled={saving || !editor.name.trim()}
         >
           <Save className="w-4 h-4 mr-1" />
           {saving ? 'Saving...' : 'Save'}
         </button>
 
-        {hasUnsavedChanges && (
+        {editor.hasUnsavedChanges && (
           <span className="text-xs text-yellow-400">Unsaved changes</span>
         )}
       </div>
@@ -164,11 +167,11 @@ export function PipelineToolbar({ onOpenPipelineList, onToggleSessions, showSess
 
       {/* Right: Run and sessions */}
       <div className="flex items-center gap-2">
-        {selectedPipelineId && (
+        {state.selectedPipelineId && (
           <button
             className="btn btn-success btn-sm"
             onClick={handleRun}
-            disabled={loading || !selectedPipelineId}
+            disabled={loading || !state.selectedPipelineId}
             title="Start a new session"
           >
             <Play className="w-4 h-4 mr-1" />
@@ -176,7 +179,7 @@ export function PipelineToolbar({ onOpenPipelineList, onToggleSessions, showSess
           </button>
         )}
 
-        {selectedPipelineId && onToggleSessions && (
+        {state.selectedPipelineId && onToggleSessions && (
           <button
             className={`btn btn-sm ${showSessions ? 'btn-primary' : 'btn-secondary'}`}
             onClick={onToggleSessions}
@@ -188,7 +191,7 @@ export function PipelineToolbar({ onOpenPipelineList, onToggleSessions, showSess
 
         <button
           className="btn btn-secondary btn-sm"
-          onClick={resetEditor}
+          onClick={handleReset}
           title="New pipeline"
         >
           <Plus className="w-4 h-4" />

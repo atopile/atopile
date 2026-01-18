@@ -19,7 +19,7 @@ export function NodeStatusLabel({ status, agentId }: NodeStatusLabelProps) {
       case 'completed':
         return {
           icon: <CheckCircle className="w-3 h-3" />,
-          label: 'Completed',
+          label: 'Idle',
           className: 'bg-green-500/20 text-green-400 border-green-500/50',
         };
       case 'failed':

@@ -42,7 +42,8 @@ class PipelineExecutor:
         agent_store: "AgentStateStore",
         pipeline_store: "PipelineStateStore",
         pipeline_session_store: "PipelineSessionStore",
-        on_node_status_change: Callable[[str, str, str], None] | None = None,
+        on_node_status_change: Callable[[str, str, str, str | None], None] | None = None,
+        on_session_status_change: Callable[[str, str, str], None] | None = None,
     ) -> None:
         """Initialize the pipeline executor.
 
@@ -51,13 +52,15 @@ class PipelineExecutor:
             agent_store: Store for agent states
             pipeline_store: Store for pipeline states
             pipeline_session_store: Store for pipeline session states
-            on_node_status_change: Callback(pipeline_id, node_id, status) for node status changes
+            on_node_status_change: Callback(pipeline_id, node_id, status, session_id) for node status changes
+            on_session_status_change: Callback(pipeline_id, session_id, status) for session status changes
         """
         self._process_manager = process_manager
         self._agent_store = agent_store
         self._pipeline_store = pipeline_store
         self._pipeline_session_store = pipeline_session_store
         self._on_node_status_change = on_node_status_change
+        self._on_session_status_change = on_session_status_change
         self._running_pipelines: dict[str, PipelineExecution] = {}
         self._lock = threading.Lock()
 
@@ -827,7 +830,7 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
 
         if self.executor._on_node_status_change:
             try:
-                self.executor._on_node_status_change(self.pipeline_id, node_id, status)
+                self.executor._on_node_status_change(self.pipeline_id, node_id, status, self.session_id)
             except Exception as e:
                 logger.warning(f"Node status callback failed: {e}")
 
@@ -850,6 +853,15 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
         self.executor._pipeline_store.update(self.pipeline_id, updater)
         logger.info(f"Session completed: {self.session_id} (pipeline: {self.pipeline_id})")
 
+        # Notify callback
+        if self.executor._on_session_status_change:
+            try:
+                self.executor._on_session_status_change(
+                    self.pipeline_id, self.session_id, "completed"
+                )
+            except Exception as e:
+                logger.warning(f"Session status callback failed: {e}")
+
     def _mark_stopped(self) -> None:
         """Mark session as stopped."""
         # Update session
@@ -868,6 +880,15 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
 
         self.executor._pipeline_store.update(self.pipeline_id, updater)
         logger.info(f"Session stopped: {self.session_id} (pipeline: {self.pipeline_id})")
+
+        # Notify callback
+        if self.executor._on_session_status_change:
+            try:
+                self.executor._on_session_status_change(
+                    self.pipeline_id, self.session_id, "stopped"
+                )
+            except Exception as e:
+                logger.warning(f"Session status callback failed: {e}")
 
     def _mark_failed(self, error: str) -> None:
         """Mark session as failed."""
@@ -888,6 +909,15 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
 
         self.executor._pipeline_store.update(self.pipeline_id, updater)
         logger.info(f"Session failed: {self.session_id} (pipeline: {self.pipeline_id}): {error}")
+
+        # Notify callback
+        if self.executor._on_session_status_change:
+            try:
+                self.executor._on_session_status_change(
+                    self.pipeline_id, self.session_id, "failed"
+                )
+            except Exception as e:
+                logger.warning(f"Session status callback failed: {e}")
 
     def _get_connected_agent_names(self, pipeline: PipelineState, node_id: str) -> list[str]:
         """Get names of agents this node can send messages TO via pipeline edges.

@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { RefreshCw, Plus } from 'lucide-react';
-import { useAgentStore } from '@/stores';
+import { useAgents, useUIState, useDispatch, useLoading } from '@/hooks';
 import { AgentCard } from './AgentCard';
 
 interface AgentListProps {
@@ -8,34 +8,42 @@ interface AgentListProps {
 }
 
 export function AgentList({ onSpawnClick }: AgentListProps) {
-  const {
-    agents,
-    selectedAgentId,
-    loading,
-    fetchAgents,
-    selectAgent,
-    terminateAgent,
-    deleteAgent,
-  } = useAgentStore();
+  const dispatch = useDispatch();
+  const agents = useAgents();
+  const state = useUIState();
+  const loading = useLoading('agents');
 
   useEffect(() => {
-    fetchAgents();
+    // Initial fetch - updates will come via WebSocket
+    dispatch({ type: 'agents.refresh' });
+  }, [dispatch]);
 
-    // Poll for updates every 5 seconds
-    const interval = setInterval(fetchAgents, 5000);
-    return () => clearInterval(interval);
-  }, [fetchAgents]);
+  const sortedAgents = useMemo(() => {
+    return [...agents].sort((a, b) => {
+      // Running agents first
+      if (a.isRunning && !b.isRunning) return -1;
+      if (!a.isRunning && b.isRunning) return 1;
 
-  const sortedAgents = Array.from(agents.values()).sort((a, b) => {
-    // Running agents first
-    const aRunning = ['running', 'starting', 'pending'].includes(a.status);
-    const bRunning = ['running', 'starting', 'pending'].includes(b.status);
-    if (aRunning && !bRunning) return -1;
-    if (!aRunning && bRunning) return 1;
+      // Then by created_at descending
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [agents]);
 
-    // Then by created_at descending
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  });
+  const handleRefresh = () => {
+    dispatch({ type: 'agents.refresh' });
+  };
+
+  const handleSelect = (agentId: string) => {
+    dispatch({ type: 'agents.select', payload: { agentId } });
+  };
+
+  const handleTerminate = (agentId: string) => {
+    dispatch({ type: 'agents.terminate', payload: { agentId } });
+  };
+
+  const handleDelete = (agentId: string) => {
+    dispatch({ type: 'agents.delete', payload: { agentId } });
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -45,7 +53,7 @@ export function AgentList({ onSpawnClick }: AgentListProps) {
         <div className="flex items-center gap-2">
           <button
             className="btn btn-icon btn-secondary btn-sm"
-            onClick={() => fetchAgents()}
+            onClick={handleRefresh}
             disabled={loading}
             title="Refresh"
           >
@@ -83,10 +91,10 @@ export function AgentList({ onSpawnClick }: AgentListProps) {
             <AgentCard
               key={agent.id}
               agent={agent}
-              selected={selectedAgentId === agent.id}
-              onClick={() => selectAgent(agent.id)}
-              onTerminate={() => terminateAgent(agent.id)}
-              onDelete={() => deleteAgent(agent.id)}
+              selected={state.selectedAgentId === agent.id}
+              onClick={() => handleSelect(agent.id)}
+              onTerminate={() => handleTerminate(agent.id)}
+              onDelete={() => handleDelete(agent.id)}
             />
           ))
         )}
