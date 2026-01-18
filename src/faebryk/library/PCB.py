@@ -10,11 +10,7 @@ from faebryk.core.module import Module
 from faebryk.core.node import Node
 from faebryk.core.reference import reference
 from faebryk.core.trait import Trait
-from faebryk.libs.kicad.fileformats_latest import (
-    C_kicad_drc_report_file,
-    C_kicad_pcb_file,
-)
-from faebryk.libs.kicad.fileformats_version import try_load_kicad_pcb_file
+from faebryk.libs.kicad.fileformats import kicad
 from faebryk.libs.units import to_si_str
 from faebryk.libs.util import find, groupby, md_list
 
@@ -29,7 +25,7 @@ class PCB(Node):
         super().__init__()
 
         self._path = path
-        self._pcb_file: C_kicad_pcb_file | None = None
+        self._pcb_file: kicad.pcb.PcbFile | None = None
         self._transformer: "PCB_Transformer | None" = None
         self.app: Module | None = None
 
@@ -38,7 +34,7 @@ class PCB(Node):
 
         assert self.app is not None
 
-        self._pcb_file = try_load_kicad_pcb_file(self._path)
+        self._pcb_file = kicad.loads(kicad.pcb.PcbFile, self._path)
         self._transformer = PCB_Transformer(
             self._pcb_file.kicad_pcb, self.app.get_graph(), self.app
         )
@@ -49,12 +45,12 @@ class PCB(Node):
         return self._transformer
 
     @property
-    def pcb_file(self) -> C_kicad_pcb_file:
+    def pcb_file(self) -> kicad.pcb.PcbFile:
         assert self._pcb_file is not None
         return self._pcb_file
 
     class requires_drc_check(Trait.decless()):
-        type Violation = C_kicad_drc_report_file.C_Violation
+        type Violation = kicad.drc.DrcFile.C_Violation
 
         class DrcException(F.implements_design_check.UnfulfilledCheckException):
             type Violation = PCB.requires_drc_check.Violation
@@ -124,7 +120,7 @@ class PCB(Node):
             not_connected = drc_report.unconnected_items
 
             shorts = grouped.get(
-                C_kicad_drc_report_file.C_Violation.C_Type.shorting_items, []
+                kicad.drc.DrcFile.C_Violation.C_Type.shorting_items, []
             )
             if shorts or not_connected:
                 raise self.DrcException(

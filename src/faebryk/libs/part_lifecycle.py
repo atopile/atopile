@@ -22,14 +22,11 @@ from faebryk.core.module import Module
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.ato_part import AtoPart
 from faebryk.libs.exceptions import UserResourceException, accumulate
-from faebryk.libs.kicad.fileformats_common import C_xyr
-from faebryk.libs.kicad.fileformats_latest import (
-    C_kicad_footprint_file,
-    C_kicad_fp_lib_table_file,
+from faebryk.libs.kicad.fileformats import (
     C_kicad_model_file,
-    C_kicad_pcb_file,
+    Property,
+    kicad,
 )
-from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
 from faebryk.libs.kicad.ipc import opened_in_pcbnew
 from faebryk.libs.picker.lcsc import (
     EasyEDA3DModel,
@@ -49,6 +46,7 @@ from faebryk.libs.util import (
     re_in,
     robustly_rm_dir,
     sanitize_filepath_part,
+    try_or,
 )
 
 logger = logging.getLogger(__name__)
@@ -214,22 +212,22 @@ class PartLifecycle:
 
         def fp_table(
             self, build: BuildTargetConfig
-        ) -> tuple[Path, C_kicad_fp_lib_table_file]:
+        ) -> tuple[Path, kicad.fp_lib_table.FpLibTableFile]:
             fp_table_path = build.paths.fp_lib_table
 
             try:
-                old_fp_table = C_kicad_fp_lib_table_file.loads(fp_table_path)
-                for lib in old_fp_table.fp_lib_table.libs.values():
+                fp_table = kicad.loads(kicad.fp_lib_table.FpLibTableFile, fp_table_path)
+                for lib in fp_table.fp_lib_table.libs:
                     if not lib.descr.startswith(MANAGED_LIB_PREFIX):
                         logger.warning(
                             f"Removing unmanaged footprint library `{lib.name}`"
                         )
             except FileNotFoundError:
                 # just generate if missing (e.g. on first run)
-                pass
+                fp_table = kicad.fp_lib_table.FpLibTableFile(
+                    fp_lib_table=kicad.fp_lib_table.FpLibTable(version=7, libs=[])
+                )
 
-            # recreate table to ensure sync
-            fp_table = C_kicad_fp_lib_table_file.skeleton()
             # load all existing parts into new table
             for part_dir in sorted(
                 Gcfg.project.paths.parts.iterdir(), key=lambda x: x.name
@@ -247,12 +245,12 @@ class PartLifecycle:
             for build in Gcfg.project.builds.values():
                 fp_table_path, fp_table = self.fp_table(build)
                 self.__insert_fp_lib(lib_name, fp_table, fppath)
-                fp_table.dumps(fp_table_path)
+                kicad.dumps(fp_table, fp_table_path)
 
         def __insert_fp_lib(
             self,
             lib_name: str,
-            fp_table: C_kicad_fp_lib_table_file,
+            fp_table: kicad.fp_lib_table.FpLibTableFile,
             fppath: Path | None = None,
         ):
             fppath = fppath or self._PATH / lib_name
@@ -262,29 +260,31 @@ class PartLifecycle:
 
             fpuri = Gcfg.project.get_relative_to_kicad_project(fppath.resolve())
 
-            if lib_name in fp_table.fp_lib_table.libs:
-                if fp_table.fp_lib_table.libs[lib_name].uri != fpuri:
+            if lib := kicad.try_get(fp_table.fp_lib_table.libs, lib_name):
+                if Path(lib.uri) != fpuri:
                     # TODO better exception
                     raise Exception(
                         f"Footprint library {lib_name} already exists at different"
-                        f" location: {fp_table.fp_lib_table.libs[lib_name].uri} != "
-                        f"{fpuri}. Manual ingestion required."
+                        f" location: `{lib.uri}` != `{fpuri}`."
+                        f" Manual ingestion required."
                     )
                 return fp_table
 
-            lib = C_kicad_fp_lib_table_file.C_fp_lib_table.C_lib(
+            lib = kicad.fp_lib_table.FpLibEntry(
                 name=lib_name,
                 type="KiCad",
-                uri=fpuri,
+                uri=fpuri.as_posix(),
                 options="",
                 descr=f"{MANAGED_LIB_PREFIX} {lib_name}",
             )
-            fp_table.fp_lib_table.libs[lib_name] = lib
+            lib = kicad.set(
+                fp_table.fp_lib_table, "libs", fp_table.fp_lib_table.libs, lib
+            )
             # TODO move somewhere else
             if not getattr(self, "_printed_alert", False):
                 # check if any running pcbnew instances
                 # TODO: actually pass pcb
-                if opened_in_pcbnew(pcb_path=None):
+                if try_or(lambda: opened_in_pcbnew(pcb_path=None), default=True):
                     logger.log(ALERT, "pcbnew restart required (updated fp-lib-table)")
                     self._printed_alert = True
 
@@ -399,17 +399,19 @@ class PartLifecycle:
 
             def _find_footprint(
                 lib_tables: Sequence[os.PathLike], lib_id: str
-            ) -> C_kicad_fp_lib_table_file.C_fp_lib_table.C_lib:
+            ) -> kicad.fp_lib_table.FpLibEntry:
                 lib_tables = [Path(lib_table) for lib_table in lib_tables]
 
                 err_accumulator = accumulate(LibNotInTable, FileNotFoundError)
 
                 for lib_table_path in lib_tables:
                     with err_accumulator.collect():
-                        lib_table = C_kicad_fp_lib_table_file.loads(lib_table_path)
+                        lib_table = kicad.loads(
+                            kicad.fp_lib_table.FpLibTableFile, lib_table_path
+                        )
                         try:
                             return find(
-                                lib_table.fp_lib_table.libs.values(),
+                                lib_table.fp_lib_table.libs,
                                 lambda x: x.name == lib_id,
                             )
                         except KeyErrorNotFound as ex:
@@ -462,7 +464,7 @@ class PartLifecycle:
             return manifest_path.parent
 
         def _fix_package_footprint_model(
-            self, fp: C_kicad_footprint_file, fp_path: Path
+            self, fp: kicad.footprint.FootprintFile, fp_path: Path
         ):
             layout_path = Gcfg.build.paths.layout.parent
             project_path = self._get_project_from_part_path(fp_path)
@@ -481,20 +483,22 @@ class PartLifecycle:
                 # ->
                 # "${KIPRJMOD}/../../.ato/modules/<package>/<layout_dir>/
                 #   ../parts/<part>/<model>"
+                if Path(m.path).is_relative_to(Path("${KIPRJMOD}") / rel_path):
+                    continue
                 m.path = path_replace(
-                    m.path,
+                    Path(m.path),
                     Path("${KIPRJMOD}") / "..",
                     Path("${KIPRJMOD}") / rel_path,
-                )
+                ).as_posix()
 
         def get_footprint_from_identifier(
             self, identifier: str, component: Module
-        ) -> tuple[Path, C_kicad_footprint_file]:
+        ) -> tuple[Path, kicad.footprint.FootprintFile]:
             lib_id, fp_name = identifier.split(":")
             part_path = self.get_part_from_footprint_identifier(identifier, component)
             fp_path = part_path / f"{fp_name}.kicad_mod"
             try:
-                fp = kicad_footprint_file(fp_path)
+                fp = kicad.loads(kicad.footprint.FootprintFile, fp_path)
 
                 # TODO: associate source project with component, so all that's needed
                 # here is to substitute ${KIPRJMOD} + rel_path for ${KIPRJMOD}
@@ -516,8 +520,8 @@ class PartLifecycle:
             transformer: PCB_Transformer,
             component: Module,
             logger: logging.Logger,
-            insert_point: C_xyr | None = None,
-        ) -> tuple[C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint, bool]:
+            insert_point: kicad.pcb.Xyr | None = None,
+        ) -> tuple[kicad.pcb.Footprint, bool]:
             # TODO this is old code taken from PCB_Transformer
             # need to decouple some actions from here
             # e.g insert point is not really at the right place here
@@ -539,44 +543,29 @@ class PartLifecycle:
             # All modules MUST have a designator by this point
             ref = component.get_trait(F.has_designator).get_designator()
 
+            pcb_fp_t = f_fp.try_get_trait(PCB_Transformer.has_linked_kicad_footprint)
+            new_fp = pcb_fp_t is None
+
             ## Update existing footprint
-            if pcb_fp_t := f_fp.try_get_trait(
-                PCB_Transformer.has_linked_kicad_footprint
-            ):
+            if not new_fp:
+                assert pcb_fp_t is not None
                 pcb_fp = pcb_fp_t.get_fp()
 
-                # TODO: this is where I have to implement the footprint override
-                if True or fp_id != pcb_fp.name:
-                    # Copy the data structure so if we later mutate it we don't
-                    # end up w/ those changes everywhere
-                    _, lib_fp = lifecycle.library.get_footprint_from_identifier(
-                        fp_id, component
-                    )
-                    if existing_hash_prop := pcb_fp.propertys.get(
-                        PCB_Transformer._FP_LIB_HASH
-                    ):
-                        existing_hash = existing_hash_prop.value
-                    else:
-                        existing_hash = None
+                # Copy the data structure so if we later mutate it we don't
+                # end up w/ those changes everywhere
+                _, lib_fp = lifecycle.library.get_footprint_from_identifier(
+                    fp_id, component
+                )
 
-                    # If the hash never existed, or it's changed then update the
-                    # footprint
-                    if (
-                        existing_hash is None
-                        or existing_hash
-                        != PCB_Transformer._hash_lib_fp(lib_fp.footprint)
-                    ):
-                        logger.info(
-                            f"Updating `{pcb_fp.name}`->`{fp_id}` on"
-                            f" `{address}` ({ref})",
-                            extra={"markdown": True},
-                        )
-                        # We need to manually override the name because the
-                        # footprint's data could've ultimately come from anywhere
-                        lib_fp.footprint.name = fp_id
-                        transformer.update_footprint_from_lib(pcb_fp, lib_fp.footprint)
-                        transformer.bind_footprint(pcb_fp, component)
-                new_fp = False
+                logger.info(
+                    f"Updating `{pcb_fp.name}`->`{fp_id}` on `{address}` ({ref})",
+                    extra={"markdown": True},
+                )
+                # We need to manually override the name because the
+                # footprint's data could've ultimately come from anywhere
+                lib_fp.footprint.name = fp_id
+                transformer.update_footprint_from_lib(pcb_fp, lib_fp.footprint)
+                transformer.bind_footprint(pcb_fp, component)
 
             ## Add new footprint
             else:
@@ -597,16 +586,20 @@ class PartLifecycle:
                 lib_fp.footprint.name = fp_id
                 pcb_fp = transformer.insert_footprint(lib_fp.footprint, insert_point)
                 transformer.bind_footprint(pcb_fp, component)
-                new_fp = True
 
-            def _get_prop_uuid(name: str) -> str | None:
-                if name in pcb_fp.propertys:
-                    return pcb_fp.propertys[name].uuid
-                return None
+            def _prop_factory(prop_name: str, prop_value: str) -> kicad.pcb.Property:
+                return kicad.pcb.Property(
+                    name=prop_name,
+                    value=prop_value,
+                    at=kicad.pcb.Xyr(x=0, y=0, r=0),
+                    layer="User.9",
+                    uuid=PCB_Transformer.gen_uuid(mark=True),
+                    unlocked=None,
+                    hide=True,
+                    effects=None,
+                )
 
             ## Apply propertys, Reference and atopile_address
-            property_values = {}
-
             # Take any descriptive properties defined on the component
             if c_props_t := component.try_get_trait(F.has_descriptive_properties):
                 for prop_name, prop_value in c_props_t.get_properties().items():
@@ -614,21 +607,29 @@ class PartLifecycle:
                         prop_name,
                         PCB_Transformer.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB(),
                     ):
-                        property_values[prop_name] = prop_value
+                        Property.set_property(
+                            pcb_fp, _prop_factory(prop_name, prop_value)
+                        )
 
             if c_props_t := component.try_get_trait(F.has_datasheet):
-                property_values["Datasheet"] = c_props_t.get_datasheet()
+                Property.set_property(
+                    pcb_fp, _prop_factory("Datasheet", c_props_t.get_datasheet())
+                )
 
-            property_values["Reference"] = ref
+            Property.set_property(pcb_fp, _prop_factory("Reference", ref))
 
             if value_t := component.try_get_trait(F.has_simple_value_representation):
-                property_values["Value"] = value_t.get_value()
+                Property.set_property(
+                    pcb_fp, _prop_factory("Value", value_t.get_value())
+                )
             else:
-                property_values["Value"] = ""
+                Property.set_property(pcb_fp, _prop_factory("Value", ""))
 
-            property_values["atopile_address"] = component.get_full_name()
+            Property.set_property(
+                pcb_fp, _prop_factory("atopile_address", component.get_full_name())
+            )
             if sub_pcb_t := component.try_get_trait(in_sub_pcb):
-                property_values["atopile_subaddresses"] = (
+                subaddresses = (
                     "["
                     + ", ".join(
                         sorted(
@@ -637,33 +638,16 @@ class PartLifecycle:
                     )
                     + "]"
                 )
+                Property.set_property(
+                    pcb_fp,
+                    _prop_factory(
+                        "atopile_subaddresses",
+                        subaddresses,
+                    ),
+                )
 
-            for prop_name, prop_value in property_values.items():
-                ### Get old property value, representing non-existent properties as None
-                ### If the property value has changed, update it
-                if prop := pcb_fp.propertys.get(prop_name):
-                    if prop_value != prop.value:
-                        logger.info(
-                            f"Updating `{prop_name}`->`{prop_value}` on"
-                            f" `{address}` ({ref})",
-                            extra={"markdown": True},
-                        )
-                        pcb_fp.propertys[prop_name].value = prop_value
-
-                ### If it's a new property, add it
-                else:
-                    logger.info(
-                        f"Adding `{prop_name}`=`{prop_value}` to `{address}` ({ref})",
-                        extra={"markdown": True},
-                    )
-                    pcb_fp.propertys[prop_name] = transformer._make_fp_property(
-                        property_name=prop_name,
-                        layer="User.9",
-                        value=prop_value,
-                        uuid=_get_prop_uuid(prop_name)
-                        or PCB_Transformer.gen_uuid(mark=True),
-                    )
-
+            # delete checksum
+            Property.checksum.delete_checksum(pcb_fp)
             return pcb_fp, new_fp
 
     def __init__(self):

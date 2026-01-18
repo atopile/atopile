@@ -56,7 +56,7 @@ class FileWatcher implements vscode.Disposable {
     private last_mtime: number | undefined;
     private checkForChangesAndSave(): FileEventType {
         // TODO handle mTime missing
-        const mtime = fs.statSync(this.file_path).mtimeMs;
+        const mtime = fs.existsSync(this.file_path) ? fs.statSync(this.file_path).mtimeMs : undefined;
         if (mtime === this.last_mtime) {
             return FileEventType.Unchanged;
         }

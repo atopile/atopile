@@ -165,6 +165,15 @@ app.add_typer(kicad_ipc.kicad_ipc_app, name="kicad-ipc", hidden=True)
 
 
 @app.command(hidden=True)
+def internal():
+    import faebryk.core.zig.experiment as pyzig
+
+    print(__file__)
+
+    print(pyzig.get_default_top())
+
+
+@app.command(hidden=True)
 def export_config_schema(pretty: bool = False):
     from atopile.config import ProjectConfig
 

@@ -5,7 +5,6 @@ import logging
 import tempfile
 import time
 from collections.abc import Callable, Generator
-from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -61,15 +60,12 @@ from faebryk.libs.app.pcb import (
 )
 from faebryk.libs.app.picking import load_part_info_from_pcb, save_part_info_to_pcb
 from faebryk.libs.exceptions import accumulate, iter_leaf_exceptions
-from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
+from faebryk.libs.kicad.fileformats import Property, kicad
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
 from faebryk.libs.util import (
     DAG,
     KeyErrorAmbiguous,
-    compare_dataclasses,
     md_table,
-    round_dataclass,
-    sort_dataclass,
 )
 
 logger = logging.getLogger(__name__)
@@ -332,20 +328,11 @@ def update_pcb(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     def _update_layout(
-        pcb_file: C_kicad_pcb_file, original_pcb_file: C_kicad_pcb_file
+        pcb_file: kicad.pcb.PcbFile, original_pcb_file: kicad.pcb.PcbFile
     ) -> None:
-        pcb_original_normalized = round_dataclass(
-            sort_dataclass(original_pcb_file, sort_key=str, inplace=False), precision=2
-        )
-        pcb_normalized = round_dataclass(
-            sort_dataclass(pcb_file, sort_key=str, inplace=False), precision=2
-        )
-
-        pcb_diff = compare_dataclasses(
-            before=pcb_original_normalized,
-            after=pcb_normalized,
-            skip_keys=("uuid", "__atopile_lib_fp_hash__"),
-            require_dataclass_type_match=False,
+        pcb_diff = kicad.compare_without_uuid(
+            original_pcb_file,
+            pcb_file,
         )
 
         if config.build.frozen:
@@ -356,8 +343,8 @@ def update_pcb(
                 updated_path = config.build.paths.output_base.with_suffix(
                     ".updated.kicad_pcb"
                 )
-                original_pcb_file.dumps(original_path)
-                pcb_normalized.dumps(updated_path)
+                kicad.dumps(original_pcb_file, original_path)
+                kicad.dumps(pcb_file, updated_path)
 
                 # TODO: make this a real util
                 def _try_relative(path: Path) -> Path:
@@ -408,6 +395,7 @@ def update_pcb(
                 )
             else:
                 logger.info("No changes to layout. Passed --frozen check.")
+        # TODO this is always false
         elif original_pcb_file == pcb_file:
             logger.info(
                 "No changes to layout. Not writing %s", config.build.paths.layout
@@ -418,12 +406,12 @@ def update_pcb(
             original_fps = {
                 addr: fp
                 for fp in original_pcb_file.kicad_pcb.footprints
-                if (addr := fp.try_get_property("atopile_address"))
+                if (addr := Property.try_get_property(fp.propertys, "atopile_address"))
             }
             current_fps = {
                 addr: fp
                 for fp in pcb_file.kicad_pcb.footprints
-                if (addr := fp.try_get_property("atopile_address"))
+                if (addr := Property.try_get_property(fp.propertys, "atopile_address"))
             }
             new_fps = {k: v for k, v in current_fps.items() if k not in original_fps}
             sync.sync_groups()
@@ -433,19 +421,23 @@ def update_pcb(
                 if {
                     addr
                     for fp, _ in fps
-                    if (addr := fp.try_get_property("atopile_address"))
+                    if (
+                        addr := Property.try_get_property(
+                            fp.propertys, "atopile_address"
+                        )
+                    )
                 }.issubset(new_fps)
             }
 
             for group_name in groups_to_update:
                 sync.pull_group_layout(group_name)
 
-            pcb_file.dumps(config.build.paths.layout)
+            kicad.dumps(pcb_file, config.build.paths.layout)
 
     # attach subaddresses for lifecycle manager to use
     layout.attach_subaddresses_to_modules(app)
 
-    original_pcb = deepcopy(pcb.pcb_file)
+    original_pcb = kicad.copy(pcb.pcb_file)
     pcb.transformer.apply_design()
     pcb.transformer.check_unattached_fps()
 
@@ -524,7 +516,7 @@ def generate_netlist(
 
     netlist_path = config.build.paths.netlist
     netlist_path.parent.mkdir(parents=True, exist_ok=True)
-    kicad_netlist.dumps(netlist_path)
+    kicad.dumps(kicad_netlist, netlist_path)
 
 
 @muster.register(

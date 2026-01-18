@@ -10,6 +10,7 @@ from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+from faebryk.libs.kicad.fileformats import Property
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
 from faebryk.libs.sets.sets import P_Set
@@ -47,7 +48,11 @@ def load_part_info_from_pcb(G: Graph):
 
         part_props = [Properties.lcsc, Properties.manufacturer, Properties.partno]
         fp = trait.get_fp()
-        fp_props = {k.value: v for k in part_props if (v := fp.try_get_property(k))}
+        fp_props = {
+            k.value: v
+            for k in part_props
+            if (v := Property.try_get_property(fp.propertys, k.value))
+        }
         if fp_props.get(Properties.lcsc) == NO_LCSC_DISPLAY:
             del fp_props[Properties.lcsc]
         props = node.get_trait(F.has_descriptive_properties).get_properties()
