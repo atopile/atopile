@@ -1540,12 +1540,14 @@ def _build_all_projects(
     summary_path = manager.generate_summary()
 
     failed = [name for name, code in results.items() if code != 0]
-    _report_build_results(
+    exit_code = _report_build_results(
         summary_path=summary_path,
         failed=failed,
         total=len(build_tasks),
         failed_names=failed[:10],
     )
+    if exit_code != 0:
+        raise typer.Exit(exit_code)
 
 
 @capture("cli:build_start", "cli:build_end")
@@ -1619,6 +1621,14 @@ def build(
             "--verbose",
             "-v",
             help="Show full build output (runs sequentially)",
+        ),
+    ] = False,
+    ui: Annotated[
+        bool,
+        typer.Option(
+            "--ui",
+            help="Open a live build dashboard in your browser",
+            envvar="ATO_UI",
         ),
     ] = False,
 ):
@@ -1733,13 +1743,44 @@ def build(
         keep_designators=keep_designators,
     )
 
-    results = manager.run_until_complete()
+    # Start dashboard server if enabled (and not in verbose mode)
+    dashboard_server = None
+    dashboard_url = None
+    if ui and not verbose:
+        try:
+            import webbrowser
+
+            from atopile.dashboard import is_dashboard_built
+            from atopile.dashboard.server import start_dashboard_server
+
+            if is_dashboard_built():
+                dashboard_server, dashboard_url = start_dashboard_server(
+                    manager._summary_file,
+                    manager.logs_base,
+                )
+                logger.info("Dashboard available at: %s", dashboard_url)
+                webbrowser.open(dashboard_url)
+            else:
+                logger.debug("Dashboard not built, skipping")
+        except Exception as e:
+            logger.debug("Failed to start dashboard: %s", e)
+
+    try:
+        results = manager.run_until_complete()
+    except KeyboardInterrupt:
+        # Handle Ctrl+C during build
+        logger.info("Build interrupted")
+        if dashboard_server:
+            dashboard_server.shutdown()
+        raise typer.Exit(1)
 
     # Generate summary
     summary_path = manager.generate_summary()
 
     failed = [name for name, code in results.items() if code != 0]
-    _report_build_results(
+
+    # Report results (don't exit yet if dashboard is running)
+    build_exit_code = _report_build_results(
         summary_path=summary_path,
         failed=failed,
         total=len(build_names),
@@ -1768,6 +1809,23 @@ def build(
             except Exception as e:
                 logger.warning(f"{e}\nReload pcb manually in KiCAD")
 
+    # Keep dashboard server running after build completes
+    if dashboard_server:
+        logger.info("Dashboard still available at: %s", dashboard_url)
+        logger.info("Press Ctrl+C to stop")
+        try:
+            # Wait until interrupted (cross-platform)
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            logger.info("Shutting down dashboard...")
+        finally:
+            dashboard_server.shutdown()
+
+    # Exit with appropriate code after dashboard is closed
+    if build_exit_code != 0:
+        raise typer.Exit(build_exit_code)
+
 
 def _report_build_results(
     *,
@@ -1775,7 +1833,8 @@ def _report_build_results(
     failed: list[str],
     total: int,
     failed_names: list[str] | None = None,
-) -> None:
+) -> int:
+    """Report build results and return exit code (0 for success, 1 for failure)."""
     if failed:
         from atopile.cli.excepthook import log_discord_banner
 
@@ -1788,10 +1847,11 @@ def _report_build_results(
         remaining = len(failed) - (len(failed_names) if failed_names else 0)
         if remaining > 0:
             logger.error("  ... and %d more", remaining)
-        raise typer.Exit(1)
+        return 1
 
     if total > 1:
         logger.info("Build successful! 🚀 (%d targets)", total)
     else:
         logger.info("Build successful! 🚀")
     logger.info("See summary at: %s", summary_path)
+    return 0
