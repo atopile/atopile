@@ -37,48 +37,6 @@ def create_app(summary_file: Path, logs_base: Path) -> FastAPI:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-    @app.get("/api/logs/{build_name}/{stage}/{log_type}")
-    async def get_log(build_name: str, stage: str, log_type: str):
-        """Return log file content for a specific build stage."""
-        # Build the log file path - look in the summary's log_dir
-        try:
-            if not summary_file.exists():
-                raise HTTPException(status_code=404, detail="No summary file found")
-
-            summary = json.loads(summary_file.read_text())
-
-            # Find the build and get its log_dir
-            log_dir = None
-            for build in summary.get("builds", []):
-                if build.get("name") == build_name or build.get(
-                    "display_name"
-                ) == build_name:
-                    log_dir = build.get("log_dir")
-                    break
-
-            if not log_dir:
-                raise HTTPException(
-                    status_code=404, detail=f"Build not found: {build_name}"
-                )
-
-            # Construct the log file path
-            log_file = Path(log_dir) / f"{stage}.{log_type}.log"
-
-            if not log_file.exists():
-                raise HTTPException(
-                    status_code=404, detail=f"Log file not found: {log_file.name}"
-                )
-
-            return PlainTextResponse(
-                content=log_file.read_text(),
-                media_type="text/plain",
-            )
-
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-
     @app.get("/api/logs/{build_name}/{log_filename}")
     async def get_log_file(build_name: str, log_filename: str):
         """Return a specific log file by filename."""

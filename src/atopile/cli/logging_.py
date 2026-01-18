@@ -44,14 +44,12 @@ import faebryk.libs.logging
 from atopile.compiler import DslRichException
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
 from faebryk.libs.logging import FLOG_FMT
-from faebryk.libs.util import Advancable, ConfigFlag
+from faebryk.libs.util import Advancable
 
 from . import console
 
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
-
-COLOR_LOGS = ConfigFlag("COLOR_LOGS", default=False)
 
 # Use parent's timestamp if running as parallel worker, otherwise generate new one
 NOW = os.environ.get("ATO_BUILD_TIMESTAMP") or datetime.now().strftime(
@@ -497,8 +495,9 @@ class JSONLinesFileHandler(logging.Handler):
                     entry["ato_traceback"] = ato_tb
 
                 # Add Python traceback for debugging
+                exc_type, exc_val, exc_tb = record.exc_info  # type: ignore[misc]
                 entry["exc_info"] = "".join(
-                    traceback.format_exception(*record.exc_info)
+                    traceback.format_exception(exc_type, exc_val, exc_tb)
                 )
             else:
                 # Regular log message
@@ -506,8 +505,9 @@ class JSONLinesFileHandler(logging.Handler):
 
                 # Add Python traceback if present
                 if record.exc_info and record.exc_info[1] is not None:
+                    exc_type, exc_val, exc_tb = record.exc_info
                     entry["exc_info"] = "".join(
-                        traceback.format_exception(*record.exc_info)
+                        traceback.format_exception(exc_type, exc_val, exc_tb)
                     )
 
             self._file.write(json.dumps(entry) + "\n")
@@ -609,13 +609,6 @@ def log_exceptions(log_sink: io.StringIO):
 
 
 class LoggingStage(Advancable):
-    _LOG_LEVELS = {
-        logging.DEBUG: "debug",
-        logging.INFO: "info",
-        logging.WARNING: "warning",
-        logging.ERROR: "error",
-    }
-
     # Timing file name constant
     TIMING_FILE = "stage_timings.json"
 
@@ -954,20 +947,17 @@ class LoggingStage(Advancable):
 
         self._file_handlers = []
 
-        for level, level_name in self._LOG_LEVELS.items():
-            log_file = log_dir / f"{self._sanitized_name}.{level_name}.jsonl"
+        # Single log file per stage containing all levels
+        # Frontend can filter by level client-side
+        log_file = log_dir / f"{self._sanitized_name}.jsonl"
+        file_handler = JSONLinesFileHandler(log_file, level=logging.DEBUG)
+        self._file_handlers.append(file_handler)
+        root_logger.addHandler(file_handler)
 
-            file_handler = JSONLinesFileHandler(log_file, level=level)
-            self._file_handlers.append(file_handler)
-            root_logger.addHandler(file_handler)
-
-            if level_name == "info":
-                try:
-                    info_log_path = log_file.relative_to(Path.cwd())
-                except ValueError:
-                    info_log_path = log_file
-
-                self._info_log_path = info_log_path
+        try:
+            self._info_log_path = log_file.relative_to(Path.cwd())
+        except ValueError:
+            self._info_log_path = log_file
 
     def _restore_logging(self) -> None:
         if not self._log_handler and not self._file_handlers:

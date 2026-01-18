@@ -319,11 +319,11 @@ class BuildProcess:
                     continue
 
     def _stage_info_log_path(self, stage_name: str) -> Path | None:
-        """Return the info log path for a stage, if available."""
+        """Return the log path for a stage, if available."""
         if not self.log_dir:
             return None
         sanitized = pathvalidate.sanitize_filename(stage_name)
-        return self.log_dir / f"{sanitized}.info.jsonl"
+        return self.log_dir / f"{sanitized}.jsonl"
 
     def set_stage_printer(
         self, printer: Callable[[StageCompleteEvent, Path | None], None] | None
@@ -1126,18 +1126,15 @@ class ParallelBuildManager:
         if bp.log_dir and bp.log_dir.exists():
             data["log_dir"] = str(bp.log_dir)
 
-            # Collect all log files grouped by stage and log type
-            log_files_by_stage: dict[str, dict[str, str]] = {}
+            # Collect log files by stage name
+            # New format: {stage}.jsonl (single file containing all levels)
+            log_files_by_stage: dict[str, str] = {}
             for log_file in sorted(bp.log_dir.glob("*.jsonl")):
-                parts = log_file.stem.split(".")
-                if len(parts) >= 2:
-                    stage = parts[0]
-                    log_type = parts[1] if len(parts) >= 2 else "log"
-                    if stage not in log_files_by_stage:
-                        log_files_by_stage[stage] = {}
-                    log_files_by_stage[stage][log_type] = str(log_file)
+                # Extract stage name from filename (e.g., "synthesis" from "synthesis.jsonl")
+                stage = log_file.stem
+                log_files_by_stage[stage] = str(log_file)
 
-            # Add timing data from stage history with associated log files
+            # Add timing data from stage history with associated log file
             if bp._stage_history:
                 data["stages"] = [
                     {
@@ -1146,7 +1143,7 @@ class ParallelBuildManager:
                         "status": entry.status,
                         "warnings": entry.warnings,
                         "errors": entry.errors,
-                        "log_files": log_files_by_stage.get(entry.log_name, {}),
+                        "log_file": log_files_by_stage.get(entry.log_name),
                     }
                     for entry in bp._stage_history
                 ]

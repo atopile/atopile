@@ -23,20 +23,14 @@ export interface LogEntry {
   exc_info?: string;
 }
 
-export interface LogFiles {
-  info?: string;
-  error?: string;
-  debug?: string;
-  [key: string]: string | undefined;
-}
-
 export interface BuildStage {
   name: string;
   elapsed_seconds: number;
   status: StageStatus;
   warnings: number;
   errors: number;
-  log_files: LogFiles;
+  /** Single log file containing all levels (e.g., "synthesis.jsonl") */
+  log_file?: string;
 }
 
 export interface Build {

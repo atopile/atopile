@@ -37,11 +37,9 @@ export function StageTable({ build }: StageTableProps) {
 
   const handleStageClick = (stage: BuildStage) => {
     selectStage(stage.name);
-    // Auto-load the info log if available
-    if (stage.log_files.info) {
-      fetchLog(build.name, stage, 'info');
-    } else if (stage.log_files.error) {
-      fetchLog(build.name, stage, 'error');
+    // Auto-load the log file if available
+    if (stage.log_file) {
+      fetchLog(build.name, stage);
     }
   };
 
@@ -53,7 +51,7 @@ export function StageTable({ build }: StageTableProps) {
       <div className="divide-y divide-panel-border">
         {stages.map((stage, index) => {
           const isSelected = selectedStage === stage.name;
-          const hasLogs = Object.keys(stage.log_files).length > 0;
+          const hasLogs = !!stage.log_file;
 
           return (
             <button

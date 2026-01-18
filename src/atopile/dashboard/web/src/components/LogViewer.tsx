@@ -1,5 +1,6 @@
 /**
  * Log viewer component for displaying structured JSON Lines logs.
+ * Features: individually toggleable level filters, expandable tracebacks, auto-scroll.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -10,8 +11,6 @@ interface LogViewerProps {
   buildName: string;
   stage: BuildStage;
 }
-
-type LogType = 'info' | 'error' | 'debug';
 
 // Color classes for each log level
 const levelColors: Record<LogLevel, string> = {
@@ -29,6 +28,15 @@ const levelBgColors: Record<LogLevel, string> = {
   WARNING: 'bg-warning/10',
   ERROR: 'bg-error/10',
   ALERT: 'bg-accent/10',
+};
+
+// Level badge styles
+const levelBadgeColors: Record<LogLevel, string> = {
+  DEBUG: 'bg-text-muted/20 text-text-muted',
+  INFO: 'bg-blue-500/20 text-blue-400',
+  WARNING: 'bg-warning/20 text-warning',
+  ERROR: 'bg-error/20 text-error',
+  ALERT: 'bg-accent/20 text-accent',
 };
 
 function formatTimestamp(isoString: string): string {
@@ -93,88 +101,91 @@ function LogEntryRow({ entry }: { entry: LogEntry }) {
   return (
     <div className={`${levelBgColors[entry.level]} border-b border-panel-border/30 last:border-0`}>
       {/* Main log line */}
-      <div className="flex gap-2 py-1 px-2">
+      <div className="flex gap-2 py-1.5 px-3 items-start">
         {/* Timestamp */}
-        <span className="text-text-muted shrink-0 w-20">
+        <span className="text-text-muted shrink-0 font-mono text-xs mt-0.5">
           {formatTimestamp(entry.timestamp)}
         </span>
 
         {/* Level badge */}
-        <span className={`shrink-0 w-16 font-medium ${levelColors[entry.level]}`}>
+        <span className={`shrink-0 px-1.5 py-0.5 rounded text-xs font-medium ${levelBadgeColors[entry.level]}`}>
           {entry.level}
         </span>
 
-        {/* Message */}
-        <span className={`flex-1 ${levelColors[entry.level]}`}>
-          {entry.message}
-        </span>
-      </div>
+        {/* Message and expandable sections */}
+        <div className="flex-1 min-w-0">
+          <span className={`${levelColors[entry.level]} break-words`}>
+            {entry.message}
+          </span>
 
-      {/* Expandable section toggles */}
-      {hasSections && (
-        <div className="flex gap-3 px-2 pb-1 ml-36">
-          {sections.map((section) => (
-            <button
-              key={section.label}
-              onClick={() => toggleSection(section.label)}
-              className={`text-xs ${section.color} hover:underline flex items-center gap-1`}
-            >
-              <span>{expandedSections.has(section.label) ? '▼' : '▶'}</span>
-              <span>{section.label}</span>
-            </button>
-          ))}
+          {/* Expandable section toggles */}
+          {hasSections && (
+            <div className="flex gap-3 mt-1">
+              {sections.map((section) => (
+                <button
+                  key={section.label}
+                  onClick={() => toggleSection(section.label)}
+                  className={`text-xs ${section.color} hover:underline flex items-center gap-1 opacity-70 hover:opacity-100`}
+                >
+                  <span className="text-[10px]">{expandedSections.has(section.label) ? '▼' : '▶'}</span>
+                  <span>{section.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Expanded sections */}
+          {sections.map(
+            (section) =>
+              expandedSections.has(section.label) && (
+                <pre
+                  key={section.label}
+                  className={`mt-2 p-2 text-xs ${section.color} bg-panel-bg/50 border-l-2 ${section.borderColor} overflow-x-auto whitespace-pre-wrap rounded-r`}
+                >
+                  {section.content}
+                </pre>
+              )
+          )}
         </div>
-      )}
-
-      {/* Expanded sections */}
-      {sections.map(
-        (section) =>
-          expandedSections.has(section.label) && (
-            <pre
-              key={section.label}
-              className={`px-2 py-2 mx-2 mb-2 text-xs ${section.color} bg-panel-bg/50 border-l-2 ${section.borderColor} overflow-x-auto whitespace-pre-wrap`}
-            >
-              {section.content}
-            </pre>
-          )
-      )}
+      </div>
     </div>
   );
 }
 
+const ALL_LEVELS: LogLevel[] = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'ALERT'];
+
 export function LogViewer({ buildName, stage }: LogViewerProps) {
-  const { logEntries, logLoading, logError, fetchLog } = useBuildStore();
-  const [activeTab, setActiveTab] = useState<LogType>('info');
+  const { logLoading, logError, fetchLog, enabledLevels, toggleLevel, getFilteredLogEntries } = useBuildStore();
   const logRef = useRef<HTMLDivElement>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
 
-  // Available log types for this stage
-  const availableLogs: LogType[] = [];
-  if (stage.log_files.info) availableLogs.push('info');
-  if (stage.log_files.error) availableLogs.push('error');
-  if (stage.log_files.debug) availableLogs.push('debug');
-
-  // Set default tab based on available logs
+  // Fetch log when stage changes
   useEffect(() => {
-    if (availableLogs.length > 0 && !availableLogs.includes(activeTab)) {
-      setActiveTab(availableLogs[0]);
+    if (stage.log_file) {
+      fetchLog(buildName, stage);
     }
-  }, [stage.name]);
+  }, [buildName, stage.name, stage.log_file, fetchLog]);
 
-  // Fetch log when tab changes
-  useEffect(() => {
-    if (stage.log_files[activeTab]) {
-      fetchLog(buildName, stage, activeTab);
-    }
-  }, [buildName, stage.name, activeTab, fetchLog]);
+  // Get filtered entries
+  const filteredEntries = getFilteredLogEntries();
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom when new entries arrive (if enabled)
   useEffect(() => {
-    if (logRef.current) {
+    if (autoScroll && logRef.current) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
-  }, [logEntries]);
+  }, [filteredEntries, autoScroll]);
 
-  if (availableLogs.length === 0) {
+  // Detect manual scroll to disable auto-scroll
+  const handleScroll = () => {
+    if (!logRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = logRef.current;
+    // If user scrolled up more than 100px from bottom, disable auto-scroll
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    setAutoScroll(isNearBottom);
+  };
+
+  if (!stage.log_file) {
     return (
       <div className="bg-panel-bg border border-panel-border rounded p-4">
         <p className="text-text-muted text-sm">No logs available for this stage.</p>
@@ -182,76 +193,138 @@ export function LogViewer({ buildName, stage }: LogViewerProps) {
     );
   }
 
-  const tabColors: Record<LogType, string> = {
-    info: 'text-text-primary',
-    error: 'text-error',
-    debug: 'text-text-muted',
-  };
-
-  // Get current log file path
-  const currentLogPath = stage.log_files[activeTab];
+  // Get current log file path for display
+  const logFilename = stage.log_file.split('/').pop() || stage.log_file;
 
   // Copy log path to clipboard
   const copyLogPath = () => {
-    if (currentLogPath) {
-      navigator.clipboard.writeText(currentLogPath);
+    if (stage.log_file) {
+      navigator.clipboard.writeText(stage.log_file);
     }
+  };
+
+  // Count entries by level for the filter badges
+  const allEntries = useBuildStore.getState().logEntries || [];
+  const levelCounts: Record<LogLevel, number> = {
+    DEBUG: allEntries.filter(e => e.level === 'DEBUG').length,
+    INFO: allEntries.filter(e => e.level === 'INFO').length,
+    WARNING: allEntries.filter(e => e.level === 'WARNING').length,
+    ERROR: allEntries.filter(e => e.level === 'ERROR').length,
+    ALERT: allEntries.filter(e => e.level === 'ALERT').length,
+  };
+
+  // Toggle button colors based on level and enabled state
+  const getToggleClasses = (level: LogLevel, isEnabled: boolean, count: number): string => {
+    if (count === 0) {
+      return 'bg-panel-border/30 text-text-muted/50 cursor-not-allowed';
+    }
+
+    const colorMap: Record<LogLevel, { on: string; off: string }> = {
+      DEBUG: {
+        on: 'bg-text-muted/30 text-text-primary border-text-muted/50',
+        off: 'bg-transparent text-text-muted/50 border-text-muted/30 hover:border-text-muted/50',
+      },
+      INFO: {
+        on: 'bg-blue-500/20 text-blue-300 border-blue-500/50',
+        off: 'bg-transparent text-blue-400/50 border-blue-500/30 hover:border-blue-500/50',
+      },
+      WARNING: {
+        on: 'bg-warning/20 text-warning border-warning/50',
+        off: 'bg-transparent text-warning/50 border-warning/30 hover:border-warning/50',
+      },
+      ERROR: {
+        on: 'bg-error/20 text-error border-error/50',
+        off: 'bg-transparent text-error/50 border-error/30 hover:border-error/50',
+      },
+      ALERT: {
+        on: 'bg-accent/20 text-accent border-accent/50',
+        off: 'bg-transparent text-accent/50 border-accent/30 hover:border-accent/50',
+      },
+    };
+
+    return isEnabled ? colorMap[level].on : colorMap[level].off;
   };
 
   return (
     <div className="bg-panel-bg border border-panel-border rounded overflow-hidden flex flex-col h-full">
-      {/* Tabs */}
-      <div className="flex border-b border-panel-border">
-        {availableLogs.map((logType) => (
-          <button
-            key={logType}
-            onClick={() => setActiveTab(logType)}
-            className={`
-              px-4 py-2 text-sm font-medium transition-colors
-              ${activeTab === logType
-                ? `${tabColors[logType]} border-b-2 border-accent bg-accent/10`
-                : 'text-text-muted hover:text-text-primary'
-              }
-            `}
-          >
-            {logType.charAt(0).toUpperCase() + logType.slice(1)}
-          </button>
-        ))}
-        <div className="flex-1" />
-        <div className="flex items-center gap-2 px-4 py-2 text-xs text-text-muted">
-          <span>{stage.name}</span>
-          {currentLogPath && (
-            <>
-              <span className="text-panel-border">|</span>
+      {/* Header with filter toggles and info */}
+      <div className="flex items-center justify-between border-b border-panel-border px-3 py-2">
+        {/* Level filter toggles */}
+        <div className="flex gap-1">
+          {ALL_LEVELS.map((level) => {
+            const count = levelCounts[level];
+            const isEnabled = enabledLevels.has(level);
+
+            return (
               <button
-                onClick={copyLogPath}
-                className="hover:text-text-primary transition-colors flex items-center gap-1"
-                title={`Click to copy: ${currentLogPath}`}
+                key={level}
+                onClick={() => count > 0 && toggleLevel(level)}
+                disabled={count === 0}
+                className={`px-2 py-1 text-xs rounded border transition-colors flex items-center gap-1.5 ${getToggleClasses(level, isEnabled, count)}`}
+                title={count === 0 ? `No ${level} entries` : `Toggle ${level} logs`}
               >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                <span className="font-mono">{currentLogPath.split('/').pop()}</span>
+                <span>{level}</span>
+                <span className="opacity-60">({count})</span>
               </button>
-            </>
-          )}
+            );
+          })}
+        </div>
+
+        {/* Stage info and copy button */}
+        <div className="flex items-center gap-2 text-xs text-text-muted">
+          <span>{stage.name}</span>
+          <span className="text-panel-border">|</span>
+          <button
+            onClick={copyLogPath}
+            className="hover:text-text-primary transition-colors flex items-center gap-1"
+            title={`Click to copy: ${stage.log_file}`}
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            <span className="font-mono">{logFilename}</span>
+          </button>
+
+          {/* Auto-scroll indicator */}
+          <span className="text-panel-border">|</span>
+          <button
+            onClick={() => setAutoScroll(!autoScroll)}
+            className={`flex items-center gap-1 transition-colors ${autoScroll ? 'text-accent' : 'text-text-muted hover:text-text-primary'}`}
+            title={autoScroll ? 'Auto-scroll enabled' : 'Auto-scroll disabled'}
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+          </button>
         </div>
       </div>
 
       {/* Log content */}
-      <div ref={logRef} className="flex-1 overflow-auto min-h-0">
+      <div
+        ref={logRef}
+        className="flex-1 overflow-auto min-h-0"
+        onScroll={handleScroll}
+      >
         {logLoading ? (
-          <div className="p-4 text-text-muted text-sm">Loading...</div>
+          <div className="p-4 text-text-muted text-sm flex items-center gap-2">
+            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            Loading logs...
+          </div>
         ) : logError ? (
           <div className="p-4 text-error text-sm">{logError}</div>
-        ) : logEntries && logEntries.length > 0 ? (
-          <div className="text-xs font-mono">
-            {logEntries.map((entry, idx) => (
+        ) : filteredEntries.length > 0 ? (
+          <div className="text-sm font-mono">
+            {filteredEntries.map((entry, idx) => (
               <LogEntryRow key={idx} entry={entry} />
             ))}
           </div>
         ) : (
-          <div className="p-4 text-text-muted text-sm">No log entries</div>
+          <div className="p-4 text-text-muted text-sm">
+            {allEntries.length === 0 ? 'No log entries' : 'No entries match the current filters'}
+          </div>
         )}
       </div>
     </div>

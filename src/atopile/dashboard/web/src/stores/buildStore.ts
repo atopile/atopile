@@ -5,7 +5,10 @@
  */
 
 import { create } from 'zustand';
-import type { BuildSummary, Build, BuildStage, LogEntry } from '../types/build';
+import type { BuildSummary, Build, BuildStage, LogEntry, LogLevel } from '../types/build';
+
+// Set of enabled log levels (DEBUG off by default)
+type EnabledLevels = Set<LogLevel>;
 
 interface BuildState {
   // Data
@@ -18,10 +21,13 @@ interface BuildState {
   selectedBuild: string | null;
   selectedStage: string | null;
 
-  // Log content (structured JSON Lines)
+  // Log content (all entries, frontend filters by level)
   logEntries: LogEntry[] | null;
   logLoading: boolean;
   logError: string | null;
+
+  // Level filters (individually selectable)
+  enabledLevels: EnabledLevels;
 
   // Polling
   isPolling: boolean;
@@ -31,16 +37,21 @@ interface BuildState {
   fetchSummary: () => Promise<void>;
   selectBuild: (buildName: string | null) => void;
   selectStage: (stageName: string | null) => void;
-  fetchLog: (buildName: string, stage: BuildStage, logType: string) => Promise<void>;
+  fetchLog: (buildName: string, stage: BuildStage) => Promise<void>;
+  toggleLevel: (level: LogLevel) => void;
   startPolling: (interval?: number) => void;
   stopPolling: () => void;
 
   // Helpers
   getSelectedBuild: () => Build | null;
   getSelectedStage: () => BuildStage | null;
+  getFilteredLogEntries: () => LogEntry[];
 }
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+// Default: all levels enabled except DEBUG
+const DEFAULT_ENABLED_LEVELS: EnabledLevels = new Set(['INFO', 'WARNING', 'ERROR', 'ALERT']);
 
 export const useBuildStore = create<BuildState>((set, get) => ({
   summary: null,
@@ -54,6 +65,8 @@ export const useBuildStore = create<BuildState>((set, get) => ({
   logEntries: null,
   logLoading: false,
   logError: null,
+
+  enabledLevels: new Set(DEFAULT_ENABLED_LEVELS),
 
   isPolling: false,
   pollInterval: 500,
@@ -102,14 +115,14 @@ export const useBuildStore = create<BuildState>((set, get) => ({
     set({ selectedStage: stageName, logEntries: null });
   },
 
-  fetchLog: async (buildName: string, stage: BuildStage, logType: string) => {
+  fetchLog: async (buildName: string, stage: BuildStage) => {
     set({ logLoading: true, logError: null });
 
     try {
-      // Get the log filename from the stage's log_files
-      const logFile = stage.log_files[logType];
+      // Get the log file path from the stage
+      const logFile = stage.log_file;
       if (!logFile) {
-        throw new Error(`No ${logType} log available for this stage`);
+        throw new Error('No log file available for this stage');
       }
 
       // Extract just the filename from the full path
@@ -153,6 +166,17 @@ export const useBuildStore = create<BuildState>((set, get) => ({
     }
   },
 
+  toggleLevel: (level: LogLevel) => {
+    const { enabledLevels } = get();
+    const newLevels = new Set(enabledLevels);
+    if (newLevels.has(level)) {
+      newLevels.delete(level);
+    } else {
+      newLevels.add(level);
+    }
+    set({ enabledLevels: newLevels });
+  },
+
   startPolling: (interval?: number) => {
     const { fetchSummary, pollInterval } = get();
 
@@ -192,5 +216,11 @@ export const useBuildStore = create<BuildState>((set, get) => ({
     const build = get().getSelectedBuild();
     if (!build || !selectedStage || !build.stages) return null;
     return build.stages.find(s => s.name === selectedStage) ?? null;
+  },
+
+  getFilteredLogEntries: () => {
+    const { logEntries, enabledLevels } = get();
+    if (!logEntries) return [];
+    return logEntries.filter(entry => enabledLevels.has(entry.level));
   },
 }));
