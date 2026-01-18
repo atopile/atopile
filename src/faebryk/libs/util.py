@@ -953,7 +953,7 @@ class _ConfigFlagBase[T]:
         else:
             try:
                 res = self._convert(raw_val)
-            except ValueError:
+            except (ValueError, KeyError):
                 print(
                     f"Invalid environment variable for "
                     f"{self.name}: {raw_val}. Check your environment variables!"
@@ -3295,3 +3295,63 @@ class OrderedSet[T: Hashable](collections.abc.MutableSet[T]):
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({list(self._data)})"
+
+
+class TestEnvironmentVariables:
+    def test_environment_variable_parsing(self):
+        # create temp env vars for every type
+        # check if they can be parsed
+        def assert_parses(flag_cls, env_name: str, raw_value: str, expected) -> None:
+            os.environ[f"FBRK_{env_name}"] = raw_value
+            assert flag_cls(env_name).get() == expected
+
+        for raw_value, expected in [
+            ("True", True),
+            ("False", False),
+            ("1", True),
+            ("0", False),
+        ]:
+            assert_parses(ConfigFlag, "TEST_BOOL", raw_value, expected)
+
+        for raw_value, expected in [
+            ("1", 1),
+            ("0", 0),
+            ("1.0", 1),
+            ("0.0", 0),
+        ]:
+            assert_parses(ConfigFlagInt, "TEST_INT", raw_value, expected)
+
+        for raw_value in ["1", "0", "1.0", "0.0"]:
+            assert_parses(ConfigFlagFloat, "TEST_FLOAT", raw_value, float(raw_value))
+
+        for raw_value in ["True", "False", "1", "0", "1.0", "0.0"]:
+            assert_parses(ConfigFlagString, "TEST_STRING", raw_value, raw_value)
+
+    def test_environment_variable_parsing_enum(self):
+        class TestEnum(StrEnum):
+            A = "a"
+            B = "b"
+            C = "c"
+
+        os.environ["FBRK_TEST_ENUM"] = "A"
+        assert (
+            ConfigFlagEnum(name="TEST_ENUM", enum=TestEnum, default=TestEnum.B).get()
+            == TestEnum.A
+        )
+
+    def test_environment_variable_parsing_enum_invalid(self, capsys):
+        class TestEnum(StrEnum):
+            A = "a"
+            B = "b"
+            C = "c"
+
+        os.environ["FBRK_TEST_ENUM"] = "D"
+        assert (
+            ConfigFlagEnum(name="TEST_ENUM", enum=TestEnum, default=TestEnum.B).get()
+            == TestEnum.B
+        )
+        # check warning message
+        assert (
+            "Invalid environment variable for FBRK_TEST_ENUM: D. Check your "
+            "environment variables!" in capsys.readouterr().out
+        )
