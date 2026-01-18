@@ -103,6 +103,11 @@ def load_part_info_from_pcb(pcb: kicad.pcb.KicadPcb, tg: fbrk.TypeGraph):
                 continue
 
             param_value = json.loads(prop.value)
+            if param_value is None:
+                logger.debug(
+                    f"Skipping {param_name} in {node.get_name()}: value is null"
+                )
+                continue
             param_lit = F.Literals.is_literal.deserialize(
                 param_value, g=node.g, tg=node.tg
             )
