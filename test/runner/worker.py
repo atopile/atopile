@@ -38,10 +38,10 @@ def run_pytest(nodeid: str):
             "-vv",
             "-p",
             "test.runner.plugin",
-            # Ensure co-located tests in `src/` are imported by package name, not by path.
+            # Ensure co-located tests in `src/` are imported by package name,
+            # not by path.
             "-p",
             "atopile.pytest_import_by_name",
-            "-q",
             "--no-header",
             "--no-summary",
             "--disable-warnings",
