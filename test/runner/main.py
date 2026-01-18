@@ -2162,7 +2162,10 @@ class TestAggregator:
                 b = int(161 + (168 - 161) * pct)
                 memory_style = f"background-color: rgba({r}, {g}, {b}, 0.25)"
 
-            memory_cell = f'<td style="{memory_style}" data-value="{memory_val}">{memory_str}</td>'
+            memory_cell = (
+                f'<td style="{memory_style}" data-value="{memory_val}"'
+                f">{memory_str}</td>"
+            )
 
             peak_val = t["memory_peak_mb"]
             peak_str = f"{peak_val:.2f} MB" if peak_val > 0 else "-"
@@ -2878,7 +2881,9 @@ class ReportTimer:
 
 
 def get_free_port(start_port: int = 50000, max_attempts: int = 100) -> int:
-    """Find a free port starting from start_port, incrementing until one is available."""
+    """
+    Find a free port starting from start_port, incrementing until one is available.
+    """
     for port in range(start_port, start_port + max_attempts):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -2906,6 +2911,7 @@ def collect_tests(pytest_args: list[str]) -> tuple[list[str], dict[str, str]]:
         "--collect-only",
         "-q",
         "--no-header",
+        "--continue-on-collection-errors",
         # "--no-summary",
         # Ensure co-located tests in `src/` are imported by package name, not by path.
         "-p",
