@@ -9,9 +9,10 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
-from typing import IO, Annotated, Callable
+from typing import Annotated, Callable
 
 import pathvalidate
 import typer
@@ -21,8 +22,67 @@ from atopile.telemetry import capture
 
 logger = logging.getLogger(__name__)
 
-# Default worker count is CPU count
+# Constants
 DEFAULT_WORKER_COUNT = os.cpu_count() or 4
+
+
+class Status(str, Enum):
+    """Build status states."""
+
+    QUEUED = "queued"
+    BUILDING = "building"
+    SUCCESS = "success"
+    WARNING = "warning"
+    FAILED = "failed"
+
+
+@dataclass
+class ProjectState:
+    """Aggregate state for a project containing multiple builds."""
+
+    builds: list[BuildProcess] = field(default_factory=list)
+    status: Status = Status.QUEUED
+    completed: int = 0
+    failed: int = 0
+    warnings: int = 0
+    building: int = 0
+    queued: int = 0
+    total: int = 0
+    current_build: str | None = None
+    current_stage: str | None = None
+    elapsed: float = 0.0
+    log_dir: Path | None = None
+
+
+def _status_rich_icon(status: Status | str) -> str:
+    """Get Rich-formatted icon for status (for terminal display)."""
+    icon_map = {
+        Status.QUEUED: "[dim]○[/dim]",
+        Status.BUILDING: "[blue]●[/blue]",
+        Status.SUCCESS: "[green]✓[/green]",
+        Status.WARNING: "[yellow]⚠[/yellow]",
+        Status.FAILED: "[red]✗[/red]",
+    }
+    if isinstance(status, str):
+        status = Status(status)
+    return icon_map.get(status, "[dim]○[/dim]")
+
+
+def _status_rich_text(status: Status | str, text: str) -> str:
+    """Format text with Rich color markup for status."""
+    color_map = {
+        Status.QUEUED: "dim",
+        Status.BUILDING: "blue",
+        Status.SUCCESS: "green",
+        Status.WARNING: "yellow",
+        Status.FAILED: "red",
+    }
+    if isinstance(status, str):
+        status = Status(status)
+    color = color_map.get(status, "")
+    return f"[{color}]{text}[/{color}]" if color else text
+
+
 
 
 def discover_projects(root: Path) -> list[Path]:
@@ -114,7 +174,6 @@ class BuildProcess:
         self.keep_net_names = keep_net_names
         self.keep_designators = keep_designators
         self.process: subprocess.Popen | None = None
-        self.log_file: Path | None = None
         self.status_file: Path | None = None
         self.start_time: float = 0.0
         self.end_time: float = 0.0
@@ -122,7 +181,6 @@ class BuildProcess:
         self.current_stage: str = "Queued"
         self.warnings: int = 0
         self.errors: int = 0
-        self._log_handle: IO | None = None
         self._error_reported: bool = False  # Track if error was already printed
         self._stage_history: list[StageEntry] = []
         self._stage_start_time: float = 0.0
@@ -148,7 +206,6 @@ class BuildProcess:
         """
         # Create log directory for this build
         self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.log_file = self.log_dir / "build.log"
         self.status_file = self.log_dir / "status.txt"
 
         # Initialize status file
@@ -199,7 +256,6 @@ class BuildProcess:
         self.start_time = time.time()
 
         if stream_output:
-            self._log_handle = open(self.log_file, "w")
             self._stream_console = stream_console
             self._buffer_stream_output = error_only_console is not None
             self.process = subprocess.Popen(
@@ -212,13 +268,12 @@ class BuildProcess:
             )
             self._start_output_stream()
         else:
-            # Capture output to log file only (parent handles display)
-            self._log_handle = open(self.log_file, "w")
+            # No output capture needed - logs are written per-stage
             self.process = subprocess.Popen(
                 cmd,
                 cwd=self.project_root,
-                stdout=self._log_handle,
-                stderr=subprocess.STDOUT,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 env=env,
                 pass_fds=self._get_pass_fds(),
             )
@@ -241,12 +296,7 @@ class BuildProcess:
             if self._buffer_stream_output:
                 self._stop_output_stream()
                 self._flush_stream_buffer()
-            if self._log_handle:
-                self._log_handle.close()
-                self._log_handle = None
-            self._parse_log_for_stats()
-            # Write timing data from pipe-accumulated stage history
-            self._write_timing_json()
+            self._count_log_issues()
         return ret
 
     def wait(self) -> int:
@@ -269,12 +319,7 @@ class BuildProcess:
         self._stop_output_stream()
         if self._buffer_stream_output:
             self._flush_stream_buffer()
-        if self._log_handle:
-            self._log_handle.close()
-            self._log_handle = None
-        self._parse_log_for_stats()
-        # Write timing data from pipe-accumulated stage history
-        self._write_timing_json()
+        self._count_log_issues()
         return ret
 
     def _read_status(self) -> None:
@@ -434,153 +479,65 @@ class BuildProcess:
 
         return "\n".join(lines)
 
-    def _parse_log_for_stats(self) -> None:
-        """Parse log file for warnings/errors count."""
-        if self.log_file and self.log_file.exists():
-            try:
-                content = self.log_file.read_text()
-                # Count warnings and errors from log
-                self.warnings = content.lower().count("warning")
-                self.errors = content.lower().count("error")
-            except Exception:
-                pass
-
-    def _write_timing_json(self) -> None:
-        """Write stage timing data from pipe-accumulated history to JSON file."""
-        import json
-
-        if not self.log_dir or not self._stage_history:
+    def _count_log_issues(self) -> None:
+        """Count warnings and errors from per-stage log files."""
+        if not self.log_dir or not self.log_dir.exists():
             return
 
-        from atopile.cli.logging_ import LoggingStage
-
-        timing_file = self.log_dir / LoggingStage.TIMING_FILE
-
-        # Convert StageEntry objects to JSON format
-        timing_data = {
-            "stages": [
-                {
-                    "name": entry.name,
-                    "description": entry.name,  # Same as name for display
-                    "elapsed_seconds": round(entry.duration, 3),
-                    "status": entry.status,
-                    "warnings": entry.warnings,
-                    "errors": entry.errors,
-                }
-                for entry in self._stage_history
-            ]
-        }
-
         try:
-            timing_file.write_text(json.dumps(timing_data, indent=2))
-        except Exception:
-            pass  # Don't fail the build if timing persistence fails
-
-    def get_error_message(self) -> str | None:
-        """Extract a brief error summary for inline display."""
-        if not self.log_file or not self.log_file.exists():
-            return None
-
-        try:
-            content = self.log_file.read_text()
-            lines = content.strip().split("\n")
-
-            # Skip patterns that are just generic footers
-            skip_patterns = [
-                "unfortunately errors",
-                "if you need a hand",
-                "discord",
-            ]
-
-            def is_useful_line(line: str) -> bool:
-                line_lower = line.lower()
-                return not any(skip in line_lower for skip in skip_patterns)
-
-            # First pass: look for lines starting with "error:" (most specific)
-            for line in lines:
-                line = line.strip()
-                if line.lower().startswith("error:") and is_useful_line(line):
-                    if len(line) > 80:
-                        line = line[:77] + "..."
-                    return line
-
-            # Second pass: look for "ERROR" log level and extract the message
-            for i, line in enumerate(lines):
-                if "ERROR" in line and is_useful_line(line):
-                    # Extract the error title (text after ERROR)
-                    parts = line.split("ERROR", 1)
-                    if len(parts) > 1:
-                        msg = parts[1].strip()
-                        if msg and is_useful_line(msg):
-                            if len(msg) > 80:
-                                msg = msg[:77] + "..."
-                            return msg
-
-            # Final fallback
-            for line in lines:
-                line = line.strip()
-                if line and not line.startswith("[") and is_useful_line(line):
-                    if len(line) > 80:
-                        line = line[:77] + "..."
-                    return line
-
+            warnings = 0
+            errors = 0
+            for log_file in self.log_dir.glob("*.log"):
+                content = log_file.read_text().lower()
+                warnings += content.count("warning")
+                errors += content.count("error")
+            self.warnings = warnings
+            self.errors = errors
         except Exception:
             pass
 
-        return "Build failed (check logs)"
+    def _extract_from_log(self, detailed: bool = False) -> str | list[str]:
+        """Extract error information from per-stage error log files.
+
+        Args:
+            detailed: If True, return list. If False, return string summary.
+        """
+        if not self.log_dir or not self.log_dir.exists():
+            return [] if detailed else "Build failed (check logs)"
+
+        try:
+            # Collect error messages from *.error.log files
+            error_lines = []
+            for error_log in sorted(self.log_dir.glob("*.error.log")):
+                content = error_log.read_text().strip()
+                if content:
+                    if detailed:
+                        error_lines.extend(content.split("\n")[:10])
+                    else:
+                        # Return first error line for brief summary
+                        first_line = content.split("\n")[0].strip()
+                        if first_line:
+                            truncated = first_line[:77] + "..."
+                            return truncated if len(first_line) > 80 else first_line
+
+            if detailed:
+                return error_lines[:20]  # Limit to first 20 errors
+
+            if not error_lines:
+                return "Build failed (check error logs)"
+            return error_lines[0]
+        except Exception:
+            return [] if detailed else "Build failed (check logs)"
+
+    def get_error_message(self) -> str | None:
+        """Extract a brief error summary for inline display."""
+        result = self._extract_from_log(detailed=False)
+        return result if isinstance(result, str) else None
 
     def get_error_details(self) -> list[str]:
         """Extract detailed error context for rich display."""
-        if not self.log_file or not self.log_file.exists():
-            return []
-
-        try:
-            content = self.log_file.read_text()
-            lines = content.strip().split("\n")
-
-            # Skip patterns
-            skip_patterns = ["unfortunately errors", "if you need a hand", "discord"]
-
-            def should_skip(line: str) -> bool:
-                line_lower = line.lower()
-                return any(skip in line_lower for skip in skip_patterns)
-
-            # Find ERROR block and extract context
-            error_lines = []
-            in_error_block = False
-            blank_count = 0
-
-            for line in lines:
-                # Start capturing at ERROR
-                if "ERROR" in line and not should_skip(line):
-                    in_error_block = True
-                    # Extract message after ERROR
-                    parts = line.split("ERROR", 1)
-                    if len(parts) > 1 and parts[1].strip():
-                        error_lines.append(parts[1].strip())
-                    continue
-
-                if in_error_block:
-                    stripped = line.strip()
-                    if should_skip(stripped):
-                        break
-                    if not stripped:
-                        blank_count += 1
-                        if blank_count > 1:
-                            break  # Two blank lines ends the block
-                        continue
-                    blank_count = 0
-                    # Keep the line (preserve some indentation for context)
-                    error_lines.append(line.rstrip())
-
-                    # Stop after reasonable amount of context
-                    if len(error_lines) > 10:
-                        break
-
-            return error_lines
-
-        except Exception:
-            return []
+        result = self._extract_from_log(detailed=True)
+        return result if isinstance(result, list) else []
 
     @property
     def elapsed(self) -> float:
@@ -596,16 +553,16 @@ class BuildProcess:
         return self.process is not None and self.return_code is None
 
     @property
-    def status(self) -> str:
-        """Get current status string."""
+    def status(self) -> Status:
+        """Get current status."""
         if self.process is None:
-            return "queued"
+            return Status.QUEUED
         elif self.return_code is None:
-            return "building"
+            return Status.BUILDING
         elif self.return_code == 0:
-            return "warning" if self.warnings > 0 else "success"
+            return Status.WARNING if self.warnings > 0 else Status.SUCCESS
         else:
-            return "failed"
+            return Status.FAILED
 
     def terminate(self) -> None:
         """Terminate the build process."""
@@ -628,9 +585,6 @@ class BuildProcess:
                 if not chunk:
                     break
                 text = chunk.decode(errors="replace")
-                if self._log_handle:
-                    self._log_handle.write(text)
-                    self._log_handle.flush()
                 if self._buffer_stream_output:
                     self._stream_buffer.append(text)
                 elif self._stream_console:
@@ -657,17 +611,6 @@ class BuildProcess:
 
 class ParallelBuildManager:
     """Manages multiple build processes with live display and job queue."""
-
-    # Status icons with colors (rich markup)
-    _STATUS_ICONS = {
-        "queued": "[dim]○[/dim]",
-        "pending": "[dim]○[/dim]",
-        "building": "[blue]●[/blue]",
-        "success": "[green]✓[/green]",
-        "warning": "[yellow]⚠[/yellow]",
-        "failed": "[red]✗[/red]",
-    }
-
     _STAGE_WIDTH = 22  # "Building... [123.4s]" fits in ~22 chars
 
     def __init__(
@@ -760,6 +703,20 @@ class ParallelBuildManager:
         self._Table = Table
         self._live: Live | None = None
 
+        # Set up summary directory and symlink early for live updates
+        self._summary_dir = logs_base / "archive" / NOW
+        self._summary_dir.mkdir(parents=True, exist_ok=True)
+        self._summary_file = self._summary_dir / "summary.json"
+
+        # Create latest symlink
+        latest_link = logs_base / "latest"
+        if latest_link.exists() and latest_link.is_symlink():
+            latest_link.unlink()
+        try:
+            latest_link.symlink_to(self._summary_dir, target_is_directory=True)
+        except OSError:
+            pass
+
     @classmethod
     def _make_file_uri(cls, path: Path | str, line: int | None = None) -> str:
         """Create a file:// URI with optional line number fragment."""
@@ -817,76 +774,51 @@ class ParallelBuildManager:
             with self._lock:
                 active_count = len(self._active_workers)
 
-    def _get_project_states(self) -> dict[str, dict]:
-        """
-        Aggregate build states by project for multi-project view.
-
-        Returns dict of project_name -> {
-            'builds': list of BuildProcess,
-            'status': aggregate status (failed > building > warning > success > queued),
-            'completed': count of completed builds,
-            'total': total builds for this project,
-            'current_build': name of currently building target (if any),
-            'current_stage': stage of current build,
-            'elapsed': max elapsed time across builds,
-            'log_dir': project-level log directory,
-        }
-        """
-        projects: dict[str, dict] = {}
+    def _get_project_states(self) -> dict[str, ProjectState]:
+        """Aggregate build states by project for multi-project view."""
+        projects: dict[str, ProjectState] = {}
 
         for display_name, bp in self.processes.items():
             project = bp.project_name or display_name
             if project not in projects:
-                projects[project] = {
-                    "builds": [],
-                    "completed": 0,
-                    "failed": 0,
-                    "warnings": 0,
-                    "building": 0,
-                    "queued": 0,
-                    "total": 0,
-                    "current_build": None,
-                    "current_stage": None,
-                    "elapsed": 0.0,
-                    "log_dir": None,
-                }
+                projects[project] = ProjectState()
 
             p = projects[project]
-            p["builds"].append(bp)
-            p["total"] += 1
-            p["elapsed"] = max(p["elapsed"], bp.elapsed)
+            p.builds.append(bp)
+            p.total += 1
+            p.elapsed = max(p.elapsed, bp.elapsed)
 
             # Set log dir to project level (parent of build log dir)
             if bp.log_dir and bp.project_name:
-                p["log_dir"] = bp.log_dir.parent
+                p.log_dir = bp.log_dir.parent
 
             status = bp.status
-            if status == "building":
-                p["building"] += 1
-                p["current_build"] = bp.name
-                p["current_stage"] = bp.current_stage
-            elif status == "failed":
-                p["failed"] += 1
-                p["completed"] += 1
-            elif status in ("success", "warning"):
-                p["completed"] += 1
-                if status == "warning":
-                    p["warnings"] += 1
-            elif status == "queued":
-                p["queued"] += 1
+            if status == Status.BUILDING:
+                p.building += 1
+                p.current_build = bp.name
+                p.current_stage = bp.current_stage
+            elif status == Status.FAILED:
+                p.failed += 1
+                p.completed += 1
+            elif status in (Status.SUCCESS, Status.WARNING):
+                p.completed += 1
+                if status == Status.WARNING:
+                    p.warnings += 1
+            elif status == Status.QUEUED:
+                p.queued += 1
 
         # Determine aggregate status for each project
         for p in projects.values():
-            if p["failed"] > 0:
-                p["status"] = "failed"
-            elif p["building"] > 0:
-                p["status"] = "building"
-            elif p["queued"] == p["total"]:
-                p["status"] = "queued"
-            elif p["warnings"] > 0:
-                p["status"] = "warning"
+            if p.failed > 0:
+                p.status = Status.FAILED
+            elif p.building > 0:
+                p.status = Status.BUILDING
+            elif p.queued == p.total:
+                p.status = Status.QUEUED
+            elif p.warnings > 0:
+                p.status = Status.WARNING
             else:
-                p["status"] = "success"
+                p.status = Status.SUCCESS
 
         return projects
 
@@ -937,53 +869,49 @@ class ParallelBuildManager:
 
                 # If we've hit the limit, only skip queued items
                 if rows_shown >= max_rows:
-                    if status == "queued":
+                    if status == Status.QUEUED:
                         hidden_queued += 1
                         continue
                     # Always show non-queued items (building/failed/completed)
 
-                icon = self._STATUS_ICONS.get(status, "[dim]○[/dim]")
+                icon = _status_rich_icon(status)
 
                 # Format stage text with colors
-                if status == "building":
+                if status == Status.BUILDING:
                     stage_name = bp.format_stage_history(
                         status_width, include_current=True
                     )
                     if not stage_name:
                         stage_name = bp.current_stage or "Building..."
-                        stage_text = f"[blue]{stage_name}[/blue]"
+                        stage_text = _status_rich_text(status, stage_name)
                     else:
                         stage_text = stage_name
-                elif status in ("success", "warning"):
+                elif status in (Status.SUCCESS, Status.WARNING):
                     stage_name = bp.format_stage_history(
                         status_width, include_current=False
                     )
                     if stage_name:
                         stage_text = stage_name
                     else:
-                        stage_text = "[green]Completed[/green]"
-                elif status == "failed":
+                        stage_text = _status_rich_text(Status.SUCCESS, "Completed")
+                elif status == Status.FAILED:
                     stage_name = bp.format_stage_history(
                         status_width, include_current=False
                     )
                     if stage_name:
                         stage_text = stage_name
                     else:
-                        stage_text = "[red]Failed[/red]"
-                elif status == "queued":
-                    stage_text = "[dim]Queued[/dim]"
+                        stage_text = _status_rich_text(status, "Failed")
+                elif status == Status.QUEUED:
+                    stage_text = _status_rich_text(status, "Queued")
                 else:
-                    stage_text = "[dim]Waiting...[/dim]"
+                    stage_text = _status_rich_text(Status.QUEUED, "Waiting...")
 
                 # Format time
-                if status == "building":
-                    time_text = f"[blue]{int(bp.elapsed)}s[/blue]"
-                elif status == "failed":
-                    time_text = f"[red]{int(bp.elapsed)}s[/red]"
-                elif status == "queued":
-                    time_text = "[dim]-[/dim]"
+                if status == Status.QUEUED:
+                    time_text = _status_rich_text(status, "-")
                 else:
-                    time_text = f"{int(bp.elapsed)}s"
+                    time_text = _status_rich_text(status, f"{int(bp.elapsed)}s")
 
                 table.add_row(icon, display_name, stage_text, time_text)
                 rows_shown += 1
@@ -1040,21 +968,21 @@ class ParallelBuildManager:
         hidden_queued = 0
 
         for project_name, p in projects.items():
-            status = p["status"]
+            status = p.status
 
             # Limit rows, but always show non-queued
             if rows_shown >= max_rows:
-                if status == "queued":
+                if status == Status.QUEUED:
                     hidden_queued += 1
                     continue
 
-            icon = self._STATUS_ICONS.get(status, "[dim]○[/dim]")
+            icon = _status_rich_icon(status)
 
             # Build status text showing progress and current activity
-            if status == "building":
-                stage = p["current_stage"] or "Building"
-                build_name = p["current_build"] or ""
-                progress = f"{p['completed']}/{p['total']}"
+            if status == Status.BUILDING:
+                stage = p.current_stage or "Building"
+                build_name = p.current_build or ""
+                progress = f"{p.completed}/{p.total}"
 
                 # Calculate available space for stage based on status_width
                 # Format: "{build_name} {progress} {stage}"
@@ -1067,30 +995,30 @@ class ParallelBuildManager:
                 if len(build_name) > 10:
                     build_name = build_name[:8] + ".."
 
-                status_text = f"[blue]{build_name}[/blue] {progress} {stage}"
-            elif status == "failed":
+                colored_name = _status_rich_text(status, build_name)
+                status_text = f"{colored_name} {progress} {stage}"
+            elif status == Status.FAILED:
+                failed_text = _status_rich_text(status, f"{p.failed} failed")
                 status_text = (
-                    f"[red]{p['failed']} failed[/red], "
-                    f"{p['completed'] - p['failed']}/{p['total']} done"
+                    f"{failed_text}, "
+                    f"{p.completed - p.failed}/{p.total} done"
                 )
-            elif status == "warning":
-                status_text = f"[yellow]{p['completed']}/{p['total']} done[/yellow]"
-            elif status == "success":
-                status_text = f"[green]{p['completed']}/{p['total']} done[/green]"
-            elif status == "queued":
-                status_text = f"[dim]Queued ({p['total']} builds)[/dim]"
+            elif status == Status.WARNING:
+                progress_text = f"{p.completed}/{p.total} done"
+                status_text = _status_rich_text(status, progress_text)
+            elif status == Status.SUCCESS:
+                progress_text = f"{p.completed}/{p.total} done"
+                status_text = _status_rich_text(status, progress_text)
+            elif status == Status.QUEUED:
+                status_text = _status_rich_text(status, f"Queued ({p.total} builds)")
             else:
-                status_text = f"{p['completed']}/{p['total']}"
+                status_text = f"{p.completed}/{p.total}"
 
             # Time
-            if status == "building":
-                time_text = f"[blue]{int(p['elapsed'])}s[/blue]"
-            elif status == "failed":
-                time_text = f"[red]{int(p['elapsed'])}s[/red]"
-            elif status == "queued":
-                time_text = "[dim]-[/dim]"
+            if status == Status.QUEUED:
+                time_text = _status_rich_text(status, "-")
             else:
-                time_text = f"{int(p['elapsed'])}s"
+                time_text = _status_rich_text(status, f"{int(p.elapsed)}s")
 
             table.add_row(icon, project_name, status_text, time_text)
             rows_shown += 1
@@ -1110,16 +1038,20 @@ class ParallelBuildManager:
     def _render_summary(self) -> str:
         """Render summary line."""
         with self._lock:
-            queued = sum(1 for bp in self.processes.values() if bp.status == "queued")
+            queued = sum(
+                1 for bp in self.processes.values() if bp.status == Status.QUEUED
+            )
             building = sum(
-                1 for bp in self.processes.values() if bp.status == "building"
+                1 for bp in self.processes.values() if bp.status == Status.BUILDING
             )
             completed = sum(
                 1
                 for bp in self.processes.values()
-                if bp.status in ("success", "warning")
+                if bp.status in (Status.SUCCESS, Status.WARNING)
             )
-            failed = sum(1 for bp in self.processes.values() if bp.status == "failed")
+            failed = sum(
+                1 for bp in self.processes.values() if bp.status == Status.FAILED
+            )
             warnings = sum(bp.warnings for bp in self.processes.values())
 
         parts = []
@@ -1169,10 +1101,10 @@ class ParallelBuildManager:
         elif error_msg:
             console.print(f"  {error_msg}")
 
-        if bp.log_file and bp.log_file.exists():
-            log_path = bp.log_file.absolute()
-            uri = self._make_file_uri(log_path)
-            link = f"[link={uri}]View full log[/link]"
+        if bp.log_dir and bp.log_dir.exists():
+            log_dir_path = bp.log_dir.absolute()
+            uri = self._make_file_uri(log_dir_path)
+            link = f"[link={uri}]View logs[/link]"
             console.print(f"  [dim]→ {link}[/dim]")
         console.print("")
 
@@ -1186,7 +1118,43 @@ class ParallelBuildManager:
                     table = self._render_table()
                     summary = self._render_summary()
                     self._live.update(Group(table, "", summary))
+            self._write_live_summary()
             time.sleep(0.5)
+
+    def _write_live_summary(self) -> None:
+        """Write current build state to JSON summary file."""
+        import json
+
+        # Collect all build data
+        builds = [self._get_build_data(bp) for bp in self.processes.values()]
+
+        # Aggregate stats
+        total = len(self.processes)
+        success = sum(
+            1
+            for bp in self.processes.values()
+            if bp.status in (Status.SUCCESS, Status.WARNING)
+        )
+        failed = sum(
+            1 for bp in self.processes.values() if bp.status == Status.FAILED
+        )
+
+        summary = {
+            "timestamp": self._now,
+            "totals": {
+                "builds": total,
+                "successful": success,
+                "failed": failed,
+                "warnings": sum(bp.warnings for bp in self.processes.values()),
+                "errors": sum(bp.errors for bp in self.processes.values()),
+            },
+            "builds": builds,
+        }
+
+        try:
+            self._summary_file.write_text(json.dumps(summary, indent=2))
+        except Exception:
+            pass  # Don't fail the build if we can't write summary
 
     def run_until_complete(self) -> dict[str, int]:
         """
@@ -1197,6 +1165,9 @@ class ParallelBuildManager:
 
         Returns dict of display_name -> exit_code.
         """
+        # Write initial summary with all builds queued
+        self._write_live_summary()
+
         if self.verbose:
             return self._run_verbose()
         return self._run_parallel()
@@ -1340,7 +1311,11 @@ class ParallelBuildManager:
                     if all_done:
                         break
 
-                    time.sleep(0.2)
+                    # Update JSON summary (verbose mode; live mode uses _display_loop)
+                    if not live:
+                        self._write_live_summary()
+
+                    time.sleep(0.5)
 
             except KeyboardInterrupt:
                 # Terminate all processes on interrupt
@@ -1381,163 +1356,10 @@ class ParallelBuildManager:
 
         return results
 
-    def _read_timing_data(self, log_dir: Path) -> list[dict] | None:
-        """Read stage timing data from the timing JSON file."""
-        import json
-
-        from atopile.cli.logging_ import LoggingStage
-
-        timing_file = log_dir / LoggingStage.TIMING_FILE
-        if not timing_file.exists():
-            return None
-
-        try:
-            data = json.loads(timing_file.read_text())
-            return data.get("stages", [])
-        except Exception:
-            return None
-
-    def _format_timing_section(self, timing_data: list[dict]) -> list[str]:
-        """Format stage timing data as a markdown section."""
-        lines = [
-            "## Stage Timing",
-            "",
-            "| Stage | Time | Status |",
-            "|-------|------|--------|",
-        ]
-
-        total_time = 0.0
-        for stage in timing_data:
-            name = stage.get("name", "unknown")
-            elapsed = stage.get("elapsed_seconds", 0.0)
-            status = stage.get("status", "unknown")
-            total_time += elapsed
-
-            # Format status with emoji
-            status_emoji = {
-                "success": "✅",
-                "warning": "⚠️",
-                "failure": "❌",
-                "failed": "❌",
-            }.get(status, "❓")
-
-            lines.append(f"| {name} | {elapsed:.2f}s | {status_emoji} |")
-
-        # Add total row
-        lines.append(f"| **Total** | **{total_time:.2f}s** | |")
-
-        return lines
-
-    def _generate_build_summary(self, bp: "BuildProcess", summary_dir: Path) -> None:
-        """Generate per-build summary with log file listings."""
-        build_summary_file = bp.log_dir / "summary.md"
-
-        # Determine status emoji
-        if bp.status == "success":
-            status_text = "✅ Success"
-        elif bp.status == "warning":
-            status_text = "⚠️ Warning"
-        else:
-            status_text = "❌ Failed"
-
-        lines = [
-            f"# Build: {bp.display_name}",
-            "",
-            f"**Status:** {status_text}",
-            f"**Time:** {bp.elapsed:.1f}s",
-            f"**Warnings:** {bp.warnings}",
-            f"**Errors:** {bp.errors}",
-            "",
-        ]
-
-        # Add stage timing stats if available
-        timing_data = self._read_timing_data(bp.log_dir)
-        if timing_data:
-            lines.extend(self._format_timing_section(timing_data))
-            lines.append("")
-
-        # Extract errors from log files
-        errors = self._extract_log_messages(bp.log_dir, "error")
-        if errors:
-            lines.append("## Errors")
-            lines.append("")
-            lines.append("```")
-            for error in errors[:20]:  # Limit to 20 errors
-                lines.append(error)
-            if len(errors) > 20:
-                lines.append(f"... and {len(errors) - 20} more errors")
-            lines.append("```")
-            lines.append("")
-
-        # Extract warnings from log files
-        warnings = self._extract_log_messages(bp.log_dir, "warning")
-        if warnings:
-            lines.append("## Warnings")
-            lines.append("")
-            lines.append("```")
-            for warning in warnings[:20]:  # Limit to 20 warnings
-                lines.append(warning)
-            if len(warnings) > 20:
-                lines.append(f"... and {len(warnings) - 20} more warnings")
-            lines.append("```")
-            lines.append("")
-
-        lines.append("## Log Files")
-        lines.append("")
-
-        # Group log files by stage
-        log_files = sorted(bp.log_dir.glob("*.log"))
-        stages: dict[str, list[Path]] = {}
-
-        for log_file in log_files:
-            # Parse stage name from filename (e.g., "picker.info.log" -> "picker")
-            parts = log_file.stem.split(".")
-            if len(parts) >= 2:
-                stage = parts[0]
-            else:
-                stage = log_file.stem
-
-            if stage not in stages:
-                stages[stage] = []
-            stages[stage].append(log_file)
-
-        # List stages with their log files
-        for stage, files in stages.items():
-            lines.append(f"### {stage}")
-            lines.append("")
-            for f in sorted(files, key=lambda x: x.name):
-                # Check if file has content
-                try:
-                    size = f.stat().st_size
-                    if size > 0:
-                        lines.append(f"- [{f.name}](./{f.name}) ({size} bytes)")
-                    else:
-                        lines.append(f"- {f.name} (empty)")
-                except OSError:
-                    lines.append(f"- {f.name}")
-            lines.append("")
-
-        build_summary_file.write_text("\n".join(lines))
-
     def _extract_log_messages(self, log_dir: Path, level: str) -> list[str]:
-        """Extract messages from log files of a specific level."""
+        """Extract messages from per-stage log files of a specific level."""
         messages = []
 
-        # Check build.log for ERROR/WARNING lines
-        build_log = log_dir / "build.log"
-        if build_log.exists():
-            try:
-                content = build_log.read_text()
-                for line in content.split("\n"):
-                    if level.upper() in line:
-                        # Extract message after the level indicator
-                        msg = line.strip()
-                        if msg and msg not in messages:
-                            messages.append(msg)
-            except Exception:
-                pass
-
-        # Check level-specific log files (e.g., *.error.log, *.warning.log)
         for log_file in log_dir.glob(f"*.{level}.log"):
             try:
                 content = log_file.read_text().strip()
@@ -1551,142 +1373,57 @@ class ParallelBuildManager:
 
         return messages
 
-    def _generate_per_build_timing_sections(self) -> list[str]:
-        """Generate timing statistics sections for each build target."""
-        lines = []
+    def _get_build_data(self, bp: "BuildProcess") -> dict:
+        """Collect all data for a single build as a dictionary."""
+        data = {
+            "name": bp.name,
+            "display_name": bp.display_name,
+            "project_name": bp.project_name,
+            "status": bp.status.value,
+            "elapsed_seconds": round(bp.elapsed, 2),
+            "warnings": bp.warnings,
+            "errors": bp.errors,
+            "return_code": bp.return_code,
+        }
 
-        for display_name, bp in self.processes.items():
-            if not bp.log_dir or not bp.log_dir.exists():
-                continue
+        # Add log dir
+        if bp.log_dir and bp.log_dir.exists():
+            data["log_dir"] = str(bp.log_dir)
 
-            timing_data = self._read_timing_data(bp.log_dir)
-            if not timing_data:
-                continue
+            # Collect all log files grouped by stage and log type
+            log_files_by_stage: dict[str, dict[str, str]] = {}
+            for log_file in sorted(bp.log_dir.glob("*.log")):
+                parts = log_file.stem.split(".")
+                if len(parts) >= 2:
+                    stage = parts[0]
+                    log_type = parts[1] if len(parts) >= 2 else "log"
+                    if stage not in log_files_by_stage:
+                        log_files_by_stage[stage] = {}
+                    log_files_by_stage[stage][log_type] = str(log_file)
 
-            lines.append(f"### {display_name}")
-            lines.append("")
-            lines.append("| Stage | Time | Status |")
-            lines.append("|-------|------|--------|")
+            # Add timing data from stage history with associated log files
+            if bp._stage_history:
+                data["stages"] = [
+                    {
+                        "name": entry.name,
+                        "elapsed_seconds": round(entry.duration, 3),
+                        "status": entry.status,
+                        "warnings": entry.warnings,
+                        "errors": entry.errors,
+                        "log_files": log_files_by_stage.get(entry.log_name, {}),
+                    }
+                    for entry in bp._stage_history
+                ]
 
-            total_time = 0.0
-            for stage in timing_data:
-                name = stage.get("name", "unknown")
-                elapsed = stage.get("elapsed_seconds", 0.0)
-                status = stage.get("status", "unknown")
-                total_time += elapsed
-
-                # Format status with emoji
-                status_emoji = {
-                    "success": "✅",
-                    "warning": "⚠️",
-                    "failure": "❌",
-                    "failed": "❌",
-                }.get(status, "❓")
-
-                lines.append(f"| {name} | {elapsed:.2f}s | {status_emoji} |")
-
-            lines.append(f"| **Total** | **{total_time:.2f}s** | |")
-            lines.append("")
-
-        return lines
+        return data
 
     def generate_summary(self) -> Path:
-        """Generate summary markdown file."""
-        from atopile.cli.logging_ import NOW
-
-        summary_dir = self.logs_base / "archive" / NOW
-        summary_dir.mkdir(parents=True, exist_ok=True)
-        summary_file = summary_dir / "summary.md"
-
-        lines = [
-            "# Build Summary",
-            "",
-            f"**Date:** {NOW}",
-            "",
-            "## Build Results",
-            "",
-            "| Target | Status | Time | Warn | Err | Logs |",
-            "|--------|--------|------|------|-----|------|",
-        ]
-
-        for display_name, bp in self.processes.items():
-            status = bp.status
-            if status == "success":
-                status_text = "✅"
-            elif status == "warning":
-                status_text = "⚠️"
-            elif status == "failed":
-                status_text = "❌"
-            else:
-                status_text = "⏳"
-
-            time_text = f"{bp.elapsed:.1f}s"
-
-            if bp.log_dir and bp.log_dir.exists():
-                # Use relative path from summary file location for cleaner links
-                try:
-                    rel_path = bp.log_dir.relative_to(summary_dir)
-                except ValueError:
-                    rel_path = bp.log_dir.name
-                # Link to the per-build summary.md
-                log_link = f"[📁 {bp.name}](./{rel_path}/summary.md)"
-            else:
-                log_link = "-"
-
-            lines.append(
-                f"| {display_name} | {status_text} | {time_text} | "
-                f"{bp.warnings} | {bp.errors} | {log_link} |"
-            )
-
-            # Generate per-build summary with log file listing
-            if bp.log_dir and bp.log_dir.exists():
-                self._generate_build_summary(bp, summary_dir)
-
-        # Add per-build timing statistics
-        timing_sections = self._generate_per_build_timing_sections()
-        if timing_sections:
-            lines.append("")
-            lines.append("## Stage Timing by Build")
-            lines.append("")
-            lines.extend(timing_sections)
-
-        # Summary stats
-        total = len(self.processes)
-        success = sum(
-            1 for bp in self.processes.values() if bp.status in ("success", "warning")
-        )
-        failed = sum(1 for bp in self.processes.values() if bp.status == "failed")
-        warnings = sum(bp.warnings for bp in self.processes.values())
-        errors = sum(bp.errors for bp in self.processes.values())
-
-        lines.extend(
-            [
-                "",
-                "## Summary",
-                "",
-                f"- **Total builds:** {total}",
-                f"- **Successful:** {success}",
-                f"- **Failed:** {failed}",
-                f"- **Total warnings:** {warnings}",
-                f"- **Total errors:** {errors}",
-            ]
-        )
-
-        summary_file.write_text("\n".join(lines))
-
-        # Update latest symlink
-        latest_link = self.logs_base / "latest"
-        if latest_link.exists() and latest_link.is_symlink():
-            latest_link.unlink()
-        try:
-            latest_link.symlink_to(summary_dir, target_is_directory=True)
-        except OSError:
-            pass
-
-        return summary_file
+        """Generate final build summary as JSON file."""
+        self._write_live_summary()
+        return self._summary_file
 
 
-def _run_single_build(frozen: bool | None = None) -> None:
+def _run_single_build() -> None:
     """
     Run a single build target (worker mode).
 
@@ -1803,12 +1540,14 @@ def _build_all_projects(
     summary_path = manager.generate_summary()
 
     failed = [name for name, code in results.items() if code != 0]
-    _report_build_results(
+    exit_code = _report_build_results(
         summary_path=summary_path,
         failed=failed,
         total=len(build_tasks),
         failed_names=failed[:10],
     )
+    if exit_code != 0:
+        raise typer.Exit(exit_code)
 
 
 @capture("cli:build_start", "cli:build_end")
@@ -1884,6 +1623,14 @@ def build(
             help="Show full build output (runs sequentially)",
         ),
     ] = False,
+    ui: Annotated[
+        bool,
+        typer.Option(
+            "--ui",
+            help="Open a live build dashboard in your browser",
+            envvar="ATO_UI",
+        ),
+    ] = False,
 ):
     """
     Build the specified --target(s) or the targets specified by the build config.
@@ -1932,7 +1679,7 @@ def build(
                         f"{dep.target_path}"
                     )
 
-        _run_single_build(frozen=frozen)
+        _run_single_build()
         return
 
     # Multi-project mode: discover and build all projects
@@ -1996,13 +1743,44 @@ def build(
         keep_designators=keep_designators,
     )
 
-    results = manager.run_until_complete()
+    # Start dashboard server if enabled (and not in verbose mode)
+    dashboard_server = None
+    dashboard_url = None
+    if ui and not verbose:
+        try:
+            import webbrowser
+
+            from atopile.dashboard import is_dashboard_built
+            from atopile.dashboard.server import start_dashboard_server
+
+            if is_dashboard_built():
+                dashboard_server, dashboard_url = start_dashboard_server(
+                    manager._summary_file,
+                    manager.logs_base,
+                )
+                logger.info("Dashboard available at: %s", dashboard_url)
+                webbrowser.open(dashboard_url)
+            else:
+                logger.debug("Dashboard not built, skipping")
+        except Exception as e:
+            logger.debug("Failed to start dashboard: %s", e)
+
+    try:
+        results = manager.run_until_complete()
+    except KeyboardInterrupt:
+        # Handle Ctrl+C during build
+        logger.info("Build interrupted")
+        if dashboard_server:
+            dashboard_server.shutdown()
+        raise typer.Exit(1)
 
     # Generate summary
     summary_path = manager.generate_summary()
 
     failed = [name for name, code in results.items() if code != 0]
-    _report_build_results(
+
+    # Report results (don't exit yet if dashboard is running)
+    build_exit_code = _report_build_results(
         summary_path=summary_path,
         failed=failed,
         total=len(build_names),
@@ -2031,6 +1809,23 @@ def build(
             except Exception as e:
                 logger.warning(f"{e}\nReload pcb manually in KiCAD")
 
+    # Keep dashboard server running after build completes
+    if dashboard_server:
+        logger.info("Dashboard still available at: %s", dashboard_url)
+        logger.info("Press Ctrl+C to stop")
+        try:
+            # Wait until interrupted (cross-platform)
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            logger.info("Shutting down dashboard...")
+        finally:
+            dashboard_server.shutdown()
+
+    # Exit with appropriate code after dashboard is closed
+    if build_exit_code != 0:
+        raise typer.Exit(build_exit_code)
+
 
 def _report_build_results(
     *,
@@ -2038,7 +1833,8 @@ def _report_build_results(
     failed: list[str],
     total: int,
     failed_names: list[str] | None = None,
-) -> None:
+) -> int:
+    """Report build results and return exit code (0 for success, 1 for failure)."""
     if failed:
         from atopile.cli.excepthook import log_discord_banner
 
@@ -2051,10 +1847,11 @@ def _report_build_results(
         remaining = len(failed) - (len(failed_names) if failed_names else 0)
         if remaining > 0:
             logger.error("  ... and %d more", remaining)
-        raise typer.Exit(1)
+        return 1
 
     if total > 1:
         logger.info("Build successful! 🚀 (%d targets)", total)
     else:
         logger.info("Build successful! 🚀")
     logger.info("See summary at: %s", summary_path)
+    return 0

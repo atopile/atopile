@@ -44,7 +44,7 @@ DISCORD_BANNER_TEXT = (
 def log_discord_banner() -> None:
     from atopile.cli.logging_ import logger
 
-    logger.error(DISCORD_BANNER_TEXT)
+    logger.info(DISCORD_BANNER_TEXT)
 
 
 def handle_exception(exc_type, exc_value, exc_traceback):
