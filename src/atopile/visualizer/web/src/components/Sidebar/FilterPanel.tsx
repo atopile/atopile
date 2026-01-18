@@ -9,8 +9,8 @@ import { useGraphStore } from '../../stores/graphStore';
 import { useFilterStore } from '../../stores/filterStore';
 import { useCollapseStore } from '../../stores/collapseStore';
 import { useNavigationStore } from '../../stores/navigationStore';
-import { computeVisibleNodesWithNavigation } from '../../lib/filterEngine';
-import type { EdgeTypeKey } from '../../types/graph';
+import { computeVisibleNodesWithNavigation, getDefaultFilterConfig } from '../../lib/filterEngine';
+import type { EdgeTypeKey, FilterConfig } from '../../types/graph';
 
 const EDGE_TYPE_LABELS: Record<EdgeTypeKey, string> = {
   composition: 'Composition',
@@ -44,10 +44,12 @@ export function FilterPanel() {
     setHideAnonNodes,
     setHideOrphans,
     toggleTraitRequired,
+    applyPreset,
   } = useFilterStore();
   const { state: collapseState, toggleTraits } = useCollapseStore();
   const { currentRootId, viewDepth, depthEnabled } = useNavigationStore();
 
+  const [presetsOpen, setPresetsOpen] = useState(true);
   const [nodeTypesOpen, setNodeTypesOpen] = useState(true);
   const [edgeTypesOpen, setEdgeTypesOpen] = useState(true);
   const [traitsOpen, setTraitsOpen] = useState(false);
@@ -117,6 +119,46 @@ export function FilterPanel() {
 
   if (!data || !index) return null;
 
+  const resolveTraitNames = (baseNames: string[]): Set<string> => {
+    const available = Array.from(index.nodesByTrait.keys());
+    const resolved = new Set<string>();
+
+    for (const base of baseNames) {
+      const baseLower = base.toLowerCase();
+      for (const trait of available) {
+        const traitLower = trait.toLowerCase();
+        if (traitLower === baseLower || traitLower.startsWith(`${baseLower}.`)) {
+          resolved.add(trait);
+        }
+      }
+    }
+
+    return resolved;
+  };
+
+  const applyDefaultPreset = () => {
+    applyPreset(getDefaultFilterConfig(data));
+  };
+
+  const applyInterfaceModulePreset = () => {
+    const preset: FilterConfig = {
+      nodeTypes: { included: new Set(), excluded: new Set() },
+      traits: {
+        required: resolveTraitNames(['is_interface', 'is_module']),
+        any: new Set(),
+      },
+      edgeTypes: {
+        visible: new Set<EdgeTypeKey>(['composition', 'connection']),
+      },
+      depthRange: { min: 0, max: Infinity },
+      hideAnonNodes: false,
+      hideOrphans: false,
+      reachability: null,
+    };
+
+    applyPreset(preset);
+  };
+
   // Count stats for buttons
   const allTypesVisible =
     nodeTypesWithCounts.length > 0 &&
@@ -140,6 +182,25 @@ export function FilterPanel() {
       >
         Reset All Filters
       </button>
+
+      <CollapsibleSection
+        title="Filter Presets"
+        open={presetsOpen}
+        onOpenChange={setPresetsOpen}
+      >
+        <div className="space-y-2">
+          <PresetButton
+            title="Default view"
+            description="Current default filters for the graph view."
+            onClick={applyDefaultPreset}
+          />
+          <PresetButton
+            title="Interfaces + modules"
+            description="All nodes, only composition + interface edges, traits: is_interface/is_module."
+            onClick={applyInterfaceModulePreset}
+          />
+        </div>
+      </CollapsibleSection>
 
       {/* Hide options */}
       <div className="space-y-2">
@@ -398,6 +459,12 @@ interface CheckboxItemProps {
   onCheckedChange: (checked: boolean) => void;
 }
 
+interface PresetButtonProps {
+  title: string;
+  description: string;
+  onClick: () => void;
+}
+
 function CheckboxItem({ id, label, count, filteredCount, checked, onCheckedChange }: CheckboxItemProps) {
   return (
     <div className="flex items-center gap-2">
@@ -430,6 +497,19 @@ function CheckboxItem({ id, label, count, filteredCount, checked, onCheckedChang
         )}
       </label>
     </div>
+  );
+}
+
+function PresetButton({ title, description, onClick }: PresetButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full text-left px-3 py-2 rounded bg-panel-border/40 hover:bg-panel-border/80 transition-colors"
+    >
+      <div className="text-xs font-medium text-text-primary">{title}</div>
+      <div className="text-[10px] text-text-secondary">{description}</div>
+    </button>
   );
 }
 

@@ -20,11 +20,35 @@ dev_app = typer.Typer(rich_markup_mode="rich")
 
 @dev_app.command()
 @capture("cli:dev_compile_start", "cli:dev_compile_end")
-def compile():
-    # import will trigger compilation
-    import faebryk.core.zig
+def compile(
+    target: str = typer.Argument(
+        "all",
+        help="Build target: all, zig, or visualizer.",
+    )
+):
+    target = target.lower()
+    valid_targets = {"all", "zig", "visualizer"}
+    if target not in valid_targets:
+        raise typer.BadParameter(f"target must be one of: {', '.join(sorted(valid_targets))}")
 
-    _ = faebryk.core.zig
+    if target in {"all", "zig"}:
+        print("compiling zig")
+        # import will trigger compilation
+        import faebryk.core.zig
+        _ = faebryk.core.zig
+
+    if target in {"all", "visualizer"}:
+        print("compiling vizualizer")
+        repo_root = Path(__file__).resolve().parents[3]
+        viz_dir = repo_root / "src" / "atopile" / "visualizer" / "web"
+        if not viz_dir.exists():
+            raise FileNotFoundError(f"visualizer web directory not found: {viz_dir}")
+
+        node_modules = viz_dir / "node_modules"
+        if not node_modules.exists():
+            subprocess.run(["npm", "install"], cwd=viz_dir, check=True)
+
+        subprocess.run(["npm", "run", "build"], cwd=viz_dir, check=True)
 
 
 @dataclass(frozen=True)

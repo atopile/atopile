@@ -11,6 +11,7 @@ interface FilterState {
 
   // Actions
   initializeFromData: (data: GraphData) => void;
+  applyPreset: (config: FilterConfig) => void;
   toggleNodeType: (typeName: string) => void;
   setNodeTypeExcluded: (typeName: string, excluded: boolean) => void;
   setAllNodeTypesExcluded: (excluded: boolean, allTypeNames?: string[]) => void;
@@ -52,12 +53,46 @@ const INITIAL_CONFIG: FilterConfig = {
   reachability: null,
 };
 
+function cloneFilterConfig(config: FilterConfig): FilterConfig {
+  return {
+    nodeTypes: {
+      included: new Set(config.nodeTypes.included),
+      excluded: new Set(config.nodeTypes.excluded),
+    },
+    traits: {
+      required: new Set(config.traits.required),
+      any: new Set(config.traits.any),
+    },
+    edgeTypes: {
+      visible: new Set(config.edgeTypes.visible),
+    },
+    depthRange: {
+      min: config.depthRange.min,
+      max: config.depthRange.max,
+    },
+    hideAnonNodes: config.hideAnonNodes,
+    hideOrphans: config.hideOrphans,
+    reachability: config.reachability
+      ? {
+          enabled: config.reachability.enabled,
+          fromNodes: new Set(config.reachability.fromNodes),
+          edgeTypes: new Set(config.reachability.edgeTypes),
+          maxHops: config.reachability.maxHops,
+        }
+      : null,
+  };
+}
+
 export const useFilterStore = create<FilterState>((set, get) => ({
   config: INITIAL_CONFIG,
 
   initializeFromData: (data: GraphData) => {
     const config = getDefaultFilterConfig(data);
     set({ config });
+  },
+
+  applyPreset: (config: FilterConfig) => {
+    set({ config: cloneFilterConfig(config) });
   },
 
   toggleNodeType: (typeName: string) => {
