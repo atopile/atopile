@@ -202,6 +202,18 @@ export const api = {
 
     getSession: (pipelineId: string, sessionId: string) =>
       fetchJson<{ session: PipelineSession }>(`/pipelines/${pipelineId}/sessions/${sessionId}`),
+
+    stopSession: (pipelineId: string, sessionId: string, force = false) =>
+      fetchJson<{ status: string; message: string; pipeline_id: string }>(
+        `/pipelines/${pipelineId}/sessions/${sessionId}/stop?force=${force}`,
+        { method: 'POST' }
+      ),
+
+    deleteSession: (pipelineId: string, sessionId: string, force = false) =>
+      fetchJson<{ status: string; session_id: string; pipeline_id: string }>(
+        `/pipelines/${pipelineId}/sessions/${sessionId}?force=${force}`,
+        { method: 'DELETE' }
+      ),
   },
 };
 

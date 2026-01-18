@@ -75,9 +75,8 @@ class PipelineExecutor:
             logger.error(f"Pipeline not found: {pipeline_id}")
             return None
 
-        if pipeline.status == PipelineStatus.RUNNING:
-            logger.warning(f"Pipeline already running: {pipeline_id}")
-            return None
+        # Note: We allow multiple sessions to run concurrently
+        # The pipeline.status field is no longer used for blocking - sessions track execution state
 
         # Create a new session for this execution
         session = PipelineSession(
@@ -87,11 +86,11 @@ class PipelineExecutor:
         self._pipeline_session_store.set(session.id, session)
         logger.info(f"Created pipeline session: {session.id} for pipeline {pipeline_id}")
 
-        # Update pipeline status to RUNNING
+        # Update pipeline metadata (don't set status - sessions track execution state)
         def updater(p: PipelineState) -> PipelineState:
-            p.status = PipelineStatus.RUNNING
-            p.node_status = {}  # Reset node status (for UI fallback)
-            p.node_agent_map = {}  # Reset agent map (for UI fallback)
+            # Reset legacy node status/agent maps (UI uses session data now)
+            p.node_status = {}
+            p.node_agent_map = {}
             if p.started_at is None:
                 p.started_at = datetime.now()
             p.touch()
@@ -173,14 +172,16 @@ class PipelineExecutor:
                 self._running_pipelines.pop(execution.pipeline_id, None)
 
     def _mark_pipeline_failed(self, pipeline_id: str, error: str) -> None:
-        """Mark a pipeline as failed."""
+        """Mark a pipeline thread as failed (error in execution engine)."""
+        # Note: Pipeline status is managed by sessions now, so we just log the error
+        # The session should be marked as failed by the execution context
         def updater(p: PipelineState) -> PipelineState:
-            p.status = PipelineStatus.FAILED
-            p.finished_at = datetime.now()
+            p.current_node_id = None
             p.touch()
             return p
 
         self._pipeline_store.update(pipeline_id, updater)
+        logger.error(f"Pipeline execution thread failed for {pipeline_id}: {error}")
 
 
 class PipelineExecution:
@@ -198,6 +199,7 @@ class PipelineExecution:
         self.node_agents: dict[str, str] = {}  # node_id -> agent_id
         self.node_status: dict[str, str] = {}  # node_id -> status
         self.node_outputs: dict[str, str] = {}  # node_id -> output result (for communication)
+        self.loop_iterations: dict[str, int] = {}  # loop_node_id -> iteration count
         self._should_stop = False
         self._current_agent_id: str | None = None
 
@@ -236,16 +238,22 @@ class PipelineExecution:
             self._mark_completed()
             return
 
-        # Execute nodes in order
-        for node_id in execution_order:
+        # Track last executed node status for loop decisions
+        last_node_failed = False
+
+        # Execute nodes - use index to support jumping back for loops
+        current_index = 0
+        while current_index < len(execution_order):
             if self._should_stop:
                 logger.info(f"Pipeline stopped: {self.pipeline_id}")
                 self._mark_stopped()
                 return
 
+            node_id = execution_order[current_index]
             node = self._find_node(pipeline, node_id)
             if node is None:
                 logger.warning(f"Node not found: {node_id}")
+                current_index += 1
                 continue
 
             logger.debug(f"Executing node {node_id} (type={node.type})")
@@ -254,12 +262,22 @@ class PipelineExecution:
             try:
                 if node.type == "agent":
                     self._execute_agent_node(pipeline, node)
+                    last_node_failed = False
                 elif node.type == "trigger":
                     # Trigger nodes just mark as complete
                     pass
                 elif node.type == "loop":
-                    # Loop nodes - for now just pass through
-                    pass
+                    # Loop nodes check conditions and may restart
+                    restart_node_id = self._execute_loop_node(pipeline, node, last_node_failed)
+                    if restart_node_id:
+                        # Find the index of the restart node
+                        try:
+                            restart_index = execution_order.index(restart_node_id)
+                            logger.info(f"Loop restarting from node {restart_node_id} (index {restart_index})")
+                            current_index = restart_index
+                            continue  # Skip the increment at the bottom
+                        except ValueError:
+                            logger.warning(f"Loop target node {restart_node_id} not in execution order")
                 elif node.type == "condition":
                     # Condition nodes - for now just pass through
                     pass
@@ -269,10 +287,13 @@ class PipelineExecution:
             except Exception as e:
                 logger.error(f"Node {node_id} failed: {e}")
                 self._update_node_status(node_id, "failed")
+                last_node_failed = True
 
                 if pipeline.config.stop_on_failure:
                     self._mark_failed(str(e))
                     return
+
+            current_index += 1
 
         self._mark_completed()
 
@@ -417,7 +438,11 @@ class PipelineExecution:
         return "(No output captured)"
 
     def _execute_agent_node(self, pipeline: PipelineState, node) -> None:
-        """Execute an agent node by spawning an agent."""
+        """Execute an agent node by spawning or resuming an agent.
+
+        If this node already has an agent from a previous loop iteration that can be resumed,
+        we resume it to preserve context. Otherwise, we spawn a new agent.
+        """
         from ..models import PipelineNode, AgentNodeData
 
         node_id = node.id
@@ -489,10 +514,106 @@ Your response will be automatically returned to the agent that contacted you.
 Do NOT try to contact other agents - just focus on completing the task you're given."""
             prompt = f"{bridge_instructions}\n\n{prompt}"
 
+        # Check if we can resume an existing agent for this node
+        existing_agent_id = self.node_agents.get(node_id)
+        existing_agent = self.executor._agent_store.get(existing_agent_id) if existing_agent_id else None
+
+        if existing_agent and existing_agent.session_id and existing_agent.is_finished():
+            # Resume existing agent to preserve context
+            logger.info(f"Resuming agent '{full_agent_name}' for node {node_id}: {existing_agent_id}")
+            self._resume_agent(existing_agent_id, prompt, pipeline, node_id)
+        else:
+            # Spawn new agent
+            if existing_agent:
+                logger.info(f"Cannot resume agent for {node_id}: session_id={existing_agent.session_id}, status={existing_agent.status}")
+            self._spawn_new_agent(prompt, full_agent_name, pipeline, node, backend, data, environment)
+
+    def _resume_agent(
+        self,
+        agent_id: str,
+        prompt: str,
+        pipeline: PipelineState,
+        node_id: str,
+    ) -> None:
+        """Resume an existing agent with a new prompt, preserving its context."""
+        # Prepare agent for resume
+        def prepare_updater(a: AgentState) -> AgentState:
+            a.config.prompt = prompt
+            a.config.session_id = a.session_id
+            a.config.resume_session = True
+            a.config.max_turns = a.config.max_turns or 10
+            a.status = AgentStatus.STARTING
+            a.exit_code = None
+            a.error_message = None
+            a.finished_at = None
+            # Increment run_count for versioned log files
+            a.run_count = (a.run_count or 0) + 1
+            resume_count = a.metadata.get("resume_count", 0)
+            a.metadata["resume_count"] = resume_count + 1
+            return a
+
+        self.executor._agent_store.update(agent_id, prepare_updater)
+        agent = self.executor._agent_store.get(agent_id)
+
+        try:
+            logger.info(f"Spawning process for resumed agent {agent_id} (run_count={agent.run_count})")
+            managed = self.executor._process_manager.spawn(agent)
+            logger.info(f"Process spawned for agent {agent_id}: pid={managed.process.pid}")
+
+            def running_updater(a: AgentState) -> AgentState:
+                a.status = AgentStatus.RUNNING
+                a.pid = managed.process.pid
+                a.started_at = datetime.now()
+                return a
+
+            self.executor._agent_store.update(agent_id, running_updater)
+            self._current_agent_id = agent_id
+
+            # Update pipeline state
+            def pipeline_updater(p: PipelineState) -> PipelineState:
+                p.current_node_id = node_id
+                p.touch()
+                return p
+
+            self.executor._pipeline_store.update(self.pipeline_id, pipeline_updater)
+
+            # Update bridge context
+            self._register_pipeline_context(pipeline)
+
+            # Wait for agent to complete
+            self._wait_for_agent(agent_id)
+
+            # Capture the agent's output
+            output = self._extract_agent_result(agent_id)
+            self.node_outputs[node_id] = output
+            logger.info(f"Captured output from resumed agent {node_id}: {len(output)} chars")
+
+            # Update bridge context again after completion
+            self._register_pipeline_context(pipeline)
+
+        except Exception as e:
+            logger.error(f"Failed to resume agent for node {node_id}: {e}", exc_info=True)
+            raise
+        finally:
+            self._current_agent_id = None
+
+    def _spawn_new_agent(
+        self,
+        prompt: str,
+        full_agent_name: str,
+        pipeline: PipelineState,
+        node,
+        backend,
+        data,
+        environment: dict,
+    ) -> None:
+        """Spawn a new agent for a node."""
+        node_id = node.id
+
         config = AgentConfig(
             backend=backend,
             prompt=prompt,
-            max_turns=getattr(data, 'max_turns', None) or 10,  # Default max turns for pipeline agents
+            max_turns=getattr(data, 'max_turns', None) or 10,
             max_budget_usd=getattr(data, 'max_budget_usd', None),
             system_prompt=getattr(data, 'system_prompt', None),
             working_directory=getattr(data, 'working_directory', None),
@@ -509,7 +630,7 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
         )
         self.executor._agent_store.set(agent.id, agent)
 
-        logger.info(f"Spawning agent '{full_agent_name}' for node {node_id}: {agent.id}")
+        logger.info(f"Spawning new agent '{full_agent_name}' for node {node_id}: {agent.id}")
 
         try:
             managed = self.executor._process_manager.spawn(agent)
@@ -574,6 +695,84 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
         finally:
             self._current_agent_id = None
 
+    def _execute_loop_node(
+        self, pipeline: PipelineState, node, last_node_failed: bool
+    ) -> str | None:
+        """Execute a loop node - check conditions and return restart target if should loop.
+
+        Args:
+            pipeline: The pipeline state
+            node: The loop node
+            last_node_failed: Whether the previous node execution failed
+
+        Returns:
+            Node ID to restart from, or None to continue normally
+        """
+        import time
+        from ..models import LoopNodeData
+
+        node_id = node.id
+        data = node.data
+
+        # Get loop configuration
+        duration_seconds = getattr(data, 'duration_seconds', 3600)
+        restart_on_complete = getattr(data, 'restart_on_complete', True)
+        restart_on_fail = getattr(data, 'restart_on_fail', False)
+        max_iterations = getattr(data, 'max_iterations', None)
+
+        # Get current iteration count (1-indexed for display)
+        current_iteration = self.loop_iterations.get(node_id, 1)
+
+        # Always update session with current iteration (so it shows during execution)
+        def iteration_updater(s: PipelineSession) -> PipelineSession:
+            s.loop_iterations[node_id] = current_iteration
+            return s
+        self.executor._pipeline_session_store.update(self.session_id, iteration_updater)
+
+        # Check max iterations
+        if max_iterations is not None and current_iteration > max_iterations:
+            logger.info(f"Loop {node_id} reached max iterations ({max_iterations}), stopping")
+            return None
+
+        # Check restart conditions
+        should_restart = False
+        if last_node_failed:
+            should_restart = restart_on_fail
+            logger.info(f"Loop {node_id}: last node failed, restart_on_fail={restart_on_fail}")
+        else:
+            should_restart = restart_on_complete
+            logger.info(f"Loop {node_id}: last node completed, restart_on_complete={restart_on_complete}")
+
+        if not should_restart:
+            logger.info(f"Loop {node_id}: conditions not met for restart")
+            return None
+
+        # Find the target node (where the loop connects TO)
+        target_node_id = None
+        for edge in pipeline.edges:
+            if edge.source == node_id and edge.target:
+                target_node_id = edge.target
+                break
+
+        if not target_node_id:
+            logger.warning(f"Loop {node_id} has no outgoing edge, cannot restart")
+            return None
+
+        # Increment iteration count for next run
+        self.loop_iterations[node_id] = current_iteration + 1
+        logger.info(f"Loop {node_id}: completed iteration {current_iteration}, waiting {duration_seconds}s before starting iteration {current_iteration + 1}")
+
+        # Wait for duration (check should_stop periodically)
+        wait_start = time.time()
+        while time.time() - wait_start < duration_seconds:
+            if self._should_stop:
+                logger.info(f"Loop {node_id}: stopping during wait")
+                return None
+            time.sleep(1.0)
+
+        logger.info(f"Loop {node_id}: restarting from {target_node_id}")
+        return target_node_id
+
     def _wait_for_agent(self, agent_id: str) -> None:
         """Wait for an agent to complete.
 
@@ -633,7 +832,7 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
                 logger.warning(f"Node status callback failed: {e}")
 
     def _mark_completed(self) -> None:
-        """Mark pipeline and session as completed."""
+        """Mark session as completed."""
         # Update session
         def session_updater(s: PipelineSession) -> PipelineSession:
             s.status = PipelineSessionStatus.COMPLETED
@@ -642,19 +841,17 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
 
         self.executor._pipeline_session_store.update(self.session_id, session_updater)
 
-        # Update pipeline
+        # Update pipeline metadata (not status - sessions track execution state)
         def updater(p: PipelineState) -> PipelineState:
-            p.status = PipelineStatus.COMPLETED
             p.current_node_id = None
-            p.finished_at = datetime.now()
             p.touch()
             return p
 
         self.executor._pipeline_store.update(self.pipeline_id, updater)
-        logger.info(f"Pipeline completed: {self.pipeline_id} (session: {self.session_id})")
+        logger.info(f"Session completed: {self.session_id} (pipeline: {self.pipeline_id})")
 
     def _mark_stopped(self) -> None:
-        """Mark pipeline and session as stopped."""
+        """Mark session as stopped."""
         # Update session
         def session_updater(s: PipelineSession) -> PipelineSession:
             s.status = PipelineSessionStatus.STOPPED
@@ -663,19 +860,17 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
 
         self.executor._pipeline_session_store.update(self.session_id, session_updater)
 
-        # Update pipeline
+        # Update pipeline metadata (not status - sessions track execution state)
         def updater(p: PipelineState) -> PipelineState:
-            p.status = PipelineStatus.COMPLETED
             p.current_node_id = None
-            p.finished_at = datetime.now()
             p.touch()
             return p
 
         self.executor._pipeline_store.update(self.pipeline_id, updater)
-        logger.info(f"Pipeline stopped: {self.pipeline_id} (session: {self.session_id})")
+        logger.info(f"Session stopped: {self.session_id} (pipeline: {self.pipeline_id})")
 
     def _mark_failed(self, error: str) -> None:
-        """Mark pipeline and session as failed."""
+        """Mark session as failed."""
         # Update session
         def session_updater(s: PipelineSession) -> PipelineSession:
             s.status = PipelineSessionStatus.FAILED
@@ -685,16 +880,14 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
 
         self.executor._pipeline_session_store.update(self.session_id, session_updater)
 
-        # Update pipeline
+        # Update pipeline metadata (not status - sessions track execution state)
         def updater(p: PipelineState) -> PipelineState:
-            p.status = PipelineStatus.FAILED
             p.current_node_id = None
-            p.finished_at = datetime.now()
             p.touch()
             return p
 
         self.executor._pipeline_store.update(self.pipeline_id, updater)
-        logger.info(f"Pipeline failed: {self.pipeline_id} (session: {self.session_id}): {error}")
+        logger.info(f"Session failed: {self.session_id} (pipeline: {self.pipeline_id}): {error}")
 
     def _get_connected_agent_names(self, pipeline: PipelineState, node_id: str) -> list[str]:
         """Get names of agents this node can send messages TO via pipeline edges.

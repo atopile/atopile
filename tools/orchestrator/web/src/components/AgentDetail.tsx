@@ -149,12 +149,21 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
   };
 
   const formatDuration = () => {
-    if (!agent.started_at) return '-';
+    if (!agent.started_at) return '—';
 
     const start = new Date(agent.started_at).getTime();
-    const end = agent.finished_at
-      ? new Date(agent.finished_at).getTime()
-      : Date.now();
+    if (isNaN(start)) return '—';
+
+    let end: number;
+    if (agent.finished_at) {
+      end = new Date(agent.finished_at).getTime();
+      if (isNaN(end)) return '—';
+    } else if (isRunning) {
+      end = Date.now();
+    } else {
+      return '—'; // Finished but no end time
+    }
+
     const seconds = Math.floor((end - start) / 1000);
 
     if (seconds < 60) return `${seconds}s`;

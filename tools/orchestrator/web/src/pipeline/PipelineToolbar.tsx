@@ -1,9 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Save,
   Play,
-  Pause,
-  Square,
   Plus,
   Bot,
   Clock,
@@ -17,43 +15,25 @@ import type { PipelineNode, AgentNodeData, TriggerNodeData, LoopNodeData, Condit
 
 interface PipelineToolbarProps {
   onOpenPipelineList?: () => void;
+  onToggleSessions?: () => void;
+  showSessions?: boolean;
 }
 
-export function PipelineToolbar({ onOpenPipelineList }: PipelineToolbarProps) {
+export function PipelineToolbar({ onOpenPipelineList, onToggleSessions, showSessions }: PipelineToolbarProps) {
   const {
     selectedPipelineId,
     editorName,
     editorNodes,
     hasUnsavedChanges,
-    selectedSessionId,
     setEditorName,
     setEditorNodes,
     saveEditorPipeline,
     runPipeline,
-    pausePipeline,
-    stopPipeline,
     resetEditor,
-    getSelectedPipeline,
-    getSessionsForPipeline,
-    fetchSessions,
-    selectSession,
     loading,
   } = usePipelineStore();
 
   const [saving, setSaving] = useState(false);
-
-  const selectedPipeline = getSelectedPipeline();
-  const isRunning = selectedPipeline?.status === 'running';
-  const isPaused = selectedPipeline?.status === 'paused';
-
-  // Fetch sessions when pipeline is selected
-  const sessions = selectedPipelineId ? getSessionsForPipeline(selectedPipelineId) : [];
-
-  useEffect(() => {
-    if (selectedPipelineId) {
-      fetchSessions(selectedPipelineId);
-    }
-  }, [selectedPipelineId, fetchSessions]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -67,18 +47,6 @@ export function PipelineToolbar({ onOpenPipelineList }: PipelineToolbarProps) {
   const handleRun = async () => {
     if (selectedPipelineId) {
       await runPipeline(selectedPipelineId);
-    }
-  };
-
-  const handlePause = async () => {
-    if (selectedPipelineId) {
-      await pausePipeline(selectedPipelineId);
-    }
-  };
-
-  const handleStop = async () => {
-    if (selectedPipelineId) {
-      await stopPipeline(selectedPipelineId);
     }
   };
 
@@ -194,81 +162,28 @@ export function PipelineToolbar({ onOpenPipelineList }: PipelineToolbarProps) {
         </button>
       </div>
 
-      {/* Right: Session selector and run controls */}
+      {/* Right: Run and sessions */}
       <div className="flex items-center gap-2">
-        {/* Session dropdown */}
-        {selectedPipelineId && sessions.length > 0 && (
-          <div className="flex items-center gap-2 mr-2 pr-2 border-r border-gray-600">
-            <History className="w-4 h-4 text-gray-400" />
-            <select
-              className="input input-sm text-xs bg-gray-700 border-gray-600 min-w-[140px]"
-              value={selectedSessionId || ''}
-              onChange={(e) => selectSession(e.target.value || null)}
-            >
-              {sessions.map((session) => (
-                <option key={session.id} value={session.id}>
-                  {new Date(session.started_at).toLocaleString()} ({session.status})
-                </option>
-              ))}
-            </select>
-          </div>
+        {selectedPipelineId && (
+          <button
+            className="btn btn-success btn-sm"
+            onClick={handleRun}
+            disabled={loading || !selectedPipelineId}
+            title="Start a new session"
+          >
+            <Play className="w-4 h-4 mr-1" />
+            Run
+          </button>
         )}
 
-        {selectedPipelineId && (
-          <>
-            {!isRunning && !isPaused && (
-              <button
-                className="btn btn-success btn-sm"
-                onClick={handleRun}
-                disabled={loading || !selectedPipelineId}
-              >
-                <Play className="w-4 h-4 mr-1" />
-                Run
-              </button>
-            )}
-
-            {isRunning && (
-              <>
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={handlePause}
-                  disabled={loading}
-                >
-                  <Pause className="w-4 h-4 mr-1" />
-                  Pause
-                </button>
-                <button
-                  className="btn btn-danger btn-sm"
-                  onClick={handleStop}
-                  disabled={loading}
-                >
-                  <Square className="w-4 h-4 mr-1" />
-                  Stop
-                </button>
-              </>
-            )}
-
-            {isPaused && (
-              <>
-                <button
-                  className="btn btn-success btn-sm"
-                  onClick={handleRun}
-                  disabled={loading}
-                >
-                  <Play className="w-4 h-4 mr-1" />
-                  Resume
-                </button>
-                <button
-                  className="btn btn-danger btn-sm"
-                  onClick={handleStop}
-                  disabled={loading}
-                >
-                  <Square className="w-4 h-4 mr-1" />
-                  Stop
-                </button>
-              </>
-            )}
-          </>
+        {selectedPipelineId && onToggleSessions && (
+          <button
+            className={`btn btn-sm ${showSessions ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={onToggleSessions}
+            title="Toggle sessions panel"
+          >
+            <History className="w-4 h-4" />
+          </button>
         )}
 
         <button

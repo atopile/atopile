@@ -100,7 +100,13 @@ class AgentState(BaseModel):
         """Calculate the duration of the agent run in seconds."""
         if self.started_at is None:
             return None
-        end = self.finished_at or datetime.now()
+        # Only use current time for actively running agents
+        if self.finished_at:
+            end = self.finished_at
+        elif self.is_running():
+            end = datetime.now()
+        else:
+            return None  # Finished but no end time - data issue
         return (end - self.started_at).total_seconds()
 
 

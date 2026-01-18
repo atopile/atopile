@@ -5,3 +5,4 @@ export { AgentList } from './AgentList';
 export { AgentDetail } from './AgentDetail';
 export { OutputStream } from './OutputStream';
 export { SpawnAgentDialog } from './SpawnAgentDialog';
+export { PipelineSessionsPanel } from './PipelineSessionsPanel';

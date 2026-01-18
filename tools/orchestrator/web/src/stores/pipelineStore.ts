@@ -59,6 +59,7 @@ interface PipelineStore {
   getSelectedPipeline: () => Pipeline | undefined;
   getSessionsForPipeline: (pipelineId: string) => PipelineSession[];
   getSelectedSession: () => PipelineSession | undefined;
+  getRunningSessionCount: (pipelineId: string) => number;
 }
 
 const defaultConfig: PipelineConfig = {
@@ -322,6 +323,12 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
     if (!selectedPipelineId || !selectedSessionId) return undefined;
     const pipelineSessions = sessions.get(selectedPipelineId);
     return pipelineSessions?.find(s => s.id === selectedSessionId);
+  },
+
+  getRunningSessionCount: (pipelineId: string) => {
+    const { sessions } = get();
+    const pipelineSessions = sessions.get(pipelineId) || [];
+    return pipelineSessions.filter(s => s.status === 'running').length;
   },
 }));
 

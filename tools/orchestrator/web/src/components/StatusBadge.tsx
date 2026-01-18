@@ -1,7 +1,7 @@
-import type { AgentStatus, PipelineStatus } from '@/api/types';
+import type { AgentStatus, PipelineStatus, PipelineSessionStatus } from '@/api/types';
 
 interface StatusBadgeProps {
-  status: AgentStatus | PipelineStatus;
+  status: AgentStatus | PipelineStatus | PipelineSessionStatus;
   size?: 'sm' | 'md';
 }
 
@@ -18,6 +18,7 @@ export function StatusBadge({ status, size = 'md' }: StatusBadgeProps) {
     draft: { bg: 'bg-gray-700/50', text: 'text-gray-300', dot: 'bg-gray-400' },
     ready: { bg: 'bg-blue-900/50', text: 'text-blue-300', dot: 'bg-blue-400' },
     paused: { bg: 'bg-yellow-900/50', text: 'text-yellow-300', dot: 'bg-yellow-400' },
+    stopped: { bg: 'bg-orange-900/50', text: 'text-orange-300', dot: 'bg-orange-400' },
     active: { bg: 'bg-green-900/50', text: 'text-green-300', dot: 'bg-green-400' },
     abandoned: { bg: 'bg-gray-700/50', text: 'text-gray-300', dot: 'bg-gray-400' },
   };

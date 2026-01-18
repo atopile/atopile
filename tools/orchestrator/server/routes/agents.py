@@ -321,7 +321,14 @@ async def terminate_agent(
     agent_store: Annotated[AgentStateStore, Depends(get_agent_store)],
     process_manager: Annotated[ProcessManager, Depends(get_process_manager)],
 ) -> TerminateAgentResponse:
-    """Terminate a running agent."""
+    """Terminate a running agent.
+
+    If the process manager can't find the process but we have a PID,
+    we'll try to kill by PID directly when force=true.
+    """
+    import os
+    import signal
+
     agent = agent_store.get(agent_id)
     if agent is None:
         raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
@@ -333,30 +340,69 @@ async def terminate_agent(
             message=f"Agent already finished with status: {agent.status}",
         )
 
+    killed_by_pid = False
+
     try:
         if request.force:
             process_manager.kill(agent_id)
         else:
             process_manager.terminate(agent_id, timeout=request.timeout_seconds)
 
-        # Update state
-        def updater(a: AgentState) -> AgentState:
-            a.status = AgentStatus.TERMINATED
-            a.finished_at = datetime.now()
-            return a
-
-        agent_store.update(agent_id, updater)
-
-        return TerminateAgentResponse(
-            agent_id=agent_id,
-            success=True,
-            message="Agent terminated successfully",
-        )
-
     except AgentNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+        # Process manager doesn't have the process, try by PID if force
+        if request.force and agent.pid:
+            try:
+                os.kill(agent.pid, signal.SIGKILL)
+                killed_by_pid = True
+                logger.info(f"Force killed agent {agent_id} by PID {agent.pid}")
+            except ProcessLookupError:
+                # Process already dead
+                killed_by_pid = True
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Process manager lost track and PID kill failed: {e}"
+                ) from e
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Agent process not found. Use force=true to kill by PID."
+            )
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        # Other error - try PID kill if force
+        if request.force and agent.pid:
+            try:
+                os.kill(agent.pid, signal.SIGKILL)
+                killed_by_pid = True
+                logger.info(f"Force killed agent {agent_id} by PID {agent.pid} after error: {e}")
+            except ProcessLookupError:
+                killed_by_pid = True
+            except Exception as kill_err:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Terminate failed ({e}) and PID kill failed ({kill_err})"
+                ) from kill_err
+        else:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
+    # Update state
+    def updater(a: AgentState) -> AgentState:
+        a.status = AgentStatus.TERMINATED
+        a.finished_at = datetime.now()
+        return a
+
+    agent_store.update(agent_id, updater)
+
+    msg = "Agent terminated successfully"
+    if killed_by_pid:
+        msg = f"Agent terminated by PID {agent.pid} (process manager lost track)"
+
+    return TerminateAgentResponse(
+        agent_id=agent_id,
+        success=True,
+        message=msg,
+    )
 
 
 @router.get("/{agent_id}/output", response_model=AgentOutputResponse)
@@ -434,24 +480,63 @@ async def delete_agent(
     agent_id: str,
     agent_store: Annotated[AgentStateStore, Depends(get_agent_store)],
     process_manager: Annotated[ProcessManager, Depends(get_process_manager)],
+    force: bool = Query(default=False, description="Force kill by PID if process manager fails"),
 ) -> dict:
     """Delete an agent and its associated data.
 
     If the agent is still running, it will be terminated first.
+    Use force=true to kill by PID directly if the process manager can't terminate it.
     """
+    import os
+    import signal
+
     agent = agent_store.get(agent_id)
     if agent is None:
         raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+
+    killed_by_pid = False
 
     # Terminate if running
     if agent.is_running():
         try:
             process_manager.terminate(agent_id, timeout=2.0)
+        except Exception as e:
+            logger.warning(f"Process manager terminate failed for {agent_id}: {e}")
+            # If force and we have a PID, try to kill directly
+            if force and agent.pid:
+                try:
+                    os.kill(agent.pid, signal.SIGKILL)
+                    killed_by_pid = True
+                    logger.info(f"Force killed agent {agent_id} by PID {agent.pid}")
+                except ProcessLookupError:
+                    # Process already dead
+                    killed_by_pid = True
+                except Exception as kill_err:
+                    logger.error(f"Failed to force kill PID {agent.pid}: {kill_err}")
+
+        try:
+            process_manager.cleanup(agent_id)
         except Exception:
             pass
-        process_manager.cleanup(agent_id)
+
+    # If force delete with PID but process manager didn't have it tracked,
+    # still try to kill by PID
+    elif force and agent.pid:
+        try:
+            os.kill(agent.pid, signal.SIGKILL)
+            killed_by_pid = True
+            logger.info(f"Force killed orphaned agent {agent_id} by PID {agent.pid}")
+        except ProcessLookupError:
+            # Process already dead, that's fine
+            pass
+        except Exception as e:
+            logger.warning(f"Could not kill PID {agent.pid}: {e}")
 
     # Delete from store
     agent_store.delete(agent_id)
 
-    return {"status": "deleted", "agent_id": agent_id}
+    msg = "Agent deleted"
+    if killed_by_pid:
+        msg = f"Agent deleted (force killed PID {agent.pid})"
+
+    return {"status": "deleted", "agent_id": agent_id, "message": msg}

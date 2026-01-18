@@ -312,6 +312,7 @@ export interface PipelineSession {
   status: PipelineSessionStatus;
   node_agent_map: Record<string, string>;  // node_id -> agent_id
   node_status: Record<string, string>;     // node_id -> status
+  loop_iterations: Record<string, number>; // node_id -> iteration count
   execution_order: string[];               // Order nodes were executed
   started_at: string;
   finished_at?: string;

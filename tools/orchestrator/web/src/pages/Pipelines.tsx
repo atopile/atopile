@@ -1,22 +1,24 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, ChevronRight, Play, Square, CheckSquare, Square as SquareIcon } from 'lucide-react';
+import { Plus, Trash2, ChevronRight, Play, CheckSquare, Square as SquareIcon, History } from 'lucide-react';
 import { usePipelineStore } from '@/stores';
 import { PipelineEditor, PipelineToolbar } from '@/pipeline';
-import { StatusBadge } from '@/components';
+import { PipelineSessionsPanel } from '@/components';
 
 export function Pipelines() {
   const {
     pipelines,
     selectedPipelineId,
     fetchPipelines,
+    fetchSessions,
     selectPipeline,
     deletePipeline,
     runPipeline,
-    stopPipeline,
     resetEditor,
+    getRunningSessionCount,
   } = usePipelineStore();
 
   const [showList, setShowList] = useState(true);
+  const [showSessions, setShowSessions] = useState(true);  // Default to showing sessions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -24,10 +26,19 @@ export function Pipelines() {
     fetchPipelines();
   }, [fetchPipelines]);
 
+  // Fetch sessions for all pipelines to compute display status
+  useEffect(() => {
+    pipelines.forEach((_, pipelineId) => {
+      fetchSessions(pipelineId);
+    });
+  }, [pipelines, fetchSessions]);
+
   const sortedPipelines = Array.from(pipelines.values()).sort((a, b) => {
-    // Running pipelines first
-    if (a.status === 'running' && b.status !== 'running') return -1;
-    if (a.status !== 'running' && b.status === 'running') return 1;
+    // Running pipelines first (based on running session count)
+    const aRunning = getRunningSessionCount(a.id);
+    const bRunning = getRunningSessionCount(b.id);
+    if (aRunning > 0 && bRunning === 0) return -1;
+    if (aRunning === 0 && bRunning > 0) return 1;
     // Then by updated_at descending
     return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
   });
@@ -92,24 +103,8 @@ export function Pipelines() {
     try {
       for (const id of selectedIds) {
         const pipeline = pipelines.get(id);
-        if (pipeline && pipeline.status !== 'running') {
+        if (pipeline) {
           await runPipeline(id);
-        }
-      }
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleBulkStop = async () => {
-    if (selectedIds.size === 0) return;
-
-    setIsProcessing(true);
-    try {
-      for (const id of selectedIds) {
-        const pipeline = pipelines.get(id);
-        if (pipeline && (pipeline.status === 'running' || pipeline.status === 'paused')) {
-          await stopPipeline(id);
         }
       }
     } finally {
@@ -123,7 +118,11 @@ export function Pipelines() {
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <PipelineToolbar onOpenPipelineList={() => setShowList(true)} />
+      <PipelineToolbar
+        onOpenPipelineList={() => setShowList(true)}
+        onToggleSessions={() => setShowSessions(!showSessions)}
+        showSessions={showSessions}
+      />
 
       <div className="flex flex-1 overflow-hidden">
         {/* Pipeline list sidebar */}
@@ -164,14 +163,6 @@ export function Pipelines() {
                       title="Run selected"
                     >
                       <Play className="w-3 h-3" />
-                    </button>
-                    <button
-                      className="btn btn-sm btn-secondary flex items-center gap-1"
-                      onClick={handleBulkStop}
-                      disabled={isProcessing}
-                      title="Stop selected"
-                    >
-                      <Square className="w-3 h-3" />
                     </button>
                     <button
                       className="btn btn-sm btn-danger flex items-center gap-1"
@@ -224,12 +215,31 @@ export function Pipelines() {
                       <span className="font-medium text-sm truncate flex-1">
                         {pipeline.name}
                       </span>
-                      <StatusBadge status={pipeline.status} size="sm" />
+                      {(() => {
+                        const runningCount = getRunningSessionCount(pipeline.id);
+                        return runningCount > 0 ? (
+                          <span className="px-1.5 py-0.5 text-xs rounded bg-green-900/50 text-green-300 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                            {runningCount} running
+                          </span>
+                        ) : null;
+                      })()}
                     </div>
 
                     <div className="flex items-center justify-between text-xs text-gray-500 pl-6">
                       <span>{pipeline.nodes.length} nodes</span>
                       <div className="flex items-center gap-1">
+                        <button
+                          className="p-1 hover:bg-gray-700 rounded"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            selectPipeline(pipeline.id);
+                            setShowSessions(true);
+                          }}
+                          title="View sessions"
+                        >
+                          <History className="w-3.5 h-3.5 hover:text-blue-400" />
+                        </button>
                         <button
                           className="p-1 hover:bg-gray-700 rounded"
                           onClick={(e) => handleDeletePipeline(pipeline.id, e)}
@@ -251,6 +261,33 @@ export function Pipelines() {
         <div className="flex-1">
           <PipelineEditor />
         </div>
+
+        {/* Sessions panel */}
+        {showSessions && (
+          <div className="w-80 border-l border-gray-700 bg-gray-900">
+            {selectedPipelineId ? (
+              <PipelineSessionsPanel
+                pipelineId={selectedPipelineId}
+                onClose={() => setShowSessions(false)}
+              />
+            ) : (
+              <div className="h-full flex flex-col">
+                <div className="flex items-center justify-between p-3 border-b border-gray-700">
+                  <h3 className="font-semibold text-sm">Pipeline Sessions</h3>
+                  <button
+                    className="p-1 hover:bg-gray-700 rounded text-gray-400 hover:text-gray-200"
+                    onClick={() => setShowSessions(false)}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
+                  Select a pipeline to view sessions
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

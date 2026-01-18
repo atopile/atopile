@@ -26,7 +26,8 @@ import type { PipelineNode, PipelineEdge } from '@/api/types';
 function toFlowNodes(
   pipelineNodes: PipelineNode[],
   nodeStatus?: Record<string, string>,
-  nodeAgentMap?: Record<string, string>
+  nodeAgentMap?: Record<string, string>,
+  loopIterations?: Record<string, number>
 ): Node[] {
   return pipelineNodes.map((node) => ({
     id: node.id,
@@ -36,6 +37,7 @@ function toFlowNodes(
       ...node.data as unknown as Record<string, unknown>,
       _nodeStatus: nodeStatus?.[node.id],
       _agentId: nodeAgentMap?.[node.id],
+      _loopIteration: loopIterations?.[node.id],
     },
   }));
 }
@@ -76,7 +78,7 @@ function toPipelineEdges(flowEdges: Edge[]): PipelineEdge[] {
 }
 
 export function PipelineEditor() {
-  const { editorNodes, editorEdges, setEditorNodes, setEditorEdges, getSelectedPipeline, getSelectedSession } = usePipelineStore();
+  const { editorNodes, editorEdges, setEditorNodes, setEditorEdges, getSelectedSession } = usePipelineStore();
   const { agents, fetchAgent } = useAgentStore();
 
   // Track external updates vs internal changes
@@ -90,17 +92,17 @@ export function PipelineEditor() {
   // Agent view mode (when viewing agent detail from pipeline)
   const [viewingAgentId, setViewingAgentId] = useState<string | null>(null);
 
-  // Get the selected pipeline and session for node status
-  const selectedPipeline = getSelectedPipeline();
+  // Get the selected session for node status (only show status when a session is selected)
   const selectedSession = getSelectedSession();
 
-  // Use session data if available, fall back to pipeline data
-  const nodeStatus = selectedSession?.node_status || selectedPipeline?.node_status;
-  const nodeAgentMap = selectedSession?.node_agent_map || selectedPipeline?.node_agent_map;
+  // Only show node status when a session is selected
+  const nodeStatus = selectedSession?.node_status;
+  const nodeAgentMap = selectedSession?.node_agent_map;
+  const loopIterations = selectedSession?.loop_iterations;
 
   // Initialize React Flow state from store
   const [nodes, setNodes, onNodesChange] = useNodesState(
-    toFlowNodes(editorNodes, nodeStatus, nodeAgentMap)
+    toFlowNodes(editorNodes, nodeStatus, nodeAgentMap, loopIterations)
   );
   const [edges, setEdges, onEdgesChange] = useEdgesState(toFlowEdges(editorEdges));
 
@@ -109,10 +111,10 @@ export function PipelineEditor() {
     const nodesJson = JSON.stringify(editorNodes);
     if (nodesJson !== lastExternalNodes.current && !isInternalChange.current) {
       lastExternalNodes.current = nodesJson;
-      setNodes(toFlowNodes(editorNodes, nodeStatus, nodeAgentMap));
+      setNodes(toFlowNodes(editorNodes, nodeStatus, nodeAgentMap, loopIterations));
     }
     isInternalChange.current = false;
-  }, [editorNodes, setNodes, nodeStatus, nodeAgentMap]);
+  }, [editorNodes, setNodes, nodeStatus, nodeAgentMap, loopIterations]);
 
   useEffect(() => {
     const edgesJson = JSON.stringify(editorEdges);

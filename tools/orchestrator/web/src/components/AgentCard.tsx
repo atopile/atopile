@@ -14,17 +14,35 @@ interface AgentCardProps {
 export function AgentCard({ agent, selected, onClick, onTerminate, onDelete }: AgentCardProps) {
   const [duration, setDuration] = useState<string>('');
 
+  const isActivelyRunning = agent.status === 'running' || agent.status === 'starting';
+
   useEffect(() => {
     const updateDuration = () => {
       if (!agent.started_at) {
-        setDuration('');
+        setDuration('—');
         return;
       }
 
       const start = new Date(agent.started_at).getTime();
-      const end = agent.finished_at
-        ? new Date(agent.finished_at).getTime()
-        : Date.now();
+      if (isNaN(start)) {
+        setDuration('—');
+        return;
+      }
+
+      let end: number;
+      if (agent.finished_at) {
+        end = new Date(agent.finished_at).getTime();
+        if (isNaN(end)) {
+          setDuration('—');
+          return;
+        }
+      } else if (isActivelyRunning) {
+        end = Date.now();
+      } else {
+        setDuration('—'); // Finished but no end time
+        return;
+      }
+
       const seconds = Math.floor((end - start) / 1000);
 
       if (seconds < 60) {
@@ -43,11 +61,11 @@ export function AgentCard({ agent, selected, onClick, onTerminate, onDelete }: A
     updateDuration();
 
     // Update every second for running agents
-    if (agent.status === 'running' || agent.status === 'starting') {
+    if (isActivelyRunning) {
       const interval = setInterval(updateDuration, 1000);
       return () => clearInterval(interval);
     }
-  }, [agent.started_at, agent.finished_at, agent.status]);
+  }, [agent.started_at, agent.finished_at, agent.status, isActivelyRunning]);
 
   const isRunning = agent.status === 'running' || agent.status === 'starting' || agent.status === 'pending';
 

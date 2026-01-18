@@ -8,6 +8,7 @@ requested by other agents via broker_spawn_worker.
 import asyncio
 import logging
 import threading
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import httpx
@@ -114,6 +115,7 @@ class SpawnHandler:
                         def error_updater(a: AgentState) -> AgentState:
                             a.status = AgentStatus.FAILED
                             a.error_message = str(e)
+                            a.finished_at = datetime.now()
                             return a
 
                         self.agent_store.update(agent.id, error_updater)
