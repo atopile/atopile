@@ -297,6 +297,12 @@ class TestJLCBom:
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
 
+        # Instantiate units needed for deserializing picked part attributes
+        # (C25804 is a resistor with resistance, power, and voltage attributes)
+        _ = F.Units.Ohm.bind_typegraph(tg).create_instance(g=g)
+        _ = F.Units.Watt.bind_typegraph(tg).create_instance(g=g)
+        _ = F.Units.Volt.bind_typegraph(tg).create_instance(g=g)
+
         class _TestComponent(fabll.Node):
             _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
