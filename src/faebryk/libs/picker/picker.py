@@ -13,7 +13,6 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.utils import Contradiction
-from faebryk.libs.app.keep_picked_parts import has_pcb_pick_contradiction
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     Advancable,
@@ -116,14 +115,8 @@ def get_pick_tree(
             F.Pickable.is_pickable_by_supplier_id,
         )
 
-        if part_picked := traits.get(F.Pickable.has_part_picked):
-            # Check if this pick was marked as contradicting and needs re-picking
-            if not part_picked.has_trait(has_pcb_pick_contradiction):
-                return tree
-            logger.info(
-                f"Re-picking {module_or_interface_obj.get_full_name()} "
-                "(PCB pick contradicts design)"
-            )
+        if traits.get(F.Pickable.has_part_picked):
+            return tree
 
         # Handle has_part_removed: create a has_part_picked trait with the removed marker # noqa: E501
         if traits.get(F.has_part_removed):
@@ -134,38 +127,17 @@ def get_pick_tree(
             return tree
 
         explore = True
-        pickable_trait = None
-        pbt = traits.get(F.Pickable.is_pickable_by_type)
-        pbsi = traits.get(F.Pickable.is_pickable_by_supplier_id)
-
-        # Priority 1: is_pickable_by_type (parametric picking)
-        if pbt:
-            pickable_trait = pbt.get_trait(F.Pickable.is_pickable)
-
-        # Priority 2: is_pickable_by_supplier_id (skip if contradicts design)
-        elif pbsi:
-            if pbsi.has_trait(has_pcb_pick_contradiction):
-                logger.info(
-                    f"Skipping contradicting PCB pick for "
-                    f"{module_or_interface_obj.get_full_name()}"
-                )
-                # No fallback - parametric picking already checked
-            else:
-                pickable_trait = pbsi.get_trait(F.Pickable.is_pickable)
-
-        # Priority 3: is_pickable_by_part_number (skip if contradicts design)
-        elif pbpn := F.Pickable.is_pickable_by_part_number.try_check_or_convert(module):
-            if pbpn.has_trait(has_pcb_pick_contradiction):
-                logger.info(
-                    f"Skipping contradicting PCB pick for "
-                    f"{module_or_interface_obj.get_full_name()}"
-                )
-                # No fallback - parametric picking already checked
-            else:
-                pickable_trait = pbpn.get_trait(F.Pickable.is_pickable)
-
-        if pickable_trait:
+        if pbt := traits.get(F.Pickable.is_pickable_by_type):
             merge_tree = Tree()
+            pickable_trait = pbt.get_trait(F.Pickable.is_pickable)
+            tree[pickable_trait] = merge_tree
+        elif pbsi := traits.get(F.Pickable.is_pickable_by_supplier_id):
+            merge_tree = Tree()
+            pickable_trait = pbsi.get_trait(F.Pickable.is_pickable)
+            tree[pickable_trait] = merge_tree
+        elif pbpn := F.Pickable.is_pickable_by_part_number.try_check_or_convert(module):
+            merge_tree = Tree()
+            pickable_trait = pbpn.get_trait(F.Pickable.is_pickable)
             tree[pickable_trait] = merge_tree
         else:
             explore = False
@@ -402,19 +374,12 @@ def pick_topologically(
 
     logger.info(f"Picking {_pick_count} modules")
 
-    # Modules with explicit part info (supplier ID or part number)
-    # Skip those marked as contradicting PCB picks
-    explicit_modules = []
-    for m in tree.keys():
-        node = m.get_pickable_node()
-        if pbsi := node.try_get_trait(F.Pickable.is_pickable_by_supplier_id):
-            if not pbsi.has_trait(has_pcb_pick_contradiction):
-                explicit_modules.append(m)
-        elif pbpn := node.try_get_trait(F.Pickable.is_pickable_by_part_number):
-            if not pbpn.has_trait(has_pcb_pick_contradiction):
-                explicit_modules.append(m)
-
-    if explicit_modules:
+    if explicit_modules := [
+        m
+        for m in tree.keys()
+        if m.get_pickable_node().has_trait(F.Pickable.is_pickable_by_part_number)
+        or m.get_pickable_node().has_trait(F.Pickable.is_pickable_by_supplier_id)
+    ]:
         _pick_explicit_modules(explicit_modules)
         tree, _ = update_pick_tree(tree)
 

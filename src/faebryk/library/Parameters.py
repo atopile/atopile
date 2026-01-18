@@ -9,7 +9,12 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import KeyErrorAmbiguous, not_none, once, times
+from faebryk.libs.util import (
+    KeyErrorAmbiguous,
+    not_none,
+    once,
+    times,
+)
 
 if TYPE_CHECKING:
     import faebryk.library.Literals as Literals
@@ -82,29 +87,21 @@ class can_be_operand(fabll.Node):
         types: type[T] = fabll.Node,
         predicates_only: bool = False,
         recursive: bool = False,
-        include_invalidated: bool = False,
     ) -> set[T]:
         # Import inside function to avoid gen_F.py cycle detection
         # (gen_F.py only looks for F.* patterns)
         from faebryk.library.Expressions import is_predicate
-        from faebryk.libs.app.keep_picked_parts import is_invalidated_pcb_constraint
 
         class E_Ctx:
             _self = self
             operations: set[T] = set()
             t = types
             predicates_only_: bool = predicates_only
-            include_invalidated_: bool = include_invalidated
 
         def visit(e_ctx: E_Ctx, edge: graph.BoundEdge) -> None:
             expr = fbrk.EdgeOperand.get_expression_node(bound_edge=edge)
             is_expr = fabll.Node.bind_instance(instance=edge.g().bind(node=expr))
             if e_ctx.predicates_only_ and not is_expr.has_trait(is_predicate):
-                return
-            # Skip invalidated PCB constraints (stale constraints from previous picks)
-            if not e_ctx.include_invalidated_ and is_expr.has_trait(
-                is_invalidated_pcb_constraint
-            ):
                 return
 
             e_ctx.operations.add(is_expr.cast(e_ctx.t))
@@ -245,14 +242,12 @@ class is_parameter_operatable(fabll.Node):
         types: type[T] = fabll.Node,
         predicates_only: bool = False,
         recursive: bool = False,
-        include_invalidated: bool = False,
     ) -> set[T]:
         # TODO remove in favor of the one in can_be_operand
         return self.as_operand.get().get_operations(
             types=types,
             predicates_only=predicates_only,
             recursive=recursive,
-            include_invalidated=include_invalidated,
         )
 
     def get_obj(self) -> "fabll.Node":

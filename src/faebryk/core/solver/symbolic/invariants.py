@@ -365,15 +365,9 @@ def _no_predicate_literals(
     if operands[0].try_get_sibling_trait(F.Expressions.is_predicate) and any(
         lit.op_setic_equals_singleton(False) for lit in lits.values()
     ):
-        # Trace back through mutations to find original constraints
-        involved: list[F.Parameters.is_parameter_operatable] = []
-        for op in operands:
-            if op_po := op.as_parameter_operatable.try_get():
-                origins = mutator.mutation_map.map_backward(op_po, only_full=True)
-                involved.extend(origins)
         raise Contradiction(
             "P!{S/P|False}",
-            involved=involved,
+            involved=[],
             mutator=mutator,
         )
 
@@ -516,19 +510,11 @@ def _fold_pure_literal_operands(
             return InsertExpressionResult(lit_fold.as_operand.get(), False)
         else:
             # False/ {True,False}
-            # Use map_backward to trace operands back to their original constraints
-            constraint_sources: list[F.Parameters.is_parameter_operatable] = []
-            for op in builder.operands:
-                if op_po := op.as_parameter_operatable.try_get():
-                    # Trace back through mutations to find original constraints
-                    origins = mutator.mutation_map.map_backward(op_po, only_full=True)
-                    constraint_sources.extend(origins)
             raise ContradictionByLiteral(
                 "P!{S|False}",
                 involved=[],
                 literals=[lit_fold],
                 mutator=mutator,
-                constraint_sources=constraint_sources,
             )
     if force_replacable_by_literal:
         return InsertExpressionResult(lit_fold.as_operand.get(), False)
