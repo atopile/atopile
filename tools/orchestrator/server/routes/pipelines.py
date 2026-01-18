@@ -8,17 +8,20 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from ...core import PipelineExecutor, PipelineStateStore
+from ...core import PipelineExecutor, PipelineSessionStore, PipelineStateStore
 from ...models import (
     CreatePipelineRequest,
     PipelineActionResponse,
     PipelineListResponse,
+    PipelineSession,
+    PipelineSessionListResponse,
+    PipelineSessionResponse,
     PipelineState,
     PipelineStateResponse,
     PipelineStatus,
     UpdatePipelineRequest,
 )
-from ..dependencies import get_pipeline_executor, get_pipeline_store
+from ..dependencies import get_pipeline_executor, get_pipeline_session_store, get_pipeline_store
 
 logger = logging.getLogger(__name__)
 
@@ -161,19 +164,20 @@ async def run_pipeline(
         )
 
     # Start the pipeline executor FIRST (it will set status to RUNNING internally)
-    started = pipeline_executor.start_pipeline(pipeline_id)
-    if not started:
+    # Returns the session ID if started successfully
+    session_id = pipeline_executor.start_pipeline(pipeline_id)
+    if not session_id:
         return PipelineActionResponse(
             status="failed",
             message="Failed to start pipeline execution",
             pipeline_id=pipeline_id,
         )
 
-    logger.info(f"Started pipeline {pipeline_id}")
+    logger.info(f"Started pipeline {pipeline_id} with session {session_id}")
 
     return PipelineActionResponse(
         status="started",
-        message="Pipeline execution started",
+        message=f"Pipeline execution started (session: {session_id})",
         pipeline_id=pipeline_id,
     )
 
@@ -294,3 +298,54 @@ async def get_pipeline_status(
         raise HTTPException(status_code=404, detail=f"Pipeline not found: {pipeline_id}")
 
     return PipelineStateResponse(pipeline=pipeline)
+
+
+# Session endpoints
+
+
+@router.get("/{pipeline_id}/sessions", response_model=PipelineSessionListResponse)
+async def list_pipeline_sessions(
+    pipeline_id: str,
+    pipeline_store: Annotated[PipelineStateStore, Depends(get_pipeline_store)],
+    session_store: Annotated[PipelineSessionStore, Depends(get_pipeline_session_store)],
+    limit: int = Query(default=100, ge=1, le=1000),
+) -> PipelineSessionListResponse:
+    """List all sessions for a pipeline."""
+    # Verify pipeline exists
+    pipeline = pipeline_store.get(pipeline_id)
+    if pipeline is None:
+        raise HTTPException(status_code=404, detail=f"Pipeline not found: {pipeline_id}")
+
+    sessions = session_store.get_sessions_for_pipeline(pipeline_id)
+
+    # Sort by started_at descending (most recent first)
+    sessions.sort(key=lambda s: s.started_at, reverse=True)
+    sessions = sessions[:limit]
+
+    return PipelineSessionListResponse(sessions=sessions, total=len(sessions))
+
+
+@router.get("/{pipeline_id}/sessions/{session_id}", response_model=PipelineSessionResponse)
+async def get_pipeline_session(
+    pipeline_id: str,
+    session_id: str,
+    pipeline_store: Annotated[PipelineStateStore, Depends(get_pipeline_store)],
+    session_store: Annotated[PipelineSessionStore, Depends(get_pipeline_session_store)],
+) -> PipelineSessionResponse:
+    """Get a specific pipeline session."""
+    # Verify pipeline exists
+    pipeline = pipeline_store.get(pipeline_id)
+    if pipeline is None:
+        raise HTTPException(status_code=404, detail=f"Pipeline not found: {pipeline_id}")
+
+    session = session_store.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+
+    if session.pipeline_id != pipeline_id:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Session {session_id} does not belong to pipeline {pipeline_id}",
+        )
+
+    return PipelineSessionResponse(session=session)

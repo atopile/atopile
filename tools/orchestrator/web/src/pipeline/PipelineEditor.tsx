@@ -76,7 +76,7 @@ function toPipelineEdges(flowEdges: Edge[]): PipelineEdge[] {
 }
 
 export function PipelineEditor() {
-  const { editorNodes, editorEdges, setEditorNodes, setEditorEdges, getSelectedPipeline } = usePipelineStore();
+  const { editorNodes, editorEdges, setEditorNodes, setEditorEdges, getSelectedPipeline, getSelectedSession } = usePipelineStore();
   const { agents, fetchAgent } = useAgentStore();
 
   // Track external updates vs internal changes
@@ -90,12 +90,17 @@ export function PipelineEditor() {
   // Agent view mode (when viewing agent detail from pipeline)
   const [viewingAgentId, setViewingAgentId] = useState<string | null>(null);
 
-  // Get the selected pipeline for node status
+  // Get the selected pipeline and session for node status
   const selectedPipeline = getSelectedPipeline();
+  const selectedSession = getSelectedSession();
+
+  // Use session data if available, fall back to pipeline data
+  const nodeStatus = selectedSession?.node_status || selectedPipeline?.node_status;
+  const nodeAgentMap = selectedSession?.node_agent_map || selectedPipeline?.node_agent_map;
 
   // Initialize React Flow state from store
   const [nodes, setNodes, onNodesChange] = useNodesState(
-    toFlowNodes(editorNodes, selectedPipeline?.node_status, selectedPipeline?.node_agent_map)
+    toFlowNodes(editorNodes, nodeStatus, nodeAgentMap)
   );
   const [edges, setEdges, onEdgesChange] = useEdgesState(toFlowEdges(editorEdges));
 
@@ -104,10 +109,10 @@ export function PipelineEditor() {
     const nodesJson = JSON.stringify(editorNodes);
     if (nodesJson !== lastExternalNodes.current && !isInternalChange.current) {
       lastExternalNodes.current = nodesJson;
-      setNodes(toFlowNodes(editorNodes, selectedPipeline?.node_status, selectedPipeline?.node_agent_map));
+      setNodes(toFlowNodes(editorNodes, nodeStatus, nodeAgentMap));
     }
     isInternalChange.current = false;
-  }, [editorNodes, setNodes, selectedPipeline?.node_status, selectedPipeline?.node_agent_map]);
+  }, [editorNodes, setNodes, nodeStatus, nodeAgentMap]);
 
   useEffect(() => {
     const edgesJson = JSON.stringify(editorEdges);
@@ -220,8 +225,8 @@ export function PipelineEditor() {
   const onNodeDoubleClick = useCallback((_event: React.MouseEvent, node: Node) => {
     // For agent nodes with a running/completed agent, show agent detail
     if (node.type === 'agent') {
-      const pipeline = getSelectedPipeline();
-      const agentId = pipeline?.node_agent_map?.[node.id];
+      // Use session's agent map if available, otherwise fall back to pipeline's
+      const agentId = nodeAgentMap?.[node.id];
       if (agentId) {
         // Fetch agent data and show detail view
         fetchAgent(agentId);
@@ -231,7 +236,7 @@ export function PipelineEditor() {
     }
     // Otherwise, show config panel
     setSelectedNodeId(node.id);
-  }, [getSelectedPipeline, fetchAgent]);
+  }, [nodeAgentMap, fetchAgent]);
 
   // Handle node selection
   const onSelectionChange = useCallback(({ nodes: selectedNodes }: { nodes: Node[] }) => {

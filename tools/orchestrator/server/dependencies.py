@@ -7,7 +7,7 @@ import threading
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from ..core import AgentStateStore, PipelineExecutor, PipelineStateStore, ProcessManager, SessionManager
+from ..core import AgentStateStore, PipelineExecutor, PipelineSessionStore, PipelineStateStore, ProcessManager, SessionManager
 from ..models import AgentState, AgentStatus, OutputChunk
 
 if TYPE_CHECKING:
@@ -33,6 +33,7 @@ class OrchestratorState:
         self._agent_store = AgentStateStore(persist=True)
         self._session_manager = SessionManager(persist=True)
         self._pipeline_store = PipelineStateStore(persist=True)
+        self._pipeline_session_store = PipelineSessionStore(persist=True)
         self._process_manager = ProcessManager(
             on_output=self._handle_output,
             on_status_change=self._handle_status_change,
@@ -41,6 +42,7 @@ class OrchestratorState:
             process_manager=self._process_manager,
             agent_store=self._agent_store,
             pipeline_store=self._pipeline_store,
+            pipeline_session_store=self._pipeline_session_store,
             on_node_status_change=self._handle_node_status_change,
         )
         self._ws_manager: "ConnectionManager | None" = None
@@ -56,10 +58,12 @@ class OrchestratorState:
         agents_loaded = self._agent_store.load_all()
         pipelines_loaded = self._pipeline_store.load_all()
         sessions_loaded = self._session_manager._store.load_all()
+        pipeline_sessions_loaded = self._pipeline_session_store.load_all()
 
         logger.info(
             f"Loaded persisted state: {agents_loaded} agents, "
-            f"{pipelines_loaded} pipelines, {sessions_loaded} sessions"
+            f"{pipelines_loaded} pipelines, {sessions_loaded} sessions, "
+            f"{pipeline_sessions_loaded} pipeline sessions"
         )
 
     @classmethod
@@ -90,6 +94,10 @@ class OrchestratorState:
     @property
     def pipeline_store(self) -> PipelineStateStore:
         return self._pipeline_store
+
+    @property
+    def pipeline_session_store(self) -> PipelineSessionStore:
+        return self._pipeline_session_store
 
     @property
     def process_manager(self) -> ProcessManager:
@@ -285,6 +293,11 @@ def get_session_manager() -> SessionManager:
 def get_pipeline_store() -> PipelineStateStore:
     """Get the pipeline state store."""
     return get_orchestrator_state().pipeline_store
+
+
+def get_pipeline_session_store() -> PipelineSessionStore:
+    """Get the pipeline session store."""
+    return get_orchestrator_state().pipeline_session_store
 
 
 def get_process_manager() -> ProcessManager:

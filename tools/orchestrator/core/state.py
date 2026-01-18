@@ -9,7 +9,7 @@ from typing import Generic, TypeVar
 
 from pydantic import BaseModel
 
-from ..common import get_agents_dir, get_pipelines_dir, get_sessions_dir
+from ..common import get_agents_dir, get_pipeline_sessions_dir, get_pipelines_dir, get_sessions_dir
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -179,3 +179,23 @@ class PipelineStateStore(StateStore):
 
         persist_dir = get_pipelines_dir() if persist else None
         super().__init__(PipelineState, persist_dir=persist_dir)
+
+
+class PipelineSessionStore(StateStore):
+    """State store specifically for pipeline session states."""
+
+    def __init__(self, persist: bool = True) -> None:
+        from ..models import PipelineSession
+
+        persist_dir = get_pipeline_sessions_dir() if persist else None
+        super().__init__(PipelineSession, persist_dir=persist_dir)
+
+    def get_sessions_for_pipeline(self, pipeline_id: str) -> list:
+        """Get all sessions for a specific pipeline."""
+        from ..models import PipelineSession
+
+        with self._lock:
+            return [
+                session for session in self._store.values()
+                if session.pipeline_id == pipeline_id
+            ]

@@ -27,6 +27,19 @@ router = APIRouter(prefix="/bridge", tags=["bridge"])
 _pipeline_contexts: dict[str, dict] = {}
 _context_lock = threading.Lock()
 
+# Per-agent locks to prevent concurrent bridge calls from interfering
+# Maps: agent_id -> Lock
+_agent_locks: dict[str, asyncio.Lock] = {}
+_agent_locks_lock = threading.Lock()
+
+
+def get_agent_lock(agent_id: str) -> asyncio.Lock:
+    """Get or create a lock for an agent to serialize bridge calls."""
+    with _agent_locks_lock:
+        if agent_id not in _agent_locks:
+            _agent_locks[agent_id] = asyncio.Lock()
+        return _agent_locks[agent_id]
+
 
 class SendRequest(BaseModel):
     from_agent: str
@@ -108,7 +121,7 @@ def find_pipeline_agent_in_store(
 
     This is used as a fallback when the in-memory context doesn't have the agent.
     """
-    for agent_id in agent_store.list_ids():
+    for agent_id in agent_store.keys():
         agent = agent_store.get(agent_id)
         if agent is None:
             continue
@@ -140,6 +153,9 @@ async def send_and_receive(
     3. Otherwise spawn a new agent with the message as prompt
     4. Wait for target agent to complete
     5. Return target agent's output as the response
+
+    Note: Uses per-agent locking to prevent race conditions when multiple
+    bridge calls target the same agent concurrently.
     """
     from_agent = request.from_agent
     to_agent = request.to_agent
@@ -177,32 +193,42 @@ Respond to this message by outputting your answer as text. Do NOT use the send_a
             if existing_agent_id:
                 logger.info(f"Found agent '{to_agent}' in store: {existing_agent_id}")
 
-    existing_agent = agent_store.get(existing_agent_id) if existing_agent_id else None
+    # Get or create a lock for the target agent to serialize concurrent calls
+    # This prevents race conditions where multiple callers try to spawn/resume the same agent
+    agent_lock_id = existing_agent_id or f"new-{pipeline_id or 'standalone'}-{to_agent}"
+    agent_lock = get_agent_lock(agent_lock_id)
 
-    if existing_agent and existing_agent.session_id and existing_agent.is_finished():
-        # Resume the existing agent with the new message
-        logger.info(f"Resuming existing agent '{to_agent}' (id={existing_agent_id})")
-        return await _resume_agent_for_message(
-            existing_agent_id,
-            prompt,
-            from_agent,
-            to_agent,
-            process_manager,
-            agent_store,
-        )
-    else:
-        # Spawn a new agent
-        if existing_agent:
-            logger.info(f"Agent '{to_agent}' exists but cannot be resumed: session_id={existing_agent.session_id}, status={existing_agent.status}")
+    logger.info(f"Acquiring lock for agent {agent_lock_id}")
+    async with agent_lock:
+        logger.info(f"Lock acquired for agent {agent_lock_id}")
+
+        # Re-fetch the agent state inside the lock to get the latest state
+        existing_agent = agent_store.get(existing_agent_id) if existing_agent_id else None
+
+        if existing_agent and existing_agent.session_id and existing_agent.is_finished():
+            # Resume the existing agent with the new message
+            logger.info(f"Resuming existing agent '{to_agent}' (id={existing_agent_id})")
+            return await _resume_agent_for_message(
+                existing_agent_id,
+                prompt,
+                from_agent,
+                to_agent,
+                process_manager,
+                agent_store,
+            )
         else:
-            logger.info(f"No existing agent found for '{to_agent}', spawning new one")
-        return await _spawn_agent_for_message(
-            prompt,
-            from_agent,
-            to_agent,
-            process_manager,
-            agent_store,
-        )
+            # Spawn a new agent
+            if existing_agent:
+                logger.info(f"Agent '{to_agent}' exists but cannot be resumed: session_id={existing_agent.session_id}, status={existing_agent.status}")
+            else:
+                logger.info(f"No existing agent found for '{to_agent}', spawning new one")
+            return await _spawn_agent_for_message(
+                prompt,
+                from_agent,
+                to_agent,
+                process_manager,
+                agent_store,
+            )
 
 
 async def _resume_agent_for_message(
@@ -230,6 +256,8 @@ async def _resume_agent_for_message(
         a.exit_code = None
         a.error_message = None
         a.finished_at = None
+        # Increment run_count for versioned log files
+        a.run_count = (a.run_count or 0) + 1
         resume_count = a.metadata.get("resume_count", 0)
         a.metadata["resume_count"] = resume_count + 1
         return a
@@ -238,7 +266,9 @@ async def _resume_agent_for_message(
     agent = agent_store.get(agent_id)
 
     try:
+        logger.info(f"Spawning process for agent {agent_id} (run_count={agent.run_count})")
         managed = process_manager.spawn(agent)
+        logger.info(f"Process spawned for agent {agent_id}: pid={managed.process.pid}")
 
         def running_updater(a: AgentState) -> AgentState:
             a.status = AgentStatus.RUNNING
@@ -249,15 +279,17 @@ async def _resume_agent_for_message(
         agent_store.update(agent_id, running_updater)
 
         # Wait for agent to complete
+        logger.info(f"Waiting for agent {agent_id} to complete")
         result = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: _wait_and_extract_result(process_manager, agent_store, agent_id, cleanup=False)
         )
 
+        logger.info(f"Agent {agent_id} completed with result length={len(result)}")
         return SendResponse(status="response", response=result)
 
     except Exception as e:
-        logger.error(f"Failed to resume agent for bridge request: {e}")
+        logger.error(f"Failed to resume agent for bridge request: {e}", exc_info=True)
         return SendResponse(status="error", message=str(e))
 
 
@@ -328,9 +360,24 @@ def _wait_and_extract_result(
     start = time.time()
     logger.info(f"Waiting for agent {agent_id} to complete (timeout={timeout}s)")
 
+    # Verify we have a managed process
+    managed = process_manager.get_process(agent_id)
+    if managed is None:
+        logger.error(f"No managed process found for agent {agent_id}!")
+        return "(No process found)"
+
+    logger.info(f"Found managed process for {agent_id}: pid={managed.process.pid}")
+
+    poll_count = 0
     while time.time() - start < timeout:
         # Check if process finished
         exit_code = process_manager.get_exit_code(agent_id)
+        poll_count += 1
+
+        # Log periodically (every 10 seconds)
+        if poll_count % 20 == 0:
+            elapsed = time.time() - start
+            logger.info(f"Still waiting for agent {agent_id}: exit_code={exit_code}, elapsed={elapsed:.1f}s")
 
         if exit_code is not None:
             logger.info(f"Agent {agent_id} finished with exit code {exit_code}")
@@ -369,11 +416,16 @@ def _wait_and_extract_result(
         time.sleep(0.5)
 
     # Timeout - kill the agent
-    logger.warning(f"Agent {agent_id} timed out after {timeout}s")
+    managed = process_manager.get_process(agent_id)
+    if managed:
+        logger.warning(f"Agent {agent_id} timed out after {timeout}s (pid={managed.process.pid}, poll={managed.process.poll()})")
+    else:
+        logger.warning(f"Agent {agent_id} timed out after {timeout}s (no managed process)")
+
     try:
         process_manager.terminate(agent_id, timeout=5.0)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Failed to terminate agent {agent_id}: {e}")
 
     return "(Agent timed out)"
 

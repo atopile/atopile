@@ -201,3 +201,55 @@ class PipelineActionResponse(BaseModel):
     status: str
     message: str
     pipeline_id: str
+
+
+class PipelineSessionStatus(StrEnum):
+    """Status of a pipeline session/execution."""
+
+    RUNNING = auto()
+    COMPLETED = auto()
+    FAILED = auto()
+    STOPPED = auto()
+
+
+class PipelineSession(BaseModel):
+    """Represents a single execution/run of a pipeline.
+
+    Each time a pipeline is triggered, a new session is created.
+    This allows tracking multiple concurrent or historical executions.
+    """
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    pipeline_id: str
+    status: PipelineSessionStatus = PipelineSessionStatus.RUNNING
+    node_agent_map: dict[str, str] = Field(default_factory=dict)  # node_id -> agent_id
+    node_status: dict[str, str] = Field(default_factory=dict)  # node_id -> status
+    execution_order: list[str] = Field(default_factory=list)  # Order nodes were executed
+    started_at: datetime = Field(default_factory=datetime.now)
+    finished_at: datetime | None = None
+    error_message: str | None = None
+
+    def is_running(self) -> bool:
+        """Check if session is still running."""
+        return self.status == PipelineSessionStatus.RUNNING
+
+    def is_finished(self) -> bool:
+        """Check if session has finished."""
+        return self.status in (
+            PipelineSessionStatus.COMPLETED,
+            PipelineSessionStatus.FAILED,
+            PipelineSessionStatus.STOPPED,
+        )
+
+
+class PipelineSessionResponse(BaseModel):
+    """Response containing a single pipeline session."""
+
+    session: PipelineSession
+
+
+class PipelineSessionListResponse(BaseModel):
+    """Response containing list of pipeline sessions."""
+
+    sessions: list[PipelineSession]
+    total: int

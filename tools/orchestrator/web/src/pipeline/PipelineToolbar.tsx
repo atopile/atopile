@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Save,
   Play,
@@ -10,6 +10,7 @@ import {
   Repeat,
   GitBranch,
   FolderOpen,
+  History,
 } from 'lucide-react';
 import { usePipelineStore } from '@/stores';
 import type { PipelineNode, AgentNodeData, TriggerNodeData, LoopNodeData, ConditionNodeData } from '@/api/types';
@@ -24,6 +25,7 @@ export function PipelineToolbar({ onOpenPipelineList }: PipelineToolbarProps) {
     editorName,
     editorNodes,
     hasUnsavedChanges,
+    selectedSessionId,
     setEditorName,
     setEditorNodes,
     saveEditorPipeline,
@@ -32,6 +34,9 @@ export function PipelineToolbar({ onOpenPipelineList }: PipelineToolbarProps) {
     stopPipeline,
     resetEditor,
     getSelectedPipeline,
+    getSessionsForPipeline,
+    fetchSessions,
+    selectSession,
     loading,
   } = usePipelineStore();
 
@@ -40,6 +45,15 @@ export function PipelineToolbar({ onOpenPipelineList }: PipelineToolbarProps) {
   const selectedPipeline = getSelectedPipeline();
   const isRunning = selectedPipeline?.status === 'running';
   const isPaused = selectedPipeline?.status === 'paused';
+
+  // Fetch sessions when pipeline is selected
+  const sessions = selectedPipelineId ? getSessionsForPipeline(selectedPipelineId) : [];
+
+  useEffect(() => {
+    if (selectedPipelineId) {
+      fetchSessions(selectedPipelineId);
+    }
+  }, [selectedPipelineId, fetchSessions]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -180,8 +194,26 @@ export function PipelineToolbar({ onOpenPipelineList }: PipelineToolbarProps) {
         </button>
       </div>
 
-      {/* Right: Run controls */}
+      {/* Right: Session selector and run controls */}
       <div className="flex items-center gap-2">
+        {/* Session dropdown */}
+        {selectedPipelineId && sessions.length > 0 && (
+          <div className="flex items-center gap-2 mr-2 pr-2 border-r border-gray-600">
+            <History className="w-4 h-4 text-gray-400" />
+            <select
+              className="input input-sm text-xs bg-gray-700 border-gray-600 min-w-[140px]"
+              value={selectedSessionId || ''}
+              onChange={(e) => selectSession(e.target.value || null)}
+            >
+              {sessions.map((session) => (
+                <option key={session.id} value={session.id}>
+                  {new Date(session.started_at).toLocaleString()} ({session.status})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {selectedPipelineId && (
           <>
             {!isRunning && !isPaused && (

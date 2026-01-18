@@ -13,13 +13,15 @@ from ..models import (
     AgentConfig,
     AgentState,
     AgentStatus,
+    PipelineSession,
+    PipelineSessionStatus,
     PipelineState,
     PipelineStatus,
 )
 
 if TYPE_CHECKING:
     from .process import ProcessManager
-    from .state import AgentStateStore, PipelineStateStore
+    from .state import AgentStateStore, PipelineSessionStore, PipelineStateStore
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,7 @@ class PipelineExecutor:
         process_manager: "ProcessManager",
         agent_store: "AgentStateStore",
         pipeline_store: "PipelineStateStore",
+        pipeline_session_store: "PipelineSessionStore",
         on_node_status_change: Callable[[str, str, str], None] | None = None,
     ) -> None:
         """Initialize the pipeline executor.
@@ -47,38 +50,48 @@ class PipelineExecutor:
             process_manager: Process manager for spawning agents
             agent_store: Store for agent states
             pipeline_store: Store for pipeline states
+            pipeline_session_store: Store for pipeline session states
             on_node_status_change: Callback(pipeline_id, node_id, status) for node status changes
         """
         self._process_manager = process_manager
         self._agent_store = agent_store
         self._pipeline_store = pipeline_store
+        self._pipeline_session_store = pipeline_session_store
         self._on_node_status_change = on_node_status_change
         self._running_pipelines: dict[str, PipelineExecution] = {}
         self._lock = threading.Lock()
 
-    def start_pipeline(self, pipeline_id: str) -> bool:
+    def start_pipeline(self, pipeline_id: str) -> str | None:
         """Start executing a pipeline.
 
         Args:
             pipeline_id: ID of the pipeline to start
 
         Returns:
-            True if started successfully
+            Session ID if started successfully, None otherwise
         """
         pipeline = self._pipeline_store.get(pipeline_id)
         if pipeline is None:
             logger.error(f"Pipeline not found: {pipeline_id}")
-            return False
+            return None
 
         if pipeline.status == PipelineStatus.RUNNING:
             logger.warning(f"Pipeline already running: {pipeline_id}")
-            return False
+            return None
 
-        # Update status to RUNNING
+        # Create a new session for this execution
+        session = PipelineSession(
+            pipeline_id=pipeline_id,
+            status=PipelineSessionStatus.RUNNING,
+        )
+        self._pipeline_session_store.set(session.id, session)
+        logger.info(f"Created pipeline session: {session.id} for pipeline {pipeline_id}")
+
+        # Update pipeline status to RUNNING
         def updater(p: PipelineState) -> PipelineState:
             p.status = PipelineStatus.RUNNING
-            p.node_status = {}  # Reset node status
-            p.node_agent_map = {}  # Reset agent map
+            p.node_status = {}  # Reset node status (for UI fallback)
+            p.node_agent_map = {}  # Reset agent map (for UI fallback)
             if p.started_at is None:
                 p.started_at = datetime.now()
             p.touch()
@@ -86,9 +99,10 @@ class PipelineExecutor:
 
         self._pipeline_store.update(pipeline_id, updater)
 
-        # Create execution context
+        # Create execution context with session
         execution = PipelineExecution(
             pipeline_id=pipeline_id,
+            session_id=session.id,
             executor=self,
         )
 
@@ -102,9 +116,9 @@ class PipelineExecutor:
             daemon=True,
         )
         thread.start()
-        logger.info(f"Pipeline execution started: {pipeline_id}")
+        logger.info(f"Pipeline execution started: {pipeline_id} (session: {session.id})")
 
-        return True
+        return session.id
 
     def stop_pipeline(self, pipeline_id: str) -> bool:
         """Stop a running pipeline.
@@ -175,9 +189,11 @@ class PipelineExecution:
     def __init__(
         self,
         pipeline_id: str,
+        session_id: str,
         executor: PipelineExecutor,
     ) -> None:
         self.pipeline_id = pipeline_id
+        self.session_id = session_id
         self.executor = executor
         self.node_agents: dict[str, str] = {}  # node_id -> agent_id
         self.node_status: dict[str, str] = {}  # node_id -> status
@@ -261,50 +277,62 @@ class PipelineExecution:
         self._mark_completed()
 
     def _get_execution_order(self, pipeline: PipelineState) -> list[str]:
-        """Get nodes in execution order (BFS from trigger nodes)."""
+        """Get nodes in execution order for MCP-based communication.
+
+        For MCP communication to work, receivers must be spawned BEFORE senders.
+        So we use REVERSE topological order for agent nodes:
+        1. First: trigger nodes
+        2. Then: agent nodes that RECEIVE from other agents (workers/receivers)
+        3. Finally: agent nodes that SEND to other agents (coordinators/senders)
+
+        This ensures when an agent tries to send an MCP message, the target is already running.
+        """
         from ..models import PipelineNode, PipelineEdge
 
-        # Build adjacency list from edges
-        adjacency: dict[str, list[str]] = {}
+        # Separate nodes by type
+        trigger_nodes = []
+        agent_nodes = []
+        other_nodes = []
+
         for node in pipeline.nodes:
-            adjacency[node.id] = []
+            if node.type == "trigger":
+                trigger_nodes.append(node.id)
+            elif node.type == "agent":
+                agent_nodes.append(node.id)
+            else:
+                other_nodes.append(node.id)
+
+        # For agent nodes, determine which are receivers vs senders
+        # An agent is a "receiver" if another agent has an edge pointing TO it
+        # An agent is a "sender" if it has an edge pointing TO another agent
+        agent_set = set(agent_nodes)
+        has_incoming_from_agent: set[str] = set()  # Receivers
+        has_outgoing_to_agent: set[str] = set()    # Senders
 
         for edge in pipeline.edges:
             source = edge.source
             target = edge.target
             if source and target:
-                if source not in adjacency:
-                    adjacency[source] = []
-                adjacency[source].append(target)
+                source_is_agent = source in agent_set
+                target_is_agent = target in agent_set
+                if source_is_agent and target_is_agent:
+                    has_incoming_from_agent.add(target)  # target is a receiver
+                    has_outgoing_to_agent.add(source)    # source is a sender
 
-        # Find trigger nodes (nodes with no incoming edges)
-        has_incoming: set[str] = set()
-        for edge in pipeline.edges:
-            if edge.target:
-                has_incoming.add(edge.target)
+        # Order agent nodes: receivers first, then senders
+        # Agents that are ONLY receivers go first
+        # Agents that are ONLY senders go last
+        # Agents that are both go in the middle
+        receivers_only = [n for n in agent_nodes if n in has_incoming_from_agent and n not in has_outgoing_to_agent]
+        both = [n for n in agent_nodes if n in has_incoming_from_agent and n in has_outgoing_to_agent]
+        senders_only = [n for n in agent_nodes if n not in has_incoming_from_agent and n in has_outgoing_to_agent]
+        neither = [n for n in agent_nodes if n not in has_incoming_from_agent and n not in has_outgoing_to_agent]
 
-        trigger_nodes = [
-            node.id
-            for node in pipeline.nodes
-            if node.id not in has_incoming or node.type == "trigger"
-        ]
+        # Build final order: triggers first, then receivers, then senders
+        order = trigger_nodes + receivers_only + both + neither + senders_only + other_nodes
 
-        # BFS to get execution order
-        order: list[str] = []
-        visited: set[str] = set()
-        queue = list(trigger_nodes)
-
-        while queue:
-            node_id = queue.pop(0)
-            if node_id in visited:
-                continue
-
-            visited.add(node_id)
-            order.append(node_id)
-
-            for neighbor in adjacency.get(node_id, []):
-                if neighbor not in visited:
-                    queue.append(neighbor)
+        logger.debug(f"Execution order breakdown - triggers: {trigger_nodes}, receivers: {receivers_only}, "
+                    f"both: {both}, neither: {neither}, senders: {senders_only}")
 
         return order
 
@@ -326,17 +354,32 @@ class PipelineExecution:
         return parent_ids
 
     def _build_context_from_parents(self, pipeline: PipelineState, node_id: str) -> str:
-        """Build context string from parent node outputs for agent communication."""
+        """Build context string from NON-AGENT parent node outputs.
+
+        For agent-to-agent communication, we use MCP (explicit messaging).
+        Context injection is only used for non-agent sources (triggers, data nodes, etc.)
+        to provide initial context to an agent.
+
+        If you need implicit data passing from one agent to another, use an edge
+        in the REVERSE direction (from receiver to sender) - but this isn't implemented yet.
+        """
         parent_ids = self._get_parent_node_ids(pipeline, node_id)
         if not parent_ids:
             return ""
 
         context_parts = []
         for parent_id in parent_ids:
+            parent_node = self._find_node(pipeline, parent_id)
+            if not parent_node:
+                continue
+
+            # Skip agent parents - they communicate via MCP, not context injection
+            if parent_node.type == "agent":
+                continue
+
             if parent_id in self.node_outputs:
-                parent_node = self._find_node(pipeline, parent_id)
                 parent_name = "Unknown"
-                if parent_node and hasattr(parent_node.data, 'name'):
+                if hasattr(parent_node.data, 'name'):
                     parent_name = parent_node.data.name or parent_id
 
                 output = self.node_outputs[parent_id]
@@ -422,8 +465,11 @@ class PipelineExecution:
         environment["PIPELINE_ID"] = self.pipeline_id
         environment["BRIDGE_URL"] = "http://127.0.0.1:8765"  # Orchestrator URL
 
+        # Check if this agent can receive messages from other agents (has incoming edges)
+        can_receive = self._has_incoming_agent_edges(pipeline, node_id)
+
         if connected_agents:
-            # Add bridge instructions to prompt
+            # This agent can SEND to other agents
             bridge_instructions = f"""You are part of a multi-agent pipeline. You can communicate with other agents using the send_and_receive tool.
 
 Connected agents you can talk to: {', '.join(connected_agents)}
@@ -431,8 +477,16 @@ Connected agents you can talk to: {', '.join(connected_agents)}
 To send a message and get a response, use: send_and_receive(to="agent_name", message="your message")
 
 IMPORTANT: When you receive a message from another agent (via the bridge), just respond with text output. Do NOT use send_and_receive to reply - your text output is automatically returned to the sender."""
+            prompt = f"{bridge_instructions}\n\n{prompt}"
 
-            # Prepend bridge instructions to prompt
+        elif can_receive:
+            # This agent can only RECEIVE messages (no outgoing edges to agents)
+            bridge_instructions = """You are a worker in a multi-agent pipeline. Other agents may send you requests.
+
+When you receive a message, complete the requested task using your tools, then respond with text output.
+Your response will be automatically returned to the agent that contacted you.
+
+Do NOT try to contact other agents - just focus on completing the task you're given."""
             prompt = f"{bridge_instructions}\n\n{prompt}"
 
         config = AgentConfig(
@@ -473,7 +527,15 @@ IMPORTANT: When you receive a message from another agent (via the bridge), just 
             self.node_agents[node_id] = agent.id
             self._current_agent_id = agent.id
 
-            # Update pipeline state with agent mapping
+            # Update session state with agent mapping
+            def session_updater(s: PipelineSession) -> PipelineSession:
+                s.node_agent_map[node_id] = agent.id
+                s.execution_order.append(node_id)
+                return s
+
+            self.executor._pipeline_session_store.update(self.session_id, session_updater)
+
+            # Also update pipeline state for backwards compatibility
             def pipeline_updater(p: PipelineState) -> PipelineState:
                 p.current_node_id = node_id
                 p.node_agent_map[node_id] = agent.id
@@ -557,6 +619,13 @@ IMPORTANT: When you receive a message from another agent (via the bridge), just 
         """Update node status and notify."""
         self.node_status[node_id] = status
 
+        # Update session state
+        def session_updater(s: PipelineSession) -> PipelineSession:
+            s.node_status[node_id] = status
+            return s
+
+        self.executor._pipeline_session_store.update(self.session_id, session_updater)
+
         if self.executor._on_node_status_change:
             try:
                 self.executor._on_node_status_change(self.pipeline_id, node_id, status)
@@ -564,7 +633,16 @@ IMPORTANT: When you receive a message from another agent (via the bridge), just 
                 logger.warning(f"Node status callback failed: {e}")
 
     def _mark_completed(self) -> None:
-        """Mark pipeline as completed."""
+        """Mark pipeline and session as completed."""
+        # Update session
+        def session_updater(s: PipelineSession) -> PipelineSession:
+            s.status = PipelineSessionStatus.COMPLETED
+            s.finished_at = datetime.now()
+            return s
+
+        self.executor._pipeline_session_store.update(self.session_id, session_updater)
+
+        # Update pipeline
         def updater(p: PipelineState) -> PipelineState:
             p.status = PipelineStatus.COMPLETED
             p.current_node_id = None
@@ -573,10 +651,19 @@ IMPORTANT: When you receive a message from another agent (via the bridge), just 
             return p
 
         self.executor._pipeline_store.update(self.pipeline_id, updater)
-        logger.info(f"Pipeline completed: {self.pipeline_id}")
+        logger.info(f"Pipeline completed: {self.pipeline_id} (session: {self.session_id})")
 
     def _mark_stopped(self) -> None:
-        """Mark pipeline as stopped."""
+        """Mark pipeline and session as stopped."""
+        # Update session
+        def session_updater(s: PipelineSession) -> PipelineSession:
+            s.status = PipelineSessionStatus.STOPPED
+            s.finished_at = datetime.now()
+            return s
+
+        self.executor._pipeline_session_store.update(self.session_id, session_updater)
+
+        # Update pipeline
         def updater(p: PipelineState) -> PipelineState:
             p.status = PipelineStatus.COMPLETED
             p.current_node_id = None
@@ -585,10 +672,20 @@ IMPORTANT: When you receive a message from another agent (via the bridge), just 
             return p
 
         self.executor._pipeline_store.update(self.pipeline_id, updater)
-        logger.info(f"Pipeline stopped: {self.pipeline_id}")
+        logger.info(f"Pipeline stopped: {self.pipeline_id} (session: {self.session_id})")
 
     def _mark_failed(self, error: str) -> None:
-        """Mark pipeline as failed."""
+        """Mark pipeline and session as failed."""
+        # Update session
+        def session_updater(s: PipelineSession) -> PipelineSession:
+            s.status = PipelineSessionStatus.FAILED
+            s.finished_at = datetime.now()
+            s.error_message = error
+            return s
+
+        self.executor._pipeline_session_store.update(self.session_id, session_updater)
+
+        # Update pipeline
         def updater(p: PipelineState) -> PipelineState:
             p.status = PipelineStatus.FAILED
             p.current_node_id = None
@@ -597,34 +694,45 @@ IMPORTANT: When you receive a message from another agent (via the bridge), just 
             return p
 
         self.executor._pipeline_store.update(self.pipeline_id, updater)
-        logger.info(f"Pipeline failed: {self.pipeline_id}: {error}")
+        logger.info(f"Pipeline failed: {self.pipeline_id} (session: {self.session_id}): {error}")
 
     def _get_connected_agent_names(self, pipeline: PipelineState, node_id: str) -> list[str]:
-        """Get names of agents connected to this node via pipeline edges.
+        """Get names of agents this node can send messages TO via pipeline edges.
 
-        Returns names of agent nodes that have edges connecting to/from the given node,
-        so the agent knows which other agents it can communicate with.
+        Only returns agents connected via OUTGOING edges (source=this node).
+        Incoming edges mean other agents can send TO us, but we can't send to them,
+        so we don't list them as targets to avoid confusion.
         """
-        connected_node_ids = set()
+        target_node_ids = set()
 
-        # Find nodes connected by edges (both directions)
+        # Only find outgoing edges (agents we can send TO)
         for edge in pipeline.edges:
             if edge.source == node_id and edge.target:
-                connected_node_ids.add(edge.target)
-            elif edge.target == node_id and edge.source:
-                connected_node_ids.add(edge.source)
+                target_node_ids.add(edge.target)
 
-        # Get names of connected agent nodes
+        # Get names of target agent nodes
         agent_names = []
-        for connected_id in connected_node_ids:
-            connected_node = self._find_node(pipeline, connected_id)
-            if connected_node and connected_node.type == "agent":
-                if hasattr(connected_node.data, 'name') and connected_node.data.name:
-                    agent_names.append(connected_node.data.name)
+        for target_id in target_node_ids:
+            target_node = self._find_node(pipeline, target_id)
+            if target_node and target_node.type == "agent":
+                if hasattr(target_node.data, 'name') and target_node.data.name:
+                    agent_names.append(target_node.data.name)
                 else:
-                    agent_names.append(connected_id)
+                    agent_names.append(target_id)
 
         return agent_names
+
+    def _has_incoming_agent_edges(self, pipeline: PipelineState, node_id: str) -> bool:
+        """Check if this node has incoming edges from other agent nodes.
+
+        Returns True if any agent can send messages TO this node.
+        """
+        for edge in pipeline.edges:
+            if edge.target == node_id and edge.source:
+                source_node = self._find_node(pipeline, edge.source)
+                if source_node and source_node.type == "agent":
+                    return True
+        return False
 
     def _get_node_name_map(self, pipeline: PipelineState) -> dict[str, str]:
         """Build a map of node_id -> agent name for all agent nodes."""

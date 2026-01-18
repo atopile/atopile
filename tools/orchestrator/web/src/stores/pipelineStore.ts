@@ -5,6 +5,7 @@ import type {
   PipelineNode,
   PipelineEdge,
   PipelineConfig,
+  PipelineSession,
   CreatePipelineRequest,
 } from '@/api/types';
 
@@ -14,6 +15,10 @@ interface PipelineStore {
   selectedPipelineId: string | null;
   loading: boolean;
   error: string | null;
+
+  // Session state
+  sessions: Map<string, PipelineSession[]>;  // pipeline_id -> sessions
+  selectedSessionId: string | null;
 
   // Editor state (for unsaved changes)
   editorNodes: PipelineNode[];
@@ -35,6 +40,10 @@ interface PipelineStore {
   resumePipeline: (id: string) => Promise<void>;
   stopPipeline: (id: string) => Promise<void>;
 
+  // Session actions
+  fetchSessions: (pipelineId: string) => Promise<void>;
+  selectSession: (sessionId: string | null) => void;
+
   // Editor actions
   setEditorNodes: (nodes: PipelineNode[]) => void;
   setEditorEdges: (edges: PipelineEdge[]) => void;
@@ -48,6 +57,8 @@ interface PipelineStore {
   // Computed
   getPipeline: (id: string) => Pipeline | undefined;
   getSelectedPipeline: () => Pipeline | undefined;
+  getSessionsForPipeline: (pipelineId: string) => PipelineSession[];
+  getSelectedSession: () => PipelineSession | undefined;
 }
 
 const defaultConfig: PipelineConfig = {
@@ -61,6 +72,10 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
   selectedPipelineId: null,
   loading: false,
   error: null,
+
+  // Session state
+  sessions: new Map(),
+  selectedSessionId: null,
 
   // Editor state
   editorNodes: [],
@@ -157,6 +172,8 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
     try {
       await api.pipelines.run(id);
       await get().fetchPipeline(id);
+      // Fetch sessions after running to get the new session
+      await get().fetchSessions(id);
     } catch (e) {
       set({ error: e instanceof Error ? e.message : 'Failed to run pipeline' });
       throw e;
@@ -191,6 +208,36 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
       set({ error: e instanceof Error ? e.message : 'Failed to stop pipeline' });
       throw e;
     }
+  },
+
+  // Session actions
+  fetchSessions: async (pipelineId: string) => {
+    try {
+      const response = await api.pipelines.listSessions(pipelineId);
+      const { sessions, selectedSessionId } = get();
+      const newSessions = new Map(sessions);
+      newSessions.set(pipelineId, response.sessions);
+
+      // Auto-select the latest session if none selected or if current selection is for this pipeline
+      let newSelectedSessionId = selectedSessionId;
+      if (response.sessions.length > 0) {
+        const currentSession = selectedSessionId
+          ? response.sessions.find(s => s.id === selectedSessionId)
+          : null;
+        // If no session selected, or selected session is not in this pipeline, select the latest
+        if (!currentSession) {
+          newSelectedSessionId = response.sessions[0].id;
+        }
+      }
+
+      set({ sessions: newSessions, selectedSessionId: newSelectedSessionId });
+    } catch (e) {
+      console.error('Failed to fetch sessions:', e);
+    }
+  },
+
+  selectSession: (sessionId: string | null) => {
+    set({ selectedSessionId: sessionId });
   },
 
   // Editor actions
@@ -264,6 +311,17 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
   getSelectedPipeline: () => {
     const { pipelines, selectedPipelineId } = get();
     return selectedPipelineId ? pipelines.get(selectedPipelineId) : undefined;
+  },
+
+  getSessionsForPipeline: (pipelineId: string) => {
+    return get().sessions.get(pipelineId) || [];
+  },
+
+  getSelectedSession: () => {
+    const { sessions, selectedPipelineId, selectedSessionId } = get();
+    if (!selectedPipelineId || !selectedSessionId) return undefined;
+    const pipelineSessions = sessions.get(selectedPipelineId);
+    return pipelineSessions?.find(s => s.id === selectedSessionId);
   },
 }));
 

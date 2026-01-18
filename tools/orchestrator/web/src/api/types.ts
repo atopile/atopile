@@ -302,3 +302,27 @@ export interface CreatePipelineRequest {
   edges: PipelineEdge[];
   config: PipelineConfig;
 }
+
+// Pipeline Session types
+export type PipelineSessionStatus = 'running' | 'completed' | 'failed' | 'stopped';
+
+export interface PipelineSession {
+  id: string;
+  pipeline_id: string;
+  status: PipelineSessionStatus;
+  node_agent_map: Record<string, string>;  // node_id -> agent_id
+  node_status: Record<string, string>;     // node_id -> status
+  execution_order: string[];               // Order nodes were executed
+  started_at: string;
+  finished_at?: string;
+  error_message?: string;
+}
+
+export interface PipelineSessionListResponse {
+  sessions: PipelineSession[];
+  total: number;
+}
+
+export interface PipelineSessionResponse {
+  session: PipelineSession;
+}

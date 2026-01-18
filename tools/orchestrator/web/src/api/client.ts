@@ -9,6 +9,8 @@ import type {
   HealthResponse,
   Pipeline,
   PipelineListResponse,
+  PipelineSession,
+  PipelineSessionListResponse,
   SendInputRequest,
   SendInputResponse,
   SessionListResponse,
@@ -193,6 +195,13 @@ export const api = {
       fetchJson<{ status: string; message: string }>(`/pipelines/${id}/stop`, {
         method: 'POST',
       }),
+
+    // Pipeline sessions
+    listSessions: (pipelineId: string) =>
+      fetchJson<PipelineSessionListResponse>(`/pipelines/${pipelineId}/sessions`),
+
+    getSession: (pipelineId: string, sessionId: string) =>
+      fetchJson<{ session: PipelineSession }>(`/pipelines/${pipelineId}/sessions/${sessionId}`),
   },
 };
 

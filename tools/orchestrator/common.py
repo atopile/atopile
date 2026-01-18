@@ -13,6 +13,7 @@ SESSIONS_DIR = "sessions"
 AGENTS_DIR = "agents"
 LOGS_DIR = "logs"
 PIPELINES_DIR = "pipelines"
+PIPELINE_SESSIONS_DIR = "pipeline_sessions"
 
 
 def get_storage_dir() -> Path:
@@ -48,6 +49,13 @@ def get_pipelines_dir() -> Path:
     pipelines_dir = get_storage_dir() / PIPELINES_DIR
     pipelines_dir.mkdir(parents=True, exist_ok=True)
     return pipelines_dir
+
+
+def get_pipeline_sessions_dir() -> Path:
+    """Get the pipeline sessions storage directory."""
+    sessions_dir = get_storage_dir() / PIPELINE_SESSIONS_DIR
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    return sessions_dir
 
 
 # Default server configuration
