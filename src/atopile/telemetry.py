@@ -12,6 +12,7 @@ What we collect:
 """
 
 import atexit
+import concurrent.futures
 import configparser
 import contextlib
 import hashlib
@@ -80,7 +81,11 @@ def _flush_telemetry_on_exit() -> None:
     """Flush telemetry data when the program exits."""
     try:
         if not client.disabled:
-            client.flush()
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(client.flush)
+                future.result(timeout=3)
+    except concurrent.futures.TimeoutError:
+        log.debug("Telemetry flush timed out after 3 seconds")
     except Exception as e:
         log.debug("Failed to flush telemetry data on exit: %s", e, exc_info=e)
 
