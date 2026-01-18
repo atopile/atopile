@@ -951,7 +951,13 @@ class _ConfigFlagBase[T]:
         if raw_val is None:
             res = self.default
         else:
-            res = self._convert(raw_val)
+            try:
+                res = self._convert(raw_val)
+            except ValueError as e:
+                raise ValueError(
+                    f"Invalid environment variable for "
+                    f"{self.name}: {raw_val}. Check your environment variables!"
+                ) from e
 
         if res != self.default:
             logger.warning(f"Config flag |{self.name}={res}|")
