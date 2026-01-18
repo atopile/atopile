@@ -30,7 +30,7 @@ interface BuildState {
   // Data
   summary: BuildSummary | null;
   isLoading: boolean;
-  loadError: string | null;
+  isConnected: boolean;
   lastUpdated: Date | null;
 
   // Selection
@@ -72,7 +72,7 @@ const DEFAULT_ENABLED_LEVELS: EnabledLevels = new Set(['INFO', 'WARNING', 'ERROR
 export const useBuildStore = create<BuildState>((set, get) => ({
   summary: null,
   isLoading: false,
-  loadError: null,
+  isConnected: false,
   lastUpdated: null,
 
   selectedBuild: null,
@@ -88,7 +88,7 @@ export const useBuildStore = create<BuildState>((set, get) => ({
   pollInterval: 500,
 
   fetchSummary: async () => {
-    set({ isLoading: true, loadError: null });
+    set({ isLoading: true });
 
     try {
       const response = await fetch(`${getApiBaseUrl()}/api/summary`);
@@ -104,6 +104,7 @@ export const useBuildStore = create<BuildState>((set, get) => ({
         set({
           summary: data,
           isLoading: false,
+          isConnected: true,
           lastUpdated: new Date(),
           selectedBuild: data.builds[0].display_name,
         });
@@ -111,14 +112,15 @@ export const useBuildStore = create<BuildState>((set, get) => ({
         set({
           summary: data,
           isLoading: false,
+          isConnected: true,
           lastUpdated: new Date(),
         });
       }
-    } catch (e) {
-      const message = e instanceof Error ? e.message : 'Unknown error';
+    } catch {
+      // On error, keep cached data but mark as disconnected
       set({
         isLoading: false,
-        loadError: `Failed to load summary: ${message}`,
+        isConnected: false,
       });
     }
   },

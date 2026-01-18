@@ -29,6 +29,9 @@ const UV_ATO_VERSION = 'atopile';
 export var g_uv_path_local: string | null = null;
 let g_pyAtoBin: string | null = null;
 
+// Track the build terminal for reuse
+let g_buildTerminal: vscode.Terminal | undefined;
+
 export function getExtensionManagedUvPath(context: ExtensionContext): string | null {
     // Determine executable name based on platform
     const uvExecutableName = os.platform() === 'win32' ? 'uv.exe' : 'uv';
@@ -177,6 +180,36 @@ export async function getAtoAlias(settings?: ISettings, timeout_ms?: number): Pr
     return alias;
 }
 
+/**
+ * Check if a terminal is still valid (not disposed).
+ */
+function isTerminalValid(terminal: vscode.Terminal | undefined): terminal is vscode.Terminal {
+    if (!terminal) return false;
+    // Check if terminal is still in the list of active terminals
+    return vscode.window.terminals.includes(terminal);
+}
+
+/**
+ * Get or create the build terminal, reusing if it still exists.
+ */
+function getOrCreateBuildTerminal(name: string, cwd: string | undefined, hideFromUser: boolean): vscode.Terminal {
+    // Reuse existing build terminal if it's still valid
+    if (isTerminalValid(g_buildTerminal)) {
+        // Send Ctrl+C to interrupt any running process, then clear
+        g_buildTerminal.sendText('\x03'); // Ctrl+C
+        return g_buildTerminal;
+    }
+
+    // Create new terminal and track it
+    g_buildTerminal = vscode.window.createTerminal({
+        name: `ato: ${name}`,
+        cwd: cwd,
+        hideFromUser: hideFromUser,
+    });
+
+    return g_buildTerminal;
+}
+
 export async function runAtoCommandInTerminal(
     terminal_or_name: string | vscode.Terminal,
     cwd: string | undefined,
@@ -190,11 +223,17 @@ export async function runAtoCommandInTerminal(
 
     let terminal: vscode.Terminal;
     if (typeof terminal_or_name === 'string') {
-        terminal = vscode.window.createTerminal({
-            name: `ato: ${terminal_or_name}`,
-            cwd: cwd,
-            hideFromUser: hideFromUser,
-        });
+        // Check if this is a build command - reuse terminal for builds
+        const isBuildCommand = subcommand[0] === 'build';
+        if (isBuildCommand) {
+            terminal = getOrCreateBuildTerminal(terminal_or_name, cwd, hideFromUser);
+        } else {
+            terminal = vscode.window.createTerminal({
+                name: `ato: ${terminal_or_name}`,
+                cwd: cwd,
+                hideFromUser: hideFromUser,
+            });
+        }
     } else {
         terminal = terminal_or_name;
     }

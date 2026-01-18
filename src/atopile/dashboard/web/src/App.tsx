@@ -10,7 +10,7 @@ import { StageTable } from './components/StageTable';
 import { LogViewer } from './components/LogViewer';
 
 function Header() {
-  const { lastUpdated, isPolling } = useBuildStore();
+  const { lastUpdated, isPolling, isConnected } = useBuildStore();
 
   return (
     <header className="bg-panel-bg border-b border-panel-border px-4 py-2 flex items-center justify-between">
@@ -18,8 +18,17 @@ function Header() {
       <div className="flex items-center gap-3 text-xs text-text-muted">
         {isPolling && (
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-            Live
+            {isConnected ? (
+              <>
+                <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                Live
+              </>
+            ) : (
+              <>
+                <span className="w-2 h-2 rounded-full bg-text-muted" />
+                Disconnected
+              </>
+            )}
           </span>
         )}
         {lastUpdated && (
@@ -31,18 +40,7 @@ function Header() {
 }
 
 function MainContent() {
-  const { summary, loadError, getSelectedBuild, getSelectedStage } = useBuildStore();
-
-  if (loadError) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-error text-lg mb-2">Failed to load build data</p>
-          <p className="text-text-muted text-sm">{loadError}</p>
-        </div>
-      </div>
-    );
-  }
+  const { summary, getSelectedBuild, getSelectedStage } = useBuildStore();
 
   if (!summary || summary.builds.length === 0) {
     return (
