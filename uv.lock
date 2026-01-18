@@ -193,6 +193,7 @@ dev = [
     { name = "griffe-typingdoc", specifier = ">=0.2.7" },
     { name = "hatch", specifier = ">=1.14.0" },
     { name = "hypothesis", specifier = ">=6.124.7" },
+    { name = "jinja2", specifier = ">=3.1.6" },
     { name = "mike", specifier = ">=2.1.3" },
     { name = "mkdocs", specifier = ">=1.6.1" },
     { name = "mkdocs-material", specifier = ">=9.5.49" },
