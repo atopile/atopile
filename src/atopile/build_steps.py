@@ -55,11 +55,12 @@ from faebryk.libs.app.designators import (
     load_kicad_pcb_designators,
 )
 from faebryk.libs.app.erc import needs_erc_check
+from faebryk.libs.app.keep_picked_parts import load_part_info_from_pcb
 from faebryk.libs.app.pcb import (
     check_net_names,
     load_net_names,
 )
-from faebryk.libs.app.picking import load_part_info_from_pcb, save_part_info_to_pcb
+from faebryk.libs.app.picking import save_part_info_to_pcb
 from faebryk.libs.exceptions import accumulate, iter_leaf_exceptions
 from faebryk.libs.kicad.fileformats import Property, kicad
 from faebryk.libs.net_naming import attach_net_names
