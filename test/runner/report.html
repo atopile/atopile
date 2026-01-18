@@ -377,6 +377,10 @@
         background-color: var(--modal-bg-overlay);
       }
 
+      .modal.modal-foreground {
+        z-index: 2;
+      }
+
       .modal-content {
         background-color: var(--ctp-mantle);
         margin: 2% auto;
@@ -401,6 +405,46 @@
         top: 0;
         background: var(--ctp-mantle);
         padding: 4px 0;
+      }
+
+      .hotkey-list {
+        margin: 0;
+        padding-left: 16px;
+        font-size: 12px;
+        color: var(--ctp-text);
+      }
+
+      .hotkey-list li {
+        margin: 4px 0;
+      }
+
+      .hotkey-section {
+        margin-bottom: 12px;
+      }
+
+      .hotkey-sections {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+      }
+
+      .hotkey-section {
+        flex: 1 1 220px;
+        min-width: 220px;
+      }
+
+      .hotkey-section h3 {
+        margin: 0 0 6px 0;
+        font-size: 12px;
+        color: var(--ctp-subtext1);
+      }
+
+      .hotkey-key {
+        font-family: monospace;
+        background: var(--ctp-surface0);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: 3px;
+        padding: 1px 4px;
       }
 
       pre {
@@ -983,6 +1027,33 @@
         document.getElementById(id).style.display = "none";
       }
 
+      function closeAllModals() {
+        var modals = document.querySelectorAll(".modal");
+        modals.forEach(function (modal) {
+          if (modal.style.display === "block") {
+            modal.style.display = "none";
+          }
+        });
+      }
+
+      function closeHotkeyModal() {
+        var modal = document.getElementById("hotkeyModal");
+        if (modal) {
+          modal.style.display = "none";
+        }
+      }
+
+      function toggleHotkeyModal() {
+        var modal = document.getElementById("hotkeyModal");
+        if (!modal) return;
+        if (modal.style.display === "block") {
+          modal.style.display = "none";
+          return;
+        }
+        closeAllModals();
+        modal.style.display = "block";
+      }
+
       function copyLogs(modalId) {
         var modal = document.getElementById(modalId);
         var pres = modal.querySelectorAll("pre");
@@ -1069,6 +1140,7 @@
       }
 
       function showLogModalAtIndex(modals, index) {
+        closeHotkeyModal();
         modals.forEach(function (modal) {
           modal.style.display = "none";
         });
@@ -1132,6 +1204,7 @@
         if (key === "l") return toggleLogModal();
         if (key === "k") return cycleLogModal(1);
         if (key === "j") return cycleLogModal(-1);
+        if (key === "h") return toggleHotkeyModal();
       });
 
       // Baseline selector functionality
@@ -1251,6 +1324,55 @@
       <span class="icon">&#9728;</span>
       <span class="text">Light</span>
     </button>
+    <div id="hotkeyModal" class="modal modal-foreground">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Help</h2>
+          <div class="modal-buttons">
+            <button class="close-btn" onclick="closeModal('hotkeyModal')">
+              &times;
+            </button>
+          </div>
+        </div>
+        <div class="hotkey-sections">
+          <div class="hotkey-section">
+            <h3>Filters</h3>
+            <ul class="hotkey-list">
+              <li>
+                <span class="hotkey-key">d</span> Toggle filter [Delta only]
+              </li>
+              <li><span class="hotkey-key">p</span> Toggle filter [Passed]</li>
+              <li><span class="hotkey-key">f</span> Toggle filter [Failed]</li>
+              <li><span class="hotkey-key">e</span> Toggle filter [Error]</li>
+              <li><span class="hotkey-key">c</span> Toggle filter [Crashed]</li>
+              <li><span class="hotkey-key">s</span> Toggle filter [Skipped]</li>
+              <li><span class="hotkey-key">r</span> Toggle filter [Running]</li>
+              <li><span class="hotkey-key">q</span> Toggle filter [Queued]</li>
+            </ul>
+          </div>
+          <div class="hotkey-section">
+            <h3>Logs</h3>
+            <ul class="hotkey-list">
+              <li><span class="hotkey-key">l</span> Toggle log popup</li>
+            </ul>
+          </div>
+          <div class="hotkey-section">
+            <h3>Move</h3>
+            <ul class="hotkey-list">
+              <li><span class="hotkey-key">k</span> Next log</li>
+              <li><span class="hotkey-key">j</span> Previous log</li>
+            </ul>
+          </div>
+          <div class="hotkey-section">
+            <h3>Other</h3>
+            <ul class="hotkey-list">
+              <li><span class="hotkey-key">h</span> Show help</li>
+              <li><span class="hotkey-key">esc</span> Close popups</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
     <h1>Test Execution Report</h1>
 
     <div class="summary">
