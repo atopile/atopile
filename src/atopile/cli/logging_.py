@@ -322,8 +322,6 @@ class LiveLogHandler(LogHandler):
                 self._logged_exceptions.add(hashable)
 
 
-
-
 class CaptureLogHandler(LogHandler):
     def __init__(self, status: "LoggingStage", console: Console, *args, **kwargs):
         super().__init__(*args, console=console, **kwargs)
@@ -436,8 +434,6 @@ class StaticIndicatorColumn(ProgressColumn):
         if self.status is not None:
             return Text.from_markup(self.status)
         return Text.from_markup("[blue]●[/blue]")  # Static "in progress" indicator
-
-
 
 
 _log_sink_var = ContextVar[io.StringIO | None]("log_sink", default=None)
@@ -673,13 +669,21 @@ class LoggingStage(Advancable):
                             msg = leaf.message
                         else:
                             msg = str(leaf)
-                        logger.error(msg or "Build step failed")
+                        # Pass exc_info so LogHandler can render rich source chunks
+                        logger.error(
+                            msg or "Build step failed",
+                            exc_info=(type(leaf), leaf, leaf.__traceback__),
+                        )
                 else:
                     if isinstance(exc_val, _BaseBaseUserException):
                         msg = exc_val.message
                     else:
                         msg = str(exc_val)
-                    logger.error(msg or "Build step failed")
+                    # Pass exc_info so LogHandler can render rich source chunks
+                    logger.error(
+                        msg or "Build step failed",
+                        exc_info=(exc_type, exc_val, exc_tb),
+                    )
             except Exception:
                 msg = str(exc_val) if exc_val is not None else "Build step failed"
                 logger.error(msg or "Build step failed")

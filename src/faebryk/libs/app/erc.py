@@ -5,12 +5,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from rich.syntax import Syntax
-from rich.text import Text
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -21,8 +18,6 @@ from faebryk.libs.app.checks import check_design
 from faebryk.libs.exceptions import accumulate
 
 if TYPE_CHECKING:
-    from rich.console import Console, ConsoleOptions, ConsoleRenderable
-
     from atopile.compiler import ast_types as AST
 
 logger = logging.getLogger(__name__)
@@ -86,10 +81,18 @@ def _get_connection_source_chunk(
     try:
         from atopile.compiler.ast_visitor import ASTVisitor
 
-        return ASTVisitor.get_source_chunk_for_connection(
+        result = ASTVisitor.get_source_chunk_for_connection(
             source_node.instance, target_node.instance, tg
         )
-    except Exception:
+        if result is None:
+            logger.debug(
+                "No source chunk found for connection %s -> %s",
+                source_node.get_full_name(),
+                target_node.get_full_name(),
+            )
+        return result
+    except Exception as e:
+        logger.debug("Failed to get source chunk for connection: %s", e)
         return None
 
 
@@ -147,6 +150,7 @@ def _format_interface_connection_message(
         f"    -> {target_node.pretty_repr()} ({tgt})"
         f"{source_info}"
     )
+
 
 def find_interface_connection_errors(
     tg: fbrk.TypeGraph,
@@ -235,9 +239,7 @@ def find_interface_connection_errors(
 
         # Check if both endpoints are interfaces
         if not source_is_interface or not target_is_interface:
-            source_chunk = _get_connection_source_chunk(
-                source_node, target_node, tg
-            )
+            source_chunk = _get_connection_source_chunk(source_node, target_node, tg)
             errors_found.append(
                 InterfaceConnectionError(
                     source_node=source_node,
@@ -260,9 +262,7 @@ def find_interface_connection_errors(
         target_type = target_node.get_type_name()
 
         if not are_types_compatible(source_type, target_type):
-            source_chunk = _get_connection_source_chunk(
-                source_node, target_node, tg
-            )
+            source_chunk = _get_connection_source_chunk(source_node, target_node, tg)
             errors_found.append(
                 InterfaceConnectionError(
                     source_node=source_node,
@@ -276,6 +276,7 @@ def find_interface_connection_errors(
             )
 
     return errors_found
+
 
 class ERCFault(errors.UserException):
     """Base class for ERC faults."""
@@ -348,9 +349,7 @@ class ERCFaultIncompatibleInterfaceConnection(ERCFault):
         tg: fbrk.TypeGraph | None = None,
     ) -> "ERCFaultIncompatibleInterfaceConnection":
         """Create an exception for incompatible interface connection."""
-        source_chunk = _get_connection_source_chunk(
-            source, target, tg
-        )
+        source_chunk = _get_connection_source_chunk(source, target, tg)
         message = _format_interface_connection_message(
             title="Incompatible interface types connected",
             source_node=source,
@@ -369,7 +368,6 @@ class ERCFaultIncompatibleInterfaceConnection(ERCFault):
             target_type,
             source_chunk=source_chunk,
         )
-
 
 
 # TODO split this up
@@ -444,8 +442,10 @@ class needs_erc_check(fabll.Node):
                 assert path is not None
                 start_node = path.get_start_node()
                 end_node = path.get_end_node()
+                # Use the typegraph from the ERC instance, not from the node
+                # (node.tg may not have the right context)
                 source_chunk = _get_connection_source_chunk(
-                    start_node, end_node, start_node.tg
+                    start_node, end_node, self.tg
                 )
                 message = _format_interface_connection_message(
                     title="Shorted interfaces connected",
@@ -570,8 +570,12 @@ class Test:
         app_type = self._App.bind_typegraph(tg)
         app = app_type.create_instance(g=g)
         fabll.Traits.create_and_add_instance_to(app, needs_erc_check)
-        check_design(app, F.implements_design_check.CheckStage.POST_INSTANTIATION_GRAPH_CHECK)
-        check_design(app, F.implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK)
+        check_design(
+            app, F.implements_design_check.CheckStage.POST_INSTANTIATION_GRAPH_CHECK
+        )
+        check_design(
+            app, F.implements_design_check.CheckStage.POST_INSTANTIATION_DESIGN_CHECK
+        )
 
     def test_erc_isolated_connect(self):
         g = fabll.graph.GraphView.create()
@@ -696,7 +700,6 @@ class Test:
         power_out_1._is_interface.get().connect_to(power_out_2)
 
         self._run_checks(tg)
-
 
     def test_verify_graph_interface_type_same_type_compatible(self):
         """

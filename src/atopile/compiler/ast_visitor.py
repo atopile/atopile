@@ -409,13 +409,13 @@ class _TypeContextStack:
         bound_tg: fabll.TypeNodeBoundTG,
         action: AddMakeLinkAction,
     ) -> None:
-        make_link = bound_tg.MakeEdge(
+        make_link_node = bound_tg.MakeEdge(
             lhs_reference_path=action.lhs_path,
             rhs_reference_path=action.rhs_path,
             edge=action.edge or fbrk.EdgeInterfaceConnection.build(shallow=False),
         )
         if action.source_chunk_node is not None:
-            fabll.Node(make_link).set_source_pointer(action.source_chunk_node)
+            fabll.Node(make_link_node).set_source_pointer(action.source_chunk_node)
 
 
 class AnyAtoBlock(fabll.Node):
@@ -1987,15 +1987,29 @@ class ASTVisitor:
                 return False
             return full_path[: len(prefix)] == prefix
 
+        import logging
+
+        _logger = logging.getLogger(__name__)
+
         for ancestor in reversed(common_ancestors):
             source_path = source_py.get_path_from_ancestor(ancestor)
             target_path = target_py.get_path_from_ancestor(ancestor)
 
+            _logger.debug(
+                "Searching ancestor %s: source_path=%s, target_path=%s",
+                ancestor.get_full_name(),
+                source_path,
+                target_path,
+            )
+
             if not source_path and not target_path:
                 continue
 
-            ancestor_type_edge = fbrk.EdgeType.get_type_edge(bound_node=ancestor.instance)
+            ancestor_type_edge = fbrk.EdgeType.get_type_edge(
+                bound_node=ancestor.instance
+            )
             if ancestor_type_edge is None:
+                _logger.debug("  No type edge for ancestor")
                 continue
             ancestor_type = ancestor.instance.g().bind(
                 node=fbrk.EdgeType.get_type_node(edge=ancestor_type_edge.edge())
@@ -2003,9 +2017,11 @@ class ASTVisitor:
 
             try:
                 make_links = tg.collect_make_links(type_node=ancestor_type)
-            except ValueError:
+            except ValueError as e:
+                _logger.debug("  Failed to collect make_links: %s", e)
                 continue
 
+            _logger.debug("  Found %d make_links", len(make_links))
             best_match: tuple["AST.SourceChunk | None", int] = (None, -1)
 
             for make_link_node, lhs_tuple, rhs_tuple in make_links:
@@ -2016,13 +2032,24 @@ class ASTVisitor:
                 lhs_path = strip_bridge_path_suffix(list(lhs_tuple))
                 rhs_path = strip_bridge_path_suffix(list(rhs_tuple))
 
+                _logger.debug(
+                    "    MakeLink: lhs=%s, rhs=%s (looking for %s -> %s)",
+                    lhs_path,
+                    rhs_path,
+                    source_path,
+                    target_path,
+                )
+
                 if not lhs_path and not rhs_path:
                     continue
 
                 if (lhs_path == source_path and rhs_path == target_path) or (
                     lhs_path == target_path and rhs_path == source_path
                 ):
-                    return ASTVisitor.get_source_chunk(make_link_node)
+                    _logger.debug("    EXACT MATCH! make_link_node=%s", make_link_node)
+                    chunk = ASTVisitor.get_source_chunk(make_link_node)
+                    _logger.debug("    get_source_chunk returned: %s", chunk)
+                    return chunk
 
                 match_score = 0
 
@@ -2038,7 +2065,11 @@ class ASTVisitor:
                     match_score = max(match_score, score)
 
                 if match_score > best_match[1]:
-                    best_match = (ASTVisitor.get_source_chunk(make_link_node), match_score)
+                    _logger.debug("    Prefix match score: %d", match_score)
+                    best_match = (
+                        ASTVisitor.get_source_chunk(make_link_node),
+                        match_score,
+                    )
 
             if best_match[0] is not None:
                 return best_match[0]

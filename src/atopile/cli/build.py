@@ -87,8 +87,6 @@ def _status_rich_text(status: Status | str, text: str) -> str:
     return f"[{color}]{text}[/{color}]" if color else text
 
 
-
-
 def discover_projects(root: Path) -> list[Path]:
     """
     Discover ato projects in a directory.
@@ -205,9 +203,7 @@ class BuildProcess:
         stream_console: Console | None = None,
         error_only_console: Console | None = None,
     ) -> None:
-        """Start the build subprocess.
-
-        """
+        """Start the build subprocess."""
         # Create log directory for this build
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.status_file = self.log_dir / "status.txt"
@@ -615,6 +611,7 @@ class BuildProcess:
 
 class ParallelBuildManager:
     """Manages multiple build processes with live display and job queue."""
+
     _STAGE_WIDTH = 22  # "Building... [123.4s]" fits in ~22 chars
 
     def __init__(
@@ -1003,10 +1000,7 @@ class ParallelBuildManager:
                 status_text = f"{colored_name} {progress} {stage}"
             elif status == Status.FAILED:
                 failed_text = _status_rich_text(status, f"{p.failed} failed")
-                status_text = (
-                    f"{failed_text}, "
-                    f"{p.completed - p.failed}/{p.total} done"
-                )
+                status_text = f"{failed_text}, {p.completed - p.failed}/{p.total} done"
             elif status == Status.WARNING:
                 progress_text = f"{p.completed}/{p.total} done"
                 status_text = _status_rich_text(status, progress_text)
@@ -1139,9 +1133,7 @@ class ParallelBuildManager:
             for bp in self.processes.values()
             if bp.status in (Status.SUCCESS, Status.WARNING)
         )
-        failed = sum(
-            1 for bp in self.processes.values() if bp.status == Status.FAILED
-        )
+        failed = sum(1 for bp in self.processes.values() if bp.status == Status.FAILED)
 
         summary = {
             "timestamp": self._now,
@@ -1174,7 +1166,21 @@ class ParallelBuildManager:
 
         if self.verbose:
             return self._run_verbose()
-        return self._run_parallel()
+
+        results = self._run_parallel()
+
+        # Print error details for failed builds (after the live display)
+        failed_builds = [
+            (name, bp)
+            for name, bp in self.processes.items()
+            if bp.status == Status.FAILED
+        ]
+        if failed_builds:
+            self._console.print()  # Blank line after the table
+            for display_name, bp in failed_builds:
+                self._print_failure_details(display_name, bp, self._console)
+
+        return results
 
     def _print_build_result(
         self,
@@ -1649,6 +1655,7 @@ def build(
     from faebryk.libs.app.pcb import open_pcb
     from faebryk.libs.kicad.ipc import reload_pcb
     from faebryk.libs.project.dependencies import ProjectDependencies
+
     if verbose:
         logging.getLogger().setLevel(logging.INFO)
 
