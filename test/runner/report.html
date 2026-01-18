@@ -552,10 +552,9 @@
 
       /* Theme toggle button */
       .theme-toggle {
-        position: fixed;
-        top: 10px;
-        right: 10px;
-        z-index: 100;
+        position: static;
+        float: right;
+        margin: 10px 10px 0 0;
         padding: 6px 10px;
         font-size: 14px;
         background-color: var(--ctp-surface0);
@@ -1007,6 +1006,133 @@
           event.target.style.display = "none";
         }
       };
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+          var openModals = document.querySelectorAll('.modal[style*="block"]');
+          openModals.forEach(function (modal) {
+            modal.style.display = "none";
+          });
+        }
+      });
+
+      function isTextInputTarget(target) {
+        if (!target) return false;
+        var tag = target.tagName;
+        return (
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          target.isContentEditable
+        );
+      }
+
+      function toggleFilterByValue(value) {
+        var checkbox = document.querySelector(
+          '.outcome-filter[value="' + value + '"]'
+        );
+        if (!checkbox) return;
+        checkbox.checked = !checkbox.checked;
+        filterTable();
+      }
+
+      function toggleDeltaOnly() {
+        var deltaOnlyCb = document.getElementById("deltaOnly");
+        if (!deltaOnlyCb) return;
+        deltaOnlyCb.checked = !deltaOnlyCb.checked;
+        filterTable();
+      }
+
+      function getVisibleLogModals() {
+        var rows = document.querySelectorAll("#testTable tbody tr");
+        var modals = [];
+        rows.forEach(function (row) {
+          if (row.style.display === "none") return;
+          var modal = row.querySelector(".modal");
+          if (modal) modals.push(modal);
+        });
+        return modals;
+      }
+
+      var lastLogModalIndex = -1;
+
+      function getOpenLogModalIndex(modals) {
+        var openModal = document.querySelector('.modal[style*="block"]');
+        return modals.indexOf(openModal);
+      }
+
+      function getPreferredLogModalIndex(modals) {
+        if (lastLogModalIndex >= 0 && lastLogModalIndex < modals.length) {
+          return lastLogModalIndex;
+        }
+        return modals.length ? 0 : -1;
+      }
+
+      function showLogModalAtIndex(modals, index) {
+        modals.forEach(function (modal) {
+          modal.style.display = "none";
+        });
+        modals[index].style.display = "block";
+        lastLogModalIndex = index;
+      }
+
+      function cycleLogModal(direction) {
+        var modals = getVisibleLogModals();
+        if (!modals.length) return;
+
+        var currentIndex = getOpenLogModalIndex(modals);
+        if (currentIndex === -1) {
+          currentIndex = getPreferredLogModalIndex(modals);
+        }
+        var nextIndex;
+
+        if (direction > 0) {
+          nextIndex =
+            currentIndex === -1 ? 0 : (currentIndex + 1) % modals.length;
+        } else {
+          nextIndex =
+            currentIndex === -1
+              ? modals.length - 1
+              : (currentIndex - 1 + modals.length) % modals.length;
+        }
+
+        showLogModalAtIndex(modals, nextIndex);
+      }
+
+      function toggleLogModal() {
+        var modals = getVisibleLogModals();
+        if (!modals.length) return;
+        var openIndex = getOpenLogModalIndex(modals);
+        if (openIndex !== -1) {
+          lastLogModalIndex = openIndex;
+          modals[openIndex].style.display = "none";
+          return;
+        }
+        var nextIndex = getPreferredLogModalIndex(modals);
+        if (nextIndex === -1) return;
+        showLogModalAtIndex(modals, nextIndex);
+      }
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") return;
+        if (isTextInputTarget(event.target)) return;
+        if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
+          return;
+        }
+
+        var key = event.key.toLowerCase();
+        if (key === "d") return toggleDeltaOnly();
+        if (key === "p") return toggleFilterByValue("passed");
+        if (key === "f") return toggleFilterByValue("failed");
+        if (key === "e") return toggleFilterByValue("error");
+        if (key === "c") return toggleFilterByValue("crashed");
+        if (key === "s") return toggleFilterByValue("skipped");
+        if (key === "r") return toggleFilterByValue("running");
+        if (key === "q") return toggleFilterByValue("queued");
+        if (key === "l") return toggleLogModal();
+        if (key === "k") return cycleLogModal(1);
+        if (key === "j") return cycleLogModal(-1);
+      });
 
       // Baseline selector functionality
       var availableBaselines = [[baselines_json]];
