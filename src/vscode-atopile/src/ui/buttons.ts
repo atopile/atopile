@@ -10,7 +10,16 @@ import { openPackageExplorer } from './packagexplorer';
 import { captureEvent } from '../common/telemetry';
 import * as kicanvas from './kicanvas';
 import * as modelviewer from './modelviewer';
-import { getBuildTarget, setBuildTarget } from '../common/target';
+import {
+    getBuildTarget,
+    setBuildTarget,
+    getSelectedTargets,
+    setSelectedTargets,
+    isTargetSelected,
+    toggleTarget,
+    getProjectRoot,
+    setProjectRoot,
+} from '../common/target';
 import { disambiguatePaths } from '../common/utilities';
 
 let buttons: Button[] = [];
@@ -87,6 +96,7 @@ let cmdRemovePackage = new Command(atoRemovePackage, 'atopile.remove_package');
 let cmdBuild = new Command(atoBuild, 'atopile.build');
 let cmdPackageExplorer = new Command(atoPackageExplorer, 'atopile.package_explorer');
 let cmdChooseBuild = new Command(atoChooseBuild, 'atopile.choose_build');
+let cmdChooseProject = new Command(atoChooseProject, 'atopile.choose_project');
 let cmdLaunchKicad = new Command(atoLaunchKicad, 'atopile.launch_kicad');
 let cmdKicanvasPreview = new Command(atoKicanvasPreview, 'atopile.kicanvas_preview');
 let cmdModelViewerPreview = new Command(atoModelViewerPreview, 'atopile.modelviewer_preview');
@@ -109,22 +119,46 @@ let buttonModelViewerPreview = new Button(
     '3D Preview',
     'Open 3D Model Preview',
 );
-let dropdownChooseBuild = new Button('gear', cmdChooseBuild, 'Choose Build Target', 'Select active build target');
-const NO_BUILD = '';
-// replace icon with empty text
+let dropdownChooseBuild = new Button('checklist', cmdChooseBuild, 'Choose Build Targets', 'Select build targets');
+let dropdownChooseProject = new Button('folder', cmdChooseProject, 'Choose Project', 'Select project folder');
+
+const NO_BUILD = '$(checklist)';
+const NO_PROJECT = '$(folder)';
+
+// Initialize button text
 dropdownChooseBuild.setText(NO_BUILD);
+dropdownChooseProject.setText(NO_PROJECT);
 
 export function getButtons() {
     return buttons;
 }
 
-function _setBuildTarget(build: Build | undefined) {
-    let text = NO_BUILD;
-    if (build) {
-        text = _buildsToStr([build])[0];
+function _updateBuildTargetDisplay() {
+    const selected = getSelectedTargets();
+    if (selected.length === 0) {
+        dropdownChooseBuild.setText(NO_BUILD);
+    } else if (selected.length === 1) {
+        dropdownChooseBuild.setText(`$(check) ${selected[0].name}`);
+    } else {
+        dropdownChooseBuild.setText(`$(checklist) ${selected.length} targets`);
     }
-    dropdownChooseBuild?.setText(text);
-    setBuildTarget(build);
+}
+
+function _updateProjectDisplay() {
+    const root = getProjectRoot();
+    if (root) {
+        dropdownChooseProject.setText(`$(folder) ${path.basename(root)}`);
+    } else {
+        dropdownChooseProject.setText(NO_PROJECT);
+    }
+}
+
+function _getSelectedBuilds(): Build[] {
+    const builds = getSelectedTargets();
+    if (builds.length === 0) {
+        throw new Error('No build targets selected');
+    }
+    return builds;
 }
 
 function _getBuildTarget(): Build {
@@ -151,13 +185,12 @@ function _buildsToStr(builds: Build[]): string[] {
 }
 
 function _buildStrToBuild(build_str: string): Build | undefined {
-    if (build_str === NO_BUILD) {
-        return undefined;
-    }
+    // Remove checkbox prefix if present
+    const cleanStr = build_str.replace(/^\$\([^)]+\)\s*/, '').trim();
 
-    const split = build_str.split(' | ');
+    const split = cleanStr.split(' | ');
     if (split.length !== 2) {
-        throw new Error(`Invalid build string: ${build_str}`);
+        return undefined;
     }
     const [disambiguated_root, name] = split;
 
@@ -165,10 +198,19 @@ function _buildStrToBuild(build_str: string): Build | undefined {
     const build = builds.find(
         (build) => (!disambiguated_root || build.root.endsWith(disambiguated_root)) && build.name === name,
     );
-    if (!build) {
-        throw new Error(`Build not found: ${build_str}`);
-    }
     return build;
+}
+
+// Get unique project roots from all builds
+function _getProjectRoots(): string[] {
+    const builds = getBuilds();
+    const roots = new Set<string>();
+    for (const build of builds) {
+        if (build.root) {
+            roots.add(build.root);
+        }
+    }
+    return Array.from(roots);
 }
 
 async function _displayButtons() {
@@ -195,17 +237,26 @@ async function _displayButtons() {
         }
     }
 
-    let current_build = undefined;
-    try {
-        current_build = _buildStrToBuild(dropdownChooseBuild.statusbar_item.text);
-    } catch (error) {}
-
-    if (builds.length > 0 && !current_build) {
-        _setBuildTarget(builds[0]);
+    // Auto-select first project and all its builds if nothing selected
+    const selected = getSelectedTargets();
+    if (builds.length > 0 && selected.length === 0) {
+        // Get unique project roots
+        const roots = _getProjectRoots();
+        if (roots.length > 0) {
+            const firstRoot = roots[0];
+            setProjectRoot(firstRoot);
+            // Select all builds in the first project
+            const projectBuilds = builds.filter(b => b.root === firstRoot);
+            setSelectedTargets(projectBuilds);
+        }
     }
     if (builds.length === 0) {
-        _setBuildTarget(undefined);
+        setSelectedTargets([]);
+        setProjectRoot(undefined);
     }
+
+    _updateBuildTargetDisplay();
+    _updateProjectDisplay();
 }
 
 async function _reloadBuilds() {
@@ -266,10 +317,12 @@ async function _runInTerminal(name: string, cwd: string | undefined, subcommand:
     }
 }
 
-async function _runInTerminalWithBuildTarget(name: string, subcommand: string[], hideFromUser: boolean) {
-    const build = _getBuildTarget();
-
-    await _runInTerminal(name, build.root, subcommand, hideFromUser);
+async function _runInTerminalWithProjectRoot(name: string, subcommand: string[], hideFromUser: boolean) {
+    const root = getProjectRoot();
+    if (!root) {
+        throw new Error('No project folder selected');
+    }
+    await _runInTerminal(name, root, subcommand, hideFromUser);
 }
 
 // Buttons handlers --------------------------------------------------------------------
@@ -279,30 +332,52 @@ async function atoShell() {
 }
 
 async function atoBuild() {
-    // TODO: not sure that's very standard behavior
-    // save all dirty editors
-    // vscode.workspace.saveAll();
+    // Get all selected build targets
+    const builds = _getSelectedBuilds();
+    const root = getProjectRoot();
 
-    // parse what build target to use
-    const build = _getBuildTarget();
+    if (!root) {
+        vscode.window.showErrorMessage('No project folder selected');
+        return;
+    }
 
     // Open the dashboard webview immediately - it will connect when the server starts
     const { openDashboard } = await import('./dashboard');
     openDashboard('http://localhost:8501');
 
-    // Run the build with --ui to start the dashboard server on port 8501
-    await _runInTerminalWithBuildTarget(`build ${build.name}`, ['build', '--build', build.name, '--ui'], false);
+    // Build all selected targets with a single command
+    // Use multiple --build flags for each target
+    const buildArgs = ['build', '--ui'];
+    for (const build of builds) {
+        buildArgs.push('--build', build.name);
+    }
 
-    captureEvent('vsce:build_start'); // TODO: build properties?
+    const targetNames = builds.map(b => b.name).join(', ');
+    await _runInTerminal(`build ${targetNames}`, root, buildArgs, false);
+
+    captureEvent('vsce:build_start', { targets: builds.map(b => b.name) });
 }
 
 async function atoExport() {
-    // parse what build target to use
-    const build = _getBuildTarget();
+    // Get all selected build targets
+    const builds = _getSelectedBuilds();
+    const root = getProjectRoot();
 
-    await _runInTerminalWithBuildTarget(`export ${build.name}`, ['build', '--build', build.name, '-t', 'all'], false);
+    if (!root) {
+        vscode.window.showErrorMessage('No project folder selected');
+        return;
+    }
 
-    captureEvent('vsce:build_start', {'targets': ['all']});
+    // Export all selected targets
+    const buildArgs = ['build', '-t', 'all'];
+    for (const build of builds) {
+        buildArgs.push('--build', build.name);
+    }
+
+    const targetNames = builds.map(b => b.name).join(', ');
+    await _runInTerminal(`export ${targetNames}`, root, buildArgs, false);
+
+    captureEvent('vsce:build_start', { targets: builds.map(b => b.name) });
 }
 
 async function atoAddPart() {
@@ -314,7 +389,7 @@ async function atoAddPart() {
         return;
     }
 
-    await _runInTerminalWithBuildTarget(
+    await _runInTerminalWithProjectRoot(
         'create part',
         ['create', 'part', '--search', result, '--accept-single'],
         false,
@@ -335,7 +410,7 @@ async function atoAddPackage() {
         return;
     }
 
-    await _runInTerminalWithBuildTarget('add', ['add', result], false);
+    await _runInTerminalWithProjectRoot('add', ['add', result], false);
 
     captureEvent('vsce:package_add', {
         package: result,
@@ -352,7 +427,7 @@ async function atoRemovePackage() {
         return;
     }
 
-    await _runInTerminalWithBuildTarget('remove', ['remove', result], false);
+    await _runInTerminalWithProjectRoot('remove', ['remove', result], false);
 
     captureEvent('vsce:package_remove', {
         package: result,
@@ -365,29 +440,138 @@ async function atoCreateProject() {
     captureEvent('vsce:project_create');
 }
 
-async function atoChooseBuild() {
-    // check if a new build was created
+async function atoChooseProject() {
+    // Check if builds were updated
     await _reloadBuilds();
 
-    const build_strs = _buildsToStr(getBuilds());
+    const roots = _getProjectRoots();
 
-    const result = await window.showQuickPick(build_strs, {
-        placeHolder: 'Choose build target',
+    if (roots.length === 0) {
+        vscode.window.showInformationMessage('No projects found. Create a project first.');
+        return;
+    }
+
+    // Show project folders with current selection marked
+    const currentRoot = getProjectRoot();
+    const items = roots.map(root => ({
+        label: `${root === currentRoot ? '$(check) ' : ''}${path.basename(root)}`,
+        description: root,
+        root: root,
+    }));
+
+    const result = await window.showQuickPick(items, {
+        placeHolder: 'Choose project folder',
     });
+
     if (!result) {
         return;
     }
 
-    let build = _buildStrToBuild(result);
-    _setBuildTarget(build);
+    // Set the project root
+    setProjectRoot(result.root);
+    _updateProjectDisplay();
 
-    captureEvent('vsce:build_target_select', {
-        build_target: result,
+    // Auto-select all builds in this project
+    const builds = getBuilds().filter(b => b.root === result.root);
+    setSelectedTargets(builds);
+    _updateBuildTargetDisplay();
+
+    captureEvent('vsce:project_select', {
+        project: result.root,
     });
 }
 
+async function atoChooseBuild() {
+    // Check if builds were updated
+    await _reloadBuilds();
+
+    const currentRoot = getProjectRoot();
+    if (!currentRoot) {
+        vscode.window.showInformationMessage('Select a project folder first.');
+        return;
+    }
+
+    // Get builds for the current project only
+    const projectBuilds = getBuilds().filter(b => b.root === currentRoot);
+
+    if (projectBuilds.length === 0) {
+        vscode.window.showInformationMessage('No build targets found in this project.');
+        return;
+    }
+
+    // Create items with checkmarks for selected builds
+    interface BuildQuickPickItem extends vscode.QuickPickItem {
+        build: Build;
+    }
+
+    const items: BuildQuickPickItem[] = projectBuilds.map(build => ({
+        label: `${isTargetSelected(build) ? '$(check)' : '$(circle-outline)'} ${build.name}`,
+        description: build.entry,
+        build: build,
+        picked: isTargetSelected(build),
+    }));
+
+    // Add "Select All" and "Select None" options
+    const selectAllLabel = '$(checklist) Select All';
+    const selectNoneLabel = '$(circle-outline) Select None';
+
+    // Create a quick pick with custom behavior
+    const quickPick = window.createQuickPick<BuildQuickPickItem>();
+    quickPick.items = items;
+    quickPick.title = 'Select Build Targets';
+    quickPick.placeholder = 'Click to toggle selection (click outside to close)';
+    quickPick.canSelectMany = false; // We'll handle multi-select ourselves
+
+    // Add buttons for select all/none
+    quickPick.buttons = [
+        { iconPath: new vscode.ThemeIcon('check-all'), tooltip: 'Select All' },
+        { iconPath: new vscode.ThemeIcon('circle-outline'), tooltip: 'Select None' },
+    ];
+
+    quickPick.onDidTriggerButton(button => {
+        if (button.tooltip === 'Select All') {
+            setSelectedTargets(projectBuilds);
+        } else if (button.tooltip === 'Select None') {
+            setSelectedTargets([]);
+        }
+        // Refresh the list
+        quickPick.items = projectBuilds.map(build => ({
+            label: `${isTargetSelected(build) ? '$(check)' : '$(circle-outline)'} ${build.name}`,
+            description: build.entry,
+            build: build,
+            picked: isTargetSelected(build),
+        }));
+        _updateBuildTargetDisplay();
+    });
+
+    quickPick.onDidAccept(() => {
+        const selected = quickPick.selectedItems[0];
+        if (selected) {
+            // Toggle the selected build
+            toggleTarget(selected.build);
+            // Refresh the list to show updated checkmarks
+            quickPick.items = projectBuilds.map(build => ({
+                label: `${isTargetSelected(build) ? '$(check)' : '$(circle-outline)'} ${build.name}`,
+                description: build.entry,
+                build: build,
+                picked: isTargetSelected(build),
+            }));
+            _updateBuildTargetDisplay();
+        }
+    });
+
+    quickPick.onDidHide(() => {
+        quickPick.dispose();
+        captureEvent('vsce:build_targets_select', {
+            targets: getSelectedTargets().map(b => b.name),
+        });
+    });
+
+    quickPick.show();
+}
+
 async function atoLaunchKicad() {
-    // get the build target name
+    // get the first selected build target
     const build = _getBuildTarget();
 
     const pcb_name = build.name + '.kicad_pcb';

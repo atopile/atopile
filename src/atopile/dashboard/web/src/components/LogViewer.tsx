@@ -99,9 +99,9 @@ function LogEntryRow({ entry }: { entry: LogEntry }) {
   const hasSections = sections.length > 0;
 
   return (
-    <div className={`${levelBgColors[entry.level]} border-b border-panel-border/30 last:border-0`}>
+    <div className={`${levelBgColors[entry.level]} border-b border-panel-border/20 last:border-0`}>
       {/* Main log line */}
-      <div className="flex gap-2 py-1.5 px-3 items-start">
+      <div className="flex gap-2 py-0.5 px-2 items-start">
         {/* Timestamp */}
         <span className="text-text-muted shrink-0 font-mono text-xs mt-0.5">
           {formatTimestamp(entry.timestamp)}

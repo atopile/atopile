@@ -78,10 +78,13 @@ def compile(
             )
 
         node_modules = vscode_dir / "node_modules"
-        if not node_modules.exists():
+        package_lock = vscode_dir / "package-lock.json"
+        needs_install = not node_modules.exists() or (
+            package_lock.exists()
+            and package_lock.stat().st_mtime > node_modules.stat().st_mtime
+        )
+        if needs_install:
             subprocess.run(["npm", "install"], cwd=vscode_dir, check=True)
-        else:
-            subprocess.run(["npm", "update"], cwd=vscode_dir, check=True)
 
         # Package the extension (runs vscode:prepublish which does production build)
         subprocess.run(

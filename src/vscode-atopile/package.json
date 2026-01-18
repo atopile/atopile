@@ -166,7 +166,13 @@
             },
             {
                 "command": "atopile.choose_build",
-                "title": "Choose build target",
+                "title": "Choose build targets",
+                "category": "atopile",
+                "when": "editorLangId == ato"
+            },
+            {
+                "command": "atopile.choose_project",
+                "title": "Choose project folder",
                 "category": "atopile",
                 "when": "editorLangId == ato"
             },
