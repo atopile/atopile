@@ -24,7 +24,7 @@ def compile(
     target: str = typer.Argument(
         "all",
         help="Build target: all, zig, visualizer, or dashboard.",
-    )
+    ),
 ):
     target = target.lower()
     valid_targets = {"all", "zig", "visualizer", "dashboard"}
@@ -606,6 +606,23 @@ def test(
         "-b",
         help="Compare against a baseline: commit hash, or number of commits back (e.g. 3)",  # noqa: E501
     ),
+    save_baseline: str = typer.Option(
+        None,
+        "--save-baseline",
+        "-s",
+        help="Save results as a named local baseline (e.g. 'pre-refactor')",
+    ),
+    local_baseline: str = typer.Option(
+        None,
+        "--local-baseline",
+        "-l",
+        help="Compare against a local baseline by name",
+    ),
+    list_baselines: bool = typer.Option(
+        False,
+        "--list-baselines",
+        help="List available local baselines and exit",
+    ),
     direct: bool = False,
     test_name: str | None = typer.Option(None, "-k", help="Test name pattern"),
     test_paths: list[Path] = typer.Option(
@@ -642,6 +659,24 @@ def test(
     import sys
 
     from faebryk.libs.util import repo_root
+
+    # Handle --list-baselines option: list and exit
+    if list_baselines:
+        sys.path.insert(0, str(repo_root()))
+        from test.runner.main import list_local_baselines
+
+        baselines = list_local_baselines()
+        if not baselines:
+            typer.echo("No local baselines found.")
+        else:
+            typer.echo("Available local baselines:")
+            for b in baselines:
+                typer.echo(
+                    f"  {b['name']:<20} "
+                    f"({b.get('tests_total', '?')} tests, "
+                    f"created {b.get('created_at', 'unknown')})"
+                )
+        return
 
     # Handle --view option: fetch and open report, then exit
     if view is not None:
@@ -737,6 +772,8 @@ def test(
     main(
         args=args,
         baseline_commit=baseline_commit,
+        local_baseline_name=local_baseline,
+        save_baseline_name=save_baseline,
         open_browser=open_browser,
         llm=llm_effective,
         keep_open=keep_open,

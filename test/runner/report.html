@@ -576,6 +576,56 @@
       .theme-toggle .icon {
         font-size: 16px;
       }
+
+      /* Baseline selector dropdown */
+      .baseline-selector {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: auto;
+      }
+
+      .baseline-selector label {
+        color: var(--ctp-subtext0);
+        font-size: 11px;
+      }
+
+      .baseline-selector select {
+        padding: 4px 8px;
+        font-size: 11px;
+        background-color: var(--ctp-surface0);
+        color: var(--ctp-text);
+        border: 1px solid var(--ctp-surface1);
+        border-radius: 3px;
+        cursor: pointer;
+        min-width: 150px;
+      }
+
+      .baseline-selector select:hover {
+        background-color: var(--ctp-surface1);
+      }
+
+      .baseline-selector select:focus {
+        outline: none;
+        border-color: var(--ctp-lavender);
+      }
+
+      .baseline-status {
+        font-size: 10px;
+        color: var(--ctp-overlay1);
+      }
+
+      .baseline-status.loading {
+        color: var(--ctp-yellow);
+      }
+
+      .baseline-status.error {
+        color: var(--ctp-red);
+      }
+
+      .baseline-status.success {
+        color: var(--ctp-green);
+      }
     </style>
     <script>
       var currentSortColumn = -1;
@@ -957,6 +1007,117 @@
           event.target.style.display = "none";
         }
       };
+
+      // Baseline selector functionality
+      var availableBaselines = [[baselines_json]];
+      var currentBaseline = "[[current_baseline]]";
+      var currentBaselineInfo = "[[current_baseline_info]]";
+
+      function populateBaselineDropdown() {
+        var select = document.getElementById("baselineSelect");
+        if (!select) return;
+
+        // Clear ALL children (options and optgroups)
+        while (select.firstChild) {
+          select.removeChild(select.firstChild);
+        }
+
+        // Add default option showing current baseline
+        var defaultOption = document.createElement("option");
+        defaultOption.value = "";
+        defaultOption.textContent = currentBaselineInfo || "-- No baseline --";
+        if (!currentBaseline) {
+          defaultOption.selected = true;
+        }
+        select.appendChild(defaultOption);
+
+        // Add local baselines
+        if (availableBaselines && availableBaselines.length > 0) {
+          var optgroup = document.createElement("optgroup");
+          optgroup.label = "Local Baselines";
+
+          availableBaselines.forEach(function (baseline) {
+            var option = document.createElement("option");
+            option.value = "local:" + baseline.name;
+            option.textContent =
+              baseline.name +
+              " (" +
+              (baseline.tests_total || "?") +
+              " tests)";
+            if (currentBaseline === "local:" + baseline.name) {
+              option.selected = true;
+            }
+            optgroup.appendChild(option);
+          });
+
+          select.appendChild(optgroup);
+        }
+      }
+
+      async function loadBaselines() {
+        try {
+          var response = await fetch("/api/baselines");
+          var data = await response.json();
+          if (data.baselines) {
+            availableBaselines = data.baselines;
+            populateBaselineDropdown();
+          }
+        } catch (e) {
+          console.log("Could not load baselines (likely static file)", e);
+        }
+      }
+
+      async function changeBaseline() {
+        var select = document.getElementById("baselineSelect");
+        var status = document.getElementById("baselineStatus");
+        var value = select.value;
+
+        if (!value) {
+          return;
+        }
+
+        if (status) {
+          status.textContent = "Loading...";
+          status.className = "baseline-status loading";
+        }
+
+        try {
+          var response = await fetch("/api/change-baseline", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ baseline: value }),
+          });
+          var data = await response.json();
+
+          if (data.success) {
+            if (status) {
+              status.textContent = "Reloading...";
+              status.className = "baseline-status success";
+            }
+            // Reload the page to show updated report
+            setTimeout(function () {
+              location.reload();
+            }, 500);
+          } else {
+            if (status) {
+              status.textContent = data.error || "Error";
+              status.className = "baseline-status error";
+            }
+          }
+        } catch (e) {
+          if (status) {
+            status.textContent = "Failed to change baseline";
+            status.className = "baseline-status error";
+          }
+          console.error("Failed to change baseline", e);
+        }
+      }
+
+      // Load baselines on page load (only works with live server)
+      document.addEventListener("DOMContentLoaded", function () {
+        populateBaselineDropdown();
+        loadBaselines();
+      });
     </script>
   </head>
   <body>
@@ -1070,6 +1231,12 @@
           />
           Queued</label
         >
+      </div>
+      <div class="baseline-selector">
+        <label for="baselineSelect">Baseline:</label>
+        <select id="baselineSelect" onchange="changeBaseline()">
+        </select>
+        <span id="baselineStatus" class="baseline-status"></span>
       </div>
     </div>
 

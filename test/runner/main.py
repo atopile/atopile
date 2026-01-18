@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any, Optional, cast
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from jinja2 import Template
 from rich.console import Console
@@ -325,6 +325,108 @@ def fetch_remote_report(commit_hash: Optional[str] = None) -> RemoteBaseline:
     return baseline
 
 
+def list_local_baselines() -> list[dict[str, Any]]:
+    """List all available local baselines."""
+    if not BASELINES_INDEX.exists():
+        return []
+    try:
+        index_data = json.loads(BASELINES_INDEX.read_text())
+        return index_data.get("baselines", [])
+    except Exception:
+        return []
+
+
+def load_local_baseline(name: str) -> RemoteBaseline:
+    """
+    Load a local baseline by name.
+    Returns a RemoteBaseline object for compatibility with existing comparison logic.
+    """
+    baseline = RemoteBaseline()
+
+    baseline_file = BASELINES_DIR / f"{name}.json"
+    if not baseline_file.exists():
+        baseline.error = f"Local baseline '{name}' not found"
+        return baseline
+
+    try:
+        data = json.loads(baseline_file.read_text())
+        tests = {}
+        for t in data.get("tests", []):
+            nodeid = t.get("nodeid") or t.get("fullnodeid")
+            outcome = t.get("outcome") or t.get("status")
+            if not nodeid or not outcome:
+                continue
+            tests[nodeid] = {
+                "outcome": str(outcome).lower(),
+                "duration_s": t.get("duration_s") or t.get("duration"),
+                "memory_usage_mb": t.get("memory_usage_mb", 0.0),
+                "memory_peak_mb": t.get("memory_peak_mb", 0.0),
+            }
+        baseline.tests = tests
+        baseline.loaded = True
+
+        # Extract metadata from the baseline file
+        commit_data = data.get("commit") or {}
+        baseline.commit_hash = commit_data.get("short_hash") or name
+        baseline.commit_hash_full = commit_data.get("hash")
+        baseline.commit_author = commit_data.get("author")
+        baseline.commit_message = commit_data.get("message")
+        baseline.commit_time = commit_data.get("time")
+        baseline.branch = data.get("run", {}).get("git", {}).get("branch")
+
+    except Exception as e:
+        baseline.error = f"Error loading local baseline '{name}': {e}"
+        return baseline
+
+    return baseline
+
+
+def save_local_baseline(report: dict[str, Any], name: str) -> Path:
+    """
+    Save the current test report as a named local baseline.
+    Returns the path to the saved baseline file.
+    """
+    # Create baselines directory if needed
+    BASELINES_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Save the baseline file
+    baseline_file = BASELINES_DIR / f"{name}.json"
+    baseline_file.write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+    # Update the index
+    index_data: dict[str, Any] = {"version": "1", "baselines": []}
+    if BASELINES_INDEX.exists():
+        try:
+            index_data = json.loads(BASELINES_INDEX.read_text())
+        except Exception:
+            pass
+
+    # Get metadata for index entry
+    summary = report.get("summary", {})
+    commit = report.get("commit", {}) or {}
+    git_info = report.get("run", {}).get("git", {}) or {}
+
+    entry = {
+        "name": name,
+        "created_at": report.get("generated_at"),
+        "commit_hash": commit.get("short_hash"),
+        "branch": git_info.get("branch"),
+        "tests_total": summary.get("total", 0),
+        "passed": summary.get("passed", 0),
+        "failed": summary.get("failed", 0),
+        "platform": platform.system().lower(),
+    }
+
+    # Remove existing entry with same name if present
+    baselines = [b for b in index_data.get("baselines", []) if b.get("name") != name]
+    baselines.insert(0, entry)  # Add new entry at the beginning
+    index_data["baselines"] = baselines
+
+    BASELINES_INDEX.write_text(json.dumps(index_data, indent=2), encoding="utf-8")
+
+    return baseline_file
+
+
 # Global baseline (fetched once at startup)
 remote_baseline: RemoteBaseline = RemoteBaseline()
 
@@ -582,22 +684,22 @@ elif WORKER_COUNT < 0:
 GENERATE_HTML = os.getenv("FBRK_TEST_GENERATE_HTML", "1") == "1"
 GENERATE_PERIODIC_HTML = os.getenv("FBRK_TEST_PERIODIC_HTML", "1") == "1"
 ORCHESTRATOR_BIND_HOST = os.getenv("FBRK_TEST_BIND_HOST", "0.0.0.0")
-ORCHESTRATOR_REPORT_HOST = os.getenv(
-    "FBRK_TEST_REPORT_HOST", ORCHESTRATOR_BIND_HOST
-)
+ORCHESTRATOR_REPORT_HOST = os.getenv("FBRK_TEST_REPORT_HOST", ORCHESTRATOR_BIND_HOST)
 
 # Perf compare thresholds (baseline vs current)
 PERF_THRESHOLD_PERCENT = float(os.getenv("FBRK_TEST_PERF_THRESHOLD_PERCENT", "0.30"))
 PERF_MIN_TIME_DIFF_S = float(os.getenv("FBRK_TEST_PERF_MIN_TIME_DIFF_S", "1.0"))
-PERF_MIN_MEMORY_DIFF_MB = float(
-    os.getenv("FBRK_TEST_PERF_MIN_MEMORY_DIFF_MB", "50.0")
-)
+PERF_MIN_MEMORY_DIFF_MB = float(os.getenv("FBRK_TEST_PERF_MIN_MEMORY_DIFF_MB", "50.0"))
 
 # Report config
 REPORT_SCHEMA_VERSION = "4"
 REPORT_JSON_PATH = Path("artifacts/test-report.json")
 REPORT_LLM_JSON_PATH = Path("artifacts/test-report.llm.json")
 REPORT_HTML_PATH = Path("artifacts/test-report.html")
+
+# Local baselines config
+BASELINES_DIR = Path("artifacts/baselines")
+BASELINES_INDEX = BASELINES_DIR / "index.json"
 
 # Output truncation config (0 = no truncation)
 OUTPUT_MAX_BYTES = int(os.getenv("FBRK_TEST_OUTPUT_MAX_BYTES", "0"))
@@ -684,9 +786,7 @@ def _get_git_info() -> dict[str, Any] | None:
     return info
 
 
-_ANSI_PATTERN = re.compile(
-    r"(?:\x1B\[[0-?]*[ -/]*[@-~])|(?:\x1B\].*?(?:\x07|\x1b\\))"
-)
+_ANSI_PATTERN = re.compile(r"(?:\x1B\[[0-?]*[ -/]*[@-~])|(?:\x1B\].*?(?:\x07|\x1b\\))")
 
 
 def _strip_ansi(text: str) -> str:
@@ -843,10 +943,10 @@ def _default_llm_section() -> dict[str, Any]:
             f"jq '.summary' {REPORT_JSON_PATH}",
             "jq -r '.derived.failures[] | \"\\(.nodeid) :: \\(.error_message)\"' "
             f"{REPORT_JSON_PATH}",
-            "jq -r '.tests[] | select(.status!=\"passed\") "
+            'jq -r \'.tests[] | select(.status!="passed") '
             "| {nodeid,output_full}' "
             f"{REPORT_JSON_PATH}",
-            "jq -r '.tests[] | select(.status!=\"passed\") "
+            'jq -r \'.tests[] | select(.status!="passed") '
             "| {nodeid,status,error_message}' "
             f"{REPORT_JSON_PATH}",
             "jq -r '.tests | sort_by(.duration_s) | reverse | .[:10] "
@@ -1409,12 +1509,9 @@ class TestAggregator:
             elif state == "queued":
                 queued += 1
 
-
             duration_s = 0.0
             if t["start_time"] and t["finish_time"]:
-                duration_s = (
-                    t["finish_time"] - t["start_time"]
-                ).total_seconds()
+                duration_s = (t["finish_time"] - t["start_time"]).total_seconds()
                 durations.append(duration_s)
                 sum_test_durations += duration_s
             elif t["start_time"] and t["finish_time"] is None:
@@ -1431,9 +1528,7 @@ class TestAggregator:
             if state == "running" and t["pid"]:
                 worker_log = self.get_worker_log(t["pid"])
                 if worker_log:
-                    live_output, live_meta = _apply_output_limits(
-                        {"live": worker_log}
-                    )
+                    live_output, live_meta = _apply_output_limits({"live": worker_log})
                     if live_output:
                         if output is None:
                             output = {}
@@ -1484,13 +1579,18 @@ class TestAggregator:
                 new_tests += 1
 
             duration_delta_s, duration_delta_pct, duration_sig = _perf_change(
-                duration_s, baseline_duration_s, PERF_MIN_TIME_DIFF_S, PERF_THRESHOLD_PERCENT
+                duration_s,
+                baseline_duration_s,
+                PERF_MIN_TIME_DIFF_S,
+                PERF_THRESHOLD_PERCENT,
             )
             speedup_ratio = None
             speedup_pct = None
             if baseline_duration_s and duration_s > 0:
                 speedup_ratio = baseline_duration_s / duration_s
-                speedup_pct = ((baseline_duration_s - duration_s) / baseline_duration_s) * 100
+                speedup_pct = (
+                    (baseline_duration_s - duration_s) / baseline_duration_s
+                ) * 100
 
             memory_delta_mb, memory_delta_pct, memory_sig = _perf_change(
                 t["memory_peak_mb"],
@@ -1555,9 +1655,15 @@ class TestAggregator:
                     "memory_delta_mb": memory_delta_mb,
                     "memory_delta_pct": memory_delta_pct,
                     "perf_status": perf_status,
-                    "perf_regression": bool(duration_sig and duration_delta_pct and duration_delta_pct > 0),
-                    "perf_improvement": bool(duration_sig and duration_delta_pct and duration_delta_pct < 0),
-                    "memory_regression": bool(memory_sig and memory_delta_pct and memory_delta_pct > 0),
+                    "perf_regression": bool(
+                        duration_sig and duration_delta_pct and duration_delta_pct > 0
+                    ),
+                    "perf_improvement": bool(
+                        duration_sig and duration_delta_pct and duration_delta_pct < 0
+                    ),
+                    "memory_regression": bool(
+                        memory_sig and memory_delta_pct and memory_delta_pct > 0
+                    ),
                     "claim_attempts": t["claim_attempts"],
                     "requeues": t["requeues"],
                     "collection_error": t["collection_error"],
@@ -1593,9 +1699,7 @@ class TestAggregator:
             {
                 "nodeid": nodeid,
                 "error": error,
-                "error_message": error.splitlines()[-1].strip()
-                if error
-                else None,
+                "error_message": error.splitlines()[-1].strip() if error else None,
             }
             for nodeid, error in collection_errors.items()
         ]
@@ -1843,13 +1947,13 @@ class TestAggregator:
             recommended.append(
                 {
                     "description": "Re-run single test (orchestrated)",
-                    "command": f"ato dev test --llm -k \"{nodeid}\"",
+                    "command": f'ato dev test --llm -k "{nodeid}"',
                 }
             )
             recommended.append(
                 {
                     "description": "Re-run single test (direct, tight loop; no report)",
-                    "command": f"ato dev test --direct -k \"{nodeid}\"",
+                    "command": f'ato dev test --direct -k "{nodeid}"',
                 }
             )
         report["llm"]["recommended_commands"] = recommended
@@ -1964,7 +2068,7 @@ class TestAggregator:
                 if meta.get("truncated"):
                     note = (
                         f'<div class="log-note">truncated: kept '
-                        f'{meta.get("bytes_kept")} of {meta.get("bytes_total")} bytes'
+                        f"{meta.get('bytes_kept')} of {meta.get('bytes_total')} bytes"
                         f"</div>"
                     )
                 log_content += (
@@ -1974,9 +2078,13 @@ class TestAggregator:
 
             if output:
                 if output.get("stdout"):
-                    _append_log_section("STDOUT", ansi_to_html(output["stdout"]), "stdout")
+                    _append_log_section(
+                        "STDOUT", ansi_to_html(output["stdout"]), "stdout"
+                    )
                 if output.get("stderr"):
-                    _append_log_section("STDERR", ansi_to_html(output["stderr"]), "stderr")
+                    _append_log_section(
+                        "STDERR", ansi_to_html(output["stderr"]), "stderr"
+                    )
                 if output.get("log"):
                     _append_log_section("LOG", ansi_to_html(output["log"]), "log")
                 if output.get("error"):
@@ -1996,7 +2104,7 @@ class TestAggregator:
                 <div id="{modal_id}" class="modal">
                   <div class="modal-content">
                     <div class="modal-header">
-                      <h2>Logs for {t['nodeid']}</h2>
+                      <h2>Logs for {t["nodeid"]}</h2>
                       <div class="modal-buttons">
                         <button class="copy-btn" onclick="copyLogs('{modal_id}')">Copy</button>
                         <button class="close-btn" onclick="closeModal('{modal_id}')">&times;</button>
@@ -2054,9 +2162,7 @@ class TestAggregator:
                 b = int(161 + (168 - 161) * pct)
                 memory_style = f"background-color: rgba({r}, {g}, {b}, 0.25)"
 
-            memory_cell = (
-                f'<td style="{memory_style}" data-value="{memory_val}">{memory_str}</td>'
-            )
+            memory_cell = f'<td style="{memory_style}" data-value="{memory_val}">{memory_str}</td>'
 
             peak_val = t["memory_peak_mb"]
             peak_str = f"{peak_val:.2f} MB" if peak_val > 0 else "-"
@@ -2118,10 +2224,10 @@ class TestAggregator:
             rows.append(
                 f"""
             <tr class="{row_class}">
-                <td>{t['file']}</td>
-                <td>{t['class']}</td>
-                <td>{t['function']}</td>
-                <td>{t['params']}</td>
+                <td>{t["file"]}</td>
+                <td>{t["class"]}</td>
+                <td>{t["function"]}</td>
+                <td>{t["params"]}</td>
                 <td class="{outcome_class}">{outcome_text}</td>
                 {compare_cell}
                 {duration_cell}
@@ -2154,9 +2260,7 @@ class TestAggregator:
                     parts.append(f"date {time_str}")
                 if message:
                     parts.append(f'msg <em>"{message}"</em>')
-                commit_info_html = (
-                    f"<br><strong>HEAD:</strong> " + " | ".join(parts)
-                )
+                commit_info_html = "<br><strong>HEAD:</strong> " + " | ".join(parts)
 
             ci_info_html = ""
             ci = report.get("ci") or {}
@@ -2178,12 +2282,8 @@ class TestAggregator:
             baseline_info_html = ""
             if baseline.get("loaded"):
                 baseline_short = html.escape(str(baseline.get("commit_hash") or ""))
-                baseline_full = html.escape(
-                    str(baseline.get("commit_hash_full") or "")
-                )
-                baseline_author = html.escape(
-                    str(baseline.get("commit_author") or "")
-                )
+                baseline_full = html.escape(str(baseline.get("commit_hash_full") or ""))
+                baseline_author = html.escape(str(baseline.get("commit_author") or ""))
                 baseline_time = html.escape(str(baseline.get("commit_time") or ""))
                 baseline_message = html.escape(
                     str(baseline.get("commit_message") or ""), quote=True
@@ -2202,14 +2302,40 @@ class TestAggregator:
                 if baseline_message:
                     parts.append(f'msg <em>"{baseline_message}"</em>')
                 parts.append(f"{tests_total} tests")
-                baseline_info_html = (
-                    f"<br><strong>Baseline:</strong> " + " | ".join(parts)
+                baseline_info_html = "<br><strong>Baseline:</strong> " + " | ".join(
+                    parts
                 )
             elif baseline.get("error"):
                 baseline_info_html = (
                     f'<br><span class="baseline-error">'
                     f"<strong>Baseline:</strong> {baseline.get('error')}</span>"
                 )
+
+            # Get available local baselines for dropdown
+            local_baselines = list_local_baselines()
+            baselines_json = json.dumps(local_baselines)
+
+            # Determine current baseline identifier and info for dropdown
+            current_baseline = ""
+            current_baseline_info = "-- No baseline --"
+            if baseline.get("loaded"):
+                baseline_requested = report.get("run", {}).get("baseline_requested")
+                # Check if this is a local baseline
+                if baseline_requested and any(
+                    b.get("name") == baseline_requested for b in local_baselines
+                ):
+                    current_baseline = f"local:{baseline_requested}"
+                    current_baseline_info = f"Local: {baseline_requested}"
+                elif baseline.get("commit_hash"):
+                    # Remote baseline from GitHub
+                    commit = baseline.get("commit_hash") or "unknown"
+                    branch = baseline.get("branch") or ""
+                    if branch:
+                        current_baseline_info = f"Remote: {commit} ({branch})"
+                    else:
+                        current_baseline_info = f"Remote: {commit}"
+            elif baseline.get("error"):
+                current_baseline_info = "-- Baseline error --"
 
             html_ = HTML_TEMPLATE.render(
                 status="Running"
@@ -2232,12 +2358,17 @@ class TestAggregator:
                 timestamp=report["generated_at"],
                 finishing_time=report["run"]["end_time"] or report["generated_at"],
                 total_duration=total_duration_str,
-                total_summed_duration=format_duration(summary["total_summed_duration_s"]),
+                total_summed_duration=format_duration(
+                    summary["total_summed_duration_s"]
+                ),
                 total_memory=f"{summary['total_memory_mb']:.2f} MB",
                 refresh_meta="",
                 commit_info_html=commit_info_html,
                 ci_info_html=ci_info_html,
                 baseline_info_html=baseline_info_html,
+                baselines_json=baselines_json,
+                current_baseline=current_baseline,
+                current_baseline_info=current_baseline_info,
             )
         except Exception as e:
             print(f"Failed to format HTML report: {e}")
@@ -2319,7 +2450,9 @@ def _rebuild_report_with_baseline(
 
         baseline_rec = _baseline_record(baseline.tests, nodeid) if nodeid else None
         baseline_outcome = baseline_rec.get("outcome") if baseline_rec else None
-        compare_status = _compare_status(status, baseline_outcome) if baseline.loaded else None
+        compare_status = (
+            _compare_status(status, baseline_outcome) if baseline.loaded else None
+        )
         t["compare_status"] = compare_status
         t["baseline_outcome"] = baseline_outcome
 
@@ -2343,16 +2476,24 @@ def _rebuild_report_with_baseline(
         t["baseline_memory_peak_mb"] = baseline_memory_peak_mb
 
         duration_delta_s, duration_delta_pct, duration_sig = _perf_change(
-            duration_s, baseline_duration_s, PERF_MIN_TIME_DIFF_S, PERF_THRESHOLD_PERCENT
+            duration_s,
+            baseline_duration_s,
+            PERF_MIN_TIME_DIFF_S,
+            PERF_THRESHOLD_PERCENT,
         )
         speedup_ratio = None
         speedup_pct = None
         if baseline_duration_s and duration_s:
             speedup_ratio = baseline_duration_s / duration_s
-            speedup_pct = ((baseline_duration_s - duration_s) / baseline_duration_s) * 100
+            speedup_pct = (
+                (baseline_duration_s - duration_s) / baseline_duration_s
+            ) * 100
 
         memory_delta_mb, memory_delta_pct, memory_sig = _perf_change(
-            mem_peak, baseline_memory_peak_mb, PERF_MIN_MEMORY_DIFF_MB, PERF_THRESHOLD_PERCENT
+            mem_peak,
+            baseline_memory_peak_mb,
+            PERF_MIN_MEMORY_DIFF_MB,
+            PERF_THRESHOLD_PERCENT,
         )
 
         t["duration_delta_s"] = duration_delta_s
@@ -2370,9 +2511,15 @@ def _rebuild_report_with_baseline(
             else:
                 t["perf_status"] = "same"
 
-        t["perf_regression"] = bool(duration_sig and duration_delta_pct and duration_delta_pct > 0)
-        t["perf_improvement"] = bool(duration_sig and duration_delta_pct and duration_delta_pct < 0)
-        t["memory_regression"] = bool(memory_sig and memory_delta_pct and memory_delta_pct > 0)
+        t["perf_regression"] = bool(
+            duration_sig and duration_delta_pct and duration_delta_pct > 0
+        )
+        t["perf_improvement"] = bool(
+            duration_sig and duration_delta_pct and duration_delta_pct < 0
+        )
+        t["memory_regression"] = bool(
+            memory_sig and memory_delta_pct and memory_delta_pct > 0
+        )
 
         if t["perf_regression"]:
             perf_regressions += 1
@@ -2571,13 +2718,13 @@ def _rebuild_report_with_baseline(
         recommended.append(
             {
                 "description": "Re-run single test (orchestrated)",
-                "command": f"ato dev test --llm -k \"{nodeid}\"",
+                "command": f'ato dev test --llm -k "{nodeid}"',
             }
         )
         recommended.append(
             {
                 "description": "Re-run single test (direct, tight loop; no report)",
-                "command": f"ato dev test --direct -k \"{nodeid}\"",
+                "command": f'ato dev test --direct -k "{nodeid}"',
             }
         )
     llm_section["recommended_commands"] = recommended
@@ -2652,6 +2799,51 @@ async def serve_report():
         "<script>setTimeout(() => location.reload(), 2000);</script>"
         "</body></html>"
     )
+
+
+@app.get("/api/baselines")
+async def get_baselines():
+    """List available local baselines."""
+    baselines = list_local_baselines()
+    return {"baselines": baselines}
+
+
+@app.post("/api/change-baseline")
+async def change_baseline(request: Request):
+    """Change baseline and regenerate report."""
+    try:
+        body = await request.json()
+        baseline_name = body.get("baseline")
+    except Exception:
+        return {"error": "Invalid request body"}
+
+    if not baseline_name:
+        return {"error": "No baseline specified"}
+
+    try:
+        if baseline_name.startswith("local:"):
+            # Load local baseline
+            name = baseline_name[6:]  # Remove "local:" prefix
+            new_baseline = load_local_baseline(name)
+        else:
+            # Fetch remote baseline by commit hash
+            new_baseline = fetch_remote_report(commit_hash=baseline_name)
+
+        if not new_baseline.loaded:
+            return {"error": new_baseline.error or "Failed to load baseline"}
+
+        # Update global baseline and aggregator
+        global remote_baseline
+        remote_baseline = new_baseline
+
+        if aggregator:
+            aggregator.set_baseline(new_baseline)
+            # Regenerate reports with new baseline
+            aggregator.generate_reports(periodic=False)
+
+        return {"success": True, "baseline": baseline_name}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 class ReportTimer:
@@ -2820,6 +3012,8 @@ def run_report_server(open_browser: bool = False) -> None:
 def main(
     args: list[str] | None = None,
     baseline_commit: str | None = None,
+    local_baseline_name: str | None = None,
+    save_baseline_name: str | None = None,
     open_browser: bool = False,
     llm: bool = False,
     keep_open: bool = False,
@@ -2847,43 +3041,61 @@ def main(
         sys.exit(0)
 
     # Start fetching baseline from GitHub in background (non-blocking)
+    # or load local baseline synchronously if specified
     global remote_baseline
     baseline_fetch_complete = threading.Event()
 
-    def fetch_baseline_background():
-        global remote_baseline
-        try:
-            remote_baseline = fetch_remote_report(commit_hash=baseline_commit)
-            if remote_baseline.loaded:
-                _print(
-                    f"Baseline loaded: {remote_baseline.commit_hash} on "
-                    f"{remote_baseline.branch} ({len(remote_baseline.tests)} tests)"
-                )
-                # Update aggregator with loaded baseline
-                if aggregator:
-                    aggregator.set_baseline(remote_baseline)
-            elif remote_baseline.error:
-                _print(f"Baseline: {remote_baseline.error}")
-        except Exception as e:
-            _print(f"Baseline fetch failed: {e}")
-            remote_baseline = RemoteBaseline(error=str(e))
-        finally:
-            baseline_fetch_complete.set()
-
-    baseline_thread = threading.Thread(target=fetch_baseline_background, daemon=True)
-    baseline_thread.start()
-    if baseline_commit:
-        _print(f"Fetching baseline for commit {baseline_commit} (background)...")
+    if local_baseline_name:
+        # Load local baseline synchronously
+        _print(f"Loading local baseline '{local_baseline_name}'...")
+        remote_baseline = load_local_baseline(local_baseline_name)
+        if remote_baseline.loaded:
+            _print(
+                f"Local baseline loaded: {local_baseline_name} "
+                f"({len(remote_baseline.tests)} tests)"
+            )
+        elif remote_baseline.error:
+            _print(f"Baseline error: {remote_baseline.error}")
+        baseline_fetch_complete.set()
     else:
-        _print("Fetching baseline from GitHub (background)...")
 
-    # Initialize aggregator with empty baseline (will be updated when fetch completes)
+        def fetch_baseline_background():
+            global remote_baseline
+            try:
+                remote_baseline = fetch_remote_report(commit_hash=baseline_commit)
+                if remote_baseline.loaded:
+                    _print(
+                        f"Baseline loaded: {remote_baseline.commit_hash} on "
+                        f"{remote_baseline.branch} ({len(remote_baseline.tests)} tests)"
+                    )
+                    # Update aggregator with loaded baseline
+                    if aggregator:
+                        aggregator.set_baseline(remote_baseline)
+                elif remote_baseline.error:
+                    _print(f"Baseline: {remote_baseline.error}")
+            except Exception as e:
+                _print(f"Baseline fetch failed: {e}")
+                remote_baseline = RemoteBaseline(error=str(e))
+            finally:
+                baseline_fetch_complete.set()
+
+        baseline_thread = threading.Thread(
+            target=fetch_baseline_background, daemon=True
+        )
+        baseline_thread.start()
+        if baseline_commit:
+            _print(f"Fetching baseline for commit {baseline_commit} (background)...")
+        else:
+            _print("Fetching baseline from GitHub (background)...")
+
+    # Initialize aggregator with loaded baseline (for local) or empty (for remote fetch)
     global aggregator
+    initial_baseline = remote_baseline if local_baseline_name else RemoteBaseline()
     aggregator = TestAggregator(
         tests,
-        RemoteBaseline(),
+        initial_baseline,
         pytest_args=pytest_args,
-        baseline_requested=baseline_commit,
+        baseline_requested=baseline_commit or local_baseline_name,
         collection_errors=errors,
     )
 
@@ -3058,6 +3270,11 @@ def main(
     _print(f"Total time: {format_duration(total_duration)}")
 
     report = aggregator.generate_reports(periodic=False)
+
+    # Save as local baseline if requested
+    if save_baseline_name:
+        baseline_path = save_local_baseline(report, save_baseline_name)
+        _print(f"Baseline saved: {baseline_path}")
 
     # Print link to the static report file
     report_path = REPORT_HTML_PATH.resolve()
