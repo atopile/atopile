@@ -19,7 +19,7 @@ from ..exceptions import (
     SessionNotFoundError,
 )
 from .dependencies import ConnectionManager, get_orchestrator_state
-from .routes import agents_router, pipelines_router, sessions_router, websocket_router
+from .routes import agents_router, bridge_router, pipelines_router, sessions_router, websocket_router
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +74,7 @@ def create_app() -> FastAPI:
 
     # Register routers
     app.include_router(agents_router)
+    app.include_router(bridge_router)
     app.include_router(sessions_router)
     app.include_router(pipelines_router)
     app.include_router(websocket_router)

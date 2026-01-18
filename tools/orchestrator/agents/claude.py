@@ -77,6 +77,10 @@ class ClaudeCodeBackend(AgentBackend):
         cmd.append("--verbose")
         cmd.append("--include-partial-messages")
 
+        # Bypass permissions for headless operation
+        # This allows agents to use tools (including MCP tools) without prompting
+        cmd.extend(["--permission-mode", "bypassPermissions"])
+
         # Session handling
         if config.resume_session and config.session_id:
             cmd.extend(["--resume", config.session_id])
@@ -104,6 +108,13 @@ class ClaudeCodeBackend(AgentBackend):
         # System prompt
         if config.system_prompt:
             cmd.extend(["--system-prompt", config.system_prompt])
+
+        # MCP config for bridge communication
+        # NOTE: We do NOT use --mcp-config flag as it causes Claude CLI to hang.
+        # Instead, the bridge MCP server should be configured at the project level
+        # (in .claude/settings.local.json or ~/.claude.json) and we pass environment
+        # variables (AGENT_NAME, PIPELINE_ID, BRIDGE_URL) through the process environment.
+        # The bridge MCP server reads these env vars to identify itself.
 
         # Extra args (user-provided)
         if config.extra_args:
