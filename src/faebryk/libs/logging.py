@@ -76,7 +76,9 @@ LEVEL_LEN = 1
 FILE_LEN = 12 + 4 if LOG_FILEINFO else 0
 FMT_HEADER_LEN = TIME_LEN + 1 + LEVEL_LEN + 1 + FILE_LEN + 1
 
-NET_LINE_WIDTH = min(120, int(TERMINAL_WIDTH) - FMT_HEADER_LEN)
+# TODO: get rid, suddenly we need this
+SAFETY = 1
+NET_LINE_WIDTH = min(120, int(TERMINAL_WIDTH) - FMT_HEADER_LEN - SAFETY)
 
 
 class NestedConsole(Console):
@@ -115,7 +117,7 @@ class RelativeTimeFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         # Calculate ms since logging started
         elapsed_s = time.perf_counter() - self.start_time
-        record.elapsed_ms = f"{elapsed_s:3.2f}s"
+        record.elapsed_ms = f"{elapsed_s:>3.2f}s".rjust(7)
 
         # Replace level name with abbreviated colored version
         record.level_abbrev = _LEVEL_ABBREV.get(record.levelname, record.levelname)

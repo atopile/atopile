@@ -140,8 +140,8 @@ class ResistorVoltageDivider(fabll.Node):
             ],
             [
                 _v_div := F.Expressions.Divide.MakeChild(
-                    [v_in],
                     [v_out],
+                    [v_in],
                 )
             ],
             assert_=True,
@@ -205,10 +205,18 @@ class VdivSolverTests:
           - max_current: 1mA to 2mA
 
         Expected result:
-          - V / I = R ss! 10V +/- 10% / {1mA..2mA} = {4.5kOhm..11kOhm}
-          - ratio = v_in / v_out ss! {3V..3.2V} / 10 +/- 10% = {3/11V..3.2/9V} = {0.273..0.356}
-          - r_top = r_total * ratio ss! {4.5kOhm..11kOhm} * {0.273..0.356} = {1.23kOhm..3.95kOhm}
-          - r_bottom = r_total - r_top ss! {4.5kOhm..11kOhm} - {1.23kOhm..3.95kOhm} = {3.27kOhm..7.05kOhm}
+          - R = (V / I)
+             =ss! 10V +/- 10% / {1mA..2mA}
+             = {4.95kOhm..10.1kOhm}
+          - ratio = (v_in / v_out)
+             =ss! {3V..3.2V} / 10 +/- 10%
+             = {3/10.1V..3.2/9.9V} = {0.297..0.323}
+          - r_top = (R * ratio)
+             =ss! {4.95kOhm..10.1kOhm} * {0.297..0.323}
+             = {1.47kOhm..3.26kOhm}
+          - r_bottom = (R - r_top)
+             =ss! {4.95kOhm..10.1kOhm} - {1.47kOhm..3.26kOhm}
+             = {1.69kOhm..8.63kOhm}
         """
         from faebryk.core.solver.solver import Solver
         from faebryk.libs.picker.picker import pick_part_recursively
@@ -248,12 +256,6 @@ class VdivSolverTests:
 
         F.is_alias_bus_parameter.resolve_bus_parameters(g=g, tg=tg)
         solver = Solver()
-        # total_r = solver.simplify_and_extract_superset(
-        #     app.rdiv.get().total_resistance.get().is_parameter.get(),
-        #     terminal=True,
-        # )
-        # print(total_r.pretty_str())
-        # return
         pick_part_recursively(app, solver)
 
         r_top = (
