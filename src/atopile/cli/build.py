@@ -1106,6 +1106,23 @@ class ParallelBuildManager:
             console.print(f"  [dim]→ {link}[/dim]")
         console.print("")
 
+    def _print_warning_details(
+        self, display_name: str, bp: "BuildProcess", console: "Console"
+    ) -> None:
+        """Print warning details above the build table."""
+        warning_details: list[str] = []
+        if bp.log_dir:
+            warning_details = self._extract_log_messages(bp.log_dir, "warning")
+
+        if not warning_details:
+            return
+
+        console.print(f"[yellow bold]⚠ {display_name}[/yellow bold]")
+        for line in warning_details:
+            line = self._linkify_paths(line)
+            console.print(f"  {line}")
+        console.print("")
+
     def _display_loop(self) -> None:
         """Background thread that updates display."""
         from rich.console import Group
@@ -1169,16 +1186,8 @@ class ParallelBuildManager:
 
         results = self._run_parallel()
 
-        # Print error details for failed builds (after the live display)
-        failed_builds = [
-            (name, bp)
-            for name, bp in self.processes.items()
-            if bp.status == Status.FAILED
-        ]
-        if failed_builds:
-            self._console.print()  # Blank line after the table
-            for display_name, bp in failed_builds:
-                self._print_failure_details(display_name, bp, self._console)
+        # Errors are now printed above the table during the live display,
+        # so we don't need to print them again here.
 
         return results
 
@@ -1302,7 +1311,16 @@ class ParallelBuildManager:
                                     )
                                     bp._error_reported = True
                                 elif ret != 0 and not bp._error_reported:
+                                    # Print error details above the live table
+                                    self._print_failure_details(
+                                        display_name, bp, console
+                                    )
                                     bp._error_reported = True
+                                elif ret == 0 and bp.warnings > 0:
+                                    # Print warning details above the live table
+                                    self._print_warning_details(
+                                        display_name, bp, console
+                                    )
 
                         # Remove completed builds from active set
                         for name in completed_this_round:
