@@ -1,7 +1,6 @@
-import os
 import sys
 
-from faebryk.libs.logging import FLOG_FMT, rich_print_robust
+from faebryk.libs.logging import FLOG_FMT
 
 
 def _handle_exception(exc_type, exc_value, exc_traceback):
@@ -35,13 +34,17 @@ def _handle_exception(exc_type, exc_value, exc_traceback):
         )
 
 
-def print_discord_banner() -> None:
-    rich_print_robust(
-        "\n\nUnfortunately errors ^^^ stopped the build. "
-        "If you need a hand jump on [#9656ce]Discord[/]! "
-        "[link=https://discord.gg/CRe5xaDBr3]https://discord.gg/CRe5xaDBr3[/] "
-        ":wave:"
-    )
+DISCORD_BANNER_TEXT = (
+    "Unfortunately errors ^^^ stopped the build. "
+    "If you need a hand jump on Discord! "
+    "https://discord.gg/CRe5xaDBr3 👋"
+)
+
+
+def log_discord_banner() -> None:
+    from atopile.cli.logging_ import logger
+
+    logger.error(DISCORD_BANNER_TEXT)
 
 
 def handle_exception(exc_type, exc_value, exc_traceback):
@@ -53,7 +56,7 @@ def handle_exception(exc_type, exc_value, exc_traceback):
         sys.__excepthook__(type(e), e, e.__traceback__)
     finally:
         telemetry.capture_exception(exc_value)
-        print_discord_banner()
+        log_discord_banner()
         sys.exit(1)
 
 

@@ -88,7 +88,6 @@ class LogHandler(RichHandler):
         traceback_level: int = logging.ERROR,
         force_terminal: bool = False,
         allow_worker_console: bool = False,
-        no_wrap: bool = False,
         **kwargs,
     ):
         super().__init__(
@@ -107,7 +106,6 @@ class LogHandler(RichHandler):
         self._logged_exceptions = set()
         self._is_terminal = force_terminal or console.is_terminal
         self._allow_worker_console = allow_worker_console
-        self._no_wrap = no_wrap
 
         self.addFilter(
             lambda record: record.name.startswith("atopile")
@@ -282,12 +280,7 @@ class LogHandler(RichHandler):
             self.handleError(record)
         else:
             try:
-                if self._no_wrap:
-                    self.console.print(
-                        log_renderable, no_wrap=True, overflow="ignore"
-                    )
-                else:
-                    self.console.print(log_renderable)
+                self.console.print(log_renderable)
             except Exception:
                 self.handleError(record)
             finally:

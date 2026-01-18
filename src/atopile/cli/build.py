@@ -1802,23 +1802,13 @@ def _build_all_projects(
     # Generate summary
     summary_path = manager.generate_summary()
 
-    # Check for failures
     failed = [name for name, code in results.items() if code != 0]
-    if failed:
-        logger.error(
-            "Build failed! %d of %d targets failed",
-            len(failed),
-            len(build_tasks),
-        )
-        for name in failed[:10]:  # Show first 10 failures
-            logger.error("  - %s", name)
-        if len(failed) > 10:
-            logger.error("  ... and %d more", len(failed) - 10)
-        logger.info("See summary at: %s", summary_path)
-        raise typer.Exit(1)
-    else:
-        logger.info("Build successful! 🚀 (%d targets)", len(build_tasks))
-        logger.info("See summary at: %s", summary_path)
+    _report_build_results(
+        summary_path=summary_path,
+        failed=failed,
+        total=len(build_tasks),
+        failed_names=failed[:10],
+    )
 
 
 @capture("cli:build_start", "cli:build_end")
@@ -1909,7 +1899,7 @@ def build(
     from faebryk.libs.kicad.ipc import reload_pcb
     from faebryk.libs.project.dependencies import ProjectDependencies
     if verbose:
-        logging.getLogger().setLevel(logging.ERROR)
+        logging.getLogger().setLevel(logging.INFO)
 
     # Worker mode - run single build directly (no config needed yet)
     if os.environ.get("ATO_BUILD_EVENT_FD") or os.environ.get("ATO_BUILD_STATUS_FILE"):
@@ -2011,20 +2001,13 @@ def build(
     # Generate summary
     summary_path = manager.generate_summary()
 
-    # Check for failures
     failed = [name for name, code in results.items() if code != 0]
-    if failed:
-        logger.error(
-            "Build failed! %d of %d targets failed: %s",
-            len(failed),
-            len(build_names),
-            ", ".join(failed),
-        )
-        logger.info("See summary at: %s", summary_path)
-        raise typer.Exit(1)
-    else:
-        logger.info("Build successful! 🚀")
-        logger.info("See summary at: %s", summary_path)
+    _report_build_results(
+        summary_path=summary_path,
+        failed=failed,
+        total=len(build_names),
+        failed_names=failed,
+    )
 
     # Open layouts if requested
     for build_name in build_names:
@@ -2047,3 +2030,31 @@ def build(
                 )
             except Exception as e:
                 logger.warning(f"{e}\nReload pcb manually in KiCAD")
+
+
+def _report_build_results(
+    *,
+    summary_path: Path,
+    failed: list[str],
+    total: int,
+    failed_names: list[str] | None = None,
+) -> None:
+    if failed:
+        from atopile.cli.excepthook import log_discord_banner
+
+        log_discord_banner()
+        logger.info("See summary at: %s", summary_path)
+        logger.error("Build failed! %d of %d targets failed", len(failed), total)
+        if failed_names:
+            for name in failed_names:
+                logger.error("  - %s", name)
+        remaining = len(failed) - (len(failed_names) if failed_names else 0)
+        if remaining > 0:
+            logger.error("  ... and %d more", remaining)
+        raise typer.Exit(1)
+
+    if total > 1:
+        logger.info("Build successful! 🚀 (%d targets)", total)
+    else:
+        logger.info("Build successful! 🚀")
+    logger.info("See summary at: %s", summary_path)
