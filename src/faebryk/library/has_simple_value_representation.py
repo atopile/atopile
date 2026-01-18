@@ -68,12 +68,30 @@ class has_simple_value_representation(fabll.Node):
             )
 
         def _get_value(self, show_tolerance: bool = True) -> str:
+            try:
+                _, part_picked = self.param.get_parent_with_trait(
+                    F.Pickable.has_part_picked
+                )
+                param_name = self.param.get_name()
+                if (is_lit := part_picked.get_attribute(param_name)) is not None:
+                    return self._format_literal(is_lit, show_tolerance)
+                return f"[{param_name}: unknown]"
+            except KeyError:
+                pass
+
+            # Fallback: extract from parameter constraints
             lit = self.param.get_trait(
                 F.Parameters.is_parameter_operatable
             ).try_extract_superset()
             if lit is None:
                 raise ValueError(f"No literal found for {self.param}")
 
+            return self._format_literal(lit, show_tolerance)
+
+        def _format_literal(
+            self, lit: "F.Literals.is_literal", show_tolerance: bool
+        ) -> str:
+            """Format a literal for display."""
             show_tolerance = (
                 show_tolerance
                 or F.Parameters.BooleanParameter.bind_instance(
@@ -82,63 +100,19 @@ class has_simple_value_representation(fabll.Node):
                 is True
             )
 
-            # NumericParameter handles display unit conversion (e.g., kohm not ohm)
+            # NumericParameter handles display unit conversion
             numeric_param = self.param.try_cast(F.Parameters.NumericParameter)
-            numbers_lit = lit.switch_cast().try_cast(F.Literals.Numbers)
+            concrete_lit = lit.switch_cast()
+            numbers_lit = concrete_lit.try_cast(F.Literals.Numbers)
+
             if numeric_param and numbers_lit:
                 return numeric_param.format_literal_for_display(
                     numbers_lit, show_tolerance=show_tolerance
                 )
-
-            # Numbers literal without NumericParameter context
-            if numbers_lit:
+            elif numbers_lit:
                 return numbers_lit.pretty_str(show_tolerance=show_tolerance)
-
-            return lit.pretty_str()
-
-            # TODO this is probably not the only place we will ever need
-            #  this big switch
-            # consider moving it somewhere else
-            # if isinstance(domain, EnumDomain):
-            #     if self.tolerance:
-            #         raise ValueError("tolerance not supported for enum")
-            #     # TODO handle units
-            #     enum = EnumSet.from_value(value)
-            #     if not enum.is_singleton():
-            #         raise NotImplementedError()
-            #     val = next(iter(enum.elements))
-            #     # TODO not sure I like this
-            #     if isinstance(val.value, str):
-            #         return val.value
-            #     return val.name
-
-            # if isinstance(domain, Boolean):
-            #     if self.tolerance:
-            #         raise ValueError("tolerance not supported for boolean")
-            #     bool_val = BoolSet.from_value(value)
-            #     if not bool_val.is_singleton():
-            #         raise NotImplementedError()
-            #     return str(next(iter(bool_val.elements))).lower()
-
-            # if isinstance(domain, Numbers):
-            #     unit = self.unit if self.unit is not None else self.param.units
-            #     # TODO If tolerance, maybe hint that it's weird there isn't any
-            #     value_lit = Quantity_Interval_Disjoint.from_value(value)
-            #     if value_lit.is_singleton():
-            #         return to_si_str(value_lit.min_elem, unit, 2)
-            #     if len(value_lit._intervals.intervals) > 1:
-            #         raise NotImplementedError()
-            #     center, tolerance = value_lit.as_gapless().as_center_tuple(
-            #         relative=True
-            #     )
-            #     center_str = to_si_str(center, unit, 2)
-            #     assert isinstance(tolerance, Quantity)
-            #     if self.tolerance and tolerance > 0:
-            #         tolerance_str = f" ±{to_si_str(tolerance, '%', 0)}"
-            #         return f"{center_str}{tolerance_str}"
-            #     return center_str
-
-            # raise NotImplementedError(f"No support for {domain}")
+            else:
+                return concrete_lit.pretty_str()
 
         def get_value(self, show_tolerance: bool = True) -> str:
             try:
@@ -337,6 +311,67 @@ def test_repr_chain_basic():
     assert val == "TM {10..20}V 5A P2 10V P3"
 
 
+def test_repr_with_picked_attributes():
+    import faebryk.library._F as F
+    from faebryk.libs.picker.lcsc import PickedPartLCSC
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _TestModule(fabll.Node):
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        param1 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+        param2 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+
+        S = has_simple_value_representation.Spec
+        _simple_repr = fabll.Traits.MakeEdge(
+            has_simple_value_representation.MakeChild(
+                S(param=param1, prefix="V:", tolerance=True),
+                S(param=param2, suffix="A"),
+            )
+        )
+
+    m = _TestModule.bind_typegraph(tg).create_instance(g=g)
+
+    lit1 = (
+        F.Literals.Numbers.bind_typegraph(tg)
+        .create_instance(g=g)
+        .setup_from_center_rel(
+            center=12.0,
+            rel=0.05,
+            unit=F.Units.Volt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
+        )
+    )
+    lit2 = (
+        F.Literals.Numbers.bind_typegraph(tg)
+        .create_instance(g=g)
+        .setup_from_singleton(
+            value=2.5,
+            unit=F.Units.Ampere.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .is_unit.get(),
+        )
+    )
+
+    fabll.Traits.create_and_add_instance_to(
+        node=m, trait=F.Pickable.has_part_picked
+    ).setup(
+        PickedPartLCSC(
+            manufacturer="TestMfr",
+            partno="TestPart",
+            supplier_partno="C12345",
+        )
+    ).set_attributes(
+        {
+            "param1": lit1.is_literal.get(),
+            "param2": lit2.is_literal.get(),
+        }
+    )
+
+    val = m._simple_repr.get().get_value()
+    assert val == "V: 12±5.0%V 2.5A A"
+
+
 def test_repr_chain_non_number():
     import faebryk.library._F as F
 
@@ -360,7 +395,6 @@ def test_repr_chain_non_number():
         )
 
     m = _TestModule.bind_typegraph(tg).create_instance(g=g)
-    # Use AbstractEnums directly - setup() internally uses EnumsFactory for type defs
     test_enum_lit = (
         F.Literals.AbstractEnums.bind_typegraph(tg=tg)
         .create_instance(g=g)

@@ -258,6 +258,10 @@ class has_part_picked(fabll.Node):
     supplier_partno = F.Parameters.StringParameter.MakeChild()
     supplier_id = F.Parameters.StringParameter.MakeChild()
 
+    # Store picked attribute literals for display (e.g., BOM Value field)
+    # Each tuple: literals contains name (string), pointer points to value literal
+    picked_attributes_ = F.Collections.PointerSet.MakeChild()
+
     def get_part(self) -> "PickedPart":
         return not_none(self.try_get_part())
 
@@ -325,6 +329,39 @@ class has_part_picked(fabll.Node):
         self.supplier_partno.get().set_singleton(value=picked_part.supplier_partno)
         self.supplier_id.get().set_singleton(value=picked_part.supplier.supplier_id)
         return self
+
+    def set_attributes(
+        self, attributes: dict[str, "F.Literals.is_literal | None"]
+    ) -> Self:
+        """Store attribute literals for display purposes."""
+        for name, value_lit in attributes.items():
+            if value_lit is None:
+                continue
+
+            attr_tuple = F.Collections.PointerTuple.bind_typegraph(
+                tg=self.tg
+            ).create_instance(g=self.g)
+            name_lit = (
+                F.Literals.Strings.bind_typegraph(tg=self.tg)
+                .create_instance(g=self.g)
+                .setup_from_values(name)
+            )
+            attr_tuple.literals.get().append(name_lit)
+            attr_tuple.pointer.get().point(value_lit)
+            self.picked_attributes_.get().append(attr_tuple)
+
+        return self
+
+    def get_attribute(self, name: str) -> "F.Literals.is_literal | None":
+        """Look up an attribute literal by name."""
+        for tuple_node in self.picked_attributes_.get().as_list():
+            attr_tuple = F.Collections.PointerTuple.bind_instance(tuple_node.instance)
+            names = attr_tuple.get_literals_as_list()
+            if names and names[0] == name:
+                return F.Literals.is_literal.bind_instance(
+                    attr_tuple.deref_pointer().instance
+                )
+        return None
 
     def by_supplier(
         self, supplier_id: str, supplier_partno: str, manufacturer: str, partno: str
