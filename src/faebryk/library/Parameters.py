@@ -379,23 +379,20 @@ class is_parameter_operatable(fabll.Node):
                     return "✗"
                 return f"{{⊆⊇|{format_lit(subset)}}}"
 
-        if subset is not None:
-            out += f"{{⊇|{format_lit(subset)}}}"
-
+        superset_str = ""
         if superset is not None:
-            if superset.op_setic_equals_singleton(True):
-                out = "✓"
-            elif superset.op_setic_equals_singleton(False):
-                out = "✗"
+            formatted = format_lit(superset)
+            if "{ℝ+}" in formatted:
+                # careful drops unit, but unit is included in param anyway
+                superset_str = "⁺"
             else:
-                formatted = format_lit(superset)
-                if "{ℝ+}" in formatted:
-                    # careful drops unit, but unit is included in param anyway
-                    out = "⁺"
-                else:
-                    out += f"{{⊆|{formatted}}}"
+                superset_str = f"{{⊆|{formatted}}}"
 
-        return out
+        subset_str = ""
+        if subset is not None:
+            subset_str = f"{{⊇|{format_lit(subset)}}}"
+
+        return f"{subset_str}{superset_str}"
 
 
 class is_parameter(fabll.Node):

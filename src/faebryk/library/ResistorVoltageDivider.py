@@ -180,6 +180,27 @@ class ResistorVoltageDivider(fabll.Node):
             ],
             assert_=True,
         ),
+        # r_top = total_R - r_bottom
+        F.Expressions.Is.MakeChild(
+            [chain, _ResistorChain.resistors[0], F.Resistor.resistance],
+            [
+                _r_top_sub := F.Expressions.Subtract.MakeChild(
+                    [total_resistance],
+                    [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
+                )
+            ],
+            assert_=True,
+        ),
+        F.Expressions.Is.MakeChild(
+            [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
+            [
+                _r_bot_sub := F.Expressions.Subtract.MakeChild(
+                    [total_resistance],
+                    [chain, _ResistorChain.resistors[0], F.Resistor.resistance],
+                )
+            ],
+            assert_=True,
+        ),
     ]
 
     _net_name = fabll.Traits.MakeEdge(
@@ -205,17 +226,17 @@ class VdivSolverTests:
           - max_current: 1mA to 2mA
 
         Expected result:
-          - R = (V / I)
-             =ss! 10V +/- 10% / {1mA..2mA}
+          - total_R = (V / I)
+             = 10V +/- 1% / {1mA..2mA}
              = {4.95kOhm..10.1kOhm}
-          - ratio = (v_in / v_out)
-             =ss! {3V..3.2V} / 10 +/- 10%
-             = {3/10.1V..3.2/9.9V} = {0.297..0.323}
-          - r_top = (R * ratio)
-             =ss! {4.95kOhm..10.1kOhm} * {0.297..0.323}
+          - ratio = (v_out / v_in)
+             = {3V..3.2V} / {9.9V..10.1V}
+             = {0.297..0.323}
+          - r_bottom = (total_R * ratio)
+             = {4.95kOhm..10.1kOhm} * {0.297..0.323}
              = {1.47kOhm..3.26kOhm}
-          - r_bottom = (R - r_top)
-             =ss! {4.95kOhm..10.1kOhm} - {1.47kOhm..3.26kOhm}
+          - r_top = (total_R - r_bottom)
+             = {4.95kOhm..10.1kOhm} - {1.47kOhm..3.26kOhm}
              = {1.69kOhm..8.63kOhm}
         """
         from faebryk.core.solver.solver import Solver
@@ -256,7 +277,10 @@ class VdivSolverTests:
 
         F.is_alias_bus_parameter.resolve_bus_parameters(g=g, tg=tg)
         solver = Solver()
-        pick_part_recursively(app, solver)
+        solver.simplify_for(
+            app.rdiv.get().total_resistance.get().can_be_operand.get(), terminal=True
+        )
+        # pick_part_recursively(app, solver)
 
         r_top = (
             app.rdiv.get()
@@ -277,7 +301,51 @@ class VdivSolverTests:
             .force_extract_subset(F.Literals.Numbers)
         )
 
-        print(r_top, r_bottom)
+        print("Top:", r_top.pretty_str())
+        print("Bottom:", r_bottom.pretty_str())
+
+        # Validate expected ranges from docstring:
+        # r_top = {1.69kOhm..8.63kOhm}, r_bottom = {1.47kOhm..3.26kOhm}
+        expected_r_top_op = E.lit_op_range(((1690, E.U.Ohm), (8630, E.U.Ohm)))
+        expected_r_bottom_op = E.lit_op_range(((1470, E.U.Ohm), (3265, E.U.Ohm)))
+        expected_r_top = not_none(
+            fabll.Traits(expected_r_top_op).get_obj_raw().try_cast(F.Literals.Numbers)
+        )
+        expected_r_bottom = not_none(
+            fabll.Traits(expected_r_bottom_op)
+            .get_obj_raw()
+            .try_cast(F.Literals.Numbers)
+        )
+
+        # Check that picked values are within expected ranges
+        assert r_top.op_setic_is_subset_of(expected_r_top, g=g, tg=tg), (
+            f"r_top {r_top} not in expected range {expected_r_top}"
+        )
+        assert r_bottom.op_setic_is_subset_of(expected_r_bottom, g=g, tg=tg), (
+            f"r_bottom {r_bottom} not in expected range {expected_r_bottom}"
+        )
+
+        # Validate voltage divider ratio: r_bottom / (r_top + r_bottom) == v_out / v_in
+        total_r_set = r_top.op_add_intervals(r_bottom, g=g, tg=tg)
+        computed_ratio = r_bottom.op_div_intervals(total_r_set, g=g, tg=tg)
+
+        # Expected ratio from voltage constraints: v_out / v_in = {3.0..3.2} / {9.9..10.1}
+        v_out_set = F.Literals.Numbers.create_instance(g=g, tg=tg).setup_from_min_max(
+            3.0, 3.2
+        )
+        v_in_set = F.Literals.Numbers.create_instance(g=g, tg=tg).setup_from_min_max(
+            9.9, 10.1
+        )
+        expected_ratio = v_out_set.op_div_intervals(v_in_set, g=g, tg=tg)
+
+        # Check that computed ratio overlaps with expected ratio
+        # (not strict subset since component tolerances may extend slightly beyond)
+        print("Expected ratio:", expected_ratio.pretty_str())
+        print("Computed ratio:", computed_ratio.pretty_str())
+        assert computed_ratio.op_setic_is_subset_of(expected_ratio, g=g, tg=tg), (
+            f"Voltage ratio {computed_ratio} does not overlap with "
+            f"expected range {expected_ratio}"
+        )
 
     @pytest.mark.slow
     @pytest.mark.usefixtures("setup_project_config")

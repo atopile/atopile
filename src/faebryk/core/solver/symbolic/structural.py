@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from itertools import combinations
 
 import faebryk.library._F as F
 import faebryk.library.Expressions as Expressions
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
+from faebryk.core.solver.utils import MutatorUtils
 from faebryk.libs.util import EquivalenceClasses, OrderedSet
 
 logger = logging.getLogger(__name__)
@@ -307,33 +309,37 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
 
 # Estimation algorithms ----------------------------------------------------------------
 @algorithm("Upper estimation", terminal=False)
-def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
+def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
     """
     If any operand in an expression has a superset literal,
     we can estimate the expression to the function applied to the superset literals.
 
     ```
-    f(A{S|X}, B{S|Y}, C, ...)
-        => f(A{S|X}, B{S|Y}, C, Z, ...) ⊆! f(X, Y, C, Z, ...)
+    f(A{⊆|X}, B{⊆|Y}, C, ...)
+        => f(A{⊆|X}, B{⊆|Y}, C, Z, ...) ⊆! f(X, Y, C, Z, ...)
 
     ```
     - f not setic
-    - X not singleton
-
-    TODO supersets (check correlation)
+    - X,Y not singleton
     """
 
     supersetted_ops = {
-        op_subset.as_operand.get(): lit_superset
+        subset_po.as_operand.get(): lit_superset
         for ss in mutator.get_typed_expressions(
             F.Expressions.IsSubset,
             required_traits=(F.Expressions.is_predicate,),
             include_terminated=True,
         )
         if (lit_superset := ss.get_superset_operand().as_literal.try_get())
-        and (op_subset := ss.get_subset_operand().as_parameter_operatable.try_get())
-        # singletons get taken care of by `convert_operable_aliased_to_single_into_literal`
+        and (
+            subset_po := (
+                subset_op := ss.get_subset_operand()
+            ).as_parameter_operatable.try_get()
+        )
+        # singletons get taken care of by
+        # `convert_operable_aliased_to_single_into_literal`
         and not mutator.utils.is_correlatable_literal(lit_superset)
+        and not mutator.utils.is_literal_expression(subset_op)
     }
 
     exprs = {
@@ -375,6 +381,119 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
             F.Expressions.IsSubset,
             expr_e.as_operand.get(),
             expr_superset,
+            from_ops=from_ops,
+            assert_=True,
+        )
+
+
+@algorithm("Lower estimation", terminal=False)
+def lower_estimation_of_expressions_with_subsets(mutator: Mutator):
+    """
+    If any operand in an expression has a subset literal (lower bound)
+    and all parameters are known uncorrelated,
+    we can estimate the expression to the function applied to the subset literals.
+
+    ```
+    f(A{⊇|X}, B{⊇|Y}, C, ...) ∧ ¬!(A ~ B ~ C)
+        => f(A{⊇|X}, B{⊇|Y}, C, Z, ...) ⊇! f(X, Y, C, Z, ...)
+
+    ```
+    - f not setic
+    - X,Y not singleton (singletons handled by literal alias conversion)
+
+    Note: After canonicalization, IsSuperset(param, literal) becomes IsSubset(literal, param).
+    So we look for IsSubset where:
+    - subset operand (first) is a literal (the picked/lower bound value)
+    - superset operand (second) is a parameter (which is bounded below)
+    """
+    # Step 1: Build map of operands with subset (lower bound) literals
+    # After canonicalization: IsSubset(literal, param) means literal ⊆ param
+    # (i.e., param ⊇ literal)
+    # This is the INVERSE of upper_estimation which looks for IsSubset(param, literal)
+    subsetted_ops: dict[F.Parameters.can_be_operand, F.Literals.is_literal] = {}
+    for ss in mutator.get_typed_expressions(
+        F.Expressions.IsSubset,
+        required_traits=(F.Expressions.is_predicate,),
+        include_terminated=True,
+    ):
+        subset_op, superset_op = ss.get_subset_operand(), ss.get_superset_operand()
+
+        if not (lit_subset := subset_op.as_literal.try_get()):
+            continue
+        if not (op_superset := superset_op.as_parameter_operatable.try_get()):
+            continue
+        # singletons get taken care of by
+        # `convert_operable_aliased_to_single_into_literal`
+        if mutator.utils.is_correlatable_literal(lit_subset):
+            continue
+        # Skip if the superset is already a literal expression
+        # (e.g., the result of a literal computation)
+        if mutator.utils.is_literal_expression(superset_op):
+            continue
+
+        subsetted_ops[op_superset.as_operand.get()] = lit_subset
+
+    if not subsetted_ops:
+        return
+
+    # Step 2: Build anticorrelated pairs set for correlation checking
+    anticorrelated_pairs = MutatorUtils.get_anticorrelated_pairs(mutator.tg_in)
+
+    # Step 3: Find expressions involving subsetted operands
+    exprs = {
+        e
+        for op in subsetted_ops.keys()
+        for e in op.get_operations()
+        # setic expressions can't get subset estimated
+        if not e.has_trait(F.Expressions.is_setic)
+    }
+    exprs = F.Expressions.is_expression.sort_by_depth(exprs, ascending=True)
+
+    for expr in exprs:
+        expr_e = expr.get_trait(F.Expressions.is_expression)
+        operands = expr_e.get_operands()
+
+        # Check if any operand has a subset literal
+        mapped_operands = [
+            subsetted_ops[op].as_operand.get() if op in subsetted_ops else op
+            for op in operands
+        ]
+        if mapped_operands == operands:
+            continue
+
+        # Step 4: Check uncorrelation condition
+        # Find all unique parameters in the expression
+        params_in_expr = MutatorUtils.get_params_for_expr(expr_e)
+        if len(params_in_expr) > 1:
+            # Check if all parameter pairs are uncorrelated
+            all_uncorrelated = all(
+                frozenset([p1, p2]) in anticorrelated_pairs
+                for p1, p2 in combinations(params_in_expr, 2)
+            )
+            if not all_uncorrelated:
+                # Can't apply lower estimation - parameters may be correlated
+                continue
+
+        expr_po = expr.get_trait(F.Parameters.is_parameter_operatable)
+        from_ops = [expr_po]
+
+        # Step 5: Make new expr with subset literals
+        res = mutator.create_check_and_insert_expression(
+            mutator.utils.hack_get_expr_type(expr_e),
+            *mapped_operands,
+            from_ops=from_ops,
+            allow_uncorrelated_congruence_match=True,
+        )
+        if res.out_operand is None:
+            continue
+        expr_subset = res.out_operand
+
+        # Step 6: Superset old expr to subset estimated one
+        # new_expr ⊆ original_expr (inverse of upper estimation)
+        mutator.create_check_and_insert_expression(
+            F.Expressions.IsSubset,
+            expr_subset,
+            expr_e.as_operand.get(),
             from_ops=from_ops,
             assert_=True,
         )

@@ -433,8 +433,8 @@ def test_traceback_filtering_tree():
     tb = out.data.mutation_map.get_traceback(A_new)
     logger.info(rich_to_string(tb.filtered().as_rich_tree()))
 
-    # A{S|([5, 10])} <-
-    #  CONSTRAINED[Transitive subset]  <- A{S|([0, ∞])}
+    # A{⊆|([5, 10])} <-
+    #  CONSTRAINED[Transitive subset]  <- A{⊆|([0, ∞])}
     #   MUTATED[Constrain within]  <- A
     #    MUTATED[Canonical literal]  <- A:  *46E8.A
 

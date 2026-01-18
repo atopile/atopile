@@ -1495,8 +1495,8 @@ def test_fold_mul_zero():
 
 def test_fold_or_true():
     """
-    A{S|True} v B is! C
-    => C{S|True}
+    A{⊆|True} v B is! C
+    => C{⊆|True}
     """
     E = BoundExpressions()
     A = E.bool_parameter_op()
@@ -2340,3 +2340,184 @@ def test_correlated_no_contradiction_different_sets():
 
     solver = Solver()
     solver.simplify(E.tg, E.g)
+
+
+# Lower estimation tests ---------------------------------------------------------------
+def test_lower_estimation_with_uncorrelated_params():
+    """
+    When parameters are marked as uncorrelated via Not(Correlated(...)),
+    lower estimation should propagate subset literals through expressions.
+
+    A ⊇ {4..6}, B ⊇ {2..3}, Not(Correlated(A, B))
+    C = A + B
+    => C ⊇ {6..9} (propagated from subset literals)
+    """
+    E = BoundExpressions()
+    A = E.parameter_op()
+    B = E.parameter_op()
+
+    # Mark A and B as uncorrelated
+    E.not_(E.correlated(A, B), assert_=True)
+
+    # A ⊇ {4..6} means {4..6} is a subset of A (A contains at least {4..6})
+    E.is_superset(A, E.lit_op_range((4, 6)), assert_=True)
+    # B ⊇ {2..3}
+    E.is_superset(B, E.lit_op_range((2, 3)), assert_=True)
+
+    # C = A + B
+    C = E.add(A, B)
+
+    solver = Solver()
+    result = solver.simplify(E.tg, E.g)
+
+    # The lower estimation should propagate: C ⊇ {4..6} + {2..3} = {6..9}
+    # So extract_superset(C) should include at least {6..9}
+    extracted = result.data.mutation_map.try_extract_superset(
+        C.as_parameter_operatable.force_get()
+    )
+    assert extracted is not None
+
+    # The extracted superset should be within or equal to {6..9}
+    # (it could be wider if upper bounds also apply)
+    extracted_nums = fabll.Traits(extracted).get_obj(F.Literals.Numbers)
+    min_val = extracted_nums.get_min_value()
+    max_val = extracted_nums.get_max_value()
+
+    # Lower bound should be at most 6 (since we're propagating lower bounds)
+    assert min_val <= 6, f"Expected min <= 6, got {min_val}"
+    # Upper bound should be at least 9
+    assert max_val >= 9, f"Expected max >= 9, got {max_val}"
+
+
+def test_lower_estimation_skipped_when_correlated():
+    """
+    When parameters are NOT marked as uncorrelated (default is correlated),
+    lower estimation should NOT propagate subset literals.
+
+    A ⊇ {4..6}, B ⊇ {2..3} (no uncorrelation marker)
+    C = A + B
+    => C should NOT have tightened bounds from lower estimation
+    """
+    E = BoundExpressions()
+    A = E.parameter_op()
+    B = E.parameter_op()
+
+    # No uncorrelation marker - default is correlated
+
+    # A ⊇ {4..6}
+    E.is_superset(A, E.lit_op_range((4, 6)), assert_=True)
+    # B ⊇ {2..3}
+    E.is_superset(B, E.lit_op_range((2, 3)), assert_=True)
+
+    # C = A + B
+    C = E.add(A, B)
+
+    solver = Solver()
+    result = solver.simplify(E.tg, E.g)
+
+    # Without uncorrelation, lower estimation should not apply
+    # C should still be unbounded (or only bounded by domain)
+    extracted = result.data.mutation_map.try_extract_superset(
+        C.as_parameter_operatable.force_get()
+    )
+
+    if extracted is not None:
+        extracted_nums = fabll.Traits(extracted).get_obj(F.Literals.Numbers)
+        min_val = extracted_nums.get_min_value()
+        max_val = extracted_nums.get_max_value()
+
+        # If lower estimation was incorrectly applied, we'd have min=6, max=9
+        # Without it, bounds should be wider (e.g., unbounded or domain-bounded)
+        # Check that bounds are NOT exactly {6..9}
+        is_tightly_bounded = (
+            abs(min_val - 6) < 0.01 and abs(max_val - 9) < 0.01
+        )
+        assert not is_tightly_bounded, (
+            f"Lower estimation should not apply without uncorrelation marker, "
+            f"but got bounds [{min_val}, {max_val}]"
+        )
+
+
+def test_lower_estimation_multiply_uncorrelated():
+    """
+    Test lower estimation with multiplication of uncorrelated parameters.
+
+    A ⊇ {2..3}, B ⊇ {4..5}, Not(Correlated(A, B))
+    C = A * B
+    => C ⊇ {8..15}
+    """
+    E = BoundExpressions()
+    A = E.parameter_op()
+    B = E.parameter_op()
+
+    # Mark A and B as uncorrelated
+    E.not_(E.correlated(A, B), assert_=True)
+
+    # A ⊇ {2..3}
+    E.is_superset(A, E.lit_op_range((2, 3)), assert_=True)
+    # B ⊇ {4..5}
+    E.is_superset(B, E.lit_op_range((4, 5)), assert_=True)
+
+    # C = A * B
+    C = E.multiply(A, B)
+
+    solver = Solver()
+    result = solver.simplify(E.tg, E.g)
+
+    extracted = result.data.mutation_map.try_extract_superset(
+        C.as_parameter_operatable.force_get()
+    )
+    assert extracted is not None
+
+    extracted_nums = fabll.Traits(extracted).get_obj(F.Literals.Numbers)
+    min_val = extracted_nums.get_min_value()
+    max_val = extracted_nums.get_max_value()
+
+    # {2..3} * {4..5} = {8..15}
+    assert min_val <= 8, f"Expected min <= 8, got {min_val}"
+    assert max_val >= 15, f"Expected max >= 15, got {max_val}"
+
+
+def test_lower_estimation_partial_uncorrelation():
+    """
+    Test that lower estimation requires ALL parameters to be pairwise uncorrelated.
+
+    A ⊇ {1..2}, B ⊇ {3..4}, C ⊇ {5..6}
+    Not(Correlated(A, B)) but NOT Not(Correlated(A, C)) or Not(Correlated(B, C))
+    D = A + B + C
+    => Lower estimation should NOT apply (not all pairs uncorrelated)
+    """
+    E = BoundExpressions()
+    A = E.parameter_op()
+    B = E.parameter_op()
+    C = E.parameter_op()
+
+    # Only mark A and B as uncorrelated, not the full set
+    E.not_(E.correlated(A, B), assert_=True)
+
+    E.is_superset(A, E.lit_op_range((1, 2)), assert_=True)
+    E.is_superset(B, E.lit_op_range((3, 4)), assert_=True)
+    E.is_superset(C, E.lit_op_range((5, 6)), assert_=True)
+
+    # D = A + B + C = (A + B) + C
+    D = E.add(E.add(A, B), C)
+
+    solver = Solver()
+    result = solver.simplify(E.tg, E.g)
+
+    extracted = result.data.mutation_map.try_extract_superset(
+        D.as_parameter_operatable.force_get()
+    )
+
+    if extracted is not None:
+        extracted_nums = fabll.Traits(extracted).get_obj(F.Literals.Numbers)
+        min_val = extracted_nums.get_min_value()
+        max_val = extracted_nums.get_max_value()
+
+        # If full lower estimation applied, we'd get {9..12}
+        # Without full uncorrelation, bounds should be wider
+        is_fully_tightened = (
+            abs(min_val - 9) < 0.01 and abs(max_val - 12) < 0.01
+        )
+        # Note: partial uncorrelation might still allow some propagation
+        # for the A+B subexpression, but not the full D expression

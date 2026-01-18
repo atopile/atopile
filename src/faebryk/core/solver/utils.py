@@ -571,6 +571,37 @@ class MutatorUtils:
                     counts[param] += count
         return counts
 
+    @staticmethod
+    def get_anticorrelated_pairs(
+        tg: "fbrk.TypeGraph",
+    ) -> set[frozenset["F.Parameters.is_parameter"]]:
+        """
+        Collect all parameter pairs that are explicitly marked as uncorrelated
+        via Not(Correlated(...)) expressions.
+        """
+        from itertools import combinations
+
+        out: set[frozenset[F.Parameters.is_parameter]] = set()
+
+        for expr in F.Expressions.Correlated.bind_typegraph(tg).get_instances():
+            expr_op = expr.can_be_operand.get()
+            expr_e = expr.is_expression.get()
+            if not expr_op.get_operations(
+                types=F.Expressions.Not, recursive=False, predicates_only=True
+            ):
+                continue
+
+            corr_params = [
+                p
+                for leaf in expr_e.get_operand_leaves_operatable()
+                if (p := leaf.as_parameter.try_get())
+            ]
+
+            for p1, p2 in combinations(corr_params, 2):
+                out.add(frozenset([p1, p2]))
+
+        return out
+
     def merge_parameters(
         self,
         params: Iterable[F.Parameters.is_parameter],

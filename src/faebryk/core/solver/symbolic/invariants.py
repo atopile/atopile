@@ -358,7 +358,7 @@ def _no_predicate_literals(
 ) -> ExpressionBuilder | None:
     """
     P!{S/P|False} -> Contradiction
-    P {S|True} -> P!
+    P {⊆|True} -> P!
     P! ss! True / True ss! P! -> Drop (carries no information)
     """
 
@@ -373,7 +373,7 @@ def _no_predicate_literals(
     if not (lits := builder.indexed_lits()):
         return builder
 
-    # P!{S|False} -> Contradiction
+    # P!{⊆|False} -> Contradiction
     if operands[0].try_get_sibling_trait(F.Expressions.is_predicate) and any(
         lit.op_setic_equals_singleton(False) for lit in lits.values()
     ):
@@ -391,7 +391,7 @@ def _no_predicate_literals(
                     f"Remove predicate literal {pretty_expr(builder, mutator)}"
                 )
             return None
-        # P {S|True} -> P!
+        # P {⊆|True} -> P!
         if pred := operands[0].try_get_sibling_trait(F.Expressions.is_assertable):
             if I_LOG:
                 before = pred.as_expression.get().compact_repr(mutator.print_ctx)
@@ -517,13 +517,13 @@ def _fold_pure_literal_operands(
             f"to literal {lit_fold.pretty_str()}"
         )
     if builder.assert_:
-        # P!{S|True} -> P!$
+        # P!{⊆|True} -> P!$
         if lit_fold.op_setic_equals_singleton(True):
             return InsertExpressionResult(lit_fold.as_operand.get(), False)
         else:
             # False/ {True,False}
             raise ContradictionByLiteral(
-                "P!{S|False}",
+                "P!{⊆|False}",
                 involved=[],
                 literals=[lit_fold],
                 mutator=mutator,
@@ -662,12 +662,12 @@ def _no_singleton_supersets(
 ) -> ExpressionBuilder:
     """
     no singleton supersets
-    f(A{S|[X]}, B, ...) -> f(X, B ...)
+    f(A{⊆|[X]}, B, ...) -> f(X, B ...)
 
     not on
-    - A{S|{X]} ss! X
-    - X ss! A{S|{X]}
-    - A is! B{S|{X}} # done by distribute literals alias classes
+    - A{⊆|{X]} ss! X
+    - X ss! A{⊆|{X]}
+    - A is! B{⊆|{X}} # done by distribute literals alias classes
     """
     lits = builder.indexed_lits()
     if builder.factory is F.Expressions.IsSubset and builder.assert_ and lits:
@@ -801,19 +801,19 @@ def insert_expression(
     * ✓ terminated expressions are already copied
     * TODO: don't mutate terminated expressions?
     * ✓ don't use predicates as operands: Op(P!, ...) -> Op(True, ...)
-    * ✓ P{S|True} -> P!, P!{S/P|False} -> Contradiction, P!{S|True} -> P!
+    * ✓ P{⊆|True} -> P!, P!{S/P|False} -> Contradiction, P!{⊆|True} -> P!
     * ✓ no single operand Is: Is(A) -> True
     * ✓ no reflexive tautologies: A is A -> True, A ss A -> True, A >= A -> True
     * ✓ deduplicate idempotent operands: Or(A, A, B) -> Or(A, B)
     * ✓ no A >! X or X >! A (create A ss! X or X ss! A)
-    * ✓ no singleton supersets: f(A{S|[X]}, B, ...) -> f(X, B ...)
+    * ✓ no singleton supersets: f(A{⊆|[X]}, B, ...) -> f(X, B ...)
     * ✓ no congruence
     * ✓ minimal subsumption
     * ✓ - intersected supersets (single superset)
     * ✓ no empty supersets
     * ✓ fold pure literal expressions: E(X, Y) -> E{S/P|...}(X, Y)
     * - no pure P!
-    * ✓ superset estimate lit exprs: f1(f2(A{S|X})) ⊆! f1(f2(X))
+    * ✓ superset estimate lit exprs: f1(f2(A{⊆|X})) ⊆! f1(f2(X))
     * ✓ terminate ss lit: A ss! X -> A ss!$ X; X ss! A -> X ss!$ A TODO rethink/expand
     * ✓ canonical
     * no A is X(single) => A ss! X
@@ -833,7 +833,7 @@ def insert_expression(
     # * Op(P!, ...) -> Op(True, ...)
     builder = _no_predicate_operands(mutator, builder)
 
-    # P!{S/P|False} -> Contradiction, P!{P|True} -> P!, P {S|True} -> P!
+    # P!{S/P|False} -> Contradiction, P!{P|True} -> P!, P {⊆|True} -> P!
     builder_ = _no_predicate_literals(mutator, builder)
     if builder_ is None:
         return InsertExpressionResult(
@@ -863,7 +863,7 @@ def insert_expression(
     # * no A >! X or X >! A (create A ss! X or X ss! A)
     builder = _no_literal_inequalities(mutator, builder)
 
-    # * f(A{S|[X]}, B, ...) |-> f(X, B ...)
+    # * f(A{⊆|[X]}, B, ...) |-> f(X, B ...)
     builder = _no_singleton_supersets(mutator, builder)
 
     # * no congruence
@@ -1092,12 +1092,12 @@ class TestInvariantsSimple:
             )
         )
 
-    # --- Invariant: P{S|True} -> P!, P!{S/P|False} -> Contradiction ---
+    # --- Invariant: P{⊆|True} -> P!, P!{S/P|False} -> Contradiction ---
 
     @staticmethod
     def test_predicate_literal_true_asserts():
         """
-        Invariant: P{S|True} -> P!
+        Invariant: P{⊆|True} -> P!
         When an unasserted predicate has a True literal operand via IsSubset,
         it should become asserted.
         """
@@ -1118,7 +1118,7 @@ class TestInvariantsSimple:
         )
         not_op = not_none(not_res.out_operand)
 
-        # Assert IsSubset(Not(p), True) - this should trigger P{S|True} -> P!
+        # Assert IsSubset(Not(p), True) - this should trigger P{⊆|True} -> P!
         mutator.create_check_and_insert_expression(
             F.Expressions.IsSubset,
             not_op,
@@ -1170,7 +1170,7 @@ class TestInvariantsSimple:
     @staticmethod
     def test_asserted_predicate_literal_true_drops():
         """
-        Invariant: P!{S|True} -> P! (no-op, expression dropped)
+        Invariant: P!{⊆|True} -> P! (no-op, expression dropped)
         Asserting IsSubset(P!, True) is redundant and should return None.
         Tests _no_predicate_literals directly.
         """
