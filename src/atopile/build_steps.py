@@ -55,11 +55,17 @@ from faebryk.libs.app.designators import (
     load_kicad_pcb_designators,
 )
 from faebryk.libs.app.erc import needs_erc_check
+from faebryk.libs.app.keep_picked_parts import (
+    get_pcb_sources_from_contradiction,
+    has_pcb_source,
+    load_part_info_from_pcb,
+    mark_contradicting_pcb_picks,
+)
 from faebryk.libs.app.pcb import (
     check_net_names,
     load_net_names,
 )
-from faebryk.libs.app.picking import load_part_info_from_pcb, save_part_info_to_pcb
+from faebryk.libs.app.picking import save_part_info_to_pcb
 from faebryk.libs.exceptions import accumulate, iter_leaf_exceptions
 from faebryk.libs.kicad.fileformats import Property, kicad
 from faebryk.libs.net_naming import attach_net_names
@@ -436,18 +442,82 @@ def load_pcb(ctx: BuildStepContext, log_context: LoggingStage) -> None:
 
 @muster.register("picker", description="Picking parts", dependencies=[load_pcb])
 def pick_parts(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+    from faebryk.core.solver.utils import Contradiction
+
     app = ctx.require_app()
     solver = ctx.require_solver()
-    if config.build.keep_picked_parts:
-        pcb = ctx.require_pcb()
-        load_part_info_from_pcb(pcb.transformer.pcb, app.tg)
+
+    # Load PCB constraints if PCB exists
+    # These are tagged with has_pcb_source for potential invalidation
+    pcb = ctx.pcb
+    if pcb is not None:
+        layout_path = config.build.paths.layout
+        source_file = str(layout_path) if layout_path else ""
+        load_part_info_from_pcb(pcb.transformer.pcb, app.tg, source_file=source_file)
+
+    invalidated_modules: set[str] = set()
+
     try:
         pick_part_recursively(app, solver, progress=log_context)
     except* PickError as ex:
-        raise ExceptionGroup(
-            "Failed to pick parts for some modules",
-            [UserPickError(str(e)) for e in iter_leaf_exceptions(ex)],
-        ) from ex
+        # Check if any PickError is caused by PCB-sourced constraints
+        pcb_sources_found: list[has_pcb_source] = []
+        for e in iter_leaf_exceptions(ex):
+            if isinstance(e.__cause__, Contradiction):
+                pcb_sources = get_pcb_sources_from_contradiction(e.__cause__, app.tg)
+                pcb_sources_found.extend(pcb_sources)
+
+        if pcb_sources_found:
+            # Contradiction involves PCB-sourced constraints
+            # Get unique module paths
+            invalidated_modules = {s.module_path for s in pcb_sources_found}
+            source_info = ", ".join(sorted(invalidated_modules))
+
+            if config.build.keep_picked_parts:
+                # Frozen mode: fail with detailed error
+                pcb_error_msg = (
+                    f"Design changed but --keep-picked-parts is set.\n"
+                    f"PCB constraints conflict with current design.\n"
+                    f"Conflicting constraints from: {source_info}\n"
+                    f"Remove --keep-picked-parts to allow re-picking."
+                )
+                raise ExceptionGroup(
+                    pcb_error_msg,
+                    [UserPickError(pcb_error_msg)],
+                ) from ex
+            else:
+                # Default mode: remove invalid picks and re-pick
+                # Format module paths nicely (remove internal prefixes like 0xAF72.)
+                formatted_modules = []
+                for path in sorted(invalidated_modules):
+                    # Strip internal hex prefix if present (e.g., "0xAF72.foo" -> "foo")
+                    parts = path.split(".", 1)
+                    if len(parts) > 1 and parts[0].startswith("0x"):
+                        path = parts[1]
+                    formatted_modules.append(f"  - {path}")
+                modules_list = "\n".join(formatted_modules)
+                logger.warning(
+                    f"PCB constraints conflict with design. "
+                    f"Re-picking parts for:\n{modules_list}"
+                )
+                mark_contradicting_pcb_picks(app.tg, invalidated_modules)
+        else:
+            # Not PCB-sourced - regular pick error
+            raise ExceptionGroup(
+                "Failed to pick parts for some modules",
+                [UserPickError(str(e)) for e in iter_leaf_exceptions(ex)],
+            ) from ex
+
+    # If we invalidated modules, re-run picking
+    if invalidated_modules:
+        try:
+            pick_part_recursively(app, solver, progress=log_context)
+        except* PickError as retry_ex:
+            raise ExceptionGroup(
+                "Failed to pick parts after removing invalid PCB picks",
+                [UserPickError(str(e)) for e in iter_leaf_exceptions(retry_ex)],
+            ) from retry_ex
+
     save_part_info_to_pcb(app)
 
 

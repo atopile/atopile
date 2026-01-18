@@ -251,36 +251,54 @@ class Component:
         missing_attrs = []
         # only for type picks
         if module.has_trait(F.Pickable.is_pickable_by_type):
-            attribute_literals = self.attribute_literals(g=module.g, tg=module.tg)
-            # Get parameters from the trait
-            design_params = {
-                fabll.Traits(p).get_obj_raw().get_name(): p
-                for p in module.get_trait(F.Pickable.is_pickable_by_type).get_params()
-            }
-            for name, literal in attribute_literals.items():
-                # Get parameter from the trait's registered params
-                param = design_params.get(name)
-                if param is None:
-                    missing_attrs.append(name)
-                    continue
+            # Skip adding attribute constraints if this pick came from PCB
+            # The constraints are already loaded via load_part_info_from_pcb
+            skip_constraints = False
+            if supplier_trait := module.try_get_trait(
+                F.Pickable.is_pickable_by_supplier_id
+            ):
+                from faebryk.libs.app.keep_picked_parts import has_pcb_source
 
-                # Skip None literals - they mean the attribute is unconstrained
-                if literal is None:
-                    continue
+                if supplier_trait.has_trait(has_pcb_source):
+                    skip_constraints = True
+                    logger.debug(
+                        f"Skipping attribute constraints for {module.get_name()} "
+                        "(PCB-sourced pick, constraints already loaded)"
+                    )
 
-                # Get the parameter traits
-                param_operand = param.as_operand.get()
+            if not skip_constraints:
+                attribute_literals = self.attribute_literals(g=module.g, tg=module.tg)
+                # Get parameters from the trait
+                design_params = {
+                    fabll.Traits(p).get_obj_raw().get_name(): p
+                    for p in module.get_trait(
+                        F.Pickable.is_pickable_by_type
+                    ).get_params()
+                }
+                for name, literal in attribute_literals.items():
+                    # Get parameter from the trait's registered params
+                    param = design_params.get(name)
+                    if param is None:
+                        missing_attrs.append(name)
+                        continue
 
-                # Create Is expression to alias parameter to the literal value
-                from faebryk.library.Expressions import IsSuperset
+                    # Skip None literals - they mean the attribute is unconstrained
+                    if literal is None:
+                        continue
 
-                IsSuperset.bind_typegraph(tg=module.tg).create_instance(
-                    g=module.g
-                ).setup(
-                    param_operand,
-                    literal.as_operand.get(),
-                    assert_=True,
-                )
+                    # Get the parameter traits
+                    param_operand = param.as_operand.get()
+
+                    # Create Is expression to alias parameter to the literal value
+                    from faebryk.library.Expressions import IsSuperset
+
+                    IsSuperset.bind_typegraph(tg=module.tg).create_instance(
+                        g=module.g
+                    ).setup(
+                        param_operand,
+                        literal.as_operand.get(),
+                        assert_=True,
+                    )
 
         if missing_attrs:
             with downgrade(UserException):

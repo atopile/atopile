@@ -78,15 +78,15 @@ from faebryk.library.NetTie import NetTie
 from faebryk.library.Regulator import Regulator
 from faebryk.library.LED import LED
 from faebryk.library.ResistorArray import ResistorArray
+from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
 from faebryk.library.has_pulls import has_pulls
 from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
 from faebryk.library.MultiCapacitor import MultiCapacitor
 from faebryk.library.has_designator import has_designator
 from faebryk.library.FilterElectricalLC import FilterElectricalLC
-from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
-from faebryk.library.can_be_pulled import can_be_pulled
 from faebryk.library.AdjustableRegulator import AdjustableRegulator
+from faebryk.library.can_be_pulled import can_be_pulled
 from faebryk.library.Battery import Battery
 from faebryk.library.CAN_TTL import CAN_TTL
 from faebryk.library.DifferentialPair import DifferentialPair
@@ -179,15 +179,15 @@ __all__ = [
     "Regulator",
     "LED",
     "ResistorArray",
+    "ResistorVoltageDivider",
     "has_pulls",
     "Crystal_Oscillator",
     "MultiCapacitor",
     "has_designator",
     "FilterElectricalLC",
-    "ResistorVoltageDivider",
     "has_single_electric_reference",
-    "can_be_pulled",
     "AdjustableRegulator",
+    "can_be_pulled",
     "Battery",
     "CAN_TTL",
     "DifferentialPair",
