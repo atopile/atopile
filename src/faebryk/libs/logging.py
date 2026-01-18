@@ -76,15 +76,13 @@ LEVEL_LEN = 1
 FILE_LEN = 12 + 4 if LOG_FILEINFO else 0
 FMT_HEADER_LEN = TIME_LEN + 1 + LEVEL_LEN + 1 + FILE_LEN + 1
 
-# TODO: get rid, suddenly we need this
-SAFETY = 1
-NET_LINE_WIDTH = min(120, int(TERMINAL_WIDTH) - FMT_HEADER_LEN - SAFETY)
+NET_LINE_WIDTH = min(120, int(TERMINAL_WIDTH) - FMT_HEADER_LEN)
 
 
 class NestedConsole(Console):
     def __init__(self, *args, **kwargs):
         super().__init__(
-            *args, record=True, width=NET_LINE_WIDTH, file=io.StringIO(), **kwargs
+            *args, record=True, width=NET_LINE_WIDTH - 1, file=io.StringIO(), **kwargs
         )
 
     def __str__(self):
@@ -106,6 +104,25 @@ _LEVEL_ABBREV = {
     "CRITICAL": "[bold red]C[/bold red]",
 }
 
+print("TERMINAL_WIDTH", TERMINAL_WIDTH.get())
+print("NET_LINE_WIDTH", NET_LINE_WIDTH)
+print("-" * TERMINAL_WIDTH.get())
+print(("+" * int(FMT_HEADER_LEN)) + ("=" * int(NET_LINE_WIDTH)))
+
+
+def format_line(line: str) -> str:
+    # doesn't take ansii codes like `\x1b[0m\` into account that don't take space
+    stripped_line = line.lstrip(" ")
+    prefix = " " * ((len(line) - len(stripped_line)) + 2)
+    chunk_size = NET_LINE_WIDTH - len(prefix)
+    stripped_line = stripped_line.rstrip()
+    lines = []
+    for i in range(0, len(stripped_line), chunk_size):
+        chunk = stripped_line[i : i + chunk_size]
+        lines.append(f"{prefix}{chunk}")
+
+    return "\n".join(lines).removeprefix(" " * 2)
+
 
 class RelativeTimeFormatter(logging.Formatter):
     """Custom formatter with ms-since-start timestamp and abbreviated colored levels."""
@@ -123,7 +140,14 @@ class RelativeTimeFormatter(logging.Formatter):
         record.level_abbrev = _LEVEL_ABBREV.get(record.levelname, record.levelname)
 
         INDENT = " " * (FMT_HEADER_LEN + 1)
-        record.nmessage = record.getMessage().replace("\n", f"\n{INDENT}")
+        message = record.getMessage()
+        message = message.replace("\n", f"\n{INDENT}")
+        if "\x1b" not in message:
+            # If any line is longer than NET_LINE_WIDTH, wrap into chunks.
+            if NET_LINE_WIDTH > 0 and len(message) > NET_LINE_WIDTH:
+                message = "\n".join(format_line(line) for line in message.splitlines())
+
+        record.nmessage = message
 
         # fileinfo
         filename, ext = record.filename.rsplit(".", 1)
