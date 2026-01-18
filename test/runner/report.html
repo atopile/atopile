@@ -597,14 +597,12 @@
       /* Theme toggle button */
       .theme-toggle {
         position: static;
-        float: right;
-        margin: 10px 10px 0 0;
-        padding: 6px 10px;
-        font-size: 14px;
+        margin-left: 8px;
+        font-size: 11px;
         background-color: var(--ctp-surface0);
         color: var(--ctp-text);
         border: 1px solid var(--ctp-surface1);
-        border-radius: 5px;
+        border-radius: 3px;
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -1320,10 +1318,6 @@
     </script>
   </head>
   <body>
-    <button id="themeToggle" class="theme-toggle" onclick="toggleTheme()">
-      <span class="icon">&#9728;</span>
-      <span class="text">Light</span>
-    </button>
     <div id="hotkeyModal" class="modal modal-foreground">
       <div class="modal-content">
         <div class="modal-header">
@@ -1486,6 +1480,10 @@
         </select>
         <span id="baselineStatus" class="baseline-status"></span>
       </div>
+      <button id="themeToggle" class="theme-toggle" onclick="toggleTheme()">
+        <span class="icon">&#9728;</span>
+        <span class="text">Light</span>
+      </button>
     </div>
 
     <table id="testTable">
