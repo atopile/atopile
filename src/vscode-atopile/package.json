@@ -153,6 +153,11 @@
                 "when": "editorLangId == ato"
             },
             {
+                "command": "atopile.dashboard",
+                "title": "Open Dashboard",
+                "category": "atopile"
+            },
+            {
                 "command": "atopile.export",
                 "title": "Generate Manufacturing Data",
                 "category": "atopile",

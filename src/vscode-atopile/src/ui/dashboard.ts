@@ -91,7 +91,7 @@ class DashboardWebview extends BaseWebview {
         super({
             id: 'atopile.dashboard.panel',
             title: 'Build Dashboard',
-            column: vscode.ViewColumn.Beside,
+            column: vscode.ViewColumn.Active,
             iconName: undefined, // Uses custom logo
         });
     }

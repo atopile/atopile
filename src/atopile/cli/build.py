@@ -1358,14 +1358,6 @@ def build(
             help="Run sequentially without live display",
         ),
     ] = False,
-    ui: Annotated[
-        bool,
-        typer.Option(
-            "--ui",
-            help="Open a live build dashboard in your browser",
-            envvar="ATO_UI",
-        ),
-    ] = False,
 ):
     """
     Build the specified --target(s) or the targets specified by the build config.
@@ -1478,11 +1470,11 @@ def build(
         keep_designators=keep_designators,
     )
 
-    # Start dashboard server if enabled (and not in verbose mode)
+    # Start dashboard server (unless in verbose mode)
     # Uses fixed port so extension can open webview immediately
     dashboard_server = None
     dashboard_url = None
-    if ui and not verbose:
+    if not verbose:
         try:
             from atopile.dashboard import is_dashboard_built
             from atopile.dashboard.server import start_dashboard_server
