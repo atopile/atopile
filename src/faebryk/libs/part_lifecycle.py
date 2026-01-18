@@ -563,10 +563,10 @@ class PartLifecycle:
                 F.KiCadFootprints.has_associated_kicad_pcb_footprint
             )
             if k_pcb_fp_t:
-                fp_id = k_pcb_fp_t.kicad_identifier
+                fp_id = k_pcb_fp_t.get_kicad_identifier()
                 logger.debug(f"Using KiCAD-PCB footprint identifier: {fp_id}")
             elif k_lib_file_fp_t:
-                fp_id = k_lib_file_fp_t.kicad_identifier
+                fp_id = k_lib_file_fp_t.get_kicad_identifier()
                 logger.debug(f"Using KiCAD-Library-File footprint identifier: {fp_id}")
             else:
                 raise IngestFootprintError(

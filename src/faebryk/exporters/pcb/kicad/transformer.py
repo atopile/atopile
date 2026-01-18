@@ -210,7 +210,7 @@ class PCB_Transformer:
             ) and not g_fp.get_pads():
                 # Get footprint identifier
                 k_lib_file_fp_t = atomic_part_t.get_kicad_library_footprint()
-                fp_id = k_lib_file_fp_t.kicad_identifier
+                fp_id = k_lib_file_fp_t.get_kicad_identifier()
 
                 # Get library footprint to extract pad info
                 _, lib_fp = lifecycle.library.get_footprint_from_identifier(

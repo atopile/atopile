@@ -94,12 +94,10 @@ class has_associated_kicad_pcb_footprint(fabll.Node):
         transformer_id = int(self.transformer_.get().extract_singleton())
         return ctypes.cast(transformer_id, ctypes.py_object).value
 
-    @property
-    def kicad_identifier(self) -> str:
+    def get_kicad_identifier(self) -> str:
         return self.kicad_identifier_.get().extract_singleton()
 
-    @property
-    def library_name(self) -> str:
+    def get_library_name(self) -> str:
         return self.library_name_.get().extract_singleton()
 
 
@@ -234,22 +232,22 @@ class has_associated_kicad_library_footprint(fabll.Node):
     kicad_identifier_ = F.Parameters.StringParameter.MakeChild()
     library_name_ = F.Parameters.StringParameter.MakeChild()
 
-    @property
-    def library_name(self) -> str:
+    def get_library_name(self) -> str:
         lit = self.library_name_.get().try_extract_singleton()
         if lit is not None:
             return lit
-        return Path(self.kicad_footprint_file_path).parent.name
+        return Path(self.get_kicad_footprint_file_path()).parent.name
 
-    @property
-    def kicad_identifier(self) -> str:
+    def get_kicad_identifier(self) -> str:
         lit = self.kicad_identifier_.get().try_extract_singleton()
         if lit is not None:
             return lit
-        return f"{self.library_name}:{Path(self.kicad_footprint_file_path).stem}"
+        return (
+            f"{self.get_library_name()}:"
+            f"{Path(self.get_kicad_footprint_file_path()).stem}"
+        )
 
-    @property
-    def kicad_footprint_file_path(self) -> str:
+    def get_kicad_footprint_file_path(self) -> str:
         """
         Get the KiCad footprint file path.
 
@@ -267,12 +265,14 @@ class has_associated_kicad_library_footprint(fabll.Node):
             "For atomic parts, call is_atomic_part.get_kicad_library_footprint() first."
         )
 
-    @property
-    def pad_names(self) -> list[str]:
-        return [
-            lit.cast(F.Literals.Strings).get_single()
-            for lit in self.pad_names_.get().as_list()
-        ]
+    def get_pad_names(self) -> list[str]:
+        """Pad names sorted alphabetically"""
+        return sorted(
+            [
+                lit.cast(F.Literals.Strings).get_single()
+                for lit in self.pad_names_.get().as_list()
+            ]
+        )
 
     @staticmethod
     def _extract_pad_names_from_kicad_footprint_file(
@@ -408,8 +408,8 @@ def test_has_kicad_pcb_footprint_trait():
 
     assert kicad_pcb_fp.name == footprint.name
     assert kicad_pcb_fp.name == "lcsc:LED0603-RD-YELLOW"
-    assert trait.kicad_identifier == footprint.name == "lcsc:LED0603-RD-YELLOW"
-    assert trait.library_name == footprint.name.split(":")[0] == "lcsc"
+    assert trait.get_kicad_identifier() == footprint.name == "lcsc:LED0603-RD-YELLOW"
+    assert trait.get_library_name() == footprint.name.split(":")[0] == "lcsc"
 
 
 def test_has_kicad_pcb_pad_trait():
@@ -487,7 +487,7 @@ def test_has_associated_kicad_library_footprint():
         fp_file
     )
 
-    assert gen_kfp_trait.kicad_identifier == "smol_part_lib:LED_0201_0603Metric"
-    assert gen_kfp_trait.library_name == "smol_part_lib"
-    assert gen_kfp_trait.kicad_footprint_file_path == str(FPFILE)
-    assert gen_kfp_trait.pad_names == fp_names
+    assert gen_kfp_trait.get_kicad_identifier() == "smol_part_lib:LED_0201_0603Metric"
+    assert gen_kfp_trait.get_library_name() == "smol_part_lib"
+    assert gen_kfp_trait.get_kicad_footprint_file_path() == str(FPFILE)
+    assert gen_kfp_trait.get_pad_names() == fp_names

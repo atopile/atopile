@@ -750,13 +750,14 @@ class TestLCSCattach:
         assert kicad_library_footprint is not None
 
         assert (
-            kicad_library_footprint.kicad_identifier == "UNI_ROYAL_0603WAF1001T5E:R0603"
+            kicad_library_footprint.get_kicad_identifier()
+            == "UNI_ROYAL_0603WAF1001T5E:R0603"
         )
-        assert kicad_library_footprint.library_name == "UNI_ROYAL_0603WAF1001T5E"
-        assert kicad_library_footprint.pad_names == ["2", "1"]
+        assert kicad_library_footprint.get_library_name() == "UNI_ROYAL_0603WAF1001T5E"
+        assert kicad_library_footprint.get_pad_names() == ["1", "2"]
         assert (
             "src/parts/UNI_ROYAL_0603WAF1001T5E/R0603.kicad_mod"
-            in kicad_library_footprint.kicad_footprint_file_path
+            in kicad_library_footprint.get_kicad_footprint_file_path()
         )
 
     @pytest.mark.usefixtures("setup_project_config")
@@ -816,6 +817,39 @@ class TestLCSCattach:
         assert [pad.pad_name for pad in pads[1]] == ["K"]
 
     @pytest.mark.usefixtures("setup_project_config")
+    def test_attach_opamp(self):
+        import faebryk.core.faebrykpy as fbrk
+        import faebryk.core.node as fabll
+
+        LCSC_ID = "C18723612"
+
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        component = F.OpAmp.bind_typegraph(tg=tg).create_instance(g=g)
+
+        component_with_fp = component.get_trait(F.Footprints.can_attach_to_footprint)
+        attach(component_with_fp=component_with_fp, partno=LCSC_ID)
+
+        associated_footprint = component.try_get_trait(
+            F.Footprints.has_associated_footprint
+        )
+
+        assert associated_footprint is not None
+
+        footprint = associated_footprint.get_footprint()
+
+        kicad_library_footprint = footprint.get_trait(
+            F.KiCadFootprints.has_associated_kicad_library_footprint
+        )
+
+        assert kicad_library_footprint.get_pad_names() == ["1", "2", "3", "4", "5"]
+        assert (
+            kicad_library_footprint.get_kicad_identifier()
+            == "XBLW_LM321DTR_XBLW:SOT-23-5_L2.9-W1.6-P0.95-LS2.8-BR"
+        )
+        assert kicad_library_footprint.get_library_name() == "XBLW_LM321DTR_XBLW"
+
+    @pytest.mark.usefixtures("setup_project_config")
     def test_attach_mosfet(self):
         import faebryk.core.faebrykpy as fbrk
         import faebryk.core.node as fabll
@@ -847,16 +881,17 @@ class TestLCSCattach:
         )
 
         assert (
-            kicad_library_footprint.kicad_identifier
+            kicad_library_footprint.get_kicad_identifier()
             == "Changjiang_Electronics_Tech_2N7002:SOT-23-3_L2.9-W1.3-P1.90-LS2.4-BR"
         )
         assert (
-            kicad_library_footprint.library_name == "Changjiang_Electronics_Tech_2N7002"
+            kicad_library_footprint.get_library_name()
+            == "Changjiang_Electronics_Tech_2N7002"
         )
-        assert kicad_library_footprint.pad_names == ["1", "2", "3"]
+        assert kicad_library_footprint.get_pad_names() == ["1", "2", "3"]
         assert (
             "src/parts/Changjiang_Electronics_Tech_2N7002/SOT-23-3_L2.9-W1.3-P1.90-LS2.4-BR.kicad_mod"
-            in kicad_library_footprint.kicad_footprint_file_path
+            in kicad_library_footprint.get_kicad_footprint_file_path()
         )
 
     @pytest.mark.usefixtures("setup_project_config")
@@ -888,7 +923,7 @@ class TestLCSCattach:
         )
         assert kicad_library_footprint is not None
         assert (
-            kicad_library_footprint.kicad_identifier
+            kicad_library_footprint.get_kicad_identifier()
             == "ALLPOWER_AP30P30Q:PDFN3333-8_L3.1-W3.2-P0.65-LS3.4-BL"
         )
 
@@ -934,7 +969,7 @@ class TestLCSCattach:
             F.KiCadFootprints.has_associated_kicad_library_footprint
         )
         assert kicad_library_footprint is not None
-        assert kicad_library_footprint.pad_names == ["1", "2", "3"]
+        assert kicad_library_footprint.get_pad_names() == ["1", "2", "3"]
 
 
 """

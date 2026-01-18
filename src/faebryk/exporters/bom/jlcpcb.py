@@ -142,7 +142,7 @@ def _get_footprint_name(part: F.Pickable.has_part_picked) -> str:
     elif kicad_library_footprint_trait := footprint_trait.get_footprint().try_get_trait(
         F.KiCadFootprints.has_associated_kicad_library_footprint
     ):
-        return kicad_library_footprint_trait.library_name
+        return kicad_library_footprint_trait.get_library_name()
 
     logger.warning(
         f"Missing any form of kicad footprint on component '{module_locator}'"
