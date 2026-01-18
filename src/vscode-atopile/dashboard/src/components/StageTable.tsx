@@ -68,14 +68,14 @@ export function StageTable({ build }: StageTableProps) {
               <div className="flex-1 min-w-0">
                 <span className="text-text-primary text-sm truncate block">{stage.name}</span>
               </div>
-              <div className="flex items-center gap-3 text-xs text-text-muted">
+              <div className="flex items-center gap-3 text-xs">
                 {stage.warnings > 0 && (
                   <span className="text-warning">{stage.warnings}W</span>
                 )}
                 {stage.errors > 0 && (
                   <span className="text-error">{stage.errors}E</span>
                 )}
-                <span className="w-16 text-right">{formatTime(stage.elapsed_seconds)}</span>
+                <span className="w-16 text-right font-mono text-text-primary">{formatTime(stage.elapsed_seconds)}</span>
               </div>
             </button>
           );

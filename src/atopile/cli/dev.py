@@ -23,11 +23,11 @@ dev_app = typer.Typer(rich_markup_mode="rich")
 def compile(
     target: str = typer.Argument(
         "all",
-        help="Build target: all, zig, visualizer, dashboard, or vscode.",
+        help="Build target: all, zig, visualizer, or vscode.",
     ),
 ):
     target = target.lower()
-    valid_targets = {"all", "zig", "visualizer", "dashboard", "vscode"}
+    valid_targets = {"all", "zig", "visualizer", "vscode"}
     if target not in valid_targets:
         raise typer.BadParameter(
             f"target must be one of: {', '.join(sorted(valid_targets))}"
@@ -53,21 +53,6 @@ def compile(
 
         subprocess.run(["npm", "run", "build"], cwd=viz_dir, check=True)
 
-    if target in {"all", "dashboard"}:
-        print("compiling dashboard")
-        repo_root = Path(__file__).resolve().parents[3]
-        dashboard_dir = repo_root / "src" / "atopile" / "dashboard" / "web"
-        if not dashboard_dir.exists():
-            raise FileNotFoundError(
-                f"dashboard web directory not found: {dashboard_dir}"
-            )
-
-        node_modules = dashboard_dir / "node_modules"
-        if not node_modules.exists():
-            subprocess.run(["npm", "install"], cwd=dashboard_dir, check=True)
-
-        subprocess.run(["npm", "run", "build"], cwd=dashboard_dir, check=True)
-
     if target in {"all", "vscode"}:
         print("compiling vscode extension")
         repo_root = Path(__file__).resolve().parents[3]
@@ -86,7 +71,7 @@ def compile(
         if needs_install:
             subprocess.run(["npm", "install"], cwd=vscode_dir, check=True)
 
-        # Package the extension (runs vscode:prepublish which does production build)
+        # Package the extension (vscode:prepublish builds dashboard + extension)
         subprocess.run(
             ["npm", "exec", "--", "vsce", "package", "--allow-missing-repository"],
             cwd=vscode_dir,

@@ -18,9 +18,8 @@ function getDashboardApiUrl(): string {
  * Get the path to the dashboard web dist directory.
  *
  * Checks in order:
- * 1. Bundled with extension (production)
- * 2. Workspace folder (development - when working in atopile repo)
- * 3. Relative to extension (Extension Development Host mode)
+ * 1. Bundled with extension (production) - resources/dashboard
+ * 2. Development mode - dashboard/dist (relative to extension)
  */
 function getDashboardDistPath(): string | null {
     const extensionPath = getExtension().extensionUri.fsPath;
@@ -35,23 +34,8 @@ function getDashboardDistPath(): string | null {
         return bundledPath;
     }
 
-    // 2. Check workspace folder (development - working in atopile repo)
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (workspaceFolders && workspaceFolders.length > 0) {
-        const workspacePath = workspaceFolders[0].uri.fsPath;
-        const workspaceDistPath = path.join(workspacePath, 'src', 'atopile', 'dashboard', 'web', 'dist');
-        const workspaceIndex = path.join(workspaceDistPath, 'index.html');
-        traceInfo(`Dashboard: checking workspace path = ${workspaceIndex}`);
-        if (fs.existsSync(workspaceIndex)) {
-            traceInfo(`Dashboard: found workspace dist at ${workspaceDistPath}`);
-            return workspaceDistPath;
-        }
-    }
-
-    // 3. Extension Development Host mode: relative to extension source
-    // Extension is at: src/vscode-atopile
-    // Dashboard is at: src/atopile/dashboard/web/dist
-    const devPath = path.join(extensionPath, '..', 'atopile', 'dashboard', 'web', 'dist');
+    // 2. Development mode: dashboard/dist relative to extension
+    const devPath = path.join(extensionPath, 'dashboard', 'dist');
     const devIndex = path.join(devPath, 'index.html');
     traceInfo(`Dashboard: checking dev path = ${devIndex}`);
     if (fs.existsSync(devIndex)) {
@@ -208,8 +192,8 @@ class DashboardWebview extends BaseWebview {
     <div class="container">
         <h1>Dashboard Not Built</h1>
         <p>The dashboard web app has not been built.</p>
-        <p>Run <code>npm ci && npm run build</code> in</p>
-        <p><code>src/atopile/dashboard/web</code></p>
+        <p>Run <code>npm run build:dashboard</code> in</p>
+        <p><code>src/vscode-atopile</code></p>
     </div>
 </body>
 </html>`;

@@ -48,7 +48,8 @@
     ],
     "main": "./dist/extension.js",
     "scripts": {
-        "vscode:prepublish": "npm run package",
+        "vscode:prepublish": "npm run build:dashboard && npm run package",
+        "build:dashboard": "cd dashboard && npm install && npm run build",
         "compile": "webpack",
         "watch": "webpack --watch",
         "package": "webpack --mode production --devtool source-map --config ./webpack.config.js",

@@ -28,7 +28,7 @@ export function BuildSummary({ build }: BuildSummaryProps) {
       <div className="grid grid-cols-2 gap-4 text-sm">
         <div>
           <span className="text-text-muted">Elapsed:</span>
-          <span className="text-text-primary ml-2">{formatTime(build.elapsed_seconds)}</span>
+          <span className="text-text-primary ml-2 font-mono font-semibold">{formatTime(build.elapsed_seconds)}</span>
         </div>
         <div>
           <span className="text-text-muted">Return Code:</span>

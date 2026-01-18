@@ -9,5 +9,6 @@
         "noImplicitReturns": true,
         "noFallthroughCasesInSwitch": true,
         "noUnusedParameters": true
-    }
+    },
+    "exclude": ["node_modules", "dashboard"]
 }

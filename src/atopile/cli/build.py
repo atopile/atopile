@@ -1470,26 +1470,22 @@ def build(
         keep_designators=keep_designators,
     )
 
-    # Start dashboard server (unless in verbose mode)
-    # Uses fixed port so extension can open webview immediately
+    # Start dashboard API server (unless in verbose mode)
+    # Uses fixed port so extension can connect immediately
     dashboard_server = None
     dashboard_url = None
     if not verbose:
         try:
-            from atopile.dashboard import is_dashboard_built
             from atopile.dashboard.server import start_dashboard_server
 
-            if is_dashboard_built():
-                dashboard_server, dashboard_url = start_dashboard_server(
-                    manager._summary_file,
-                    manager.logs_base,
-                    port=DASHBOARD_PORT,
-                )
-                logger.info("Dashboard available at: %s", dashboard_url)
-            else:
-                logger.debug("Dashboard not built, skipping")
+            dashboard_server, dashboard_url = start_dashboard_server(
+                manager._summary_file,
+                manager.logs_base,
+                port=DASHBOARD_PORT,
+            )
+            logger.info("Dashboard API available at: %s", dashboard_url)
         except Exception as e:
-            logger.debug("Failed to start dashboard: %s", e)
+            logger.debug("Failed to start dashboard server: %s", e)
 
     try:
         results = manager.run_until_complete()

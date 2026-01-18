@@ -39,7 +39,7 @@ export function BuildTabs({ builds }: BuildTabsProps) {
           >
             <StatusIcon status={build.status} />
             <span className="font-medium">{build.display_name}</span>
-            <span className="text-xs text-text-muted">{formatTime(build.elapsed_seconds)}</span>
+            <span className="font-mono font-semibold text-text-primary">{formatTime(build.elapsed_seconds)}</span>
             {build.warnings > 0 && (
               <span className="text-xs text-warning">{build.warnings}W</span>
             )}
