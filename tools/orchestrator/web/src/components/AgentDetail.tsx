@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Square, Send, X, Clock, Cpu, Hash, Code, RotateCcw, Pencil, Check } from 'lucide-react';
+import { Square, Send, X, Clock, Cpu, Hash, Code, RotateCcw, Pencil, Check, History } from 'lucide-react';
 import type { AgentState } from '@/api/types';
 import { useAgentStore, useOutputStore } from '@/stores';
 import { StatusBadge } from './StatusBadge';
@@ -12,27 +12,54 @@ interface AgentDetailProps {
 
 export function AgentDetail({ agent, onClose }: AgentDetailProps) {
   const { terminateAgent, sendInput, resumeAgent, renameAgent } = useAgentStore();
-  const { connectToAgent, disconnectFromAgent, fetchOutput, clearOutput, isConnected } = useOutputStore();
+  const { connectToAgent, disconnectFromAgent, fetchOutput, fetchFullHistory, isConnected, setCurrentRunNumber, addPrompt } = useOutputStore();
   // Subscribe directly to chunks for this agent - this ensures re-renders on updates
   const chunks = useOutputStore((state) => state.outputs.get(agent.id) || []);
+  const prompts = useOutputStore((state) => state.prompts.get(agent.id) || []);
+  const historyLoaded = useOutputStore((state) => state.historyLoaded.has(agent.id));
   const [inputValue, setInputValue] = useState('');
   const [sending, setSending] = useState(false);
   const [verbose, setVerbose] = useState(false);
   const [resumePrompt, setResumePrompt] = useState('');
   const [resuming, setResuming] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(agent.name || '');
   const connected = isConnected(agent.id);
   const isRunning = agent.status === 'running' || agent.status === 'starting' || agent.status === 'pending';
   const isFinished = agent.status === 'completed' || agent.status === 'failed' || agent.status === 'terminated';
   const canResume = isFinished && !!agent.session_id;
+  const runCount = agent.run_count ?? 0;
+  const hasMultipleRuns = runCount > 0;
 
-  // Connect to WebSocket for running agents
+  // Initial data fetch - only runs when agent.id changes
   useEffect(() => {
-    // Always fetch existing output first
-    fetchOutput(agent.id);
+    // Set the current run number so new WebSocket chunks get tagged correctly
+    setCurrentRunNumber(agent.id, runCount);
 
-    // Connect to WebSocket for real-time updates
+    // For agents with multiple runs, load full history to see all runs
+    if (hasMultipleRuns) {
+      fetchFullHistory(agent.id);
+    } else {
+      // Single-run agent - fetch current output
+      fetchOutput(agent.id, runCount);
+    }
+    // Note: We intentionally only depend on agent.id to avoid re-fetching
+    // when other properties change. The runCount and hasMultipleRuns are
+    // captured at the time of the effect run.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agent.id]);
+
+  // Add initial prompt for single-run agents (separate effect to avoid re-fetch)
+  useEffect(() => {
+    if (!hasMultipleRuns && agent.config.prompt && prompts.length === 0) {
+      addPrompt(agent.id, 0, agent.config.prompt);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agent.id, hasMultipleRuns]);
+
+  // WebSocket connection - separate effect for running state
+  useEffect(() => {
     if (isRunning) {
       connectToAgent(agent.id);
     }
@@ -40,7 +67,16 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
     return () => {
       disconnectFromAgent(agent.id);
     };
-  }, [agent.id, isRunning, connectToAgent, disconnectFromAgent, fetchOutput]);
+  }, [agent.id, isRunning, connectToAgent, disconnectFromAgent]);
+
+  const handleLoadHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      await fetchFullHistory(agent.id);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   const handleSendInput = async () => {
     if (!inputValue.trim() || !isRunning) return;
@@ -73,12 +109,17 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
   const handleResume = async () => {
     if (!resumePrompt.trim() || !canResume) return;
 
+    const promptText = resumePrompt.trim();
+    const nextRunNumber = runCount + 1;
+
+    // Immediately show the prompt in UI for instant feedback
+    addPrompt(agent.id, nextRunNumber, promptText);
+    setCurrentRunNumber(agent.id, nextRunNumber);
+    setResumePrompt('');
     setResuming(true);
+
     try {
-      // Clear old output before resuming so we fetch fresh output
-      clearOutput(agent.id);
-      await resumeAgent(agent.id, resumePrompt);
-      setResumePrompt('');
+      await resumeAgent(agent.id, promptText);
       // The useEffect will reconnect to WebSocket and fetch new output
       // when agent.status changes to 'running'
     } finally {
@@ -222,6 +263,12 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
             <Hash className="w-4 h-4" />
             <span>{chunks.length} chunks</span>
           </div>
+          {hasMultipleRuns && (
+            <div className="flex items-center gap-1.5 text-blue-400">
+              <RotateCcw className="w-4 h-4" />
+              <span>Run {runCount + 1}</span>
+            </div>
+          )}
           {agent.config.max_turns && (
             <div className="text-gray-400">
               Max turns: {agent.config.max_turns}
@@ -233,27 +280,49 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
             </div>
           )}
         </div>
-        <label className="flex items-center gap-2 text-gray-400 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={verbose}
-            onChange={(e) => setVerbose(e.target.checked)}
-            className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800"
-          />
-          <Code className="w-4 h-4" />
-          <span>Verbose</span>
-        </label>
-      </div>
-
-      {/* Prompt */}
-      <div className="px-4 py-3 bg-gray-800/30 border-b border-gray-700">
-        <div className="text-xs text-gray-500 mb-1">Prompt</div>
-        <p className="text-sm text-gray-300">{agent.config.prompt}</p>
+        <div className="flex items-center gap-4">
+          {hasMultipleRuns && !historyLoaded && (
+            <button
+              className="flex items-center gap-1.5 text-blue-400 hover:text-blue-300 text-xs"
+              onClick={handleLoadHistory}
+              disabled={loadingHistory}
+            >
+              {loadingHistory ? (
+                <span className="w-3.5 h-3.5 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin" />
+              ) : (
+                <History className="w-3.5 h-3.5" />
+              )}
+              <span>Load Full History</span>
+            </button>
+          )}
+          {historyLoaded && (
+            <span className="flex items-center gap-1.5 text-green-400 text-xs">
+              <History className="w-3.5 h-3.5" />
+              <span>Full History</span>
+            </span>
+          )}
+          <label className="flex items-center gap-2 text-gray-400 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={verbose}
+              onChange={(e) => setVerbose(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800"
+            />
+            <Code className="w-4 h-4" />
+            <span>Verbose</span>
+          </label>
+        </div>
       </div>
 
       {/* Output stream */}
       <div className="flex-1 overflow-hidden">
-        <OutputStream chunks={chunks} autoScroll={isRunning} verbose={verbose} />
+        <OutputStream
+          chunks={chunks}
+          prompts={prompts}
+          initialPrompt={agent.config.prompt}
+          autoScroll={isRunning}
+          verbose={verbose}
+        />
       </div>
 
       {/* Input bar (only for running agents that support input) */}
@@ -294,8 +363,8 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
           <div className="flex items-center gap-2">
             <input
               type="text"
-              className="input flex-1"
-              placeholder="Enter new prompt to continue conversation... (Cmd/Ctrl+Enter)"
+              className="input flex-1 text-sm pl-4 placeholder:italic placeholder:text-xs placeholder:text-gray-500"
+              placeholder="New prompt..."
               value={resumePrompt}
               onChange={(e) => setResumePrompt(e.target.value)}
               onKeyDown={handleResumeKeyDown}
@@ -305,13 +374,14 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
               className="btn btn-primary"
               onClick={handleResume}
               disabled={!resumePrompt.trim() || resuming}
+              title="Send (Cmd/Ctrl+Enter)"
             >
               {resuming ? (
                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
-                <RotateCcw className="w-4 h-4" />
+                <Send className="w-4 h-4" />
               )}
-              <span className="ml-1">Resume</span>
+              <span className="ml-1">Send</span>
             </button>
           </div>
           <p className="text-xs text-gray-500 mt-1">

@@ -12,12 +12,14 @@ from ...core import AgentStateStore, ProcessManager
 from ...exceptions import AgentNotFoundError, AgentNotRunningError, BackendSpawnError
 from ...models import (
     AgentConfig,
+    AgentHistoryResponse,
     AgentListResponse,
     AgentOutputResponse,
     AgentState,
     AgentStateResponse,
     AgentStatus,
     ResumeAgentRequest,
+    RunOutput,
     SendInputRequest,
     SendInputResponse,
     SpawnAgentRequest,
@@ -63,6 +65,9 @@ async def spawn_agent(
             a.status = AgentStatus.RUNNING
             a.pid = managed.process.pid
             a.started_at = datetime.now()
+            a.run_count = 0  # First run
+            # Track prompt for this run
+            a.metadata["prompts"] = [{"run": 0, "prompt": a.config.prompt}]
             return a
 
         agent_store.update(agent.id, updater)
@@ -249,7 +254,15 @@ async def resume_agent(
             a.error_message = None
             a.finished_at = None
 
-            # Track resume count
+            # Increment run_count for versioned logs
+            a.run_count += 1
+
+            # Track prompt for this run
+            prompts = a.metadata.get("prompts", [])
+            prompts.append({"run": a.run_count, "prompt": prompt})
+            a.metadata["prompts"] = prompts
+
+            # Track resume count in metadata (legacy)
             resume_count = a.metadata.get("resume_count", 0)
             a.metadata["resume_count"] = resume_count + 1
 
@@ -369,6 +382,50 @@ async def get_output(
         agent_id=agent_id,
         chunks=[c.model_dump() for c in chunks],
         total_chunks=agent.output_chunks,
+    )
+
+
+@router.get("/{agent_id}/history", response_model=AgentHistoryResponse)
+async def get_full_history(
+    agent_id: str,
+    agent_store: Annotated[AgentStateStore, Depends(get_agent_store)],
+    process_manager: Annotated[ProcessManager, Depends(get_process_manager)],
+) -> AgentHistoryResponse:
+    """Get all output from all runs of this agent.
+
+    Returns combined output from all versioned log files for this agent,
+    organized by run number. This is useful for viewing the complete
+    conversation history across multiple resume operations.
+    """
+    agent = agent_store.get(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+
+    # Get prompts from metadata (keyed by run number)
+    prompts_list = agent.metadata.get("prompts", [])
+    prompts_by_run = {p["run"]: p["prompt"] for p in prompts_list if isinstance(p, dict)}
+
+    # Get all run logs
+    run_logs = process_manager.get_all_run_logs(agent_id)
+
+    # Convert to response format
+    runs = []
+    total_chunks = 0
+    for run_number, chunks in run_logs:
+        runs.append(
+            RunOutput(
+                run_number=run_number,
+                prompt=prompts_by_run.get(run_number),
+                chunks=[c.model_dump() for c in chunks],
+            )
+        )
+        total_chunks += len(chunks)
+
+    return AgentHistoryResponse(
+        agent_id=agent_id,
+        runs=runs,
+        total_runs=len(runs),
+        total_chunks=total_chunks,
     )
 
 

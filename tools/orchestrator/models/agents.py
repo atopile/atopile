@@ -79,6 +79,7 @@ class AgentState(BaseModel):
     finished_at: datetime | None = None
     output_chunks: int = 0
     last_activity_at: datetime | None = None
+    run_count: int = 0  # Incremented on each spawn/resume for versioned logs
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     def is_running(self) -> bool:
@@ -182,4 +183,22 @@ class AgentOutputResponse(BaseModel):
 
     agent_id: str
     chunks: list[Any]  # List of OutputChunk
+    total_chunks: int
+
+
+class RunOutput(BaseModel):
+    """Output from a single agent run."""
+
+    run_number: int
+    prompt: str | None = None  # The prompt that started this run
+    chunks: list[Any]  # List of OutputChunk
+    started_at: datetime | None = None
+
+
+class AgentHistoryResponse(BaseModel):
+    """Response containing complete history from all runs of an agent."""
+
+    agent_id: str
+    runs: list[RunOutput]
+    total_runs: int
     total_chunks: int

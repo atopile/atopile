@@ -43,6 +43,7 @@ class ManagedProcess:
     process: subprocess.Popen
     backend: AgentBackend
     config: AgentConfig
+    run_number: int = 0  # The run number for versioned logs
     log_file: Path | None = None
     stdout_thread: threading.Thread | None = None
     stderr_thread: threading.Thread | None = None
@@ -121,8 +122,11 @@ class ProcessManager:
         # Set up working directory
         cwd = config.working_directory or os.getcwd()
 
-        # Set up log file
-        log_file = get_logs_dir() / f"agent-{agent_state.id}.log"
+        # Get run number for versioned log file
+        run_number = agent_state.run_count
+
+        # Set up log file with versioned naming
+        log_file = get_logs_dir() / f"agent-{agent_state.id}_run-{run_number}.log"
         log_handle = open(log_file, "w")
 
         logger.info(f"Spawning agent {agent_state.id}: {' '.join(cmd)}")
@@ -147,6 +151,7 @@ class ProcessManager:
             process=process,
             backend=backend,
             config=config,
+            run_number=run_number,
             log_file=log_file,
             output_buffer=deque(maxlen=self._max_buffer_size),
             _log_handle=log_handle,
@@ -405,13 +410,20 @@ class ProcessManager:
 
         return chunks
 
-    def _read_output_from_log(
+    def _read_log_file(
         self,
-        agent_id: str,
+        log_file: Path,
         since_sequence: int = 0,
     ) -> list[OutputChunk]:
-        """Read output chunks from the log file for a completed agent."""
-        log_file = get_logs_dir() / f"agent-{agent_id}.log"
+        """Read output chunks from a specific log file.
+
+        Args:
+            log_file: Path to the log file
+            since_sequence: Only return chunks after this sequence number
+
+        Returns:
+            List of output chunks
+        """
         if not log_file.exists():
             return []
 
@@ -431,9 +443,86 @@ class ProcessManager:
                     if chunk is not None:
                         chunks.append(chunk)
         except Exception as e:
-            logger.warning(f"Failed to read log file for agent {agent_id}: {e}")
+            logger.warning(f"Failed to read log file {log_file}: {e}")
 
         return chunks
+
+    def _read_output_from_log(
+        self,
+        agent_id: str,
+        since_sequence: int = 0,
+        run_number: int | None = None,
+    ) -> list[OutputChunk]:
+        """Read output chunks from the log file for a completed agent.
+
+        Args:
+            agent_id: The agent ID
+            since_sequence: Only return chunks after this sequence number
+            run_number: Specific run number to read from, or None for latest
+
+        Returns:
+            List of output chunks
+        """
+        logs_dir = get_logs_dir()
+
+        # Find the log file - try versioned path first, then legacy
+        if run_number is not None:
+            log_file = logs_dir / f"agent-{agent_id}_run-{run_number}.log"
+        else:
+            # Find the latest run's log file
+            run_files = sorted(logs_dir.glob(f"agent-{agent_id}_run-*.log"))
+            if run_files:
+                log_file = run_files[-1]  # Latest run
+            else:
+                # Fall back to legacy naming
+                log_file = logs_dir / f"agent-{agent_id}.log"
+
+        return self._read_log_file(log_file, since_sequence)
+
+    def get_all_run_logs(
+        self,
+        agent_id: str,
+    ) -> list[tuple[int, list[OutputChunk]]]:
+        """Get output from all runs of an agent.
+
+        Args:
+            agent_id: The agent ID
+
+        Returns:
+            List of (run_number, chunks) tuples sorted by run number
+        """
+        logs_dir = get_logs_dir()
+        results = []
+
+        # Find all versioned log files for this agent
+        run_files = sorted(logs_dir.glob(f"agent-{agent_id}_run-*.log"))
+
+        # Check for legacy log file (original run 0 before versioned logging)
+        legacy_file = logs_dir / f"agent-{agent_id}.log"
+        run_0_versioned = logs_dir / f"agent-{agent_id}_run-0.log"
+        if legacy_file.exists() and not run_0_versioned.exists():
+            # Legacy file exists and no _run-0 file - read legacy file directly as run 0
+            # Can't use _read_output_from_log(run_number=None) because that reads latest run
+            chunks = self._read_log_file(legacy_file)
+            if chunks:
+                results.append((0, chunks))
+
+        # Read each versioned log file
+        for log_file in run_files:
+            try:
+                # Extract run number from filename
+                # Format: agent-{id}_run-{run_number}.log
+                filename = log_file.stem  # agent-{id}_run-{run_number}
+                run_part = filename.split("_run-")[-1]
+                run_number = int(run_part)
+                chunks = self._read_output_from_log(agent_id, run_number=run_number)
+                if chunks:
+                    results.append((run_number, chunks))
+            except (ValueError, IndexError) as e:
+                logger.warning(f"Failed to parse log filename {log_file}: {e}")
+                continue
+
+        return sorted(results, key=lambda x: x[0])
 
     def iter_output(
         self,

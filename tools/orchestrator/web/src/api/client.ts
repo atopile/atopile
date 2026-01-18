@@ -1,5 +1,6 @@
 import type {
   AgentConfig,
+  AgentHistoryResponse,
   AgentListResponse,
   AgentOutputResponse,
   AgentStateResponse,
@@ -109,6 +110,9 @@ export const api = {
       });
       return fetchJson<AgentOutputResponse>(`/agents/${id}/output?${params}`);
     },
+
+    getHistory: (id: string) =>
+      fetchJson<AgentHistoryResponse>(`/agents/${id}/history`),
 
     delete: (id: string) =>
       fetchJson<{ status: string; agent_id: string }>(`/agents/${id}`, {

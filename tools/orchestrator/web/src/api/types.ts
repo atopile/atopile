@@ -34,6 +34,7 @@ export interface AgentState {
   finished_at?: string;
   output_chunks: number;
   last_activity_at?: string;
+  run_count?: number;  // May not exist for older agents, defaults to 0
   metadata: Record<string, unknown>;
 }
 
@@ -48,6 +49,7 @@ export interface OutputChunk {
   timestamp: string;
   sequence: number;
   is_error?: boolean;
+  run_number?: number;  // Which run this chunk belongs to (for history view)
 }
 
 // Session types
@@ -87,6 +89,20 @@ export interface AgentStateResponse {
 export interface AgentOutputResponse {
   agent_id: string;
   chunks: OutputChunk[];
+  total_chunks: number;
+}
+
+export interface RunOutput {
+  run_number: number;
+  prompt?: string;  // The prompt that started this run
+  chunks: OutputChunk[];
+  started_at?: string;
+}
+
+export interface AgentHistoryResponse {
+  agent_id: string;
+  runs: RunOutput[];
+  total_runs: number;
   total_chunks: number;
 }
 

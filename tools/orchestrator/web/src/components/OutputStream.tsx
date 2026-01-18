@@ -1,16 +1,23 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from 'react';
-import { Copy, Check, ChevronDown, ChevronRight, Bot, Wrench, AlertCircle, Terminal, CheckCircle } from 'lucide-react';
+import { Copy, Check, ChevronDown, ChevronRight, Bot, Wrench, AlertCircle, Terminal, CheckCircle, RotateCcw, User } from 'lucide-react';
 import type { OutputChunk } from '@/api/types';
+
+interface PromptInfo {
+  run: number;
+  prompt: string;
+}
 
 interface OutputStreamProps {
   chunks: OutputChunk[];
+  prompts?: PromptInfo[];
+  initialPrompt?: string;  // For single-run agents without history
   autoScroll?: boolean;
   verbose?: boolean;
 }
 
 // Merged display item for friendly mode
 interface DisplayItem {
-  type: 'assistant' | 'tool_use' | 'tool_result' | 'error' | 'system';
+  type: 'assistant' | 'tool_use' | 'tool_result' | 'error' | 'system' | 'run_separator' | 'user_prompt';
   text: string;
   toolName?: string;
   toolInput?: Record<string, unknown>;
@@ -18,6 +25,7 @@ interface DisplayItem {
   isError?: boolean;
   sequences: number[];
   timestamp?: string;
+  runNumber?: number;
 }
 
 // Format timestamp for display
@@ -55,12 +63,76 @@ function extractAssistantText(chunk: OutputChunk): string | null {
 }
 
 // Process chunks into merged display items for friendly mode
-function processChunksForDisplay(chunks: OutputChunk[]): DisplayItem[] {
+function processChunksForDisplay(
+  chunks: OutputChunk[],
+  prompts?: PromptInfo[],
+  initialPrompt?: string
+): DisplayItem[] {
   const items: DisplayItem[] = [];
   let currentStreaming: DisplayItem | null = null;
   let isStreaming = false;
+  let currentRunNumber: number | undefined = undefined;
+
+  // Create a map of prompts by run number
+  const promptsByRun = new Map<number, string>();
+  if (prompts) {
+    for (const p of prompts) {
+      promptsByRun.set(p.run, p.prompt);
+    }
+  }
 
   for (const chunk of chunks) {
+    // Check for run boundary and insert separator + prompt
+    const chunkRunNumber = chunk.run_number;
+    if (chunkRunNumber !== undefined && chunkRunNumber !== currentRunNumber) {
+      // Close any open streaming first
+      if (currentStreaming) {
+        currentStreaming.isStreaming = false;
+        currentStreaming = null;
+        isStreaming = false;
+      }
+
+      // Insert separator if this isn't the first run
+      if (currentRunNumber !== undefined) {
+        items.push({
+          type: 'run_separator',
+          text: `Run ${chunkRunNumber}`,
+          sequences: [],
+          runNumber: chunkRunNumber,
+        });
+      }
+
+      // Insert user prompt for this run
+      // Only use initialPrompt as fallback for run 0 if there are no tracked prompts at all
+      // (single-run agent that hasn't been resumed). For multi-run agents, config.prompt
+      // has been overwritten with the latest prompt, so it's not valid for run 0.
+      const hasTrackedPrompts = promptsByRun.size > 0;
+      const runPrompt = promptsByRun.get(chunkRunNumber) ||
+        (chunkRunNumber === 0 && !hasTrackedPrompts ? initialPrompt : undefined);
+      if (runPrompt) {
+        items.push({
+          type: 'user_prompt',
+          text: runPrompt,
+          sequences: [],
+          runNumber: chunkRunNumber,
+        });
+      }
+
+      currentRunNumber = chunkRunNumber;
+    } else if (currentRunNumber === undefined && items.length === 0) {
+      // First chunk, no run_number - show initial prompt only if no tracked prompts
+      // (for single-run agents that haven't been resumed)
+      if (initialPrompt && promptsByRun.size === 0) {
+        items.push({
+          type: 'user_prompt',
+          text: initialPrompt,
+          sequences: [],
+          runNumber: 0,
+        });
+      }
+      currentRunNumber = chunk.run_number ?? 0;
+    }
+
     // Handle streaming start
     if (chunk.type === 'stream_start') {
       isStreaming = true;
@@ -70,6 +142,7 @@ function processChunksForDisplay(chunks: OutputChunk[]): DisplayItem[] {
         isStreaming: true,
         sequences: [chunk.sequence],
         timestamp: chunk.timestamp,
+        runNumber: chunkRunNumber,
       };
       items.push(currentStreaming);
       continue;
@@ -87,6 +160,7 @@ function processChunksForDisplay(chunks: OutputChunk[]): DisplayItem[] {
           isStreaming: true,
           sequences: [chunk.sequence],
           timestamp: chunk.timestamp,
+          runNumber: chunkRunNumber,
         };
         items.push(currentStreaming);
       }
@@ -122,6 +196,7 @@ function processChunksForDisplay(chunks: OutputChunk[]): DisplayItem[] {
           isStreaming: false,
           sequences: [chunk.sequence],
           timestamp: chunk.timestamp,
+          runNumber: chunkRunNumber,
         });
       }
       continue;
@@ -142,6 +217,7 @@ function processChunksForDisplay(chunks: OutputChunk[]): DisplayItem[] {
         toolInput: chunk.tool_input || undefined,
         sequences: [chunk.sequence],
         timestamp: chunk.timestamp,
+        runNumber: chunkRunNumber,
       });
     } else if (chunk.type === 'tool_result') {
       items.push({
@@ -150,6 +226,7 @@ function processChunksForDisplay(chunks: OutputChunk[]): DisplayItem[] {
         isError: chunk.is_error || false,
         sequences: [chunk.sequence],
         timestamp: chunk.timestamp,
+        runNumber: chunkRunNumber,
       });
     } else if (chunk.type === 'error') {
       items.push({
@@ -157,6 +234,7 @@ function processChunksForDisplay(chunks: OutputChunk[]): DisplayItem[] {
         text: chunk.content || 'Unknown error',
         sequences: [chunk.sequence],
         timestamp: chunk.timestamp,
+        runNumber: chunkRunNumber,
       });
     }
   }
@@ -255,50 +333,137 @@ function JsonTree({ data, depth = 0 }: { data: unknown; depth?: number }) {
   return <span className="text-gray-400">{String(data)}</span>;
 }
 
+// Run separator component
+function RunSeparator({ runNumber }: { runNumber: number }) {
+  return (
+    <div className="flex items-center gap-3 py-4 my-2">
+      <div className="flex-1 h-px bg-gradient-to-r from-transparent via-blue-500/30 to-transparent" />
+      <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-full">
+        <RotateCcw className="w-3.5 h-3.5 text-blue-400" />
+        <span className="text-xs font-medium text-blue-400">Resumed • Run {runNumber}</span>
+      </div>
+      <div className="flex-1 h-px bg-gradient-to-r from-transparent via-blue-500/30 to-transparent" />
+    </div>
+  );
+}
+
+// Collapsible wrapper component
+function CollapsibleMessage({
+  children,
+  icon,
+  iconBg,
+  label,
+  labelColor = 'text-gray-500',
+  timestamp,
+  preview,
+  defaultCollapsed = false,
+}: {
+  children: React.ReactNode;
+  icon: React.ReactNode;
+  iconBg: string;
+  label: string;
+  labelColor?: string;
+  timestamp?: string;
+  preview?: string;
+  defaultCollapsed?: boolean;
+}) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+
+  return (
+    <div className="flex gap-3 py-2">
+      <div className={`flex-shrink-0 w-8 h-8 ${iconBg} rounded-full flex items-center justify-center`}>
+        {icon}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div
+          className="flex items-center gap-2 mb-1 cursor-pointer select-none"
+          onClick={() => setCollapsed(!collapsed)}
+        >
+          {collapsed ? (
+            <ChevronRight className="w-3 h-3 text-gray-500" />
+          ) : (
+            <ChevronDown className="w-3 h-3 text-gray-500" />
+          )}
+          <span className={`text-xs ${labelColor}`}>{label}</span>
+          <Timestamp time={timestamp} />
+          {collapsed && preview && (
+            <span className="text-xs text-gray-500 truncate max-w-[300px]">{preview}</span>
+          )}
+        </div>
+        {!collapsed && children}
+      </div>
+    </div>
+  );
+}
+
 // Friendly display item component
 function FriendlyDisplayItem({ item }: { item: DisplayItem }) {
   const [expanded, setExpanded] = useState(false);
 
-  if (item.type === 'assistant') {
+  if (item.type === 'run_separator') {
+    return <RunSeparator runNumber={item.runNumber ?? 0} />;
+  }
+
+  if (item.type === 'user_prompt') {
     return (
-      <div className="flex gap-3 py-3">
-        <div className="flex-shrink-0 w-8 h-8 bg-green-600/20 rounded-full flex items-center justify-center">
-          <Bot className="w-4 h-4 text-green-400" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs text-gray-500">Assistant</span>
-            <Timestamp time={item.timestamp} />
-          </div>
-          <p className="text-sm text-gray-200 whitespace-pre-wrap">
-            {item.text}
-            {item.isStreaming && <TypingIndicator />}
-          </p>
-        </div>
-      </div>
+      <CollapsibleMessage
+        icon={<User className="w-4 h-4 text-purple-400" />}
+        iconBg="bg-purple-600/20"
+        label="You"
+        labelColor="text-purple-400"
+        preview={item.text.slice(0, 60) + (item.text.length > 60 ? '...' : '')}
+      >
+        <p className="text-sm text-gray-200 whitespace-pre-wrap">{item.text}</p>
+      </CollapsibleMessage>
+    );
+  }
+
+  if (item.type === 'assistant') {
+    const isLong = item.text.length > 500;
+    return (
+      <CollapsibleMessage
+        icon={<Bot className="w-4 h-4 text-green-400" />}
+        iconBg="bg-green-600/20"
+        label="Assistant"
+        timestamp={item.timestamp}
+        preview={item.text.slice(0, 60) + (item.text.length > 60 ? '...' : '')}
+      >
+        <p className="text-sm text-gray-200 whitespace-pre-wrap">
+          {isLong && !expanded ? item.text.slice(0, 500) + '...' : item.text}
+          {item.isStreaming && <TypingIndicator />}
+        </p>
+        {isLong && (
+          <button
+            className="text-xs text-blue-400 hover:text-blue-300 mt-1"
+            onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+          >
+            {expanded ? 'Show less' : `Show all (${item.text.length} chars)`}
+          </button>
+        )}
+      </CollapsibleMessage>
     );
   }
 
   if (item.type === 'tool_use') {
     return (
-      <div className="py-2 pl-11">
-        <div className="flex items-center gap-2 text-xs">
+      <div className="py-1 pl-11">
+        <div
+          className="flex items-center gap-2 text-xs cursor-pointer"
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? (
+            <ChevronDown className="w-3 h-3 text-gray-500" />
+          ) : (
+            <ChevronRight className="w-3 h-3 text-gray-500" />
+          )}
           <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-500/10 border border-blue-500/20 rounded-md text-blue-400">
             <Wrench className="w-3 h-3" />
             <span className="font-medium">{item.toolName}</span>
           </div>
           <Timestamp time={item.timestamp} />
-          {item.toolInput && (
-            <button
-              className="text-gray-500 hover:text-gray-400 text-xs"
-              onClick={() => setExpanded(!expanded)}
-            >
-              {expanded ? 'hide args' : 'show args'}
-            </button>
-          )}
         </div>
         {expanded && item.toolInput && (
-          <div className="mt-2 text-xs bg-gray-800/50 p-2 rounded border border-gray-700/50 overflow-x-auto font-mono">
+          <div className="mt-2 ml-5 text-xs bg-gray-800/50 p-2 rounded border border-gray-700/50 overflow-x-auto font-mono">
             <JsonTree data={item.toolInput} />
           </div>
         )}
@@ -307,14 +472,24 @@ function FriendlyDisplayItem({ item }: { item: DisplayItem }) {
   }
 
   if (item.type === 'tool_result') {
-    const isLong = item.text.length > 300;
-    const displayText = isLong && !expanded ? item.text.slice(0, 300) + '...' : item.text;
+    const isLong = item.text.length > 200;
     const isSuccess = !item.isError;
+    const [showFull, setShowFull] = useState(false);
 
     return (
-      <div className="py-2 pl-11">
-        <div className={`rounded-md border ${isSuccess ? 'bg-gray-800/30 border-gray-700/50' : 'bg-red-900/20 border-red-800/50'}`}>
-          <div className={`flex items-center gap-2 px-3 py-1.5 border-b ${isSuccess ? 'border-gray-700/50' : 'border-red-800/50'}`}>
+      <div className="py-1 pl-11">
+        <div
+          className={`rounded-md border ${isSuccess ? 'bg-gray-800/30 border-gray-700/50' : 'bg-red-900/20 border-red-800/50'}`}
+        >
+          <div
+            className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer ${isSuccess ? 'border-gray-700/50' : 'border-red-800/50'} ${expanded ? 'border-b' : ''}`}
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? (
+              <ChevronDown className="w-3 h-3 text-gray-500" />
+            ) : (
+              <ChevronRight className="w-3 h-3 text-gray-500" />
+            )}
             {isSuccess ? (
               <CheckCircle className="w-3.5 h-3.5 text-green-500" />
             ) : (
@@ -324,19 +499,28 @@ function FriendlyDisplayItem({ item }: { item: DisplayItem }) {
               {isSuccess ? 'Result' : 'Error'}
             </span>
             <Timestamp time={item.timestamp} />
+            {!expanded && (
+              <span className="text-xs text-gray-500 truncate max-w-[200px]">
+                {item.text.slice(0, 50)}{item.text.length > 50 ? '...' : ''}
+              </span>
+            )}
           </div>
-          <pre className={`p-3 text-xs whitespace-pre-wrap break-words overflow-hidden ${isSuccess ? 'text-gray-300' : 'text-red-300'}`}>
-            {displayText}
-          </pre>
-          {isLong && (
-            <div className="px-3 pb-2">
-              <button
-                className="text-xs text-blue-400 hover:text-blue-300"
-                onClick={() => setExpanded(!expanded)}
-              >
-                {expanded ? 'Show less' : `Show all (${item.text.length} chars)`}
-              </button>
-            </div>
+          {expanded && (
+            <>
+              <pre className={`p-3 text-xs whitespace-pre-wrap break-words overflow-hidden ${isSuccess ? 'text-gray-300' : 'text-red-300'}`}>
+                {isLong && !showFull ? item.text.slice(0, 200) + '...' : item.text}
+              </pre>
+              {isLong && (
+                <div className="px-3 pb-2">
+                  <button
+                    className="text-xs text-blue-400 hover:text-blue-300"
+                    onClick={(e) => { e.stopPropagation(); setShowFull(!showFull); }}
+                  >
+                    {showFull ? 'Show less' : `Show all (${item.text.length} chars)`}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -345,18 +529,16 @@ function FriendlyDisplayItem({ item }: { item: DisplayItem }) {
 
   if (item.type === 'error') {
     return (
-      <div className="flex gap-3 py-2">
-        <div className="flex-shrink-0 w-8 h-8 bg-red-600/20 rounded-full flex items-center justify-center">
-          <AlertCircle className="w-4 h-4 text-red-400" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs text-red-400">Error</span>
-            <Timestamp time={item.timestamp} />
-          </div>
-          <p className="text-sm text-red-300 whitespace-pre-wrap">{item.text}</p>
-        </div>
-      </div>
+      <CollapsibleMessage
+        icon={<AlertCircle className="w-4 h-4 text-red-400" />}
+        iconBg="bg-red-600/20"
+        label="Error"
+        labelColor="text-red-400"
+        timestamp={item.timestamp}
+        preview={item.text.slice(0, 60) + (item.text.length > 60 ? '...' : '')}
+      >
+        <p className="text-sm text-red-300 whitespace-pre-wrap">{item.text}</p>
+      </CollapsibleMessage>
     );
   }
 
@@ -469,14 +651,36 @@ function VerboseChunkView({ chunk }: { chunk: OutputChunk }) {
   );
 }
 
-export function OutputStream({ chunks, autoScroll = true, verbose = false }: OutputStreamProps) {
+export function OutputStream({ chunks, prompts, initialPrompt, autoScroll = true, verbose = false }: OutputStreamProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [userScrolled, setUserScrolled] = useState(false);
 
   // Process chunks for friendly display
   const displayItems = useMemo(() => {
     if (verbose) return null;
-    return processChunksForDisplay(chunks);
+    return processChunksForDisplay(chunks, prompts, initialPrompt);
+  }, [chunks, prompts, initialPrompt, verbose]);
+
+  // Process chunks with run separators for verbose mode
+  const verboseItemsWithSeparators = useMemo(() => {
+    if (!verbose) return null;
+
+    const items: Array<{ type: 'chunk' | 'separator'; chunk?: OutputChunk; runNumber?: number }> = [];
+    let currentRunNumber: number | undefined = undefined;
+
+    for (const chunk of chunks) {
+      const chunkRunNumber = chunk.run_number;
+      if (chunkRunNumber !== undefined && chunkRunNumber !== currentRunNumber) {
+        // Insert separator when run changes (but not for the first run)
+        if (currentRunNumber !== undefined) {
+          items.push({ type: 'separator', runNumber: chunkRunNumber });
+        }
+        currentRunNumber = chunkRunNumber;
+      }
+      items.push({ type: 'chunk', chunk });
+    }
+
+    return items;
   }, [chunks, verbose]);
 
   // Auto-scroll when new chunks arrive
@@ -512,9 +716,13 @@ export function OutputStream({ chunks, autoScroll = true, verbose = false }: Out
       onScroll={handleScroll}
     >
       {verbose ? (
-        // Verbose mode - show all chunks with pretty formatting
-        chunks.map((chunk, index) => (
-          <VerboseChunkView key={`${chunk.sequence}-${index}`} chunk={chunk} />
+        // Verbose mode - show all chunks with pretty formatting and run separators
+        verboseItemsWithSeparators?.map((item, index) => (
+          item.type === 'separator' ? (
+            <RunSeparator key={`sep-${item.runNumber}-${index}`} runNumber={item.runNumber ?? 0} />
+          ) : item.chunk ? (
+            <VerboseChunkView key={`${item.chunk.sequence}-${item.chunk.run_number ?? 0}-${index}`} chunk={item.chunk} />
+          ) : null
         ))
       ) : (
         // Friendly mode - show merged display items
