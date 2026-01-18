@@ -424,8 +424,8 @@ class VdivSolverTests:
                 )
             )
         )
-        r_top = vdiv.r_top.get()
-        r_bottom = vdiv.r_bottom.get()
+        r_top = vdiv.chain.get().resistors[0].get()
+        r_bottom = vdiv.chain.get().resistors[1].get()
         assert r_top.has_trait(F.Pickable.has_part_picked)
         assert r_bottom.has_trait(F.Pickable.has_part_picked)
 
@@ -456,7 +456,7 @@ class VdivSolverTests:
 
                     vdiv.v_in = 10V +/- 1%
                     assert vdiv.v_out within 3V to 3.2V
-                    assert vdiv.max_current within 1mA to 3mA
+                    assert vdiv.current within 1mA to 3mA
                 """
             ),
         )
@@ -480,7 +480,7 @@ class VdivSolverTests:
                 )
             )
         )
-        r_top = vdiv.r_top.get()
-        r_bottom = vdiv.r_bottom.get()
+        r_top = vdiv.chain.get().resistors[0].get()
+        r_bottom = vdiv.chain.get().resistors[1].get()
         assert r_top.has_trait(F.Pickable.has_part_picked)
         assert r_bottom.has_trait(F.Pickable.has_part_picked)

@@ -21,16 +21,16 @@ module AdjustableRegulator from Regulator:
     """
     Resistor divider from output voltage used as feedback signal to be compared against reference voltage
 
-    To manage current draw of divider, constrain any one of max_current, r_total, r_bottom or r_top
+    To manage current draw of divider, constrain current or total_resistance
     """
 
     assert feedback_divider.v_in is output_voltage
     assert feedback_divider.v_out is reference_voltage
-    assert feedback_divider.max_current within 1uA to 1mA  # TODO: remove default and make required
+    assert feedback_divider.current within 1uA to 1mA  # TODO: remove default and make required
     assert input_voltage is power_in.voltage
     assert output_voltage is power_out.voltage
 
-    power_out ~ feedback_divider.power
+    power_out ~ feedback_divider.ref_in
 
     power_in.required = True
     power_out.required = True

@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 
-import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 
@@ -46,8 +45,7 @@ class AdjustableRegulator(fabll.Node):
     Resistor divider from output voltage used as feedback signal
     to be compared against reference voltage.
 
-    To manage current draw of divider, constrain any one of:
-    max_current, r_total, r_bottom, or r_top
+    To manage current draw of divider, constrain current or total_resistance.
     """
 
     # Mark as bridgeable between power_in and power_out
