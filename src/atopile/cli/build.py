@@ -703,6 +703,20 @@ class ParallelBuildManager:
         self._Table = Table
         self._live: Live | None = None
 
+        # Set up summary directory and symlink early for live updates
+        self._summary_dir = logs_base / "archive" / NOW
+        self._summary_dir.mkdir(parents=True, exist_ok=True)
+        self._summary_file = self._summary_dir / "summary.json"
+
+        # Create latest symlink
+        latest_link = logs_base / "latest"
+        if latest_link.exists() and latest_link.is_symlink():
+            latest_link.unlink()
+        try:
+            latest_link.symlink_to(self._summary_dir, target_is_directory=True)
+        except OSError:
+            pass
+
     @classmethod
     def _make_file_uri(cls, path: Path | str, line: int | None = None) -> str:
         """Create a file:// URI with optional line number fragment."""
@@ -1104,7 +1118,43 @@ class ParallelBuildManager:
                     table = self._render_table()
                     summary = self._render_summary()
                     self._live.update(Group(table, "", summary))
+            self._write_live_summary()
             time.sleep(0.5)
+
+    def _write_live_summary(self) -> None:
+        """Write current build state to JSON summary file."""
+        import json
+
+        # Collect all build data
+        builds = [self._get_build_data(bp) for bp in self.processes.values()]
+
+        # Aggregate stats
+        total = len(self.processes)
+        success = sum(
+            1
+            for bp in self.processes.values()
+            if bp.status in (Status.SUCCESS, Status.WARNING)
+        )
+        failed = sum(
+            1 for bp in self.processes.values() if bp.status == Status.FAILED
+        )
+
+        summary = {
+            "timestamp": self._now,
+            "totals": {
+                "builds": total,
+                "successful": success,
+                "failed": failed,
+                "warnings": sum(bp.warnings for bp in self.processes.values()),
+                "errors": sum(bp.errors for bp in self.processes.values()),
+            },
+            "builds": builds,
+        }
+
+        try:
+            self._summary_file.write_text(json.dumps(summary, indent=2))
+        except Exception:
+            pass  # Don't fail the build if we can't write summary
 
     def run_until_complete(self) -> dict[str, int]:
         """
@@ -1115,6 +1165,9 @@ class ParallelBuildManager:
 
         Returns dict of display_name -> exit_code.
         """
+        # Write initial summary with all builds queued
+        self._write_live_summary()
+
         if self.verbose:
             return self._run_verbose()
         return self._run_parallel()
@@ -1258,7 +1311,11 @@ class ParallelBuildManager:
                     if all_done:
                         break
 
-                    time.sleep(0.2)
+                    # Update JSON summary (verbose mode; live mode uses _display_loop)
+                    if not live:
+                        self._write_live_summary()
+
+                    time.sleep(0.5)
 
             except KeyboardInterrupt:
                 # Terminate all processes on interrupt
@@ -1361,53 +1418,9 @@ class ParallelBuildManager:
         return data
 
     def generate_summary(self) -> Path:
-        """Generate build summary as JSON file."""
-        import json
-
-        from atopile.cli.logging_ import NOW
-
-        summary_dir = self.logs_base / "archive" / NOW
-        summary_dir.mkdir(parents=True, exist_ok=True)
-        summary_file = summary_dir / "summary.json"
-
-        # Collect all build data
-        builds = [self._get_build_data(bp) for bp in self.processes.values()]
-
-        # Aggregate stats
-        total = len(self.processes)
-        success = sum(
-            1
-            for bp in self.processes.values()
-            if bp.status in (Status.SUCCESS, Status.WARNING)
-        )
-        failed = sum(
-            1 for bp in self.processes.values() if bp.status == Status.FAILED
-        )
-
-        summary = {
-            "timestamp": NOW,
-            "totals": {
-                "builds": total,
-                "successful": success,
-                "failed": failed,
-                "warnings": sum(bp.warnings for bp in self.processes.values()),
-                "errors": sum(bp.errors for bp in self.processes.values()),
-            },
-            "builds": builds,
-        }
-
-        summary_file.write_text(json.dumps(summary, indent=2))
-
-        # Update latest symlink
-        latest_link = self.logs_base / "latest"
-        if latest_link.exists() and latest_link.is_symlink():
-            latest_link.unlink()
-        try:
-            latest_link.symlink_to(summary_dir, target_is_directory=True)
-        except OSError:
-            pass
-
-        return summary_file
+        """Generate final build summary as JSON file."""
+        self._write_live_summary()
+        return self._summary_file
 
 
 def _run_single_build() -> None:
