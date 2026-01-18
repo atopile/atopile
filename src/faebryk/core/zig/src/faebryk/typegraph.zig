@@ -889,7 +889,16 @@ pub const TypeGraph = struct {
             // Extract attributes from source MakeChild (e.g., literal values)
             var attrs = MakeChildNode.Attributes.of(info.make_child).extract_node_attributes();
             // Inherited children are not soft-created (they become authoritative)
-            _ = self.add_make_child(target_type, child_type, info.identifier, &attrs, false) catch continue;
+            const new_make_child = self.add_make_child(
+                target_type,
+                child_type,
+                info.identifier,
+                &attrs,
+                false,
+            ) catch continue;
+            if (EdgePointer.get_pointed_node_by_identifier(info.make_child, "source")) |source_chunk| {
+                _ = EdgePointer.point_to(new_make_child, source_chunk.node, "source", null);
+            }
         }
 
         // Copy MakeLink nodes from source
@@ -920,7 +929,15 @@ pub const TypeGraph = struct {
                 .dynamic = graph.DynamicAttributes.init_on_stack(),
             };
 
-            _ = self.add_make_link(target_type, lhs_ref, rhs_ref, edge_attrs) catch continue;
+            const new_make_link = self.add_make_link(
+                target_type,
+                lhs_ref,
+                rhs_ref,
+                edge_attrs,
+            ) catch continue;
+            if (EdgePointer.get_pointed_node_by_identifier(link_info.make_link, "source")) |source_chunk| {
+                _ = EdgePointer.point_to(new_make_link, source_chunk.node, "source", null);
+            }
         }
     }
 

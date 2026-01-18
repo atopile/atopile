@@ -221,11 +221,11 @@ class LogHandler(RichHandler):
     def render_message(
         self, record: logging.LogRecord, message: str
     ) -> ConsoleRenderable:
-        if record.exc_info is not None and isinstance(
-            (exc := record.exc_info[1]), ConsoleRenderable
-        ):
-            # UserExceptions are already renderables
-            return exc
+        if record.exc_info is not None:
+            exc = record.exc_info[1]
+            if isinstance(exc, ConsoleRenderable) or hasattr(exc, "__rich_console__"):
+                # Rich-renderable exceptions include source chunks
+                return exc
 
         return self._render_message(record, message)
 
@@ -679,14 +679,18 @@ class LoggingStage(Advancable):
                         msg = exc_val.message
                     else:
                         msg = str(exc_val)
-                    # Pass exc_info so LogHandler can render rich source chunks
                     logger.error(
                         msg or "Build step failed",
-                        exc_info=(exc_type, exc_val, exc_tb),
+                        exc_info=(type(exc_val), exc_val, exc_val.__traceback__),
                     )
             except Exception:
                 msg = str(exc_val) if exc_val is not None else "Build step failed"
-                logger.error(msg or "Build step failed")
+                logger.error(
+                    msg or "Build step failed",
+                    exc_info=(type(exc_val), exc_val, exc_val.__traceback__)
+                    if exc_val is not None
+                    else None,
+                )
 
         if exc_type is not None or self._error_count > 0:
             status = CompletableSpinnerColumn.Status.FAILURE
@@ -811,12 +815,19 @@ class LoggingStage(Advancable):
             self._stream_handler.setFormatter(_DEFAULT_FORMATTER)
             self._stream_handler.setLevel(logging.INFO)
         elif os.environ.get("ATO_VERBOSE_ERRORS_ONLY") == "1":
-            stream_handler = PlainStreamHandler(sys.stdout, allow_worker_console=True)
-            stream_handler.setFormatter(
-                logging.Formatter("%(levelname)s %(message)s", datefmt="[%X]")
+            stream_console = Console(
+                file=sys.stdout,
+                force_terminal=COLOR_LOGS.get(),
             )
-            stream_handler.setLevel(logging.ERROR)
-            self._stream_handler = stream_handler
+            self._stream_handler = LogHandler(
+                console=stream_console,
+                force_terminal=COLOR_LOGS.get(),
+                rich_tracebacks=False,
+                markup=False,
+                allow_worker_console=True,
+            )
+            self._stream_handler.setFormatter(_DEFAULT_FORMATTER)
+            self._stream_handler.setLevel(logging.ERROR)
 
         log_dir = self._create_log_dir()
 

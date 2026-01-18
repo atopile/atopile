@@ -1469,7 +1469,10 @@ def _run_single_build() -> None:
 
     build_name = build_names[0]
 
+    from atopile.cli.excepthook import install_worker_excepthook
+
     with config.select_build(build_name):
+        install_worker_excepthook()
         buildutil.build()
 
 

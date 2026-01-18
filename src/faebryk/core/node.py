@@ -1077,11 +1077,13 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                 )
                 type_node.g().insert_edge(edge=edge_instance)
             else:
-                t.MakeEdge(
+                make_link = t.MakeEdge(
                     lhs_reference_path=field.lhs_resolved(),
                     rhs_reference_path=field.rhs_resolved(),
                     edge=field.edge,
                 )
+                if source_chunk_node is not None:
+                    cls(make_link).set_source_pointer(source_chunk_node)
 
     @classmethod
     def _create_type(cls, t: "TypeNodeBoundTG[Self, T]") -> None:

@@ -60,5 +60,17 @@ def handle_exception(exc_type, exc_value, exc_traceback):
         sys.exit(1)
 
 
+def install_worker_excepthook() -> None:
+    def handle_worker_exception(exc_type, exc_value, exc_traceback):
+        try:
+            _handle_exception(exc_type, exc_value, exc_traceback)
+        except Exception as e:
+            sys.__excepthook__(type(e), e, e.__traceback__)
+        finally:
+            sys.exit(1)
+
+    sys.excepthook = handle_worker_exception
+
+
 if not FLOG_FMT:
     sys.excepthook = handle_exception
