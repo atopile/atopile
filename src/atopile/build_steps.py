@@ -890,7 +890,9 @@ def generate_power_tree(ctx: BuildStepContext, log_context: LoggingStage) -> Non
 )
 def generate_datasheets(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     app = ctx.require_app()
-    export_datasheets(app, config.build.paths.documentation / "datasheets")
+    export_datasheets(
+        app, config.build.paths.documentation / "datasheets", progress=log_context
+    )
 
 
 # @muster.register(

@@ -12,6 +12,7 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.http import http_client
+from faebryk.libs.util import Advancable
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ def export_datasheets(
     app: fabll.Node,
     path: Path = Path("build/documentation/datasheets"),
     overwrite: bool = False,
+    progress: Advancable | None = None,
 ):
     """
     Export all datasheets of all modules (that have a datasheet defined)
@@ -42,6 +44,7 @@ def export_datasheets(
     # Collect unique datasheet URLs
     unique_urls: set[str] = set()
     logger.info(f"Exporting datasheets to: {path}")
+
     for m in fabll.Traits.get_implementor_objects(
         F.has_datasheet.bind_typegraph(tg=app.tg)
     ):
@@ -56,6 +59,8 @@ def export_datasheets(
         unique_urls.add(url)
 
     # Download each unique URL, using a cleaned filename from the URL
+    if progress:
+        progress.set_total(len(unique_urls))
     for url in unique_urls:
         # Extract filename from URL
         url_filename = Path(url).name
@@ -76,6 +81,8 @@ def export_datasheets(
 
         filename = url_filename
         file_path = path / filename
+        if progress:
+            progress.advance()
         if file_path.exists() and not overwrite:
             logger.debug(f"Datasheet {filename} already exists, skipping download")
             continue
