@@ -80,10 +80,12 @@ def compile(
         node_modules = vscode_dir / "node_modules"
         if not node_modules.exists():
             subprocess.run(["npm", "install"], cwd=vscode_dir, check=True)
+        else:
+            subprocess.run(["npm", "update"], cwd=vscode_dir, check=True)
 
         # Package the extension (runs vscode:prepublish which does production build)
         subprocess.run(
-            ["npx", "vsce", "package", "--allow-missing-repository"],
+            ["npm", "exec", "--", "vsce", "package", "--allow-missing-repository"],
             cwd=vscode_dir,
             check=True,
         )
