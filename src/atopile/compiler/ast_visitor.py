@@ -409,11 +409,13 @@ class _TypeContextStack:
         bound_tg: fabll.TypeNodeBoundTG,
         action: AddMakeLinkAction,
     ) -> None:
-        bound_tg.MakeEdge(
+        make_link = bound_tg.MakeEdge(
             lhs_reference_path=action.lhs_path,
             rhs_reference_path=action.rhs_path,
             edge=action.edge or fbrk.EdgeInterfaceConnection.build(shallow=False),
         )
+        if action.source_chunk_node is not None:
+            fabll.Node(make_link).set_source_pointer(action.source_chunk_node)
 
 
 class AnyAtoBlock(fabll.Node):
@@ -1635,6 +1637,7 @@ class ASTVisitor:
         link_action = AddMakeLinkAction(
             lhs_path=lhs_link_path,
             rhs_path=rhs_link_path,
+            source_chunk_node=node.source.get(),
         )
         return [*lhs_actions, *rhs_actions, link_action]
 
@@ -1730,7 +1733,10 @@ class ASTVisitor:
             middle_link_path = self._field_path_to_link_path(middle_base_path)
 
             link_action = ActionsFactory.directed_link_action(
-                lhs_link_path, middle_link_path, node.get_direction()
+                lhs_link_path,
+                middle_link_path,
+                node.get_direction(),
+                source_chunk_node=node.source.get(),
             )
             nested_actions = self.visit_DirectedConnectStmt(nested_rhs)
 
@@ -1741,7 +1747,10 @@ class ASTVisitor:
         rhs_link_path = self._field_path_to_link_path(rhs_base_path)
 
         link_action = ActionsFactory.directed_link_action(
-            lhs_link_path, rhs_link_path, node.get_direction()
+            lhs_link_path,
+            rhs_link_path,
+            node.get_direction(),
+            source_chunk_node=node.source.get(),
         )
         return [*lhs_actions, *rhs_actions, link_action]
 

@@ -59,6 +59,16 @@ export function LogViewer({ buildName, stage }: LogViewerProps) {
     debug: 'text-text-muted',
   };
 
+  // Get current log file path
+  const currentLogPath = stage.log_files[activeTab];
+
+  // Copy log path to clipboard
+  const copyLogPath = () => {
+    if (currentLogPath) {
+      navigator.clipboard.writeText(currentLogPath);
+    }
+  };
+
   return (
     <div className="bg-panel-bg border border-panel-border rounded overflow-hidden flex flex-col h-full">
       {/* Tabs */}
@@ -79,8 +89,23 @@ export function LogViewer({ buildName, stage }: LogViewerProps) {
           </button>
         ))}
         <div className="flex-1" />
-        <div className="px-4 py-2 text-xs text-text-muted">
-          {stage.name}
+        <div className="flex items-center gap-2 px-4 py-2 text-xs text-text-muted">
+          <span>{stage.name}</span>
+          {currentLogPath && (
+            <>
+              <span className="text-panel-border">|</span>
+              <button
+                onClick={copyLogPath}
+                className="hover:text-text-primary transition-colors flex items-center gap-1"
+                title={`Click to copy: ${currentLogPath}`}
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                <span className="font-mono">{currentLogPath.split('/').pop()}</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
