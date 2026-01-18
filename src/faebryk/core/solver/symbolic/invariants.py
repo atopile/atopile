@@ -21,13 +21,19 @@ from faebryk.core.solver.utils import (
     pretty_expr,
 )
 from faebryk.libs.test.boundexpressions import BoundExpressions
-from faebryk.libs.util import indented_container, not_none
+from faebryk.libs.util import ConfigFlag, indented_container, not_none
 
 logger = logging.getLogger(__name__)
 if S_LOG:
     logger.setLevel(logging.DEBUG)
 
 IsSubset = F.Expressions.IsSubset
+
+INVARIANT_LOG = ConfigFlag(
+    "SINVARIANT_LOG", default=False, descr="Log invariant checks"
+)
+
+I_LOG = S_LOG and INVARIANT_LOG
 
 
 class SubsumptionCheck:
@@ -374,14 +380,14 @@ def _no_predicate_literals(
     if any(lit.op_setic_equals_singleton(True) for lit in lits.values()):
         # P!{S/P|True} -> P!
         if any(op.try_get_sibling_trait(F.Expressions.is_predicate) for op in operands):
-            if S_LOG:
+            if I_LOG:
                 logger.debug(
                     f"Remove predicate literal {pretty_expr(builder, mutator)}"
                 )
             return None
         # P {S|True} -> P!
         if pred := operands[0].try_get_sibling_trait(F.Expressions.is_assertable):
-            if S_LOG:
+            if I_LOG:
                 before = pred.as_expression.get().compact_repr(mutator.print_ctx)
                 mutator.assert_(pred)
                 after = pred.as_expression.get().compact_repr(mutator.print_ctx)
@@ -439,7 +445,7 @@ def _no_literal_inequalities(
         ExpressionBuilder, ExpressionBuilder(IsSubset, new_operands, assert_, terminate)
     )  # TODO fuck you pyright
 
-    if S_LOG:
+    if I_LOG:
         logger.debug(
             f"Converting {pretty_expr(builder, mutator)} ->"
             f" {pretty_expr(new_builder, mutator)}"
@@ -468,7 +474,7 @@ def _no_predicate_operands(
         builder.factory, new_operands, builder.assert_, builder.terminate
     )
 
-    if S_LOG and new_operands != operands:
+    if I_LOG and new_operands != operands:
         logger.debug(
             f"Predicate operands: {pretty_expr(builder, mutator)} ->"
             f" {pretty_expr(new_builder, mutator)}"
@@ -499,7 +505,7 @@ def _fold_pure_literal_operands(
     ):
         return None
 
-    if S_LOG:
+    if I_LOG:
         logger.debug(
             f"Folded ({pretty_expr(builder, mutator)}) "
             f"to literal {lit_fold.pretty_str()}"
@@ -673,12 +679,108 @@ def _no_singleton_supersets(
         return builder
 
     out = builder.with_(operands=mapped_operands)
-    if S_LOG:
+    if I_LOG:
         logger.debug(
             f"No singleton supersets: {pretty_expr(builder, mutator)} -> "
             f"{pretty_expr(out, mutator)}"
         )
     return out
+
+
+def _no_reflexive_tautologies(
+    mutator: Mutator, builder: ExpressionBuilder[Any]
+) -> ExpressionBuilder | None:
+    """
+    Reflexive expressions with identical operands are tautologies:
+    A is A -> True (drop)
+    A ss A -> True (drop)
+    A >= A -> True (drop)
+
+    Returns None to indicate the expression should be replaced with True.
+    """
+    # Check if factory has is_reflexive trait
+    if not builder.factory.bind_typegraph(
+        mutator.tg_in
+    ).check_if_instance_of_type_has_trait(F.Expressions.is_reflexive):
+        return builder
+
+    # Need at least 2 operands for reflexivity check
+    if len(builder.operands) < 2:
+        return builder
+
+    # Check if all operands are the same (by identity)
+    first_op = builder.operands[0]
+    if not all(first_op.is_same(op) for op in builder.operands[1:]):
+        return builder
+
+    # If literal, let literal folding handle it
+    if first_op.try_get_sibling_trait(F.Literals.is_literal):
+        return builder
+
+    # Reflexive expression with same operands -> always True, drop
+    if I_LOG:
+        logger.debug(f"Reflexive tautology dropped: {pretty_expr(builder, mutator)}")
+    return None
+
+
+def _deduplicate_idempotent_operands(
+    mutator: Mutator, builder: ExpressionBuilder[Any]
+) -> ExpressionBuilder:
+    """
+    Deduplicate operands in idempotent expressions:
+    Or(A, A, B) -> Or(A, B)
+    Union(A, A, B) -> Union(A, B)
+    Intersection(A, A, B) -> Intersection(A, B)
+    """
+    # Check if factory has has_idempotent_operands trait
+    if not builder.factory.bind_typegraph(
+        mutator.tg_in
+    ).check_if_instance_of_type_has_trait(F.Expressions.has_idempotent_operands):
+        return builder
+
+    # Deduplicate operands by identity (preserving order)
+    seen: set[int] = set()
+    unique_operands: list[F.Parameters.can_be_operand] = []
+    for op in builder.operands:
+        # Use node UUID for identity comparison
+        op_id = op.instance.node().get_uuid()
+        if op_id not in seen:
+            seen.add(op_id)
+            unique_operands.append(op)
+
+    if len(unique_operands) == len(builder.operands):
+        return builder
+
+    out = builder.with_(operands=unique_operands)
+    if I_LOG:
+        logger.debug(
+            f"Deduplicated idempotent operands: {pretty_expr(builder, mutator)} -> "
+            f"{pretty_expr(out, mutator)}"
+        )
+    return out
+
+
+def _no_single_operand_is(
+    mutator: Mutator, builder: ExpressionBuilder[Any]
+) -> ExpressionBuilder | None:
+    """
+    Is expressions with a single operand are tautologies:
+    Is(A) -> True (drop if predicate, else map to True)
+    Is!(A) -> drop (no information)
+
+    This handles edge cases where Is is created with only one operand.
+    Returns None to indicate the expression should be replaced with True.
+    """
+    if builder.factory is not F.Expressions.Is:
+        return builder
+
+    if len(builder.operands) != 1:
+        return builder
+
+    # Single operand Is is always True (A is A)
+    if I_LOG:
+        logger.debug(f"Single operand Is dropped: {pretty_expr(builder, mutator)}")
+    return None
 
 
 def insert_expression(
@@ -694,6 +796,9 @@ def insert_expression(
     * TODO: don't mutate terminated expressions?
     * ✓ don't use predicates as operands: Op(P!, ...) -> Op(True, ...)
     * ✓ P{S|True} -> P!, P!{S/P|False} -> Contradiction, P!{S|True} -> P!
+    * ✓ no single operand Is: Is(A) -> True
+    * ✓ no reflexive tautologies: A is A -> True, A ss A -> True, A >= A -> True
+    * ✓ deduplicate idempotent operands: Or(A, A, B) -> Or(A, B)
     * ✓ no A >! X or X >! A (create A ss! X or X ss! A)
     * ✓ no singleton supersets: f(A{S|[X]}, B, ...) -> f(X, B ...)
     * ✓ no congruence
@@ -730,6 +835,25 @@ def insert_expression(
         )
     builder = builder_
 
+    # * no single operand Is: Is(A) -> True
+    builder_ = _no_single_operand_is(mutator, builder)
+    if builder_ is None:
+        return InsertExpressionResult(
+            mutator.make_singleton(True).can_be_operand.get(), False
+        )
+    builder = builder_
+
+    # * no reflexive tautologies: A is A -> True, A ss A -> True
+    builder_ = _no_reflexive_tautologies(mutator, builder)
+    if builder_ is None:
+        return InsertExpressionResult(
+            mutator.make_singleton(True).can_be_operand.get(), False
+        )
+    builder = builder_
+
+    # * deduplicate idempotent operands: Or(A, A, B) -> Or(A, B)
+    builder = _deduplicate_idempotent_operands(mutator, builder)
+
     # * no A >! X or X >! A (create A ss! X or X ss! A)
     builder = _no_literal_inequalities(mutator, builder)
 
@@ -758,7 +882,7 @@ def insert_expression(
                 if congruent_assertable in mutator.transformations.asserted:
                     mutator.transformations.asserted.remove(congruent_assertable)
 
-        if S_LOG:
+        if I_LOG:
             logger.debug(
                 f"Found congruent expression for {pretty_expr(builder, mutator)}:"
                 f" {congruent_op.pretty()}"
@@ -771,7 +895,7 @@ def insert_expression(
         mutator.tg_in
     ).check_if_instance_of_type_has_trait(F.Expressions.is_assertable):
         subsume_res = find_subsuming_expression(mutator, builder)
-        if subsume_res.subsumed and S_LOG:
+        if subsume_res.subsumed and I_LOG:
             ctx = mutator.mutation_map.print_ctx
             reprs = [s.compact_repr(ctx) for s in subsume_res.subsumed]
             logger.debug(f"Subsumed: {indented_container(reprs)}")
@@ -784,7 +908,7 @@ def insert_expression(
         if most_constrained_expr := subsume_res.most_constrained_expr:
             match most_constrained_expr:
                 case F.Expressions.is_expression():
-                    if S_LOG:
+                    if I_LOG:
                         orig = pretty_expr(builder, mutator)
                         new = pretty_expr(most_constrained_expr, mutator)
                         if new == orig:
@@ -795,11 +919,11 @@ def insert_expression(
                     )
                 case ExpressionBuilder():
                     builder = most_constrained_expr
-                    if S_LOG:
+                    if I_LOG:
                         logger.debug(f"Subsume adjust {pretty_expr(builder, mutator)}")
 
                 case SubsumptionCheck.Result._DISCARD():
-                    if S_LOG:
+                    if I_LOG:
                         logger.debug(
                             f"Subsume discard: {pretty_expr(builder, mutator)}"
                         )
@@ -833,7 +957,7 @@ def insert_expression(
         and not builder.terminate
         and not builder.indexed_ops_with_trait(F.Expressions.is_expression)
     ):
-        if S_LOG:
+        if I_LOG:
             logger.debug(f"Terminate ss lit: {pretty_expr(builder, mutator)}")
         builder = builder.with_(terminate=True)
 
@@ -854,7 +978,7 @@ def wrap_insert_expression(
         expr_already_exists_in_old_graph=expr_already_exists_in_old_graph,
         allow_uncorrelated_congruence_match=allow_uncorrelated_congruence_match,
     )
-    if not S_LOG:
+    if not I_LOG:
         return res
 
     src_dbg = f"`{pretty_expr(builder, mutator)}`"
@@ -1433,6 +1557,213 @@ class TestInvariantsSimple:
         expr = is_result.out_operand.get_sibling_trait(F.Expressions.is_expression)
         canon = expr.as_canonical.try_get()
         assert canon is not None
+
+    # --- Invariant: no reflexive tautologies ---
+
+    @staticmethod
+    def test_reflexive_is_same_operands():
+        """
+        Invariant: A is A -> True
+        Is expression with same operands should return True literal.
+        """
+        mutator = TestInvariantsSimple._setup_mutator()
+
+        p = (
+            F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
+            .create_instance(mutator.G_out)
+            .setup(is_unit=None, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
+        )
+        p_op = p.can_be_operand.get()
+
+        # Create Is(p, p) - should be dropped and return True
+        result = mutator.create_check_and_insert_expression(
+            F.Expressions.Is,
+            p_op,
+            p_op,
+            assert_=True,
+        )
+
+        # Result should be a True literal (tautology)
+        assert result.out_operand is not None
+        lit = result.out_operand.try_get_sibling_trait(F.Literals.is_literal)
+        assert lit is not None and lit.op_setic_equals_singleton(True)
+
+    @staticmethod
+    def test_reflexive_subset_same_operands():
+        """
+        Invariant: A ss A -> True
+        IsSubset expression with same operands should return True literal.
+        """
+        mutator = TestInvariantsSimple._setup_mutator()
+
+        p = (
+            F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
+            .create_instance(mutator.G_out)
+            .setup(is_unit=None, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
+        )
+        p_op = p.can_be_operand.get()
+
+        # Create IsSubset(p, p) - should be dropped and return True
+        result = mutator.create_check_and_insert_expression(
+            F.Expressions.IsSubset,
+            p_op,
+            p_op,
+            assert_=True,
+        )
+
+        # Result should be a True literal (tautology)
+        assert result.out_operand is not None
+        lit = result.out_operand.try_get_sibling_trait(F.Literals.is_literal)
+        assert lit is not None and lit.op_setic_equals_singleton(True)
+
+    @staticmethod
+    def test_reflexive_tautology_direct():
+        """
+        Tests _no_reflexive_tautologies directly.
+        """
+        mutator = TestInvariantsSimple._setup_mutator()
+
+        p = (
+            F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
+            .create_instance(mutator.G_out)
+            .setup(is_unit=None, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
+        )
+        p_op = p.can_be_operand.get()
+
+        # Test Is(p, p) directly
+        builder = ExpressionBuilder(
+            F.Expressions.Is,
+            [p_op, p_op],
+            assert_=True,
+            terminate=False,
+        )
+
+        result = _no_reflexive_tautologies(mutator, builder)
+        assert result is None  # Should be dropped (tautology)
+
+    # --- Invariant: deduplicate idempotent operands ---
+
+    @staticmethod
+    def test_deduplicate_or_operands():
+        """
+        Invariant: Or(A, A, B) -> Or(A, B)
+        Or expression with duplicate operands should be deduplicated.
+        """
+        mutator = TestInvariantsSimple._setup_mutator()
+
+        p = (
+            F.Parameters.BooleanParameter.bind_typegraph(mutator.tg_out)
+            .create_instance(mutator.G_out)
+            .setup()
+        )
+        q = (
+            F.Parameters.BooleanParameter.bind_typegraph(mutator.tg_out)
+            .create_instance(mutator.G_out)
+            .setup()
+        )
+        p_op = p.can_be_operand.get()
+        q_op = q.can_be_operand.get()
+
+        # Test Or(p, p, q) directly
+        builder = ExpressionBuilder(
+            F.Expressions.Or,
+            [p_op, p_op, q_op],
+            assert_=False,
+            terminate=False,
+        )
+
+        result = _deduplicate_idempotent_operands(mutator, builder)
+        # Should have only 2 operands (p, q)
+        assert len(result.operands) == 2
+
+    @staticmethod
+    def test_deduplicate_preserves_order():
+        """
+        Invariant: Or(A, B, A) -> Or(A, B) (preserves order)
+        Deduplication should preserve order of first occurrence.
+        """
+        mutator = TestInvariantsSimple._setup_mutator()
+
+        p = (
+            F.Parameters.BooleanParameter.bind_typegraph(mutator.tg_out)
+            .create_instance(mutator.G_out)
+            .setup()
+        )
+        q = (
+            F.Parameters.BooleanParameter.bind_typegraph(mutator.tg_out)
+            .create_instance(mutator.G_out)
+            .setup()
+        )
+        p_op = p.can_be_operand.get()
+        q_op = q.can_be_operand.get()
+
+        # Test Or(p, q, p) directly
+        builder = ExpressionBuilder(
+            F.Expressions.Or,
+            [p_op, q_op, p_op],
+            assert_=False,
+            terminate=False,
+        )
+
+        result = _deduplicate_idempotent_operands(mutator, builder)
+        # Should have only 2 operands in order (p, q)
+        assert len(result.operands) == 2
+        assert result.operands[0].is_same(p_op)
+        assert result.operands[1].is_same(q_op)
+
+    # --- Invariant: no single operand Is ---
+
+    @staticmethod
+    def test_single_operand_is_asserted():
+        """
+        Invariant: Is!(A) -> drop (True)
+        Is expression with single operand should return True.
+        """
+        mutator = TestInvariantsSimple._setup_mutator()
+
+        p = (
+            F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
+            .create_instance(mutator.G_out)
+            .setup(is_unit=None, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
+        )
+        p_op = p.can_be_operand.get()
+
+        # Test Is(p) directly
+        builder = ExpressionBuilder(
+            F.Expressions.Is,
+            [p_op],
+            assert_=True,
+            terminate=False,
+        )
+
+        result = _no_single_operand_is(mutator, builder)
+        assert result is None  # Should be dropped
+
+    @staticmethod
+    def test_single_operand_is_unasserted():
+        """
+        Invariant: Is(A) -> True
+        Unasserted Is with single operand should also return True.
+        """
+        mutator = TestInvariantsSimple._setup_mutator()
+
+        p = (
+            F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
+            .create_instance(mutator.G_out)
+            .setup(is_unit=None, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
+        )
+        p_op = p.can_be_operand.get()
+
+        # Test Is(p) directly (unasserted)
+        builder = ExpressionBuilder(
+            F.Expressions.Is,
+            [p_op],
+            assert_=False,
+            terminate=False,
+        )
+
+        result = _no_single_operand_is(mutator, builder)
+        assert result is None  # Should be dropped
 
 
 class TestInvariantsCombinations:

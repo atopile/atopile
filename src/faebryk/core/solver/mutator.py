@@ -949,6 +949,22 @@ class MutationMap:
                 tg_out
             ).get_instances(g=g_out)
 
+            mapping = {
+                F.Parameters.is_parameter_operatable.bind_instance(
+                    g.bind(node=op.instance.node())
+                ): op
+                for op in all_ops_out
+            }
+            # copy over source name
+            for p_old, p_new in mapping.items():
+                if (p_new_p := p_new.as_parameter.try_get()) is None:
+                    continue
+
+                print_context.override_name(
+                    p_new_p,
+                    fabll.Traits(p_old).get_obj_raw().get_full_name(include_uuid=False),
+                )
+
             if S_LOG:
                 logger.debug(
                     "Relevant root predicates: "
@@ -992,12 +1008,7 @@ class MutationMap:
                     print_ctx=print_context,
                     transformations=Transformations(
                         print_ctx=print_context,
-                        mutated={
-                            F.Parameters.is_parameter_operatable.bind_instance(
-                                g.bind(node=op.instance.node())
-                            ): op
-                            for op in all_ops_out
-                        },
+                        mutated=mapping,
                     ),
                     G_in=g,
                     G_out=g_out,
@@ -1319,6 +1330,11 @@ class Mutator:
             new_param = param.copy_into(self.G_out).get_sibling_trait(
                 F.Parameters.is_parameter_operatable
             )
+
+        # needed for non-copy transfer
+        self.print_ctx.override_name(
+            new_param.as_parameter.force_get(), self.print_ctx.get_or_create_name(param)
+        )
 
         return self._mutate(
             p_po,

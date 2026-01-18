@@ -110,8 +110,7 @@ class ResistorVoltageDivider(fabll.Node):
         ),
     ]
 
-    # Link interface voltages to parameters
-    _equations = [
+    _aliases = [
         F.Expressions.Is.MakeChild(
             [v_in],
             [ref_in, F.ElectricPower.voltage],
@@ -122,6 +121,10 @@ class ResistorVoltageDivider(fabll.Node):
             [ref_out, F.ElectricPower.voltage],
             assert_=True,
         ),
+    ]
+
+    # Link interface voltages to parameters
+    _equations = [
         F.Expressions.Is.MakeChild(
             [total_resistance],
             [chain, _ResistorChain.total_resistance],
@@ -146,8 +149,32 @@ class ResistorVoltageDivider(fabll.Node):
         F.Expressions.Is.MakeChild(
             [current],
             [
-                _max_current_div := F.Expressions.Divide.MakeChild(
+                _v_r_div := F.Expressions.Divide.MakeChild(
                     [v_in],
+                    [total_resistance],
+                )
+            ],
+            assert_=True,
+        ),
+    ]
+
+    # helper equations for the solver
+    _rewrite_equations = [
+        F.Expressions.Is.MakeChild(
+            [total_resistance],
+            [
+                _v_i_div := F.Expressions.Divide.MakeChild(
+                    [v_in],
+                    [current],
+                )
+            ],
+            assert_=True,
+        ),
+        F.Expressions.Is.MakeChild(
+            [chain, _ResistorChain.resistors[1], F.Resistor.resistance],
+            [
+                _ratio_r_mul := F.Expressions.Multiply.MakeChild(
+                    [ratio],
                     [total_resistance],
                 )
             ],
@@ -220,10 +247,13 @@ class VdivSolverTests:
         )
 
         F.is_alias_bus_parameter.resolve_bus_parameters(g=g, tg=tg)
-        for p_o in F.Expressions.is_expression.bind_typegraph(tg).get_instances():
-            print(p_o.compact_repr(use_name=True))
-
         solver = Solver()
+        # total_r = solver.simplify_and_extract_superset(
+        #     app.rdiv.get().total_resistance.get().is_parameter.get(),
+        #     terminal=True,
+        # )
+        # print(total_r.pretty_str())
+        # return
         pick_part_recursively(app, solver)
 
         r_top = (

@@ -383,11 +383,17 @@ class is_parameter_operatable(fabll.Node):
             out += f"{{⊇|{format_lit(subset)}}}"
 
         if superset is not None:
-            out += f"{{⊆|{format_lit(superset)}}}"
             if superset.op_setic_equals_singleton(True):
                 out = "✓"
             elif superset.op_setic_equals_singleton(False):
                 out = "✗"
+            else:
+                formatted = format_lit(superset)
+                if "{ℝ+}" in formatted:
+                    # careful drops unit, but unit is included in param anyway
+                    out = "⁺"
+                else:
+                    out += f"{{⊆|{formatted}}}"
 
         return out
 
@@ -480,14 +486,22 @@ class ReprContext:
             self.mapping[param.instance.node().get_uuid()] = id
 
     variable_mapping: VariableMapping = field(default_factory=VariableMapping)
+    override_names: dict[int, str] = field(default_factory=dict)
+
+    def override_name(self, param: "is_parameter", name: str) -> None:
+        self.override_names[param.instance.node().get_uuid()] = name
 
     def get_or_create_name(self, param: "is_parameter") -> str:
-        if id := self.variable_mapping.try_get_id(param):
-            return _param_id_to_human_str(id)
-        next_id = self.variable_mapping.next_id
-        self.variable_mapping.set_id(param, next_id)
-        self.variable_mapping.next_id += 1
-        return _param_id_to_human_str(next_id)
+        if name := self.override_names.get(param.instance.node().get_uuid()):
+            return name
+
+        if (id := self.variable_mapping.try_get_id(param)) is None:
+            next_id = self.variable_mapping.next_id
+            self.variable_mapping.set_id(param, next_id)
+            self.variable_mapping.next_id += 1
+            id = next_id
+
+        return _param_id_to_human_str(id)
 
     def __hash__(self) -> int:
         return hash(id(self))
@@ -1485,15 +1499,15 @@ def test_compact_repr():
     exprstr = expr_po.compact_repr(context, no_lit_suffix=True)
     assert exprstr == "((A[V] + B[V]) + 5V) * 10"
     exprstr_w_lit_suffix = expr_po.compact_repr(context)
-    assert exprstr_w_lit_suffix == "((C[V]{⊆|{ℝ+}V} + B[V]{⊆|{ℝ+}V}) + 5V) * 10"
+    assert exprstr_w_lit_suffix == "((A[V]⁺ + B[V]⁺) + 5V) * 10"
 
     # Test p2 + p1 (order matters in repr context - p2 was already assigned 'B')
     expr2 = Add.c(p2_op, p1_op)
     expr2_po = expr2.as_parameter_operatable.force_get()
     expr2str = expr2_po.compact_repr(context, no_lit_suffix=True)
-    assert expr2str == "B[V] + C[V]"
+    assert expr2str == "B[V] + A[V]"
     expr2str_w_lit_suffix = expr2_po.compact_repr(context)
-    assert expr2str_w_lit_suffix == "B[V]{⊆|{ℝ+}V} + C[V]{⊆|{ℝ+}V}"
+    assert expr2str_w_lit_suffix == "B[V]⁺ + A[V]⁺"
 
     # Create a boolean parameter (p3 will be 'D' after A is used for superset literal)
     p3 = BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
@@ -1503,9 +1517,9 @@ def test_compact_repr():
     expr3 = Not.c(p3_op)
     expr3_po = expr3.as_parameter_operatable.force_get()
     expr3str = expr3_po.compact_repr(context, no_lit_suffix=True)
-    assert expr3str == "¬D"
+    assert expr3str == "¬C"
     expr3str_w_lit_suffix = expr3_po.compact_repr(context)
-    assert expr3str_w_lit_suffix == "¬D"
+    assert expr3str_w_lit_suffix == "¬C"
 
     # Create 10 V literal for comparison
     ten_volt = literals.create_numbers_from_singleton(value=10.0, unit=volt_unit)
@@ -1518,12 +1532,9 @@ def test_compact_repr():
     expr4 = And.c(expr3, ge_expr)
     expr4_po = expr4.as_parameter_operatable.force_get()
     expr4str = expr4_po.compact_repr(context, no_lit_suffix=True)
-    assert expr4str == "¬D ∧ ((((C[V] + B[V]) + 5V) * 10) ≥ 10V)"
+    assert expr4str == "¬C ∧ ((((A[V] + B[V]) + 5V) * 10) ≥ 10V)"
     expr4str_w_lit_suffix = expr4_po.compact_repr(context)
-    assert (
-        expr4str_w_lit_suffix
-        == "¬D ∧ ((((C[V]{⊆|{ℝ+}V} + B[V]{⊆|{ℝ+}V}) + 5V) * 10) ≥ 10V)"
-    )
+    assert expr4str_w_lit_suffix == "¬C ∧ ((((A[V]⁺ + B[V]⁺) + 5V) * 10) ≥ 10V)"
 
     # Helper to create dimensionless numeric parameters
     def make_param():
@@ -1535,7 +1546,7 @@ def test_compact_repr():
 
     # Create parameters to exhaust letters E-Z (ord("Z") - ord("D") - 1 = 21)
     # D is used by p3, A is used by superset literal, B by p2, C by p1
-    manyps = times(ord("Z") - ord("D") - 1, make_param)
+    manyps = times(ord("Z") - ord("C") - 1, make_param)
     # Sum them to register in context
     if manyps:
         ops = [p.can_be_operand.get() for p in manyps]
@@ -1548,14 +1559,14 @@ def test_compact_repr():
     pZ_repr = pZ.is_parameter.get().compact_repr(context, no_lit_suffix=True)
     assert pZ_repr == "Z"
     pZ_repr_w_lit_suffix = pZ.is_parameter.get().compact_repr(context)
-    assert pZ_repr_w_lit_suffix == "Z{⊆|{ℝ+}}"
+    assert pZ_repr_w_lit_suffix == "Z⁺"
 
     # Next should wrap to lowercase 'a'
     pa = make_param()
     pa_repr = pa.is_parameter.get().compact_repr(context, no_lit_suffix=True)
     assert pa_repr == "a"
     pa_repr_w_lit_suffix = pa.is_parameter.get().compact_repr(context)
-    assert pa_repr_w_lit_suffix == "a{⊆|{ℝ+}}"
+    assert pa_repr_w_lit_suffix == "a⁺"
 
     # Create parameters b through z (ord("z") - ord("a") = 25)
     manyps2 = times(ord("z") - ord("a"), make_param)
@@ -1570,13 +1581,13 @@ def test_compact_repr():
     palpha_repr = palpha.is_parameter.get().compact_repr(context, no_lit_suffix=True)
     assert palpha_repr == "α"
     palpha_repr_w_lit_suffix = palpha.is_parameter.get().compact_repr(context)
-    assert palpha_repr_w_lit_suffix == "α{⊆|{ℝ+}}"
+    assert palpha_repr_w_lit_suffix == "α⁺"
 
     pbeta = make_param()
     pbeta_repr = pbeta.is_parameter.get().compact_repr(context, no_lit_suffix=True)
     assert pbeta_repr == "β"
     pbeta_repr_w_lit_suffix = pbeta.is_parameter.get().compact_repr(context)
-    assert pbeta_repr_w_lit_suffix == "β{⊆|{ℝ+}}"
+    assert pbeta_repr_w_lit_suffix == "β⁺"
 
     # Create parameters γ through ω (ord("ω") - ord("β") = 23)
     manyps3 = times(ord("ω") - ord("β"), make_param)
@@ -1591,7 +1602,7 @@ def test_compact_repr():
     pAA_repr = pAA.is_parameter.get().compact_repr(context, no_lit_suffix=True)
     assert pAA_repr == "A₁"
     pAA_repr_w_lit_suffix = pAA.is_parameter.get().compact_repr(context)
-    assert pAA_repr_w_lit_suffix == "A₁{⊆|{ℝ+}}"
+    assert pAA_repr_w_lit_suffix == "A₁⁺"
 
 
 @pytest.mark.xfail(reason="TODO is_congruent_to not implemeneted yet")

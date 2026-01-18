@@ -586,21 +586,18 @@ class MutatorUtils:
                     domain=F.Parameters.NumericParameter.DOMAIN_SKIP,
                 )
             )
-            return new.is_parameter.get()
         elif p_type_repr.isinstance(F.Parameters.BooleanParameter):
             new = (
                 F.Parameters.BooleanParameter.bind_typegraph(self.mutator.tg_out)
                 .create_instance(self.mutator.G_out)
                 .setup()
             )
-            return new.is_parameter.get()
         elif p_type_repr.isinstance(F.Parameters.StringParameter):
             new = (
                 F.Parameters.StringParameter.bind_typegraph(self.mutator.tg_out)
                 .create_instance(self.mutator.G_out)
                 .setup()
             )
-            return new.is_parameter.get()
         elif p_type_repr.isinstance(F.Parameters.EnumParameter):
             enum = F.Parameters.EnumParameter.check_single_single_enum(
                 [fabll.Traits(p).get_obj(F.Parameters.EnumParameter) for p in params]
@@ -610,9 +607,14 @@ class MutatorUtils:
                 .create_instance(self.mutator.G_out)
                 .setup(enum=enum)
             )
-            return new.is_parameter.get()
         else:
             raise TypeError(f"Unknown parameter type: {p_type_repr}")
+        new_p = new.is_parameter.get()
+        self.mutator.print_ctx.override_name(
+            new_p,
+            self.mutator.print_ctx.get_or_create_name(params[0]),
+        )
+        return new_p
 
     @staticmethod
     def hack_get_expr_type(

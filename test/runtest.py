@@ -27,11 +27,44 @@ class DiscoveryMode(str, Enum):
     pytest = "pytest"
 
 
+def _find_class_fixtures(cls) -> dict[str, Callable]:
+    """Find all @pytest.fixture decorated methods in the class hierarchy."""
+    from _pytest.fixtures import FixtureFunctionDefinition
+
+    fixtures = {}
+    for klass in cls.__mro__:
+        for name, attr in vars(klass).items():
+            if isinstance(attr, FixtureFunctionDefinition):
+                fixtures[name] = attr
+    return fixtures
+
+
 def create_method_wrapper(cls, method_name):
     method = getattr(cls, method_name)
+    class_fixtures = _find_class_fixtures(cls)
 
     def wrapper(**kwargs):
         instance = cls()
+
+        # Resolve class-level fixtures for parameters not already in kwargs
+        import inspect
+
+        sig = inspect.signature(method)
+        for param_name in sig.parameters:
+            if param_name == "self":
+                continue
+            if param_name in kwargs:
+                continue
+            if param_name in class_fixtures:
+                # Call the underlying fixture function on the instance
+                # Fixtures are wrapped in FixtureFunctionDefinition which can't
+                # be called directly, so we access the original via __wrapped__
+                fixture_def = getattr(instance, param_name)
+                if hasattr(fixture_def, "__wrapped__"):
+                    kwargs[param_name] = fixture_def.__wrapped__(instance)
+                else:
+                    kwargs[param_name] = fixture_def()
+
         if hasattr(instance, "setup_method"):
             instance.setup_method()
         try:

@@ -3,66 +3,14 @@
 
 import logging
 from dataclasses import dataclass
-from typing import Callable
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
-from faebryk.libs.util import OrderedSet, partition, unique
+from faebryk.libs.util import OrderedSet, partition
 
 logger = logging.getLogger(__name__)
-
-
-@algorithm("Reflexive predicates", terminal=False)
-def reflexive_predicates(mutator: Mutator):
-    """
-    A not lit (done by literal_folding)
-    A is A -> True
-    A ss A -> True
-    A >= A -> True
-    if predicate then terminate
-    """
-
-    reflexives_e = mutator.get_expressions(
-        sort_by_depth=True, required_traits=(F.Expressions.is_reflexive,)
-    )
-    for reflexive_e in reflexives_e:
-        if not reflexive_e.as_parameter_operatable.get().get_operations():
-            continue
-        operands = reflexive_e.get_operands()
-        if operands[0].as_literal.try_get():
-            continue
-        if len(operands) >= 2 and operands[0] is not operands[1]:
-            continue
-
-        mutator.create_check_and_insert_expression(
-            F.Expressions.IsSubset,
-            reflexive_e.as_operand.get(),
-            mutator.make_singleton(True).can_be_operand.get(),
-            assert_=True,
-            terminate=True,
-        )
-        mutator.terminate(reflexive_e)
-
-
-@algorithm("Idempotent deduplicate", terminal=False)
-def idempotent_deduplicate(mutator: Mutator):
-    """
-    Or(A, A, B) -> Or(A, B)
-    Union(A, A, B) -> Union(A, B)
-    Intersection(A, A, B) -> Intersection(A, B)
-    """
-
-    exprs = mutator.get_expressions(
-        sort_by_depth=True, required_traits=(F.Expressions.has_idempotent_operands,)
-    )
-    for expr in exprs:
-        # TODO i think most idempotent expressions are using sets to represent operands
-        # thus this is never going to trigger
-        unique_operands = unique(expr.get_operands(), key=lambda x: x)
-        if len(unique_operands) != len(expr.get_operands()):
-            mutator.mutate_expression(expr, operands=unique_operands)
 
 
 @algorithm("Idempotent unpack", terminal=False)

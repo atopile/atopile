@@ -65,7 +65,6 @@ def resolve_alias_classes(mutator: Mutator):
         full_eq.add_eq(*ops)
     p_eq_classes = full_eq.get(only_multi=True)
 
-    # Make new param repre for alias classes
     for eq_class in p_eq_classes:
         eq_class_params = [p_po for p in eq_class if (p_po := p.as_parameter.try_get())]
         eq_class_exprs = {p_e for p in eq_class if (p_e := p.as_expression.try_get())}
@@ -117,21 +116,26 @@ def resolve_alias_classes(mutator: Mutator):
         representative = mutator.utils.merge_parameters(eq_class_params)
 
         for p in eq_class_params:
+            p_po = p.as_parameter_operatable.get()
             mutator._mutate(
-                p.as_parameter_operatable.get(),
+                p_po,
                 representative.as_parameter_operatable.get(),
             )
 
     for eq_class in p_eq_classes:
-        eq_class_params = [p for p in eq_class if (p_po := p.as_parameter.try_get())]
+        # Use same pattern as first loop: get is_parameter objects
+        eq_class_params = [p_po for p in eq_class if (p_po := p.as_parameter.try_get())]
         eq_class_exprs = {p_e for p in eq_class if (p_e := p.as_expression.try_get())}
 
         if eq_class_params:
             p_0 = eq_class_params[0]
+            # Convert to is_parameter_operatable to check mutation status
+            # (matches what first loop uses as key in _mutate)
+            p_0_po = p_0.as_parameter_operatable.get()
             # See len(alias_class_params) == 1 case above
-            if not mutator.has_been_mutated(p_0):
+            if not mutator.has_been_mutated(p_0_po):
                 continue
-            representative = mutator.get_mutated(p_0)
+            representative = mutator.get_mutated(p_0_po)
         else:
             # If not params or lits in class, create a new param as representative
             # for expressions
@@ -148,17 +152,19 @@ def resolve_alias_classes(mutator: Mutator):
 
         for e in eq_class_exprs:
             e_po = e.as_parameter_operatable.get()
-            mutator.soft_replace(e_po, representative)
-            if mutator.utils.are_aliased(e_po, *eq_class_params):
-                continue
+            # IMPORTANT: Create Is predicate BEFORE soft_replace
+            # Otherwise soft_replace makes e_po -> representative, and the Is becomes
+            # Is(representative, representative) which is reflexive and gets folded to True
             mutator.create_check_and_insert_expression(
                 F.Expressions.Is,
                 e.as_operand.get(),
                 representative.as_operand.get(),
                 from_ops=list(eq_class),
                 assert_=True,
-                terminate=True,
+                terminate=False,  # Don't terminate so superset can propagate
             )
+            # Then soft_replace for other uses of this expression
+            mutator.soft_replace(e_po, representative)
 
 
 @algorithm("Transitive subset", terminal=False)

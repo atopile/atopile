@@ -25,6 +25,7 @@ from faebryk.core.solver.mutator import (
 from faebryk.core.solver.symbolic import (
     expression_groups,
     expression_wise,
+    rewrite,
     structural,
 )
 from faebryk.core.solver.utils import (
@@ -52,8 +53,6 @@ class Solver:
             structural.resolve_alias_classes,
             structural.distribute_literals_across_alias_classes,
             expression_groups.associative_flatten,
-            expression_groups.reflexive_predicates,
-            expression_groups.idempotent_deduplicate,
             expression_groups.idempotent_unpack,
             expression_groups.involutory_fold,
             expression_groups.unary_identity_unpack,
@@ -421,10 +420,11 @@ class Solver:
         value: F.Parameters.is_parameter,
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
+        terminal: bool = False,
     ) -> F.Literals.is_literal:
         g = g or value.g
         tg = tg or value.tg
-        self.simplify(g=g, tg=tg, terminal=False, relevant=[value.as_operand.get()])
+        self.simplify(g=g, tg=tg, terminal=terminal, relevant=[value.as_operand.get()])
         return self.extract_superset(value, g=g, tg=tg)
 
 
