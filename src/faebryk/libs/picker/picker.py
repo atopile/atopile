@@ -9,10 +9,15 @@ from itertools import combinations
 from textwrap import indent
 from typing import Iterable
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.utils import Contradiction
+from faebryk.libs.app.keep_picked_parts import (
+    get_pcb_sourced_constraints,
+    has_pcb_source,
+)
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     Advancable,
@@ -339,6 +344,69 @@ def _infer_uncorrelated_params(tree: Tree["F.Pickable.is_pickable"]):
     )
 
 
+def _format_pcb_contradiction_error(
+    contradiction: Contradiction, tg: fbrk.TypeGraph
+) -> str:
+    """
+    Format a nice error message when PCB constraints conflict with design.
+
+    Checks if any PCB-sourced constraints are involved in the contradiction
+    and includes details about the conflicting values.
+    """
+    base_msg = str(contradiction)
+
+    # Find PCB-sourced constraints
+    pcb_constraints = get_pcb_sourced_constraints(tg)
+    if not pcb_constraints:
+        return base_msg
+
+    # Find which PCB constraints might be involved
+    involved_pcb: list[tuple[fabll.Node, has_pcb_source]] = []
+    for owner, pcb_source in pcb_constraints:
+        # Check if this is a parameter constraint
+        if pcb_source.is_param_constraint():
+            involved_pcb.append((owner, pcb_source))
+
+    if not involved_pcb:
+        return base_msg
+
+    # Build a nice error message
+    lines = [
+        "Design constraints conflict with values saved in PCB.",
+        "",
+        "The following PCB-saved values conflict with your design:",
+    ]
+
+    for owner, pcb_source in involved_pcb:
+        module_path = pcb_source.module_path
+        param_name = pcb_source.param_name
+
+        # Try to get the PCB value from the constraint
+        pcb_value_str = "unknown"
+        if owner.has_trait(F.Expressions.is_expression):
+            expr = owner.get_trait(F.Expressions.is_expression)
+            operands = expr.get_operands()
+            for operand in operands:
+                if lit := operand.as_literal.try_get():
+                    pcb_value_str = lit.pretty_str()
+                    break
+
+        lines.append(f"  - {module_path}.{param_name}: PCB has {pcb_value_str}")
+
+    lines.extend(
+        [
+            "",
+            "To fix this, either:",
+            "  1. Update your design constraints to match the PCB values",
+            "  2. Run a regular build (without --keep-picked-parts) to re-pick parts",
+            "",
+            f"Original error: {contradiction.msg}",
+        ]
+    )
+
+    return "\n".join(lines)
+
+
 def pick_topologically(
     tree: Tree["F.Pickable.is_pickable"],
     solver: Solver,
@@ -449,15 +517,17 @@ def pick_topologically(
     if relevant:
         with timings.measure("verify design"):
             logger.info("Verify design")
-            try:
-                # hack
-                n = next(iter(relevant), None)
-                if n:
-                    g = n.g
-                    tg = n.tg
+            # hack
+            n = next(iter(relevant), None)
+            if n:
+                g = n.g
+                tg = n.tg
+                try:
                     solver.simplify(g, tg, terminal=True, relevant=relevant)
-            except Contradiction as e:
-                raise PickVerificationError(str(e), *tree_backup) from e
+                except Contradiction as e:
+                    # Check if PCB-sourced constraints are involved
+                    error_msg = _format_pcb_contradiction_error(e, tg)
+                    raise PickVerificationError(error_msg, *tree_backup) from e
         logger.info(f"Verified design in {timings.get_formatted('verify design')}")
     else:
         logger.info("No relevant parameters to verify design with")

@@ -209,12 +209,12 @@ class Component:
         g: graph.GraphView,
         tg: fbrk.TypeGraph,
     ) -> dict[str, F.Literals.is_literal | None]:
-        def deserialize(v):
+        def deserialize(k, v):
             if v is None:
                 return None
             return F.Literals.is_literal.deserialize(v, g=g, tg=tg)
 
-        return {k: deserialize(v) for k, v in self.attributes.items()}
+        return {k: deserialize(k, v) for k, v in self.attributes.items()}
 
     def attach(self, pickable_module: F.Pickable.is_pickable, qty: int = 1):
         module = pickable_module.get_pickable_node()
@@ -227,7 +227,7 @@ class Component:
         module_with_fp = module.get_trait(F.Footprints.can_attach_to_footprint)
         lcsc_attach(module_with_fp, self.lcsc_display)
 
-        has_part_picked_trait = fabll.Traits.create_and_add_instance_to(
+        fabll.Traits.create_and_add_instance_to(
             node=module, trait=F.Pickable.has_part_picked
         ).setup(
             PickedPartLCSC(
@@ -242,11 +242,6 @@ class Component:
                     preferred=bool(self.is_preferred),
                 ),
             )
-        )
-
-        # Store attribute literals for display purposes (e.g., BOM Value field)
-        has_part_picked_trait.set_attributes(
-            self.attribute_literals(g=module.g, tg=module.tg)
         )
 
         fabll.Traits.create_and_add_instance_to(
@@ -276,6 +271,7 @@ class Component:
                 # Get the parameter traits
                 param_operand = param.as_operand.get()
 
+                # Create Is expression to alias parameter to the literal value
                 from faebryk.library.Expressions import IsSuperset
 
                 IsSuperset.bind_typegraph(tg=module.tg).create_instance(
