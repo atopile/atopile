@@ -286,7 +286,12 @@ async function atoBuild() {
     // parse what build target to use
     const build = _getBuildTarget();
 
-    await _runInTerminalWithBuildTarget(`build ${build.name}`, ['build', '--build', build.name], false);
+    // Open the dashboard webview immediately - it will connect when the server starts
+    const { openDashboard } = await import('./dashboard');
+    openDashboard('http://localhost:8501');
+
+    // Run the build with --ui to start the dashboard server on port 8501
+    await _runInTerminalWithBuildTarget(`build ${build.name}`, ['build', '--build', build.name, '--ui'], false);
 
     captureEvent('vsce:build_start'); // TODO: build properties?
 }

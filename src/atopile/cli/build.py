@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_WORKER_COUNT = os.cpu_count() or 4
 
 
+# Fixed port for the dashboard server - extension opens this directly
+DASHBOARD_PORT = 8501
+
+
 class Status(str, Enum):
     """Build status states."""
 
@@ -1744,12 +1748,11 @@ def build(
     )
 
     # Start dashboard server if enabled (and not in verbose mode)
+    # Uses fixed port so extension can open webview immediately
     dashboard_server = None
     dashboard_url = None
     if ui and not verbose:
         try:
-            import webbrowser
-
             from atopile.dashboard import is_dashboard_built
             from atopile.dashboard.server import start_dashboard_server
 
@@ -1757,9 +1760,9 @@ def build(
                 dashboard_server, dashboard_url = start_dashboard_server(
                     manager._summary_file,
                     manager.logs_base,
+                    port=DASHBOARD_PORT,
                 )
                 logger.info("Dashboard available at: %s", dashboard_url)
-                webbrowser.open(dashboard_url)
             else:
                 logger.debug("Dashboard not built, skipping")
         except Exception as e:

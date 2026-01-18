@@ -23,11 +23,11 @@ dev_app = typer.Typer(rich_markup_mode="rich")
 def compile(
     target: str = typer.Argument(
         "all",
-        help="Build target: all, zig, visualizer, or dashboard.",
+        help="Build target: all, zig, visualizer, dashboard, or vscode.",
     ),
 ):
     target = target.lower()
-    valid_targets = {"all", "zig", "visualizer", "dashboard"}
+    valid_targets = {"all", "zig", "visualizer", "dashboard", "vscode"}
     if target not in valid_targets:
         raise typer.BadParameter(
             f"target must be one of: {', '.join(sorted(valid_targets))}"
@@ -67,6 +67,33 @@ def compile(
             subprocess.run(["npm", "install"], cwd=dashboard_dir, check=True)
 
         subprocess.run(["npm", "run", "build"], cwd=dashboard_dir, check=True)
+
+    if target in {"all", "vscode"}:
+        print("compiling vscode extension")
+        repo_root = Path(__file__).resolve().parents[3]
+        vscode_dir = repo_root / "src" / "vscode-atopile"
+        if not vscode_dir.exists():
+            raise FileNotFoundError(
+                f"vscode extension directory not found: {vscode_dir}"
+            )
+
+        node_modules = vscode_dir / "node_modules"
+        if not node_modules.exists():
+            subprocess.run(["npm", "install"], cwd=vscode_dir, check=True)
+
+        # Package the extension (runs vscode:prepublish which does production build)
+        subprocess.run(
+            ["npx", "vsce", "package", "--allow-missing-repository"],
+            cwd=vscode_dir,
+            check=True,
+        )
+
+        # Find and report the generated .vsix file
+        vsix_files = list(vscode_dir.glob("*.vsix"))
+        if vsix_files:
+            vsix_file = max(vsix_files, key=lambda f: f.stat().st_mtime)
+            print(f"\nExtension packaged: {vsix_file}")
+            print(f"Install with: code --install-extension {vsix_file}")
 
 
 @dataclass(frozen=True)
