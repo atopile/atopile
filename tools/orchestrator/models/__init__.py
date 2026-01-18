@@ -16,6 +16,7 @@ from .agents import (
     SpawnAgentResponse,
     TerminateAgentRequest,
     TerminateAgentResponse,
+    UpdateAgentRequest,
 )
 from .events import (
     ClaudeCodeMessage,
@@ -69,6 +70,7 @@ __all__ = [
     "SpawnAgentResponse",
     "TerminateAgentRequest",
     "TerminateAgentResponse",
+    "UpdateAgentRequest",
     # Event models
     "ClaudeCodeMessage",
     "OutputChunk",

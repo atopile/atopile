@@ -14,6 +14,7 @@ export function SpawnAgentDialog({ open, onClose }: SpawnAgentDialogProps) {
   const [backends, setBackends] = useState<BackendInfo[]>([]);
 
   // Form state
+  const [name, setName] = useState('');
   const [backend, setBackend] = useState<AgentBackendType>('claude-code');
   const [prompt, setPrompt] = useState('');
   const [maxTurns, setMaxTurns] = useState<string>('');
@@ -45,7 +46,7 @@ export function SpawnAgentDialog({ open, onClose }: SpawnAgentDialogProps) {
     };
 
     try {
-      await spawnAgent(config);
+      await spawnAgent(config, name || undefined);
       resetForm();
       onClose();
     } catch (e) {
@@ -54,6 +55,7 @@ export function SpawnAgentDialog({ open, onClose }: SpawnAgentDialogProps) {
   };
 
   const resetForm = () => {
+    setName('');
     setPrompt('');
     setMaxTurns('');
     setMaxBudget('');
@@ -89,6 +91,20 @@ export function SpawnAgentDialog({ open, onClose }: SpawnAgentDialogProps) {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          {/* Name */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">
+              Name
+            </label>
+            <input
+              type="text"
+              className="input"
+              placeholder="e.g., my-agent (optional)"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+
           {/* Backend */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">

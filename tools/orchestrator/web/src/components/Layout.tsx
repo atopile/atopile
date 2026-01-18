@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Activity, GitBranch, Terminal } from 'lucide-react';
+import { Activity, GitBranch } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -20,7 +20,7 @@ export function Layout({ children }: LayoutProps) {
         {/* Logo */}
         <div className="p-4 border-b border-gray-700">
           <div className="flex items-center gap-2">
-            <Terminal className="w-6 h-6 text-blue-500" />
+            <img src="/atopile-logo.svg" alt="atopile" className="w-6 h-6" />
             <span className="text-lg font-semibold">Orchestrator</span>
           </div>
         </div>

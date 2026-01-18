@@ -78,10 +78,16 @@ export const api = {
 
     get: (id: string) => fetchJson<AgentStateResponse>(`/agents/${id}`),
 
-    spawn: (config: AgentConfig) =>
+    spawn: (config: AgentConfig, name?: string) =>
       fetchJson<SpawnAgentResponse>('/agents/spawn', {
         method: 'POST',
-        body: JSON.stringify({ config }),
+        body: JSON.stringify({ config, name }),
+      }),
+
+    rename: (id: string, name: string) =>
+      fetchJson<AgentStateResponse>(`/agents/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name }),
       }),
 
     terminate: (id: string, options?: TerminateAgentRequest) =>

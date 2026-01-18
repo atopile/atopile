@@ -13,7 +13,8 @@ interface AgentStore {
   fetchAgents: () => Promise<void>;
   fetchAgent: (id: string) => Promise<AgentState | null>;
   selectAgent: (id: string | null) => void;
-  spawnAgent: (config: AgentConfig) => Promise<string>;
+  spawnAgent: (config: AgentConfig, name?: string) => Promise<string>;
+  renameAgent: (id: string, name: string) => Promise<void>;
   resumeAgent: (id: string, prompt: string) => Promise<string>;
   terminateAgent: (id: string, force?: boolean) => Promise<void>;
   deleteAgent: (id: string) => Promise<void>;
@@ -67,16 +68,29 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     set({ selectedAgentId: id });
   },
 
-  spawnAgent: async (config: AgentConfig) => {
+  spawnAgent: async (config: AgentConfig, name?: string) => {
     set({ loading: true, error: null });
     try {
-      const response = await api.agents.spawn(config);
+      const response = await api.agents.spawn(config, name);
       // Fetch the full agent state
       await get().fetchAgent(response.agent_id);
       set({ loading: false, selectedAgentId: response.agent_id });
       return response.agent_id;
     } catch (e) {
       set({ error: e instanceof Error ? e.message : 'Failed to spawn agent', loading: false });
+      throw e;
+    }
+  },
+
+  renameAgent: async (id: string, name: string) => {
+    try {
+      const response = await api.agents.rename(id, name);
+      const { agents } = get();
+      const newAgents = new Map(agents);
+      newAgents.set(id, response.agent);
+      set({ agents: newAgents });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : 'Failed to rename agent' });
       throw e;
     }
   },

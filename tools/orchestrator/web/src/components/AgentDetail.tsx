@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Square, Send, X, Clock, Cpu, Hash, Code, RotateCcw } from 'lucide-react';
+import { Square, Send, X, Clock, Cpu, Hash, Code, RotateCcw, Pencil, Check } from 'lucide-react';
 import type { AgentState } from '@/api/types';
 import { useAgentStore, useOutputStore } from '@/stores';
 import { StatusBadge } from './StatusBadge';
@@ -11,7 +11,7 @@ interface AgentDetailProps {
 }
 
 export function AgentDetail({ agent, onClose }: AgentDetailProps) {
-  const { terminateAgent, sendInput, resumeAgent } = useAgentStore();
+  const { terminateAgent, sendInput, resumeAgent, renameAgent } = useAgentStore();
   const { connectToAgent, disconnectFromAgent, fetchOutput, clearOutput, isConnected } = useOutputStore();
   // Subscribe directly to chunks for this agent - this ensures re-renders on updates
   const chunks = useOutputStore((state) => state.outputs.get(agent.id) || []);
@@ -20,6 +20,8 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
   const [verbose, setVerbose] = useState(false);
   const [resumePrompt, setResumePrompt] = useState('');
   const [resuming, setResuming] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editedName, setEditedName] = useState(agent.name || '');
   const connected = isConnected(agent.id);
   const isRunning = agent.status === 'running' || agent.status === 'starting' || agent.status === 'pending';
   const isFinished = agent.status === 'completed' || agent.status === 'failed' || agent.status === 'terminated';
@@ -84,6 +86,27 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
     }
   };
 
+  const handleSaveName = async () => {
+    if (editedName.trim() !== (agent.name || '')) {
+      try {
+        await renameAgent(agent.id, editedName.trim());
+      } catch (e) {
+        // Error is handled in store
+      }
+    }
+    setIsEditingName(false);
+  };
+
+  const handleNameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSaveName();
+    } else if (e.key === 'Escape') {
+      setEditedName(agent.name || '');
+      setIsEditingName(false);
+    }
+  };
+
   const formatDuration = () => {
     if (!agent.started_at) return '-';
 
@@ -110,8 +133,48 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <div className="flex items-center gap-4">
           <div>
+            {/* Editable name */}
+            <div className="flex items-center gap-2 mb-1">
+              {isEditingName ? (
+                <>
+                  <input
+                    type="text"
+                    className="input text-sm py-0.5 px-2 w-48"
+                    value={editedName}
+                    onChange={(e) => setEditedName(e.target.value)}
+                    onKeyDown={handleNameKeyDown}
+                    onBlur={handleSaveName}
+                    autoFocus
+                    placeholder="Enter name..."
+                  />
+                  <button
+                    className="btn btn-icon btn-sm btn-primary"
+                    onClick={handleSaveName}
+                    title="Save"
+                  >
+                    <Check className="w-3 h-3" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="text-sm font-medium text-gray-200">
+                    {agent.name || <span className="text-gray-500 italic">Unnamed</span>}
+                  </span>
+                  <button
+                    className="btn btn-icon btn-sm btn-secondary opacity-50 hover:opacity-100"
+                    onClick={() => {
+                      setEditedName(agent.name || '');
+                      setIsEditingName(true);
+                    }}
+                    title="Rename"
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                </>
+              )}
+            </div>
             <div className="flex items-center gap-2">
-              <code className="text-sm font-mono text-gray-300">{agent.id.slice(0, 8)}</code>
+              <code className="text-xs font-mono text-gray-500">{agent.id.slice(0, 8)}</code>
               <StatusBadge status={agent.status} />
               {connected && (
                 <span className="flex items-center gap-1 text-xs text-green-400">

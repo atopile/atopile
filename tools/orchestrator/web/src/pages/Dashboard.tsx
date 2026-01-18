@@ -4,10 +4,11 @@ import { useAgentStore } from '@/stores';
 import { AgentList, AgentDetail, SpawnAgentDialog } from '@/components';
 
 export function Dashboard() {
-  const { getSelectedAgent, selectAgent } = useAgentStore();
+  const selectAgent = useAgentStore((state) => state.selectAgent);
+  const selectedAgent = useAgentStore((state) =>
+    state.selectedAgentId ? state.agents.get(state.selectedAgentId) : undefined
+  );
   const [spawnDialogOpen, setSpawnDialogOpen] = useState(false);
-
-  const selectedAgent = getSelectedAgent();
 
   return (
     <div className="flex h-full">

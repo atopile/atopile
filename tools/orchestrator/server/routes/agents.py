@@ -24,6 +24,7 @@ from ...models import (
     SpawnAgentResponse,
     TerminateAgentRequest,
     TerminateAgentResponse,
+    UpdateAgentRequest,
 )
 from ..dependencies import get_agent_store, get_process_manager
 
@@ -44,7 +45,11 @@ async def spawn_agent(
     Returns the agent ID which can be used to track progress and retrieve output.
     """
     # Create agent state
-    agent = AgentState(config=request.config, status=AgentStatus.STARTING)
+    agent = AgentState(
+        config=request.config,
+        name=request.name,
+        status=AgentStatus.STARTING,
+    )
     agent_store.set(agent.id, agent)
 
     logger.info(f"Spawning agent {agent.id} with backend {request.config.backend}")
@@ -136,6 +141,28 @@ async def get_agent(
     agent = agent_store.get(agent_id)
     if agent is None:
         raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+
+    return AgentStateResponse(agent=agent)
+
+
+@router.patch("/{agent_id}", response_model=AgentStateResponse)
+async def update_agent(
+    agent_id: str,
+    request: UpdateAgentRequest,
+    agent_store: Annotated[AgentStateStore, Depends(get_agent_store)],
+) -> AgentStateResponse:
+    """Update an agent's metadata (e.g., rename)."""
+    agent = agent_store.get(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+
+    def updater(a: AgentState) -> AgentState:
+        if request.name is not None:
+            a.name = request.name
+        return a
+
+    agent_store.update(agent_id, updater)
+    agent = agent_store.get(agent_id)
 
     return AgentStateResponse(agent=agent)
 

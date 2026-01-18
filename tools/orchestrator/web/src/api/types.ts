@@ -22,6 +22,7 @@ export interface AgentConfig {
 
 export interface AgentState {
   id: string;
+  name?: string;
   config: AgentConfig;
   status: AgentStatus;
   pid?: number;

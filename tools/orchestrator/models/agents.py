@@ -65,12 +65,15 @@ class AgentState(BaseModel):
     """Runtime state of an agent."""
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str | None = None  # Human-readable name (e.g., "my-pipeline.worker-a")
     config: AgentConfig
     status: AgentStatus = AgentStatus.PENDING
     pid: int | None = None
     exit_code: int | None = None
     error_message: str | None = None
     session_id: str | None = None
+    pipeline_id: str | None = None  # ID of the pipeline this agent belongs to
+    node_id: str | None = None  # ID of the pipeline node this agent was spawned from
     created_at: datetime = Field(default_factory=datetime.now)
     started_at: datetime | None = None
     finished_at: datetime | None = None
@@ -107,6 +110,13 @@ class SpawnAgentRequest(BaseModel):
     """Request to spawn a new agent."""
 
     config: AgentConfig
+    name: str | None = None  # Optional human-readable name
+
+
+class UpdateAgentRequest(BaseModel):
+    """Request to update an agent's metadata."""
+
+    name: str | None = None
 
 
 class SpawnAgentResponse(BaseModel):

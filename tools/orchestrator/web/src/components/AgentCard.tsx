@@ -60,9 +60,16 @@ export function AgentCard({ agent, selected, onClick, onTerminate, onDelete }: A
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
-        <code className="text-sm text-gray-400 font-mono">
-          {agent.id.slice(0, 8)}
-        </code>
+        <div className="flex flex-col min-w-0">
+          {agent.name && (
+            <span className="text-sm font-medium text-gray-200 truncate" title={agent.name}>
+              {agent.name}
+            </span>
+          )}
+          <code className="text-xs text-gray-500 font-mono">
+            {agent.id.slice(0, 8)}
+          </code>
+        </div>
         <StatusBadge status={agent.status} size="sm" />
       </div>
 

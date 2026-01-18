@@ -198,12 +198,18 @@ class PipelineExecution:
 
     def run(self) -> None:
         """Execute the pipeline."""
+        from ..server.routes.bridge import register_pipeline_context
+
         pipeline = self.executor._pipeline_store.get(self.pipeline_id)
         if pipeline is None:
             raise RuntimeError(f"Pipeline not found: {self.pipeline_id}")
 
         logger.info(f"Starting pipeline execution: {self.pipeline_id}")
         logger.info(f"Pipeline has {len(pipeline.nodes)} nodes and {len(pipeline.edges)} edges")
+
+        # Pre-register pipeline context with all agent nodes for bridge communication
+        # This allows agents to find each other even before they've all executed
+        self._register_pipeline_context(pipeline)
 
         # Find execution order (topological sort from trigger nodes)
         execution_order = self._get_execution_order(pipeline)
@@ -370,7 +376,6 @@ class PipelineExecution:
     def _execute_agent_node(self, pipeline: PipelineState, node) -> None:
         """Execute an agent node by spawning an agent."""
         from ..models import PipelineNode, AgentNodeData
-        from ..server.routes.bridge import register_pipeline_context
 
         node_id = node.id
         data = node.data
@@ -378,11 +383,14 @@ class PipelineExecution:
         # Build agent config from node data (data is AgentNodeData)
         backend = data.backend if hasattr(data, 'backend') else AgentBackendType.CLAUDE_CODE
         prompt = data.prompt if hasattr(data, 'prompt') else ""
-        name = data.name if hasattr(data, 'name') else "Pipeline Agent"
+        node_agent_name = data.name if hasattr(data, 'name') else "Pipeline Agent"
+
+        # Generate full agent name: <pipeline_name>.<agent_name>
+        full_agent_name = self._make_agent_name(pipeline, node_agent_name)
 
         # Validate prompt - must not be empty
         if not prompt or not prompt.strip():
-            raise ValueError(f"Agent node '{name}' ({node_id}) has an empty prompt. Please specify a prompt.")
+            raise ValueError(f"Agent node '{node_agent_name}' ({node_id}) has an empty prompt. Please specify a prompt.")
 
         # Build context from parent node outputs (for inter-agent communication via context injection)
         parent_context = self._build_context_from_parents(pipeline, node_id)
@@ -403,40 +411,29 @@ class PipelineExecution:
         # Check for connected agents (for bridge communication)
         connected_agents = self._get_connected_agent_names(pipeline, node_id)
 
-        # Set up environment - only add bridge env vars if there are connected agents
+        # Set up environment - always add bridge env vars for pipeline agents
         environment = {}
         if hasattr(data, 'environment') and data.environment:
             environment.update(data.environment)
 
+        # Always set up bridge environment variables for pipeline agents
+        # (even if no connected agents, they might be contacted by others)
+        environment["AGENT_NAME"] = node_agent_name
+        environment["PIPELINE_ID"] = self.pipeline_id
+        environment["BRIDGE_URL"] = "http://127.0.0.1:8765"  # Orchestrator URL
+
         if connected_agents:
             # Add bridge instructions to prompt
-            bridge_instructions = f"""
-You have access to the send_and_receive tool to communicate with other agents in this pipeline.
+            bridge_instructions = f"""You are part of a multi-agent pipeline. You can communicate with other agents using the send_and_receive tool.
+
 Connected agents you can talk to: {', '.join(connected_agents)}
 
-To send a message and get a response: send_and_receive(to="agent_name", message="your message")
-"""
-            prompt = f"{bridge_instructions}\n{prompt}"
+To send a message and get a response, use: send_and_receive(to="agent_name", message="your message")
 
-            # Set up bridge environment variables
-            environment["AGENT_NAME"] = name
-            environment["PIPELINE_ID"] = self.pipeline_id
-            environment["BRIDGE_URL"] = "http://127.0.0.1:8765"  # Orchestrator URL
+IMPORTANT: When you receive a message from another agent (via the bridge), just respond with text output. Do NOT use send_and_receive to reply - your text output is automatically returned to the sender."""
 
-            # Register pipeline edges with the bridge
-            edges = [(e.source, e.target) for e in pipeline.edges if e.source and e.target]
-            # Map node IDs to agent names for edge lookup
-            node_names = {}
-            for n in pipeline.nodes:
-                if n.type == "agent" and hasattr(n.data, 'name'):
-                    node_names[n.id] = n.data.name or n.id
-            # Convert edges to use names instead of node IDs
-            named_edges = []
-            for src, tgt in edges:
-                src_name = node_names.get(src, src)
-                tgt_name = node_names.get(tgt, tgt)
-                named_edges.append((src_name, tgt_name))
-            register_pipeline_context(self.pipeline_id, named_edges, {})
+            # Prepend bridge instructions to prompt
+            prompt = f"{bridge_instructions}\n\n{prompt}"
 
         config = AgentConfig(
             backend=backend,
@@ -445,14 +442,20 @@ To send a message and get a response: send_and_receive(to="agent_name", message=
             max_budget_usd=getattr(data, 'max_budget_usd', None),
             system_prompt=getattr(data, 'system_prompt', None),
             working_directory=getattr(data, 'working_directory', None),
-            environment=environment if environment else None,  # Only pass if not empty
+            environment=environment if environment else None,
         )
 
-        # Create and spawn agent
-        agent = AgentState(config=config, status=AgentStatus.STARTING)
+        # Create and spawn agent with proper naming and pipeline tracking
+        agent = AgentState(
+            config=config,
+            status=AgentStatus.STARTING,
+            name=full_agent_name,
+            pipeline_id=self.pipeline_id,
+            node_id=node_id,
+        )
         self.executor._agent_store.set(agent.id, agent)
 
-        logger.info(f"Spawning agent for node {node_id}: {agent.id}")
+        logger.info(f"Spawning agent '{full_agent_name}' for node {node_id}: {agent.id}")
 
         try:
             managed = self.executor._process_manager.spawn(agent)
@@ -466,11 +469,11 @@ To send a message and get a response: send_and_receive(to="agent_name", message=
 
             self.executor._agent_store.update(agent.id, agent_updater)
 
-            # Track agent
+            # Track agent in local map
             self.node_agents[node_id] = agent.id
             self._current_agent_id = agent.id
 
-            # Update pipeline with agent mapping
+            # Update pipeline state with agent mapping
             def pipeline_updater(p: PipelineState) -> PipelineState:
                 p.current_node_id = node_id
                 p.node_agent_map[node_id] = agent.id
@@ -480,6 +483,9 @@ To send a message and get a response: send_and_receive(to="agent_name", message=
 
             self.executor._pipeline_store.update(self.pipeline_id, pipeline_updater)
 
+            # Update bridge context with the new agent (for resume support)
+            self._register_pipeline_context(pipeline)
+
             # Wait for agent to complete
             self._wait_for_agent(agent.id)
 
@@ -488,8 +494,11 @@ To send a message and get a response: send_and_receive(to="agent_name", message=
             self.node_outputs[node_id] = output
             logger.info(f"Captured output from node {node_id}: {len(output)} chars")
 
-            # Now we can cleanup the process
-            self.executor._process_manager.cleanup(agent.id)
+            # Update bridge context again after agent completion (session_id now available)
+            self._register_pipeline_context(pipeline)
+
+            # Note: We don't cleanup immediately to allow the agent to be resumed
+            # self.executor._process_manager.cleanup(agent.id)
 
         except Exception as e:
             logger.error(f"Failed to spawn agent for node {node_id}: {e}")
@@ -522,8 +531,8 @@ To send a message and get a response: send_and_receive(to="agent_name", message=
             # Check process directly
             exit_code = self.executor._process_manager.get_exit_code(agent_id)
             if exit_code is not None:
-                # Wait for output threads to finish processing before we extract output
-                self.executor._process_manager.wait_for_output_and_get_session_id(agent_id, timeout=2.0)
+                # Wait for output threads to finish processing and capture session_id
+                session_id = self.executor._process_manager.wait_for_output_and_get_session_id(agent_id, timeout=2.0)
 
                 # Process finished, update agent state
                 new_status = AgentStatus.COMPLETED if exit_code == 0 else AgentStatus.FAILED
@@ -532,6 +541,9 @@ To send a message and get a response: send_and_receive(to="agent_name", message=
                     a.status = new_status
                     a.exit_code = exit_code
                     a.finished_at = datetime.now()
+                    # Capture session_id for resume support
+                    if session_id:
+                        a.session_id = session_id
                     return a
 
                 self.executor._agent_store.update(agent_id, updater)
@@ -613,3 +625,51 @@ To send a message and get a response: send_and_receive(to="agent_name", message=
                     agent_names.append(connected_id)
 
         return agent_names
+
+    def _get_node_name_map(self, pipeline: PipelineState) -> dict[str, str]:
+        """Build a map of node_id -> agent name for all agent nodes."""
+        node_names = {}
+        for node in pipeline.nodes:
+            if node.type == "agent" and hasattr(node.data, 'name'):
+                node_names[node.id] = node.data.name or node.id
+        return node_names
+
+    def _get_named_edges(self, pipeline: PipelineState) -> list[tuple[str, str]]:
+        """Get pipeline edges using agent names instead of node IDs."""
+        node_names = self._get_node_name_map(pipeline)
+        named_edges = []
+        for edge in pipeline.edges:
+            if edge.source and edge.target:
+                src_name = node_names.get(edge.source, edge.source)
+                tgt_name = node_names.get(edge.target, edge.target)
+                named_edges.append((src_name, tgt_name))
+        return named_edges
+
+    def _register_pipeline_context(self, pipeline: PipelineState) -> None:
+        """Register the pipeline context with the bridge for inter-agent communication.
+
+        This registers all agent nodes upfront so agents can find each other
+        even before they've all executed.
+        """
+        from ..server.routes.bridge import register_pipeline_context
+
+        named_edges = self._get_named_edges(pipeline)
+
+        # Build agents map from already-executed agents
+        agents_map = {}
+        for node_id, agent_id in self.node_agents.items():
+            node = self._find_node(pipeline, node_id)
+            if node and node.type == "agent" and hasattr(node.data, 'name'):
+                agents_map[node.data.name or node_id] = agent_id
+
+        register_pipeline_context(self.pipeline_id, named_edges, agents_map)
+        logger.info(f"Registered pipeline context: {len(named_edges)} edges, {len(agents_map)} agents")
+
+    def _make_agent_name(self, pipeline: PipelineState, agent_node_name: str) -> str:
+        """Generate a full agent name like '<pipeline_name>.<agent_name>'.
+
+        Preserves the original names but sanitizes spaces to dots for readability.
+        """
+        # Use original names, just replace spaces with underscores for cleaner display
+        pipeline_name = pipeline.name.replace(" ", "_")
+        return f"{pipeline_name}.{agent_node_name}"
