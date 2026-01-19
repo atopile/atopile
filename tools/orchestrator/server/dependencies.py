@@ -403,6 +403,29 @@ def broadcast_agent_spawned(agent_id: str) -> None:
             logger.debug(f"Failed to broadcast agent spawned: {e}")
 
 
+def broadcast_agent_status_changed(agent_id: str) -> None:
+    """Broadcast an agent status changed event."""
+    state = get_orchestrator_state()
+    if state._ws_manager and state._event_loop:
+        import asyncio
+
+        try:
+            agent = state._agent_store.get(agent_id)
+            global_event = GlobalEvent(
+                type=GlobalEventType.AGENT_STATUS_CHANGED,
+                agent_id=agent_id,
+                data={
+                    "agent": agent.model_dump(mode="json") if agent else None,
+                },
+            )
+            asyncio.run_coroutine_threadsafe(
+                state._ws_manager.broadcast_global(global_event),
+                state._event_loop
+            )
+        except Exception as e:
+            logger.debug(f"Failed to broadcast agent status changed: {e}")
+
+
 # WebSocket connection manager (imported lazily to avoid circular imports)
 
 

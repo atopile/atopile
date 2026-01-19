@@ -191,12 +191,39 @@ async function handleResume(
 
     // Fetch updated agent state
     const response = await logic.api.agents.get(agentId);
+    const newRunCount = response.agent.run_count ?? 0;
 
-    logic.setState((s) => ({
-      ...s,
-      agents: updateMap(s.agents, agentId, response.agent),
-      loading: { ...s.loading, [loadingKey]: false },
-    }));
+    // Update agent state and add the new prompt to output
+    logic.setState((s) => {
+      // Add the prompt for the new run
+      const currentOutput = s.agentOutputs.get(agentId) ?? {
+        chunks: [],
+        prompts: [],
+        isConnected: false,
+        hasHistory: false,
+        currentRunNumber: 0,
+      };
+
+      // Check if prompt for this run already exists
+      const hasPrompt = currentOutput.prompts.some((p) => p.run === newRunCount);
+      const newPrompts = hasPrompt
+        ? currentOutput.prompts
+        : [...currentOutput.prompts, { run: newRunCount, prompt }];
+
+      const newOutputs = new Map(s.agentOutputs);
+      newOutputs.set(agentId, {
+        ...currentOutput,
+        prompts: newPrompts,
+        currentRunNumber: newRunCount,
+      });
+
+      return {
+        ...s,
+        agents: updateMap(s.agents, agentId, response.agent),
+        agentOutputs: newOutputs,
+        loading: { ...s.loading, [loadingKey]: false },
+      };
+    });
   } catch (e) {
     logic.setState((s) => ({
       ...setLoading(s, loadingKey, false),

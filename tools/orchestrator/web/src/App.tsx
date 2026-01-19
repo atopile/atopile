@@ -1,12 +1,10 @@
 import { useMemo, useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Layout } from '@/components';
-import { Dashboard, Pipelines } from '@/pages';
 import { UILogic } from '@/logic';
 import { LogicProvider } from '@/hooks';
 
 // Version marker - if you see this in console, you have the latest code
-console.log('%c[App] Code version: 2026-01-19T13:55 - WebSocket debug enabled', 'background: blue; color: white; font-size: 16px;');
+console.log('%c[App] Code version: 2026-01-20T08:30 - Unified sidebar', 'background: blue; color: white; font-size: 16px;');
 
 // Determine API and WebSocket URLs based on environment
 function getApiBaseUrl(): string {
@@ -45,14 +43,7 @@ function App() {
 
   return (
     <LogicProvider logic={logic}>
-      <BrowserRouter>
-        <Layout>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/pipelines" element={<Pipelines />} />
-          </Routes>
-        </Layout>
-      </BrowserRouter>
+      <Layout />
     </LogicProvider>
   );
 }

@@ -40,7 +40,7 @@ class ClaudeCodeBackend(AgentBackend):
             streaming=True,
             resume=True,
             session_persistence=True,
-            input_during_run=False,  # Claude code doesn't support stdin during run
+            input_during_run=False,  # Stdin closed; questions handled via session resume
             tools=True,
             budget_control=True,
             max_turns=True,
@@ -77,8 +77,9 @@ class ClaudeCodeBackend(AgentBackend):
         cmd.append("--verbose")
         cmd.append("--include-partial-messages")
 
-        # Bypass permissions for headless operation
-        # This allows agents to use tools (including MCP tools) without prompting
+        # Use bypassPermissions for headless operation
+        # AskUserQuestion tool calls are captured and can be responded to via the MCP bridge
+        # or by resuming the session with the user's answer
         cmd.extend(["--permission-mode", "bypassPermissions"])
 
         # Session handling

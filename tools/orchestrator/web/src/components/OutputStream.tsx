@@ -1,6 +1,9 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import { Copy, Check, ChevronDown, ChevronRight, Bot, Wrench, AlertCircle, Terminal, CheckCircle, RotateCcw, User } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import type { OutputChunk } from '@/logic';
+import { PlanModeDisplay } from './PlanModeDisplay';
+import { QuestionDisplay } from './QuestionDisplay';
 
 interface PromptInfo {
   run: number;
@@ -13,6 +16,8 @@ interface OutputStreamProps {
   initialPrompt?: string;  // For single-run agents without history
   autoScroll?: boolean;
   verbose?: boolean;
+  isAgentRunning?: boolean;
+  onSendInput?: (input: string) => void;
 }
 
 // Merged display item for friendly mode
@@ -26,9 +31,13 @@ interface DisplayItem {
   sequences: number[];
   timestamp?: string;
   runNumber?: number;
+  hasToolResult?: boolean;  // For tool_use items: whether a corresponding result was received
 }
 
 // Format timestamp for display
+// Note: Claude's raw output doesn't include timestamps, so historical data
+// timestamps are set at parse time and aren't meaningful for relative display.
+// We show absolute time format instead.
 function formatTime(timestamp: string | undefined): string {
   if (!timestamp) return '';
   try {
@@ -210,6 +219,21 @@ function processChunksForDisplay(
     }
 
     if (chunk.type === 'tool_use') {
+      // Check if there's a corresponding tool_result after this in the chunks
+      // We look for the next tool_result that follows this tool_use
+      const toolUseIndex = chunks.indexOf(chunk);
+      let hasToolResult = false;
+      for (let j = toolUseIndex + 1; j < chunks.length; j++) {
+        if (chunks[j].type === 'tool_result') {
+          hasToolResult = true;
+          break;
+        }
+        // Stop if we hit another tool_use (means this one doesn't have a result yet)
+        if (chunks[j].type === 'tool_use') {
+          break;
+        }
+      }
+
       items.push({
         type: 'tool_use',
         text: chunk.tool_name || 'tool',
@@ -218,6 +242,7 @@ function processChunksForDisplay(
         sequences: [chunk.sequence],
         timestamp: chunk.timestamp,
         runNumber: chunkRunNumber,
+        hasToolResult,
       });
     } else if (chunk.type === 'tool_result') {
       items.push({
@@ -397,7 +422,14 @@ function CollapsibleMessage({
 }
 
 // Friendly display item component
-function FriendlyDisplayItem({ item }: { item: DisplayItem }) {
+interface FriendlyDisplayItemProps {
+  item: DisplayItem;
+  isAgentRunning?: boolean;
+  onSendInput?: (input: string) => void;
+  hasToolResult?: boolean;  // Whether this tool_use has a corresponding result
+}
+
+function FriendlyDisplayItem({ item, isAgentRunning, onSendInput, hasToolResult }: FriendlyDisplayItemProps) {
   const [expanded, setExpanded] = useState(false);
 
   if (item.type === 'run_separator') {
@@ -420,6 +452,8 @@ function FriendlyDisplayItem({ item }: { item: DisplayItem }) {
 
   if (item.type === 'assistant') {
     const isLong = item.text.length > 500;
+    const displayText = isLong && !expanded ? item.text.slice(0, 500) + '...' : item.text;
+
     return (
       <CollapsibleMessage
         icon={<Bot className="w-4 h-4 text-green-400" />}
@@ -428,10 +462,10 @@ function FriendlyDisplayItem({ item }: { item: DisplayItem }) {
         timestamp={item.timestamp}
         preview={item.text.slice(0, 60) + (item.text.length > 60 ? '...' : '')}
       >
-        <p className="text-sm text-gray-200 whitespace-pre-wrap">
-          {isLong && !expanded ? item.text.slice(0, 500) + '...' : item.text}
+        <div className="text-sm text-gray-200 prose prose-sm prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-2 prose-code:text-blue-300 prose-code:bg-gray-800 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-800 prose-pre:border prose-pre:border-gray-700">
+          <ReactMarkdown>{displayText}</ReactMarkdown>
           {item.isStreaming && <TypingIndicator />}
-        </p>
+        </div>
         {isLong && (
           <button
             className="text-xs text-blue-400 hover:text-blue-300 mt-1"
@@ -445,6 +479,30 @@ function FriendlyDisplayItem({ item }: { item: DisplayItem }) {
   }
 
   if (item.type === 'tool_use') {
+    // Special display for ExitPlanMode tool
+    if (item.toolName === 'ExitPlanMode' && item.toolInput) {
+      return (
+        <PlanModeDisplay
+          toolInput={item.toolInput as { allowedPrompts?: Array<{ tool: string; prompt: string }>; plan?: string }}
+          timestamp={formatTime(item.timestamp)}
+        />
+      );
+    }
+
+    // Special display for AskUserQuestion tool
+    if (item.toolName === 'AskUserQuestion' && item.toolInput) {
+      return (
+        <QuestionDisplay
+          toolInput={item.toolInput as { questions: Array<{ question: string; header?: string; options: Array<{ label: string; description?: string }>; multiSelect?: boolean }>; answers?: Record<string, string>; metadata?: { source?: string } }}
+          timestamp={formatTime(item.timestamp)}
+          onSendResponse={onSendInput}
+          isAgentRunning={isAgentRunning}
+          responded={hasToolResult}  // If there's a tool_result, the question was already answered
+        />
+      );
+    }
+
+    // Default tool display
     return (
       <div className="py-1 pl-11">
         <div
@@ -651,7 +709,7 @@ function VerboseChunkView({ chunk }: { chunk: OutputChunk }) {
   );
 }
 
-export function OutputStream({ chunks, prompts, initialPrompt, autoScroll = true, verbose = false }: OutputStreamProps) {
+export function OutputStream({ chunks, prompts, initialPrompt, autoScroll = true, verbose = false, isAgentRunning, onSendInput }: OutputStreamProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [userScrolled, setUserScrolled] = useState(false);
 
@@ -683,12 +741,30 @@ export function OutputStream({ chunks, prompts, initialPrompt, autoScroll = true
     return items;
   }, [chunks, verbose]);
 
-  // Auto-scroll when new chunks arrive
+  // Auto-scroll when new chunks arrive or on initial mount
   useEffect(() => {
     if (autoScroll && !userScrolled && containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+      // Use requestAnimationFrame to ensure DOM has updated
+      requestAnimationFrame(() => {
+        if (containerRef.current) {
+          containerRef.current.scrollTop = containerRef.current.scrollHeight;
+        }
+      });
     }
   }, [chunks, autoScroll, userScrolled]);
+
+  // Always scroll to bottom on initial mount
+  useEffect(() => {
+    if (containerRef.current && chunks.length > 0) {
+      requestAnimationFrame(() => {
+        if (containerRef.current) {
+          containerRef.current.scrollTop = containerRef.current.scrollHeight;
+        }
+      });
+    }
+    // Only run once when chunks first become available
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chunks.length > 0]);
 
   // Track user scroll
   const handleScroll = () => {
@@ -727,7 +803,13 @@ export function OutputStream({ chunks, prompts, initialPrompt, autoScroll = true
       ) : (
         // Friendly mode - show merged display items
         displayItems?.map((item, index) => (
-          <FriendlyDisplayItem key={`${item.sequences.join('-')}-${index}`} item={item} />
+          <FriendlyDisplayItem
+            key={`${item.sequences.join('-')}-${index}`}
+            item={item}
+            isAgentRunning={isAgentRunning}
+            onSendInput={onSendInput}
+            hasToolResult={item.hasToolResult}
+          />
         ))
       )}
     </div>

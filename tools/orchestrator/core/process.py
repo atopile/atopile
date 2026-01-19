@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import pty
 import queue
 import subprocess
 import threading
@@ -55,6 +56,7 @@ class ManagedProcess:
     session_id: str | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock)
     _log_handle: IO[str] | None = None
+    _pty_master_fd: int | None = None  # PTY master fd for stdin when input_during_run
 
 
 class ProcessManager:
@@ -131,10 +133,23 @@ class ProcessManager:
 
         logger.info(f"Spawning agent {agent_state.id}: {' '.join(cmd)}")
 
+        # Check if we need to use a PTY for stdin (for interactive input during run)
+        capabilities = backend.get_capabilities()
+        pty_master_fd = None
+        pty_slave_fd = None
+
+        if capabilities.input_during_run:
+            # Use a PTY for stdin - this makes Claude think it's interactive
+            # and flushes output properly while still accepting input
+            pty_master_fd, pty_slave_fd = pty.openpty()
+            stdin_arg = pty_slave_fd
+        else:
+            stdin_arg = subprocess.PIPE
+
         try:
             process = subprocess.Popen(
                 cmd,
-                stdin=subprocess.PIPE,
+                stdin=stdin_arg,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=cwd,
@@ -144,7 +159,15 @@ class ProcessManager:
             )
         except Exception as e:
             log_handle.close()
+            if pty_master_fd is not None:
+                os.close(pty_master_fd)
+            if pty_slave_fd is not None:
+                os.close(pty_slave_fd)
             raise BackendSpawnError(str(config.backend), str(e)) from e
+
+        # Close slave fd in parent process (child has it)
+        if pty_slave_fd is not None:
+            os.close(pty_slave_fd)
 
         managed = ManagedProcess(
             agent_id=agent_state.id,
@@ -155,11 +178,10 @@ class ProcessManager:
             log_file=log_file,
             output_buffer=deque(maxlen=self._max_buffer_size),
             _log_handle=log_handle,
+            _pty_master_fd=pty_master_fd,
         )
 
         # Close stdin for backends that don't support input during run
-        # Claude CLI in headless mode (-p) expects stdin to be closed
-        capabilities = backend.get_capabilities()
         if not capabilities.input_during_run:
             try:
                 process.stdin.close()
@@ -198,10 +220,13 @@ class ProcessManager:
                 if not line:
                     break
 
-                # Write to log file
+                # Write to log file with timestamp prefix for later retrieval
+                # Format: ISO_TIMESTAMP|raw_json_line
                 if managed._log_handle:
                     try:
-                        managed._log_handle.write(line)
+                        from datetime import datetime
+                        timestamp = datetime.now().isoformat()
+                        managed._log_handle.write(f"{timestamp}|{line}")
                         managed._log_handle.flush()
                     except Exception:
                         pass
@@ -367,6 +392,18 @@ class ProcessManager:
         if managed.process.poll() is not None:
             raise AgentNotRunningError(agent_id)
 
+        # Check if we have a PTY master fd (for input_during_run backends)
+        if managed._pty_master_fd is not None:
+            try:
+                if newline and not text.endswith("\n"):
+                    text = text + "\n"
+                os.write(managed._pty_master_fd, text.encode())
+                return True
+            except Exception as e:
+                logger.warning(f"Failed to send input to agent {agent_id} via PTY: {e}")
+                return False
+
+        # Fall back to stdin pipe
         if managed.process.stdin is None:
             raise AgentNotRunningError(agent_id)
 
@@ -424,6 +461,8 @@ class ProcessManager:
         Returns:
             List of output chunks
         """
+        from datetime import datetime
+
         if not log_file.exists():
             return []
 
@@ -439,8 +478,26 @@ class ProcessManager:
                     line = line.strip()
                     if not line:
                         continue
-                    chunk = backend.parse_output_line(line, seq)
+
+                    # Check for timestamp prefix (format: ISO_TIMESTAMP|json_data)
+                    timestamp = None
+                    json_line = line
+                    if "|" in line:
+                        parts = line.split("|", 1)
+                        if len(parts) == 2:
+                            try:
+                                # Try to parse as ISO timestamp
+                                timestamp = datetime.fromisoformat(parts[0])
+                                json_line = parts[1]
+                            except ValueError:
+                                # Not a timestamp prefix, use full line
+                                json_line = line
+
+                    chunk = backend.parse_output_line(json_line, seq)
                     if chunk is not None:
+                        # Override timestamp if we extracted one from the log
+                        if timestamp is not None:
+                            chunk.timestamp = timestamp
                         chunks.append(chunk)
         except Exception as e:
             logger.warning(f"Failed to read log file {log_file}: {e}")
@@ -559,6 +616,13 @@ class ProcessManager:
 
         if managed is None:
             return
+
+        # Close PTY master fd if used
+        if managed._pty_master_fd is not None:
+            try:
+                os.close(managed._pty_master_fd)
+            except Exception:
+                pass
 
         # Close log handle
         if managed._log_handle:

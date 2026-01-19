@@ -28,7 +28,7 @@ from ...models import (
     TerminateAgentResponse,
     UpdateAgentRequest,
 )
-from ..dependencies import broadcast_agent_spawned, get_agent_store, get_process_manager
+from ..dependencies import broadcast_agent_spawned, broadcast_agent_status_changed, get_agent_store, get_process_manager
 
 logger = logging.getLogger(__name__)
 
@@ -295,6 +295,9 @@ async def resume_agent(
 
         agent_store.update(agent_id, running_updater)
 
+        # Broadcast status change so all connected clients update
+        broadcast_agent_status_changed(agent_id)
+
         return SpawnAgentResponse(
             agent_id=agent_id,
             status=AgentStatus.RUNNING,
@@ -396,6 +399,9 @@ async def terminate_agent(
         return a
 
     agent_store.update(agent_id, updater)
+
+    # Broadcast status change
+    broadcast_agent_status_changed(agent_id)
 
     msg = "Agent terminated successfully"
     if killed_by_pid:

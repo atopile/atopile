@@ -4,6 +4,7 @@ import type { AgentViewModel } from '@/logic/viewmodels';
 import { useDispatch, useAgentOutput, useLoading } from '@/hooks';
 import { StatusBadge } from './StatusBadge';
 import { OutputStream } from './OutputStream';
+import { VimTextarea } from './VimTextarea';
 
 interface AgentDetailProps {
   agent: AgentViewModel;
@@ -22,10 +23,12 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(agent.name || '');
+  const [vimMode, setVimMode] = useState(false);
 
   const hasMultipleRuns = agent.runCount > 0;
 
-  // Initial data fetch - only runs when agent.id changes
+  // Initial data fetch and run number tracking
+  // This runs when agent.id OR agent.runCount changes (e.g., after resume)
   useEffect(() => {
     // Set the current run number so new WebSocket chunks get tagged correctly
     dispatch({
@@ -43,8 +46,7 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
         payload: { agentId: agent.id, runNumber: agent.runCount },
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agent.id]);
+  }, [agent.id, agent.runCount, hasMultipleRuns, dispatch]);
 
   // WebSocket connection - separate effect for running state
   useEffect(() => {
@@ -80,20 +82,6 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
       setSending(false);
     }
   }, [dispatch, agent.id, agent.isRunning, inputValue]);
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      handleSendInput();
-    }
-  };
-
-  const handleResumeKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      handleResume();
-    }
-  };
 
   const handleResume = useCallback(async () => {
     if (!resumePrompt.trim() || !agent.canResume) return;
@@ -322,24 +310,32 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
           initialPrompt={agent.prompt}
           autoScroll={agent.isRunning}
           verbose={verbose}
+          isAgentRunning={agent.isRunning}
+          onSendInput={(input) => {
+            dispatch({
+              type: 'agents.sendInput',
+              payload: { agentId: agent.id, input },
+            });
+          }}
         />
       </div>
 
       {/* Input bar (only for running agents that support input) */}
       {agent.isRunning && (
         <div className="p-4 border-t border-gray-700">
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              className="input flex-1"
-              placeholder="Send input to agent... (Cmd/Ctrl+Enter)"
+          <div className="flex gap-2">
+            <VimTextarea
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
+              onChange={setInputValue}
+              onSubmit={handleSendInput}
+              placeholder="Send input to agent..."
               disabled={sending}
+              vimMode={vimMode}
+              onVimModeToggle={setVimMode}
+              className="flex-1"
             />
             <button
-              className="btn btn-primary"
+              className="btn btn-primary self-end"
               onClick={handleSendInput}
               disabled={!inputValue.trim() || sending}
             >
@@ -360,18 +356,19 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
             <span className="text-sm text-gray-300">Resume this session</span>
             <span className="text-xs text-gray-500">(session: {agent.sessionId?.slice(0, 8)}...)</span>
           </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              className="input flex-1 text-sm pl-4 placeholder:italic placeholder:text-xs placeholder:text-gray-500"
-              placeholder="New prompt..."
+          <div className="flex gap-2">
+            <VimTextarea
               value={resumePrompt}
-              onChange={(e) => setResumePrompt(e.target.value)}
-              onKeyDown={handleResumeKeyDown}
+              onChange={setResumePrompt}
+              onSubmit={handleResume}
+              placeholder="New prompt..."
               disabled={loadingResume}
+              vimMode={vimMode}
+              onVimModeToggle={setVimMode}
+              className="flex-1"
             />
             <button
-              className="btn btn-primary"
+              className="btn btn-primary self-end"
               onClick={handleResume}
               disabled={!resumePrompt.trim() || loadingResume}
               title="Send (Cmd/Ctrl+Enter)"
