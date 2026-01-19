@@ -234,6 +234,7 @@
 
 .log-message {
   word-break: break-word;
+  white-space: pre-wrap;
   color: var(--text);
 }
 

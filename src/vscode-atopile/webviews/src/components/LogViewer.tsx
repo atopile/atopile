@@ -2,7 +2,8 @@
  * Log viewer component for displaying structured JSON Lines logs.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
+import AnsiToHtml from 'ansi-to-html';
 import { useBuildStore } from '../stores/buildStore';
 import type { LogEntry, LogLevel } from '../types/build';
 import './LogViewer.css';
@@ -11,6 +12,22 @@ import './LogViewer.css';
 const vscode = acquireVsCodeApi();
 
 const ALL_LEVELS: LogLevel[] = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'ALERT'];
+
+// ANSI to HTML converter instance
+const ansiConverter = new AnsiToHtml({
+  fg: '#e5e5e5',
+  bg: 'transparent',
+  newline: true,
+  escapeXML: true,
+});
+
+/**
+ * Render text with ANSI color codes as styled HTML.
+ */
+function AnsiText({ text }: { text: string }) {
+  const html = useMemo(() => ansiConverter.toHtml(text), [text]);
+  return <span dangerouslySetInnerHTML={{ __html: html }} />;
+}
 
 function FilterButton({
   level,
@@ -75,7 +92,7 @@ function LogEntryRow({ entry }: { entry: LogEntry }) {
       <span className="log-timestamp">{formatTimestamp(entry.timestamp)}</span>
       <span className={`log-level ${levelClass}`}>{entry.level}</span>
       <div className="log-body">
-        <span className="log-message">{entry.message}</span>
+        <span className="log-message"><AnsiText text={entry.message} /></span>
 
         {(entry.ato_traceback || entry.exc_info) && (
           <div className="traceback-toggles">
@@ -101,11 +118,11 @@ function LogEntryRow({ entry }: { entry: LogEntry }) {
         )}
 
         {expandedSections.has('ato') && entry.ato_traceback && (
-          <pre className="traceback-content ato">{entry.ato_traceback}</pre>
+          <pre className="traceback-content ato"><AnsiText text={entry.ato_traceback} /></pre>
         )}
 
         {expandedSections.has('py') && entry.exc_info && (
-          <pre className="traceback-content python">{entry.exc_info}</pre>
+          <pre className="traceback-content python"><AnsiText text={entry.exc_info} /></pre>
         )}
       </div>
     </div>

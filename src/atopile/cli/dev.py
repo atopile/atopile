@@ -169,8 +169,6 @@ def install():
     vsix_file = max(vsix_files, key=lambda f: f.stat().st_mtime)
     print(f"Installing {vsix_file.name} using {Path(vscode_cli).name}...")
 
-    time.sleep(0.5)
-
     # Install with --force to replace existing installation
     # This triggers VS Code's "Reload Required" notification
     result = subprocess.run(

@@ -458,8 +458,7 @@ class JSONLinesFileHandler(logging.Handler):
             temp_console = RichConsole(
                 file=buffer,
                 width=120,
-                force_terminal=False,
-                no_color=True,
+                force_terminal=True,  # Enable ANSI codes for frontend rendering
             )
 
             # Render the exception using its __rich_console__ method

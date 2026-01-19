@@ -82,7 +82,12 @@ NET_LINE_WIDTH = min(120, int(TERMINAL_WIDTH) - FMT_HEADER_LEN)
 class NestedConsole(Console):
     def __init__(self, *args, **kwargs):
         super().__init__(
-            *args, record=True, width=NET_LINE_WIDTH - 1, file=io.StringIO(), **kwargs
+            *args,
+            record=True,
+            width=NET_LINE_WIDTH - 1,
+            file=io.StringIO(),
+            force_terminal=True,  # Enable ANSI colors for frontend rendering
+            **kwargs,
         )
 
     def __str__(self):
@@ -103,11 +108,6 @@ _LEVEL_ABBREV = {
     "ERROR": "[red]E[/red]",
     "CRITICAL": "[bold red]C[/bold red]",
 }
-
-print("TERMINAL_WIDTH", TERMINAL_WIDTH.get())
-print("NET_LINE_WIDTH", NET_LINE_WIDTH)
-print("-" * TERMINAL_WIDTH.get())
-print(("+" * int(FMT_HEADER_LEN)) + ("=" * int(NET_LINE_WIDTH)))
 
 
 def format_line(line: str) -> str:
