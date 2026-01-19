@@ -16,7 +16,6 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import buildutil, layout
 from atopile.buildutil import BuildContext, BuildStepContext
-from atopile.logging import LoggingStage
 from atopile.compiler import format_message
 from atopile.compiler.build import build_stage_2
 from atopile.config import BuildType, config
@@ -26,6 +25,7 @@ from atopile.errors import (
     UserExportError,
     UserPickError,
 )
+from atopile.logging import LoggingStage
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom
 from faebryk.exporters.documentation.datasheets import export_datasheets
@@ -671,7 +671,7 @@ def generate_bom(ctx: BuildStepContext, log_context: LoggingStage) -> None:
             types=fabll.Node,
             required_trait=F.Pickable.has_part_picked,
         )
-        if not m.has_trait(F.has_part_removed)
+        if not any(h[0].has_trait(F.has_part_removed) for h in m.get_hierarchy())
     ]
     write_bom(parts, config.build.paths.output_base.with_suffix(".bom.csv"))
 
