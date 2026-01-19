@@ -289,9 +289,8 @@ class has_part_picked(fabll.Node):
             supplier_partno=supplier_partno,
         )
 
-    @property
-    def removed(self) -> bool:
-        return self.has_trait(F.has_part_removed)
+    def is_removed(self) -> bool:
+        return any(h[0].has_trait(F.has_part_removed) for h in self.get_hierarchy())
 
     @classmethod
     def MakeChild(

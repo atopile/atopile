@@ -664,16 +664,17 @@ def build_design(ctx: BuildStepContext, log_context: LoggingStage) -> None:
 def generate_bom(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     """Generate a BOM for the project."""
     app = ctx.require_app()
-    parts = [
-        m.get_trait(F.Pickable.has_part_picked)
+    pickable_parts = [
+        part
         for m in app.get_children(
             direct_only=False,
             types=fabll.Node,
             required_trait=F.Pickable.has_part_picked,
         )
-        if not any(h[0].has_trait(F.has_part_removed) for h in m.get_hierarchy())
+        for part in [m.get_trait(F.Pickable.has_part_picked)]
+        if not part.is_removed()
     ]
-    write_bom(parts, config.build.paths.output_base.with_suffix(".bom.csv"))
+    write_bom(pickable_parts, config.build.paths.output_base.with_suffix(".bom.csv"))
 
 
 @muster.register(
