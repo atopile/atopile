@@ -3,6 +3,7 @@ import logging
 import os
 import subprocess
 import tempfile
+import time
 import webbrowser
 from collections import Counter
 from dataclasses import dataclass
@@ -54,6 +55,8 @@ def compile(
         subprocess.run(["npm", "run", "build"], cwd=viz_dir, check=True)
 
     if target in {"all", "vscode"}:
+        import time
+
         print("compiling vscode extension")
         repo_root = Path(__file__).resolve().parents[3]
         vscode_dir = repo_root / "src" / "vscode-atopile"
@@ -71,12 +74,29 @@ def compile(
         if needs_install:
             subprocess.run(["npm", "install"], cwd=vscode_dir, check=True)
 
-        # Package the extension (vscode:prepublish builds dashboard + extension)
-        subprocess.run(
-            ["npm", "exec", "--", "vsce", "package", "--allow-missing-repository"],
-            cwd=vscode_dir,
-            check=True,
-        )
+        # Update version with timestamp for dev builds
+        package_json_path = vscode_dir / "package.json"
+        package_json = json.loads(package_json_path.read_text())
+        original_version = package_json["version"]
+
+        # Create dev version: X.Y.Z -> X.Y.Z-dev.TIMESTAMP
+        timestamp = int(time.time())
+        dev_version = f"{original_version}-dev.{timestamp}"
+        package_json["version"] = dev_version
+        package_json_path.write_text(json.dumps(package_json, indent=4) + "\n")
+        print(f"version: {dev_version}")
+
+        try:
+            # Package the extension (vscode:prepublish builds dashboard + extension)
+            subprocess.run(
+                ["npm", "exec", "--", "vsce", "package", "--allow-missing-repository"],
+                cwd=vscode_dir,
+                check=True,
+            )
+        finally:
+            # Restore original version
+            package_json["version"] = original_version
+            package_json_path.write_text(json.dumps(package_json, indent=4) + "\n")
 
         # Find and report the generated .vsix file
         vsix_files = list(vscode_dir.glob("*.vsix"))
@@ -84,6 +104,89 @@ def compile(
             vsix_file = max(vsix_files, key=lambda f: f.stat().st_mtime)
             print(f"\nExtension packaged: {vsix_file}")
             print(f"Install with: code --install-extension {vsix_file}")
+
+
+def _find_vscode_cli() -> tuple[str, str] | None:
+    """Find the VS Code or Cursor CLI command. Returns (cli_path, uri_scheme)."""
+    import shutil
+
+    # Check if 'code' or 'cursor' is in PATH
+    for cmd, scheme in [("cursor", "cursor"), ("code", "vscode")]:
+        if shutil.which(cmd):
+            return cmd, scheme
+
+    # Check common macOS locations
+    macos_paths = [
+        ("/Applications/Cursor.app/Contents/Resources/app/bin/cursor", "cursor"),
+        ("/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code", "vscode"),
+        (Path.home() / "Applications/Cursor.app/Contents/Resources/app/bin/cursor", "cursor"),
+        (Path.home() / "Applications/Visual Studio Code.app/Contents/Resources/app/bin/code", "vscode"),
+    ]
+    for p, scheme in macos_paths:
+        path = Path(p)
+        if path.exists():
+            return str(path), scheme
+
+    return None
+
+
+@dev_app.command()
+@capture("cli:dev_install_start", "cli:dev_install_end")
+def install():
+    """
+    Install the locally built VS Code extension.
+
+    Installs the latest .vsix built by 'ato dev compile vscode'.
+    VS Code will prompt to reload the extension automatically.
+    """
+    repo_root = Path(__file__).resolve().parents[3]
+    vscode_dir = repo_root / "src" / "vscode-atopile"
+
+    if not vscode_dir.exists():
+        raise typer.BadParameter(f"vscode extension directory not found: {vscode_dir}")
+
+    # Find VS Code/Cursor CLI
+    cli_info = _find_vscode_cli()
+    if not cli_info:
+        typer.secho(
+            "Could not find VS Code or Cursor CLI.\n"
+            "Install 'code' command: Open VS Code, Cmd+Shift+P, 'Shell Command: Install code command in PATH'",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(1)
+
+    vscode_cli, uri_scheme = cli_info
+
+    # Find the latest .vsix file
+    vsix_files = list(vscode_dir.glob("*.vsix"))
+    if not vsix_files:
+        typer.secho(
+            "No .vsix file found. Run 'ato dev compile vscode' first.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(1)
+
+    vsix_file = max(vsix_files, key=lambda f: f.stat().st_mtime)
+    print(f"Installing {vsix_file.name} using {Path(vscode_cli).name}...")
+
+    time.sleep(0.5)
+
+    # Install with --force to replace existing installation
+    # This triggers VS Code's "Reload Required" notification
+    result = subprocess.run(
+        [vscode_cli, "--install-extension", str(vsix_file), "--force"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        typer.secho(
+            f"Failed to install extension: {result.stderr}",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(1)
+
+    typer.secho("Extension installed!", fg=typer.colors.GREEN)
+    print("Remember to reload your extension!")
 
 
 @dataclass(frozen=True)

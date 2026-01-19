@@ -2,7 +2,7 @@
  * Main sidebar component with modern card-based design.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useBuildStore } from '../stores/buildStore';
 import { ActionButton } from './ActionButton';
 import { BuildItem } from './BuildItem';
@@ -12,6 +12,9 @@ import './Sidebar.css';
 const vscode = acquireVsCodeApi();
 
 export function Sidebar() {
+  const [version, setVersion] = useState<string>('');
+  const [logoUri, setLogoUri] = useState<string>('');
+
   const {
     builds,
     actionButtons,
@@ -31,6 +34,11 @@ export function Sidebar() {
       const message = event.data;
 
       switch (message.type) {
+        case 'extensionInfo':
+          setVersion(message.data.version || '');
+          setLogoUri(message.data.logoUri || '');
+          break;
+
         case 'updateBuilds':
           setBuilds(message.data.builds || []);
           setConnected(message.data.isConnected ?? false);
@@ -73,6 +81,15 @@ export function Sidebar() {
 
   return (
     <div className="sidebar">
+      {/* Header with logo and version */}
+      <div className="sidebar-header">
+        {logoUri && <img src={logoUri} alt="atopile" className="sidebar-logo" />}
+        <div className="sidebar-header-text">
+          <span className="sidebar-title">atopile</span>
+          {version && <span className="sidebar-version">v{version}</span>}
+        </div>
+      </div>
+
       {/* Actions Card */}
       <div className="card">
         <div className="card-header">

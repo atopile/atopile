@@ -56,6 +56,9 @@ class atopileUriHandler implements vscode.UriHandler {
             traceInfo('openDashboard - redirecting to log viewer panel');
             // Open the log viewer panel instead
             vscode.commands.executeCommand('atopile.logViewer.focus');
+        } else if (path === "/restartExtensionHost") {
+            traceInfo('restartExtensionHost - restarting extension host');
+            vscode.commands.executeCommand('workbench.action.restartExtensionHost');
         }
     }
 }

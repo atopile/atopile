@@ -7,6 +7,38 @@
   overflow: hidden;
 }
 
+/* Sidebar Header */
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.sidebar-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+}
+
+.sidebar-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-title {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sidebar-version {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
 /* Card Component */
 .card {
   background: var(--bg-card);
