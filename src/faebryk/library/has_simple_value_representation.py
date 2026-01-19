@@ -261,303 +261,314 @@ class has_simple_value_representation(fabll.Node):
         )
 
 
-def test_repr_chain_basic():
-    import faebryk.library._F as F
+class TestHasSimpleValueRepresentation:
+    def test_repr_chain_basic(self):
+        import faebryk.library._F as F
 
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
 
-    class _TestModule(fabll.Node):
-        param1 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
-        param2 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
-        param3 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+        class _TestModule(fabll.Node):
+            param1 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+            param2 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+            param3 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
 
-        S = has_simple_value_representation.Spec
-        _simple_repr = fabll.Traits.MakeEdge(
-            has_simple_value_representation.MakeChild(
-                S(param=param1, prefix="TM", tolerance=True),
-                S(param=param2, suffix="P2"),
-                S(param=param3, tolerance=True, suffix="P3"),
+            S = has_simple_value_representation.Spec
+            _simple_repr = fabll.Traits.MakeEdge(
+                has_simple_value_representation.MakeChild(
+                    S(param=param1, prefix="TM", tolerance=True),
+                    S(param=param2, suffix="P2"),
+                    S(param=param3, tolerance=True, suffix="P3"),
+                )
             )
-        )
 
-    m = _TestModule.bind_typegraph(tg).create_instance(g=g)
-    m.param1.get().set_superset(
-        g=g,
-        value=F.Literals.Numbers.bind_typegraph(tg)
-        .create_instance(g=g)
-        .setup_from_min_max(
-            min=10.0,
-            max=20,
-            unit=F.Units.Volt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
-        ),
-    )
-    m.param2.get().set_superset(
-        g=g,
-        value=F.Literals.Numbers.bind_typegraph(tg)
-        .create_instance(g=g)
-        .setup_from_singleton(
-            value=5.0,
-            unit=F.Units.Ampere.bind_typegraph(tg=tg)
+        m = _TestModule.bind_typegraph(tg).create_instance(g=g)
+        m.param1.get().set_superset(
+            g=g,
+            value=F.Literals.Numbers.bind_typegraph(tg)
             .create_instance(g=g)
-            .is_unit.get(),
-        ),
-    )
-    m.param3.get().set_superset(
-        g=g,
-        value=F.Literals.Numbers.bind_typegraph(tg)
-        .create_instance(g=g)
-        .setup_from_singleton(
-            value=10.0,
-            unit=F.Units.Volt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
-        ),
-    )
-
-    val = m._simple_repr.get().get_value()
-    assert val == "TM {10..20}V 5A P2 10V P3"
-
-
-def test_repr_with_picked_attributes():
-    import faebryk.library._F as F
-    from faebryk.libs.picker.lcsc import PickedPartLCSC
-
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-
-    class _TestModule(fabll.Node):
-        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
-        param1 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
-        param2 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
-
-        S = has_simple_value_representation.Spec
-        _simple_repr = fabll.Traits.MakeEdge(
-            has_simple_value_representation.MakeChild(
-                S(param=param1, prefix="V:", tolerance=True),
-                S(param=param2, suffix="A"),
-            )
+            .setup_from_min_max(
+                min=10.0,
+                max=20,
+                unit=F.Units.Volt.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .is_unit.get(),
+            ),
         )
-
-    m = _TestModule.bind_typegraph(tg).create_instance(g=g)
-
-    lit1 = (
-        F.Literals.Numbers.bind_typegraph(tg)
-        .create_instance(g=g)
-        .setup_from_center_rel(
-            center=12.0,
-            rel=0.05,
-            unit=F.Units.Volt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
-        )
-    )
-    lit2 = (
-        F.Literals.Numbers.bind_typegraph(tg)
-        .create_instance(g=g)
-        .setup_from_singleton(
-            value=2.5,
-            unit=F.Units.Ampere.bind_typegraph(tg=tg)
+        m.param2.get().set_superset(
+            g=g,
+            value=F.Literals.Numbers.bind_typegraph(tg)
             .create_instance(g=g)
-            .is_unit.get(),
+            .setup_from_singleton(
+                value=5.0,
+                unit=F.Units.Ampere.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .is_unit.get(),
+            ),
         )
-    )
-
-    fabll.Traits.create_and_add_instance_to(
-        node=m, trait=F.Pickable.has_part_picked
-    ).setup(
-        PickedPartLCSC(
-            manufacturer="TestMfr",
-            partno="TestPart",
-            supplier_partno="C12345",
+        m.param3.get().set_superset(
+            g=g,
+            value=F.Literals.Numbers.bind_typegraph(tg)
+            .create_instance(g=g)
+            .setup_from_singleton(
+                value=10.0,
+                unit=F.Units.Volt.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .is_unit.get(),
+            ),
         )
-    ).set_attributes(
-        {
-            "param1": lit1.is_literal.get(),
-            "param2": lit2.is_literal.get(),
-        }
-    )
 
-    val = m._simple_repr.get().get_value()
-    assert val == "V: 12±5.0%V 2.5A A"
+        val = m._simple_repr.get().get_value()
+        assert val == "TM {10..20}V 5A P2 10V P3"
 
+    def test_repr_with_picked_attributes(self):
+        import faebryk.library._F as F
+        from faebryk.libs.picker.lcsc import PickedPartLCSC
 
-def test_repr_chain_non_number():
-    import faebryk.library._F as F
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
 
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
+        class _TestModule(fabll.Node):
+            _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+            param1 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+            param2 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
 
-    class TestEnum(Enum):
-        A = "AS"
-        B = "BS"
+            S = has_simple_value_representation.Spec
+            _simple_repr = fabll.Traits.MakeEdge(
+                has_simple_value_representation.MakeChild(
+                    S(param=param1, prefix="V:", tolerance=True),
+                    S(param=param2, suffix="A"),
+                )
+            )
 
-    class _TestModule(fabll.Node):
-        param1 = F.Parameters.EnumParameter.MakeChild(TestEnum)
-        param2 = F.Parameters.BooleanParameter.MakeChild()
+        m = _TestModule.bind_typegraph(tg).create_instance(g=g)
 
-        S = has_simple_value_representation.Spec
-        _simple_repr = fabll.Traits.MakeEdge(
-            has_simple_value_representation.MakeChild(
-                S(param=param1),
-                S(param=param2, prefix="P2:"),
+        lit1 = (
+            F.Literals.Numbers.bind_typegraph(tg)
+            .create_instance(g=g)
+            .setup_from_center_rel(
+                center=12.0,
+                rel=0.05,
+                unit=F.Units.Volt.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .is_unit.get(),
+            )
+        )
+        lit2 = (
+            F.Literals.Numbers.bind_typegraph(tg)
+            .create_instance(g=g)
+            .setup_from_singleton(
+                value=2.5,
+                unit=F.Units.Ampere.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .is_unit.get(),
             )
         )
 
-    m = _TestModule.bind_typegraph(tg).create_instance(g=g)
-    test_enum_lit = (
-        F.Literals.AbstractEnums.bind_typegraph(tg=tg)
-        .create_instance(g=g)
-        .setup(TestEnum.A)
-    )
-    m.param1.get().is_parameter_operatable.get().set_superset(
-        g=g,
-        value=test_enum_lit,
-    )
-    m.param2.get().set_singleton(value=True)
-
-    val = m._simple_repr.get().get_value()
-    assert val == "A P2: true"
-
-
-def test_repr_chain_no_literal():
-    import faebryk.library._F as F
-
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-
-    class _TestModule(fabll.Node):
-        param1 = F.Parameters.NumericParameter.MakeChild(
-            unit=F.Units.Volt, domain=F.NumberDomain.Args(negative=True)
-        )
-        param2 = F.Parameters.NumericParameter.MakeChild(
-            unit=F.Units.Ampere, domain=F.NumberDomain.Args(negative=True)
-        )
-        param3 = F.Parameters.NumericParameter.MakeChild(
-            unit=F.Units.Volt, domain=F.NumberDomain.Args(negative=True)
-        )
-
-        S = has_simple_value_representation.Spec
-        _simple_repr = fabll.Traits.MakeEdge(
-            has_simple_value_representation.MakeChild(
-                S(param=param1, default=None),
-                S(param=param2),
-                S(param=param3, default="P3: MISSING"),
+        fabll.Traits.create_and_add_instance_to(
+            node=m, trait=F.Pickable.has_part_picked
+        ).setup(
+            PickedPartLCSC(
+                manufacturer="TestMfr",
+                partno="TestPart",
+                supplier_partno="C12345",
             )
+        ).set_attributes(
+            {
+                "param1": lit1.is_literal.get(),
+                "param2": lit2.is_literal.get(),
+            }
         )
 
-    m = _TestModule.bind_typegraph(tg).create_instance(g=g)
+        val = m._simple_repr.get().get_value()
+        assert val == "V: 12±5.0%V 2.5A A"
 
-    val = m._simple_repr.get().get_value()
-    assert val == "P3: MISSING"
+    def test_repr_chain_non_number(self):
+        import faebryk.library._F as F
 
-    m.param1.get().set_superset(
-        g=g,
-        value=F.Literals.Numbers.bind_typegraph(tg)
-        .create_instance(g=g)
-        .setup_from_singleton(
-            value=10.0,
-            unit=F.Units.Volt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
-        ),
-    )
-    val = m._simple_repr.get().get_value()
-    assert val == "10V P3: MISSING"
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
 
+        class TestEnum(Enum):
+            A = "AS"
+            B = "BS"
 
-def _make_kiloohm_unit(g: graph.GraphView, tg: fbrk.TypeGraph) -> "F.Units.is_unit":
-    from faebryk.library.Units import BasisVector, is_unit, is_unit_type
+        class _TestModule(fabll.Node):
+            param1 = F.Parameters.EnumParameter.MakeChild(TestEnum)
+            param2 = F.Parameters.BooleanParameter.MakeChild()
 
-    class _Kiloohm(fabll.Node):
-        unit_vector_arg = BasisVector(kilogram=1, meter=2, second=-3, ampere=-2)
-        is_unit_type_trait = fabll.Traits.MakeEdge(
-            is_unit_type.MakeChild(("kΩ", "kohm"), unit_vector_arg)
-        ).put_on_type()
-        is_unit_trait = fabll.Traits.MakeEdge(
-            is_unit.MakeChild(("kΩ", "kohm"), unit_vector_arg, multiplier=1000.0)
+            S = has_simple_value_representation.Spec
+            _simple_repr = fabll.Traits.MakeEdge(
+                has_simple_value_representation.MakeChild(
+                    S(param=param1),
+                    S(param=param2, prefix="P2:"),
+                )
+            )
+
+        m = _TestModule.bind_typegraph(tg).create_instance(g=g)
+        test_enum_lit = (
+            F.Literals.AbstractEnums.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup(TestEnum.A)
         )
-        can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
+        m.param1.get().is_parameter_operatable.get().set_superset(
+            g=g,
+            value=test_enum_lit,
+        )
+        m.param2.get().set_singleton(value=True)
 
-    kohm_instance = _Kiloohm.bind_typegraph(tg=tg).create_instance(g=g)
-    return kohm_instance.is_unit_trait.get()
+        val = m._simple_repr.get().get_value()
+        assert val == "A P2: true"
 
+    def test_repr_chain_no_literal(self):
+        import faebryk.library._F as F
 
-def test_repr_display_unit_conversion():
-    """
-    Test that values are converted to display unit (e.g., kΩ instead of Ω).
-    """
-    import faebryk.library._F as F
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
 
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
+        class _TestModule(fabll.Node):
+            param1 = F.Parameters.NumericParameter.MakeChild(
+                unit=F.Units.Volt, domain=F.NumberDomain.Args(negative=True)
+            )
+            param2 = F.Parameters.NumericParameter.MakeChild(
+                unit=F.Units.Ampere, domain=F.NumberDomain.Args(negative=True)
+            )
+            param3 = F.Parameters.NumericParameter.MakeChild(
+                unit=F.Units.Volt, domain=F.NumberDomain.Args(negative=True)
+            )
 
-    # Define Kiloohm unit with proper symbols
-    kohm_unit = _make_kiloohm_unit(g=g, tg=tg)
+            S = has_simple_value_representation.Spec
+            _simple_repr = fabll.Traits.MakeEdge(
+                has_simple_value_representation.MakeChild(
+                    S(param=param1, default=None),
+                    S(param=param2),
+                    S(param=param3, default="P3: MISSING"),
+                )
+            )
 
-    # Create parameter with kohm as display unit
-    param = F.Parameters.NumericParameter.bind_typegraph(tg).create_instance(g=g)
-    param.setup(is_unit=kohm_unit)
+        m = _TestModule.bind_typegraph(tg).create_instance(g=g)
 
-    # Set value in base ohms (47000 ohm = 47 kohm)
-    base_ohm = F.Units.Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
-    lit = (
-        F.Literals.Numbers.bind_typegraph(tg)
-        .create_instance(g=g)
-        .setup_from_singleton(value=47000.0, unit=base_ohm)
-    )
-    param.set_superset(g=g, value=lit)
+        val = m._simple_repr.get().get_value()
+        assert val == "P3: MISSING"
 
-    # format_literal_for_display should convert value and show correct unit
-    formatted = param.format_literal_for_display(lit)
+        m.param1.get().set_superset(
+            g=g,
+            value=F.Literals.Numbers.bind_typegraph(tg)
+            .create_instance(g=g)
+            .setup_from_singleton(
+                value=10.0,
+                unit=F.Units.Volt.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .is_unit.get(),
+            ),
+        )
+        val = m._simple_repr.get().get_value()
+        assert val == "10V P3: MISSING"
 
-    # Should show 47kΩ (converted from 47000Ω)
-    assert formatted == "47kΩ", f"Expected '47kΩ', got '{formatted}'"
+    def _make_kiloohm_unit(
+        self, g: graph.GraphView, tg: fbrk.TypeGraph
+    ) -> "F.Units.is_unit":
+        from faebryk.library.Units import BasisVector, is_unit, is_unit_type
 
+        class _Kiloohm(fabll.Node):
+            unit_vector_arg = BasisVector(kilogram=1, meter=2, second=-3, ampere=-2)
+            is_unit_type_trait = fabll.Traits.MakeEdge(
+                is_unit_type.MakeChild(("kΩ", "kohm"), unit_vector_arg)
+            ).put_on_type()
+            is_unit_trait = fabll.Traits.MakeEdge(
+                is_unit.MakeChild(("kΩ", "kohm"), unit_vector_arg, multiplier=1000.0)
+            )
+            can_be_operand = fabll.Traits.MakeEdge(
+                F.Parameters.can_be_operand.MakeChild()
+            )
 
-def test_resistor_value_representation():
-    """Test that resistor value representation shows correctly formatted values.
+        kohm_instance = _Kiloohm.bind_typegraph(tg=tg).create_instance(g=g)
+        return kohm_instance.is_unit_trait.get()
 
-    Note: The Resistor class uses Ohm (Ω) as the display unit, so values are shown
-    in base Ohms. The literal is set in kΩ but converted to Ω for display.
-    """
-    import faebryk.library._F as F
-    from faebryk.library.Resistor import Resistor
+    def test_repr_display_unit_conversion(self):
+        """
+        Test that values are converted to display unit (e.g., kΩ instead of Ω).
+        """
+        import faebryk.library._F as F
 
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
 
-    resistor = Resistor.bind_typegraph(tg=tg).create_instance(g=g)
+        # Define Kiloohm unit with proper symbols
+        kohm_unit = self._make_kiloohm_unit(g=g, tg=tg)
 
-    # Create kΩ unit for the literal value (10kΩ ±1%)
-    kohm_unit = _make_kiloohm_unit(g=g, tg=tg)
+        # Create parameter with kohm as display unit
+        param = F.Parameters.NumericParameter.bind_typegraph(tg).create_instance(g=g)
+        param.setup(is_unit=kohm_unit)
 
-    resistor.resistance.get().set_superset(
-        g=g,
-        value=F.Literals.Numbers.bind_typegraph(tg)
-        .create_instance(g=g)
-        .setup_from_center_rel(
-            center=10.0,
-            rel=0.01,
-            unit=kohm_unit,
-        ),
-    )
-    resistor.max_power.get().set_superset(
-        g=g,
-        value=F.Literals.Numbers.bind_typegraph(tg)
-        .create_instance(g=g)
-        .setup_from_singleton(
-            value=0.125,
-            unit=F.Units.Watt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
-        ),
-    )
-    resistor.max_voltage.get().set_superset(
-        g=g,
-        value=F.Literals.Numbers.bind_typegraph(tg)
-        .create_instance(g=g)
-        .setup_from_singleton(
-            value=10.0,
-            unit=F.Units.Volt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
-        ),
-    )
-    # 10kΩ converts to 10000Ω in display units
-    assert (
-        resistor._simple_repr.get().get_specs()[0].get_value(show_tolerance=False)
-        == "10000Ω"
-    )
-    # Full representation: 10kΩ ±1% = 10000Ω ±1%, plus power and voltage
-    assert resistor._simple_repr.get().get_value() == "10000±1.0%Ω 0.125W 10V"
+        # Set value in base ohms (47000 ohm = 47 kohm)
+        base_ohm = F.Units.Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
+        lit = (
+            F.Literals.Numbers.bind_typegraph(tg)
+            .create_instance(g=g)
+            .setup_from_singleton(value=47000.0, unit=base_ohm)
+        )
+        param.set_superset(g=g, value=lit)
+
+        # format_literal_for_display should convert value and show correct unit
+        formatted = param.format_literal_for_display(lit)
+
+        # Should show 47kΩ (converted from 47000Ω)
+        assert formatted == "47kΩ", f"Expected '47kΩ', got '{formatted}'"
+
+    def test_resistor_value_representation(self):
+        """Test that resistor value representation shows correctly formatted values.
+
+        Note: The Resistor class uses Ohm (Ω) as the display unit, so values are shown
+        in base Ohms. The literal is set in kΩ but converted to Ω for display.
+        """
+        import faebryk.library._F as F
+        from faebryk.library.Resistor import Resistor
+
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        resistor = Resistor.bind_typegraph(tg=tg).create_instance(g=g)
+
+        # Create kΩ unit for the literal value (10kΩ ±1%)
+        kohm_unit = self._make_kiloohm_unit(g=g, tg=tg)
+
+        resistor.resistance.get().set_superset(
+            g=g,
+            value=F.Literals.Numbers.bind_typegraph(tg)
+            .create_instance(g=g)
+            .setup_from_center_rel(
+                center=10.0,
+                rel=0.01,
+                unit=kohm_unit,
+            ),
+        )
+        resistor.max_power.get().set_superset(
+            g=g,
+            value=F.Literals.Numbers.bind_typegraph(tg)
+            .create_instance(g=g)
+            .setup_from_singleton(
+                value=0.125,
+                unit=F.Units.Watt.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .is_unit.get(),
+            ),
+        )
+        resistor.max_voltage.get().set_superset(
+            g=g,
+            value=F.Literals.Numbers.bind_typegraph(tg)
+            .create_instance(g=g)
+            .setup_from_singleton(
+                value=10.0,
+                unit=F.Units.Volt.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .is_unit.get(),
+            ),
+        )
+        # 10kΩ converts to 10000Ω in display units
+        assert (
+            resistor._simple_repr.get().get_specs()[0].get_value(show_tolerance=False)
+            == "10000Ω"
+        )
+        # Full representation: 10000Ω ±1% plus power and voltage
+        assert resistor._simple_repr.get().get_value() == "10000±1.0%Ω 0.125W 10V"
