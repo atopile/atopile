@@ -1001,6 +1001,42 @@ class ProjectConfig(BaseConfigModel):
             for dep in (value or [])
         ]
 
+    @model_validator(mode="after")
+    def validate_unique_entry_points(self) -> Self:
+        """Validate each entry point address is used by at most one build target."""
+        from collections import defaultdict
+
+        # Group build targets by their entry point address
+        entry_to_builds: dict[str, list[str]] = defaultdict(list)
+        for build_name, build_config in self.builds.items():
+            assert build_config.address is not None
+            entry_to_builds[build_config.address].append(build_name)
+
+        # Find duplicates
+        duplicates = {
+            entry: builds
+            for entry, builds in entry_to_builds.items()
+            if len(builds) > 1
+        }
+
+        if duplicates:
+            config_path = self.paths.root / PROJECT_CONFIG_FILENAME
+            error_lines = [
+                f"Multiple build targets share the same entry point in {config_path}:",
+                "",
+            ]
+            for entry, builds in sorted(duplicates.items()):
+                error_lines.append(f"  Entry point: {entry}")
+                error_lines.append(
+                    "    Conflicting build targets: "
+                    + ", ".join(f"`{b}`" for b in sorted(builds)),
+                )
+                error_lines.append("")
+
+            raise UserConfigurationError("\n".join(error_lines))
+
+        return self
+
     @classmethod
     def skeleton(cls, entry: str, paths: ProjectPaths | None):
         """Creates a minimal ProjectConfig"""
