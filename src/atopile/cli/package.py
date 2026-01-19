@@ -389,6 +389,8 @@ class _PackageValidators:
 
     @staticmethod
     def verify_no_warnings(config: "Config"):
+        import json
+
         logs_latest = config.project.paths.logs / "latest"
 
         if not logs_latest.exists():
@@ -397,24 +399,47 @@ class _PackageValidators:
                 "Please run `ato build` to generate logs."
             )
 
-        offenders: list[str] = []
-        for path in logs_latest.rglob("*"):
-            if not path.is_file():
-                continue
-            if "warning" in path.name:
-                try:
-                    if path.stat().st_size > 0:
-                        offenders.append(
-                            str(path.relative_to(config.project.paths.root))
-                        )
-                except OSError:
-                    # If the file can't be stat'ed, count it as an offender to be safe
-                    offenders.append(str(path.relative_to(config.project.paths.root)))
+        summary_file = logs_latest / "summary.json"
+        if not summary_file.exists():
+            raise UserFileNotFoundError(
+                f"Missing build summary: {summary_file}. "
+                "Please run `ato build` to generate the build summary."
+            )
 
-        if offenders:
+        try:
+            summary = json.loads(summary_file.read_text())
+        except json.JSONDecodeError as e:
+            raise UserBadParameterError(f"Invalid build summary JSON: {e}")
+
+        # Check total warnings from the summary
+        total_warnings = summary.get("totals", {}).get("warnings", 0)
+        if total_warnings > 0:
+            # Collect warning details from individual builds/stages
+            warning_details: list[str] = []
+            for build in summary.get("builds", []):
+                build_name = build.get("display_name") or build.get("name", "unknown")
+                build_warnings = build.get("warnings", 0)
+                if build_warnings > 0:
+                    # Check stages for more detail
+                    stages_with_warnings = [
+                        f"  - {stage['name']}: {stage['warnings']} warning(s)"
+                        for stage in build.get("stages", [])
+                        if stage.get("warnings", 0) > 0
+                    ]
+                    if stages_with_warnings:
+                        warning_details.append(
+                            f"{build_name} ({build_warnings} warning(s)):\n"
+                            + "\n".join(stages_with_warnings)
+                        )
+                    else:
+                        warning_details.append(
+                            f"{build_name}: {build_warnings} warning(s)"
+                        )
+
             raise UserBadParameterError(
-                "Warning logs must be empty. Non-empty warning files found:\n\n"
-                + ", ".join(offenders)
+                f"Build completed with {total_warnings} warning(s). "
+                "Warnings must be resolved before publishing.\n\n"
+                + "\n".join(warning_details)
             )
 
     @staticmethod
