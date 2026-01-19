@@ -217,9 +217,6 @@ class ProjectPaths(BaseConfigModel):
     build: Path
     """Build artifact output directory"""
 
-    logs: Path
-    """Build logs directory"""
-
     manifest: Path
     """Build manifest file"""
 
@@ -240,7 +237,6 @@ class ProjectPaths(BaseConfigModel):
         data.setdefault("parts", data["src"] / "parts")
         data.setdefault("layout", data["root"] / "elec" / "layout")
         data["build"] = Path(data.get("build", data["root"] / "build"))
-        data.setdefault("logs", data["build"] / "logs")
         data.setdefault("manifest", data["build"] / "manifest.json")
         data.setdefault("modules", data["root"] / ".ato" / "modules")
 

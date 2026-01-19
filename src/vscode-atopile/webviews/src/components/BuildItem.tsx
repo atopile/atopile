@@ -44,8 +44,6 @@ function StageItem({
   isSelected: boolean;
   onSelect: () => void;
 }) {
-  const time = formatTime(stage.elapsed_seconds);
-
   return (
     <button
       className={`stage-item ${isSelected ? 'selected' : ''}`}
@@ -56,7 +54,6 @@ function StageItem({
     >
       <StatusIcon status={stage.status} size={12} />
       <span className="stage-name">{stripRichText(stage.name)}</span>
-      {time && <span className="stage-time">{time}</span>}
       <div className="stage-stats">
         {stage.warnings > 0 && (
           <span className="stat warning">{stage.warnings}</span>

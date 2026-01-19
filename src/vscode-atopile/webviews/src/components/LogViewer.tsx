@@ -262,8 +262,6 @@ export function LogViewer() {
     return <div className="log-viewer loading">Loading...</div>;
   }
 
-  const logFilename = state.logFile?.split('/').pop() || '';
-
   return (
     <div className="log-viewer">
       <div className="log-header">
@@ -335,18 +333,6 @@ export function LogViewer() {
 
           <div className="action-divider" />
 
-          {state.logFile && (
-            <>
-              <button className="log-file-btn" onClick={() => action('copyLogPath')} title={`Copy: ${state.logFile}`}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                </svg>
-                {logFilename}
-              </button>
-              <div className="action-divider" />
-            </>
-          )}
           <button
             className={`scroll-btn ${state.logAutoScroll ? 'active' : ''}`}
             onClick={() => action('setLogAutoScroll', { enabled: !state.logAutoScroll })}

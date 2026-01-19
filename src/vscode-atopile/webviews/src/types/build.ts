@@ -20,25 +20,19 @@ export interface LogEntry {
 export interface BuildStage {
   name: string;
   stage_id: string;
-  elapsed_seconds: number;
   status: StageStatus;
-  infos: number;
   warnings: number;
   errors: number;
-  alerts: number;
 }
 
 export interface Build {
-  name: string;
+  name: string;  // Target name for matching
   display_name: string;
-  project_name: string | null;
+  build_id: string;
   status: BuildStatus;
   elapsed_seconds: number;
   warnings: number;
   errors: number;
-  return_code: number | null;
-  log_dir?: string;
-  log_file?: string;
   stages?: BuildStage[];
 }
 
@@ -75,7 +69,6 @@ export interface AppState {
   selectedStageIds: string[];
   logEntries: LogEntry[];
   isLoadingLogs: boolean;
-  logFile: string | null;
 
   // Log viewer UI
   enabledLogLevels: LogLevel[];

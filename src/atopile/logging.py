@@ -15,7 +15,6 @@ import json
 import logging
 import os
 import pickle
-import shutil
 import sqlite3
 import struct
 import sys
@@ -758,7 +757,6 @@ class ProjectState:
     current_build: str | None = None
     current_stage: str | None = None
     elapsed: float = 0.0
-    log_dir: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -1242,7 +1240,6 @@ class LoggingStage(Advancable):
         self._original_handlers: dict = {}
         self._sanitized_name = pathvalidate.sanitize_filename(self.name)
         self._result = None
-        self._log_dir: Path | None = None
         self._stage_start_time: float = 0.0
         self._original_level = logging.INFO
         self._shared_file_handler = False
@@ -1502,42 +1499,6 @@ class LoggingStage(Advancable):
         except Exception:
             pass
 
-    def _create_log_dir(self) -> Path:
-        from atopile.config import config
-
-        base_log_dir = Path(config.project.paths.logs) / "archive" / NOW
-
-        try:
-            build_cfg = config.build
-            log_dir = base_log_dir / pathvalidate.sanitize_filename(build_cfg.name)
-        except RuntimeError:
-            log_dir = base_log_dir
-
-        log_dir.mkdir(parents=True, exist_ok=True)
-
-        # Store log directory for parallel display
-        self._log_dir = log_dir
-
-        # Skip symlink update in worker mode - it's handled by the summary generator
-        if self._in_worker_mode:
-            return log_dir
-
-        # Update the latest symlink (single-threaded mode only)
-        latest_link = Path(config.project.paths.logs) / "latest"
-        try:
-            if latest_link.is_symlink():
-                latest_link.unlink()
-            elif latest_link.exists():
-                shutil.rmtree(latest_link)
-            latest_link.symlink_to(base_log_dir, target_is_directory=True)
-        except OSError:
-            # If we can't symlink, just don't symlink
-            # Logs are still written to the dated directory
-            # Seems to happen on Windows if 'Developer Mode' is not enabled
-            pass
-
-        return log_dir
-
     def _setup_logging(self) -> None:
         from atopile.config import config
 
@@ -1559,8 +1520,6 @@ class LoggingStage(Advancable):
             self._capture_log_handler.setFormatter(_DEFAULT_FORMATTER)
             self._capture_log_handler.setLevel(logging.INFO)
 
-        log_dir = self._create_log_dir()
-
         for handler in root_logger.handlers.copy():
             root_logger.removeHandler(handler)
 
@@ -1576,7 +1535,7 @@ class LoggingStage(Advancable):
             target = config.build.name
         except RuntimeError:
             # Fallback if config is not fully initialized
-            project_path = str(log_dir.parent.parent) if log_dir else "unknown"
+            project_path = "unknown"
             target = "default"
 
         # Use shared SQLite log database with stage field

@@ -128,7 +128,6 @@ class BuildProcess:
     def __init__(
         self,
         build_name: str,
-        log_dir: Path,
         project_root: Path,
         project_name: str | None = None,
         targets: list[str] | None = None,
@@ -144,7 +143,6 @@ class BuildProcess:
             self.display_name = f"{project_name}/{build_name}"
         else:
             self.display_name = build_name
-        self.log_dir = log_dir
         self.project_root = project_root
         self.targets = targets or []
         self.exclude_targets = exclude_targets or []
@@ -173,8 +171,6 @@ class BuildProcess:
 
     def start(self) -> None:
         """Start the build subprocess."""
-        # Create log directory for this build
-        self.log_dir.mkdir(parents=True, exist_ok=True)
         self._setup_event_pipe()
 
         # Build the command - run ato build for just this target
@@ -417,7 +413,6 @@ class ParallelBuildManager:
         self,
         # (build_name, project_root, project_name)
         build_tasks: list[tuple[str, Path, str | None]],
-        logs_base: Path,
         max_workers: int = DEFAULT_WORKER_COUNT,
         verbose: bool = False,
         targets: list[str] | None = None,
@@ -432,7 +427,6 @@ class ParallelBuildManager:
 
         Args:
             build_tasks: List of (build_name, project_root, project_name) tuples
-            logs_base: Base directory for logs
             max_workers: Maximum concurrent builds (default: CPU count)
             verbose: Show full output (runs sequentially, no live display)
             targets: Build targets to run (passed to workers via ATO_TARGET env var)
@@ -443,7 +437,6 @@ class ParallelBuildManager:
             keep_designators: Keep designators from PCB
         """
         self.build_tasks = build_tasks
-        self.logs_base = logs_base
         self.max_workers = max_workers
         self.verbose = verbose
         self.targets = targets or []
@@ -467,13 +460,8 @@ class ParallelBuildManager:
                 display_name = f"{project_name}/{build_name}"
             else:
                 display_name = build_name
-            if project_name:
-                log_dir = logs_base / "archive" / NOW / project_name / build_name
-            else:
-                log_dir = logs_base / "archive" / NOW / build_name
             bp = BuildProcess(
                 build_name,
-                log_dir,
                 project_root,
                 project_name,
                 targets=self.targets,
@@ -500,20 +488,6 @@ class ParallelBuildManager:
         self._console = Console()
         self._Table = Table
         self._live: Live | None = None
-
-        # Set up summary directory and symlink early for live updates
-        self._summary_dir = logs_base / "archive" / NOW
-        self._summary_dir.mkdir(parents=True, exist_ok=True)
-        self._summary_file = self._summary_dir / "summary.json"
-
-        # Create latest symlink
-        latest_link = logs_base / "latest"
-        if latest_link.exists() and latest_link.is_symlink():
-            latest_link.unlink()
-        try:
-            latest_link.symlink_to(self._summary_dir, target_is_directory=True)
-        except OSError:
-            pass
 
     def _start_next_build(self) -> bool:
         """Start the next build from the queue. Returns True if a build was started."""
@@ -559,10 +533,6 @@ class ParallelBuildManager:
             p.builds.append(bp)
             p.total += 1
             p.elapsed = max(p.elapsed, bp.elapsed)
-
-            # Set log dir to project level (parent of build log dir)
-            if bp.log_dir and bp.project_name:
-                p.log_dir = bp.log_dir.parent
 
             status = bp.status
             if status == Status.BUILDING:
@@ -869,37 +839,29 @@ class ParallelBuildManager:
             time.sleep(0.5)
 
     def _write_live_summary(self) -> None:
-        """Write current build state to JSON summary file."""
+        """Write per-target build summaries to each target's build output directory."""
         import json
 
-        # Collect all build data
-        builds = [self._get_build_data(bp) for bp in self.processes.values()]
+        for bp in self.processes.values():
+            # Get the build output directory for this target
+            # Structure: {project_root}/build/builds/{target_name}/build_summary.json
+            build_output_dir = bp.project_root / "build" / "builds" / bp.name
+            summary_file = build_output_dir / "build_summary.json"
 
-        # Aggregate stats
-        total = len(self.processes)
-        success = sum(
-            1
-            for bp in self.processes.values()
-            if bp.status in (Status.SUCCESS, Status.WARNING)
-        )
-        failed = sum(1 for bp in self.processes.values() if bp.status == Status.FAILED)
+            # Create directory if needed
+            try:
+                build_output_dir.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                continue
 
-        summary = {
-            "timestamp": self._now,
-            "totals": {
-                "builds": total,
-                "successful": success,
-                "failed": failed,
-                "warnings": sum(bp.warnings for bp in self.processes.values()),
-                "errors": sum(bp.errors for bp in self.processes.values()),
-            },
-            "builds": builds,
-        }
+            # Write minimal summary for this target
+            summary = self._get_build_data(bp)
+            summary["timestamp"] = self._now
 
-        try:
-            self._summary_file.write_text(json.dumps(summary, indent=2))
-        except Exception:
-            pass  # Don't fail the build if we can't write summary
+            try:
+                summary_file.write_text(json.dumps(summary, indent=2))
+            except Exception:
+                pass  # Don't fail the build if we can't write summary
 
     def run_until_complete(self) -> dict[str, int]:
         """
@@ -988,8 +950,7 @@ class ParallelBuildManager:
 
             bp = self.processes[display_name]
             if print_headers:
-                console.print(f"[bold cyan]▶ Building {display_name}[/bold cyan]")
-                console.print(f"[dim]  Logs: {bp.log_dir}[/dim]\n")
+                console.print(f"[bold cyan]▶ Building {display_name}[/bold cyan]\n")
             if stage_printer is not None:
                 bp.set_stage_printer(stage_printer)
             bp.start()
@@ -1029,22 +990,12 @@ class ParallelBuildManager:
                                     )
                                     bp._error_reported = True
                                 elif ret != 0 and not bp._error_reported:
-                                    console.print(f"[red bold]✗ {display_name}[/red bold]")
-                                    if bp.log_dir and bp.log_dir.exists():
-                                        console.print(
-                                            f"  [dim]Logs: {bp.log_dir}[/dim]"
-                                        )
-                                    console.print("")
+                                    console.print(f"[red bold]✗ {display_name}[/red bold]\n")
                                     bp._error_reported = True
                                 elif ret == 0 and bp.warnings > 0:
                                     console.print(
-                                        f"[yellow bold]⚠ {display_name}[/yellow bold]"
+                                        f"[yellow bold]⚠ {display_name}[/yellow bold]\n"
                                     )
-                                    if bp.log_dir and bp.log_dir.exists():
-                                        console.print(
-                                            f"  [dim]Logs: {bp.log_dir}[/dim]"
-                                        )
-                                    console.print("")
 
                         # Remove completed builds from active set
                         for name in completed_this_round:
@@ -1109,7 +1060,7 @@ class ParallelBuildManager:
         return results
 
     def _get_build_data(self, bp: "BuildProcess") -> dict:
-        """Collect all data for a single build as a dictionary."""
+        """Collect minimal data for a single build as a dictionary."""
         from atopile.logging import generate_build_id
 
         # Generate build_id for this build
@@ -1117,45 +1068,33 @@ class ParallelBuildManager:
         build_id = generate_build_id(project_path, bp.name, self._now)
 
         data = {
-            "name": bp.name,
+            "name": bp.name,  # Target name for matching
             "display_name": bp.display_name,
-            "project_name": bp.project_name,
-            "project_path": project_path,
             "build_id": build_id,
             "status": bp.status.value,
             "elapsed_seconds": round(bp.elapsed, 2),
             "warnings": bp.warnings,
             "errors": bp.errors,
-            "return_code": bp.return_code,
         }
 
-        # Add log dir and database path (now using central database)
-        if bp.log_dir and bp.log_dir.exists():
-            data["log_dir"] = str(bp.log_dir)
-
-            # Add timing data from stage history
-            # All stages share the same log file, filter by stage field in frontend
-            if bp._stage_history:
-                data["stages"] = [
-                    {
-                        "name": entry.description,
-                        "stage_id": entry.log_name,  # Stage ID for filtering
-                        "elapsed_seconds": round(entry.duration, 3),
-                        "status": entry.status,
-                        "infos": entry.infos,
-                        "warnings": entry.warnings,
-                        "errors": entry.errors,
-                        "alerts": entry.alerts,
-                    }
-                    for entry in bp._stage_history
-                ]
+        # Add timing data from stage history
+        if bp._stage_history:
+            data["stages"] = [
+                {
+                    "name": entry.description,
+                    "stage_id": entry.log_name,
+                    "status": entry.status,
+                    "warnings": entry.warnings,
+                    "errors": entry.errors,
+                }
+                for entry in bp._stage_history
+            ]
 
         return data
 
-    def generate_summary(self) -> Path:
-        """Generate final build summary as JSON file."""
+    def generate_summary(self) -> None:
+        """Generate final per-target build summaries."""
         self._write_live_summary()
-        return self._summary_file
 
 
 def _run_single_build() -> None:
@@ -1251,16 +1190,9 @@ def _build_all_projects(
         jobs,
     )
 
-    # Use the first project's log directory as base, or create one in cwd
-    logs_base = root / "build" / "logs"
-    logs_base.mkdir(parents=True, exist_ok=True)
-
-    logger.info("Saving logs to %s", logs_base / NOW)
-
     # Create and run parallel build manager
     manager = ParallelBuildManager(
         build_tasks,
-        logs_base,
         max_workers=jobs,
         verbose=verbose,
         targets=targets,
@@ -1273,12 +1205,11 @@ def _build_all_projects(
 
     results = manager.run_until_complete()
 
-    # Generate summary
-    summary_path = manager.generate_summary()
+    # Generate per-target summaries
+    manager.generate_summary()
 
     failed = [name for name, code in results.items() if code != 0]
     exit_code = _report_build_results(
-        summary_path=summary_path,
         failed=failed,
         total=len(build_tasks),
         failed_names=failed[:10],
@@ -1450,18 +1381,16 @@ def build(
 
     # Get the list of builds to run
     build_names = list(config.selected_builds)
-
-    logger.info("Saving logs to %s", config.project.paths.logs / NOW)
+    project_root = config.project.paths.root
 
     # Create build tasks: (build_name, project_root, project_name)
     build_tasks: list[tuple[str, Path, str | None]] = [
-        (name, config.project.paths.root, None) for name in build_names
+        (name, project_root, None) for name in build_names
     ]
 
     # Create and run parallel build manager
     manager = ParallelBuildManager(
         build_tasks,
-        config.project.paths.logs,
         max_workers=jobs,
         verbose=verbose,
         targets=target,
@@ -1481,8 +1410,7 @@ def build(
             from atopile.dashboard.server import start_dashboard_server
 
             dashboard_server, dashboard_url = start_dashboard_server(
-                manager._summary_file,
-                manager.logs_base,
+                project_root,
                 port=DASHBOARD_PORT,
             )
             logger.info("Dashboard API available at: %s", dashboard_url)
@@ -1498,14 +1426,13 @@ def build(
             dashboard_server.shutdown()
         raise typer.Exit(1)
 
-    # Generate summary
-    summary_path = manager.generate_summary()
+    # Generate per-target summaries
+    manager.generate_summary()
 
     failed = [name for name, code in results.items() if code != 0]
 
     # Report results (don't exit yet if dashboard is running)
     build_exit_code = _report_build_results(
-        summary_path=summary_path,
         failed=failed,
         total=len(build_names),
         failed_names=failed,
@@ -1553,7 +1480,6 @@ def build(
 
 def _report_build_results(
     *,
-    summary_path: Path,
     failed: list[str],
     total: int,
     failed_names: list[str] | None = None,
@@ -1563,7 +1489,6 @@ def _report_build_results(
         from atopile.cli.excepthook import log_discord_banner
 
         log_discord_banner()
-        logger.info("See summary at: %s", summary_path)
         logger.error("Build failed! %d of %d targets failed", len(failed), total)
         if failed_names:
             for name in failed_names:
@@ -1577,5 +1502,4 @@ def _report_build_results(
         logger.info("Build successful! 🚀 (%d targets)", total)
     else:
         logger.info("Build successful! 🚀")
-    logger.info("See summary at: %s", summary_path)
     return 0

@@ -27,27 +27,19 @@ export interface LogEntry {
 export interface BuildStage {
     name: string;
     stage_id: string;
-    elapsed_seconds: number;
     status: StageStatus;
-    infos: number;
     warnings: number;
     errors: number;
-    alerts: number;
 }
 
 export interface Build {
-    name: string;
+    name: string;  // Target name for matching
     display_name: string;
-    project_name: string | null;
-    project_path: string;
     build_id: string;
     status: BuildStatus;
     elapsed_seconds: number;
     warnings: number;
     errors: number;
-    return_code: number | null;
-    log_dir?: string;
-    log_file?: string;
     stages?: BuildStage[];
 }
 
@@ -123,7 +115,6 @@ export interface AppState {
     selectedStageIds: string[];
     logEntries: LogEntry[];
     isLoadingLogs: boolean;
-    logFile: string | null;
 
     // Log viewer UI
     enabledLogLevels: LogLevel[];
@@ -164,7 +155,6 @@ class AppStateManager {
         selectedStageIds: [],
         logEntries: [],
         isLoadingLogs: false,
-        logFile: null,
 
         // Log viewer UI
         enabledLogLevels: [...DEFAULT_LOG_LEVELS],
@@ -252,13 +242,11 @@ class AppStateManager {
         this._state.selectedBuildName = buildName;
         this._state.selectedStageIds = [];
         this._state.logEntries = [];
-        this._state.logFile = null;
         this._lastLogId = 0;
 
         const build = this._state.builds.find(b => b.display_name === buildName);
         if (build?.build_id) {
             this._state.isLoadingLogs = true;
-            this._state.logFile = build.log_file ?? null;
             this._emit();
             await this._startPollingLogs(build.build_id);
         } else {

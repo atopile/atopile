@@ -211,10 +211,13 @@ async function handleAction(message: any): Promise<void> {
             break;
 
         case 'copyLogPath': {
+            // Logs are now in a central SQLite database
+            // Copy the build_id for the selected build which can be used to query logs
             const state = appStateManager.getState();
-            if (state.logFile) {
-                await vscode.env.clipboard.writeText(state.logFile);
-                vscode.window.showInformationMessage('Log path copied to clipboard');
+            const selectedBuild = state.builds.find(b => b.display_name === state.selectedBuildName);
+            if (selectedBuild?.build_id) {
+                await vscode.env.clipboard.writeText(selectedBuild.build_id);
+                vscode.window.showInformationMessage('Build ID copied to clipboard');
             }
             break;
         }

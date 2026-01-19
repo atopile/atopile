@@ -391,32 +391,36 @@ class _PackageValidators:
     def verify_no_warnings(config: "Config"):
         import json
 
-        logs_latest = config.project.paths.logs / "latest"
+        # Scan for per-target build summaries
+        builds_dir = config.project.paths.build / "builds"
 
-        if not logs_latest.exists():
+        if not builds_dir.exists():
             raise UserFileNotFoundError(
-                f"Missing logs directory: {logs_latest}. "
-                "Please run `ato build` to generate logs."
+                f"Missing builds directory: {builds_dir}. "
+                "Please run `ato build` to generate build summaries."
             )
 
-        summary_file = logs_latest / "summary.json"
-        if not summary_file.exists():
+        # Load all per-target summaries
+        builds = []
+        for summary_file in builds_dir.glob("*/build_summary.json"):
+            try:
+                build_data = json.loads(summary_file.read_text())
+                builds.append(build_data)
+            except (json.JSONDecodeError, OSError):
+                continue
+
+        if not builds:
             raise UserFileNotFoundError(
-                f"Missing build summary: {summary_file}. "
-                "Please run `ato build` to generate the build summary."
+                f"No build summaries found in {builds_dir}. "
+                "Please run `ato build` to generate build summaries."
             )
 
-        try:
-            summary = json.loads(summary_file.read_text())
-        except json.JSONDecodeError as e:
-            raise UserBadParameterError(f"Invalid build summary JSON: {e}")
-
-        # Check total warnings from the summary
-        total_warnings = summary.get("totals", {}).get("warnings", 0)
+        # Check total warnings from all builds
+        total_warnings = sum(b.get("warnings", 0) for b in builds)
         if total_warnings > 0:
             # Collect warning details from individual builds/stages
             warning_details: list[str] = []
-            for build in summary.get("builds", []):
+            for build in builds:
                 build_name = build.get("display_name") or build.get("name", "unknown")
                 build_warnings = build.get("warnings", 0)
                 if build_warnings > 0:

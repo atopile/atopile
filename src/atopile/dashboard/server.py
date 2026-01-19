@@ -23,14 +23,13 @@ log = logging.getLogger(__name__)
 
 
 def create_app(
-    summary_file: Optional[Path] = None, logs_base: Optional[Path] = None
+    project_root: Optional[Path] = None,
 ) -> FastAPI:
     """
     Create the FastAPI application with API routes for the dashboard.
 
     Args:
-        summary_file: Path to summary.json file.
-        logs_base: Base directory for logs.
+        project_root: Root directory of the project (where ato.yaml is located).
     """
     app = FastAPI(title="atopile Build Server")
 
@@ -43,63 +42,51 @@ def create_app(
         allow_headers=["*"],
     )
 
-    # Track the current summary file
-    state = {"summary_file": summary_file, "logs_base": logs_base}
+    # Track the project root
+    state = {"project_root": project_root}
 
     @app.get("/api/summary")
     async def get_summary():
-        """Return the current build summary."""
-        summary_path = state["summary_file"]
-        if summary_path is None or not summary_path.exists():
-            return {"error": "No summary file found", "builds": [], "totals": {}}
-        try:
-            return json.loads(summary_path.read_text())
-        except json.JSONDecodeError as e:
-            raise HTTPException(status_code=500, detail=f"Invalid JSON: {e}")
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+        """Return the aggregated build summary from all per-target summaries."""
+        project_root = state["project_root"]
+        if project_root is None:
+            return {"error": "No project root configured", "builds": [], "totals": {}}
 
-    @app.get("/api/logs/{build_name}/{log_filename}")
-    async def get_log_file(build_name: str, log_filename: str):
-        """Return a specific log file by filename."""
-        try:
-            summary_path = state["summary_file"]
-            if summary_path is None or not summary_path.exists():
-                raise HTTPException(status_code=404, detail="No summary file found")
+        # Scan for per-target build summaries
+        builds_dir = project_root / "build" / "builds"
+        if not builds_dir.exists():
+            return {"builds": [], "totals": {"builds": 0, "successful": 0, "failed": 0, "warnings": 0, "errors": 0}}
 
-            summary = json.loads(summary_path.read_text())
+        builds = []
+        for summary_file in builds_dir.glob("*/build_summary.json"):
+            try:
+                build_data = json.loads(summary_file.read_text())
+                builds.append(build_data)
+            except (json.JSONDecodeError, OSError):
+                continue
 
-            # Find the build and get its log_dir
-            log_dir = None
-            for build in summary.get("builds", []):
-                if build.get("name") == build_name or build.get(
-                    "display_name"
-                ) == build_name:
-                    log_dir = build.get("log_dir")
-                    break
+        # Aggregate stats
+        total = len(builds)
+        success = sum(1 for b in builds if b.get("status") in ("success", "warning"))
+        failed = sum(1 for b in builds if b.get("status") == "failed")
+        warnings = sum(b.get("warnings", 0) for b in builds)
+        errors = sum(b.get("errors", 0) for b in builds)
 
-            if not log_dir:
-                raise HTTPException(
-                    status_code=404, detail=f"Build not found: {build_name}"
-                )
+        # Get timestamp from most recent build
+        timestamps = [b.get("timestamp") for b in builds if b.get("timestamp")]
+        timestamp = max(timestamps) if timestamps else None
 
-            # Construct the log file path
-            log_file = Path(log_dir) / log_filename
-
-            if not log_file.exists():
-                raise HTTPException(
-                    status_code=404, detail=f"Log file not found: {log_filename}"
-                )
-
-            return PlainTextResponse(
-                content=log_file.read_text(),
-                media_type="text/plain",
-            )
-
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "timestamp": timestamp,
+            "totals": {
+                "builds": total,
+                "successful": success,
+                "failed": failed,
+                "warnings": warnings,
+                "errors": errors,
+            },
+            "builds": builds,
+        }
 
     @app.get("/api/logs/query")
     async def query_logs(
@@ -290,11 +277,10 @@ def find_free_port() -> int:
 class DashboardServer:
     """Manages the dashboard server lifecycle."""
 
-    def __init__(self, summary_file: Path, logs_base: Path, port: Optional[int] = None):
-        self.summary_file = summary_file
-        self.logs_base = logs_base
+    def __init__(self, project_root: Path, port: Optional[int] = None):
+        self.project_root = project_root
         self.port = port or find_free_port()
-        self.app = create_app(summary_file, logs_base)
+        self.app = create_app(project_root)
         self._server: Optional[uvicorn.Server] = None
         self._thread: Optional[threading.Thread] = None
 
@@ -334,22 +320,18 @@ class DashboardServer:
 
 
 def start_dashboard_server(
-    summary_file: Path, logs_base: Optional[Path] = None, port: Optional[int] = None
+    project_root: Path, port: Optional[int] = None
 ) -> tuple[DashboardServer, str]:
     """
     Start the dashboard server.
 
     Args:
-        summary_file: Path to the summary.json file
-        logs_base: Base directory for logs (defaults to summary_file's parent)
+        project_root: Root directory of the project (where ato.yaml is located)
         port: Port to use (defaults to a free port)
 
     Returns:
         Tuple of (DashboardServer, url)
     """
-    if logs_base is None:
-        logs_base = summary_file.parent
-
-    server = DashboardServer(summary_file, logs_base, port)
+    server = DashboardServer(project_root, port)
     server.start()
     return server, server.url
