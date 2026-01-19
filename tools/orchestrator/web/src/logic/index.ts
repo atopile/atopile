@@ -70,7 +70,6 @@ export class UILogic {
 
     // Increment version to ensure React detects the change
     this.state = { ...newState, _version: prevState._version + 1 };
-    console.log('[UILogic] setState: version', this.state._version, 'listeners:', this.listeners.size);
     this.notifyListeners();
   }
 
@@ -102,7 +101,6 @@ export class UILogic {
    * This replaces polling for agents, sessions, and pipelines.
    */
   connectGlobalEvents(): void {
-    console.log('[UILogic] connectGlobalEvents called');
     this.ws.connectGlobal((event: GlobalEvent) => {
       this.handleGlobalEvent(event);
     });
@@ -126,7 +124,7 @@ export class UILogic {
    * Handle incoming global events and update state accordingly
    */
   private handleGlobalEvent(event: GlobalEvent): void {
-    console.log('[UILogic] handleGlobalEvent:', event.type);
+    console.log('[UILogic] handleGlobalEvent:', event.type, event);
 
     switch (event.type) {
       case 'connected':

@@ -225,6 +225,7 @@ class PipelineSession(BaseModel):
     node_agent_map: dict[str, str] = Field(default_factory=dict)  # node_id -> agent_id
     node_status: dict[str, str] = Field(default_factory=dict)  # node_id -> status
     loop_iterations: dict[str, int] = Field(default_factory=dict)  # node_id -> iteration count
+    loop_wait_until: dict[str, datetime] = Field(default_factory=dict)  # node_id -> resume datetime
     execution_order: list[str] = Field(default_factory=list)  # Order nodes were executed
     started_at: datetime = Field(default_factory=datetime.now)
     finished_at: datetime | None = None

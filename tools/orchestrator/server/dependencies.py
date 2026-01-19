@@ -497,12 +497,10 @@ class ConnectionManager:
         with self._lock:
             connections = list(self._global_connections)
 
-        logger.info(f"Broadcasting global event {event.type} to {len(connections)} connections")
         for websocket in connections:
             try:
                 await websocket.send_json(event.model_dump(mode="json"))
-            except Exception as e:
-                logger.warning(f"Failed to send global event: {e}")
+            except Exception:
                 self.disconnect_global(websocket)
 
     def get_connection_count(self, agent_id: str | None = None) -> int:

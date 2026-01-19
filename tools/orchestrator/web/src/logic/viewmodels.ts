@@ -87,6 +87,7 @@ export interface PipelineSessionViewModel {
   nodeAgentMap: Record<string, string>;
   nodeStatus: Record<string, string>;
   loopIterations: Record<string, number>;
+  loopWaitUntil: Record<string, string>;  // node_id -> ISO datetime when loop will resume
   executionOrder: string[];
   startedAt: string;
   finishedAt: string | null;

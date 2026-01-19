@@ -27,7 +27,8 @@ function toFlowNodes(
   pipelineNodes: PipelineNode[],
   nodeStatus?: Record<string, string>,
   nodeAgentMap?: Record<string, string>,
-  loopIterations?: Record<string, number>
+  loopIterations?: Record<string, number>,
+  loopWaitUntil?: Record<string, string>
 ): Node[] {
   return pipelineNodes.map((node) => ({
     id: node.id,
@@ -38,6 +39,7 @@ function toFlowNodes(
       _nodeStatus: nodeStatus?.[node.id],
       _agentId: nodeAgentMap?.[node.id],
       _loopIteration: loopIterations?.[node.id],
+      _loopWaitUntil: loopWaitUntil?.[node.id],
     },
   }));
 }
@@ -98,6 +100,7 @@ export function PipelineEditor() {
   const nodeStatus = selectedSession?.nodeStatus;
   const nodeAgentMap = selectedSession?.nodeAgentMap;
   const loopIterations = selectedSession?.loopIterations;
+  const loopWaitUntil = selectedSession?.loopWaitUntil;
 
   // Helper to update editor nodes via dispatch
   const setEditorNodes = useCallback((nodes: PipelineNode[]) => {
@@ -111,7 +114,7 @@ export function PipelineEditor() {
 
   // Initialize React Flow state from store
   const [nodes, setNodes, onNodesChange] = useNodesState(
-    toFlowNodes(editor.nodes, nodeStatus, nodeAgentMap, loopIterations)
+    toFlowNodes(editor.nodes, nodeStatus, nodeAgentMap, loopIterations, loopWaitUntil)
   );
   const [edges, setEdges, onEdgesChange] = useEdgesState(toFlowEdges(editor.edges));
 
@@ -120,15 +123,15 @@ export function PipelineEditor() {
     const nodesJson = JSON.stringify(editor.nodes);
     if (nodesJson !== lastExternalNodes.current && !isInternalChange.current) {
       lastExternalNodes.current = nodesJson;
-      setNodes(toFlowNodes(editor.nodes, nodeStatus, nodeAgentMap, loopIterations));
+      setNodes(toFlowNodes(editor.nodes, nodeStatus, nodeAgentMap, loopIterations, loopWaitUntil));
     }
     isInternalChange.current = false;
-  }, [editor.nodes, setNodes, nodeStatus, nodeAgentMap, loopIterations]);
+  }, [editor.nodes, setNodes, nodeStatus, nodeAgentMap, loopIterations, loopWaitUntil]);
 
-  // Update node display when selected session changes (status, agent map, iterations)
+  // Update node display when selected session changes (status, agent map, iterations, wait times)
   useEffect(() => {
-    setNodes(toFlowNodes(editor.nodes, nodeStatus, nodeAgentMap, loopIterations));
-  }, [selectedSession?.id, nodeStatus, nodeAgentMap, loopIterations, editor.nodes, setNodes]);
+    setNodes(toFlowNodes(editor.nodes, nodeStatus, nodeAgentMap, loopIterations, loopWaitUntil));
+  }, [selectedSession?.id, nodeStatus, nodeAgentMap, loopIterations, loopWaitUntil, editor.nodes, setNodes]);
 
   useEffect(() => {
     const edgesJson = JSON.stringify(editor.edges);

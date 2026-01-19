@@ -313,6 +313,7 @@ export interface PipelineSession {
   node_agent_map: Record<string, string>;
   node_status: Record<string, string>;
   loop_iterations: Record<string, number>;
+  loop_wait_until: Record<string, string>;  // node_id -> ISO datetime when loop will resume
   execution_order: string[];
   started_at: string;
   finished_at?: string;

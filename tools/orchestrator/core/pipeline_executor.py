@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Callable
 
 from ..models import (
@@ -765,13 +765,36 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
         self.loop_iterations[node_id] = current_iteration + 1
         logger.info(f"Loop {node_id}: completed iteration {current_iteration}, waiting {duration_seconds}s before starting iteration {current_iteration + 1}")
 
+        # Calculate when the wait will end
+        wait_until = datetime.now() + timedelta(seconds=duration_seconds)
+
+        # Update session with wait_until time
+        def set_wait_until(s: PipelineSession) -> PipelineSession:
+            s.loop_wait_until[node_id] = wait_until
+            s.node_status[node_id] = "waiting"
+            return s
+
+        self.executor._pipeline_session_store.update(self.session_id, set_wait_until)
+        self._update_node_status(node_id, "waiting")
+
         # Wait for duration (check should_stop periodically)
         wait_start = time.time()
         while time.time() - wait_start < duration_seconds:
             if self._should_stop:
                 logger.info(f"Loop {node_id}: stopping during wait")
+                # Clear wait_until on stop
+                def clear_wait_on_stop(s: PipelineSession) -> PipelineSession:
+                    s.loop_wait_until.pop(node_id, None)
+                    return s
+                self.executor._pipeline_session_store.update(self.session_id, clear_wait_on_stop)
                 return None
             time.sleep(1.0)
+
+        # Clear wait_until when done waiting
+        def clear_wait_done(s: PipelineSession) -> PipelineSession:
+            s.loop_wait_until.pop(node_id, None)
+            return s
+        self.executor._pipeline_session_store.update(self.session_id, clear_wait_done)
 
         logger.info(f"Loop {node_id}: restarting from {target_node_id}")
         return target_node_id

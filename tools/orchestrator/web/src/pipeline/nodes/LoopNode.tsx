@@ -1,11 +1,12 @@
 import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Repeat } from 'lucide-react';
+import { Repeat, Clock } from 'lucide-react';
 import type { LoopNodeData } from '@/logic/api/types';
 
 interface LoopNodeProps {
   data: LoopNodeData & {
     _loopIteration?: number;
+    _loopWaitUntil?: string;  // ISO datetime when loop will resume
   };
   selected?: boolean;
 }
@@ -15,6 +16,11 @@ export const LoopNode = memo(({ data, selected }: LoopNodeProps) => {
     if (seconds < 60) return `${seconds}s`;
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
     return `${Math.floor(seconds / 3600)}h`;
+  };
+
+  const formatWaitUntil = (isoDate: string) => {
+    const date = new Date(isoDate);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
 
   return (
@@ -50,6 +56,16 @@ export const LoopNode = memo(({ data, selected }: LoopNodeProps) => {
         <div className="mt-2 pt-2 border-t border-gray-700">
           <div className="text-xs font-medium text-purple-400">
             Iteration: {data._loopIteration}{data.max_iterations ? ` / ${data.max_iterations}` : ''}
+          </div>
+        </div>
+      )}
+
+      {/* Wait until indicator */}
+      {data._loopWaitUntil && (
+        <div className="mt-2 pt-2 border-t border-gray-700">
+          <div className="flex items-center gap-1.5 text-xs text-yellow-400">
+            <Clock className="w-3 h-3 animate-pulse" />
+            <span>Waiting until {formatWaitUntil(data._loopWaitUntil)}</span>
           </div>
         </div>
       )}

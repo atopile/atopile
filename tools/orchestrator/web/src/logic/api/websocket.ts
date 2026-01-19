@@ -172,7 +172,6 @@ export class WebSocketClient {
     this.disconnectGlobal();
 
     const url = `${this.baseUrl}/ws/events`;
-    console.log('[WS] Connecting to global events:', url);
     const ws = new this.WebSocketImpl(url);
 
     this.globalConnection = {
@@ -182,13 +181,17 @@ export class WebSocketClient {
     };
 
     ws.onopen = () => {
-      console.log('[WS] Global events WebSocket connected');
+      console.log('[WS] Global WebSocket connected');
+      // Reset reconnect attempts on successful connection
+      if (this.globalConnection) {
+        this.globalConnection.reconnectAttempts = 0;
+      }
     };
 
     ws.onmessage = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data) as GlobalEvent;
-        console.log('[WS] Global event received:', data.type, data);
+        console.log('[WS] Global event:', data.type);
         this.globalConnection?.handler(data);
       } catch (e) {
         console.error('Failed to parse global WebSocket message:', e);
@@ -196,12 +199,10 @@ export class WebSocketClient {
     };
 
     ws.onerror = (event: Event) => {
-      console.error('[WS] Global events WebSocket error:', event);
+      console.error('Global events WebSocket error:', event);
     };
 
     ws.onclose = (event: CloseEvent) => {
-      console.log('[WS] Global events WebSocket closed:', event.code, event.reason);
-
       // Attempt reconnect if not a clean close
       if (event.code !== 1000 && event.code !== 1001 && this.globalConnection) {
         this.attemptGlobalReconnect();

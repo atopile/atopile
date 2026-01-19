@@ -59,23 +59,17 @@ export function useLogic(): UILogic {
  */
 export function useUIState(): UIState {
   const logic = useLogic();
-  const [updateCount, forceUpdate] = useReducer((x) => x + 1, 0);
+  const [, forceUpdate] = useReducer((x) => x + 1, 0);
   const stateRef = useRef(logic.getState());
 
   useEffect(() => {
-    console.log('[useUIState] Subscribing to logic');
     const unsubscribe = logic.subscribe((newState) => {
-      console.log('[useUIState] Listener called, version:', newState._version);
       stateRef.current = newState;
       forceUpdate();
     });
-    return () => {
-      console.log('[useUIState] Unsubscribing');
-      unsubscribe();
-    };
+    return unsubscribe;
   }, [logic]);
 
-  console.log('[useUIState] Rendering, updateCount:', updateCount, 'version:', stateRef.current._version);
   return stateRef.current;
 }
 
@@ -369,6 +363,7 @@ function sessionToViewModel(session: import('../logic').PipelineSession): Pipeli
     nodeAgentMap: session.node_agent_map,
     nodeStatus: session.node_status,
     loopIterations: session.loop_iterations,
+    loopWaitUntil: session.loop_wait_until ?? {},
     executionOrder: session.execution_order,
     startedAt: session.started_at,
     finishedAt: session.finished_at ?? null,
