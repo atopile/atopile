@@ -73,13 +73,18 @@ class can_be_operand(fabll.Node):
         return fabll.Traits(self).get_obj_raw()
 
     def pretty(
-        self, use_name: bool = True, context: "ReprContext | None" = None
+        self,
+        use_name: bool = True,
+        context: "ReprContext | None" = None,
+        no_lit_suffix: bool = False,
     ) -> str:
         """Return context-aware string (pretty_str for literals, compact_repr else)."""
         if lit := self.as_literal.try_get():
             return lit.pretty_str()
         if po := self.as_parameter_operatable.try_get():
-            return po.compact_repr(use_name=use_name, context=context)
+            return po.compact_repr(
+                use_name=use_name, context=context, no_lit_suffix=no_lit_suffix
+            )
         return str(self)
 
     def get_operations[T: "fabll.NodeT"](

@@ -126,15 +126,6 @@ class Solver:
             timings.add("_")
             algo_result = mutator.close()
 
-            if algo_result.dirty and logger.isEnabledFor(logging.DEBUG):
-                logger.debug(
-                    f"DONE  Iteration {iterno} Phase {phase_name}: {algo.name}"
-                )
-                # atm only one stage
-                # expensive
-                if S_LOG:
-                    algo_result.mutation_stage.print_mutation_table()
-
             iteration_state.dirty |= algo_result.dirty
             data.mutation_map = data.mutation_map.extend(algo_result.mutation_stage)
 
@@ -312,57 +303,45 @@ class Solver:
         assert isinstance(g, graph.GraphView) and isinstance(tg, fbrk.TypeGraph)
 
         now = time.time()
-        if LOG_PICK_SOLVE:
-            logger.info("Phase 1 Solving: Symbolic Solving ".ljust(NET_LINE_WIDTH, "="))
+        logger.info("Symbolic Solving ".ljust(NET_LINE_WIDTH, "="))
+        timings = Times(name="Symbolic Solving")
 
         self.state = self._create_or_resume_state(print_context, g, tg, relevant)
 
-        if S_LOG:
-            self.state.data.mutation_map.print_name_mappings()
-            self.state.data.mutation_map.last_stage.print_graph_contents(
-                F.Expressions.is_expression
-            )
-
         algos = [a for a in self.algorithms.iterative if terminal or not a.terminal]
-        for iterno in count():
-            if iterno > MAX_ITERATIONS_HEURISTIC:
-                raise TimeoutError(
-                    "Solver Bug: Too many iterations, likely stuck in a loop"
-                )
-            logger.debug(
-                (f"Iteration {iterno} {self.state.data.mutation_map}").ljust(
-                    NET_LINE_WIDTH, "-"
-                )
-            )
 
-            try:
+        with timings.measure("symbolic solving"):
+            for iterno in count():
+                if iterno > MAX_ITERATIONS_HEURISTIC:
+                    raise TimeoutError(
+                        "Solver Bug: Too many iterations, likely stuck in a loop"
+                    )
+                logger.info(
+                    (f"Iteration {iterno} {self.state.data.mutation_map}").ljust(
+                        NET_LINE_WIDTH, "-"
+                    )
+                )
+
                 iteration_state = Solver._run_iteration(
-                    iterno=iterno, data=self.state.data, terminal=terminal, algos=algos
-                )
-            except Exception:
-                if S_LOG:
-                    self.state.data.mutation_map.last_stage.print_graph_contents()
-                raise
-
-            if not iteration_state.dirty:
-                break
-
-            if not self.state.data.mutation_map.G_out.get_node_count():
-                break
-
-            if S_LOG:
-                # TODO remove logger.debug
-                self.state.data.mutation_map.last_stage.print_graph_contents(
-                    log=logger.debug
+                    iterno=iterno,
+                    data=self.state.data,
+                    terminal=terminal,
+                    algos=algos,
                 )
 
-        if LOG_PICK_SOLVE:
-            logger.info(
-                (
-                    f"Phase 1 Solving: Analytical Solving done in {iterno} iterations"
-                    f" and {time.time() - now:.3f} seconds"
-                ).ljust(NET_LINE_WIDTH, "=")
-            )
+                if not iteration_state.dirty:
+                    break
+
+                if not self.state.data.mutation_map.G_out.get_node_count():
+                    break
+
+        logger.info(timings)
+        logger.info(
+            (
+                f"Symbolic Solving done in {iterno} iterations"
+                f" and {time.time() - now:.3f} seconds"
+            ).ljust(NET_LINE_WIDTH, "=")
+        )
 
         # Partial solving not supported yet
         # if not terminal:

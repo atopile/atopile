@@ -211,7 +211,7 @@ class ResistorVoltageDivider(fabll.Node):
     )
 
 
-class VdivSolverTests:
+class TestVdivSolver:
     @pytest.mark.usefixtures("setup_project_config")
     @staticmethod
     def test_pick_adc_vdiv():
@@ -277,10 +277,10 @@ class VdivSolverTests:
 
         F.is_alias_bus_parameter.resolve_bus_parameters(g=g, tg=tg)
         solver = Solver()
-        solver.simplify_for(
-            app.rdiv.get().total_resistance.get().can_be_operand.get(), terminal=True
-        )
-        # pick_part_recursively(app, solver)
+        # solver.simplify_for(
+        #     app.rdiv.get().total_resistance.get().can_be_operand.get(), terminal=True
+        # )
+        pick_part_recursively(app, solver)
 
         r_top = (
             app.rdiv.get()

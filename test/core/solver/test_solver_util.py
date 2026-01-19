@@ -464,7 +464,7 @@ def test_contradiction_message_superset():
 
     solver = Solver()
 
-    with pytest.raises(ContradictionByLiteral, match=r"P!\{S\|False\}"):
+    with pytest.raises(ContradictionByLiteral, match=r"P!\{⊆\|False\}"):
         solver.simplify(E.tg, E.g, print_context=context, terminal=True)
 
 

@@ -2086,7 +2086,12 @@ class Mutator:
 
     def run(self):
         self._run()
-        return self.close()
+        out = self.close()
+        if S_LOG and out.dirty:
+            logger.debug(f"Dirty after {self.algo.name}")
+            out.mutation_stage.print_mutation_table()
+            out.mutation_stage.print_graph_contents()
+        return out
 
     # Debug Interface ------------------------------------------------------------------
     def __repr__(self, exclude_transformations: bool = False) -> str:
