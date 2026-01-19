@@ -2195,8 +2195,10 @@ class TestAggregator:
                     if len(error_msg_escaped) > 100
                     else error_msg_escaped
                 )
+                # Use different class for skip reasons (yellow) vs errors (red)
+                cell_class = "skip-cell" if outcome_class == "skipped" else "error-cell"
                 error_cell = (
-                    f'<td class="error-cell" title="{error_msg_escaped}">'
+                    f'<td class="{cell_class}" title="{error_msg_escaped}">'
                     f"{error_msg_display}</td>"
                 )
             else:

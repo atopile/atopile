@@ -208,8 +208,14 @@ def pytest_runtest_logreport(report: pytest.TestReport):
         if hasattr(report, "caplog") and report.caplog:
             output["log"] = report.caplog
 
-        # Use Rich traceback if we captured the exception, else fall back to longreprtext
-        if report.nodeid in _captured_exc_info:
+        # For skipped tests, extract the skip reason
+        if outcome == Outcome.SKIPPED and report.longrepr:
+            # For skips, longrepr is typically (file, lineno, reason)
+            if isinstance(report.longrepr, tuple) and len(report.longrepr) >= 3:
+                error_message = str(report.longrepr[2]).removeprefix("Skipped: ")
+            elif hasattr(report, "longreprtext") and report.longreprtext:
+                error_message = _extract_error_message(report.longreprtext)
+        elif report.nodeid in _captured_exc_info:
             exc_type, exc_value, exc_tb = _captured_exc_info.pop(report.nodeid)
             if exc_type and exc_value:
                 output["error"] = _format_rich_traceback(exc_type, exc_value, exc_tb)
