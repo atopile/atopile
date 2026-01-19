@@ -4598,7 +4598,9 @@ class Numbers(fabll.Node):
             numeric_set=numeric_set, unit=is_unit.to_base_units(unit, g=g, tg=tg)
         )
 
-    def pretty_str(self, show_tolerance: bool = True) -> str:
+    def pretty_str(
+        self, show_tolerance: bool = True, force_center: bool = False
+    ) -> str:
         """Format number with units and tolerance for display."""
         from faebryk.library.Units import is_unit
 
@@ -4672,6 +4674,8 @@ class Numbers(fabll.Node):
             # but prefer range if it's cleaner (shorter or no truncation needed)
             if tolerance_rel is not None and tolerance_rel < 25:
                 center_fmt = f"{f(center)}±{tolerance_rel:.1f}%"
+                if force_center:
+                    return center_fmt
                 # Prefer range if min/max are cleaner (integers) while center has
                 # decimals
                 min_is_int = min_val == int(min_val)

@@ -348,8 +348,6 @@ class is_parameter_operatable(fabll.Node):
         return lit
 
     def _get_lit_suffix(self) -> str:
-        out = ""
-
         def format_lit(literal: "F.Literals.is_literal") -> str:
             if param := self.as_parameter.try_get():
                 obj = fabll.Traits(param).get_obj_raw()
@@ -782,11 +780,16 @@ class NumericParameter(fabll.Node):
         return self.try_get_units()
 
     def format_literal_for_display(
-        self, lit: "Literals.Numbers", show_tolerance: bool = True
+        self,
+        lit: "Literals.Numbers",
+        show_tolerance: bool = True,
+        force_center: bool = False,
     ) -> str:
         display_unit = self.try_get_display_units()
         converted = lit.convert_to_unit(display_unit, g=self.g, tg=self.tg)
-        return converted.pretty_str(show_tolerance=show_tolerance)
+        return converted.pretty_str(
+            show_tolerance=show_tolerance, force_center=force_center
+        )
 
     def get_values(self) -> list[float]:
         """

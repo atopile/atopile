@@ -67,7 +67,7 @@ class has_simple_value_representation(fabll.Node):
                 or ""
             )
 
-        def _get_value(self, show_tolerance: bool = True) -> str:
+        def _get_value(self, show_tolerance: Optional[bool] = None) -> str:
             try:
                 _, part_picked = self.param.get_parent_with_trait(
                     F.Pickable.has_part_picked
@@ -75,29 +75,35 @@ class has_simple_value_representation(fabll.Node):
                 param_name = self.param.get_name()
                 if (is_lit := part_picked.get_attribute(param_name)) is not None:
                     return self._format_literal(is_lit, show_tolerance)
-                return f"[{param_name}: unknown]"
             except KeyError:
+                # No picked part, or attribute not found, continue
+                # extracting from constraints
                 pass
 
             # Fallback: extract from parameter constraints
             lit = self.param.get_trait(
                 F.Parameters.is_parameter_operatable
             ).try_extract_superset()
+
             if lit is None:
                 raise ValueError(f"No literal found for {self.param}")
 
             return self._format_literal(lit, show_tolerance)
 
         def _format_literal(
-            self, lit: "F.Literals.is_literal", show_tolerance: bool
+            self, lit: "F.Literals.is_literal", show_tolerance: Optional[bool]
         ) -> str:
             """Format a literal for display."""
-            show_tolerance = (
-                show_tolerance
-                or F.Parameters.BooleanParameter.bind_instance(
+            tolerance_preference = (
+                F.Parameters.BooleanParameter.bind_instance(
                     self.tolerance_.get().instance
                 ).try_extract_singleton()
                 is True
+            )
+            # `self.tolerance_` is the preference/default.
+            # `show_tolerance` (if provided) overrides it.
+            show_tolerance = (
+                tolerance_preference if show_tolerance is None else show_tolerance
             )
 
             # NumericParameter handles display unit conversion
@@ -107,14 +113,14 @@ class has_simple_value_representation(fabll.Node):
 
             if numeric_param and numbers_lit:
                 return numeric_param.format_literal_for_display(
-                    numbers_lit, show_tolerance=show_tolerance
+                    numbers_lit, show_tolerance=show_tolerance, force_center=True
                 )
             elif numbers_lit:
                 return numbers_lit.pretty_str(show_tolerance=show_tolerance)
             else:
                 return concrete_lit.pretty_str()
 
-        def get_value(self, show_tolerance: bool = True) -> str:
+        def get_value(self, show_tolerance: Optional[bool] = None) -> str:
             try:
                 value = self._get_value(show_tolerance=show_tolerance)
             except Exception as e:
@@ -551,7 +557,7 @@ def test_resistor_value_representation():
     # 10kΩ converts to 10000Ω in display units
     assert (
         resistor._simple_repr.get().get_specs()[0].get_value(show_tolerance=False)
-        == "10000±1.0%Ω"
+        == "10000Ω"
     )
     # Full representation: 10kΩ ±1% = 10000Ω ±1%, plus power and voltage
     assert resistor._simple_repr.get().get_value() == "10000±1.0%Ω 0.125W 10V"
