@@ -142,12 +142,12 @@ def resolve_alias_classes(mutator: Mutator):
             # If not params or lits in class, create a new param as representative
             # for expressions
 
-            # single domain
-            # TODO need to ask expression output for type
-            # .... thats annoying though
             representative = mutator.register_created_parameter(
-                F.Parameters.BooleanParameter.bind_typegraph(mutator.tg_out)
+                (next(iter(eq_class_exprs)))
+                .get_parameter_type()
+                .bind_typegraph(mutator.tg_out)
                 .create_instance(g=mutator.G_out)
+                .setup()
                 .is_parameter.get(),
                 from_ops=list(eq_class),
             ).as_parameter_operatable.get()
