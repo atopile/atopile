@@ -12,8 +12,7 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import get_algorithms
-from faebryk.core.solver.solver import Solver
-from faebryk.core.solver.solver import LOG_PICK_SOLVE
+from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import S_LOG, set_log_level
 from faebryk.libs.picker.picker import (
     NO_PROGRESS_BAR,
@@ -69,32 +68,58 @@ def test_performance_pick_real_module():
 def test_performance_pick_rc_formulas():
     _GROUPS = int(GROUPS)
     _GROUP_SIZE = int(GROUP_SIZE)
-    INCREASE = 10 * P.percent
-    TOLERANCE = 20 * P.percent
+    # increase factor: 1.1 +/- 20% = [0.88, 1.32]
+    INCREASE_CENTER = 1.1
+    INCREASE_TOLERANCE = 0.2
+
+    timings = Times(strategy=Times.Strategy.ALL)
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
 
     class _App(fabll.Node):
         alias_res = [F.Resistor.MakeChild() for _ in range(_GROUPS)]
         res = [F.Resistor.MakeChild() for _ in range(_GROUPS * _GROUP_SIZE)]
 
-        def __preinit__(self):
-            increase = fabll.Range.from_center_rel(INCREASE, TOLERANCE) + fabll.Single(
-                100 * P.percent
-            )
-
-            for i in range(_GROUPS):
-                for m1, m2 in pairwise(self.res[i::_GROUPS]):
-                    m2.resistance.constrain_subset(m1.resistance * increase)
-                    # solver doesn't do equation reordering, so we need to reverse
-                    m1.resistance.constrain_subset(m2.resistance / increase)
-                self.alias_res[i].resistance.alias_is(self.res[i].resistance)
-
-    timings = Times(strategy=Times.Strategy.ALL)
-
-    app = _App()
+    app = _App.bind_typegraph(tg).create_instance(g=g)
     timings.add("construct")
 
-    F.is_bus_parameter.resolve_bus_parameters(app.tg)
-    timings.add("resolve bus params")
+    # Create the increase factor literal (dimensionless)
+    dl_unit = (
+        F.Units.Dimensionless.bind_typegraph(tg).create_instance(g=g).is_unit.get()
+    )
+    increase_lit = (
+        F.Literals.Numbers.bind_typegraph(tg)
+        .create_instance(g=g)
+        .setup_from_center_rel(
+            center=INCREASE_CENTER, rel=INCREASE_TOLERANCE, unit=dl_unit
+        )
+        .can_be_operand.get()
+    )
+
+    # Set up constraints between resistors
+    for i in range(_GROUPS):
+        group_resistors = [
+            app.res[j].get() for j in range(i, _GROUPS * _GROUP_SIZE, _GROUPS)
+        ]
+        for m1, m2 in pairwise(group_resistors):
+            m1_res_op = m1.resistance.get().can_be_operand.get()
+            m2_res_op = m2.resistance.get().can_be_operand.get()
+
+            # m2.resistance in m1.resistance * increase
+            mul_expr = F.Expressions.Multiply.c(m1_res_op, increase_lit)
+            F.Expressions.IsSubset.from_operands(m2_res_op, mul_expr, assert_=True)
+
+            # m1.resistance in m2.resistance / increase (solver doesn't reorder)
+            div_expr = F.Expressions.Divide.c(m2_res_op, increase_lit)
+            F.Expressions.IsSubset.from_operands(m1_res_op, div_expr, assert_=True)
+
+        # alias_res[i].resistance = res[i].resistance
+        alias_res_op = app.alias_res[i].get().resistance.get().can_be_operand.get()
+        first_res_op = group_resistors[0].resistance.get().can_be_operand.get()
+        F.Expressions.Is.from_operands(alias_res_op, first_res_op, assert_=True)
+
+    timings.add("setup constraints")
 
     pick_tree = get_pick_tree(app)
     timings.add("pick tree")
@@ -116,7 +141,6 @@ def test_performance_pick_rc_formulas():
         S_LOG.set(True, force=True)
         LOG_PICK_SOLVE.set(True, force=True)
         set_log_level(logging.DEBUG)
-        solver.update_superset_cache(app)
         # assert False
         return
     finally:
@@ -169,7 +193,8 @@ def test_performance_pick_rc_formulas():
         logger.info(f"\n{timings.to_str()}")
 
     picked_values = {
-        m.get_full_name(): str(m.resistance.try_get_literal()) for m in app.res
+        m.get().get_full_name(): str(m.get().resistance.get().try_extract_superset())
+        for m in app.res
     }
     logger.info(f"Picked values: {indented_container(picked_values)}")
 
