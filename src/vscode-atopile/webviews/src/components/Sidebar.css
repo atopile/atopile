@@ -138,6 +138,24 @@
   color: var(--text-muted);
 }
 
+.select-project-btn {
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.select-project-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-default);
+}
+
 /* Build Targets Section */
 .builds-targets {
   display: flex;
@@ -160,12 +178,24 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.project-info {
+.project-selector {
   flex: 1;
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  margin: calc(-1 * var(--space-1)) 0;
+  margin-left: calc(-1 * var(--space-2));
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.project-selector:hover {
+  background: var(--bg-hover);
 }
 
 .project-icon {
@@ -176,12 +206,27 @@
 }
 
 .project-name {
+  flex: 1;
   font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: left;
+}
+
+.project-chevron {
+  width: 12px;
+  height: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+
+.project-selector:hover .project-chevron {
+  opacity: 1;
 }
 
 .build-play-button {

@@ -102,17 +102,30 @@ export function Sidebar() {
               </div>
               <span className="empty-title">No Project</span>
               <span className="empty-desc">Select a project folder</span>
+              <button
+                className="select-project-btn"
+                onClick={() => action('showProjectPicker')}
+              >
+                Select Project
+              </button>
             </div>
           ) : (
             <>
               {/* Selected project with play button */}
               <div className="project-header">
-                <div className="project-info">
+                <button
+                  className="project-selector"
+                  onClick={() => action('showProjectPicker')}
+                  title="Change project"
+                >
                   <svg className="project-icon" viewBox="0 0 16 16" fill="currentColor">
                     <path d="M1.5 2A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5V5.5A1.5 1.5 0 0 0 14.5 4H8.293L6.854 2.561A1.5 1.5 0 0 0 5.793 2H1.5z" />
                   </svg>
                   <span className="project-name">{selectedProject.name}</span>
-                </div>
+                  <svg className="project-chevron" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M4.5 5.5L8 9l3.5-3.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
                 <button
                   className="build-play-button"
                   onClick={() => action('build')}

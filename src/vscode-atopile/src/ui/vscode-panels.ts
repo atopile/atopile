@@ -222,6 +222,33 @@ async function handleAction(message: any): Promise<void> {
         case 'focusLogViewer':
             await vscode.commands.executeCommand('atopile.logViewer.focus');
             break;
+
+        case 'showProjectPicker': {
+            const projects = getProjects();
+            if (projects.length === 0) {
+                vscode.window.showInformationMessage('No ato projects found in workspace');
+                break;
+            }
+
+            const items = projects.map(p => ({
+                label: p.name,
+                description: p.root,
+                project: p,
+            }));
+
+            const selected = await vscode.window.showQuickPick(items, {
+                placeHolder: 'Select a project',
+                title: 'Atopile Projects',
+            });
+
+            if (selected) {
+                setProjectRoot(selected.project.root);
+                const builds = getBuilds().filter(b => b.root === selected.project.root);
+                setSelectedTargets(builds);
+                syncProjectsToState();
+            }
+            break;
+        }
     }
 }
 
