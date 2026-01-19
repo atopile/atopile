@@ -168,9 +168,9 @@ class _PackageValidators:
                 "Missing required files/directories: " + ", ".join(missing)
             )
 
-        # 3. ato.yaml must contain both 'default' and 'usage' builds
+        # 3. ato.yaml must contain 'usage' build
         build_names = set(config.project.builds.keys())
-        for required_build in {"default", "usage"}:
+        for required_build in {"usage"}:
             if required_build not in build_names:
                 raise UserBadParameterError(
                     f"ato.yaml must define a '{required_build}' build target"
