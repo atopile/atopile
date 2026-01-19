@@ -212,7 +212,7 @@ export interface StreamEvent {
 
 // Pipeline types
 export type PipelineStatus = 'draft' | 'ready' | 'running' | 'paused' | 'completed' | 'failed';
-export type PipelineNodeType = 'agent' | 'trigger' | 'condition' | 'loop';
+export type PipelineNodeType = 'agent' | 'trigger' | 'condition' | 'wait';
 export type TriggerType = 'manual' | 'timer' | 'webhook';
 
 export interface PipelineNodePosition {
@@ -238,18 +238,16 @@ export interface TriggerNodeData {
   cron_expression?: string;
 }
 
-export interface LoopNodeData {
+export interface WaitNodeData {
   duration_seconds: number;
-  restart_on_complete: boolean;
-  restart_on_fail: boolean;
-  max_iterations?: number;
 }
 
 export interface ConditionNodeData {
-  expression: string;
+  count_limit?: number;
+  time_limit_seconds?: number;
 }
 
-export type PipelineNodeData = AgentNodeData | TriggerNodeData | LoopNodeData | ConditionNodeData;
+export type PipelineNodeData = AgentNodeData | TriggerNodeData | ConditionNodeData | WaitNodeData;
 
 export interface PipelineNode {
   id: string;
@@ -312,8 +310,8 @@ export interface PipelineSession {
   status: PipelineSessionStatus;
   node_agent_map: Record<string, string>;
   node_status: Record<string, string>;
-  loop_iterations: Record<string, number>;
-  loop_wait_until: Record<string, string>;  // node_id -> ISO datetime when loop will resume
+  wait_until: Record<string, string>;  // wait_node_id -> ISO datetime when wait will end
+  condition_counts: Record<string, number>;  // condition_node_id -> evaluation count
   execution_order: string[];
   started_at: string;
   finished_at?: string;

@@ -202,7 +202,6 @@ class PipelineExecution:
         self.node_agents: dict[str, str] = {}  # node_id -> agent_id
         self.node_status: dict[str, str] = {}  # node_id -> status
         self.node_outputs: dict[str, str] = {}  # node_id -> output result (for communication)
-        self.loop_iterations: dict[str, int] = {}  # loop_node_id -> iteration count
         self._should_stop = False
         self._current_agent_id: str | None = None
 
@@ -241,10 +240,7 @@ class PipelineExecution:
             self._mark_completed()
             return
 
-        # Track last executed node status for loop decisions
-        last_node_failed = False
-
-        # Execute nodes - use index to support jumping back for loops
+        # Execute nodes - use index to support jumping back for conditions
         current_index = 0
         while current_index < len(execution_order):
             if self._should_stop:
@@ -265,32 +261,35 @@ class PipelineExecution:
             try:
                 if node.type == "agent":
                     self._execute_agent_node(pipeline, node)
-                    last_node_failed = False
                 elif node.type == "trigger":
                     # Trigger nodes just mark as complete
                     pass
-                elif node.type == "loop":
-                    # Loop nodes check conditions and may restart
-                    restart_node_id = self._execute_loop_node(pipeline, node, last_node_failed)
-                    if restart_node_id:
-                        # Find the index of the restart node
-                        try:
-                            restart_index = execution_order.index(restart_node_id)
-                            logger.info(f"Loop restarting from node {restart_node_id} (index {restart_index})")
-                            current_index = restart_index
-                            continue  # Skip the increment at the bottom
-                        except ValueError:
-                            logger.warning(f"Loop target node {restart_node_id} not in execution order")
+                elif node.type == "wait":
+                    # Wait nodes pause execution for a duration
+                    self._execute_wait_node(pipeline, node)
                 elif node.type == "condition":
-                    # Condition nodes - for now just pass through
-                    pass
+                    # Condition nodes evaluate and branch
+                    next_node_id = self._execute_condition_node(pipeline, node)
+                    self._update_node_status(node_id, "completed")
+                    if next_node_id is None:
+                        # No outgoing edge for this path - terminate session
+                        logger.info(f"Condition {node_id} has no outgoing edge, terminating session")
+                        self._mark_completed()
+                        return
+                    # Jump to the next node
+                    try:
+                        next_index = execution_order.index(next_node_id)
+                        logger.info(f"Condition branching to node {next_node_id} (index {next_index})")
+                        current_index = next_index
+                        continue  # Skip the increment at the bottom
+                    except ValueError:
+                        logger.warning(f"Condition target node {next_node_id} not in execution order")
 
                 self._update_node_status(node_id, "completed")
 
             except Exception as e:
                 logger.error(f"Node {node_id} failed: {e}")
                 self._update_node_status(node_id, "failed")
-                last_node_failed = True
 
                 if pipeline.config.stop_on_failure:
                     self._mark_failed(str(e))
@@ -698,79 +697,30 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
         finally:
             self._current_agent_id = None
 
-    def _execute_loop_node(
-        self, pipeline: PipelineState, node, last_node_failed: bool
-    ) -> str | None:
-        """Execute a loop node - check conditions and return restart target if should loop.
+    def _execute_wait_node(self, pipeline: PipelineState, node) -> None:
+        """Execute a wait node - pause for a duration.
 
         Args:
             pipeline: The pipeline state
-            node: The loop node
-            last_node_failed: Whether the previous node execution failed
-
-        Returns:
-            Node ID to restart from, or None to continue normally
+            node: The wait node
         """
         import time
-        from ..models import LoopNodeData
+        from ..models import WaitNodeData
 
         node_id = node.id
         data = node.data
 
-        # Get loop configuration
-        duration_seconds = getattr(data, 'duration_seconds', 3600)
-        restart_on_complete = getattr(data, 'restart_on_complete', True)
-        restart_on_fail = getattr(data, 'restart_on_fail', False)
-        max_iterations = getattr(data, 'max_iterations', None)
+        # Get wait configuration
+        duration_seconds = getattr(data, 'duration_seconds', 60)
 
-        # Get current iteration count (1-indexed for display)
-        current_iteration = self.loop_iterations.get(node_id, 1)
-
-        # Always update session with current iteration (so it shows during execution)
-        def iteration_updater(s: PipelineSession) -> PipelineSession:
-            s.loop_iterations[node_id] = current_iteration
-            return s
-        self.executor._pipeline_session_store.update(self.session_id, iteration_updater)
-
-        # Check max iterations
-        if max_iterations is not None and current_iteration > max_iterations:
-            logger.info(f"Loop {node_id} reached max iterations ({max_iterations}), stopping")
-            return None
-
-        # Check restart conditions
-        should_restart = False
-        if last_node_failed:
-            should_restart = restart_on_fail
-            logger.info(f"Loop {node_id}: last node failed, restart_on_fail={restart_on_fail}")
-        else:
-            should_restart = restart_on_complete
-            logger.info(f"Loop {node_id}: last node completed, restart_on_complete={restart_on_complete}")
-
-        if not should_restart:
-            logger.info(f"Loop {node_id}: conditions not met for restart")
-            return None
-
-        # Find the target node (where the loop connects TO)
-        target_node_id = None
-        for edge in pipeline.edges:
-            if edge.source == node_id and edge.target:
-                target_node_id = edge.target
-                break
-
-        if not target_node_id:
-            logger.warning(f"Loop {node_id} has no outgoing edge, cannot restart")
-            return None
-
-        # Increment iteration count for next run
-        self.loop_iterations[node_id] = current_iteration + 1
-        logger.info(f"Loop {node_id}: completed iteration {current_iteration}, waiting {duration_seconds}s before starting iteration {current_iteration + 1}")
+        logger.info(f"Wait {node_id}: waiting {duration_seconds}s")
 
         # Calculate when the wait will end
         wait_until = datetime.now() + timedelta(seconds=duration_seconds)
 
         # Update session with wait_until time
         def set_wait_until(s: PipelineSession) -> PipelineSession:
-            s.loop_wait_until[node_id] = wait_until
+            s.wait_until[node_id] = wait_until
             s.node_status[node_id] = "waiting"
             return s
 
@@ -781,22 +731,87 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
         wait_start = time.time()
         while time.time() - wait_start < duration_seconds:
             if self._should_stop:
-                logger.info(f"Loop {node_id}: stopping during wait")
+                logger.info(f"Wait {node_id}: stopping during wait")
                 # Clear wait_until on stop
                 def clear_wait_on_stop(s: PipelineSession) -> PipelineSession:
-                    s.loop_wait_until.pop(node_id, None)
+                    s.wait_until.pop(node_id, None)
                     return s
                 self.executor._pipeline_session_store.update(self.session_id, clear_wait_on_stop)
-                return None
+                return
             time.sleep(1.0)
 
         # Clear wait_until when done waiting
         def clear_wait_done(s: PipelineSession) -> PipelineSession:
-            s.loop_wait_until.pop(node_id, None)
+            s.wait_until.pop(node_id, None)
             return s
         self.executor._pipeline_session_store.update(self.session_id, clear_wait_done)
 
-        logger.info(f"Loop {node_id}: restarting from {target_node_id}")
+        logger.info(f"Wait {node_id}: done waiting")
+
+    def _execute_condition_node(self, pipeline: PipelineState, node) -> str | None:
+        """Execute a condition node - evaluate conditions and return next node.
+
+        Args:
+            pipeline: The pipeline state
+            node: The condition node
+
+        Returns:
+            Node ID to continue to, or None if no outgoing edge for the result
+        """
+        from ..models import ConditionNodeData
+
+        node_id = node.id
+        data = node.data
+
+        # Get condition configuration
+        count_limit = getattr(data, 'count_limit', None)
+        time_limit_seconds = getattr(data, 'time_limit_seconds', None)
+
+        # Get current evaluation count (0-indexed)
+        current_count = 0
+        session = self.executor._pipeline_session_store.get(self.session_id)
+        if session:
+            current_count = session.condition_counts.get(node_id, 0)
+
+        # Increment count for this evaluation
+        def increment_count(s: PipelineSession) -> PipelineSession:
+            s.condition_counts[node_id] = s.condition_counts.get(node_id, 0) + 1
+            return s
+        self.executor._pipeline_session_store.update(self.session_id, increment_count)
+
+        # Evaluate conditions (all must be true for result to be true)
+        result = True
+
+        # Count condition: true if current_count < limit
+        if count_limit is not None:
+            if current_count >= count_limit:
+                result = False
+                logger.info(f"Condition {node_id}: count {current_count} >= limit {count_limit}, result=false")
+
+        # Time condition: true if time since session start < limit
+        if time_limit_seconds is not None and result:
+            if session and session.started_at:
+                elapsed = (datetime.now() - session.started_at).total_seconds()
+                if elapsed >= time_limit_seconds:
+                    result = False
+                    logger.info(f"Condition {node_id}: elapsed {elapsed:.1f}s >= limit {time_limit_seconds}s, result=false")
+
+        logger.info(f"Condition {node_id}: evaluated to {result} (count={current_count})")
+
+        # Find the appropriate outgoing edge based on result
+        # true path: source_handle is None or "true"
+        # false path: source_handle is "false"
+        target_node_id = None
+        for edge in pipeline.edges:
+            if edge.source == node_id:
+                handle = edge.source_handle
+                if result and (handle is None or handle == "true"):
+                    target_node_id = edge.target
+                    break
+                elif not result and handle == "false":
+                    target_node_id = edge.target
+                    break
+
         return target_node_id
 
     def _wait_for_agent(self, agent_id: str) -> None:

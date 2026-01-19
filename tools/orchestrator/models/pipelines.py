@@ -56,19 +56,25 @@ class TriggerNodeData(BaseModel):
     cron_expression: str | None = None
 
 
-class LoopNodeData(BaseModel):
-    """Data for a loop node."""
+class WaitNodeData(BaseModel):
+    """Data for a wait node."""
 
-    duration_seconds: int = 3600
-    restart_on_complete: bool = True
-    restart_on_fail: bool = False
-    max_iterations: int | None = None
+    duration_seconds: int = 60  # How long to wait
 
 
 class ConditionNodeData(BaseModel):
-    """Data for a condition node."""
+    """Data for a condition node.
 
-    expression: str = ""
+    Evaluates conditions and routes to left (true) or right (false) output.
+    All conditions are optional - if none specified, always evaluates to true.
+    If multiple conditions specified, ALL must be true (AND logic).
+    """
+
+    # Count condition: true if current count < limit
+    count_limit: int | None = None
+
+    # Time condition: true if time since session start < limit
+    time_limit_seconds: int | None = None
 
 
 class PipelineNodePosition(BaseModel):
@@ -82,9 +88,9 @@ class PipelineNode(BaseModel):
     """A node in the pipeline."""
 
     id: str
-    type: Literal["agent", "trigger", "condition", "loop"]
+    type: Literal["agent", "trigger", "condition", "wait"]
     position: PipelineNodePosition
-    data: AgentNodeData | TriggerNodeData | LoopNodeData | ConditionNodeData
+    data: AgentNodeData | TriggerNodeData | ConditionNodeData | WaitNodeData
 
     @model_validator(mode="before")
     @classmethod
@@ -100,10 +106,10 @@ class PipelineNode(BaseModel):
                     values["data"] = AgentNodeData.model_validate(data)
                 elif node_type == "trigger":
                     values["data"] = TriggerNodeData.model_validate(data)
-                elif node_type == "loop":
-                    values["data"] = LoopNodeData.model_validate(data)
                 elif node_type == "condition":
                     values["data"] = ConditionNodeData.model_validate(data)
+                elif node_type == "wait":
+                    values["data"] = WaitNodeData.model_validate(data)
 
         return values
 
@@ -224,8 +230,8 @@ class PipelineSession(BaseModel):
     status: PipelineSessionStatus = PipelineSessionStatus.RUNNING
     node_agent_map: dict[str, str] = Field(default_factory=dict)  # node_id -> agent_id
     node_status: dict[str, str] = Field(default_factory=dict)  # node_id -> status
-    loop_iterations: dict[str, int] = Field(default_factory=dict)  # node_id -> iteration count
-    loop_wait_until: dict[str, datetime] = Field(default_factory=dict)  # node_id -> resume datetime
+    wait_until: dict[str, datetime] = Field(default_factory=dict)  # wait_node_id -> resume datetime
+    condition_counts: dict[str, int] = Field(default_factory=dict)  # condition_node_id -> evaluation count
     execution_order: list[str] = Field(default_factory=list)  # Order nodes were executed
     started_at: datetime = Field(default_factory=datetime.now)
     finished_at: datetime | None = None

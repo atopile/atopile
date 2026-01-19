@@ -54,8 +54,22 @@ export function useLogic(): UILogic {
 }
 
 /**
- * Subscribe to the full UI state
- * Uses forceUpdate pattern to ensure React re-renders on external state changes
+ * Subscribe to the full UI state.
+ * Uses forceUpdate pattern to ensure React re-renders on external state changes.
+ *
+ * CRITICAL: This hook is the bridge between the logic layer and React.
+ * DO NOT modify without understanding the update flow:
+ *
+ * 1. logic.subscribe() registers a callback that's called on every state change
+ * 2. When state changes, stateRef.current is updated with new state
+ * 3. forceUpdate() triggers a React re-render
+ * 4. The hook returns stateRef.current, which now has the new state
+ * 5. useMemo hooks in selector hooks detect the new state and recompute
+ *
+ * If UI updates stop working, check:
+ * - logic.subscribe() is being called (subscription active)
+ * - logic.notifyListeners() is being called after setState (in UILogic)
+ * - forceUpdate() is being called in the callback (triggers re-render)
  */
 export function useUIState(): UIState {
   const logic = useLogic();
@@ -63,7 +77,9 @@ export function useUIState(): UIState {
   const stateRef = useRef(logic.getState());
 
   useEffect(() => {
+    // CRITICAL: This subscription callback MUST call forceUpdate() to trigger re-renders
     const unsubscribe = logic.subscribe((newState) => {
+      console.log('[useUIState] State updated, version:', newState._version);
       stateRef.current = newState;
       forceUpdate();
     });
@@ -362,8 +378,8 @@ function sessionToViewModel(session: import('../logic').PipelineSession): Pipeli
     status: session.status,
     nodeAgentMap: session.node_agent_map,
     nodeStatus: session.node_status,
-    loopIterations: session.loop_iterations,
-    loopWaitUntil: session.loop_wait_until ?? {},
+    waitUntil: session.wait_until ?? {},
+    conditionCounts: session.condition_counts ?? {},
     executionOrder: session.execution_order,
     startedAt: session.started_at,
     finishedAt: session.finished_at ?? null,

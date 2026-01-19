@@ -167,6 +167,25 @@ export class WebSocketClient {
     reconnectAttempts: number;
   } | null = null;
 
+  /**
+   * Connect to the global events WebSocket for real-time UI updates.
+   *
+   * CRITICAL: This is the primary mechanism for real-time UI updates.
+   * DO NOT modify this method without understanding the full event flow:
+   *
+   * 1. WebSocket connects to /ws/events
+   * 2. Backend sends events (agent_spawned, session_node_status_changed, etc.)
+   * 3. onmessage handler parses JSON and calls the handler callback
+   * 4. Handler (in UILogic.handleGlobalEvent) updates state via setState()
+   * 5. setState() notifies all React subscribers via notifyListeners()
+   * 6. React components re-render with new state
+   *
+   * If UI updates stop working, check:
+   * - ws.onopen is defined (connection established)
+   * - ws.onmessage is defined (messages received)
+   * - handler callback is being invoked (events processed)
+   * - setState is calling notifyListeners (subscribers notified)
+   */
   connectGlobal(onMessage: GlobalMessageHandler): void {
     // Close existing connection if any
     this.disconnectGlobal();
@@ -180,19 +199,27 @@ export class WebSocketClient {
       reconnectAttempts: 0,
     };
 
+    // CRITICAL: onopen must be defined for the connection to work properly
     ws.onopen = () => {
-      console.log('[WS] Global WebSocket connected');
+      console.log('[WebSocket] Global events connected');
       // Reset reconnect attempts on successful connection
       if (this.globalConnection) {
         this.globalConnection.reconnectAttempts = 0;
       }
     };
 
+    // CRITICAL: onmessage must be defined to receive events
     ws.onmessage = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data) as GlobalEvent;
-        console.log('[WS] Global event:', data.type);
-        this.globalConnection?.handler(data);
+        console.log('[WebSocket] Received global event:', data.type, data);
+        // CRITICAL: handler must be invoked for UI to update
+        if (this.globalConnection) {
+          console.log('[WebSocket] Calling handler...');
+          this.globalConnection.handler(data);
+        } else {
+          console.error('[WebSocket] ERROR: globalConnection is null, handler not called!');
+        }
       } catch (e) {
         console.error('Failed to parse global WebSocket message:', e);
       }
@@ -203,6 +230,7 @@ export class WebSocketClient {
     };
 
     ws.onclose = (event: CloseEvent) => {
+      console.log('[WebSocket] Global events disconnected:', event.code, event.reason);
       // Attempt reconnect if not a clean close
       if (event.code !== 1000 && event.code !== 1001 && this.globalConnection) {
         this.attemptGlobalReconnect();

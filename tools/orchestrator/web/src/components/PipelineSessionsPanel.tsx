@@ -14,6 +14,9 @@ export function PipelineSessionsPanel({ pipelineId, onClose }: PipelineSessionsP
   const sessions = usePipelineSessions(pipelineId);
   const selectedSessionId = state.selectedSessionId;
 
+  // Debug: Log when sessions change
+  console.log('[PipelineSessionsPanel] Rendering with sessions:', sessions.length, sessions.map(s => ({ id: s.id.slice(0, 8), status: s.status })));
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);

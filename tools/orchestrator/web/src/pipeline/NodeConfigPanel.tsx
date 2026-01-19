@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Bot, Clock, Repeat, GitBranch } from 'lucide-react';
+import { X, Bot, Clock, GitBranch, Timer } from 'lucide-react';
 import type { Node } from '@xyflow/react';
 
 interface NodeConfigPanelProps {
@@ -28,10 +28,10 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
         return <Bot className="w-5 h-5 text-green-400" />;
       case 'trigger':
         return <Clock className="w-5 h-5 text-blue-400" />;
-      case 'loop':
-        return <Repeat className="w-5 h-5 text-purple-400" />;
+      case 'wait':
+        return <Timer className="w-5 h-5 text-yellow-400" />;
       case 'condition':
-        return <GitBranch className="w-5 h-5 text-yellow-400" />;
+        return <GitBranch className="w-5 h-5 text-cyan-400" />;
       default:
         return null;
     }
@@ -43,8 +43,8 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
         return 'Agent Node';
       case 'trigger':
         return 'Trigger Node';
-      case 'loop':
-        return 'Loop Node';
+      case 'wait':
+        return 'Wait Node';
       case 'condition':
         return 'Condition Node';
       default:
@@ -76,8 +76,8 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
         {node.type === 'trigger' && (
           <TriggerConfigForm data={formData} onChange={handleChange} />
         )}
-        {node.type === 'loop' && (
-          <LoopConfigForm data={formData} onChange={handleChange} />
+        {node.type === 'wait' && (
+          <WaitConfigForm data={formData} onChange={handleChange} />
         )}
         {node.type === 'condition' && (
           <ConditionConfigForm data={formData} onChange={handleChange} />
@@ -230,7 +230,7 @@ function TriggerConfigForm({ data, onChange }: ConfigFormProps) {
   );
 }
 
-function LoopConfigForm({ data, onChange }: ConfigFormProps) {
+function WaitConfigForm({ data, onChange }: ConfigFormProps) {
   return (
     <>
       <div>
@@ -238,51 +238,20 @@ function LoopConfigForm({ data, onChange }: ConfigFormProps) {
         <input
           type="number"
           className="input input-sm w-full"
-          value={(data.duration_seconds as number) || 3600}
+          value={(data.duration_seconds as number) || 60}
           onChange={(e) => onChange('duration_seconds', parseInt(e.target.value))}
           min={1}
         />
         <p className="text-xs text-gray-500 mt-1">
-          Total time the loop will run (e.g., 3600 = 1 hour)
+          How long to wait before continuing to the next node
         </p>
       </div>
 
-      <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="restart_on_complete"
-          checked={(data.restart_on_complete as boolean) ?? true}
-          onChange={(e) => onChange('restart_on_complete', e.target.checked)}
-          className="rounded bg-gray-700 border-gray-600"
-        />
-        <label htmlFor="restart_on_complete" className="text-sm text-gray-300">
-          Restart on complete
-        </label>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="restart_on_fail"
-          checked={(data.restart_on_fail as boolean) ?? false}
-          onChange={(e) => onChange('restart_on_fail', e.target.checked)}
-          className="rounded bg-gray-700 border-gray-600"
-        />
-        <label htmlFor="restart_on_fail" className="text-sm text-gray-300">
-          Restart on failure
-        </label>
-      </div>
-
-      <div>
-        <label className="block text-sm text-gray-400 mb-1">Max Iterations</label>
-        <input
-          type="number"
-          className="input input-sm w-full"
-          value={(data.max_iterations as number) || ''}
-          onChange={(e) => onChange('max_iterations', e.target.value ? parseInt(e.target.value) : undefined)}
-          placeholder="No limit"
-          min={1}
-        />
+      <div className="bg-gray-700/50 p-3 rounded-lg">
+        <p className="text-xs text-gray-400">
+          The wait node pauses execution for the specified duration.
+          Use it with a condition node to create loops.
+        </p>
       </div>
     </>
   );
@@ -291,26 +260,42 @@ function LoopConfigForm({ data, onChange }: ConfigFormProps) {
 function ConditionConfigForm({ data, onChange }: ConfigFormProps) {
   return (
     <>
-      <div>
-        <label className="block text-sm text-gray-400 mb-1">Expression</label>
-        <textarea
-          className="input input-sm w-full min-h-[100px] resize-y font-mono text-sm"
-          value={(data.expression as string) || ''}
-          onChange={(e) => onChange('expression', e.target.value)}
-          placeholder="e.g., output.contains('success')"
-        />
-        <p className="text-xs text-gray-500 mt-1">
-          Expression evaluated to determine branch (true/false)
+      <div className="bg-gray-700/50 p-3 rounded-lg mb-4">
+        <p className="text-xs text-gray-400">
+          Condition evaluates to <span className="text-green-400">true</span> (left path) or{' '}
+          <span className="text-red-400">false</span> (right path).
+          All conditions must be met for true. If no conditions are set, always true.
         </p>
       </div>
 
-      <div className="bg-gray-700/50 p-3 rounded-lg space-y-2">
-        <p className="text-xs text-gray-400 font-medium">Available variables:</p>
-        <ul className="text-xs text-gray-500 space-y-1">
-          <li><code className="text-blue-400">output</code> - Previous agent output</li>
-          <li><code className="text-blue-400">status</code> - Previous agent status</li>
-          <li><code className="text-blue-400">exit_code</code> - Previous agent exit code</li>
-        </ul>
+      <div>
+        <label className="block text-sm text-gray-400 mb-1">Count Limit</label>
+        <input
+          type="number"
+          className="input input-sm w-full"
+          value={(data.count_limit as number) ?? ''}
+          onChange={(e) => onChange('count_limit', e.target.value ? parseInt(e.target.value) : undefined)}
+          placeholder="No limit"
+          min={1}
+        />
+        <p className="text-xs text-gray-500 mt-1">
+          True while evaluation count &lt; limit (for loops)
+        </p>
+      </div>
+
+      <div>
+        <label className="block text-sm text-gray-400 mb-1">Time Limit (seconds)</label>
+        <input
+          type="number"
+          className="input input-sm w-full"
+          value={(data.time_limit_seconds as number) ?? ''}
+          onChange={(e) => onChange('time_limit_seconds', e.target.value ? parseInt(e.target.value) : undefined)}
+          placeholder="No limit"
+          min={1}
+        />
+        <p className="text-xs text-gray-500 mt-1">
+          True while time since session start &lt; limit
+        </p>
       </div>
     </>
   );

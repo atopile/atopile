@@ -27,8 +27,8 @@ function toFlowNodes(
   pipelineNodes: PipelineNode[],
   nodeStatus?: Record<string, string>,
   nodeAgentMap?: Record<string, string>,
-  loopIterations?: Record<string, number>,
-  loopWaitUntil?: Record<string, string>
+  waitUntil?: Record<string, string>,
+  conditionCounts?: Record<string, number>
 ): Node[] {
   return pipelineNodes.map((node) => ({
     id: node.id,
@@ -38,8 +38,8 @@ function toFlowNodes(
       ...node.data as unknown as Record<string, unknown>,
       _nodeStatus: nodeStatus?.[node.id],
       _agentId: nodeAgentMap?.[node.id],
-      _loopIteration: loopIterations?.[node.id],
-      _loopWaitUntil: loopWaitUntil?.[node.id],
+      _waitUntil: waitUntil?.[node.id],
+      _conditionCount: conditionCounts?.[node.id],
     },
   }));
 }
@@ -99,8 +99,8 @@ export function PipelineEditor() {
   // Only show node status when a session is selected
   const nodeStatus = selectedSession?.nodeStatus;
   const nodeAgentMap = selectedSession?.nodeAgentMap;
-  const loopIterations = selectedSession?.loopIterations;
-  const loopWaitUntil = selectedSession?.loopWaitUntil;
+  const waitUntil = selectedSession?.waitUntil;
+  const conditionCounts = selectedSession?.conditionCounts;
 
   // Helper to update editor nodes via dispatch
   const setEditorNodes = useCallback((nodes: PipelineNode[]) => {
@@ -114,7 +114,7 @@ export function PipelineEditor() {
 
   // Initialize React Flow state from store
   const [nodes, setNodes, onNodesChange] = useNodesState(
-    toFlowNodes(editor.nodes, nodeStatus, nodeAgentMap, loopIterations, loopWaitUntil)
+    toFlowNodes(editor.nodes, nodeStatus, nodeAgentMap, waitUntil, conditionCounts)
   );
   const [edges, setEdges, onEdgesChange] = useEdgesState(toFlowEdges(editor.edges));
 
@@ -123,15 +123,15 @@ export function PipelineEditor() {
     const nodesJson = JSON.stringify(editor.nodes);
     if (nodesJson !== lastExternalNodes.current && !isInternalChange.current) {
       lastExternalNodes.current = nodesJson;
-      setNodes(toFlowNodes(editor.nodes, nodeStatus, nodeAgentMap, loopIterations, loopWaitUntil));
+      setNodes(toFlowNodes(editor.nodes, nodeStatus, nodeAgentMap, waitUntil, conditionCounts));
     }
     isInternalChange.current = false;
-  }, [editor.nodes, setNodes, nodeStatus, nodeAgentMap, loopIterations, loopWaitUntil]);
+  }, [editor.nodes, setNodes, nodeStatus, nodeAgentMap, waitUntil, conditionCounts]);
 
-  // Update node display when selected session changes (status, agent map, iterations, wait times)
+  // Update node display when selected session changes (status, agent map, wait times)
   useEffect(() => {
-    setNodes(toFlowNodes(editor.nodes, nodeStatus, nodeAgentMap, loopIterations, loopWaitUntil));
-  }, [selectedSession?.id, nodeStatus, nodeAgentMap, loopIterations, loopWaitUntil, editor.nodes, setNodes]);
+    setNodes(toFlowNodes(editor.nodes, nodeStatus, nodeAgentMap, waitUntil, conditionCounts));
+  }, [selectedSession?.id, nodeStatus, nodeAgentMap, waitUntil, conditionCounts, editor.nodes, setNodes]);
 
   useEffect(() => {
     const edgesJson = JSON.stringify(editor.edges);
@@ -314,10 +314,10 @@ export function PipelineEditor() {
                   return '#22c55e';
                 case 'trigger':
                   return '#3b82f6';
-                case 'loop':
-                  return '#a855f7';
                 case 'condition':
                   return '#eab308';
+                case 'wait':
+                  return '#f59e0b';
                 default:
                   return '#6b7280';
               }

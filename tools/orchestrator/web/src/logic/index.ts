@@ -61,8 +61,11 @@ export class UILogic {
   }
 
   /**
-   * Update state and notify listeners
-   * This is called by event handlers
+   * Update state and notify listeners.
+   * This is called by event handlers.
+   *
+   * CRITICAL: This method MUST call notifyListeners() after updating state.
+   * Without this, React components will not re-render when state changes.
    */
   setState(updater: (state: UIState) => UIState): void {
     const prevState = this.state;
@@ -70,13 +73,21 @@ export class UILogic {
 
     // Increment version to ensure React detects the change
     this.state = { ...newState, _version: prevState._version + 1 };
+
+    // CRITICAL: Must notify listeners for React to re-render
     this.notifyListeners();
   }
 
   /**
-   * Notify all listeners of state change
+   * Notify all listeners of state change.
+   *
+   * CRITICAL: This method is called after every state update.
+   * Each listener is a React hook subscription that triggers forceUpdate().
+   * DO NOT remove or skip this - UI updates depend on it.
    */
   private notifyListeners(): void {
+    // Debug: uncomment to verify listeners are being notified
+    // console.log(`[UILogic] Notifying ${this.listeners.size} listeners, state version: ${this.state._version}`);
     for (const listener of this.listeners) {
       try {
         listener(this.state);
@@ -121,13 +132,19 @@ export class UILogic {
   }
 
   /**
-   * Handle incoming global events and update state accordingly
+   * Handle incoming global events and update state accordingly.
+   *
+   * CRITICAL: This method processes WebSocket events and updates UI state.
+   * Every setState() call here triggers notifyListeners() which updates React.
+   * If UI updates stop working, add console.log to verify events are received.
    */
   private handleGlobalEvent(event: GlobalEvent): void {
-    console.log('[UILogic] handleGlobalEvent:', event.type, event);
+    // Debug logging for troubleshooting UI update issues:
+    console.log('%c[UILogic] Processing global event: ' + event.type, 'background: #222; color: #bada55; font-size: 14px;', event);
 
     switch (event.type) {
       case 'connected':
+        // Connected to global events stream
         console.log('[UILogic] Connected to global events stream');
         break;
 
@@ -183,11 +200,21 @@ export class UILogic {
       case 'session_node_status_changed':
         if (event.pipeline_id && event.session_id && event.data?.session) {
           const session = event.data.session as PipelineSession;
+          console.log('[UILogic] Session node status changed:', event.node_id, session.node_status);
           this.setState((s) => {
             const sessions = s.pipelineSessions.get(event.pipeline_id!) || [];
-            const updatedSessions = sessions.map((sess) =>
-              sess.id === session.id ? session : sess
-            );
+            const existingSession = sessions.find((sess) => sess.id === session.id);
+            let updatedSessions: PipelineSession[];
+            if (existingSession) {
+              // Update existing session
+              updatedSessions = sessions.map((sess) =>
+                sess.id === session.id ? session : sess
+              );
+            } else {
+              // Session not found - add it (handles case when session_created wasn't received)
+              console.log('[UILogic] Adding new session from node status event:', session.id);
+              updatedSessions = [session, ...sessions];
+            }
             const newPipelineSessions = new Map(s.pipelineSessions);
             newPipelineSessions.set(event.pipeline_id!, updatedSessions);
             return { ...s, pipelineSessions: newPipelineSessions };

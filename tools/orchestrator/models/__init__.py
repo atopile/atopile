@@ -42,7 +42,6 @@ from .pipelines import (
     AgentNodeData,
     ConditionNodeData,
     CreatePipelineRequest,
-    LoopNodeData,
     PipelineActionResponse,
     PipelineConfig,
     PipelineEdge,
@@ -59,6 +58,7 @@ from .pipelines import (
     TriggerNodeData,
     TriggerType,
     UpdatePipelineRequest,
+    WaitNodeData,
 )
 
 __all__ = [
@@ -101,7 +101,6 @@ __all__ = [
     "AgentNodeData",
     "ConditionNodeData",
     "CreatePipelineRequest",
-    "LoopNodeData",
     "PipelineActionResponse",
     "PipelineConfig",
     "PipelineEdge",
@@ -118,4 +117,5 @@ __all__ = [
     "TriggerNodeData",
     "TriggerType",
     "UpdatePipelineRequest",
+    "WaitNodeData",
 ]

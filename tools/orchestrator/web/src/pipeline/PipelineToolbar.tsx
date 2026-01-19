@@ -5,21 +5,22 @@ import {
   Plus,
   Bot,
   Clock,
-  Repeat,
   GitBranch,
   FolderOpen,
   History,
+  Timer,
 } from 'lucide-react';
 import { useEditor, useDispatch, useUIState, useLoading } from '@/hooks';
-import type { PipelineNode, AgentNodeData, TriggerNodeData, LoopNodeData, ConditionNodeData } from '@/logic/api/types';
+import type { PipelineNode, AgentNodeData, TriggerNodeData, ConditionNodeData, WaitNodeData } from '@/logic/api/types';
 
 interface PipelineToolbarProps {
   onOpenPipelineList?: () => void;
   onToggleSessions?: () => void;
   showSessions?: boolean;
+  isMobile?: boolean;
 }
 
-export function PipelineToolbar({ onOpenPipelineList, onToggleSessions, showSessions }: PipelineToolbarProps) {
+export function PipelineToolbar({ onOpenPipelineList, onToggleSessions, showSessions, isMobile }: PipelineToolbarProps) {
   const dispatch = useDispatch();
   const editor = useEditor();
   const state = useUIState();
@@ -63,16 +64,15 @@ export function PipelineToolbar({ onOpenPipelineList, onToggleSessions, showSess
           trigger_type: 'manual',
         } as TriggerNodeData;
         break;
-      case 'loop':
+      case 'wait':
         data = {
-          duration_seconds: 3600,
-          restart_on_complete: true,
-          restart_on_fail: false,
-        } as LoopNodeData;
+          duration_seconds: 60,
+        } as WaitNodeData;
         break;
       case 'condition':
         data = {
-          expression: '',
+          count_limit: undefined,
+          time_limit_seconds: undefined,
         } as ConditionNodeData;
         break;
       default:
@@ -96,6 +96,75 @@ export function PipelineToolbar({ onOpenPipelineList, onToggleSessions, showSess
     dispatch({ type: 'editor.setName', payload: { name } });
   }, [dispatch]);
 
+  // Mobile layout - simplified toolbar
+  if (isMobile) {
+    return (
+      <div className="flex items-center justify-between p-2 bg-gray-800 border-b border-gray-700 gap-2">
+        {/* Left: Name and save */}
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <input
+            type="text"
+            className="input input-sm flex-1 min-w-0"
+            value={editor.name}
+            onChange={(e) => handleSetName(e.target.value)}
+            placeholder="Pipeline name"
+          />
+          <button
+            className="btn btn-primary btn-sm flex-shrink-0"
+            onClick={handleSave}
+            disabled={saving || !editor.name.trim()}
+          >
+            <Save className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Right: Add nodes dropdown + Run */}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {/* Compact add buttons */}
+          <button
+            className="btn btn-secondary btn-sm touch-target"
+            onClick={() => addNode('trigger')}
+            title="Add Trigger"
+          >
+            <Clock className="w-4 h-4 text-blue-400" />
+          </button>
+          <button
+            className="btn btn-secondary btn-sm touch-target"
+            onClick={() => addNode('agent')}
+            title="Add Agent"
+          >
+            <Bot className="w-4 h-4 text-green-400" />
+          </button>
+          <button
+            className="btn btn-secondary btn-sm touch-target"
+            onClick={() => addNode('wait')}
+            title="Add Wait"
+          >
+            <Timer className="w-4 h-4 text-yellow-400" />
+          </button>
+          <button
+            className="btn btn-secondary btn-sm touch-target"
+            onClick={() => addNode('condition')}
+            title="Add Condition"
+          >
+            <GitBranch className="w-4 h-4 text-cyan-400" />
+          </button>
+          {state.selectedPipelineId && (
+            <button
+              className="btn btn-success btn-sm touch-target"
+              onClick={handleRun}
+              disabled={loading || !state.selectedPipelineId}
+              title="Run"
+            >
+              <Play className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Desktop layout
   return (
     <div className="flex items-center justify-between p-3 bg-gray-800 border-b border-gray-700">
       {/* Left: Pipeline info and save */}
@@ -151,17 +220,17 @@ export function PipelineToolbar({ onOpenPipelineList, onToggleSessions, showSess
         </button>
         <button
           className="btn btn-secondary btn-sm"
-          onClick={() => addNode('loop')}
-          title="Add Loop"
+          onClick={() => addNode('wait')}
+          title="Add Wait"
         >
-          <Repeat className="w-4 h-4 text-purple-400" />
+          <Timer className="w-4 h-4 text-yellow-400" />
         </button>
         <button
           className="btn btn-secondary btn-sm"
           onClick={() => addNode('condition')}
           title="Add Condition"
         >
-          <GitBranch className="w-4 h-4 text-yellow-400" />
+          <GitBranch className="w-4 h-4 text-cyan-400" />
         </button>
       </div>
 

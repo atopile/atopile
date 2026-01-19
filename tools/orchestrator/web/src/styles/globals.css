@@ -220,3 +220,83 @@ body {
 .nav-item.active {
   @apply bg-gray-700 text-white;
 }
+
+/* Mobile styles */
+
+/* Touch-friendly targets - minimum 44px */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* Mobile header */
+.mobile-header {
+  @apply flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700;
+  min-height: 56px;
+}
+
+/* Mobile bottom navigation */
+.mobile-bottom-nav {
+  @apply flex items-center justify-around bg-gray-800 border-t border-gray-700;
+  min-height: 56px;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.mobile-nav-item {
+  @apply flex flex-col items-center justify-center px-4 py-2 text-gray-400 transition-colors;
+  min-width: 64px;
+  min-height: 56px;
+}
+
+.mobile-nav-item.active {
+  @apply text-blue-400;
+}
+
+.mobile-nav-item:hover {
+  @apply text-gray-200;
+}
+
+/* Mobile back header */
+.mobile-back-header {
+  @apply flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-700;
+  min-height: 48px;
+}
+
+.mobile-back-button {
+  @apply flex items-center gap-2 text-blue-400 hover:text-blue-300 transition-colors;
+  min-height: 44px;
+}
+
+/* Mobile responsive utilities */
+@media (max-width: 767px) {
+  /* Ensure proper touch targets on mobile */
+  .btn-sm {
+    @apply px-3 py-2;
+    min-height: 40px;
+  }
+
+  /* Adjust card padding for mobile */
+  .card {
+    @apply p-4;
+  }
+
+  /* Larger React Flow handles on mobile for easier touch */
+  .react-flow__handle {
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  .react-flow__handle-top {
+    top: -8px !important;
+  }
+
+  .react-flow__handle-bottom {
+    bottom: -8px !important;
+  }
+
+  /* Pipeline nodes - larger on mobile */
+  .pipeline-node {
+    @apply p-4;
+    min-width: 200px;
+  }
+}
