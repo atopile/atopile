@@ -103,7 +103,9 @@ def create_app(
 
     @app.get("/api/logs/query")
     async def query_logs(
-        build_name: Optional[str] = Query(None, description="Filter by build name"),
+        build_id: Optional[str] = Query(None, description="Filter by build ID"),
+        project_path: Optional[str] = Query(None, description="Filter by project path"),
+        target: Optional[str] = Query(None, description="Filter by build target"),
         stage: Optional[str] = Query(None, description="Filter by build stage"),
         level: Optional[str] = Query(
             None, description="Filter by log level (DEBUG, INFO, WARNING, ERROR)"
@@ -115,104 +117,163 @@ def create_app(
         offset: int = Query(0, ge=0, description="Result offset for pagination"),
     ):
         """
-        Query logs from SQLite with optional filters.
+        Query logs from the central SQLite database with optional filters.
 
-        Returns structured log entries from the build_logs.db database.
+        Returns structured log entries from the central build_logs.db database.
         """
+        from atopile.logging import get_central_log_db
+
         try:
-            summary_path = state["summary_file"]
-            if summary_path is None or not summary_path.exists():
-                raise HTTPException(status_code=404, detail="No summary file found")
+            db_path = get_central_log_db()
+            if not db_path.exists():
+                return {"logs": [], "total": 0, "builds": []}
 
-            summary = json.loads(summary_path.read_text())
+            conn = sqlite3.connect(str(db_path), timeout=5.0)
+            conn.row_factory = sqlite3.Row
 
-            # If build_name specified, find its log_dir
-            # Otherwise, query all builds' logs
-            log_dirs: list[Path] = []
-            for build in summary.get("builds", []):
-                if build_name is None or build.get("name") == build_name or build.get(
-                    "display_name"
-                ) == build_name:
-                    if log_dir := build.get("log_dir"):
-                        log_dirs.append(Path(log_dir))
+            # Build query with filters
+            conditions = []
+            params: list = []
 
-            if not log_dirs:
-                if build_name:
-                    raise HTTPException(
-                        status_code=404, detail=f"Build not found: {build_name}"
-                    )
-                return {"logs": [], "total": 0}
+            if build_id:
+                conditions.append("l.build_id = ?")
+                params.append(build_id)
+            if project_path:
+                conditions.append("b.project_path = ?")
+                params.append(project_path)
+            if target:
+                conditions.append("b.target = ?")
+                params.append(target)
+            if stage:
+                conditions.append("l.stage = ?")
+                params.append(stage)
+            if level:
+                conditions.append("l.level = ?")
+                params.append(level.upper())
+            if audience:
+                conditions.append("l.audience = ?")
+                params.append(audience.lower())
 
-            # Collect logs from all matching builds
-            all_logs: list[dict] = []
-            for log_dir in log_dirs:
-                db_path = log_dir / "build_logs.db"
-                if not db_path.exists():
-                    continue
+            where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
 
-                try:
-                    conn = sqlite3.connect(str(db_path), timeout=5.0)
-                    conn.row_factory = sqlite3.Row
+            # Query logs with build info joined
+            query = f"""
+                SELECT l.id, l.build_id, l.timestamp, l.stage, l.level, l.audience,
+                       l.message, l.ato_traceback, l.python_traceback, l.objects,
+                       b.project_path, b.target, b.timestamp as build_timestamp
+                FROM logs l
+                JOIN builds b ON l.build_id = b.build_id
+                {where_clause}
+                ORDER BY l.id DESC
+                LIMIT ? OFFSET ?
+            """
+            params.extend([limit, offset])
 
-                    # Build query with filters
-                    conditions = []
-                    params: list = []
+            cursor = conn.execute(query, params)
+            rows = cursor.fetchall()
 
-                    if stage:
-                        conditions.append("stage = ?")
-                        params.append(stage)
-                    if level:
-                        conditions.append("level = ?")
-                        params.append(level.upper())
-                    if audience:
-                        conditions.append("audience = ?")
-                        params.append(audience.lower())
+            logs = []
+            for row in rows:
+                log_entry = {
+                    "id": row["id"],
+                    "build_id": row["build_id"],
+                    "timestamp": row["timestamp"],
+                    "stage": row["stage"],
+                    "level": row["level"],
+                    "audience": row["audience"],
+                    "message": row["message"],
+                    "ato_traceback": row["ato_traceback"],
+                    "python_traceback": row["python_traceback"],
+                    "objects": json.loads(row["objects"]) if row["objects"] else None,
+                    "project_path": row["project_path"],
+                    "target": row["target"],
+                    "build_timestamp": row["build_timestamp"],
+                }
+                logs.append(log_entry)
 
-                    where_clause = (
-                        "WHERE " + " AND ".join(conditions) if conditions else ""
-                    )
+            # Also get list of available builds
+            builds_query = """
+                SELECT build_id, project_path, target, timestamp, created_at
+                FROM builds
+                ORDER BY created_at DESC
+                LIMIT 100
+            """
+            builds_cursor = conn.execute(builds_query)
+            builds = [
+                {
+                    "build_id": row["build_id"],
+                    "project_path": row["project_path"],
+                    "target": row["target"],
+                    "timestamp": row["timestamp"],
+                    "created_at": row["created_at"],
+                }
+                for row in builds_cursor.fetchall()
+            ]
 
-                    # Query with pagination
-                    query = f"""
-                        SELECT id, timestamp, stage, level, level_no, audience,
-                               message, ato_traceback, python_traceback
-                        FROM logs
-                        {where_clause}
-                        ORDER BY id DESC
-                        LIMIT ? OFFSET ?
-                    """
-                    params.extend([limit, offset])
+            conn.close()
+            return {"logs": logs, "total": len(logs), "builds": builds}
 
-                    cursor = conn.execute(query, params)
-                    rows = cursor.fetchall()
+        except sqlite3.Error as e:
+            log.warning(f"Error reading logs from central database: {e}")
+            return {"logs": [], "total": 0, "builds": [], "error": str(e)}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
-                    for row in rows:
-                        all_logs.append(
-                            {
-                                "id": row["id"],
-                                "timestamp": row["timestamp"],
-                                "stage": row["stage"],
-                                "level": row["level"],
-                                "level_no": row["level_no"],
-                                "audience": row["audience"],
-                                "message": row["message"],
-                                "ato_traceback": row["ato_traceback"],
-                                "python_traceback": row["python_traceback"],
-                                "build_dir": str(log_dir),
-                            }
-                        )
+    @app.get("/api/builds")
+    async def list_builds(
+        project_path: Optional[str] = Query(None, description="Filter by project path"),
+        limit: int = Query(100, ge=1, le=1000, description="Maximum results"),
+    ):
+        """
+        List all builds from the central database.
 
-                    conn.close()
-                except sqlite3.Error as e:
-                    log.warning(f"Error reading logs from {db_path}: {e}")
-                    continue
+        Returns build metadata including project_path, target, and timestamps.
+        """
+        from atopile.logging import get_central_log_db
 
-            # Sort by timestamp descending and apply limit
-            all_logs.sort(key=lambda x: x["timestamp"], reverse=True)
-            return {"logs": all_logs[:limit], "total": len(all_logs)}
+        try:
+            db_path = get_central_log_db()
+            if not db_path.exists():
+                return {"builds": []}
 
-        except HTTPException:
-            raise
+            conn = sqlite3.connect(str(db_path), timeout=5.0)
+            conn.row_factory = sqlite3.Row
+
+            if project_path:
+                query = """
+                    SELECT build_id, project_path, target, timestamp, created_at
+                    FROM builds
+                    WHERE project_path = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                """
+                cursor = conn.execute(query, [project_path, limit])
+            else:
+                query = """
+                    SELECT build_id, project_path, target, timestamp, created_at
+                    FROM builds
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                """
+                cursor = conn.execute(query, [limit])
+
+            builds = [
+                {
+                    "build_id": row["build_id"],
+                    "project_path": row["project_path"],
+                    "target": row["target"],
+                    "timestamp": row["timestamp"],
+                    "created_at": row["created_at"],
+                }
+                for row in cursor.fetchall()
+            ]
+
+            conn.close()
+            return {"builds": builds}
+
+        except sqlite3.Error as e:
+            log.warning(f"Error reading builds from central database: {e}")
+            return {"builds": [], "error": str(e)}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 

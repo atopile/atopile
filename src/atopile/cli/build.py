@@ -319,10 +319,10 @@ class BuildProcess:
                     continue
 
     def _stage_info_log_path(self, stage_name: str) -> Path | None:
-        """Return the log path for a build (SQLite database for all stages)."""
-        if not self.log_dir:
-            return None
-        return self.log_dir / "build_logs.db"
+        """Return the log path for a build (central SQLite database)."""
+        from atopile.logging import get_central_log_db
+
+        return get_central_log_db()
 
     def set_stage_printer(
         self, printer: Callable[[StageCompleteEvent, Path | None], None] | None
@@ -1110,10 +1110,18 @@ class ParallelBuildManager:
 
     def _get_build_data(self, bp: "BuildProcess") -> dict:
         """Collect all data for a single build as a dictionary."""
+        from atopile.logging import generate_build_id
+
+        # Generate build_id for this build
+        project_path = str(bp.project_root) if bp.project_root else "unknown"
+        build_id = generate_build_id(project_path, bp.name, self._now)
+
         data = {
             "name": bp.name,
             "display_name": bp.display_name,
             "project_name": bp.project_name,
+            "project_path": project_path,
+            "build_id": build_id,
             "status": bp.status.value,
             "elapsed_seconds": round(bp.elapsed, 2),
             "warnings": bp.warnings,
@@ -1121,14 +1129,9 @@ class ParallelBuildManager:
             "return_code": bp.return_code,
         }
 
-        # Add log dir and database path
+        # Add log dir and database path (now using central database)
         if bp.log_dir and bp.log_dir.exists():
             data["log_dir"] = str(bp.log_dir)
-
-            # SQLite database for all stages (logs served via API)
-            log_db = bp.log_dir / "build_logs.db"
-            if log_db.exists():
-                data["log_file"] = str(log_db)
 
             # Add timing data from stage history
             # All stages share the same log file, filter by stage field in frontend

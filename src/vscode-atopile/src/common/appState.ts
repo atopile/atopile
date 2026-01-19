@@ -39,6 +39,8 @@ export interface Build {
     name: string;
     display_name: string;
     project_name: string | null;
+    project_path: string;
+    build_id: string;
     status: BuildStatus;
     elapsed_seconds: number;
     warnings: number;
@@ -78,17 +80,27 @@ export interface BuildSummary {
 interface LogQueryResponse {
     logs: Array<{
         id: number;
+        build_id: string;
         timestamp: string;
         stage: string;
         level: string;
-        level_no: number;
         audience: string;
         message: string;
         ato_traceback: string | null;
         python_traceback: string | null;
-        build_dir: string;
+        objects: Record<string, unknown> | null;
+        project_path: string;
+        target: string;
+        build_timestamp: string;
     }>;
     total: number;
+    builds: Array<{
+        build_id: string;
+        project_path: string;
+        target: string;
+        timestamp: string;
+        created_at: string;
+    }>;
 }
 
 /**
@@ -244,11 +256,11 @@ class AppStateManager {
         this._lastLogId = 0;
 
         const build = this._state.builds.find(b => b.display_name === buildName);
-        if (build?.log_dir) {
+        if (build?.build_id) {
             this._state.isLoadingLogs = true;
             this._state.logFile = build.log_file ?? null;
             this._emit();
-            await this._startPollingLogs(build.display_name);
+            await this._startPollingLogs(build.build_id);
         } else {
             this._state.isLoadingLogs = false;
             this._emit();
@@ -355,7 +367,7 @@ class AppStateManager {
 
     // --- Log API polling ---
 
-    private async _fetchLogs(buildName: string): Promise<void> {
+    private async _fetchLogs(buildId: string): Promise<void> {
         const apiUrl = getDashboardApiUrl();
 
         try {
@@ -363,7 +375,7 @@ class AppStateManager {
                 `${apiUrl}/api/logs/query`,
                 {
                     params: {
-                        build_name: buildName,
+                        build_id: buildId,
                         limit: 10000,
                     },
                     timeout: 5000,
@@ -394,7 +406,7 @@ class AppStateManager {
             this._state.isLoadingLogs = false;
             this._emit();
 
-            traceVerbose(`AppState: fetched ${newEntries.length} log entries for ${buildName}`);
+            traceVerbose(`AppState: fetched ${newEntries.length} log entries for build ${buildId}`);
         } catch (error) {
             traceError(`AppState: failed to fetch logs: ${error}`);
             this._state.isLoadingLogs = false;
@@ -402,18 +414,19 @@ class AppStateManager {
         }
     }
 
-    private async _startPollingLogs(buildName: string): Promise<void> {
+    private async _startPollingLogs(buildId: string): Promise<void> {
         // Initial fetch
-        await this._fetchLogs(buildName);
+        await this._fetchLogs(buildId);
 
         // Start polling for updates
         this._logPollTimer = setInterval(async () => {
-            if (this._state.selectedBuildName === buildName) {
-                await this._fetchLogs(buildName);
+            const build = this._state.builds.find(b => b.build_id === buildId);
+            if (build && this._state.selectedBuildName === build.display_name) {
+                await this._fetchLogs(buildId);
             }
         }, 500);
 
-        traceInfo(`AppState: started polling logs for ${buildName}`);
+        traceInfo(`AppState: started polling logs for build ${buildId}`);
     }
 
     private _stopPollingLogs(): void {
