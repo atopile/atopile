@@ -25,6 +25,27 @@ class DatasheetDownloadException(Exception):
     pass
 
 
+def _extract_filename_from_url(url: str) -> str:
+    """Extract filename from LCSC datasheet URL"""
+    url_filename = Path(url).name
+    # If URL doesn't end in .pdf or has no valid filename, create one from URL
+    if not url_filename or not url_filename.endswith(".pdf"):
+        # Fallback: use a hash of the URL
+        import hashlib
+
+        url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
+        url_filename = f"datasheet_{url_hash}.pdf"
+
+    # Clean up LCSC filenames: remove "lcsc_datasheet_NNNNNNNNNN_" prefix
+    if url_filename.startswith("lcsc_datasheet_"):
+        parts = url_filename.split("_", 3)  # Split into max 4 parts
+        if len(parts) >= 4:
+            # ["lcsc", "datasheet", "date", "MFR-PART_CXXXXX.pdf"]
+            url_filename = parts[3]
+
+    return url_filename
+
+
 def export_datasheets(
     app: fabll.Node,
     path: Path = Path("build/documentation/datasheets"),
@@ -62,24 +83,7 @@ def export_datasheets(
     if progress:
         progress.set_total(len(unique_urls))
     for url in unique_urls:
-        # Extract filename from URL
-        url_filename = Path(url).name
-        # If URL doesn't end in .pdf or has no valid filename, create one from URL
-        if not url_filename or not url_filename.endswith(".pdf"):
-            # Fallback: use a hash of the URL
-            import hashlib
-
-            url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
-            url_filename = f"datasheet_{url_hash}.pdf"
-
-        # Clean up LCSC filenames: remove "lcsc_datasheet_NNNNNNNNNN_" prefix
-        if url_filename.startswith("lcsc_datasheet_"):
-            parts = url_filename.split("_", 3)  # Split into max 4 parts
-            if len(parts) >= 4:
-                # ["lcsc", "datasheet", "date", "MFR-PART_CXXXXX.pdf"]
-                url_filename = parts[3]
-
-        filename = url_filename
+        filename = _extract_filename_from_url(url)
         file_path = path / filename
         if progress:
             progress.advance()

@@ -424,6 +424,12 @@ def flags():
         return re.sub(url_pattern, replace_url, text)
 
     roots = [Path("src/atopile"), Path("src/faebryk")]
+    here = Path.cwd()
+    if not all((here / p).is_dir() for p in roots):
+        raise FileNotFoundError(
+            f"This command must be run from the '/atopile' folder, not from [{here}]."
+        )
+    roots = [here / p for p in roots]
     discovered = _discover_configflags(*roots)
     uses_by_def = _count_callsites(discovered, roots=roots)
 
