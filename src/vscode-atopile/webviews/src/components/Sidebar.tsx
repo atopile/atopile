@@ -1,116 +1,68 @@
 /**
- * Main sidebar component with modern card-based design.
+ * Sidebar component - STATELESS.
+ * Receives AppState from extension, sends actions back.
  */
 
 import { useEffect, useState } from 'react';
-import { useBuildStore } from '../stores/buildStore';
+import type { AppState } from '../types/build';
 import { ActionButton } from './ActionButton';
 import { BuildTargetItem } from './BuildTargetItem';
-import type { BuildTarget } from '../types/build';
 import './Sidebar.css';
 
-// Get VS Code API
 const vscode = acquireVsCodeApi();
 
+// Send action to extension
+const action = (name: string, data?: object) => {
+  vscode.postMessage({ type: 'action', action: name, ...data });
+};
+
+// Static action buttons
+const ACTION_BUTTONS = [
+  { id: 'atopile.build', label: 'Build', icon: 'play', tooltip: 'Build selected targets' },
+  { id: 'atopile.openViewer', label: 'Viewer', icon: 'eye', tooltip: 'Open 3D viewer' },
+  { id: 'atopile.openPcb', label: 'PCB', icon: 'circuit-board', tooltip: 'Open PCB in KiCad' },
+  { id: 'atopile.openSchematic', label: 'Schematic', icon: 'file-code', tooltip: 'Open schematic in KiCad' },
+];
+
 export function Sidebar() {
-  const [version, setVersion] = useState<string>('');
-  const [logoUri, setLogoUri] = useState<string>('');
+  // Single piece of state: AppState from extension
+  const [state, setState] = useState<AppState | null>(null);
 
-  const {
-    // Build targets (from ato.yaml)
-    projects,
-    selectedProjectRoot,
-    selectedTargetNames,
-    setProjects,
-    setSelectedProjectRoot,
-    setSelectedTargetNames,
-    // Build runs (from dashboard)
-    builds,
-    actionButtons,
-    selectedBuildName,
-    selectedStageName,
-    setBuilds,
-    setActionButtons,
-    setSelectedBuild,
-    setSelectedStage,
-    setConnected,
-  } = useBuildStore();
-
-  // Handle messages from VS Code
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      const message = event.data;
-
-      switch (message.type) {
-        case 'extensionInfo':
-          setVersion(message.data.version || '');
-          setLogoUri(message.data.logoUri || '');
-          break;
-
-        case 'updateBuildTargets':
-          setProjects(message.data.projects || []);
-          setSelectedProjectRoot(message.data.selectedProjectRoot);
-          setSelectedTargetNames(message.data.selectedTargetNames || []);
-          break;
-
-        case 'updateBuilds':
-          setBuilds(message.data.builds || []);
-          setConnected(message.data.isConnected ?? false);
-          break;
-
-        case 'updateActionButtons':
-          setActionButtons(message.data.buttons || []);
-          break;
-
-        case 'selectBuild':
-          setSelectedBuild(message.data.buildName);
-          break;
-
-        case 'selectStage':
-          setSelectedBuild(message.data.buildName);
-          setSelectedStage(message.data.stageName);
-          break;
+      const msg = event.data;
+      if (msg.type === 'state') {
+        setState(msg.data);
       }
     };
-
     window.addEventListener('message', handleMessage);
     vscode.postMessage({ type: 'ready' });
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  const handleActionClick = (commandId: string) => {
-    vscode.postMessage({ type: 'executeCommand', command: commandId });
-  };
+  if (!state) {
+    return <div className="sidebar loading">Loading...</div>;
+  }
 
-  const handleSelectStage = (buildName: string, stageName: string) => {
-    setSelectedBuild(buildName);
-    setSelectedStage(stageName);
-    vscode.postMessage({ type: 'selectStage', buildName, stageName });
-  };
+  const selectedProject = state.projects.find(p => p.root === state.selectedProjectRoot);
 
-  const handleToggleTarget = (targetName: string, projectRoot: string) => {
-    vscode.postMessage({ type: 'toggleTarget', targetName, projectRoot });
-  };
-
-  const handleBuildProject = () => {
-    vscode.postMessage({ type: 'buildProject' });
-  };
-
-  const selectedProject = projects.find(p => p.root === selectedProjectRoot);
-
-  // Find build run for a target (match by name)
-  const getBuildForTarget = (target: BuildTarget) => {
-    return builds.find(b => b.name === target.name);
+  const handleToggleStage = (buildName: string, stageId: string) => {
+    // Select the build first if not already selected
+    if (state.selectedBuildName !== buildName) {
+      action('selectBuild', { buildName });
+    }
+    action('toggleStageFilter', { stageId });
+    action('focusLogViewer');
   };
 
   return (
     <div className="sidebar">
       {/* Header with logo and version */}
       <div className="sidebar-header">
-        {logoUri && <img src={logoUri} alt="atopile" className="sidebar-logo" />}
+        {state.logoUri && <img src={state.logoUri} alt="atopile" className="sidebar-logo" />}
         <div className="sidebar-header-text">
           <span className="sidebar-title">atopile</span>
-          {version && <span className="sidebar-version">v{version}</span>}
+          {state.version && <span className="sidebar-version">v{state.version}</span>}
         </div>
       </div>
 
@@ -120,24 +72,24 @@ export function Sidebar() {
           <span className="card-title">Actions</span>
         </div>
         <div className="card-content actions-grid">
-          {actionButtons.map((btn) => (
+          {ACTION_BUTTONS.map((btn) => (
             <ActionButton
               key={btn.id}
               icon={btn.icon}
               label={btn.label}
               tooltip={btn.tooltip}
-              onClick={() => handleActionClick(btn.id)}
+              onClick={() => action('executeCommand', { command: btn.id })}
             />
           ))}
         </div>
       </div>
 
-      {/* Builds Card - Combined targets and status */}
+      {/* Builds Card */}
       <div className="card card-flex">
         <div className="card-header">
           <span className="card-title">Builds</span>
-          {selectedTargetNames.length > 0 && (
-            <span className="card-badge">{selectedTargetNames.length}</span>
+          {state.selectedTargetNames.length > 0 && (
+            <span className="card-badge">{state.selectedTargetNames.length}</span>
           )}
         </div>
         <div className="card-content builds-targets">
@@ -163,8 +115,8 @@ export function Sidebar() {
                 </div>
                 <button
                   className="build-play-button"
-                  onClick={handleBuildProject}
-                  disabled={selectedTargetNames.length === 0}
+                  onClick={() => action('build')}
+                  disabled={state.selectedTargetNames.length === 0}
                   title="Build selected targets"
                 >
                   <svg viewBox="0 0 16 16" fill="currentColor">
@@ -184,12 +136,14 @@ export function Sidebar() {
                     <BuildTargetItem
                       key={target.name}
                       target={target}
-                      build={getBuildForTarget(target)}
-                      isChecked={selectedTargetNames.includes(target.name)}
-                      isSelected={selectedBuildName === target.name}
-                      selectedStageName={selectedBuildName === target.name ? selectedStageName : null}
-                      onToggle={() => handleToggleTarget(target.name, target.root)}
-                      onSelectStage={(stageName) => handleSelectStage(target.name, stageName)}
+                      build={state.builds.find(b => b.name === target.name)}
+                      isChecked={state.selectedTargetNames.includes(target.name)}
+                      isSelected={state.selectedBuildName === target.name}
+                      isExpanded={state.expandedTargets.includes(target.name)}
+                      selectedStageIds={state.selectedBuildName === target.name ? state.selectedStageIds : []}
+                      onToggle={() => action('toggleTarget', { name: target.name })}
+                      onToggleExpand={() => action('toggleTargetExpanded', { name: target.name })}
+                      onToggleStage={(stageId) => handleToggleStage(target.name, stageId)}
                     />
                   ))
                 )}

@@ -1,23 +1,21 @@
 /**
- * VS Code Panel Providers - Consolidated webview setup for React panels.
+ * VS Code Panel Providers - Webview setup and action routing.
  *
- * This module handles all VS Code webview boilerplate for the sidebar and
- * log viewer panels. Each panel is defined by a configuration object that
- * specifies its behavior.
+ * NO STATE HERE. All state lives in appStateManager.
+ * Panels receive state via onStateChange and send actions back.
  */
 
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { traceInfo, traceError } from '../common/log/logging';
-import { buildStateManager, Build, BuildStage, LogEntry } from '../common/buildState';
-import { getButtons } from './buttons';
-import { getBuilds, Build as ManifestBuild } from '../common/manifest';
+import { traceInfo } from '../common/log/logging';
+import { appStateManager, Project, LogLevel } from '../common/appState';
+import { getBuilds } from '../common/manifest';
 import {
     getProjectRoot,
     setProjectRoot,
     getSelectedTargets,
     setSelectedTargets,
-    toggleTarget,
+    toggleTarget as toggleTargetInConfig,
     onBuildTargetsChanged,
 } from '../common/target';
 import {
@@ -25,12 +23,6 @@ import {
     buildWebviewHtml,
     getWebviewLocalResourceRoots,
 } from './webview-utils';
-
-interface Project {
-    root: string;
-    name: string;
-    targets: { name: string; entry: string; root: string }[];
-}
 
 /**
  * Convert manifest builds to projects grouped by root directory.
@@ -58,15 +50,16 @@ function getProjects(): Project[] {
 }
 
 /**
- * Configuration for a webview panel.
+ * Sync projects from manifest to state manager.
  */
-interface PanelConfig {
-    viewType: string;
-    webviewName: string;
-    title: string;
-    onReady: (panel: WebviewPanel) => void;
-    onMessage: (panel: WebviewPanel, message: any) => Promise<void>;
-    subscriptions?: (panel: WebviewPanel) => vscode.Disposable[];
+function syncProjectsToState(): void {
+    const projects = getProjects();
+    const selectedRoot = getProjectRoot();
+    const selectedTargets = getSelectedTargets();
+
+    appStateManager.setProjects(projects);
+    appStateManager.setSelectedProjectRoot(selectedRoot || null);
+    appStateManager.setSelectedTargetNames(selectedTargets.map(t => t.name));
 }
 
 /**
@@ -74,21 +67,13 @@ interface PanelConfig {
  */
 class WebviewPanel implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
-    private _disposables: vscode.Disposable[] = [];
+    private _onMessage?: (message: any) => Promise<void>;
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
-        private readonly _config: PanelConfig
-    ) {
-        // Set up subscriptions if defined
-        if (_config.subscriptions) {
-            this._disposables = _config.subscriptions(this);
-        }
-    }
-
-    get viewType(): string {
-        return this._config.viewType;
-    }
+        private readonly _webviewName: string,
+        private readonly _title: string,
+    ) {}
 
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
@@ -101,291 +86,209 @@ class WebviewPanel implements vscode.WebviewViewProvider {
             enableScripts: true,
             localResourceRoots: [
                 ...getWebviewLocalResourceRoots(this._extensionUri),
-                this._extensionUri, // For logo and other assets
+                this._extensionUri,
             ],
         };
 
-        const assets = findWebviewAssets(this._extensionUri.fsPath, this._config.webviewName);
+        const assets = findWebviewAssets(this._extensionUri.fsPath, this._webviewName);
         webviewView.webview.html = buildWebviewHtml({
             webview: webviewView.webview,
             assets,
-            title: this._config.title,
+            title: this._title,
         });
 
         webviewView.webview.onDidReceiveMessage(async (message) => {
             if (message.type === 'ready') {
-                this._config.onReady(this);
+                // Send initial state on ready
+                this.postMessage('state', appStateManager.getState());
+            } else if (message.type === 'action' && this._onMessage) {
+                await this._onMessage(message);
             }
-            await this._config.onMessage(this, message);
         });
     }
 
-    /**
-     * Send a message to the webview.
-     */
     postMessage(type: string, data: any): void {
         if (!this._view) return;
         this._view.webview.postMessage({ type, data });
     }
 
-    /**
-     * Get a webview URI for a file path.
-     */
     getWebviewUri(filePath: string): string {
         if (!this._view) return '';
         return this._view.webview.asWebviewUri(vscode.Uri.file(filePath)).toString();
     }
 
-    /**
-     * Get the extension URI.
-     */
-    get extensionUri(): vscode.Uri {
-        return this._extensionUri;
+    setOnMessage(handler: (message: any) => Promise<void>): void {
+        this._onMessage = handler;
     }
 
-    dispose(): void {
-        this._disposables.forEach(d => d.dispose());
+    get isVisible(): boolean {
+        return this._view?.visible ?? false;
     }
 }
 
-// =============================================================================
-// Sidebar Panel
-// =============================================================================
-
-/**
- * Send build targets (projects) state to the sidebar.
- */
-function sendBuildTargets(panel: WebviewPanel): void {
-    const projects = getProjects();
-    const selectedRoot = getProjectRoot();
-    const selectedTargets = getSelectedTargets();
-
-    panel.postMessage('updateBuildTargets', {
-        projects,
-        selectedProjectRoot: selectedRoot || null,
-        selectedTargetNames: selectedTargets.map(t => t.name),
-    });
-}
-
-const sidebarConfig: PanelConfig = {
-    viewType: 'atopile.project',
-    webviewName: 'sidebar',
-    title: 'Atopile',
-
-    onReady: (panel) => {
-        // Send extension info
-        const extension = vscode.extensions.getExtension('atopile.atopile');
-        const version = extension?.packageJSON?.version || 'dev';
-        const logoPath = path.join(panel.extensionUri.fsPath, 'ato_logo_256x256.png');
-        panel.postMessage('extensionInfo', {
-            version,
-            logoUri: panel.getWebviewUri(logoPath),
-        });
-
-        // Send action buttons
-        const buttons = getButtons().map(btn => ({
-            id: btn.id,
-            label: btn.label,
-            icon: btn.icon,
-            tooltip: btn.tooltip,
-        }));
-        panel.postMessage('updateActionButtons', { buttons });
-
-        // Send build targets (projects from ato.yaml)
-        sendBuildTargets(panel);
-
-        // Send initial build runs (from dashboard)
-        panel.postMessage('updateBuilds', {
-            builds: buildStateManager.getBuilds(),
-            isConnected: buildStateManager.isConnected,
-        });
-    },
-
-    onMessage: async (panel, message) => {
-        switch (message.type) {
-            case 'executeCommand':
-                await vscode.commands.executeCommand(message.command);
-                break;
-
-            case 'selectBuild':
-                buildStateManager.selectBuild(message.buildName);
-                break;
-
-            case 'selectStage':
-                buildStateManager.selectBuild(message.buildName);
-                buildStateManager.selectStage(message.stageName);
-                await vscode.commands.executeCommand('atopile.logViewer.focus');
-                break;
-
-            case 'selectProject': {
-                const projects = getProjects();
-                const project = projects.find(p => p.root === message.projectRoot);
-                if (project) {
-                    setProjectRoot(project.root);
-                    // Select all targets in the project by default
-                    const builds = getBuilds().filter(b => b.root === project.root);
-                    setSelectedTargets(builds);
-                    sendBuildTargets(panel);
-                }
-                break;
-            }
-
-            case 'toggleTarget': {
-                const builds = getBuilds();
-                const target = builds.find(b => b.name === message.targetName && b.root === message.projectRoot);
-                if (target) {
-                    toggleTarget(target);
-                    sendBuildTargets(panel);
-                }
-                break;
-            }
-
-            case 'buildProject':
-                await vscode.commands.executeCommand('atopile.build');
-                break;
-        }
-    },
-
-    subscriptions: (panel) => [
-        buildStateManager.onDidChangeBuilds(() => {
-            panel.postMessage('updateBuilds', {
-                builds: buildStateManager.getBuilds(),
-                isConnected: buildStateManager.isConnected,
-            });
-        }),
-        buildStateManager.onDidChangeConnection(() => {
-            panel.postMessage('updateBuilds', {
-                builds: buildStateManager.getBuilds(),
-                isConnected: buildStateManager.isConnected,
-            });
-        }),
-        onBuildTargetsChanged(() => {
-            sendBuildTargets(panel);
-        }),
-    ],
-};
-
-// =============================================================================
-// Log Viewer Panel
-// =============================================================================
-
-// State for log viewer (kept outside config for mutability)
-let logViewerState = {
-    currentBuild: undefined as Build | undefined,
-    currentStage: undefined as BuildStage | undefined,
-    logEntries: [] as LogEntry[],
-    isLoading: false,
-};
-
+// Panel instances
+let sidebarPanel: WebviewPanel | undefined;
 let logViewerPanel: WebviewPanel | undefined;
 
-const logViewerConfig: PanelConfig = {
-    viewType: 'atopile.logViewer',
-    webviewName: 'logViewer',
-    title: 'Atopile Logs',
+/**
+ * Broadcast state to all panels.
+ */
+function broadcastState(): void {
+    const state = appStateManager.getState();
+    sidebarPanel?.postMessage('state', state);
+    logViewerPanel?.postMessage('state', state);
+}
 
-    onReady: (panel) => {
-        panel.postMessage('updateLogs', {
-            entries: logViewerState.logEntries,
-            isLoading: logViewerState.isLoading,
-            logFile: logViewerState.currentStage?.log_file || null,
-        });
-    },
-
-    onMessage: async (_panel, message) => {
-        switch (message.type) {
-            case 'copyLogPath':
-                if (logViewerState.currentStage?.log_file) {
-                    await vscode.env.clipboard.writeText(logViewerState.currentStage.log_file);
-                    vscode.window.showInformationMessage('Log path copied to clipboard');
-                }
-                break;
-        }
-    },
-
-    subscriptions: (panel) => [
-        buildStateManager.onDidChangeSelectedStage(async (selection) => {
-            if (selection) {
-                await loadLogsForStage(panel, selection.build, selection.stage);
-            } else {
-                logViewerState.currentBuild = undefined;
-                logViewerState.currentStage = undefined;
-                logViewerState.logEntries = [];
-                sendLogUpdate(panel);
+/**
+ * Handle actions from webviews.
+ */
+async function handleAction(message: any): Promise<void> {
+    switch (message.action) {
+        // Project/target selection
+        case 'selectProject': {
+            const projects = getProjects();
+            const project = projects.find(p => p.root === message.root);
+            if (project) {
+                setProjectRoot(project.root);
+                const builds = getBuilds().filter(b => b.root === project.root);
+                setSelectedTargets(builds);
+                syncProjectsToState();
             }
-        }),
-    ],
-};
+            break;
+        }
 
-async function loadLogsForStage(panel: WebviewPanel, build: Build, stage: BuildStage): Promise<void> {
-    logViewerState.currentBuild = build;
-    logViewerState.currentStage = stage;
-    logViewerState.isLoading = true;
-    sendLogUpdate(panel);
+        case 'toggleTarget': {
+            const builds = getBuilds();
+            const target = builds.find(b => b.name === message.name);
+            if (target) {
+                toggleTargetInConfig(target);
+                syncProjectsToState();
+            }
+            break;
+        }
 
-    try {
-        logViewerState.logEntries = await buildStateManager.fetchLogEntries(build.display_name, stage);
-    } catch (error) {
-        traceError(`Failed to load logs: ${error}`);
-        logViewerState.logEntries = [];
-    } finally {
-        logViewerState.isLoading = false;
-        sendLogUpdate(panel);
+        case 'toggleTargetExpanded':
+            appStateManager.toggleTargetExpanded(message.name);
+            break;
+
+        // Build selection
+        case 'selectBuild':
+            await appStateManager.selectBuild(message.buildName);
+            break;
+
+        case 'toggleStageFilter':
+            appStateManager.toggleStageFilter(message.stageId);
+            break;
+
+        case 'clearStageFilter':
+            appStateManager.clearStageFilter();
+            break;
+
+        // Log viewer UI
+        case 'toggleLogLevel':
+            appStateManager.toggleLogLevel(message.level as LogLevel);
+            break;
+
+        case 'setLogSearchQuery':
+            appStateManager.setLogSearchQuery(message.query);
+            break;
+
+        case 'toggleLogTimestampMode':
+            appStateManager.toggleLogTimestampMode();
+            break;
+
+        case 'setLogAutoScroll':
+            appStateManager.setLogAutoScroll(message.enabled);
+            break;
+
+        // Commands
+        case 'build':
+            await vscode.commands.executeCommand('atopile.build');
+            break;
+
+        case 'executeCommand':
+            await vscode.commands.executeCommand(message.command);
+            break;
+
+        case 'copyLogPath': {
+            const state = appStateManager.getState();
+            if (state.logFile) {
+                await vscode.env.clipboard.writeText(state.logFile);
+                vscode.window.showInformationMessage('Log path copied to clipboard');
+            }
+            break;
+        }
+
+        case 'focusLogViewer':
+            await vscode.commands.executeCommand('atopile.logViewer.focus');
+            break;
     }
 }
 
-function sendLogUpdate(panel: WebviewPanel): void {
-    panel.postMessage('updateLogs', {
-        entries: logViewerState.logEntries,
-        isLoading: logViewerState.isLoading,
-        logFile: logViewerState.currentStage?.log_file || null,
-    });
-}
-
-// =============================================================================
-// Activation
-// =============================================================================
-
-let sidebarPanel: WebviewPanel | undefined;
-
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-    // Create and register sidebar panel
-    sidebarPanel = new WebviewPanel(context.extensionUri, sidebarConfig);
+    // Set extension info
+    const version = vscode.extensions.getExtension('atopile.atopile')?.packageJSON?.version || 'dev';
+
+    // Create sidebar panel
+    sidebarPanel = new WebviewPanel(context.extensionUri, 'sidebar', 'Atopile');
+    sidebarPanel.setOnMessage(handleAction);
     context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(sidebarConfig.viewType, sidebarPanel)
+        vscode.window.registerWebviewViewProvider('atopile.project', sidebarPanel)
     );
 
-    // Create and register log viewer panel
-    logViewerPanel = new WebviewPanel(context.extensionUri, logViewerConfig);
+    // Create log viewer panel
+    logViewerPanel = new WebviewPanel(context.extensionUri, 'logViewer', 'Atopile Logs');
+    logViewerPanel.setOnMessage(handleAction);
     context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(logViewerConfig.viewType, logViewerPanel)
+        vscode.window.registerWebviewViewProvider('atopile.logViewer', logViewerPanel)
     );
 
-    // Reset log viewer to its default location (bottom panel) on first activation
-    // This ensures it doesn't appear in the sidebar by default
-    // Bump version when package.json viewsContainer config changes to force re-reset
+    // Subscribe to state changes - broadcast to all panels
+    context.subscriptions.push(
+        appStateManager.onStateChange(() => {
+            broadcastState();
+        })
+    );
+
+    // Subscribe to manifest/target changes
+    context.subscriptions.push(
+        onBuildTargetsChanged(() => {
+            syncProjectsToState();
+        })
+    );
+
+    // Initial sync of projects to state
+    syncProjectsToState();
+
+    // Set extension info (logoUri will be set when sidebar resolves)
+    // We need to defer this until the sidebar is ready to get the webview URI
+    const originalResolve = sidebarPanel.resolveWebviewView.bind(sidebarPanel);
+    sidebarPanel.resolveWebviewView = function(webviewView, resolveContext, token) {
+        originalResolve(webviewView, resolveContext, token);
+        const logoPath = path.join(context.extensionUri.fsPath, 'ato_logo_256x256.png');
+        const logoUri = sidebarPanel!.getWebviewUri(logoPath);
+        appStateManager.setExtensionInfo(version, logoUri);
+    };
+
+    // Reset log viewer to default location on first activation
     const logViewerLocationReset = context.globalState.get<boolean>('logViewerLocationReset_v2', false);
     if (!logViewerLocationReset) {
         try {
-            // VS Code auto-generates this command for all views to reset them to declared location
             await vscode.commands.executeCommand('atopile.logViewer.resetViewLocation');
             context.globalState.update('logViewerLocationReset_v2', true);
             traceInfo('vscode-panels: reset log viewer to default location');
         } catch (e) {
-            // Command might not exist in older VS Code versions
             traceInfo(`vscode-panels: could not reset log viewer location: ${e}`);
         }
     }
 
     // Start polling for build updates
-    buildStateManager.startPolling(500);
+    appStateManager.startPolling(500);
 
     traceInfo('vscode-panels: activated sidebar and log viewer');
 }
 
 export function deactivate(): void {
-    sidebarPanel?.dispose();
-    logViewerPanel?.dispose();
-    buildStateManager.stopPolling();
-    buildStateManager.dispose();
+    appStateManager.stopPolling();
+    appStateManager.dispose();
 }

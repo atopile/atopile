@@ -416,15 +416,18 @@ class JSONLinesFileHandler(logging.Handler):
     - timestamp: ISO format timestamp
     - level: Log level name (DEBUG, INFO, WARNING, ERROR)
     - logger: Logger name
+    - stage: The build stage that generated this log entry
     - message: The log message (or exception title for errors)
     - ato_traceback: Optional ato source context for user exceptions
     - exc_info: Optional Python traceback string
     """
 
-    def __init__(self, file_path: Path, level: int = logging.DEBUG):
+    def __init__(self, file_path: Path, level: int = logging.DEBUG, stage: str = ""):
         super().__init__(level)
         self._file_path = file_path
-        self._file = file_path.open("w", encoding="utf-8")
+        self._stage = stage
+        # Append mode to support multiple stages writing to same file
+        self._file = file_path.open("a", encoding="utf-8")
         self._logged_exceptions: set[tuple] = set()
 
         # Filter to atopile/faebryk logs only
@@ -432,6 +435,10 @@ class JSONLinesFileHandler(logging.Handler):
             lambda record: record.name.startswith("atopile")
             or record.name.startswith("faebryk")
         )
+
+    def set_stage(self, stage: str) -> None:
+        """Update the current stage name for subsequent log entries."""
+        self._stage = stage
 
     def _get_hashable(self, record: logging.LogRecord) -> tuple | None:
         """Get hashable representation of exception to deduplicate."""
@@ -484,6 +491,7 @@ class JSONLinesFileHandler(logging.Handler):
                 "timestamp": datetime.fromtimestamp(record.created).isoformat(),
                 "level": record.levelname,
                 "logger": record.name,
+                "stage": self._stage,
             }
 
             # Handle user exceptions specially
@@ -584,6 +592,34 @@ class CompletableSpinnerColumn(SpinnerColumn):
 
 
 _log_sink_var = ContextVar[io.StringIO | None]("log_sink", default=None)
+
+# Build-level log handler registry - shared across all stages in a build
+# Key: log_dir path, Value: JSONLinesFileHandler
+_build_log_handlers: dict[Path, JSONLinesFileHandler] = {}
+
+
+def get_or_create_build_log_handler(log_dir: Path, stage: str) -> JSONLinesFileHandler:
+    """
+    Get or create a shared log handler for a build.
+
+    All stages in a build share the same log file (build.jsonl).
+    The stage name is updated when entering each stage.
+    """
+    if log_dir not in _build_log_handlers:
+        log_file = log_dir / "build.jsonl"
+        handler = JSONLinesFileHandler(log_file, level=logging.DEBUG, stage=stage)
+        _build_log_handlers[log_dir] = handler
+    else:
+        handler = _build_log_handlers[log_dir]
+        handler.set_stage(stage)
+    return handler
+
+
+def close_build_log_handler(log_dir: Path) -> None:
+    """Close and remove the build log handler for a log directory."""
+    if log_dir in _build_log_handlers:
+        handler = _build_log_handlers.pop(log_dir)
+        handler.close()
 
 
 @contextmanager
@@ -956,13 +992,14 @@ class LoggingStage(Advancable):
 
         self._file_handlers = []
 
-        # Single log file per stage containing all levels
-        # Frontend can filter by level client-side
-        log_file = log_dir / f"{self._sanitized_name}.jsonl"
-        file_handler = JSONLinesFileHandler(log_file, level=logging.DEBUG)
+        # Use shared build log file (build.jsonl) with stage field
+        # All stages in a build write to the same file
+        file_handler = get_or_create_build_log_handler(log_dir, self.name)
         self._file_handlers.append(file_handler)
+        self._shared_file_handler = True  # Mark as shared, don't close on restore
         root_logger.addHandler(file_handler)
 
+        log_file = log_dir / "build.jsonl"
         try:
             self._info_log_path = log_file.relative_to(Path.cwd())
         except ValueError:
@@ -980,10 +1017,13 @@ class LoggingStage(Advancable):
 
         if self._capture_log_handler in root_logger.handlers:
             root_logger.removeHandler(self._capture_log_handler)
+
         for file_handler in self._file_handlers:
             if file_handler in root_logger.handlers:
                 root_logger.removeHandler(file_handler)
-                file_handler.close()
+                # Don't close shared handlers - they persist across stages
+                if not getattr(self, "_shared_file_handler", False):
+                    file_handler.close()
 
         for handler in root_logger.handlers.copy():
             root_logger.removeHandler(handler)
@@ -996,6 +1036,7 @@ class LoggingStage(Advancable):
         self._log_handler = None
         self._capture_log_handler = None
         self._file_handlers = []
+        self._shared_file_handler = False
 
 
 handler = LogHandler(console=console.error_console)

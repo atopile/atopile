@@ -319,11 +319,10 @@ class BuildProcess:
                     continue
 
     def _stage_info_log_path(self, stage_name: str) -> Path | None:
-        """Return the log path for a stage, if available."""
+        """Return the log path for a build (single file for all stages)."""
         if not self.log_dir:
             return None
-        sanitized = pathvalidate.sanitize_filename(stage_name)
-        return self.log_dir / f"{sanitized}.jsonl"
+        return self.log_dir / "build.jsonl"
 
     def set_stage_printer(
         self, printer: Callable[[StageCompleteEvent, Path | None], None] | None
@@ -1122,30 +1121,28 @@ class ParallelBuildManager:
             "return_code": bp.return_code,
         }
 
-        # Add log dir
+        # Add log dir and single build log file
         if bp.log_dir and bp.log_dir.exists():
             data["log_dir"] = str(bp.log_dir)
 
-            # Collect log files by stage name
-            # New format: {stage}.jsonl (single file containing all levels)
-            log_files_by_stage: dict[str, str] = {}
-            for log_file in sorted(bp.log_dir.glob("*.jsonl")):
-                # Extract stage name from filename (e.g., "synthesis" from "synthesis.jsonl")
-                stage = log_file.stem
-                log_files_by_stage[stage] = str(log_file)
+            # Single log file for all stages
+            log_file = bp.log_dir / "build.jsonl"
+            if log_file.exists():
+                data["log_file"] = str(log_file)
 
-            # Add timing data from stage history with associated log file
+            # Add timing data from stage history
+            # All stages share the same log file, filter by stage field in frontend
             if bp._stage_history:
                 data["stages"] = [
                     {
                         "name": entry.description,
+                        "stage_id": entry.log_name,  # Stage ID for filtering
                         "elapsed_seconds": round(entry.duration, 3),
                         "status": entry.status,
                         "infos": entry.infos,
                         "warnings": entry.warnings,
                         "errors": entry.errors,
                         "alerts": entry.alerts,
-                        "log_file": log_files_by_stage.get(entry.log_name),
                     }
                     for entry in bp._stage_history
                 ]

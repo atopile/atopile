@@ -170,7 +170,16 @@
 }
 
 .stage-item.selected {
-  background: var(--bg-selected);
+  background: var(--accent);
+  color: white;
+}
+
+.stage-item.selected .stage-name {
+  color: white;
+}
+
+.stage-item.selected .stage-time {
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .stage-name {

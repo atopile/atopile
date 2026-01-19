@@ -1,17 +1,21 @@
 /**
- * Log viewer component for displaying structured JSON Lines logs.
+ * Log viewer component - STATELESS.
+ * Receives AppState from extension, sends actions back.
  */
 
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import AnsiToHtml from 'ansi-to-html';
-import { useBuildStore } from '../stores/buildStore';
-import type { LogEntry, LogLevel } from '../types/build';
+import type { AppState, LogLevel, LogEntry } from '../types/build';
 import './LogViewer.css';
 
-// Get VS Code API
 const vscode = acquireVsCodeApi();
 
 const ALL_LEVELS: LogLevel[] = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'ALERT'];
+
+// Send action to extension
+const action = (name: string, data?: object) => {
+  vscode.postMessage({ type: 'action', action: name, ...data });
+};
 
 // ANSI to HTML converter instance
 const ansiConverter = new AnsiToHtml({
@@ -55,9 +59,25 @@ function FilterButton({
   );
 }
 
-function formatTimestamp(isoString: string): string {
+function formatTimestamp(isoString: string, mode: 'absolute' | 'delta', prevTimestamp?: string): string {
   try {
     const date = new Date(isoString);
+
+    if (mode === 'delta' && prevTimestamp) {
+      const prevDate = new Date(prevTimestamp);
+      const deltaMs = date.getTime() - prevDate.getTime();
+
+      if (deltaMs < 1000) {
+        return `+${deltaMs}ms`;
+      } else if (deltaMs < 60000) {
+        return `+${(deltaMs / 1000).toFixed(2)}s`;
+      } else {
+        const mins = Math.floor(deltaMs / 60000);
+        const secs = ((deltaMs % 60000) / 1000).toFixed(1);
+        return `+${mins}m${secs}s`;
+      }
+    }
+
     return date.toLocaleTimeString('en-US', {
       hour12: false,
       hour: '2-digit',
@@ -69,7 +89,17 @@ function formatTimestamp(isoString: string): string {
   }
 }
 
-function LogEntryRow({ entry }: { entry: LogEntry }) {
+function LogEntryRow({
+  entry,
+  timestampMode,
+  prevTimestamp,
+  isSearchMatch,
+}: {
+  entry: LogEntry;
+  timestampMode: 'absolute' | 'delta';
+  prevTimestamp?: string;
+  isSearchMatch: boolean;
+}) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const levelClass = entry.level.toLowerCase();
 
@@ -88,8 +118,8 @@ function LogEntryRow({ entry }: { entry: LogEntry }) {
   const isHighlight = entry.level === 'WARNING' || entry.level === 'ERROR' || entry.level === 'ALERT';
 
   return (
-    <div className={`log-entry ${isHighlight ? levelClass : ''}`}>
-      <span className="log-timestamp">{formatTimestamp(entry.timestamp)}</span>
+    <div className={`log-entry ${isHighlight ? levelClass : ''} ${isSearchMatch ? 'search-match' : ''}`}>
+      <span className="log-timestamp">{formatTimestamp(entry.timestamp, timestampMode, prevTimestamp)}</span>
       <span className={`log-level ${levelClass}`}>{entry.level}</span>
       <div className="log-body">
         <span className="log-message"><AnsiText text={entry.message} /></span>
@@ -130,66 +160,109 @@ function LogEntryRow({ entry }: { entry: LogEntry }) {
 }
 
 export function LogViewer() {
-  const {
-    logEntries,
-    enabledLevels,
-    isLoadingLogs,
-    currentLogFile,
-    setLogEntries,
-    toggleLevel,
-    setLoadingLogs,
-    setCurrentLogFile,
-    getFilteredLogEntries,
-    getLevelCounts,
-  } = useBuildStore();
-
+  // Single piece of state: AppState from extension
+  const [state, setState] = useState<AppState | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
-  const [autoScroll, setAutoScroll] = useState(true);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Handle messages from VS Code
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      const message = event.data;
-
-      switch (message.type) {
-        case 'updateLogs':
-          setLogEntries(message.data.entries || []);
-          setLoadingLogs(message.data.isLoading ?? false);
-          setCurrentLogFile(message.data.logFile || null);
-          break;
+      const msg = event.data;
+      if (msg.type === 'state') {
+        setState(msg.data);
       }
     };
-
     window.addEventListener('message', handleMessage);
     vscode.postMessage({ type: 'ready' });
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  // Auto-scroll to bottom
+  // Auto-scroll when logAutoScroll is enabled
   useEffect(() => {
-    if (autoScroll && logRef.current) {
+    if (state?.logAutoScroll && logRef.current) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
-  }, [logEntries, autoScroll]);
+  }, [state?.logEntries, state?.logAutoScroll]);
 
-  const handleScroll = () => {
-    if (!logRef.current) return;
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+      if (e.key === 'Escape' && state?.logSearchQuery) {
+        action('setLogSearchQuery', { query: '' });
+        searchInputRef.current?.blur();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [state?.logSearchQuery]);
+
+  // Handle scroll - detect when user scrolls away from bottom
+  const handleScroll = useCallback(() => {
+    if (!logRef.current || !state) return;
     const { scrollTop, scrollHeight, clientHeight } = logRef.current;
-    setAutoScroll(scrollHeight - scrollTop - clientHeight < 100);
-  };
+    const atBottom = scrollHeight - scrollTop - clientHeight < 100;
+    if (state.logAutoScroll !== atBottom) {
+      action('setLogAutoScroll', { enabled: atBottom });
+    }
+  }, [state?.logAutoScroll]);
 
-  const handleCopyLogPath = () => {
-    vscode.postMessage({ type: 'copyLogPath' });
-  };
+  // Filter logs (computed from state)
+  const filteredEntries = useMemo(() => {
+    if (!state) return [];
+    const query = state.logSearchQuery.toLowerCase();
+    return state.logEntries.filter(entry => {
+      // Level filter
+      if (!state.enabledLogLevels.includes(entry.level)) return false;
+      // Stage filter (empty = show all)
+      if (state.selectedStageIds.length > 0 && !state.selectedStageIds.includes(entry.stage)) return false;
+      // Search filter
+      if (query && !entry.message.toLowerCase().includes(query) && !entry.logger.toLowerCase().includes(query)) return false;
+      return true;
+    });
+  }, [state]);
 
-  const handleToggleLevel = (level: LogLevel) => {
-    toggleLevel(level);
-    vscode.postMessage({ type: 'toggleLevel', level });
-  };
+  // Level counts (computed)
+  const levelCounts = useMemo(() => {
+    if (!state) return { DEBUG: 0, INFO: 0, WARNING: 0, ERROR: 0, ALERT: 0 };
+    const entries = state.selectedStageIds.length > 0
+      ? state.logEntries.filter(e => state.selectedStageIds.includes(e.stage))
+      : state.logEntries;
+    return {
+      DEBUG: entries.filter(e => e.level === 'DEBUG').length,
+      INFO: entries.filter(e => e.level === 'INFO').length,
+      WARNING: entries.filter(e => e.level === 'WARNING').length,
+      ERROR: entries.filter(e => e.level === 'ERROR').length,
+      ALERT: entries.filter(e => e.level === 'ALERT').length,
+    };
+  }, [state]);
 
-  const filteredEntries = getFilteredLogEntries();
-  const levelCounts = getLevelCounts();
-  const logFilename = currentLogFile?.split('/').pop() || '';
+  // Search matches for highlighting
+  const searchMatches = useMemo(() => {
+    if (!state?.logSearchQuery.trim()) return new Set<number>();
+    const query = state.logSearchQuery.toLowerCase();
+    const matches = new Set<number>();
+    filteredEntries.forEach((entry, idx) => {
+      if (
+        entry.message.toLowerCase().includes(query) ||
+        entry.logger.toLowerCase().includes(query) ||
+        entry.stage?.toLowerCase().includes(query)
+      ) {
+        matches.add(idx);
+      }
+    });
+    return matches;
+  }, [filteredEntries, state?.logSearchQuery]);
+
+  if (!state) {
+    return <div className="log-viewer loading">Loading...</div>;
+  }
+
+  const logFilename = state.logFile?.split('/').pop() || '';
 
   return (
     <div className="log-viewer">
@@ -200,16 +273,71 @@ export function LogViewer() {
               key={level}
               level={level}
               count={levelCounts[level]}
-              isEnabled={enabledLevels.has(level)}
-              onToggle={() => handleToggleLevel(level)}
+              isEnabled={state.enabledLogLevels.includes(level)}
+              onToggle={() => action('toggleLogLevel', { level })}
             />
           ))}
         </div>
 
-        <div className="log-actions">
-          {currentLogFile && (
+        {/* Search input */}
+        <div className="log-search-box">
+          <svg className="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8" />
+            <path d="M21 21l-4.35-4.35" />
+          </svg>
+          <input
+            ref={searchInputRef}
+            type="text"
+            placeholder="Search logs..."
+            value={state.logSearchQuery}
+            onChange={(e) => action('setLogSearchQuery', { query: e.target.value })}
+            className="search-input"
+          />
+          {state.logSearchQuery && (
             <>
-              <button className="log-file-btn" onClick={handleCopyLogPath} title={`Copy: ${currentLogFile}`}>
+              <span className="search-count">
+                {filteredEntries.length}/{state.logEntries.length}
+              </span>
+              <button
+                className="search-clear"
+                onClick={() => action('setLogSearchQuery', { query: '' })}
+                title="Clear search"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </>
+          )}
+        </div>
+
+        <div className="log-actions">
+          {/* Timestamp mode toggle */}
+          <button
+            className={`action-btn ${state.logTimestampMode === 'delta' ? 'active' : ''}`}
+            onClick={() => action('toggleLogTimestampMode')}
+            title={state.logTimestampMode === 'absolute' ? 'Switch to delta timestamps' : 'Switch to absolute timestamps'}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              {state.logTimestampMode === 'absolute' ? (
+                <>
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </>
+              ) : (
+                <>
+                  <path d="M5 12h14" />
+                  <path d="M12 5v14" />
+                </>
+              )}
+            </svg>
+          </button>
+
+          <div className="action-divider" />
+
+          {state.logFile && (
+            <>
+              <button className="log-file-btn" onClick={() => action('copyLogPath')} title={`Copy: ${state.logFile}`}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
@@ -220,9 +348,9 @@ export function LogViewer() {
             </>
           )}
           <button
-            className={`scroll-btn ${autoScroll ? 'active' : ''}`}
-            onClick={() => setAutoScroll(!autoScroll)}
-            title={autoScroll ? 'Auto-scroll enabled' : 'Auto-scroll disabled'}
+            className={`scroll-btn ${state.logAutoScroll ? 'active' : ''}`}
+            onClick={() => action('setLogAutoScroll', { enabled: !state.logAutoScroll })}
+            title={state.logAutoScroll ? 'Auto-scroll enabled' : 'Auto-scroll disabled'}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M19 14l-7 7m0 0l-7-7m7 7V3" />
@@ -232,7 +360,7 @@ export function LogViewer() {
       </div>
 
       <div className="log-content" ref={logRef} onScroll={handleScroll}>
-        {isLoadingLogs ? (
+        {state.isLoadingLogs ? (
           <div className="log-loading">
             <div className="spinner" />
             Loading logs...
@@ -249,11 +377,23 @@ export function LogViewer() {
               </svg>
             </div>
             <p className="log-empty-text">
-              {logEntries.length === 0 ? 'Select a build stage to view logs' : 'No entries match the current filters'}
+              {state.logEntries.length === 0
+                ? 'Select a build to view logs'
+                : state.logSearchQuery
+                  ? 'No entries match your search'
+                  : 'No entries match the current filters'}
             </p>
           </div>
         ) : (
-          filteredEntries.map((entry, idx) => <LogEntryRow key={idx} entry={entry} />)
+          filteredEntries.map((entry, idx) => (
+            <LogEntryRow
+              key={idx}
+              entry={entry}
+              timestampMode={state.logTimestampMode}
+              prevTimestamp={idx > 0 ? filteredEntries[idx - 1].timestamp : undefined}
+              isSearchMatch={searchMatches.has(idx)}
+            />
+          ))
         )}
       </div>
     </div>

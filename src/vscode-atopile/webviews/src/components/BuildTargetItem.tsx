@@ -1,8 +1,8 @@
 /**
- * Combined build target item showing checkbox and build status.
+ * Build target item component - STATELESS.
+ * All state (including expanded) comes from props.
  */
 
-import { useState } from 'react';
 import type { Build, BuildStage, BuildTarget } from '../types/build';
 import { StatusIcon } from './StatusIcon';
 import './BuildTargetItem.css';
@@ -12,9 +12,11 @@ interface BuildTargetItemProps {
   build?: Build;
   isChecked: boolean;
   isSelected: boolean;
-  selectedStageName: string | null;
+  isExpanded: boolean;
+  selectedStageIds: string[];
   onToggle: () => void;
-  onSelectStage: (stageName: string) => void;
+  onToggleExpand: () => void;
+  onToggleStage: (stageId: string) => void;
 }
 
 function stripRichText(text: string): string {
@@ -73,11 +75,12 @@ export function BuildTargetItem({
   build,
   isChecked,
   isSelected,
-  selectedStageName,
+  isExpanded,
+  selectedStageIds,
   onToggle,
-  onSelectStage,
+  onToggleExpand,
+  onToggleStage,
 }: BuildTargetItemProps) {
-  const [expanded, setExpanded] = useState(false);
   const hasStages = build?.stages && build.stages.length > 0;
   const currentStage = build ? getCurrentStage(build) : null;
   const timeStr = build ? formatTime(build.elapsed_seconds) : '';
@@ -86,12 +89,12 @@ export function BuildTargetItem({
     e.preventDefault();
     e.stopPropagation();
     if (hasStages) {
-      setExpanded(!expanded);
+      onToggleExpand();
     }
   };
 
   return (
-    <div className={`build-target-item ${expanded ? 'expanded' : ''} ${isSelected ? 'selected' : ''}`}>
+    <div className={`build-target-item ${isExpanded ? 'expanded' : ''} ${isSelected ? 'selected' : ''}`}>
       <div className="build-target-header">
         {/* Checkbox */}
         <input
@@ -141,7 +144,7 @@ export function BuildTargetItem({
         {/* Expand chevron */}
         {hasStages && (
           <button className="expand-button" onClick={handleExpandClick}>
-            <div className={`build-chevron ${expanded ? 'rotated' : ''}`}>
+            <div className={`build-chevron ${isExpanded ? 'rotated' : ''}`}>
               <svg viewBox="0 0 16 16" fill="currentColor">
                 <path d="M6 4l4 4-4 4" />
               </svg>
@@ -151,14 +154,14 @@ export function BuildTargetItem({
       </div>
 
       {/* Stages list */}
-      {expanded && hasStages && (
+      {isExpanded && hasStages && (
         <div className="build-stages">
           {build!.stages!.map((stage) => (
             <StageItem
-              key={stage.name}
+              key={stage.stage_id}
               stage={stage}
-              isSelected={isSelected && selectedStageName === stage.name}
-              onSelect={() => onSelectStage(stage.name)}
+              isSelected={selectedStageIds.includes(stage.stage_id)}
+              onSelect={() => onToggleStage(stage.stage_id)}
             />
           ))}
         </div>

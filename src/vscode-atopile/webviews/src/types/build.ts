@@ -1,5 +1,6 @@
 /**
- * TypeScript types for the build summary JSON.
+ * TypeScript types for build state.
+ * This is the SINGLE source of truth for all types.
  */
 
 export type BuildStatus = 'queued' | 'building' | 'success' | 'warning' | 'failed';
@@ -10,6 +11,7 @@ export interface LogEntry {
   timestamp: string;
   level: LogLevel;
   logger: string;
+  stage: string;
   message: string;
   ato_traceback?: string;
   exc_info?: string;
@@ -17,13 +19,13 @@ export interface LogEntry {
 
 export interface BuildStage {
   name: string;
+  stage_id: string;
   elapsed_seconds: number;
   status: StageStatus;
   infos: number;
   warnings: number;
   errors: number;
   alerts: number;
-  log_file?: string;
 }
 
 export interface Build {
@@ -36,36 +38,57 @@ export interface Build {
   errors: number;
   return_code: number | null;
   log_dir?: string;
+  log_file?: string;
   stages?: BuildStage[];
 }
 
-export interface BuildTotals {
-  builds: number;
-  successful: number;
-  failed: number;
-  warnings: number;
-  errors: number;
-}
-
-export interface BuildSummary {
-  timestamp: string;
-  totals: BuildTotals;
-  builds: Build[];
-  error?: string;
-}
-
-// Build target from ato.yaml (configuration)
 export interface BuildTarget {
   name: string;
   entry: string;
   root: string;
 }
 
-// Project with its build targets
 export interface Project {
   root: string;
   name: string;
   targets: BuildTarget[];
+}
+
+/**
+ * THE SINGLE APP STATE - All state lives here.
+ * Extension owns this, webviews receive it read-only.
+ */
+export interface AppState {
+  // Connection
+  isConnected: boolean;
+
+  // Projects (from ato.yaml)
+  projects: Project[];
+  selectedProjectRoot: string | null;
+  selectedTargetNames: string[];
+
+  // Builds (from dashboard API)
+  builds: Build[];
+
+  // Build/Log selection
+  selectedBuildName: string | null;
+  selectedStageIds: string[];
+  logEntries: LogEntry[];
+  isLoadingLogs: boolean;
+  logFile: string | null;
+
+  // Log viewer UI
+  enabledLogLevels: LogLevel[];
+  logSearchQuery: string;
+  logTimestampMode: 'absolute' | 'delta';
+  logAutoScroll: boolean;
+
+  // Sidebar UI
+  expandedTargets: string[];
+
+  // Extension info
+  version: string;
+  logoUri: string;
 }
 
 // VS Code API type
