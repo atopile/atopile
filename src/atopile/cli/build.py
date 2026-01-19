@@ -1141,8 +1141,10 @@ class ParallelBuildManager:
                         "name": entry.description,
                         "elapsed_seconds": round(entry.duration, 3),
                         "status": entry.status,
+                        "infos": entry.infos,
                         "warnings": entry.warnings,
                         "errors": entry.errors,
+                        "alerts": entry.alerts,
                         "log_file": log_files_by_stage.get(entry.log_name),
                     }
                     for entry in bp._stage_history

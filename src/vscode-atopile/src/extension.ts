@@ -13,7 +13,6 @@ import { captureEvent, deinitializeTelemetry, initializeTelemetry, updateConfig 
 import { onBuildTargetChanged } from './common/target';
 import { Build } from './common/manifest';
 import { openPackageExplorer } from './ui/packagexplorer';
-import { openDashboard } from './ui/dashboard';
 import * as llm from './common/llm';
 
 export let g_lsClient: LanguageClient | undefined;
@@ -54,14 +53,9 @@ class atopileUriHandler implements vscode.UriHandler {
                 openPackageExplorer('packages/' + packageIdentifier);
             }
         } else if (path === "/openDashboard") {
-            traceInfo('openDashboard');
-            // e.g. vscode://atopile.atopile/openDashboard?url=http://localhost:8080
-            const queryParams = uri.query.split("&");
-            const url = queryParams.find(param => param.startsWith("url="))?.split("=").slice(1).join("=");
-            if (url) {
-                traceInfo(`dashboard url: ${url}`);
-                openDashboard(decodeURIComponent(url));
-            }
+            traceInfo('openDashboard - redirecting to log viewer panel');
+            // Open the log viewer panel instead
+            vscode.commands.executeCommand('atopile.logViewer.focus');
         }
     }
 }

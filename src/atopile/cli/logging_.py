@@ -104,8 +104,10 @@ class StageStatusEvent:
 class StageCompleteEvent:
     duration: float
     status: str
+    infos: int
     warnings: int
     errors: int
+    alerts: int
     log_name: str
     description: str
 
@@ -362,6 +364,10 @@ class LiveLogHandler(LogHandler):
                 self.status._error_count += 1
             elif record.levelno >= logging.WARNING:
                 self.status._warning_count += 1
+            elif record.levelno == ALERT:
+                self.status._alert_count += 1
+            elif record.levelno >= logging.INFO:
+                self.status._info_count += 1
 
             self.status.refresh()
 
@@ -620,8 +626,10 @@ class LoggingStage(Advancable):
         self.indent = indent
         self.steps = steps
         self._console = console.error_console
+        self._info_count = 0
         self._warning_count = 0
         self._error_count = 0
+        self._alert_count = 0
         self._info_log_path = None
         self._log_handler = None
         self._capture_log_handler = None
@@ -872,8 +880,10 @@ class LoggingStage(Advancable):
                 StageCompleteEvent(
                     duration=elapsed,
                     status=status_text,
+                    infos=self._info_count,
                     warnings=self._warning_count,
                     errors=self._error_count,
+                    alerts=self._alert_count,
                     log_name=self.name,
                     description=self.description,
                 ),

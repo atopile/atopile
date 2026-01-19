@@ -1,0 +1,56 @@
+/* Action Button */
+.action-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-1);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-height: 52px;
+}
+
+.action-button:hover {
+  background: var(--hover);
+  border-color: var(--border-subtle);
+}
+
+.action-button:active {
+  transform: scale(0.97);
+}
+
+.action-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--text-secondary);
+  transition: color 0.15s ease;
+}
+
+.action-button:hover .action-icon {
+  color: var(--accent);
+}
+
+.action-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.action-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  transition: color 0.15s ease;
+}
+
+.action-button:hover .action-label {
+  color: var(--text-secondary);
+}

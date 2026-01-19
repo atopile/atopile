@@ -10,5 +10,5 @@
         "noFallthroughCasesInSwitch": true,
         "noUnusedParameters": true
     },
-    "exclude": ["node_modules", "dashboard"]
+    "exclude": ["node_modules", "dashboard", "webviews"]
 }

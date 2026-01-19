@@ -48,8 +48,8 @@
     ],
     "main": "./dist/extension.js",
     "scripts": {
-        "vscode:prepublish": "npm run build:dashboard && npm run package",
-        "build:dashboard": "cd dashboard && npm install && npm run build",
+        "vscode:prepublish": "npm run build:webviews && npm run package",
+        "build:webviews": "cd webviews && npm install && npm run build",
         "compile": "webpack",
         "watch": "webpack --watch",
         "package": "webpack --mode production --devtool source-map --config ./webpack.config.js",
@@ -120,7 +120,15 @@
                 {
                     "id": "atopile.project",
                     "name": "Project",
-                    "contextualTitle": "atopile Project"
+                    "contextualTitle": "atopile Project",
+                    "type": "webview"
+                }
+            ],
+            "panel": [
+                {
+                    "id": "atopile.logViewer",
+                    "name": "Atopile Logs",
+                    "type": "webview"
                 }
             ]
         },
@@ -152,11 +160,6 @@
                 "title": "Build",
                 "category": "atopile",
                 "when": "editorLangId == ato"
-            },
-            {
-                "command": "atopile.dashboard",
-                "title": "Open Dashboard",
-                "category": "atopile"
             },
             {
                 "command": "atopile.export",
@@ -223,6 +226,22 @@
                 "command": "atopile.llm.setup",
                 "title": "Setup LLM rules & MCP",
                 "category": "atopile"
+            },
+            {
+                "command": "atopile.selectBuild",
+                "title": "Select Build",
+                "category": "atopile"
+            },
+            {
+                "command": "atopile.selectStage",
+                "title": "View Stage Logs",
+                "category": "atopile"
+            },
+            {
+                "command": "atopile.refreshBuilds",
+                "title": "Refresh Build Status",
+                "category": "atopile",
+                "icon": "$(refresh)"
             }
         ],
         "languages": [

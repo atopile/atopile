@@ -94,7 +94,6 @@ let cmdAddPart = new Command(atoAddPart, 'atopile.add_part');
 let cmdAddPackage = new Command(atoAddPackage, 'atopile.add_package');
 let cmdRemovePackage = new Command(atoRemovePackage, 'atopile.remove_package');
 let cmdBuild = new Command(atoBuild, 'atopile.build');
-let cmdDashboard = new Command(atoDashboard, 'atopile.dashboard');
 let cmdPackageExplorer = new Command(atoPackageExplorer, 'atopile.package_explorer');
 let cmdChooseBuild = new Command(atoChooseBuild, 'atopile.choose_build');
 let cmdChooseProject = new Command(atoChooseProject, 'atopile.choose_project');
@@ -110,7 +109,6 @@ let buttonAddPart = new Button('file-binary', cmdAddPart, 'Add Part', 'Add part 
 let buttonAddPackage = new Button('package', cmdAddPackage, 'Add Package', 'Add package dependency');
 let buttonRemovePackage = new Button('trash', cmdRemovePackage, 'Remove Package', 'Remove package dependency');
 let buttonBuild = new Button('play', cmdBuild, 'Build', 'Build project');
-let buttonDashboard = new Button('browser', cmdDashboard, 'Dashboard', 'Open build dashboard');
 let buttonExport = new Button('file-zip', cmdExport, 'Generate Manufacturing Data', 'Generate manufacturing data for the build');
 let buttonLaunchKicad = new Button('circuit-board', cmdLaunchKicad, 'Launch KiCad', 'Open board in KiCad');
 let buttonPackageExplorer = new Button('symbol-misc', cmdPackageExplorer, 'Package Explorer', 'Open Package Explorer');
@@ -343,9 +341,8 @@ async function atoBuild() {
         return;
     }
 
-    // Open the dashboard webview (uses URL from settings)
-    const { openDashboard } = await import('./dashboard');
-    openDashboard();
+    // Focus the log viewer panel to show build progress
+    vscode.commands.executeCommand('atopile.logViewer.focus');
 
     // Run build in terminal (server starts automatically)
     const buildArgs = ['build'];
@@ -357,12 +354,6 @@ async function atoBuild() {
     await _runInTerminal(`build ${targetNames}`, root, buildArgs, false);
 
     captureEvent('vsce:build_start', { targets: builds.map(b => b.name) });
-}
-
-async function atoDashboard() {
-    const { openDashboard } = await import('./dashboard');
-    openDashboard();
-    captureEvent('vsce:dashboard_open');
 }
 
 async function atoExport() {

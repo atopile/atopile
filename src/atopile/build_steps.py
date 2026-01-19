@@ -109,7 +109,7 @@ class MusterTarget:
             try:
                 with LoggingStage(
                     self.name,
-                    self.description or f"Building [green]'{self.name}'[/green]",
+                    self.description or f"Building '{self.name}'",
                 ) as log_context:
                     self.func(ctx, log_context)
             except Exception:

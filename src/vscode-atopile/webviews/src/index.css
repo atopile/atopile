@@ -1,0 +1,140 @@
+:root {
+  /* Backgrounds */
+  --bg: var(--vscode-sideBar-background, #0d0d0d);
+  --bg-elevated: var(--vscode-editor-background, #141414);
+  --bg-card: var(--vscode-input-background, #1a1a1a);
+  --bg-card-hover: var(--vscode-list-hoverBackground, #1f1f1f);
+
+  /* Borders */
+  --border: var(--vscode-panel-border, #2a2a2a);
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-focus: var(--vscode-focusBorder, #007fd4);
+
+  /* Text */
+  --text: var(--vscode-foreground, #e0e0e0);
+  --text-secondary: var(--vscode-descriptionForeground, #a0a0a0);
+  --text-muted: var(--vscode-disabledForeground, #666666);
+
+  /* Semantic */
+  --accent: var(--vscode-focusBorder, #3b82f6);
+  --success: var(--vscode-testing-iconPassed, #22c55e);
+  --warning: var(--vscode-editorWarning-foreground, #eab308);
+  --error: var(--vscode-errorForeground, #ef4444);
+  --brand: #f95015;
+
+  /* Interactive */
+  --hover: rgba(255, 255, 255, 0.04);
+  --active: rgba(255, 255, 255, 0.08);
+  --selected: var(--vscode-list-activeSelectionBackground, #094771);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.5);
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* Fonts */
+  --font-mono: var(--vscode-editor-font-family, 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Cascadia Code', Consolas, monospace);
+  --font-sans: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+
+  /* Sizing */
+  --font-size-xs: 10px;
+  --font-size-sm: 11px;
+  --font-size-base: 12px;
+  --font-size-md: 13px;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-base);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+button:focus-visible {
+  outline: 1px solid var(--border-focus);
+  outline-offset: 1px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Animations */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes expandIn {
+  from {
+    opacity: 0;
+    max-height: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    max-height: 500px;
+    transform: translateY(0);
+  }
+}
