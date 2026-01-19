@@ -240,7 +240,13 @@ export async function runAtoCommandInTerminal(
 
     terminal.sendText(alias);
     terminal.sendText(`ato ${subcommand.map((c) => `'${c}'`).join(' ')}`);
-    terminal.show();
+
+    // Don't show terminal for build commands - user will see output in Atopile Logs panel
+    const isBuildCommand = subcommand[0] === 'build';
+    if (!isBuildCommand) {
+        terminal.show();
+    }
+
     return terminal;
 }
 

@@ -1,0 +1,209 @@
+/* Build Target Item - Combined checkbox and status */
+.build-target-item {
+  border-radius: var(--radius-md);
+  transition: background 0.15s ease;
+}
+
+.build-target-item.selected {
+  background: var(--bg-hover);
+}
+
+.build-target-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+}
+
+.build-target-header:hover {
+  background: var(--bg-hover);
+}
+
+.build-target-header input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.build-target-item .build-status {
+  flex-shrink: 0;
+}
+
+.build-target-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.build-target-item .target-name {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-target-item .target-entry {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.build-stage {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta-sep {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.build-time {
+  flex-shrink: 0;
+}
+
+.build-indicators {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.indicator {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  padding: 1px 5px;
+  border-radius: 8px;
+}
+
+.indicator.warning {
+  background: rgba(234, 179, 8, 0.15);
+  color: var(--color-warning);
+}
+
+.indicator.error {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--color-error);
+}
+
+.expand-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.expand-button:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.build-chevron {
+  width: 12px;
+  height: 12px;
+  transition: transform 0.15s ease;
+}
+
+.build-chevron.rotated {
+  transform: rotate(90deg);
+}
+
+.build-chevron svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Stages */
+.build-stages {
+  display: flex;
+  flex-direction: column;
+  margin-left: calc(14px + var(--space-2) + var(--space-2));
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--border-subtle);
+}
+
+.stage-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  text-align: left;
+  width: 100%;
+}
+
+.stage-item:hover {
+  background: var(--bg-hover);
+}
+
+.stage-item.selected {
+  background: var(--bg-selected);
+}
+
+.stage-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stage-time {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.stage-stats {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.stat {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 0 4px;
+  border-radius: 6px;
+}
+
+.stat.warning {
+  background: rgba(234, 179, 8, 0.15);
+  color: var(--color-warning);
+}
+
+.stat.error {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--color-error);
+}

@@ -113,6 +113,13 @@
                     "title": "atopile",
                     "icon": "ato_logo_256x256.png"
                 }
+            ],
+            "panel": [
+                {
+                    "id": "atopile-panel",
+                    "title": "Atopile Logs",
+                    "icon": "ato_logo_256x256.png"
+                }
             ]
         },
         "views": {
@@ -124,10 +131,10 @@
                     "type": "webview"
                 }
             ],
-            "panel": [
+            "atopile-panel": [
                 {
                     "id": "atopile.logViewer",
-                    "name": "Atopile Logs",
+                    "name": "Logs",
                     "type": "webview"
                 }
             ]

@@ -5,7 +5,8 @@
 import { useEffect, useState } from 'react';
 import { useBuildStore } from '../stores/buildStore';
 import { ActionButton } from './ActionButton';
-import { BuildItem } from './BuildItem';
+import { BuildTargetItem } from './BuildTargetItem';
+import type { BuildTarget } from '../types/build';
 import './Sidebar.css';
 
 // Get VS Code API
@@ -16,11 +17,18 @@ export function Sidebar() {
   const [logoUri, setLogoUri] = useState<string>('');
 
   const {
+    // Build targets (from ato.yaml)
+    projects,
+    selectedProjectRoot,
+    selectedTargetNames,
+    setProjects,
+    setSelectedProjectRoot,
+    setSelectedTargetNames,
+    // Build runs (from dashboard)
     builds,
     actionButtons,
     selectedBuildName,
     selectedStageName,
-    isConnected,
     setBuilds,
     setActionButtons,
     setSelectedBuild,
@@ -37,6 +45,12 @@ export function Sidebar() {
         case 'extensionInfo':
           setVersion(message.data.version || '');
           setLogoUri(message.data.logoUri || '');
+          break;
+
+        case 'updateBuildTargets':
+          setProjects(message.data.projects || []);
+          setSelectedProjectRoot(message.data.selectedProjectRoot);
+          setSelectedTargetNames(message.data.selectedTargetNames || []);
           break;
 
         case 'updateBuilds':
@@ -68,15 +82,25 @@ export function Sidebar() {
     vscode.postMessage({ type: 'executeCommand', command: commandId });
   };
 
-  const handleSelectBuild = (buildName: string) => {
-    setSelectedBuild(buildName);
-    vscode.postMessage({ type: 'selectBuild', buildName });
-  };
-
   const handleSelectStage = (buildName: string, stageName: string) => {
     setSelectedBuild(buildName);
     setSelectedStage(stageName);
     vscode.postMessage({ type: 'selectStage', buildName, stageName });
+  };
+
+  const handleToggleTarget = (targetName: string, projectRoot: string) => {
+    vscode.postMessage({ type: 'toggleTarget', targetName, projectRoot });
+  };
+
+  const handleBuildProject = () => {
+    vscode.postMessage({ type: 'buildProject' });
+  };
+
+  const selectedProject = projects.find(p => p.root === selectedProjectRoot);
+
+  // Find build run for a target (match by name)
+  const getBuildForTarget = (target: BuildTarget) => {
+    return builds.find(b => b.name === target.name);
   };
 
   return (
@@ -108,51 +132,69 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Builds Card */}
+      {/* Builds Card - Combined targets and status */}
       <div className="card card-flex">
         <div className="card-header">
           <span className="card-title">Builds</span>
-          {builds.length > 0 && (
-            <span className="card-badge">{builds.length}</span>
+          {selectedTargetNames.length > 0 && (
+            <span className="card-badge">{selectedTargetNames.length}</span>
           )}
         </div>
-        <div className="card-content builds-list">
-          {builds.length === 0 ? (
+        <div className="card-content builds-targets">
+          {!selectedProject ? (
             <div className="empty-state">
-              {!isConnected ? (
-                <>
-                  <div className="empty-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <circle cx="12" cy="12" r="10" />
-                      <path d="M12 8v4M12 16h.01" />
-                    </svg>
-                  </div>
-                  <span className="empty-title">Not Connected</span>
-                  <span className="empty-desc">Run a build to connect</span>
-                </>
-              ) : (
-                <>
-                  <div className="empty-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <polygon points="5 3 19 12 5 21 5 3" />
-                    </svg>
-                  </div>
-                  <span className="empty-title">No Builds</span>
-                  <span className="empty-desc">Click Build to start</span>
-                </>
-              )}
+              <div className="empty-icon">
+                <svg viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M1.5 2A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5V5.5A1.5 1.5 0 0 0 14.5 4H8.293L6.854 2.561A1.5 1.5 0 0 0 5.793 2H1.5z" />
+                </svg>
+              </div>
+              <span className="empty-title">No Project</span>
+              <span className="empty-desc">Select a project folder</span>
             </div>
           ) : (
-            builds.map((build) => (
-              <BuildItem
-                key={build.display_name}
-                build={build}
-                isSelected={selectedBuildName === build.display_name}
-                selectedStageName={selectedBuildName === build.display_name ? selectedStageName : null}
-                onSelectBuild={handleSelectBuild}
-                onSelectStage={handleSelectStage}
-              />
-            ))
+            <>
+              {/* Selected project with play button */}
+              <div className="project-header">
+                <div className="project-info">
+                  <svg className="project-icon" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M1.5 2A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5V5.5A1.5 1.5 0 0 0 14.5 4H8.293L6.854 2.561A1.5 1.5 0 0 0 5.793 2H1.5z" />
+                  </svg>
+                  <span className="project-name">{selectedProject.name}</span>
+                </div>
+                <button
+                  className="build-play-button"
+                  onClick={handleBuildProject}
+                  disabled={selectedTargetNames.length === 0}
+                  title="Build selected targets"
+                >
+                  <svg viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M4 2l10 6-10 6V2z" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Build targets with status */}
+              <div className="build-targets-list">
+                {selectedProject.targets.length === 0 ? (
+                  <div className="empty-state-small">
+                    <span className="empty-desc">No build targets in ato.yaml</span>
+                  </div>
+                ) : (
+                  selectedProject.targets.map((target) => (
+                    <BuildTargetItem
+                      key={target.name}
+                      target={target}
+                      build={getBuildForTarget(target)}
+                      isChecked={selectedTargetNames.includes(target.name)}
+                      isSelected={selectedBuildName === target.name}
+                      selectedStageName={selectedBuildName === target.name ? selectedStageName : null}
+                      onToggle={() => handleToggleTarget(target.name, target.root)}
+                      onSelectStage={(stageName) => handleSelectStage(target.name, stageName)}
+                    />
+                  ))
+                )}
+              </div>
+            </>
           )}
         </div>
       </div>

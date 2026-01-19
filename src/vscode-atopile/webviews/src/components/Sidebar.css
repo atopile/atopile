@@ -137,3 +137,84 @@
   font-size: var(--font-size-xs);
   color: var(--text-muted);
 }
+
+/* Build Targets Section */
+.builds-targets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.empty-state-small {
+  padding: var(--space-3);
+  text-align: center;
+}
+
+/* Project Header with Play Button */
+.project-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  margin-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.project-info {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.project-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.project-name {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-play-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: var(--color-success);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: white;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.build-play-button:hover:not(:disabled) {
+  background: var(--color-success-hover, #22a559);
+}
+
+.build-play-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.build-play-button svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Build Targets List */
+.build-targets-list {
+  display: flex;
+  flex-direction: column;
+}

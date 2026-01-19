@@ -4,7 +4,7 @@
  */
 
 import { create } from 'zustand';
-import type { Build, BuildStage, LogEntry, LogLevel } from '../types/build';
+import type { Build, BuildStage, LogEntry, LogLevel, Project } from '../types/build';
 
 interface ActionButton {
   id: string;
@@ -14,7 +14,12 @@ interface ActionButton {
 }
 
 interface BuildState {
-  // Sidebar data
+  // Build targets (from ato.yaml)
+  projects: Project[];
+  selectedProjectRoot: string | null;
+  selectedTargetNames: string[];
+
+  // Build runs (from dashboard)
   builds: Build[];
   actionButtons: ActionButton[];
   selectedBuildName: string | null;
@@ -27,7 +32,13 @@ interface BuildState {
   isLoadingLogs: boolean;
   currentLogFile: string | null;
 
-  // Actions
+  // Actions - Build targets
+  setProjects: (projects: Project[]) => void;
+  setSelectedProjectRoot: (root: string | null) => void;
+  setSelectedTargetNames: (names: string[]) => void;
+  toggleTargetSelection: (name: string) => void;
+
+  // Actions - Build runs
   setBuilds: (builds: Build[]) => void;
   setActionButtons: (buttons: ActionButton[]) => void;
   setSelectedBuild: (name: string | null) => void;
@@ -39,6 +50,7 @@ interface BuildState {
   setCurrentLogFile: (file: string | null) => void;
 
   // Helpers
+  getSelectedProject: () => Project | null;
   getSelectedBuild: () => Build | null;
   getSelectedStage: () => BuildStage | null;
   getFilteredLogEntries: () => LogEntry[];
@@ -48,6 +60,12 @@ interface BuildState {
 const DEFAULT_ENABLED_LEVELS: Set<LogLevel> = new Set(['INFO', 'WARNING', 'ERROR', 'ALERT']);
 
 export const useBuildStore = create<BuildState>((set, get) => ({
+  // Build targets
+  projects: [],
+  selectedProjectRoot: null,
+  selectedTargetNames: [],
+
+  // Build runs
   builds: [],
   actionButtons: [],
   selectedBuildName: null,
@@ -59,6 +77,20 @@ export const useBuildStore = create<BuildState>((set, get) => ({
   isLoadingLogs: false,
   currentLogFile: null,
 
+  // Build target actions
+  setProjects: (projects) => set({ projects }),
+  setSelectedProjectRoot: (selectedProjectRoot) => set({ selectedProjectRoot }),
+  setSelectedTargetNames: (selectedTargetNames) => set({ selectedTargetNames }),
+  toggleTargetSelection: (name) => {
+    const { selectedTargetNames } = get();
+    if (selectedTargetNames.includes(name)) {
+      set({ selectedTargetNames: selectedTargetNames.filter(n => n !== name) });
+    } else {
+      set({ selectedTargetNames: [...selectedTargetNames, name] });
+    }
+  },
+
+  // Build run actions
   setBuilds: (builds) => set({ builds }),
   setActionButtons: (actionButtons) => set({ actionButtons }),
   setSelectedBuild: (selectedBuildName) => set({ selectedBuildName, selectedStageName: null }),
@@ -77,6 +109,12 @@ export const useBuildStore = create<BuildState>((set, get) => ({
       newLevels.add(level);
     }
     set({ enabledLevels: newLevels });
+  },
+
+  getSelectedProject: () => {
+    const { projects, selectedProjectRoot } = get();
+    if (!selectedProjectRoot) return null;
+    return projects.find(p => p.root === selectedProjectRoot) ?? null;
   },
 
   getSelectedBuild: () => {

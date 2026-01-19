@@ -54,6 +54,20 @@ export interface BuildSummary {
   error?: string;
 }
 
+// Build target from ato.yaml (configuration)
+export interface BuildTarget {
+  name: string;
+  entry: string;
+  root: string;
+}
+
+// Project with its build targets
+export interface Project {
+  root: string;
+  name: string;
+  targets: BuildTarget[];
+}
+
 // VS Code API type
 export interface VSCodeAPI {
   postMessage(message: unknown): void;
