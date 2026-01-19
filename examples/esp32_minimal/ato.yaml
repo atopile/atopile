@@ -1,4 +1,4 @@
-requires-atopile: ^0.9.0
+requires-atopile: ^0.14.0
 
 paths:
   src: .
@@ -9,15 +9,15 @@ builds:
     entry: esp32_minimal.ato:ESP32_MINIMAL
     hide_designators: true
 dependencies:
-- type: registry
-  identifier: atopile/buttons
-  release: 0.2.4
-- type: registry
-  identifier: atopile/ti-tlv75901
-  release: 0.3.0
-- type: registry
-  identifier: atopile/usb-connectors
-  release: 0.3.1
-- type: registry
-  identifier: atopile/espressif-esp32-c3
-  release: 0.2.1
+  - type: registry
+    identifier: atopile/buttons
+    release: 0.3.1
+  - type: registry
+    identifier: atopile/ti-tlv75901
+    release: 0.4.0
+  - type: registry
+    identifier: atopile/usb-connectors
+    release: 0.3.2
+  - type: registry
+    identifier: atopile/espressif-esp32-c3
+    release: 0.2.1

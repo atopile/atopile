@@ -7,7 +7,7 @@ import Resistor
 
 # Package imports from https://packages.atopile.io/
 from "atopile/usb-connectors/usb-connectors.ato" import USB2_0TypeCHorizontalConnector
-from "atopile/ti-tlv75901/ti-tlv75901.ato" import TLV75901_driver
+from "atopile/ti-tlv75901/ti-tlv75901.ato" import TI_TLV75901
 from "atopile/espressif-esp32-c3/espressif-esp32-c3-mini.ato" import ESP32_C3_MINI_1
 
 module ESP32_MINIMAL:
@@ -16,7 +16,7 @@ module ESP32_MINIMAL:
     """
     micro = new ESP32_C3_MINI_1
     usb_c = new USB2_0TypeCHorizontalConnector
-    ldo_3V3 = new TLV75901_driver
+    ldo_3V3 = new TI_TLV75901
 
     # Power
     power_3v3 = new ElectricPower
