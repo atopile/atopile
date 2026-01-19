@@ -91,7 +91,7 @@ def test_collect_speed():
 if __name__ == "__main__":
     import typer
 
-    from faebryk.libs.logging import setup_basic_logging
+    from atopile.logging import setup_basic_logging
 
     setup_basic_logging()
     typer.run(test_collect_speed)

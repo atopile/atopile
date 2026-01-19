@@ -22,7 +22,7 @@ from faebryk.core.solver.utils import (
     ContradictionByLiteral,
     MutatorUtils,
 )
-from faebryk.libs.logging import rich_to_string
+from atopile.logging import rich_to_string
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 from faebryk.libs.util import not_none

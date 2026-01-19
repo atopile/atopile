@@ -209,7 +209,7 @@ if __name__ == "__main__":
     import typer
 
     from atopile.config import ProjectConfig, ProjectPaths, config
-    from faebryk.libs.logging import setup_basic_logging
+    from atopile.logging import setup_basic_logging
 
     with tempfile.TemporaryDirectory() as tmp_path_:
         tmp_path = Path(tmp_path_)

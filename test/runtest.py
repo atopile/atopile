@@ -14,7 +14,7 @@ import typer
 from rich.console import Console
 from rich.traceback import Traceback
 
-from faebryk.libs.logging import FLOG_FMT, setup_basic_logging
+from atopile.logging import FLOG_FMT, setup_basic_logging
 from faebryk.libs.util import indented_container
 
 logger = logging.getLogger(__name__)
