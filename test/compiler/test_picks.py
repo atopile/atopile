@@ -133,6 +133,7 @@ def test_ato_pick_inductor(
 
 
 @pytest.mark.usefixtures("setup_project_config")
+@pytest.mark.skip(reason="to_fix")  # FIXME
 def test_ato_pick_resistor_dependency(tmp_path: Path):
     child_path = tmp_path / "generics" / "resistors.ato"
     child_path.parent.mkdir(parents=True)

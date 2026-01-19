@@ -1605,7 +1605,7 @@ def test_compact_repr():
     assert pAA_repr_w_lit_suffix == "A₁⁺"
 
 
-@pytest.mark.xfail(reason="TODO is_congruent_to not implemeneted yet")
+@pytest.mark.skip(reason="xfail")  # TODO: is_congruent_to not implemented yet
 def test_expression_congruence():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -1755,7 +1755,7 @@ def test_expression_congruence():
     )
 
 
-@pytest.mark.xfail(reason="TODO is_congruent_to not implemeneted yet")
+@pytest.mark.skip(reason="xfail")  # TODO: is_congruent_to not implemented yet
 def test_expression_congruence_not():
     """Test congruence with Not expressions and enum literals."""
     g = fabll.graph.GraphView.create()

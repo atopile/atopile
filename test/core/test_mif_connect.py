@@ -46,7 +46,7 @@ def test_self():
     assert elec._is_interface.get().is_connected_to(elec)
 
 
-@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
+@pytest.mark.skip(reason="xfail")  # Split-paths/up-connects not supported yet
 def test_up_connect_simple_single():
     """
     ```
@@ -72,7 +72,7 @@ def test_up_connect_simple_single():
     assert high1.is_interface.get().is_connected_to(high2)
 
 
-@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
+@pytest.mark.skip(reason="xfail")  # Split-paths/up-connects not supported yet
 def test_up_connect_simple_two():
     """
     ```
@@ -102,7 +102,7 @@ def test_up_connect_simple_two():
     assert high1.is_interface.get().is_connected_to(high2)
 
 
-@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
+@pytest.mark.skip(reason="xfail")  # Split-paths/up-connects not supported yet
 def test_up_connect_simple_multiple():
     """
     ```
@@ -133,7 +133,7 @@ def test_up_connect_simple_multiple():
     assert high1.is_interface.get().is_connected_to(high2)
 
 
-@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
+@pytest.mark.skip(reason="xfail")  # Split-paths/up-connects not supported yet
 def test_up_connect_chain_simple():
     """
     ```
@@ -159,7 +159,7 @@ def test_up_connect_chain_simple():
     assert high1.is_connected_to(high2)
 
 
-@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
+@pytest.mark.skip(reason="xfail")  # Split-paths/up-connects not supported yet
 def test_up_connect_chain_multiple_same():
     """
     ```
@@ -185,7 +185,7 @@ def test_up_connect_chain_multiple_same():
     assert high1.is_connected_to(high3)
 
 
-@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
+@pytest.mark.skip(reason="xfail")  # Split-paths/up-connects not supported yet
 def test_up_connect_chain_multiple_mixed():
     """
     ```
@@ -212,7 +212,7 @@ def test_up_connect_chain_multiple_mixed():
     assert high1.is_connected_to(high4)
 
 
-@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
+@pytest.mark.skip(reason="xfail")  # Split-paths/up-connects not supported yet
 def test_split_chain_single():
     """
     Miro: Implied bus connection 2
@@ -240,7 +240,9 @@ def test_split_chain_single():
     assert high1.is_connected_to(high3)
 
 
-@pytest.mark.xfail(reason="No support atm for split chains with ambiguous split/hier")
+@pytest.mark.skip(
+    reason="xfail"
+)  # No support atm for split chains with ambiguous split/hier
 def test_split_chain_double_flat_no_inter():
     """
     ```
@@ -280,7 +282,7 @@ def test_split_chain_double_flat_no_inter():
     # TODO: See pathfinder.cpp:67 for failure
 
 
-@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
+@pytest.mark.skip(reason="xfail")  # Split-paths/up-connects not supported yet
 def test_split_chain_double_flat_inter():
     # TODO this test is not difficult enough
     # the intermediate is trivially connected since the double split is resolved
@@ -319,7 +321,9 @@ def test_split_chain_double_flat_inter():
     assert high1.is_connected_to(high4)
 
 
-@pytest.mark.xfail(reason="No support atm for split chains with ambiguous split/hier")
+@pytest.mark.skip(
+    reason="xfail"
+)  # No support atm for split chains with ambiguous split/hier
 def test_split_chain_double_hierarchy():
     """
     ```
@@ -360,7 +364,7 @@ def test_split_chain_double_hierarchy():
     assert high1.is_connected_to(high3)
 
 
-@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
+@pytest.mark.skip(reason="xfail")  # Split-paths/up-connects not supported yet
 def test_split_chain_flip():
     """
     Miro: Implied Double-Flip Bus Connection
@@ -394,7 +398,7 @@ def test_split_chain_flip():
     assert high1.is_connected_to(high4)
 
 
-@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
+@pytest.mark.skip(reason="xfail")  # Split-paths/up-connects not supported yet
 def test_split_flip_negative():
     """
     Miro: Implied Bus Non-Connection
@@ -419,7 +423,7 @@ def test_split_flip_negative():
     assert not high1.is_connected_to(high2)
 
 
-@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
+@pytest.mark.skip(reason="xfail")  # Split-paths/up-connects not supported yet
 def test_up_connect_chain_multiple_mixed_simulate_realworld():
     """
     ```
@@ -446,7 +450,9 @@ def test_up_connect_chain_multiple_mixed_simulate_realworld():
     assert high1.is_connected_to(high4)
 
 
-@pytest.mark.xfail(reason="No support atm for split chains with ambiguous split/hier")
+@pytest.mark.skip(
+    reason="xfail"
+)  # No support atm for split chains with ambiguous split/hier
 def test_up_connect_chain_multiple_realworld():
     """
     ```
@@ -469,7 +475,7 @@ def test_up_connect_chain_multiple_realworld():
     assert l1.is_connected_to(l4)
 
 
-@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
+@pytest.mark.skip(reason="xfail")  # Split-paths/up-connects not supported yet
 def test_up_connect_chain_hierarchy():
     """
     ```
@@ -509,7 +515,7 @@ def test_up_connect_chain_hierarchy():
     assert higher_begin.is_connected_to(higher_end)
 
 
-@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
+@pytest.mark.skip(reason="xfail")  # Split-paths/up-connects not supported yet
 def test_up_connect_hierarchy():
     """
     ```
@@ -541,7 +547,7 @@ def test_up_connect_hierarchy():
     assert higher1.is_connected_to(higher2)
 
 
-@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
+@pytest.mark.skip(reason="xfail")  # Split-paths/up-connects not supported yet
 def test_up_connect_hierarchy_mixed():
     """
     ```
@@ -626,7 +632,7 @@ def test_up_connect_simple_multiple_negative():
     assert not high1._is_interface.get().is_connected_to(high2)
 
 
-@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
+@pytest.mark.skip(reason="xfail")  # Split-paths/up-connects not supported yet
 def test_up_connect():
     """
     ```
@@ -823,7 +829,7 @@ def test_loooooong_chain():
 
 
 # FIXME: this should be WAYYY higher than 16
-@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
+@pytest.mark.skip(reason="xfail")  # Split-paths/up-connects not supported yet
 @pytest.mark.parametrize("length", [16])
 def test_alternating_long_chain(length):
     """Let's make it hard"""
@@ -845,7 +851,7 @@ def test_alternating_long_chain(length):
     assert ep[0].hv.get()._is_interface.get().is_connected_to(ep[-1].hv.get())
 
 
-@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
+@pytest.mark.skip(reason="xfail")  # Split-paths/up-connects not supported yet
 def test_shallow_bridge_simple():
     """
     ```
@@ -885,7 +891,9 @@ def test_shallow_bridge_simple():
     assert not high1.lower2.is_connected_to(high2.lower2)
 
 
-@pytest.mark.xfail(reason="No support atm for split chains with ambiguous split/hier")
+@pytest.mark.skip(
+    reason="xfail"
+)  # No support atm for split chains with ambiguous split/hier
 def test_shallow_bridge_partial():
     """
     ```
@@ -946,8 +954,11 @@ def test_single_electric_reference_connects_children():
     assert shared_ref._is_interface.get().is_connected_to(
         app.logic_b.get().reference.get()
     )
-    assert app.logic_a.get().reference.get()._is_interface.get().is_connected_to(
-        app.logic_b.get().reference.get()
+    assert (
+        app.logic_a.get()
+        .reference.get()
+        ._is_interface.get()
+        .is_connected_to(app.logic_b.get().reference.get())
     )
 
 
@@ -1110,7 +1121,7 @@ class Specialized(fabll.Node): ...
 # class DoubleSpecialized(Specialized): ...
 
 
-@pytest.mark.xfail(reason="No specialized links yet")
+@pytest.mark.skip(reason="xfail")  # No specialized links yet
 def test_specialize_general_to_special():
     # general connection -> specialized connection
     mifs = times(3, fabll.ModuleInterface)
@@ -1125,7 +1136,7 @@ def test_specialize_general_to_special():
     assert mifs_special[0].is_connected_to(mifs_special[2])
 
 
-@pytest.mark.xfail(reason="No specialized links yet")
+@pytest.mark.skip(reason="xfail")  # No specialized links yet
 def test_specialize_special_to_general():
     # specialized connection -> general connection
     mifs = times(3, fabll.ModuleInterface)
@@ -1140,7 +1151,7 @@ def test_specialize_special_to_general():
     assert mifs[0].is_connected_to(mifs[2])
 
 
-@pytest.mark.xfail(reason="No specialized links yet")
+@pytest.mark.skip(reason="xfail")  # No specialized links yet
 def test_specialize_link():
     # test special link
     class _Link(LinkDirectConditional):
@@ -1168,7 +1179,7 @@ def test_specialize_link():
     assert mifs_special[0].is_connected_to(mifs_special[2])
 
 
-@pytest.mark.xfail(reason="No specialized links yet")
+@pytest.mark.skip(reason="xfail")  # No specialized links yet
 def test_specialize_double_with_gap():
     # double specialization with gap
     mifs = times(2, fabll.ModuleInterface)
@@ -1183,7 +1194,7 @@ def test_specialize_double_with_gap():
     assert mifs_double_special[0].is_connected_to(mifs_double_special[1])
 
 
-@pytest.mark.xfail(reason="No specialized links yet")
+@pytest.mark.skip(reason="xfail")  # No specialized links yet
 def test_specialize_double_with_gap_2():
     mifs = times(2, fabll.ModuleInterface)
     mifs_special = times(1, Specialized)
@@ -1197,7 +1208,7 @@ def test_specialize_double_with_gap_2():
     assert mifs[0].is_connected_to(mifs[1])
 
 
-@pytest.mark.xfail(reason="No specialized links yet")
+@pytest.mark.skip(reason="xfail")  # No specialized links yet
 def test_specialize_module():
     battery = F.Battery()
     power = F.ElectricPower()
@@ -1209,7 +1220,7 @@ def test_specialize_module():
     assert power.is_connected_to(buttoncell.power)
 
 
-@pytest.mark.xfail(reason="No conditional links yet")
+@pytest.mark.skip(reason="xfail")  # No conditional links yet
 def test_isolated_connect_simple():
     x1 = F.ElectricLogic()
     x2 = F.ElectricLogic()

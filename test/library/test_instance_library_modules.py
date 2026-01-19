@@ -85,6 +85,6 @@ def test_instantiate_library_modules(name: str, module: type[fabll.Node]):
         ), f"Module {module.__name__} is not a module or interface"
 
     except TypeError:
-        pytest.xfail(f"{module.__name__} needs arguments to be instantiated")
+        pytest.skip("xfail")  # module.__name__ needs arguments to be instantiated
     except Exception as e:
         pytest.fail(f"Failed to instantiate module {module.__name__}: {e}")

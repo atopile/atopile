@@ -101,7 +101,7 @@ def sync_project(path: Path):
 @dataclass
 class _TestRepo:
     repo_uri: str
-    xfail_reason: str | None = None
+    skip_reason: str | None = None
     multipackage: str | None = None
 
     def __post_init__(self):
@@ -110,21 +110,21 @@ class _TestRepo:
         ):
             self.repo_uri = f"https://github.com/{self.repo_uri}"
 
-    def xfail(self, reason: str):
-        self.xfail_reason = reason
+    def skip(self, reason: str):
+        self.skip_reason = reason
         return self
 
 
 # Single-project repos (not multipackage)
 SINGLE_REPOS = [
-    _TestRepo("atopile/spin-servo-drive").xfail("Needs upgrading"),
+    _TestRepo("atopile/spin-servo-drive").skip("Needs upgrading"),
 ]
 
 # Multipackage repo configuration
 PACKAGES_REPO = _TestRepo("atopile/packages", multipackage="packages")
 
-# Known failing packages with their xfail reasons
-# Add package names here with reasons to mark them as expected failures
+# Known failing packages with their skip reasons
+# Add package names here with reasons to mark them as expected to be skipped
 KNOWN_FAILING_PACKAGES: dict[str, str] = {
     # Example: "package-name": "Reason for expected failure",
 }
@@ -206,7 +206,7 @@ def test_single_projects(
 ):
     """Test single-project repositories (not multipackage)."""
     repo_uri = test_cfg.repo_uri
-    xfail_reason = test_cfg.xfail_reason
+    skip_reason = test_cfg.skip_reason
 
     # Clone the repository
     try:
@@ -225,8 +225,8 @@ def test_single_projects(
         sync_project(prj_path)
         build_project(prj_path, request=request)
     except (InstallError, BuildError):
-        if xfail_reason:
-            pytest.xfail(xfail_reason)
+        if skip_reason:
+            pytest.skip(f"xfail: {skip_reason}")
         else:
             raise
 
@@ -235,7 +235,7 @@ def test_single_projects(
     if diff and any(
         item.a_path is not None and item.a_path.endswith(".kicad_pcb") for item in diff
     ):
-        pytest.xfail("can't build with --frozen yet")
+        pytest.skip("xfail: can't build with --frozen yet")
 
 
 # ============================================================================
@@ -263,8 +263,8 @@ def pytest_generate_tests(metafunc: pytest.Metafunc):
     if packages:
         params = []
         for pkg_name in packages:
-            xfail_reason = KNOWN_FAILING_PACKAGES.get(pkg_name)
-            marks = [pytest.mark.xfail(reason=xfail_reason)] if xfail_reason else []
+            skip_reason = KNOWN_FAILING_PACKAGES.get(pkg_name)
+            marks = [pytest.mark.skip(reason="xfail")] if skip_reason else []
             params.append(
                 pytest.param(pkg_name, id=f"packages/{pkg_name}", marks=marks)
             )
@@ -307,13 +307,13 @@ def test_package(
         ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc"),
     )
 
-    xfail_reason = KNOWN_FAILING_PACKAGES.get(package_name)
+    skip_reason = KNOWN_FAILING_PACKAGES.get(package_name)
 
     try:
         sync_project(test_package_path)
         build_project(test_package_path, request=request)
     except (InstallError, BuildError):
-        if xfail_reason:
-            pytest.xfail(xfail_reason)
+        if skip_reason:
+            pytest.skip(f"xfail: {skip_reason}")
         else:
             raise

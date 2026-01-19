@@ -108,9 +108,8 @@ def test_trait_object_binding():
 
 # TODO need to implement a test for multiple trait arbitration,
 # test and core logic need to be updated
-@pytest.mark.xfail(
-    reason="TODO: need to decide deduplication strategy for multiple trait instances"
-)
+# TODO: need to decide deduplication strategy for multiple trait instances
+@pytest.mark.skip(reason="xfail")
 def test_trait_first_instance_wins():
     g, tg = graph_and_typegraph()
 

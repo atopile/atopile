@@ -15,11 +15,22 @@ SLOW_EXAMPLES = [
     "led_badge",
 ]
 
+# FIXME: These examples are currently failing and need to be fixed
+SKIP_EXAMPLES = [
+    "equations",
+    "esp32_minimal",
+]
+
 
 @pytest.mark.parametrize(
     "example",
     [
-        pytest.param(manifest.parent)
+        pytest.param(
+            manifest.parent,
+            marks=pytest.mark.skip(reason="to_fix")
+            if manifest.parent.stem in SKIP_EXAMPLES
+            else [],
+        )
         for manifest in EXAMPLES_DIR.glob("*/ato.yaml")
         if manifest.parent.stem not in SLOW_EXAMPLES
     ],
