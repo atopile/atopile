@@ -6,7 +6,6 @@
  */
 
 import * as vscode from 'vscode';
-import * as fs from 'fs';
 import axios from 'axios';
 import { traceInfo, traceError, traceVerbose } from './log/logging';
 
@@ -75,6 +74,23 @@ export interface BuildSummary {
     error?: string;
 }
 
+// API response type for /api/logs/query
+interface LogQueryResponse {
+    logs: Array<{
+        id: number;
+        timestamp: string;
+        stage: string;
+        level: string;
+        level_no: number;
+        audience: string;
+        message: string;
+        ato_traceback: string | null;
+        python_traceback: string | null;
+        build_dir: string;
+    }>;
+    total: number;
+}
+
 /**
  * THE SINGLE APP STATE - All state lives here.
  */
@@ -112,112 +128,6 @@ export interface AppState {
 }
 
 const DEFAULT_LOG_LEVELS: LogLevel[] = ['INFO', 'WARNING', 'ERROR', 'ALERT'];
-
-/**
- * Watches a log file for changes and streams new entries.
- */
-class LogFileWatcher {
-    private _watcher: fs.FSWatcher | null = null;
-    private _filePath: string;
-    private _lastPosition: number = 0;
-    private _onNewEntries: (entries: LogEntry[]) => void;
-    private _debounceTimer: NodeJS.Timeout | null = null;
-
-    constructor(filePath: string, onNewEntries: (entries: LogEntry[]) => void) {
-        this._filePath = filePath;
-        this._onNewEntries = onNewEntries;
-    }
-
-    async start(): Promise<LogEntry[]> {
-        const entries = await this._readAllEntries();
-
-        try {
-            this._watcher = fs.watch(this._filePath, { persistent: false }, (eventType) => {
-                if (eventType === 'change') {
-                    this._handleFileChange();
-                }
-            });
-        } catch (error) {
-            traceError(`Failed to watch log file: ${error}`);
-        }
-
-        return entries;
-    }
-
-    stop(): void {
-        if (this._watcher) {
-            this._watcher.close();
-            this._watcher = null;
-        }
-        if (this._debounceTimer) {
-            clearTimeout(this._debounceTimer);
-            this._debounceTimer = null;
-        }
-    }
-
-    private async _readAllEntries(): Promise<LogEntry[]> {
-        try {
-            const content = await fs.promises.readFile(this._filePath, 'utf-8');
-            this._lastPosition = Buffer.byteLength(content, 'utf-8');
-            return this._parseEntries(content);
-        } catch (error) {
-            traceError(`Failed to read log file: ${error}`);
-            return [];
-        }
-    }
-
-    private _handleFileChange(): void {
-        if (this._debounceTimer) {
-            clearTimeout(this._debounceTimer);
-        }
-        this._debounceTimer = setTimeout(() => {
-            this._readNewEntries();
-        }, 50);
-    }
-
-    private async _readNewEntries(): Promise<void> {
-        try {
-            const stats = await fs.promises.stat(this._filePath);
-            if (stats.size <= this._lastPosition) {
-                return;
-            }
-
-            const fd = await fs.promises.open(this._filePath, 'r');
-            const buffer = Buffer.alloc(stats.size - this._lastPosition);
-            await fd.read(buffer, 0, buffer.length, this._lastPosition);
-            await fd.close();
-
-            this._lastPosition = stats.size;
-            const newContent = buffer.toString('utf-8');
-            const newEntries = this._parseEntries(newContent);
-
-            if (newEntries.length > 0) {
-                this._onNewEntries(newEntries);
-            }
-        } catch (error) {
-            traceError(`Failed to read new log entries: ${error}`);
-        }
-    }
-
-    private _parseEntries(content: string): LogEntry[] {
-        return content
-            .split('\n')
-            .filter(line => line.trim())
-            .map(line => {
-                try {
-                    return JSON.parse(line) as LogEntry;
-                } catch {
-                    return {
-                        timestamp: new Date().toISOString(),
-                        level: 'INFO' as const,
-                        logger: 'unknown',
-                        stage: 'unknown',
-                        message: line,
-                    };
-                }
-            });
-    }
-}
 
 function getDashboardApiUrl(): string {
     const config = vscode.workspace.getConfiguration('atopile');
@@ -258,8 +168,9 @@ class AppStateManager {
         logoUri: '',
     };
 
-    private _logFileWatcher: LogFileWatcher | null = null;
     private _pollTimer: NodeJS.Timeout | null = null;
+    private _logPollTimer: NodeJS.Timeout | null = null;
+    private _lastLogId: number = 0;
 
     // SINGLE EVENT for all state changes
     private readonly _onStateChange = new vscode.EventEmitter<AppState>();
@@ -324,20 +235,20 @@ class AppStateManager {
     async selectBuild(buildName: string | null): Promise<void> {
         if (this._state.selectedBuildName === buildName) return;
 
-        this._logFileWatcher?.stop();
-        this._logFileWatcher = null;
+        this._stopPollingLogs();
 
         this._state.selectedBuildName = buildName;
         this._state.selectedStageIds = [];
         this._state.logEntries = [];
         this._state.logFile = null;
+        this._lastLogId = 0;
 
         const build = this._state.builds.find(b => b.display_name === buildName);
-        if (build?.log_file) {
+        if (build?.log_dir) {
             this._state.isLoadingLogs = true;
-            this._state.logFile = build.log_file;
+            this._state.logFile = build.log_file ?? null;
             this._emit();
-            await this._startWatchingLogFile(build.log_file);
+            await this._startPollingLogs(build.display_name);
         } else {
             this._state.isLoadingLogs = false;
             this._emit();
@@ -438,33 +349,83 @@ class AppStateManager {
             clearInterval(this._pollTimer);
             this._pollTimer = null;
         }
+        this._stopPollingLogs();
         traceInfo('AppState: stopped polling');
     }
 
-    // --- Log file watching ---
+    // --- Log API polling ---
 
-    private async _startWatchingLogFile(filePath: string): Promise<void> {
-        this._logFileWatcher = new LogFileWatcher(filePath, (newEntries) => {
-            this._state.logEntries = [...this._state.logEntries, ...newEntries];
-            this._emit();
-        });
+    private async _fetchLogs(buildName: string): Promise<void> {
+        const apiUrl = getDashboardApiUrl();
 
         try {
-            const initialEntries = await this._logFileWatcher.start();
-            this._state.logEntries = initialEntries;
+            const response = await axios.get<LogQueryResponse>(
+                `${apiUrl}/api/logs/query`,
+                {
+                    params: {
+                        build_name: buildName,
+                        limit: 10000,
+                    },
+                    timeout: 5000,
+                }
+            );
+
+            // Convert API response to LogEntry format
+            // API returns logs in descending order (newest first), reverse for display
+            const newEntries: LogEntry[] = response.data.logs
+                .reverse()
+                .map(log => ({
+                    timestamp: log.timestamp,
+                    level: log.level as LogLevel,
+                    logger: 'atopile',  // API doesn't return logger name
+                    stage: log.stage,
+                    message: log.message,
+                    ato_traceback: log.ato_traceback ?? undefined,
+                    exc_info: log.python_traceback ?? undefined,
+                }));
+
+            // Track the highest log ID for incremental updates
+            if (response.data.logs.length > 0) {
+                this._lastLogId = Math.max(...response.data.logs.map(l => l.id));
+            }
+
+            // Update state with new entries
+            this._state.logEntries = newEntries;
             this._state.isLoadingLogs = false;
             this._emit();
-            traceInfo(`AppState: started watching log file: ${filePath}`);
+
+            traceVerbose(`AppState: fetched ${newEntries.length} log entries for ${buildName}`);
         } catch (error) {
-            traceError(`AppState: failed to watch log file: ${error}`);
+            traceError(`AppState: failed to fetch logs: ${error}`);
             this._state.isLoadingLogs = false;
             this._emit();
         }
     }
 
+    private async _startPollingLogs(buildName: string): Promise<void> {
+        // Initial fetch
+        await this._fetchLogs(buildName);
+
+        // Start polling for updates
+        this._logPollTimer = setInterval(async () => {
+            if (this._state.selectedBuildName === buildName) {
+                await this._fetchLogs(buildName);
+            }
+        }, 500);
+
+        traceInfo(`AppState: started polling logs for ${buildName}`);
+    }
+
+    private _stopPollingLogs(): void {
+        if (this._logPollTimer) {
+            clearInterval(this._logPollTimer);
+            this._logPollTimer = null;
+        }
+        this._lastLogId = 0;
+    }
+
     dispose(): void {
         this.stopPolling();
-        this._logFileWatcher?.stop();
         this._onStateChange.dispose();
     }
 }

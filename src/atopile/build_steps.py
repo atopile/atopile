@@ -16,7 +16,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import buildutil, layout
 from atopile.buildutil import BuildContext, BuildStepContext
-from atopile.cli.logging_ import LoggingStage
+from atopile.logging import LoggingStage
 from atopile.compiler import format_message
 from atopile.compiler.build import build_stage_2
 from atopile.config import BuildType, config

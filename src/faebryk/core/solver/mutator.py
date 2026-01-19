@@ -34,7 +34,7 @@ from faebryk.core.solver.utils import (
     MutatorUtils,
     pretty_expr,
 )
-from faebryk.libs.logging import rich_to_string
+from atopile.logging import rich_to_string
 from faebryk.libs.util import (
     OrderedSet,
     duplicates,

@@ -9,7 +9,7 @@ from typing import Sequence
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.cli.logging_ import ALERT
+from atopile.logging import ALERT
 from atopile.config import (
     BuildTargetConfig,
     ProjectConfig,

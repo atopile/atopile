@@ -16,7 +16,7 @@ def configure() -> None:
     """
     from textwrap import dedent
 
-    from faebryk.libs.logging import rich_print_robust
+    from atopile.logging import rich_print_robust
 
     # Just here for legacy support
     rich_print_robust(

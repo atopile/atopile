@@ -20,7 +20,6 @@ from rich.markdown import Markdown
 from rich.text import Text
 from rich.traceback import Traceback
 
-from faebryk.libs.logging import ReprHighlighter
 from faebryk.libs.util import groupby, md_list
 
 if TYPE_CHECKING:
@@ -70,6 +69,8 @@ class UserException(Exception):
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> list[ConsoleRenderable]:
+        from atopile.logging import ReprHighlighter
+
         def _markdown(message: str) -> ConsoleRenderable:
             if console.is_terminal:
                 return Markdown(message)

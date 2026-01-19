@@ -34,7 +34,7 @@ from faebryk.core.solver.utils import (
     PRINT_START,
     S_LOG,
 )
-from faebryk.libs.logging import NET_LINE_WIDTH
+from atopile.logging import NET_LINE_WIDTH
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import not_none
 
@@ -474,7 +474,7 @@ def test_solver_basic():
 if __name__ == "__main__":
     import typer
 
-    from faebryk.libs.logging import setup_basic_logging
+    from atopile.logging import setup_basic_logging
 
     setup_basic_logging()
     logger.setLevel(logging.DEBUG)

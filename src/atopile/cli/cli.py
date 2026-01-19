@@ -38,13 +38,13 @@ from atopile.cli import (
     mcp,
     dev,
 )
-from atopile.cli.logging_ import handler, logger
+from atopile.logging import handler, logger
 from atopile.errors import UserException, UserNoProjectException
 from faebryk.libs.exceptions import (
     UserResourceException,
     iter_leaf_exceptions,
 )
-from faebryk.libs.logging import FLOG_FMT
+from atopile.logging import FLOG_FMT
 
 
 SAFE_MODE_OPTION = ConfigFlag(

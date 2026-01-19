@@ -8,13 +8,14 @@ directly by VS Code webview for better IDE integration.
 import json
 import logging
 import socket
+import sqlite3
 import threading
 import time
 from pathlib import Path
 from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
@@ -94,6 +95,121 @@ def create_app(
                 content=log_file.read_text(),
                 media_type="text/plain",
             )
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.get("/api/logs/query")
+    async def query_logs(
+        build_name: Optional[str] = Query(None, description="Filter by build name"),
+        stage: Optional[str] = Query(None, description="Filter by build stage"),
+        level: Optional[str] = Query(
+            None, description="Filter by log level (DEBUG, INFO, WARNING, ERROR)"
+        ),
+        audience: Optional[str] = Query(
+            None, description="Filter by audience (user, developer, agent)"
+        ),
+        limit: int = Query(1000, ge=1, le=10000, description="Maximum results"),
+        offset: int = Query(0, ge=0, description="Result offset for pagination"),
+    ):
+        """
+        Query logs from SQLite with optional filters.
+
+        Returns structured log entries from the build_logs.db database.
+        """
+        try:
+            summary_path = state["summary_file"]
+            if summary_path is None or not summary_path.exists():
+                raise HTTPException(status_code=404, detail="No summary file found")
+
+            summary = json.loads(summary_path.read_text())
+
+            # If build_name specified, find its log_dir
+            # Otherwise, query all builds' logs
+            log_dirs: list[Path] = []
+            for build in summary.get("builds", []):
+                if build_name is None or build.get("name") == build_name or build.get(
+                    "display_name"
+                ) == build_name:
+                    if log_dir := build.get("log_dir"):
+                        log_dirs.append(Path(log_dir))
+
+            if not log_dirs:
+                if build_name:
+                    raise HTTPException(
+                        status_code=404, detail=f"Build not found: {build_name}"
+                    )
+                return {"logs": [], "total": 0}
+
+            # Collect logs from all matching builds
+            all_logs: list[dict] = []
+            for log_dir in log_dirs:
+                db_path = log_dir / "build_logs.db"
+                if not db_path.exists():
+                    continue
+
+                try:
+                    conn = sqlite3.connect(str(db_path), timeout=5.0)
+                    conn.row_factory = sqlite3.Row
+
+                    # Build query with filters
+                    conditions = []
+                    params: list = []
+
+                    if stage:
+                        conditions.append("stage = ?")
+                        params.append(stage)
+                    if level:
+                        conditions.append("level = ?")
+                        params.append(level.upper())
+                    if audience:
+                        conditions.append("audience = ?")
+                        params.append(audience.lower())
+
+                    where_clause = (
+                        "WHERE " + " AND ".join(conditions) if conditions else ""
+                    )
+
+                    # Query with pagination
+                    query = f"""
+                        SELECT id, timestamp, stage, level, level_no, audience,
+                               message, ato_traceback, python_traceback
+                        FROM logs
+                        {where_clause}
+                        ORDER BY id DESC
+                        LIMIT ? OFFSET ?
+                    """
+                    params.extend([limit, offset])
+
+                    cursor = conn.execute(query, params)
+                    rows = cursor.fetchall()
+
+                    for row in rows:
+                        all_logs.append(
+                            {
+                                "id": row["id"],
+                                "timestamp": row["timestamp"],
+                                "stage": row["stage"],
+                                "level": row["level"],
+                                "level_no": row["level_no"],
+                                "audience": row["audience"],
+                                "message": row["message"],
+                                "ato_traceback": row["ato_traceback"],
+                                "python_traceback": row["python_traceback"],
+                                "build_dir": str(log_dir),
+                            }
+                        )
+
+                    conn.close()
+                except sqlite3.Error as e:
+                    log.warning(f"Error reading logs from {db_path}: {e}")
+                    continue
+
+            # Sort by timestamp descending and apply limit
+            all_logs.sort(key=lambda x: x["timestamp"], reverse=True)
+            return {"logs": all_logs[:limit], "total": len(all_logs)}
 
         except HTTPException:
             raise

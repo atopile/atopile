@@ -16,7 +16,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core import graph
-from faebryk.libs.logging import rich_to_string
+from atopile.logging import rich_to_string
 from faebryk.libs.util import (
     ConfigFlag,
     ConfigFlagFloat,
