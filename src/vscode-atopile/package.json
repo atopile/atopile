@@ -226,22 +226,6 @@
                 "command": "atopile.llm.setup",
                 "title": "Setup LLM rules & MCP",
                 "category": "atopile"
-            },
-            {
-                "command": "atopile.selectBuild",
-                "title": "Select Build",
-                "category": "atopile"
-            },
-            {
-                "command": "atopile.selectStage",
-                "title": "View Stage Logs",
-                "category": "atopile"
-            },
-            {
-                "command": "atopile.refreshBuilds",
-                "title": "Refresh Build Status",
-                "category": "atopile",
-                "icon": "$(refresh)"
             }
         ],
         "languages": [
