@@ -9,7 +9,6 @@ from typing import Sequence
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.logging import ALERT
 from atopile.config import (
     BuildTargetConfig,
     ProjectConfig,
@@ -18,10 +17,11 @@ from atopile.config import (
 )
 from atopile.config import config as Gcfg
 from atopile.errors import UserValueError
+from atopile.exceptions import UserResourceException, accumulate
 from atopile.layout import in_sub_pcb
+from atopile.logging import ALERT
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.ato_part import AtoPart
-from faebryk.libs.exceptions import UserResourceException, accumulate
 from faebryk.libs.kicad.fileformats import (
     C_kicad_model_file,
     Property,

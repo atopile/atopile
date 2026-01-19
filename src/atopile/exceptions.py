@@ -1,3 +1,12 @@
+"""
+Exception handling utilities for atopile.
+
+This module provides:
+- Base UserException class for user-facing errors
+- Exception accumulation and collection utilities
+- Downgrade utilities for converting exceptions to warnings
+"""
+
 import contextlib
 import logging
 from abc import ABC, abstractmethod

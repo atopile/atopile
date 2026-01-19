@@ -6,8 +6,8 @@ import typer
 from semver import Version
 
 from atopile.errors import UserBadParameterError, UserException, UserFileNotFoundError
+from atopile.exceptions import accumulate
 from atopile.telemetry import capture
-from faebryk.libs.exceptions import accumulate
 
 if TYPE_CHECKING:
     from atopile.config import Config

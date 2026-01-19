@@ -52,12 +52,12 @@ from atopile.errors import (
     UserFileNotFoundError,
     UserNoProjectException,
 )
+from atopile.exceptions import UserResourceException
 from atopile.version import (
     DISTRIBUTION_NAME,
     clean_version,
     get_installed_atopile_version,
 )
-from faebryk.libs.exceptions import UserResourceException
 from faebryk.libs.paths import get_config_dir
 from faebryk.libs.test.testutil import in_test
 from faebryk.libs.util import indented_container, md_list

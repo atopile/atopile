@@ -45,9 +45,9 @@ from atopile.compiler.gentypegraph import (
     Symbol,
 )
 from atopile.compiler.overrides import ReferenceOverrideRegistry, TraitOverrideRegistry
+from atopile.exceptions import DeprecatedException, downgrade
 from faebryk.core.faebrykpy import EdgeTraversal
 from faebryk.library.Units import UnitsNotCommensurableError
-from faebryk.libs.exceptions import DeprecatedException, downgrade
 from faebryk.libs.util import cast_assert, groupby, import_from_path, not_none
 
 _Quantity = tuple[float, fabll._ChildField]

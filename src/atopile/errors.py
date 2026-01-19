@@ -8,7 +8,7 @@ from rich.markdown import Markdown
 from rich.syntax import Syntax
 from rich.text import Text
 
-from faebryk.libs.exceptions import UserException as _BaseBaseUserException
+from atopile.exceptions import UserException as _BaseBaseUserException
 
 if TYPE_CHECKING:
     from rich.console import Console, ConsoleOptions, ConsoleRenderable

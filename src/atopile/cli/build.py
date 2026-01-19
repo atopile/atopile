@@ -1429,6 +1429,10 @@ def build(
     # Generate per-target summaries
     manager.generate_summary()
 
+    # Flush and close all build loggers to ensure logs are written to SQLite
+    from atopile.logging import close_all_build_loggers
+    close_all_build_loggers()
+
     failed = [name for name, code in results.items() if code != 0]
 
     # Report results (don't exit yet if dashboard is running)

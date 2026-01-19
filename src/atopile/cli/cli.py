@@ -40,7 +40,7 @@ from atopile.cli import (
 )
 from atopile.logging import handler, logger
 from atopile.errors import UserException, UserNoProjectException
-from faebryk.libs.exceptions import (
+from atopile.exceptions import (
     UserResourceException,
     iter_leaf_exceptions,
 )
