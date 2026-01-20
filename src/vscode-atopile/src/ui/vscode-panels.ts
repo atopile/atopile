@@ -815,6 +815,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.registerWebviewViewProvider('atopile.logViewer', logViewerPanel)
     );
 
+    // Register command to show build logs panel
+    context.subscriptions.push(
+        vscode.commands.registerCommand('atopile.showBuildLogs', () => {
+            vscode.commands.executeCommand('atopile.logViewer.focus');
+        })
+    );
+
     // Subscribe to state changes - broadcast to all panels
     context.subscriptions.push(
         appStateManager.onStateChange(() => {
