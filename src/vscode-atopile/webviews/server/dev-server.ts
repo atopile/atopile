@@ -13,6 +13,7 @@
 
 import { WebSocketServer, WebSocket } from 'ws';
 import * as http from 'http';
+import * as https from 'https';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -2567,7 +2568,6 @@ class DevServer {
    */
   private httpsGet(url: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      const https = require('https');
       const parsedUrl = new URL(url);
       const options = {
         hostname: parsedUrl.hostname,
@@ -2576,7 +2576,7 @@ class DevServer {
           'User-Agent': 'atopile-vscode-extension',
         },
       };
-      https.get(options, (res: any) => {
+      https.get(options, (res) => {
         let data = '';
         res.on('data', (chunk: string) => { data += chunk; });
         res.on('end', () => resolve(data));

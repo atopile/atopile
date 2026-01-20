@@ -5,6 +5,7 @@ Provides API endpoints for build data. The React frontend is served
 directly by VS Code webview for better IDE integration.
 """
 
+import asyncio
 import json
 import logging
 import socket
@@ -12,12 +13,20 @@ import sqlite3
 import subprocess
 import threading
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
 import uvicorn
 import yaml
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
+from fastapi import (
+    BackgroundTasks,
+    FastAPI,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
@@ -244,6 +253,235 @@ class ModulesResponse(BaseModel):
     total: int
 
 
+# --- WebSocket Connection Manager ---
+
+
+@dataclass
+class ClientSubscription:
+    """Per-connection subscription state for WebSocket clients."""
+
+    websocket: WebSocket
+    log_filters: dict = field(default_factory=lambda: {"limit": 100})
+    subscribed_channels: set = field(default_factory=set)
+    last_log_id: int = 0  # Track last sent log for incremental updates
+
+
+class ConnectionManager:
+    """Manages WebSocket connections and per-connection filter state."""
+
+    def __init__(self):
+        self.clients: dict[WebSocket, ClientSubscription] = {}
+        self._db_path: Optional[Path] = None
+        self._logs_base: Optional[Path] = None
+
+    def set_paths(self, db_path: Optional[Path], logs_base: Optional[Path]):
+        """Set database and logs paths for querying."""
+        self._db_path = db_path
+        self._logs_base = logs_base
+
+    async def connect(self, websocket: WebSocket):
+        """Accept a new WebSocket connection."""
+        await websocket.accept()
+        self.clients[websocket] = ClientSubscription(websocket=websocket)
+        log.info(f"WebSocket client connected. Total clients: {len(self.clients)}")
+
+    def disconnect(self, websocket: WebSocket):
+        """Remove a disconnected client."""
+        self.clients.pop(websocket, None)
+        log.info(f"WebSocket client disconnected. Total clients: {len(self.clients)}")
+
+    async def handle_message(self, websocket: WebSocket, message: dict):
+        """Handle an incoming message from a client."""
+        client = self.clients.get(websocket)
+        if not client:
+            return
+
+        action = message.get("action")
+        channel = message.get("channel")
+
+        if action == "subscribe":
+            client.subscribed_channels.add(channel)
+            if channel == "logs":
+                client.log_filters = message.get("filters", {"limit": 100})
+                await self.send_filtered_logs(client)
+            elif channel == "summary":
+                # Summary will be sent via broadcast when available
+                pass
+            elif channel == "problems":
+                # Problems will be sent via broadcast when available
+                pass
+            elif channel == "builds":
+                # Builds will be sent via broadcast when available
+                pass
+
+        elif action == "update_filter":
+            if channel == "logs":
+                client.log_filters = message.get("filters", {"limit": 100})
+                client.last_log_id = 0  # Reset cursor on filter change
+                await self.send_filtered_logs(client)
+
+        elif action == "unsubscribe":
+            client.subscribed_channels.discard(channel)
+
+    async def send_filtered_logs(self, client: ClientSubscription):
+        """Query SQLite with client's filters and send results."""
+        if not self._db_path or not self._db_path.exists():
+            return
+
+        filters = client.log_filters
+        try:
+            conn = sqlite3.connect(str(self._db_path))
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            # Build WHERE clause based on filters
+            conditions = []
+            params = []
+
+            if filters.get("build_name"):
+                conditions.append("build_name = ?")
+                params.append(filters["build_name"])
+
+            if filters.get("project_name"):
+                conditions.append("build_name LIKE ?")
+                params.append(f"%{filters['project_name']}%")
+
+            if filters.get("levels"):
+                placeholders = ",".join("?" * len(filters["levels"]))
+                conditions.append(f"level IN ({placeholders})")
+                params.extend(filters["levels"])
+
+            if filters.get("search"):
+                conditions.append("message LIKE ?")
+                params.append(f"%{filters['search']}%")
+
+            if filters.get("after_id"):
+                conditions.append("id > ?")
+                params.append(filters["after_id"])
+
+            where_clause = " AND ".join(conditions) if conditions else "1=1"
+            limit = filters.get("limit", 100)
+
+            query = f"""
+                SELECT id, timestamp, level, message, source, build_name
+                FROM logs
+                WHERE {where_clause}
+                ORDER BY id DESC
+                LIMIT ?
+            """
+            params.append(limit)
+
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            conn.close()
+
+            logs = [dict(row) for row in reversed(rows)]  # Reverse to chronological
+
+            if logs:
+                client.last_log_id = logs[-1]["id"]
+
+            await client.websocket.send_json(
+                {
+                    "event": "logs",
+                    "data": {
+                        "logs": logs,
+                        "total": len(logs),
+                        "has_more": len(logs) >= limit,
+                    },
+                }
+            )
+
+        except Exception as e:
+            log.error(f"Error querying logs for WebSocket client: {e}")
+
+    def log_matches_filter(self, log_entry: dict, filters: dict) -> bool:
+        """Check if a log entry matches client's filter criteria."""
+        if filters.get("levels") and log_entry.get("level") not in filters["levels"]:
+            return False
+        if filters.get("build_name"):
+            if log_entry.get("build_name") != filters["build_name"]:
+                return False
+        if filters.get("project_name"):
+            if filters["project_name"] not in log_entry.get("build_name", ""):
+                return False
+        if filters.get("search"):
+            if filters["search"].lower() not in log_entry.get("message", "").lower():
+                return False
+        return True
+
+    async def on_new_log(self, log_entry: dict):
+        """Called when a new log is written - push to matching clients."""
+        for client in list(self.clients.values()):
+            if "logs" not in client.subscribed_channels:
+                continue
+            try:
+                if self.log_matches_filter(log_entry, client.log_filters):
+                    client.last_log_id = log_entry.get("id", 0)
+                    await client.websocket.send_json(
+                        {
+                            "event": "logs",
+                            "data": {
+                                "logs": [log_entry],
+                                "total": 1,
+                                "incremental": True,
+                            },
+                        }
+                    )
+            except Exception as e:
+                log.error(f"Error sending log to WebSocket client: {e}")
+                self.disconnect(client.websocket)
+
+    async def broadcast_to_channel(self, channel: str, event: str, data: dict):
+        """Broadcast an event to all clients subscribed to a channel."""
+        message = {"event": event, "data": data}
+        for client in list(self.clients.values()):
+            if channel in client.subscribed_channels:
+                try:
+                    await client.websocket.send_json(message)
+                except Exception as e:
+                    log.error(f"Error broadcasting to WebSocket client: {e}")
+                    self.disconnect(client.websocket)
+
+    def broadcast_sync(self, channel: str, event: str, data: dict):
+        """
+        Broadcast an event from synchronous code (e.g., background threads).
+
+        This schedules the broadcast on the event loop if one is running.
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Schedule the coroutine on the running loop
+                asyncio.run_coroutine_threadsafe(
+                    self.broadcast_to_channel(channel, event, data), loop
+                )
+            else:
+                # No running loop - try to run directly (fallback)
+                asyncio.run(self.broadcast_to_channel(channel, event, data))
+        except RuntimeError:
+            # No event loop available - skip broadcasting
+            log.debug(f"No event loop available for broadcast: {event}")
+
+    def on_new_log_sync(self, log_entry: dict):
+        """
+        Called when a new log is written from synchronous code.
+
+        This schedules the log push on the event loop if one is running.
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.run_coroutine_threadsafe(self.on_new_log(log_entry), loop)
+            else:
+                asyncio.run(self.on_new_log(log_entry))
+        except RuntimeError:
+            log.debug("No event loop available for log push")
+
+
+# Global connection manager instance
+ws_manager = ConnectionManager()
+
+
 def extract_modules_from_file(
     ato_file: Path, project_root: Path
 ) -> list[ModuleDefinition]:
@@ -375,6 +613,10 @@ def parse_problems_from_log_file(
     problems: list[Problem] = []
 
     if not log_file.exists():
+        return problems
+
+    # Skip SQLite database files - they're not JSONL log files
+    if log_file.suffix == ".db":
         return problems
 
     try:
@@ -759,6 +1001,19 @@ def _run_build_subprocess(
     with _build_lock:
         _active_builds[build_id]["status"] = "building"
 
+    # Broadcast build:started event
+    ws_manager.broadcast_sync(
+        "builds",
+        "build:started",
+        {
+            "build_id": build_id,
+            "project_root": project_root,
+            "targets": targets,
+            "status": "building",
+        },
+    )
+
+    process = None
     try:
         # Build the command
         # Use --verbose to disable interactive terminal UI for subprocess capture
@@ -791,38 +1046,147 @@ def _run_build_subprocess(
 
         log.info(f"Running build {build_id}: {' '.join(cmd)} in {project_root}")
 
-        # Run the build
-        result = subprocess.run(
+        # Run the build using Popen for cancellation support
+        process = subprocess.Popen(
             cmd,
             cwd=project_root,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=600,  # 10 minute timeout
         )
 
+        # Store process reference for cancellation
         with _build_lock:
-            _active_builds[build_id]["return_code"] = result.returncode
-            if result.returncode == 0:
+            _active_builds[build_id]["process"] = process
+
+        # Wait for completion with timeout
+        try:
+            stdout, stderr = process.communicate(timeout=600)  # 10 minute timeout
+            returncode = process.returncode
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()  # Clean up
+            raise
+
+        # Check if build was cancelled
+        with _build_lock:
+            if _active_builds[build_id].get("status") == "cancelled":
+                log.info(f"Build {build_id} was cancelled")
+                return
+
+            _active_builds[build_id]["return_code"] = returncode
+            _active_builds[build_id]["process"] = None  # Clear process reference
+            if returncode == 0:
                 _active_builds[build_id]["status"] = "success"
             else:
                 _active_builds[build_id]["status"] = "failed"
-                _active_builds[build_id]["error"] = (
-                    result.stderr[:1000] if result.stderr else None
-                )
+                _active_builds[build_id]["error"] = stderr[:1000] if stderr else None
 
-        log.info(f"Build {build_id} completed with code {result.returncode}")
+        log.info(f"Build {build_id} completed with code {returncode}")
+
+        # Broadcast build:completed event
+        ws_manager.broadcast_sync(
+            "builds",
+            "build:completed",
+            {
+                "build_id": build_id,
+                "project_root": project_root,
+                "targets": targets,
+                "status": "success" if returncode == 0 else "failed",
+                "return_code": returncode,
+            },
+        )
 
     except subprocess.TimeoutExpired:
         with _build_lock:
             _active_builds[build_id]["status"] = "failed"
             _active_builds[build_id]["error"] = "Build timed out after 10 minutes"
+            _active_builds[build_id]["process"] = None
         log.error(f"Build {build_id} timed out")
+
+        # Broadcast build:completed event (timeout)
+        ws_manager.broadcast_sync(
+            "builds",
+            "build:completed",
+            {
+                "build_id": build_id,
+                "project_root": project_root,
+                "targets": targets,
+                "status": "failed",
+                "error": "Build timed out after 10 minutes",
+            },
+        )
 
     except Exception as e:
         with _build_lock:
             _active_builds[build_id]["status"] = "failed"
             _active_builds[build_id]["error"] = str(e)
+            _active_builds[build_id]["process"] = None
         log.error(f"Build {build_id} failed: {e}")
+
+        # Broadcast build:completed event (error)
+        ws_manager.broadcast_sync(
+            "builds",
+            "build:completed",
+            {
+                "build_id": build_id,
+                "project_root": project_root,
+                "targets": targets,
+                "status": "failed",
+                "error": str(e),
+            },
+        )
+
+
+def cancel_build(build_id: str) -> bool:
+    """
+    Cancel a running build by terminating its subprocess.
+
+    Returns True if the build was cancelled, False if not found or already completed.
+    """
+    with _build_lock:
+        if build_id not in _active_builds:
+            return False
+
+        build_info = _active_builds[build_id]
+
+        # Check if already completed
+        if build_info["status"] not in ("queued", "building"):
+            return False
+
+        # Mark as cancelled
+        build_info["status"] = "cancelled"
+        build_info["error"] = "Build cancelled by user"
+
+        # Terminate the process if running
+        process = build_info.get("process")
+        if process and process.poll() is None:
+            try:
+                process.terminate()
+                # Give it a moment to terminate gracefully
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    process.kill()  # Force kill if it doesn't terminate
+                log.info(f"Terminated process for build {build_id}")
+            except Exception as e:
+                log.error(f"Error terminating build {build_id}: {e}")
+
+        build_info["process"] = None
+
+    # Broadcast cancellation event
+    ws_manager.broadcast_sync(
+        "builds",
+        "build:completed",
+        {
+            "build_id": build_id,
+            "status": "cancelled",
+            "error": "Build cancelled by user",
+        },
+    )
+
+    log.info(f"Build {build_id} cancelled")
+    return True
 
 
 def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
@@ -929,6 +1293,31 @@ def create_app(
         "logs_base": logs_base,
         "workspace_paths": workspace_paths or [],
     }
+
+    # Set up WebSocket manager with database path
+    db_path = logs_base / "build_logs.db" if logs_base else None
+    ws_manager.set_paths(db_path, logs_base)
+
+    # --- WebSocket Endpoint ---
+
+    @app.websocket("/ws/events")
+    async def websocket_endpoint(websocket: WebSocket):
+        """
+        WebSocket endpoint for real-time event streaming.
+
+        Clients can subscribe to channels (builds, logs, summary, problems)
+        and receive filtered updates in real-time.
+        """
+        await ws_manager.connect(websocket)
+        try:
+            while True:
+                data = await websocket.receive_json()
+                await ws_manager.handle_message(websocket, data)
+        except WebSocketDisconnect:
+            ws_manager.disconnect(websocket)
+        except Exception as e:
+            log.error(f"WebSocket error: {e}")
+            ws_manager.disconnect(websocket)
 
     @app.get("/api/projects", response_model=ProjectsResponse)
     async def get_projects(
@@ -1190,6 +1579,21 @@ def create_app(
             return_code=build["return_code"],
             error=build["error"],
         )
+
+    @app.post("/api/build/{build_id}/cancel")
+    async def cancel_build_endpoint(build_id: str):
+        """Cancel a running build."""
+        if build_id not in _active_builds:
+            raise HTTPException(status_code=404, detail=f"Build not found: {build_id}")
+
+        success = cancel_build(build_id)
+        if success:
+            return {"success": True, "message": f"Build {build_id} cancelled"}
+        else:
+            return {
+                "success": False,
+                "message": f"Build {build_id} cannot be cancelled (already completed)",
+            }
 
     @app.get("/api/builds/active")
     async def get_active_builds():
