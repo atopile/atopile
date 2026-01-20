@@ -1,6 +1,7 @@
 /**
  * Build target item component - STATELESS.
- * All state (including expanded) comes from props.
+ * Shows build stages for status display (not filtering).
+ * Clicking the item selects the build for log viewing.
  */
 
 import type { Build, BuildStage, BuildTarget } from '../types/build';
@@ -13,10 +14,9 @@ interface BuildTargetItemProps {
   isChecked: boolean;
   isSelected: boolean;
   isExpanded: boolean;
-  selectedStageIds: string[];
   onToggle: () => void;
   onToggleExpand: () => void;
-  onToggleStage: (stageId: string) => void;
+  onSelect: () => void;
 }
 
 function stripRichText(text: string): string {
@@ -36,23 +36,9 @@ function getCurrentStage(build: Build): string | null {
   return build.stages[build.stages.length - 1].name;
 }
 
-function StageItem({
-  stage,
-  isSelected,
-  onSelect,
-}: {
-  stage: BuildStage;
-  isSelected: boolean;
-  onSelect: () => void;
-}) {
+function StageItem({ stage }: { stage: BuildStage }) {
   return (
-    <button
-      className={`stage-item ${isSelected ? 'selected' : ''}`}
-      onClick={(e) => {
-        e.stopPropagation();
-        onSelect();
-      }}
-    >
+    <div className="stage-item">
       <StatusIcon status={stage.status} size={12} />
       <span className="stage-name">{stripRichText(stage.name)}</span>
       <div className="stage-stats">
@@ -63,7 +49,7 @@ function StageItem({
           <span className="stat error">{stage.errors}</span>
         )}
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -73,10 +59,9 @@ export function BuildTargetItem({
   isChecked,
   isSelected,
   isExpanded,
-  selectedStageIds,
   onToggle,
   onToggleExpand,
-  onToggleStage,
+  onSelect,
 }: BuildTargetItemProps) {
   const hasStages = build?.stages && build.stages.length > 0;
   const currentStage = build ? getCurrentStage(build) : null;
@@ -91,9 +76,12 @@ export function BuildTargetItem({
   };
 
   return (
-    <div className={`build-target-item ${isExpanded ? 'expanded' : ''} ${isSelected ? 'selected' : ''}`}>
+    <div
+      className={`build-target-item ${isExpanded ? 'expanded' : ''} ${isSelected ? 'selected' : ''}`}
+      onClick={onSelect}
+    >
       <div className="build-target-header">
-        {/* Checkbox */}
+        {/* Checkbox for build selection */}
         <input
           type="checkbox"
           checked={isChecked}
@@ -109,7 +97,7 @@ export function BuildTargetItem({
         )}
 
         {/* Target info */}
-        <div className="build-target-info" onClick={handleExpandClick}>
+        <div className="build-target-info">
           <span className="target-name">{target.name}</span>
           {build ? (
             <span className="build-meta">
@@ -150,16 +138,11 @@ export function BuildTargetItem({
         )}
       </div>
 
-      {/* Stages list */}
+      {/* Stages list (display only, no filtering) */}
       {isExpanded && hasStages && (
         <div className="build-stages">
           {build!.stages!.map((stage) => (
-            <StageItem
-              key={stage.stage_id}
-              stage={stage}
-              isSelected={selectedStageIds.includes(stage.stage_id)}
-              onSelect={() => onToggleStage(stage.stage_id)}
-            />
+            <StageItem key={stage.stage_id} stage={stage} />
           ))}
         </div>
       )}

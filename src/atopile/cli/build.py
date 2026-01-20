@@ -1064,8 +1064,10 @@ class ParallelBuildManager:
         from atopile.logging import generate_build_id
 
         # Generate build_id for this build
-        project_path = str(bp.project_root) if bp.project_root else "unknown"
+        # Use resolved absolute path to ensure consistency with subprocess
+        project_path = str(bp.project_root.resolve()) if bp.project_root else "unknown"
         build_id = generate_build_id(project_path, bp.name, self._now)
+        logger.debug(f"Summary build_id: {build_id} (project={project_path}, target={bp.name}, ts={self._now})")
 
         data = {
             "name": bp.name,  # Target name for matching
@@ -1105,6 +1107,7 @@ def _run_single_build() -> None:
     """
     from atopile import buildutil
     from atopile.config import config
+    from atopile.logging import close_all_build_loggers
 
     # Get the single build target from config
     build_names = list(config.selected_builds)
@@ -1117,9 +1120,15 @@ def _run_single_build() -> None:
 
     from atopile.cli.excepthook import install_worker_excepthook
 
-    with config.select_build(build_name):
-        install_worker_excepthook()
-        buildutil.build()
+    try:
+        with config.select_build(build_name):
+            install_worker_excepthook()
+            buildutil.build()
+    finally:
+        # Flush all buffered logs to SQLite before subprocess exits
+        # This is critical because each subprocess has its own SQLiteLogWriter
+        # instance, and buffered logs would be lost without explicit flush
+        close_all_build_loggers()
 
 
 def _build_all_projects(

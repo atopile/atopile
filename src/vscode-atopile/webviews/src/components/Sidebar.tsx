@@ -46,15 +46,6 @@ export function Sidebar() {
 
   const selectedProject = state.projects.find(p => p.root === state.selectedProjectRoot);
 
-  const handleToggleStage = (buildName: string, stageId: string) => {
-    // Select the build first if not already selected
-    if (state.selectedBuildName !== buildName) {
-      action('selectBuild', { buildName });
-    }
-    action('toggleStageFilter', { stageId });
-    action('focusLogViewer');
-  };
-
   return (
     <div className="sidebar">
       {/* Header with logo and version */}
@@ -145,20 +136,27 @@ export function Sidebar() {
                     <span className="empty-desc">No build targets in ato.yaml</span>
                   </div>
                 ) : (
-                  selectedProject.targets.map((target) => (
-                    <BuildTargetItem
-                      key={target.name}
-                      target={target}
-                      build={state.builds.find(b => b.name === target.name)}
-                      isChecked={state.selectedTargetNames.includes(target.name)}
-                      isSelected={state.selectedBuildName === target.name}
-                      isExpanded={state.expandedTargets.includes(target.name)}
-                      selectedStageIds={state.selectedBuildName === target.name ? state.selectedStageIds : []}
-                      onToggle={() => action('toggleTarget', { name: target.name })}
-                      onToggleExpand={() => action('toggleTargetExpanded', { name: target.name })}
-                      onToggleStage={(stageId) => handleToggleStage(target.name, stageId)}
-                    />
-                  ))
+                  selectedProject.targets.map((target) => {
+                    const build = state.builds.find(b => b.name === target.name);
+                    const isSelected = state.selectedBuildName === build?.display_name;
+                    return (
+                      <BuildTargetItem
+                        key={target.name}
+                        target={target}
+                        build={build}
+                        isChecked={state.selectedTargetNames.includes(target.name)}
+                        isSelected={isSelected}
+                        isExpanded={state.expandedTargets.includes(target.name)}
+                        onToggle={() => action('toggleTarget', { name: target.name })}
+                        onToggleExpand={() => action('toggleTargetExpanded', { name: target.name })}
+                        onSelect={() => {
+                          if (build?.display_name) {
+                            action('selectBuild', { buildName: build.display_name });
+                          }
+                        }}
+                      />
+                    );
+                  })
                 )}
               </div>
             </>

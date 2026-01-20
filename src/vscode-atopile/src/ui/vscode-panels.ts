@@ -176,17 +176,9 @@ async function handleAction(message: any): Promise<void> {
             await appStateManager.selectBuild(message.buildName);
             break;
 
-        case 'toggleStageFilter':
-            appStateManager.toggleStageFilter(message.stageId);
-            break;
-
-        case 'clearStageFilter':
-            appStateManager.clearStageFilter();
-            break;
-
         // Log viewer UI
         case 'toggleLogLevel':
-            appStateManager.toggleLogLevel(message.level as LogLevel);
+            await appStateManager.toggleLogLevel(message.level as LogLevel);
             break;
 
         case 'setLogSearchQuery':

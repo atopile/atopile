@@ -48,6 +48,14 @@ export interface Project {
   targets: BuildTarget[];
 }
 
+// Info about the currently displayed build's logs
+export interface CurrentBuildInfo {
+  buildId: string;
+  projectPath: string;
+  target: string;
+  timestamp: string;
+}
+
 /**
  * THE SINGLE APP STATE - All state lives here.
  * Extension owns this, webviews receive it read-only.
@@ -66,7 +74,8 @@ export interface AppState {
 
   // Build/Log selection
   selectedBuildName: string | null;
-  selectedStageIds: string[];
+  selectedBuildId: string | null;  // Track the actual build_id being polled
+  currentBuildInfo: CurrentBuildInfo | null;  // Info about currently displayed logs
   logEntries: LogEntry[];
   isLoadingLogs: boolean;
 

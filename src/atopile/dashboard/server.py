@@ -91,22 +91,16 @@ def create_app(
     @app.get("/api/logs/query")
     async def query_logs(
         build_id: Optional[str] = Query(None, description="Filter by build ID"),
-        project_path: Optional[str] = Query(None, description="Filter by project path"),
-        target: Optional[str] = Query(None, description="Filter by build target"),
-        stage: Optional[str] = Query(None, description="Filter by build stage"),
-        level: Optional[str] = Query(
-            None, description="Filter by log level (DEBUG, INFO, WARNING, ERROR)"
-        ),
-        audience: Optional[str] = Query(
-            None, description="Filter by audience (user, developer, agent)"
+        levels: Optional[str] = Query(
+            None, description="Filter by log levels (comma-separated, e.g. 'INFO,WARNING,ERROR')"
         ),
         limit: int = Query(1000, ge=1, le=10000, description="Maximum results"),
         offset: int = Query(0, ge=0, description="Result offset for pagination"),
     ):
         """
-        Query logs from the central SQLite database with optional filters.
+        Query logs from the central SQLite database.
 
-        Returns structured log entries from the central build_logs.db database.
+        Returns structured log entries filtered by build_id and optionally by log levels.
         """
         from atopile.logging import get_central_log_db
 
@@ -125,21 +119,13 @@ def create_app(
             if build_id:
                 conditions.append("l.build_id = ?")
                 params.append(build_id)
-            if project_path:
-                conditions.append("b.project_path = ?")
-                params.append(project_path)
-            if target:
-                conditions.append("b.target = ?")
-                params.append(target)
-            if stage:
-                conditions.append("l.stage = ?")
-                params.append(stage)
-            if level:
-                conditions.append("l.level = ?")
-                params.append(level.upper())
-            if audience:
-                conditions.append("l.audience = ?")
-                params.append(audience.lower())
+            # Support multiple levels (comma-separated)
+            if levels:
+                level_list = [lv.strip().upper() for lv in levels.split(",") if lv.strip()]
+                if level_list:
+                    placeholders = ",".join("?" * len(level_list))
+                    conditions.append(f"l.level IN ({placeholders})")
+                    params.extend(level_list)
 
             where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
 

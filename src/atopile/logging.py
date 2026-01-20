@@ -683,6 +683,13 @@ def close_all_build_loggers() -> None:
     SQLiteLogWriter.close_instance()
 
 
+# Register atexit handler to ensure logs are flushed on process exit
+# This is a safety net for subprocess workers that may exit unexpectedly
+import atexit
+
+atexit.register(close_all_build_loggers)
+
+
 # =============================================================================
 # Build Status and Events
 # =============================================================================
@@ -1501,8 +1508,9 @@ class LoggingStage(Advancable):
         root_logger.setLevel(logging.DEBUG)
 
         # Get project and target info for the central database
+        # Use resolved absolute path to ensure consistency with summary generation
         try:
-            project_path = str(config.project.paths.root)
+            project_path = str(config.project.paths.root.resolve())
             target = config.build.name
         except RuntimeError:
             # Fallback if config is not fully initialized
@@ -1512,6 +1520,7 @@ class LoggingStage(Advancable):
         # Get or create BuildLogger for SQLite logging
         build_logger = get_build_logger(project_path, target, stage=self.name)
         self._build_id = build_logger.build_id
+        logger.debug(f"Logs build_id: {self._build_id} (project={project_path}, target={target}, ts={NOW})")
 
         # Create LiveLogHandler with integrated SQLite logging
         self._log_handler = LiveLogHandler(self, build_logger=build_logger)

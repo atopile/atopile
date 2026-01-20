@@ -211,52 +211,38 @@ export function LogViewer() {
     }
   }, [state?.logAutoScroll]);
 
-  // Filter logs (computed from state)
+  // Text search filter only - level/stage filtering is done by backend
   const filteredEntries = useMemo(() => {
     if (!state) return [];
-    const query = state.logSearchQuery.toLowerCase();
-    return state.logEntries.filter(entry => {
-      // Level filter
-      if (!state.enabledLogLevels.includes(entry.level)) return false;
-      // Stage filter (empty = show all)
-      if (state.selectedStageIds.length > 0 && !state.selectedStageIds.includes(entry.stage)) return false;
-      // Search filter
-      if (query && !entry.message.toLowerCase().includes(query) && !entry.logger.toLowerCase().includes(query)) return false;
-      return true;
-    });
-  }, [state]);
+    const query = state.logSearchQuery.toLowerCase().trim();
+    if (!query) return state.logEntries;
+    return state.logEntries.filter(entry =>
+      entry.message.toLowerCase().includes(query) ||
+      entry.logger.toLowerCase().includes(query) ||
+      entry.stage?.toLowerCase().includes(query)
+    );
+  }, [state?.logEntries, state?.logSearchQuery]);
 
-  // Level counts (computed)
-  const levelCounts = useMemo(() => {
-    if (!state) return { DEBUG: 0, INFO: 0, WARNING: 0, ERROR: 0, ALERT: 0 };
-    const entries = state.selectedStageIds.length > 0
-      ? state.logEntries.filter(e => state.selectedStageIds.includes(e.stage))
-      : state.logEntries;
-    return {
-      DEBUG: entries.filter(e => e.level === 'DEBUG').length,
-      INFO: entries.filter(e => e.level === 'INFO').length,
-      WARNING: entries.filter(e => e.level === 'WARNING').length,
-      ERROR: entries.filter(e => e.level === 'ERROR').length,
-      ALERT: entries.filter(e => e.level === 'ALERT').length,
-    };
-  }, [state]);
-
-  // Search matches for highlighting
+  // Search matches for highlighting (all filtered entries match when search is active)
   const searchMatches = useMemo(() => {
     if (!state?.logSearchQuery.trim()) return new Set<number>();
-    const query = state.logSearchQuery.toLowerCase();
     const matches = new Set<number>();
-    filteredEntries.forEach((entry, idx) => {
-      if (
-        entry.message.toLowerCase().includes(query) ||
-        entry.logger.toLowerCase().includes(query) ||
-        entry.stage?.toLowerCase().includes(query)
-      ) {
-        matches.add(idx);
-      }
-    });
+    filteredEntries.forEach((_, idx) => matches.add(idx));
     return matches;
   }, [filteredEntries, state?.logSearchQuery]);
+
+  // Level counts from backend-filtered results
+  // Shows how many logs of each type are in the current result set
+  const levelCounts = useMemo(() => {
+    if (!state) return { DEBUG: 0, INFO: 0, WARNING: 0, ERROR: 0, ALERT: 0 };
+    return {
+      DEBUG: state.logEntries.filter(e => e.level === 'DEBUG').length,
+      INFO: state.logEntries.filter(e => e.level === 'INFO').length,
+      WARNING: state.logEntries.filter(e => e.level === 'WARNING').length,
+      ERROR: state.logEntries.filter(e => e.level === 'ERROR').length,
+      ALERT: state.logEntries.filter(e => e.level === 'ALERT').length,
+    };
+  }, [state?.logEntries]);
 
   if (!state) {
     return <div className="log-viewer loading">Loading...</div>;
@@ -344,6 +330,35 @@ export function LogViewer() {
           </button>
         </div>
       </div>
+
+      {/* Build info bar */}
+      {state.currentBuildInfo && (
+        <div className="log-build-info">
+          <span className="build-info-item" title={state.currentBuildInfo.projectPath}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            </svg>
+            {state.currentBuildInfo.projectPath.split('/').pop() || state.currentBuildInfo.projectPath}
+          </span>
+          <span className="build-info-sep">·</span>
+          <span className="build-info-item" title="Build timestamp">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+            {state.currentBuildInfo.timestamp.replace('_', ' ')}
+          </span>
+          <span className="build-info-sep">·</span>
+          <span className="build-info-item build-id" title={`Build ID: ${state.currentBuildInfo.buildId}`}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <line x1="9" y1="9" x2="15" y2="9" />
+              <line x1="9" y1="15" x2="15" y2="15" />
+            </svg>
+            {state.currentBuildInfo.buildId.substring(0, 8)}
+          </span>
+        </div>
+      )}
 
       <div className="log-content" ref={logRef} onScroll={handleScroll}>
         {state.isLoadingLogs ? (

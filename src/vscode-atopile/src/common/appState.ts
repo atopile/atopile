@@ -95,6 +95,14 @@ interface LogQueryResponse {
     }>;
 }
 
+// Info about the currently displayed build's logs
+export interface CurrentBuildInfo {
+    buildId: string;
+    projectPath: string;
+    target: string;
+    timestamp: string;
+}
+
 /**
  * THE SINGLE APP STATE - All state lives here.
  */
@@ -112,7 +120,8 @@ export interface AppState {
 
     // Build/Log selection
     selectedBuildName: string | null;
-    selectedStageIds: string[];
+    selectedBuildId: string | null;  // Track the actual build_id being polled
+    currentBuildInfo: CurrentBuildInfo | null;  // Info about currently displayed logs
     logEntries: LogEntry[];
     isLoadingLogs: boolean;
 
@@ -152,7 +161,8 @@ class AppStateManager {
 
         // Log viewing
         selectedBuildName: null,
-        selectedStageIds: [],
+        selectedBuildId: null,
+        currentBuildInfo: null,
         logEntries: [],
         isLoadingLogs: false,
 
@@ -240,12 +250,14 @@ class AppStateManager {
         this._stopPollingLogs();
 
         this._state.selectedBuildName = buildName;
-        this._state.selectedStageIds = [];
+        this._state.selectedBuildId = null;
+        this._state.currentBuildInfo = null;
         this._state.logEntries = [];
         this._lastLogId = 0;
 
         const build = this._state.builds.find(b => b.display_name === buildName);
         if (build?.build_id) {
+            this._state.selectedBuildId = build.build_id;
             this._state.isLoadingLogs = true;
             this._emit();
             await this._startPollingLogs(build.build_id);
@@ -255,26 +267,9 @@ class AppStateManager {
         }
     }
 
-    // --- Stage filter ---
-
-    toggleStageFilter(stageId: string): void {
-        const idx = this._state.selectedStageIds.indexOf(stageId);
-        if (idx >= 0) {
-            this._state.selectedStageIds = this._state.selectedStageIds.filter(id => id !== stageId);
-        } else {
-            this._state.selectedStageIds = [...this._state.selectedStageIds, stageId];
-        }
-        this._emit();
-    }
-
-    clearStageFilter(): void {
-        this._state.selectedStageIds = [];
-        this._emit();
-    }
-
     // --- Log viewer UI ---
 
-    toggleLogLevel(level: LogLevel): void {
+    async toggleLogLevel(level: LogLevel): Promise<void> {
         const idx = this._state.enabledLogLevels.indexOf(level);
         if (idx >= 0) {
             this._state.enabledLogLevels = this._state.enabledLogLevels.filter(l => l !== level);
@@ -282,6 +277,10 @@ class AppStateManager {
             this._state.enabledLogLevels = [...this._state.enabledLogLevels, level];
         }
         this._emit();
+        // Re-fetch logs with new filter
+        if (this._state.selectedBuildId) {
+            await this._fetchLogs(this._state.selectedBuildId);
+        }
     }
 
     setLogSearchQuery(query: string): void {
@@ -321,10 +320,33 @@ class AppStateManager {
             this._state.isConnected = true;
             this._state.builds = response.data.builds;
 
+            // Auto-select first build if none selected
             if (!this._state.selectedBuildName && this._state.builds.length > 0) {
                 await this.selectBuild(this._state.builds[0].display_name);
                 return;
             }
+
+            // Check if the selected build's build_id has changed (new build for same target)
+            // This happens when a new build is triggered for the same target
+            if (this._state.selectedBuildName && this._state.selectedBuildId) {
+                const currentBuild = this._state.builds.find(
+                    b => b.display_name === this._state.selectedBuildName
+                );
+                if (currentBuild && currentBuild.build_id !== this._state.selectedBuildId) {
+                    traceInfo(`AppState: build_id changed for ${this._state.selectedBuildName}, restarting log polling`);
+                    // Restart log polling with new build_id
+                    this._stopPollingLogs();
+                    this._state.selectedBuildId = currentBuild.build_id;
+                    this._state.currentBuildInfo = null;
+                    this._state.logEntries = [];
+                    this._lastLogId = 0;
+                    this._state.isLoadingLogs = true;
+                    this._emit();
+                    await this._startPollingLogs(currentBuild.build_id);
+                    return;
+                }
+            }
+
             this._emit();
             traceVerbose(`AppState: fetched summary with ${this._state.builds.length} builds`);
         } catch {
@@ -358,14 +380,22 @@ class AppStateManager {
     private async _fetchLogs(buildId: string): Promise<void> {
         const apiUrl = getDashboardApiUrl();
 
+        // Build filter params from current state
+        const params: Record<string, string | number> = {
+            build_id: buildId,
+            limit: 10000,
+        };
+
+        // Add level filter (comma-separated)
+        if (this._state.enabledLogLevels.length > 0) {
+            params.levels = this._state.enabledLogLevels.join(',');
+        }
+
         try {
             const response = await axios.get<LogQueryResponse>(
                 `${apiUrl}/api/logs/query`,
                 {
-                    params: {
-                        build_id: buildId,
-                        limit: 10000,
-                    },
+                    params,
                     timeout: 5000,
                 }
             );
@@ -387,6 +417,15 @@ class AppStateManager {
             // Track the highest log ID for incremental updates
             if (response.data.logs.length > 0) {
                 this._lastLogId = Math.max(...response.data.logs.map(l => l.id));
+
+                // Extract build info from first log entry (all logs share same build info)
+                const firstLog = response.data.logs[0];
+                this._state.currentBuildInfo = {
+                    buildId: firstLog.build_id,
+                    projectPath: firstLog.project_path,
+                    target: firstLog.target,
+                    timestamp: firstLog.build_timestamp,
+                };
             }
 
             // Update state with new entries

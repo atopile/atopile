@@ -235,6 +235,39 @@
   color: var(--text-secondary);
 }
 
+/* Build Info Bar */
+.log-build-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.build-info-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.build-info-item svg {
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.build-info-sep {
+  opacity: 0.4;
+}
+
+.build-info-item.build-id {
+  font-family: var(--font-mono);
+  opacity: 0.7;
+}
+
 /* Log Content */
 .log-content {
   flex: 1;
