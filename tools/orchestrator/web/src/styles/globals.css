@@ -13,6 +13,17 @@
 body {
   @apply bg-gray-900 text-gray-100;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 80%;
+}
+
+/* Root scaling - 80% default */
+html {
+  font-size: 80%;
+}
+
+/* Reset scaling for specific elements that need full size */
+.no-scale {
+  font-size: 125%; /* 1/0.8 = 1.25 to restore to 100% */
 }
 
 /* Custom scrollbar */
@@ -269,6 +280,11 @@ body {
 
 /* Mobile responsive utilities */
 @media (max-width: 767px) {
+  /* Prevent zoom on input focus - requires 16px minimum font size */
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+
   /* Ensure proper touch targets on mobile */
   .btn-sm {
     @apply px-3 py-2;
@@ -298,5 +314,205 @@ body {
   .pipeline-node {
     @apply p-4;
     min-width: 200px;
+  }
+
+  /* Agent detail mobile improvements */
+  .agent-header-mobile {
+    @apply px-3 py-2;
+  }
+
+  .agent-stats-mobile {
+    @apply px-3 py-1.5 text-xs;
+  }
+
+  /* Smaller output stream padding on mobile */
+  .output-stream {
+    @apply px-2 py-2;
+  }
+
+  /* Tighter spacing for conversation items on mobile */
+  .output-stream .prose {
+    @apply text-sm;
+  }
+
+  .output-stream .prose p {
+    @apply my-1;
+  }
+
+  /* Collapsible message icons smaller on mobile */
+  .mobile-avatar {
+    @apply w-6 h-6;
+  }
+
+  .mobile-avatar svg {
+    @apply w-3 h-3;
+  }
+}
+
+/* Compact mode for mobile conversation */
+.conversation-compact .prose {
+  @apply text-sm leading-relaxed;
+}
+
+.conversation-compact .prose pre {
+  @apply text-xs p-2;
+}
+
+.conversation-compact .prose code {
+  @apply text-xs;
+}
+
+/* Markdown table styles for prose */
+.prose table {
+  @apply w-full border-collapse my-3;
+}
+
+.prose thead {
+  @apply border-b border-gray-600;
+}
+
+.prose th {
+  @apply text-left py-2 px-3 font-semibold text-gray-200 bg-gray-800/50;
+}
+
+.prose td {
+  @apply py-2 px-3 border-b border-gray-700/50;
+}
+
+.prose tr:hover {
+  @apply bg-gray-800/30;
+}
+
+.prose tbody tr:last-child td {
+  @apply border-b-0;
+}
+
+/* Diff2html dark theme overrides */
+.diff-viewer .d2h-wrapper {
+  @apply bg-transparent;
+}
+
+.diff-viewer .d2h-file-wrapper {
+  @apply border-0 bg-transparent;
+}
+
+.diff-viewer .d2h-file-header {
+  display: none; /* We have our own header */
+}
+
+.diff-viewer .d2h-diff-table {
+  @apply text-xs font-mono;
+}
+
+.diff-viewer .d2h-code-linenumber {
+  @apply bg-gray-800 text-gray-500 border-r border-gray-700 select-none;
+  width: 40px;
+  min-width: 40px;
+}
+
+.diff-viewer .d2h-code-line {
+  @apply bg-gray-900;
+  padding: 0 8px;
+}
+
+.diff-viewer .d2h-code-line-ctn {
+  @apply text-gray-300;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* Addition styles */
+.diff-viewer .d2h-ins {
+  @apply bg-green-900/30;
+}
+
+.diff-viewer .d2h-ins .d2h-code-line-ctn {
+  @apply text-green-300;
+}
+
+.diff-viewer .d2h-code-linenumber.d2h-ins {
+  @apply bg-green-900/50 text-green-400;
+}
+
+.diff-viewer ins.d2h-change {
+  @apply bg-green-700/50 no-underline;
+}
+
+/* Deletion styles */
+.diff-viewer .d2h-del {
+  @apply bg-red-900/30;
+}
+
+.diff-viewer .d2h-del .d2h-code-line-ctn {
+  @apply text-red-300;
+}
+
+.diff-viewer .d2h-code-linenumber.d2h-del {
+  @apply bg-red-900/50 text-red-400;
+}
+
+.diff-viewer del.d2h-change {
+  @apply bg-red-700/50 no-underline;
+}
+
+/* Info/context line */
+.diff-viewer .d2h-info {
+  @apply bg-blue-900/20 text-blue-400;
+}
+
+/* Side-by-side specific */
+.diff-viewer .d2h-file-side-diff {
+  @apply border-gray-700;
+  width: 50%;
+}
+
+.diff-viewer .d2h-file-side-diff:first-child {
+  @apply border-r;
+}
+
+/* Empty placeholder for side-by-side */
+.diff-viewer .d2h-emptyplaceholder {
+  @apply bg-gray-800/50;
+}
+
+/* Line-by-line (unified) specific */
+.diff-viewer .d2h-diff-tbody tr {
+  @apply border-b border-gray-800;
+}
+
+.diff-viewer .d2h-diff-tbody tr:last-child {
+  @apply border-b-0;
+}
+
+/* Mobile-specific diff viewer styles */
+@media (max-width: 640px) {
+  .diff-viewer .d2h-file-side-diff {
+    width: 100% !important;
+    min-width: 100%;
+  }
+
+  .diff-viewer .d2h-code-linenumber {
+    width: 32px;
+    min-width: 32px;
+    font-size: 10px;
+    padding: 0 4px;
+  }
+
+  .diff-viewer .d2h-code-line {
+    padding: 0 4px;
+  }
+
+  .diff-viewer .d2h-code-line-ctn {
+    font-size: 11px;
+  }
+
+  /* Force unified view on very small screens for side-by-side */
+  .diff-viewer .d2h-file-diff {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .diff-viewer .d2h-diff-table {
+    min-width: 400px;
   }
 }
