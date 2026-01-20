@@ -507,7 +507,6 @@ def test_not_correlated_doesnt_group():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     E = BoundExpressions(g=g, tg=tg)
-    solver = Solver()
 
     class _App(fabll.Node):
         r1 = F.Resistor.MakeChild()
@@ -521,7 +520,7 @@ def test_not_correlated_doesnt_group():
     E.not_(E.correlated(r1_resistance, r2_resistance))
 
     tree = get_pick_tree(app)
-    groups = find_independent_groups(tree.keys(), solver)
+    groups = find_independent_groups(tree.keys())
 
     assert len(groups) == 2
 
@@ -536,7 +535,6 @@ def test_find_groups_transitive_override():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     E = BoundExpressions(g=g, tg=tg)
-    solver = Solver()
 
     class _App(fabll.Node):
         r1 = F.Resistor.MakeChild()
@@ -567,7 +565,7 @@ def test_find_groups_transitive_override():
     E.not_(E.correlated(r1_r, r3_r))
 
     tree = get_pick_tree(app)
-    groups = find_independent_groups(tree.keys(), solver)
+    groups = find_independent_groups(tree.keys())
 
     pickables = list(tree.keys())
     r1_pickable = next(p for p in pickables if p.get_pickable_node() == app.r1.get())

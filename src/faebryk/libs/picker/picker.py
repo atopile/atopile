@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from itertools import combinations
@@ -229,7 +228,7 @@ def _get_anticorrelated_pairs(tg) -> set[frozenset["F.Parameters.is_parameter"]]
 
 
 def find_independent_groups(
-    modules: Iterable["F.Pickable.is_pickable"], solver: Solver
+    modules: Iterable["F.Pickable.is_pickable"],
 ) -> list[set["F.Pickable.is_pickable"]]:
     """
     Find groups of modules that are independent of each other.
@@ -333,15 +332,26 @@ def _infer_uncorrelated_params(tree: Tree["F.Pickable.is_pickable"]):
 
     g = next(iter(uncorrelated_params)).g
     tg = next(iter(uncorrelated_params)).tg
-
-    F.Expressions.Not.c(
-        F.Expressions.Correlated.c(
-            *[p.as_operand.get() for p in uncorrelated_params], g=g, tg=tg
-        ),
-        g=g,
-        tg=tg,
-        assert_=True,
+    corr = F.Expressions.Correlated.c(
+        *[p.as_operand.get() for p in uncorrelated_params], g=g, tg=tg
     )
+    F.Expressions.Not.c(corr, g=g, tg=tg, assert_=True)
+
+
+def _collect_relevant_params(
+    modules: Iterable["F.Pickable.is_pickable"],
+) -> list["F.Parameters.can_be_operand"]:
+    """Collect all pickable parameters from modules."""
+    return [
+        p.as_operand.get()
+        for m in modules
+        if (
+            pbt := m.get_parent_of_type(
+                F.Pickable.is_pickable_by_type, direct_only=True, include_root=False
+            )
+        )
+        for p in pbt.get_params()
+    ]
 
 
 def _format_pcb_contradiction_error(
@@ -407,13 +417,54 @@ def _format_pcb_contradiction_error(
     return "\n".join(lines)
 
 
+def _pick_group_recursive(
+    modules: set["F.Pickable.is_pickable"],
+    solver: Solver,
+    progress: Advancable | None,
+    picker_lib,
+) -> None:
+    """
+    Recursively pick all modules in a group.
+
+    Each recursion level forks the solver to isolate simplification state.
+    """
+
+    if not modules:
+        return
+
+    if not (relevant := _collect_relevant_params(modules)):
+        return
+
+    g, tg = next(iter(relevant)).g, next(iter(relevant)).tg
+    solver.simplify(g, tg, terminal=False, relevant=relevant)
+    candidates = picker_lib.get_candidates(_list_to_hack_tree(modules), solver)
+
+    if no_candidates := [m for m, cs in candidates.items() if not cs]:
+        raise PickError(f"No candidates found for {no_candidates}", *no_candidates)
+
+    groups = find_independent_groups(modules)
+
+    for group in groups:
+        group_solver = next(solver.fork())
+
+        # Prioritize most-constrained module (heuristic: fewest candidates)
+        module = min(group, key=lambda m: len(candidates[m]))
+        part = next(iter(candidates[module]))
+
+        logger.info(f"Picking {module.get_pickable_node()}")
+        picker_lib.attach_single_no_check(module, part, group_solver)
+        if progress:
+            progress.advance()
+
+        if remaining := group - {module}:
+            _pick_group_recursive(remaining, group_solver, progress, picker_lib)
+
+
 def pick_topologically(
     tree: Tree["F.Pickable.is_pickable"],
     solver: Solver,
     progress: Advancable | None = None,
 ):
-    # TODO implement backtracking
-
     import faebryk.libs.picker.api.picker_lib as picker_lib
 
     def _pick_explicit_modules(explicit_modules: list["F.Pickable.is_pickable"]):
@@ -427,16 +478,6 @@ def pick_topologically(
                 progress.advance()
 
     timings = Times(name="pick")
-
-    def _relevant_params(m: F.Pickable.is_pickable) -> set[F.Parameters.can_be_operand]:
-        pbt = m.get_parent_of_type(
-            F.Pickable.is_pickable_by_type, direct_only=True, include_root=False
-        )
-        if not pbt:
-            return set()
-        params = pbt.get_params()
-        return {p.as_operand.get() for p in params}
-
     tree_backup = set(tree.keys())
     _pick_count = len(tree)
 
@@ -454,80 +495,50 @@ def pick_topologically(
     _infer_uncorrelated_params(tree)
 
     timings.add("setup")
-    relevant = [rp for m in tree.keys() for rp in _relevant_params(m)]
-    with timings.measure("parallel slow-pick"):
-        if relevant:
-            g = relevant[0].g
-            tg = relevant[0].tg
-            logger.info(f"Simplifying with {len(relevant)} relevant parameters")
-            with timings.measure("simplify"):
-                solver.simplify(g, tg, terminal=False, relevant=relevant)
-            logger.info(f"Solved in {timings.get_formatted('simplify')}")
-            with timings.measure("get candidates"):
-                candidates = picker_lib.get_candidates(tree, solver)
-            no_candidates = [m for m, cs in candidates.items() if not cs]
-            if no_candidates:
-                raise PickError(
-                    f"No candidates found for {no_candidates}", *no_candidates
-                )
 
-            while tree:
-                groups = find_independent_groups(tree.keys(), solver)
-                # pick module with least candidates first
-                picked = [
-                    (
-                        m := min(group, key=lambda _m: len(candidates[_m])),
-                        candidates[m][0],
-                    )
-                    for group in groups
-                ]
-                logger.info(f"Picking {len(groups)} independent groups")
-                for m, part in picked:
-                    logger.info(f"Picking {m.get_pickable_node()}")
-                    picker_lib.attach_single_no_check(m, part, solver)
-                    if progress:
-                        progress.advance()
-                tree, _ = update_pick_tree(tree)
-                if not tree:
-                    break
-                relevant = [rp for m in tree.keys() for rp in _relevant_params(m)]
-                g = relevant[0].g
-                tg = relevant[0].tg
-                if not relevant:
-                    break
-                now = time.perf_counter()
-                with timings.measure("simplify"):
-                    solver.simplify(g, tg, terminal=False, relevant=relevant)
-                logger.info(f"Solved in {(time.perf_counter() - now) * 1000:.3f}ms")
-                with timings.measure("get candidates"):
-                    candidates = picker_lib.get_candidates(tree, solver)
-                no_candidates = [m for m, cs in candidates.items() if not cs]
-                if no_candidates:
-                    raise PickError(
-                        f"No candidates found for {no_candidates}", *no_candidates
-                    )
+    all_modules = set(tree.keys())
+    relevant = _collect_relevant_params(all_modules)
+
+    with timings.measure("recursive pick"):
+        if relevant:
+            g, tg = next(iter(relevant)).g, next(iter(relevant)).tg
+
+            with timings.measure("initial simplify"):
+                logger.info(f"Simplifying with {len(relevant)} relevant parameters")
+                solver.simplify(g, tg, terminal=False, relevant=relevant)
+
+            logger.info(
+                f"Initial simplify in {timings.get_formatted('initial simplify')}"
+            )
+
+            groups = find_independent_groups(all_modules)
+            logger.info(f"Found {len(groups)} independent groups")
+
+            for group in groups:
+                group_solver = next(solver.fork())
+                _pick_group_recursive(group, group_solver, progress, picker_lib)
 
     if _pick_count:
-        logger.info(
-            f"Slow-picked parts in {timings.get_formatted('parallel slow-pick')}"
-        )
+        logger.info(f"Picked parts in {timings.get_formatted('recursive pick')}")
 
     logger.info(f"Picked complete: picked {_pick_count} parts")
-    relevant = [rp for m in tree_backup for rp in _relevant_params(m)]
+
+    relevant = _collect_relevant_params(tree_backup)
     if relevant:
+        g, tg = next(iter(relevant)).g, next(iter(relevant)).tg
+
+        # Update original solver with all picks (for caller to use)
+        # TODO: solver.commit()
+        with timings.measure("final non-terminal simplify"):
+            solver.simplify(g, tg, terminal=False, relevant=relevant)
+
         with timings.measure("verify design"):
             logger.info("Verify design")
-            # hack
-            n = next(iter(relevant), None)
-            if n:
-                g = n.g
-                tg = n.tg
-                try:
-                    solver.simplify(g, tg, terminal=True, relevant=relevant)
-                except Contradiction as e:
-                    # Check if PCB-sourced constraints are involved
-                    error_msg = _format_pcb_contradiction_error(e, tg)
-                    raise PickVerificationError(error_msg, *tree_backup) from e
+            try:
+                solver.simplify(g, tg, terminal=True, relevant=relevant)
+            except Contradiction as e:
+                error_msg = _format_pcb_contradiction_error(e, tg)
+                raise PickVerificationError(error_msg, *tree_backup) from e
         logger.info(f"Verified design in {timings.get_formatted('verify design')}")
     else:
         logger.info("No relevant parameters to verify design with")

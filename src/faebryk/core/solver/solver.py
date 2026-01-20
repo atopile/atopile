@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Generator
 from dataclasses import dataclass
 from itertools import count
 from typing import TYPE_CHECKING
@@ -287,17 +288,20 @@ class Solver:
     @classmethod
     def from_initial_state(cls, state: SolverState) -> Solver:
         out = Solver()
-        out.state = state.compressed()
+        out.state = state
         return out
 
-    def fork(self) -> Solver:
+    def fork(self) -> Generator[Solver, None, None]:
         if self.state is None:
             raise ValueError("Forking failed: state is uninitialized")
 
         if self._terminal:
             raise ValueError("Forking failed: terminal algorithms already run")
 
-        return Solver.from_initial_state(self.state)
+        compressed = self.state.compressed()
+
+        while True:
+            yield Solver.from_initial_state(compressed)
 
 
 # Tests --------------------------------------------------------------------------------

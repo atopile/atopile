@@ -1016,10 +1016,20 @@ class MutationMap:
                 g_out.destroy()
                 return initial_state
 
+            # Overlapping ops
+            mapped_ops_in_out = []
             for op in relevant_ops & prev_ops:
                 mapped = initial_state.map_forward(op)
                 if mapped.maps_to is not None:
                     mapped.maps_to.copy_into(g_out)
+                    mapped_ops_in_out.append(mapped.maps_to)
+
+            # Predicates that constrain overlapping ops
+            if mapped_ops_in_out:
+                for pred in MutatorUtils.get_relevant_predicates(
+                    *[op.as_operand.get() for op in mapped_ops_in_out]
+                ):
+                    pred.copy_into(g_out)
 
             if new_ops := [op.as_operand.get() for op in relevant_ops - prev_ops]:
                 for operand in new_ops:
@@ -1027,14 +1037,21 @@ class MutationMap:
 
                 for pred in MutatorUtils.get_relevant_predicates(*new_ops):
                     pred.copy_into(g_out)
+
+            ops_copied_from_initial = set(relevant_ops & prev_ops)
         else:
             for pred in relevant_root_predicates:
                 # this enforces invariants provided we later run canonicalization +
                 # an algo with force_copy=True
                 pred.copy_into(g_out)
 
+            ops_copied_from_initial = set()
+
         for op in relevant:
-            if not op.is_in_graph(g_out):
+            if (
+                op.as_parameter_operatable.force_get() not in ops_copied_from_initial
+                and not op.is_in_graph(g_out)
+            ):
                 op.copy_into(g_out)
 
         all_ops_out = F.Parameters.is_parameter_operatable.bind_typegraph(
@@ -1049,9 +1066,13 @@ class MutationMap:
         }
 
         if initial_state is not None:
-            full_mapping = (
-                initial_state.compressed_mapping_forwards_complete
-            ) | new_mapping
+            initial_mapping_rebound = {
+                k: F.Parameters.is_parameter_operatable.bind_instance(
+                    g_out.bind(node=v.instance.node())
+                )
+                for k, v in initial_state.compressed_mapping_forwards_complete.items()
+            }
+            full_mapping = initial_mapping_rebound | new_mapping
             algo_name = "bootstrap_resume"
         else:
             full_mapping = new_mapping
