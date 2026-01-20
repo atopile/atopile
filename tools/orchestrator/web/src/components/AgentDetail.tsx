@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Square, Send, X, Clock, Cpu, Hash, Code, RotateCcw, Pencil, Check, History, Sparkles, Settings, ChevronDown, ChevronUp } from 'lucide-react';
 import type { AgentViewModel } from '@/logic/viewmodels';
-import { useDispatch, useAgentOutput, useLoading, useMobile } from '@/hooks';
+import { useDispatch, useAgentOutput, useLoading, useMobile, useMobileGestures } from '@/hooks';
 import { StatusBadge } from './StatusBadge';
 import { OutputStream } from './OutputStream';
 import { VimTextarea } from './VimTextarea';
@@ -66,71 +66,21 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
   const [showCompletionSettings, setShowCompletionSettings] = useState(false);
   const [showStats, setShowStats] = useState(!isMobile); // Collapsed by default on mobile
   const settingsPopoverRef = useRef<HTMLDivElement>(null);
-
-  // Mobile: header visibility on scroll
-  const [showMobileHeader, setShowMobileHeader] = useState(false);
-  const lastScrollY = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Mobile: swipe to close
-  const touchStartX = useRef(0);
-  const touchStartY = useRef(0);
-  const [swipeOffset, setSwipeOffset] = useState(0);
-  const isSwipingRef = useRef(false);
-
-  // Handle scroll to show/hide mobile header
-  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    if (!isMobile) return;
-    const currentScrollY = e.currentTarget.scrollTop;
-
-    // Show header when scrolling up, hide when scrolling down
-    if (currentScrollY < lastScrollY.current - 10) {
-      setShowMobileHeader(true);
-    } else if (currentScrollY > lastScrollY.current + 10) {
-      setShowMobileHeader(false);
-    }
-
-    // Always show header at top
-    if (currentScrollY < 20) {
-      setShowMobileHeader(true);
-    }
-
-    lastScrollY.current = currentScrollY;
-  }, [isMobile]);
-
-  // Touch handlers for swipe to close
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (!isMobile || !onClose) return;
-    touchStartX.current = e.touches[0].clientX;
-    touchStartY.current = e.touches[0].clientY;
-    isSwipingRef.current = false;
-  }, [isMobile, onClose]);
-
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!isMobile || !onClose) return;
-
-    const deltaX = e.touches[0].clientX - touchStartX.current;
-    const deltaY = e.touches[0].clientY - touchStartY.current;
-
-    // Only swipe if horizontal movement is greater than vertical
-    if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 20) {
-      isSwipingRef.current = true;
-      // Only allow right swipe (positive deltaX)
-      setSwipeOffset(Math.min(deltaX, 200));
-    }
-  }, [isMobile, onClose]);
-
-  const handleTouchEnd = useCallback(() => {
-    if (!isMobile || !onClose) return;
-
-    // If swiped more than 100px, close
-    if (swipeOffset > 100 && isSwipingRef.current) {
-      onClose();
-    }
-
-    setSwipeOffset(0);
-    isSwipingRef.current = false;
-  }, [isMobile, onClose, swipeOffset]);
+  // Mobile gestures hook
+  const {
+    showMobileHeader,
+    handleScroll,
+    swipeOffset,
+    swipeOpacity,
+    handleTouchStart,
+    handleTouchMove,
+    handleTouchEnd,
+  } = useMobileGestures({
+    enabled: isMobile,
+    onSwipeClose: onClose,
+  });
 
   // Close settings popover when clicking outside
   useEffect(() => {
@@ -294,9 +244,6 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
     const mins = Math.floor((seconds % 3600) / 60);
     return `${hours}h ${mins}m`;
   };
-
-  // Calculate swipe opacity for visual feedback
-  const swipeOpacity = isMobile ? Math.max(0, 1 - swipeOffset / 200) : 1;
 
   return (
     <div
