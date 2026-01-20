@@ -15,7 +15,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Callable
 
-import pathvalidate
 import typer
 from rich.console import Console
 
@@ -215,9 +214,9 @@ class BuildProcess:
         self._event_rfd: int | None = None
         self._event_wfd: int | None = None
         self._event_buffer: bytes = b""
-        self._stage_printer: Callable[[StageCompleteEvent, Path | None], None] | None = (
-            None
-        )
+        self._stage_printer: (
+            Callable[[StageCompleteEvent, Path | None], None] | None
+        ) = None
 
     def start(self) -> None:
         """Start the build subprocess."""
@@ -454,6 +453,7 @@ class BuildProcess:
             except subprocess.TimeoutExpired:
                 self.process.kill()
 
+
 class ParallelBuildManager:
     """Manages multiple build processes with live display and job queue."""
 
@@ -539,8 +539,8 @@ class ParallelBuildManager:
         self._Table = Table
         self._live: Live | None = None
 
-        # Write initial summary immediately so the UI shows builds as "queued" right away
-        # This reduces the delay between when a build is requested and when the UI updates
+        # Write initial summary immediately so UI shows builds as "queued" right away
+        # This reduces delay between when a build is requested and when the UI updates
         self._write_live_summary()
 
     def _start_next_build(self) -> bool:
@@ -1044,7 +1044,9 @@ class ParallelBuildManager:
                                     )
                                     bp._error_reported = True
                                 elif ret != 0 and not bp._error_reported:
-                                    console.print(f"[red bold]✗ {display_name}[/red bold]\n")
+                                    console.print(
+                                        f"[red bold]✗ {display_name}[/red bold]\n"
+                                    )
                                     bp._error_reported = True
                                 elif ret == 0 and bp.warnings > 0:
                                     console.print(
@@ -1121,7 +1123,10 @@ class ParallelBuildManager:
         # Use resolved absolute path to ensure consistency with subprocess
         project_path = str(bp.project_root.resolve()) if bp.project_root else "unknown"
         build_id = generate_build_id(project_path, bp.name, self._now)
-        logger.debug(f"Summary build_id: {build_id} (project={project_path}, target={bp.name}, ts={self._now})")
+        logger.debug(
+            f"Summary build_id: {build_id} "
+            + f"(project={project_path}, target={bp.name}, ts={self._now})"
+        )
 
         data = {
             "name": bp.name,  # Target name for matching
@@ -1498,6 +1503,7 @@ def build(
 
     # Flush and close all build loggers to ensure logs are written to SQLite
     from atopile.logging import close_all_build_loggers
+
     close_all_build_loggers()
 
     failed = [name for name, code in results.items() if code != 0]
@@ -1532,17 +1538,27 @@ def build(
                 logger.warning(f"{e}\nReload pcb manually in KiCAD")
 
     # Keep dashboard server running after build completes
+    # Skip waiting in CI environments to prevent hangs
+    is_ci = (
+        os.getenv("CI")
+        or os.getenv("GITHUB_ACTIONS")
+        or os.getenv("CONTINUOUS_INTEGRATION")
+    )
     if dashboard_server:
-        logger.info("Dashboard still available at: %s", dashboard_url)
-        logger.info("Press Ctrl+C to stop")
-        try:
-            # Wait until interrupted (cross-platform)
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            logger.info("Shutting down dashboard...")
-        finally:
+        if is_ci:
+            logger.info("CI environment detected, shutting down dashboard immediately")
             dashboard_server.shutdown()
+        else:
+            logger.info("Dashboard still available at: %s", dashboard_url)
+            logger.info("Press Ctrl+C to stop")
+            try:
+                # Wait until interrupted (cross-platform)
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                logger.info("Shutting down dashboard...")
+            finally:
+                dashboard_server.shutdown()
 
     # Exit with appropriate code after dashboard is closed
     if build_exit_code != 0:
