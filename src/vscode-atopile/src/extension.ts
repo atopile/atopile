@@ -14,7 +14,6 @@ import { onBuildTargetChanged } from './common/target';
 import { Build } from './common/manifest';
 import { openPackageExplorer } from './ui/packagexplorer';
 import * as llm from './common/llm';
-import { backendServer } from './common/backendServer';
 import { appStateManager } from './common/appState';
 
 export let g_lsClient: LanguageClient | undefined;
@@ -101,14 +100,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     await initServer(context);
 
-    // Start monitoring the backend server connection
-    context.subscriptions.push(
-        backendServer.onStatusChange((connected) => {
-            traceInfo(`Backend server: ${connected ? 'connected' : 'disconnected'}`);
-            appStateManager.setBackendRunning(connected);
-        })
-    );
-    backendServer.startMonitoring();
+    // Backend server connection is now tracked via WebSocket in appStateManager
+    // No HTTP polling needed - appStateManager.startListening() handles it
 
     await ui.activate(context);
     await llm.activate(context);
@@ -125,8 +118,6 @@ export async function deactivate(): Promise<void> {
         await g_lsClient.stop();
     }
 
-    // Stop monitoring the backend server
-    backendServer.stopMonitoring();
 
     deinitializeTelemetry();
 }

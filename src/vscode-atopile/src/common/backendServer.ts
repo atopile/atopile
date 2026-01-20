@@ -2,15 +2,15 @@
  * Backend server client for the atopile dashboard API.
  *
  * The server must be started manually via the Server button in the sidebar.
+ * Connection status is tracked via WebSocket connection in appStateManager.
  */
 
 import * as vscode from 'vscode';
 import axios from 'axios';
-import { traceInfo, traceError, traceVerbose } from './log/logging';
+import { traceInfo, traceError } from './log/logging';
 import { getAtoBin } from './findbin';
 
 const DEFAULT_API_URL = 'http://localhost:8501';
-const HEALTH_CHECK_INTERVAL = 2000;
 
 interface BuildRequest {
     project_path: string;
@@ -31,7 +31,6 @@ function getApiUrl(): string {
 
 class BackendServerClient {
     private _isConnected: boolean = false;
-    private _healthCheckTimer: NodeJS.Timeout | null = null;
 
     private readonly _onStatusChange = new vscode.EventEmitter<boolean>();
     public readonly onStatusChange = this._onStatusChange.event;
@@ -45,20 +44,18 @@ class BackendServerClient {
     }
 
     /**
-     * Start monitoring the backend server connection.
+     * Update connection status (called from appStateManager when WebSocket connects/disconnects).
      */
-    startMonitoring(): void {
-        this._checkHealth();
-        this._healthCheckTimer = setInterval(() => this._checkHealth(), HEALTH_CHECK_INTERVAL);
-    }
+    setConnected(connected: boolean): void {
+        if (this._isConnected !== connected) {
+            this._isConnected = connected;
+            traceInfo(`BackendServer: ${connected ? 'Connected' : 'Disconnected'}`);
+            this._onStatusChange.fire(connected);
 
-    /**
-     * Stop monitoring.
-     */
-    stopMonitoring(): void {
-        if (this._healthCheckTimer) {
-            clearInterval(this._healthCheckTimer);
-            this._healthCheckTimer = null;
+            // Configure ato binary path on first connection
+            if (connected) {
+                this._configureAtoBinary();
+            }
         }
     }
 
@@ -89,26 +86,6 @@ class BackendServerClient {
                 throw new Error(`Build failed: ${detail}`);
             }
             throw error;
-        }
-    }
-
-    private async _checkHealth(): Promise<void> {
-        try {
-            await axios.get(`${this.apiUrl}/api/status`, { timeout: 2000 });
-            if (!this._isConnected) {
-                this._isConnected = true;
-                traceInfo('BackendServer: Connected');
-                this._onStatusChange.fire(true);
-
-                // Configure ato binary path on first connection
-                this._configureAtoBinary();
-            }
-        } catch {
-            if (this._isConnected) {
-                this._isConnected = false;
-                traceVerbose('BackendServer: Disconnected');
-                this._onStatusChange.fire(false);
-            }
         }
     }
 
@@ -185,7 +162,6 @@ class BackendServerClient {
     }
 
     dispose(): void {
-        this.stopMonitoring();
         this._onStatusChange.dispose();
     }
 }

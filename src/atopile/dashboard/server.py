@@ -160,6 +160,67 @@ def _sync_broadcast(event_type: str, data: dict) -> None:
     asyncio.run_coroutine_threadsafe(_ws_manager.broadcast(message), _event_loop)
 
 
+def _get_project_summary(project_path: str) -> dict:
+    """
+    Get the build summary for a project.
+
+    Returns a summary dict with builds, totals, and timestamp.
+    This is the same data as the /api/summary endpoint but callable from sync context.
+    """
+    empty_response = {
+        "timestamp": None,
+        "totals": {
+            "builds": 0,
+            "successful": 0,
+            "failed": 0,
+            "warnings": 0,
+            "errors": 0,
+        },
+        "builds": [],
+        "project_path": project_path,
+    }
+
+    project_root = Path(project_path)
+    if not project_root.exists():
+        return empty_response
+
+    builds_dir = project_root / "build" / "builds"
+    if not builds_dir.exists():
+        return empty_response
+
+    builds = []
+    for summary_file in builds_dir.glob("*/build_summary.json"):
+        try:
+            build_data = json.loads(summary_file.read_text())
+            build_data["project_path"] = str(project_root)
+            builds.append(build_data)
+        except (json.JSONDecodeError, OSError) as e:
+            log.warning(f"Failed to read build summary {summary_file}: {e}")
+            continue
+
+    total = len(builds)
+    success = sum(1 for b in builds if b.get("status") in ("success", "warning"))
+    failed = sum(1 for b in builds if b.get("status") == "failed")
+    warnings = sum(b.get("warnings", 0) for b in builds)
+    errors = sum(b.get("errors", 0) for b in builds)
+
+    timestamps = [b.get("timestamp") for b in builds if b.get("timestamp")]
+    timestamp = max(timestamps) if timestamps else None
+
+    return {
+        "timestamp": timestamp,
+        "totals": {
+            "builds": total,
+            "successful": success,
+            "failed": failed,
+            "warnings": warnings,
+            "errors": errors,
+        },
+        "builds": builds,
+        "project_path": project_path,
+    }
+
+
 def _get_latest_build_id(project_path: str, target: str) -> Optional[tuple[str, str]]:
     """
     Get the latest build_id and completion timestamp for a project/target.
@@ -635,6 +696,18 @@ def create_app(
                             )
                             log.info(f"Client {client_id} unsubscribed from logs")
 
+                        elif msg_type == "request_summary":
+                            # Client requests current summary for a project
+                            project_path = msg_data.get("project_path", "")
+                            if project_path:
+                                summary = _get_project_summary(project_path)
+                                await websocket.send_json(
+                                    {"type": "summary_updated", "data": summary}
+                                )
+                                log.info(f"Client {client_id} requested summary for {project_path}")
+                            else:
+                                log.warning(f"Client {client_id} requested summary without project_path")
+
                         else:
                             log.debug(f"Unknown message type from {client_id}: {msg_type}")
 
@@ -744,20 +817,14 @@ def create_app(
                     time.sleep(0.1)  # Short sleep for responsive completion detection
                     now = time.time()
 
-                    # Send periodic summary updates
+                    # Send periodic summary updates with full summary data
                     if now - last_summary_update >= summary_interval:
                         last_summary_update = now
                         log.debug(
                             f"Build {build_id} still running, sending summary update"
                         )
-                        _sync_broadcast(
-                            "summary_updated",
-                            {
-                                "project_path": str(project_path),
-                                "build_id": build_id,
-                                "status": "building",
-                            },
-                        )
+                        summary = _get_project_summary(str(project_path))
+                        _sync_broadcast("summary_updated", summary)
 
                 return_code = process.returncode
                 log.info(f"Build {build_id} completed with return code {return_code}")
@@ -774,13 +841,9 @@ def create_app(
                     },
                 )
 
-                # Also broadcast that summary may have changed
-                _sync_broadcast(
-                    "summary_updated",
-                    {
-                        "project_path": str(project_path),
-                    },
-                )
+                # Broadcast final summary with full data
+                summary = _get_project_summary(str(project_path))
+                _sync_broadcast("summary_updated", summary)
 
             monitor_thread = threading.Thread(target=monitor_build, daemon=True)
             monitor_thread.start()

@@ -336,13 +336,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
     }
 
-    // Start polling for build updates
-    appStateManager.startPolling(500);
+    // Start listening for build updates via WebSocket
+    appStateManager.startListening();
 
     traceInfo('vscode-panels: activated sidebar and log viewer');
 }
 
 export function deactivate(): void {
-    appStateManager.stopPolling();
+    appStateManager.stopListening();
     appStateManager.dispose();
 }

@@ -9,8 +9,8 @@
 
 import * as vscode from 'vscode';
 import * as WebSocket from 'ws';
-import axios from 'axios';
 import { traceInfo, traceError, traceVerbose } from './log/logging';
+import { backendServer } from './backendServer';
 
 // Types - import from shared location to avoid duplication
 export type BuildStatus = 'queued' | 'building' | 'success' | 'warning' | 'failed';
@@ -168,15 +168,13 @@ class AppStateManager {
         logoUri: '',
     };
 
-    private _pollTimer: NodeJS.Timeout | null = null;
-    private _logPollTimer: NodeJS.Timeout | null = null;
-    private _lastLogId: number = 0;
 
     // WebSocket connection
     private _ws: WebSocket | null = null;
     private _wsConnected: boolean = false;
     private _wsReconnectTimer: NodeJS.Timeout | null = null;
     private _wsClientId: string | null = null;
+    private _isListening: boolean = false;
 
     // Log subscription tracking
     private _isSubscribedToLogs: boolean = false;
@@ -260,7 +258,6 @@ class AppStateManager {
 
         // Clear existing logs - backend will send all matching logs after handshake
         this._state.logEntries = [];
-        this._lastLogId = 0;
         this._state.isLoadingLogs = true;
 
         // Send subscription request - include build_id if we have one
@@ -288,7 +285,6 @@ class AppStateManager {
 
         // Clear local logs - backend will re-send all matching logs
         this._state.logEntries = [];
-        this._lastLogId = 0;
         this._state.isLoadingLogs = true;
 
         // Send both level and stage filters
@@ -312,19 +308,12 @@ class AppStateManager {
         traceInfo('AppState: unsubscribed from logs');
     }
 
-    // --- Backend server status ---
-
-    setBackendRunning(running: boolean): void {
-        if (this._state.isBackendRunning !== running) {
-            this._state.isBackendRunning = running;
-            this._emit();
-
-            // When backend comes online and we're supposed to be listening, try to connect WebSocket
-            if (running && this._pollTimer && !this._wsConnected) {
-                traceInfo('AppState: backend server came online, connecting WebSocket');
-                this._connectWebSocket();
-            }
-        }
+    /**
+     * Request summary for a project via WebSocket.
+     */
+    private _requestSummary(projectPath: string): void {
+        this._sendWsMessage('request_summary', { project_path: projectPath });
+        traceInfo(`AppState: requested summary for ${projectPath}`);
     }
 
     // --- Extension info ---
@@ -354,16 +343,16 @@ class AppStateManager {
 
         // Clear selected build when switching projects to avoid showing logs from wrong project
         if (projectChanged) {
-            this._stopPollingLogs();
-            this._state.selectedBuildName = null;
+                        this._state.selectedBuildName = null;
             this._state.selectedBuildId = null;
             this._state.currentBuildInfo = null;
             this._state.logEntries = [];
             this._state.availableStages = [];
             this._state.enabledStages = [];
-            this._lastLogId = 0;
-            // Trigger immediate re-fetch with new project filter
-            this.fetchSummary();
+            // Request summary for new project via WebSocket
+            if (root && this._wsConnected) {
+                this._requestSummary(root);
+            }
         }
 
         this._emit();
@@ -375,16 +364,16 @@ class AppStateManager {
 
         // Clear selected build when switching projects to avoid showing logs from wrong project
         if (projectChanged) {
-            this._stopPollingLogs();
-            this._state.selectedBuildName = null;
+                        this._state.selectedBuildName = null;
             this._state.selectedBuildId = null;
             this._state.currentBuildInfo = null;
             this._state.logEntries = [];
             this._state.availableStages = [];
             this._state.enabledStages = [];
-            this._lastLogId = 0;
-            // Trigger immediate re-fetch with new project filter
-            this.fetchSummary();
+            // Request summary for new project via WebSocket
+            if (root && this._wsConnected) {
+                this._requestSummary(root);
+            }
         }
 
         this._emit();
@@ -410,15 +399,13 @@ class AppStateManager {
     selectBuild(buildName: string | null): void {
         // Unsubscribe from previous build's logs
         this._sendUnsubscribeLogs();
-        this._stopPollingLogs();
-
+        
         this._state.selectedBuildName = buildName;
         this._state.selectedBuildId = null;
         this._state.currentBuildInfo = null;
         this._state.logEntries = [];
         this._state.availableStages = [];
         this._state.enabledStages = [];
-        this._lastLogId = 0;
 
         const build = this._state.builds.find(b => b.display_name === buildName);
         if (build?.build_id) {
@@ -498,98 +485,64 @@ class AppStateManager {
         this._emit();
     }
 
-    // --- API polling ---
-
-    async fetchSummary(): Promise<void> {
-        const apiUrl = getDashboardApiUrl();
-
-        try {
-            // Build query params - filter by selected project if one is selected
-            const params: Record<string, string> = {};
-            if (this._state.selectedProjectRoot) {
-                params.project_path = this._state.selectedProjectRoot;
-            }
-
-            const response = await axios.get<BuildSummary>(`${apiUrl}/api/summary`, {
-                params,
-                timeout: 5000,
-            });
-            this._state.isConnected = true;
-
-            // Filter builds to only show those from the selected project (if any)
-            // This provides client-side filtering in case the API returns builds from other projects
-            let builds = response.data.builds;
-            if (this._state.selectedProjectRoot) {
-                builds = builds.filter(b =>
-                    !b.project_path || b.project_path === this._state.selectedProjectRoot
-                );
-            }
-            this._state.builds = builds;
-
-            // Auto-select first build if none selected (only from current project)
-            if (!this._state.selectedBuildName && this._state.builds.length > 0) {
-                await this.selectBuild(this._state.builds[0].display_name);
-                return;
-            }
-
-            // Update selectedBuildId if it changed (build_started SSE event handles log clearing)
-            if (this._state.selectedBuildName) {
-                const currentBuild = this._state.builds.find(
-                    b => b.display_name === this._state.selectedBuildName
-                );
-                if (currentBuild && currentBuild.build_id !== this._state.selectedBuildId) {
-                    traceInfo(`AppState: build_id updated for ${this._state.selectedBuildName}`);
-                    this._state.selectedBuildId = currentBuild.build_id;
-                }
-            }
-
-            this._emit();
-            traceVerbose(`AppState: fetched summary with ${this._state.builds.length} builds`);
-        } catch {
-            const wasConnected = this._state.isConnected;
-            this._state.isConnected = false;
-            if (wasConnected) {
-                this._emit();
-                traceInfo('AppState: disconnected from API');
-            }
-        }
-    }
+    // --- Summary handling ---
 
     /**
-     * Start listening for updates via WebSocket with polling fallback.
+     * Handle summary data received via WebSocket push.
+     * This avoids the need for HTTP polling when WebSocket is connected.
+     */
+    private _handleSummaryData(data: { builds: Build[]; project_path: string }): void {
+        this._state.isConnected = true;
+
+        // Filter builds to only show those from the selected project (if any)
+        let builds = data.builds || [];
+        if (this._state.selectedProjectRoot) {
+            builds = builds.filter(b =>
+                !b.project_path || b.project_path === this._state.selectedProjectRoot
+            );
+        }
+        this._state.builds = builds;
+
+        // Auto-select first build if none selected
+        if (!this._state.selectedBuildName && this._state.builds.length > 0) {
+            this.selectBuild(this._state.builds[0].display_name);
+            return;
+        }
+
+        // Update selectedBuildId if it changed
+        if (this._state.selectedBuildName) {
+            const currentBuild = this._state.builds.find(
+                b => b.display_name === this._state.selectedBuildName
+            );
+            if (currentBuild && currentBuild.build_id !== this._state.selectedBuildId) {
+                traceInfo(`AppState: build_id updated for ${this._state.selectedBuildName}`);
+                this._state.selectedBuildId = currentBuild.build_id;
+            }
+        }
+
+        this._emit();
+        traceVerbose(`AppState: received summary via WebSocket with ${this._state.builds.length} builds`);
+    }
+
+    // --- WebSocket connection ---
+
+    /**
+     * Start listening for updates via WebSocket.
      */
     startListening(): void {
         this.stopListening();
-        traceInfo('AppState: startListening() called - will connect to WebSocket');
-
-        // Initial data fetch
-        this.fetchSummary();
-
-        // Connect to WebSocket for real-time updates
-        traceInfo('AppState: calling _connectWebSocket()');
+        this._isListening = true;
+        traceInfo('AppState: startListening() called - connecting to WebSocket');
         this._connectWebSocket();
-
-        // Fallback: poll every 5 seconds in case WebSocket fails
-        this._pollTimer = setInterval(() => {
-            if (!this._wsConnected) {
-                traceVerbose('AppState: WebSocket not connected, using fallback poll');
-                this.fetchSummary();
-            }
-        }, 5000);
     }
 
     /**
      * Stop listening for updates.
      */
     stopListening(): void {
+        this._isListening = false;
         this._disconnectWebSocket();
-
-        if (this._pollTimer) {
-            clearInterval(this._pollTimer);
-            this._pollTimer = null;
-        }
-        this._stopPollingLogs();
-        traceInfo('AppState: stopped listening');
+                traceInfo('AppState: stopped listening');
     }
 
     /**
@@ -613,6 +566,8 @@ class AppStateManager {
                 traceInfo('AppState: WebSocket connected successfully');
                 this._wsConnected = true;
                 this._state.isConnected = true;
+                this._state.isBackendRunning = true;
+                backendServer.setConnected(true);
                 this._emit();
             });
 
@@ -628,7 +583,11 @@ class AppStateManager {
             this._ws.on('close', () => {
                 traceInfo('AppState: WebSocket connection closed');
                 this._wsConnected = false;
+                this._state.isConnected = false;
+                this._state.isBackendRunning = false;
                 this._ws = null;
+                backendServer.setConnected(false);
+                this._emit();
                 this._scheduleWSReconnect();
             });
 
@@ -639,7 +598,11 @@ class AppStateManager {
                     traceError(`AppState: WebSocket error: ${err.message}`);
                 }
                 this._wsConnected = false;
+                this._state.isConnected = false;
+                this._state.isBackendRunning = false;
                 this._ws = null;
+                backendServer.setConnected(false);
+                this._emit();
                 this._scheduleWSReconnect();
             });
         } catch (err) {
@@ -679,12 +642,12 @@ class AppStateManager {
         traceVerbose('AppState: scheduling WebSocket reconnect in 2 seconds');
         this._wsReconnectTimer = setTimeout(() => {
             this._wsReconnectTimer = null;
-            // Only reconnect if we're still supposed to be listening and backend is running
-            if (!this._wsConnected && this._pollTimer && this._state.isBackendRunning) {
-                traceInfo('AppState: attempting WebSocket reconnect');
+            // Reconnect if we're still supposed to be listening
+            if (!this._wsConnected && this._isListening) {
+                traceVerbose('AppState: attempting WebSocket reconnect');
                 this._connectWebSocket();
             } else {
-                traceVerbose(`AppState: skipping WebSocket reconnect (connected=${this._wsConnected}, polling=${!!this._pollTimer}, backendRunning=${this._state.isBackendRunning})`);
+                traceVerbose(`AppState: skipping WebSocket reconnect (connected=${this._wsConnected}, listening=${this._isListening})`);
             }
         }, 2000); // Reconnect after 2 seconds
     }
@@ -699,6 +662,10 @@ class AppStateManager {
             case 'connected':
                 this._wsClientId = data.client_id as string;
                 traceInfo(`AppState: WebSocket client ID: ${this._wsClientId}`);
+                // Request initial summary for selected project
+                if (this._state.selectedProjectRoot) {
+                    this._requestSummary(this._state.selectedProjectRoot);
+                }
                 // Re-subscribe to logs if we have a build selected
                 if (this._state.selectedBuildName && this._state.selectedBuildId) {
                     this._sendSubscribeLogs();
@@ -725,26 +692,26 @@ class AppStateManager {
                     this._state.availableStages = [];
                     this._state.enabledStages = [];
                     this._state.currentBuildInfo = null;
-                    this._lastLogId = 0;
-                    this._state.isLoadingLogs = false;
+                            this._state.isLoadingLogs = false;
                     this._emit();
                 }
-                // Refresh summary to show building status
-                this.fetchSummary();
+                // Server will send summary_updated with full data shortly
                 break;
             }
 
             case 'build_completed':
                 traceInfo(`AppState: build completed - success=${data.success}`);
-                // Refresh summary - logs come via WebSocket streaming
-                this.fetchSummary();
+                // Server sends summary_updated right after this with full data
                 break;
 
             case 'summary_updated':
-                // Project summary changed, refresh it
+                // Project summary pushed from server - use it directly
                 if (!this._state.selectedProjectRoot ||
                     data.project_path === this._state.selectedProjectRoot) {
-                    this.fetchSummary();
+                    this._handleSummaryData(data as {
+                        builds: Build[];
+                        project_path: string;
+                    });
                 }
                 break;
 
@@ -855,36 +822,12 @@ class AppStateManager {
             timestamp: firstLog.timestamp,
         };
 
-        // Update last_id for tracking
-        this._lastLogId = data.last_id;
-
         // Append logs to state
         this._state.logEntries = [...this._state.logEntries, ...newEntries];
         this._state.isLoadingLogs = false;
 
         this._emit();
         traceVerbose(`AppState: received ${data.count} log entries (last_id=${data.last_id})`);
-    }
-
-    // Legacy polling methods for backwards compatibility
-    startPolling(_interval?: number): void {
-        // Use new WebSocket-based listening (interval is ignored)
-        this.startListening();
-    }
-
-    stopPolling(): void {
-        this.stopListening();
-    }
-
-    // --- Log streaming (WebSocket only, no REST API fallback) ---
-
-    private _stopPollingLogs(): void {
-        // Clear legacy timer if any
-        if (this._logPollTimer) {
-            clearInterval(this._logPollTimer);
-            this._logPollTimer = null;
-        }
-        this._lastLogId = 0;
     }
 
     dispose(): void {
