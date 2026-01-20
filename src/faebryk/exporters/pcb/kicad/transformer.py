@@ -1632,7 +1632,9 @@ class PCB_Transformer:
 
         match obj:
             case kicad.pcb.Pad():
-                return obj.name
+                # Include position in identifier to handle duplicate pad names
+                # (e.g., mechanical mounting pads on switches)
+                return (obj.name, _round(obj.at.x, obj.at.y))
             case kicad.pcb.Property():
                 return obj.name
             # geos
