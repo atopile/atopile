@@ -2,6 +2,94 @@
 @tailwind components;
 @tailwind utilities;
 
+/* highlight.js dark theme (GitHub Dark style) */
+.hljs {
+  color: #c9d1d9;
+  background: transparent;
+}
+
+.hljs-comment,
+.hljs-punctuation {
+  color: #8b949e;
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-meta,
+.hljs-selector-attr,
+.hljs-selector-class,
+.hljs-selector-id {
+  color: #79c0ff;
+}
+
+.hljs-variable,
+.hljs-literal,
+.hljs-number,
+.hljs-doctag {
+  color: #a5d6ff;
+}
+
+.hljs-params {
+  color: #c9d1d9;
+}
+
+.hljs-function {
+  color: #d2a8ff;
+}
+
+.hljs-class,
+.hljs-tag,
+.hljs-title,
+.hljs-built_in {
+  color: #7ee787;
+}
+
+.hljs-keyword,
+.hljs-type,
+.hljs-builtin-name,
+.hljs-meta-keyword,
+.hljs-template-tag,
+.hljs-template-variable {
+  color: #ff7b72;
+}
+
+.hljs-string,
+.hljs-undefined {
+  color: #a5d6ff;
+}
+
+.hljs-regexp {
+  color: #7ee787;
+}
+
+.hljs-symbol,
+.hljs-bullet,
+.hljs-section,
+.hljs-quote,
+.hljs-name,
+.hljs-selector-tag,
+.hljs-selector-pseudo {
+  color: #7ee787;
+}
+
+.hljs-strong {
+  font-weight: bold;
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-addition {
+  color: #aff5b4;
+  background-color: rgba(46, 160, 67, 0.15);
+}
+
+.hljs-deletion {
+  color: #ffdcd7;
+  background-color: rgba(248, 81, 73, 0.15);
+}
+
 :root {
   --agent-running: #22c55e;
   --agent-completed: #3b82f6;

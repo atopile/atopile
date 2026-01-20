@@ -6,6 +6,7 @@ import type { OutputChunk } from '@/logic';
 import { PlanModeDisplay } from './PlanModeDisplay';
 import { QuestionDisplay } from './QuestionDisplay';
 import { DiffViewer } from './DiffViewer';
+import { CodeBlock } from './CodeBlock';
 
 interface PromptInfo {
   run: number;
@@ -50,6 +51,146 @@ function formatTime(timestamp: string | undefined): string {
   } catch {
     return '';
   }
+}
+
+// Generate a concise summary/gist for tool calls
+function getToolSummary(toolName: string | undefined, toolInput: Record<string, unknown> | undefined): string | null {
+  if (!toolName || !toolInput) return null;
+
+  switch (toolName) {
+    case 'Read': {
+      const path = toolInput.file_path as string;
+      if (path) {
+        const filename = path.split('/').pop() || path;
+        return filename;
+      }
+      return null;
+    }
+    case 'Write': {
+      const path = toolInput.file_path as string;
+      const content = toolInput.content as string;
+      if (path) {
+        const filename = path.split('/').pop() || path;
+        const lines = content ? content.split('\n').length : 0;
+        return `${filename} (${lines} lines)`;
+      }
+      return null;
+    }
+    case 'Edit': {
+      const path = toolInput.file_path as string;
+      if (path) {
+        const filename = path.split('/').pop() || path;
+        return filename;
+      }
+      return null;
+    }
+    case 'Bash': {
+      const cmd = toolInput.command as string;
+      if (cmd) {
+        // Truncate long commands
+        const truncated = cmd.length > 50 ? cmd.slice(0, 47) + '...' : cmd;
+        return truncated;
+      }
+      return null;
+    }
+    case 'Glob': {
+      const pattern = toolInput.pattern as string;
+      return pattern || null;
+    }
+    case 'Grep': {
+      const pattern = toolInput.pattern as string;
+      const path = toolInput.path as string;
+      if (pattern) {
+        const dir = path ? path.split('/').pop() || path : '.';
+        return `"${pattern.slice(0, 20)}${pattern.length > 20 ? '...' : ''}" in ${dir}`;
+      }
+      return null;
+    }
+    case 'TodoWrite': {
+      const todos = toolInput.todos as Array<{ status: string }>;
+      if (todos && Array.isArray(todos)) {
+        const completed = todos.filter(t => t.status === 'completed').length;
+        const inProgress = todos.filter(t => t.status === 'in_progress').length;
+        const pending = todos.filter(t => t.status === 'pending').length;
+        const parts = [];
+        if (completed) parts.push(`${completed} done`);
+        if (inProgress) parts.push(`${inProgress} active`);
+        if (pending) parts.push(`${pending} pending`);
+        return parts.join(', ') || `${todos.length} items`;
+      }
+      return null;
+    }
+    case 'WebFetch': {
+      const url = toolInput.url as string;
+      if (url) {
+        try {
+          const urlObj = new URL(url);
+          return urlObj.hostname;
+        } catch {
+          return url.slice(0, 30);
+        }
+      }
+      return null;
+    }
+    case 'WebSearch': {
+      const query = toolInput.query as string;
+      if (query) {
+        return `"${query.slice(0, 30)}${query.length > 30 ? '...' : ''}"`;
+      }
+      return null;
+    }
+    case 'Task': {
+      const desc = toolInput.description as string;
+      return desc || null;
+    }
+    default:
+      return null;
+  }
+}
+
+// Generate summary for tool result
+function getToolResultSummary(result: string, toolName: string | undefined): string | null {
+  if (!result) return null;
+
+  // For Read tool, show line count
+  if (toolName === 'Read') {
+    const lines = result.split('\n').length;
+    return `${lines} lines`;
+  }
+
+  // For Glob, count matches
+  if (toolName === 'Glob') {
+    const matches = result.split('\n').filter(l => l.trim()).length;
+    return `${matches} file${matches !== 1 ? 's' : ''}`;
+  }
+
+  // For Grep, count matches
+  if (toolName === 'Grep') {
+    const matches = result.split('\n').filter(l => l.trim()).length;
+    return `${matches} match${matches !== 1 ? 'es' : ''}`;
+  }
+
+  // For Bash, show line count if multi-line
+  if (toolName === 'Bash') {
+    const lines = result.split('\n').length;
+    if (lines > 1) {
+      return `${lines} lines`;
+    }
+    // Show truncated single-line output
+    const trimmed = result.trim();
+    if (trimmed.length > 40) {
+      return trimmed.slice(0, 37) + '...';
+    }
+    return trimmed || null;
+  }
+
+  // Default: line count for long results
+  const lines = result.split('\n').length;
+  if (lines > 5) {
+    return `${lines} lines`;
+  }
+
+  return null;
 }
 
 // Extract text content from assistant message data
@@ -468,25 +609,24 @@ function FriendlyDisplayItem({ item, isAgentRunning, onSendInput, hasToolResult 
     const isLong = item.text.length > 500;
     const displayText = isLong && !expanded ? item.text.slice(0, 500) + '...' : item.text;
 
-    // Custom components for ReactMarkdown to render diff blocks
+    // Custom components for ReactMarkdown to render diff blocks and syntax highlighted code
     const markdownComponents = {
-      code({ className, children, ...props }: { className?: string; children?: React.ReactNode }) {
+      code({ className, children, ...props }: { className?: string; children?: React.ReactNode; inline?: boolean }) {
         const match = /language-(\w+)/.exec(className || '');
         const language = match ? match[1] : '';
         const codeString = String(children).replace(/\n$/, '');
+
+        // Check if inline (no newlines and short)
+        const isInline = !codeString.includes('\n') && codeString.length < 100 && !language;
 
         // Render diff blocks with DiffViewer
         if (language === 'diff') {
           return <DiffViewer diffText={codeString} />;
         }
 
-        // For other code blocks, render normally
-        if (language) {
-          return (
-            <pre className="bg-gray-800 border border-gray-700 rounded p-3 overflow-x-auto">
-              <code className={className} {...props}>{children}</code>
-            </pre>
-          );
+        // For code blocks, use CodeBlock with syntax highlighting
+        if (!isInline) {
+          return <CodeBlock code={codeString} language={language} />;
         }
 
         // Inline code
@@ -547,6 +687,8 @@ function FriendlyDisplayItem({ item, isAgentRunning, onSendInput, hasToolResult 
     }
 
     // Default tool display
+    const toolSummary = getToolSummary(item.toolName, item.toolInput);
+
     return (
       <div className="py-1 pl-11">
         <div
@@ -562,6 +704,11 @@ function FriendlyDisplayItem({ item, isAgentRunning, onSendInput, hasToolResult 
             <Wrench className="w-3 h-3" />
             <span className="font-medium">{item.toolName}</span>
           </div>
+          {toolSummary && (
+            <span className="text-gray-500 font-mono truncate max-w-[200px]" title={toolSummary}>
+              {toolSummary}
+            </span>
+          )}
           <Timestamp time={item.timestamp} />
         </div>
         {expanded && item.toolInput && (
@@ -582,6 +729,9 @@ function FriendlyDisplayItem({ item, isAgentRunning, onSendInput, hasToolResult 
     // Edit tool output format: "The file X has been updated. Here's the result of running `cat -n` on a snippet..."
     const isEditTool = item.parentToolName === 'Edit';
     const hasDiffContent = item.text.includes('has been updated') && item.text.includes('cat -n');
+
+    // Get summary for the tool result
+    const resultSummary = getToolResultSummary(item.text, item.parentToolName);
 
     return (
       <div className="py-1 pl-11">
@@ -605,8 +755,13 @@ function FriendlyDisplayItem({ item, isAgentRunning, onSendInput, hasToolResult 
             <span className={`text-xs font-medium ${isSuccess ? 'text-gray-400' : 'text-red-400'}`}>
               {isSuccess ? 'Result' : 'Error'}
             </span>
+            {resultSummary && (
+              <span className="text-gray-500 text-xs font-mono truncate max-w-[150px]" title={resultSummary}>
+                {resultSummary}
+              </span>
+            )}
             <Timestamp time={item.timestamp} />
-            {!expanded && (
+            {!expanded && !resultSummary && (
               <span className="text-xs text-gray-500 truncate max-w-[200px]">
                 {item.text.slice(0, 50)}{item.text.length > 50 ? '...' : ''}
               </span>
