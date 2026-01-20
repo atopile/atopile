@@ -108,9 +108,11 @@ def get_backend(backend_type: AgentBackendType) -> AgentBackend:
         ValueError: If the backend type is not supported
     """
     from .claude import ClaudeCodeBackend
+    from .codex import CodexBackend
 
     backends: dict[AgentBackendType, type[AgentBackend]] = {
         AgentBackendType.CLAUDE_CODE: ClaudeCodeBackend,
+        AgentBackendType.CODEX: CodexBackend,
     }
 
     backend_class = backends.get(backend_type)
@@ -123,9 +125,11 @@ def get_backend(backend_type: AgentBackendType) -> AgentBackend:
 def get_available_backends() -> list[AgentBackend]:
     """Get all available backends on this system."""
     from .claude import ClaudeCodeBackend
+    from .codex import CodexBackend
 
     all_backends: list[AgentBackend] = [
         ClaudeCodeBackend(),
+        CodexBackend(),
     ]
 
     return [b for b in all_backends if b.is_available()]

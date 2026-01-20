@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { X, Bot, Clock, GitBranch, Timer } from 'lucide-react';
 import type { Node } from '@xyflow/react';
+import type { BackendInfo } from '@/logic/api/types';
+import { useLogic } from '@/hooks';
 
 interface NodeConfigPanelProps {
   node: Node;
@@ -100,6 +102,13 @@ interface ConfigFormProps {
 }
 
 function AgentConfigForm({ data, onChange }: ConfigFormProps) {
+  const logic = useLogic();
+  const [backends, setBackends] = useState<BackendInfo[]>([]);
+
+  useEffect(() => {
+    logic.api.backends().then((res) => setBackends(res.backends));
+  }, [logic.api]);
+
   return (
     <>
       <div>
@@ -120,9 +129,11 @@ function AgentConfigForm({ data, onChange }: ConfigFormProps) {
           value={(data.backend as string) || 'claude-code'}
           onChange={(e) => onChange('backend', e.target.value)}
         >
-          <option value="claude-code">Claude Code</option>
-          <option value="codex">Codex</option>
-          <option value="cursor">Cursor</option>
+          {backends.map((b) => (
+            <option key={b.type} value={b.type}>
+              {b.type}
+            </option>
+          ))}
         </select>
       </div>
 
