@@ -1,9 +1,19 @@
 import { useState, useEffect } from 'react';
-import { X, Play, Download } from 'lucide-react';
-import type { AgentBackendType, BackendInfo } from '@/logic/api/types';
+import { X, Play, Download, RefreshCw } from 'lucide-react';
+import type { AgentBackendType, BackendInfo, AgentState } from '@/logic/api/types';
 import { useDispatch, useLoading, useLogic } from '@/hooks';
 
 type DialogTab = 'spawn' | 'import';
+
+interface ResumableSession {
+  agentId: string;
+  sessionId: string;
+  name: string | undefined;
+  backend: AgentBackendType;
+  prompt: string;
+  status: string;
+  finishedAt: string | undefined;
+}
 
 interface SpawnAgentDialogProps {
   open: boolean;
@@ -38,9 +48,84 @@ export function SpawnAgentDialog({ open, onClose }: SpawnAgentDialogProps) {
   const [importWorkingDir, setImportWorkingDir] = useState('');
   const [importModel, setImportModel] = useState('');
 
+  // Available sessions to resume
+  const [resumableSessions, setResumableSessions] = useState<ResumableSession[]>([]);
+  const [selectedSessionKey, setSelectedSessionKey] = useState<string>(''); // 'manual' or agentId
+  const [loadingSessions, setLoadingSessions] = useState(false);
+
+  // Fetch backends on mount
   useEffect(() => {
     logic.api.backends().then((res) => setBackends(res.backends));
   }, [logic.api]);
+
+  // Fetch resumable sessions when import tab is active
+  useEffect(() => {
+    if (activeTab === 'import' && open) {
+      fetchResumableSessions();
+    }
+  }, [activeTab, open]);
+
+  const fetchResumableSessions = async () => {
+    setLoadingSessions(true);
+    try {
+      const response = await logic.api.agents.list({ limit: 100 });
+      const sessions: ResumableSession[] = response.agents
+        .filter((agent: AgentState) =>
+          agent.session_id &&
+          (agent.status === 'completed' || agent.status === 'terminated' || agent.status === 'failed')
+        )
+        .map((agent: AgentState) => ({
+          agentId: agent.id,
+          sessionId: agent.session_id!,
+          name: agent.name,
+          backend: agent.config.backend,
+          prompt: agent.config.prompt,
+          status: agent.status,
+          finishedAt: agent.finished_at,
+        }))
+        .sort((a: ResumableSession, b: ResumableSession) => {
+          // Sort by finished_at descending (most recent first)
+          if (!a.finishedAt) return 1;
+          if (!b.finishedAt) return -1;
+          return new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime();
+        });
+      setResumableSessions(sessions);
+    } catch (e) {
+      console.error('Failed to fetch sessions:', e);
+    } finally {
+      setLoadingSessions(false);
+    }
+  };
+
+  // Handle session selection from dropdown
+  const handleSessionSelect = (value: string) => {
+    setSelectedSessionKey(value);
+    if (value === 'manual' || value === '') {
+      // Manual entry - clear fields
+      setImportSessionId('');
+      setImportBackend('claude-code');
+    } else {
+      // Find the selected session
+      const session = resumableSessions.find(s => s.agentId === value);
+      if (session) {
+        setImportSessionId(session.sessionId);
+        setImportBackend(session.backend);
+        if (session.name && !importName) {
+          setImportName(session.name);
+        }
+      }
+    }
+  };
+
+  // Format session for display in dropdown
+  const formatSessionOption = (session: ResumableSession) => {
+    const name = session.name || 'Unnamed';
+    const date = session.finishedAt
+      ? new Date(session.finishedAt).toLocaleDateString()
+      : 'Unknown';
+    const promptPreview = session.prompt.slice(0, 40) + (session.prompt.length > 40 ? '...' : '');
+    return `${name} (${date}) - ${promptPreview}`;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,6 +162,7 @@ export function SpawnAgentDialog({ open, onClose }: SpawnAgentDialogProps) {
     setDisallowedTools('');
     setShowAdvanced(false);
     // Import form
+    setSelectedSessionKey('');
     setImportSessionId('');
     setImportPrompt('');
     setImportName('');
@@ -332,23 +418,60 @@ export function SpawnAgentDialog({ open, onClose }: SpawnAgentDialogProps) {
         {/* Import Form */}
         {activeTab === 'import' && (
         <form onSubmit={handleImport} className="p-4 space-y-4">
-          {/* Session ID */}
+          {/* Session Selection */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Session ID <span className="text-red-400">*</span>
-            </label>
-            <input
-              type="text"
-              className="input font-mono"
-              placeholder="e.g., abc123-def456-..."
-              value={importSessionId}
-              onChange={(e) => setImportSessionId(e.target.value)}
-              required
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              The session ID from Claude Code CLI (shown when running with --verbose)
-            </p>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-gray-300">
+                Session <span className="text-red-400">*</span>
+              </label>
+              <button
+                type="button"
+                className="text-xs text-gray-400 hover:text-gray-300 flex items-center gap-1"
+                onClick={fetchResumableSessions}
+                disabled={loadingSessions}
+              >
+                <RefreshCw className={`w-3 h-3 ${loadingSessions ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+            </div>
+            <select
+              className="input"
+              value={selectedSessionKey}
+              onChange={(e) => handleSessionSelect(e.target.value)}
+            >
+              <option value="">Select a session to resume...</option>
+              {resumableSessions.map((session) => (
+                <option key={session.agentId} value={session.agentId}>
+                  {formatSessionOption(session)}
+                </option>
+              ))}
+              <option value="manual">Enter session ID manually...</option>
+            </select>
+            {resumableSessions.length === 0 && !loadingSessions && (
+              <p className="text-xs text-gray-500 mt-1">
+                No completed sessions found. Run an agent first or enter a session ID manually.
+              </p>
+            )}
           </div>
+
+          {/* Manual Session ID input (shown when manual is selected) */}
+          {selectedSessionKey === 'manual' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">
+                Session ID
+              </label>
+              <input
+                type="text"
+                className="input font-mono"
+                placeholder="e.g., abc123-def456-..."
+                value={importSessionId}
+                onChange={(e) => setImportSessionId(e.target.value)}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                The session ID from Claude Code CLI (shown when running with --verbose)
+              </p>
+            </div>
+          )}
 
           {/* Prompt */}
           <div>
