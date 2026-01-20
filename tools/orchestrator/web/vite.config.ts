@@ -10,6 +10,19 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Split heavy dependencies into separate chunks
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'flow': ['@xyflow/react'],
+          'markdown': ['react-markdown', 'remark-gfm'],
+          'diff': ['diff2html'],
+        },
+      },
+    },
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,
