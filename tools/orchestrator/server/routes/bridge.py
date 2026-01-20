@@ -60,14 +60,18 @@ class RegisterPipelineRequest(BaseModel):
     agents: dict[str, str]  # Map of agent_name -> agent_id
 
 
-def register_pipeline_context(pipeline_id: str, edges: list[tuple[str, str]], agents: dict[str, str]):
+def register_pipeline_context(
+    pipeline_id: str, edges: list[tuple[str, str]], agents: dict[str, str]
+):
     """Register a pipeline's topology for edge validation."""
     with _context_lock:
         _pipeline_contexts[pipeline_id] = {
             "edges": set(edges),  # Set for O(1) lookup
             "agents": agents.copy(),
         }
-    logger.info(f"Registered pipeline context: {pipeline_id} with {len(edges)} edges, {len(agents)} agents")
+    logger.info(
+        f"Registered pipeline context: {pipeline_id} with {len(edges)} edges, {len(agents)} agents"
+    )
 
 
 def unregister_pipeline_context(pipeline_id: str):
@@ -166,10 +170,12 @@ async def send_and_receive(
 
     # Validate edge if in pipeline context
     if pipeline_id and not is_edge_allowed(pipeline_id, from_agent, to_agent):
-        logger.warning(f"Edge not allowed: {from_agent} -> {to_agent} in pipeline {pipeline_id}")
+        logger.warning(
+            f"Edge not allowed: {from_agent} -> {to_agent} in pipeline {pipeline_id}"
+        )
         return SendResponse(
             status="error",
-            message=f"Communication not allowed: no edge from '{from_agent}' to '{to_agent}' in pipeline"
+            message=f"Communication not allowed: no edge from '{from_agent}' to '{to_agent}' in pipeline",
         )
 
     # Build the prompt with context about the request
@@ -189,7 +195,9 @@ Respond to this message by outputting your answer as text. Do NOT use the send_a
         existing_agent_id = get_pipeline_agent_id(pipeline_id, to_agent)
         # Fall back to searching the store
         if not existing_agent_id:
-            existing_agent_id = find_pipeline_agent_in_store(agent_store, pipeline_id, to_agent)
+            existing_agent_id = find_pipeline_agent_in_store(
+                agent_store, pipeline_id, to_agent
+            )
             if existing_agent_id:
                 logger.info(f"Found agent '{to_agent}' in store: {existing_agent_id}")
 
@@ -203,11 +211,19 @@ Respond to this message by outputting your answer as text. Do NOT use the send_a
         logger.info(f"Lock acquired for agent {agent_lock_id}")
 
         # Re-fetch the agent state inside the lock to get the latest state
-        existing_agent = agent_store.get(existing_agent_id) if existing_agent_id else None
+        existing_agent = (
+            agent_store.get(existing_agent_id) if existing_agent_id else None
+        )
 
-        if existing_agent and existing_agent.session_id and existing_agent.is_finished():
+        if (
+            existing_agent
+            and existing_agent.session_id
+            and existing_agent.is_finished()
+        ):
             # Resume the existing agent with the new message
-            logger.info(f"Resuming existing agent '{to_agent}' (id={existing_agent_id})")
+            logger.info(
+                f"Resuming existing agent '{to_agent}' (id={existing_agent_id})"
+            )
             return await _resume_agent_for_message(
                 existing_agent_id,
                 prompt,
@@ -219,9 +235,13 @@ Respond to this message by outputting your answer as text. Do NOT use the send_a
         else:
             # Spawn a new agent
             if existing_agent:
-                logger.info(f"Agent '{to_agent}' exists but cannot be resumed: session_id={existing_agent.session_id}, status={existing_agent.status}")
+                logger.info(
+                    f"Agent '{to_agent}' exists but cannot be resumed: session_id={existing_agent.session_id}, status={existing_agent.status}"
+                )
             else:
-                logger.info(f"No existing agent found for '{to_agent}', spawning new one")
+                logger.info(
+                    f"No existing agent found for '{to_agent}', spawning new one"
+                )
             return await _spawn_agent_for_message(
                 prompt,
                 from_agent,
@@ -244,7 +264,9 @@ async def _resume_agent_for_message(
     if agent is None:
         return SendResponse(status="error", message=f"Agent not found: {agent_id}")
 
-    logger.info(f"Resuming agent '{to_agent}' (id={agent_id}) for bridge request from '{from_agent}'")
+    logger.info(
+        f"Resuming agent '{to_agent}' (id={agent_id}) for bridge request from '{from_agent}'"
+    )
 
     # Prepare agent for resume
     def prepare_updater(a: AgentState) -> AgentState:
@@ -266,7 +288,9 @@ async def _resume_agent_for_message(
     agent = agent_store.get(agent_id)
 
     try:
-        logger.info(f"Spawning process for agent {agent_id} (run_count={agent.run_count})")
+        logger.info(
+            f"Spawning process for agent {agent_id} (run_count={agent.run_count})"
+        )
         managed = process_manager.spawn(agent)
         logger.info(f"Process spawned for agent {agent_id}: pid={managed.process.pid}")
 
@@ -282,7 +306,9 @@ async def _resume_agent_for_message(
         logger.info(f"Waiting for agent {agent_id} to complete")
         result = await asyncio.get_event_loop().run_in_executor(
             None,
-            lambda: _wait_and_extract_result(process_manager, agent_store, agent_id, cleanup=False)
+            lambda: _wait_and_extract_result(
+                process_manager, agent_store, agent_id, cleanup=False
+            ),
         )
 
         logger.info(f"Agent {agent_id} completed with result length={len(result)}")
@@ -323,12 +349,16 @@ async def _spawn_agent_for_message(
             return a
 
         agent_store.update(agent.id, updater)
-        logger.info(f"Spawned new agent '{to_agent}' (id={agent.id}) for bridge request from '{from_agent}'")
+        logger.info(
+            f"Spawned new agent '{to_agent}' (id={agent.id}) for bridge request from '{from_agent}'"
+        )
 
         # Wait for agent to complete
         result = await asyncio.get_event_loop().run_in_executor(
             None,
-            lambda: _wait_and_extract_result(process_manager, agent_store, agent.id, cleanup=True)
+            lambda: _wait_and_extract_result(
+                process_manager, agent_store, agent.id, cleanup=True
+            ),
         )
 
         return SendResponse(status="response", response=result)
@@ -377,13 +407,17 @@ def _wait_and_extract_result(
         # Log periodically (every 10 seconds)
         if poll_count % 20 == 0:
             elapsed = time.time() - start
-            logger.info(f"Still waiting for agent {agent_id}: exit_code={exit_code}, elapsed={elapsed:.1f}s")
+            logger.info(
+                f"Still waiting for agent {agent_id}: exit_code={exit_code}, elapsed={elapsed:.1f}s"
+            )
 
         if exit_code is not None:
             logger.info(f"Agent {agent_id} finished with exit code {exit_code}")
 
             # Wait for output threads to finish and capture session_id
-            session_id = process_manager.wait_for_output_and_get_session_id(agent_id, timeout=2.0)
+            session_id = process_manager.wait_for_output_and_get_session_id(
+                agent_id, timeout=2.0
+            )
             logger.info(f"Agent {agent_id} session_id: {session_id}")
 
             # Update agent state
@@ -403,7 +437,11 @@ def _wait_and_extract_result(
             # Extract result from output
             logger.info(f"Extracting result from agent {agent_id}")
             result = _extract_result(process_manager, agent_id)
-            logger.info(f"Agent {agent_id} result: {result[:100]}..." if len(result) > 100 else f"Agent {agent_id} result: {result}")
+            logger.info(
+                f"Agent {agent_id} result: {result[:100]}..."
+                if len(result) > 100
+                else f"Agent {agent_id} result: {result}"
+            )
 
             # Cleanup only if requested (not for resumed agents we want to reuse)
             if cleanup:
@@ -418,9 +456,13 @@ def _wait_and_extract_result(
     # Timeout - kill the agent
     managed = process_manager.get_process(agent_id)
     if managed:
-        logger.warning(f"Agent {agent_id} timed out after {timeout}s (pid={managed.process.pid}, poll={managed.process.poll()})")
+        logger.warning(
+            f"Agent {agent_id} timed out after {timeout}s (pid={managed.process.pid}, poll={managed.process.poll()})"
+        )
     else:
-        logger.warning(f"Agent {agent_id} timed out after {timeout}s (no managed process)")
+        logger.warning(
+            f"Agent {agent_id} timed out after {timeout}s (no managed process)"
+        )
 
     try:
         process_manager.terminate(agent_id, timeout=5.0)

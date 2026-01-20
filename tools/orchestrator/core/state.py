@@ -9,7 +9,12 @@ from typing import Generic, TypeVar
 
 from pydantic import BaseModel
 
-from ..common import get_agents_dir, get_pipeline_sessions_dir, get_pipelines_dir, get_sessions_dir
+from ..common import (
+    get_agents_dir,
+    get_pipeline_sessions_dir,
+    get_pipelines_dir,
+    get_sessions_dir,
+)
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -196,6 +201,7 @@ class PipelineSessionStore(StateStore):
 
         with self._lock:
             return [
-                session for session in self._store.values()
+                session
+                for session in self._store.values()
                 if session.pipeline_id == pipeline_id
             ]

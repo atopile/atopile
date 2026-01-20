@@ -322,6 +322,17 @@ export interface FileTreeNode {
     children?: FileTreeNode[];
 }
 
+// Project Dependency Types (from ato.yaml)
+export interface ProjectDependency {
+    identifier: string;  // e.g., "atopile/resistors"
+    version: string;     // Installed version
+    latestVersion?: string;  // Latest available version
+    name: string;        // e.g., "resistors"
+    publisher: string;   // e.g., "atopile"
+    repository?: string;
+    hasUpdate?: boolean;
+}
+
 /**
  * THE SINGLE APP STATE - All state lives here.
  */
@@ -425,6 +436,11 @@ export interface AppState {
     // Map of project root to file tree (.ato and .py files)
     projectFiles: Record<string, FileTreeNode[]>;
     isLoadingFiles: boolean;
+
+    // Project dependencies (from ato.yaml)
+    // Map of project root to dependencies list
+    projectDependencies: Record<string, ProjectDependency[]>;
+    isLoadingDependencies: boolean;
 
     // Variables (from /api/variables endpoint)
     // Current variables for selected project/target - frontend just displays this
@@ -530,6 +546,10 @@ class AppStateManager {
         // Project files
         projectFiles: {},
         isLoadingFiles: false,
+
+        // Project dependencies
+        projectDependencies: {},
+        isLoadingDependencies: false,
 
         // Variables
         currentVariablesData: null,
@@ -1254,6 +1274,56 @@ class AppStateManager {
 
     clearFilesCache(): void {
         this._state.projectFiles = {};
+        this._emit();
+    }
+
+    // --- Project Dependencies ---
+
+    async fetchDependencies(projectRoot: string, forceRefresh: boolean = false): Promise<ProjectDependency[]> {
+        const apiUrl = getDashboardApiUrl();
+
+        // Check cache first (unless forcing refresh)
+        if (!forceRefresh && this._state.projectDependencies[projectRoot]) {
+            return this._state.projectDependencies[projectRoot];
+        }
+
+        this._state.isLoadingDependencies = true;
+        this._emit();
+
+        try {
+            const response = await axios.get<{ dependencies: ProjectDependency[]; total: number }>(
+                `${apiUrl}/api/dependencies`,
+                {
+                    params: { project_root: projectRoot },
+                    timeout: 10000,
+                }
+            );
+
+            const dependencies = response.data.dependencies || [];
+
+            // Cache the dependencies for this project
+            this._state.projectDependencies = {
+                ...this._state.projectDependencies,
+                [projectRoot]: dependencies,
+            };
+            this._state.isLoadingDependencies = false;
+            this._emit();
+            traceInfo(`AppState: loaded ${dependencies.length} dependencies for project ${projectRoot}`);
+            return dependencies;
+        } catch (error) {
+            traceError(`AppState: failed to fetch dependencies: ${error}`);
+            this._state.isLoadingDependencies = false;
+            this._emit();
+            return [];
+        }
+    }
+
+    getDependenciesForProject(projectRoot: string): ProjectDependency[] {
+        return this._state.projectDependencies[projectRoot] || [];
+    }
+
+    clearDependenciesCache(): void {
+        this._state.projectDependencies = {};
         this._emit();
     }
 

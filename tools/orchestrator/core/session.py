@@ -180,9 +180,7 @@ class SessionManager:
         if status is not None:
             sessions = [s for s in sessions if s.status == status]
         if tags:
-            sessions = [
-                s for s in sessions if all(t in s.metadata.tags for t in tags)
-            ]
+            sessions = [s for s in sessions if all(t in s.metadata.tags for t in tags)]
 
         # Sort by updated_at descending
         sessions.sort(key=lambda s: s.metadata.updated_at, reverse=True)

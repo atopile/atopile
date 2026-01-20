@@ -85,7 +85,9 @@ class AgentState(BaseModel):
     def is_running(self) -> bool:
         """Check if the agent is currently running."""
         return self.status in (
-            AgentStatus.PENDING, AgentStatus.STARTING, AgentStatus.RUNNING
+            AgentStatus.PENDING,
+            AgentStatus.STARTING,
+            AgentStatus.RUNNING,
         )
 
     def is_finished(self) -> bool:

@@ -97,7 +97,9 @@ def wait_for_pipeline(pipeline_id: str, timeout: int = 300):
         pipeline = status.get("pipeline", {})
         current_status = pipeline.get("status")
 
-        print(f"  Pipeline status: {current_status}, node: {pipeline.get('current_node_id')}")
+        print(
+            f"  Pipeline status: {current_status}, node: {pipeline.get('current_node_id')}"
+        )
 
         if current_status in ("completed", "failed"):
             return pipeline
@@ -174,7 +176,7 @@ def test_bridge_direct():
                 "to_agent": "WorkerAgent",
                 "message": "Say just the word 'hello', nothing else.",
             },
-            timeout=120.0  # Longer timeout for Claude to process
+            timeout=120.0,  # Longer timeout for Claude to process
         )
         response.raise_for_status()
         result = response.json()

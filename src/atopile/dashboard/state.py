@@ -237,6 +237,18 @@ class FileTreeNode(BaseModel):
     children: Optional[list["FileTreeNode"]] = None
 
 
+class DependencyInfo(BaseModel):
+    """A project dependency with version info."""
+
+    identifier: str  # e.g., "atopile/resistors"
+    version: str  # Installed version
+    latest_version: Optional[str] = None  # Latest available version
+    name: str  # e.g., "resistors"
+    publisher: str  # e.g., "atopile"
+    repository: Optional[str] = None
+    has_update: bool = False
+
+
 # --- Standard Library Types ---
 
 
@@ -476,6 +488,10 @@ class AppState(BaseModel):
     project_files: dict[str, list[FileTreeNode]] = Field(default_factory=dict)
     is_loading_files: bool = False
 
+    # Project dependencies
+    project_dependencies: dict[str, list[DependencyInfo]] = Field(default_factory=dict)
+    is_loading_dependencies: bool = False
+
     # Variables
     current_variables_data: Optional[VariablesData] = None
     is_loading_variables: bool = False
@@ -559,6 +575,11 @@ class ServerState:
     def state(self) -> AppState:
         """Get current state (read-only access)."""
         return self._state
+
+    @property
+    def packages_by_id(self) -> dict[str, PackageInfo]:
+        """Get packages indexed by identifier for quick lookup."""
+        return {pkg.identifier: pkg for pkg in self._state.packages}
 
     async def connect_client(self, websocket: WebSocket) -> str:
         """Accept a WebSocket connection and return client ID."""
@@ -787,6 +808,14 @@ class ServerState:
         """Update files for a project."""
         self._state.project_files[project_root] = files
         self._state.is_loading_files = False
+        await self.broadcast_state()
+
+    async def set_project_dependencies(
+        self, project_root: str, dependencies: list[DependencyInfo]
+    ) -> None:
+        """Update dependencies for a project."""
+        self._state.project_dependencies[project_root] = dependencies
+        self._state.is_loading_dependencies = False
         await self.broadcast_state()
 
     async def set_variables_data(

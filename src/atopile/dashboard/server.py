@@ -334,6 +334,25 @@ class FilesResponse(BaseModel):
     total: int
 
 
+class DependencyInfo(BaseModel):
+    """A project dependency with version info"""
+
+    identifier: str  # e.g., "atopile/resistors"
+    version: str  # Installed version
+    latest_version: str | None = None  # Latest available version
+    name: str  # e.g., "resistors"
+    publisher: str  # e.g., "atopile"
+    repository: str | None = None
+    has_update: bool = False
+
+
+class DependenciesResponse(BaseModel):
+    """Response for /api/dependencies endpoint"""
+
+    dependencies: list[DependencyInfo]
+    total: int
+
+
 # --- WebSocket Connection Manager ---
 
 
@@ -3549,6 +3568,59 @@ def create_app(
                 await server_state.set_project_files(project_root, file_tree)
                 return {"success": True}
 
+            elif action == "fetchDependencies":
+                # Fetch dependencies for a project from ato.yaml
+                project_root = payload.get("projectRoot", "")
+                if not project_root:
+                    return {"success": True, "info": "No project specified"}
+
+                project_path = Path(project_root)
+                if not project_path.exists():
+                    return {
+                        "success": False,
+                        "error": f"Project not found: {project_root}",
+                    }
+
+                from atopile.dashboard.state import DependencyInfo
+
+                # Get installed packages for this project
+                installed = get_installed_packages_for_project(project_path)
+
+                # Convert to DependencyInfo objects with latest version info
+                dependencies: list[DependencyInfo] = []
+                for pkg in installed:
+                    # Parse identifier to get publisher and name
+                    parts = pkg.identifier.split("/")
+                    publisher = parts[0] if len(parts) > 1 else "unknown"
+                    name = parts[-1]
+
+                    # Try to get latest version from cached packages
+                    latest_version = None
+                    has_update = False
+                    repository = None
+
+                    cached_pkg = server_state.packages_by_id.get(pkg.identifier)
+                    if cached_pkg:
+                        latest_version = cached_pkg.latest_version
+                        if latest_version and pkg.version and latest_version != pkg.version:
+                            has_update = True
+                        repository = cached_pkg.repository
+
+                    dependencies.append(
+                        DependencyInfo(
+                            identifier=pkg.identifier,
+                            version=pkg.version,
+                            latest_version=latest_version,
+                            name=name,
+                            publisher=publisher,
+                            repository=repository,
+                            has_update=has_update,
+                        )
+                    )
+
+                await server_state.set_project_dependencies(project_root, dependencies)
+                return {"success": True}
+
             elif action == "getMaxConcurrentSetting":
                 # Return current max concurrent build settings
                 return {
@@ -3900,6 +3972,66 @@ def create_app(
         total = count_files(file_tree)
 
         return FilesResponse(files=file_tree, total=total)
+
+    @app.get("/api/dependencies", response_model=DependenciesResponse)
+    async def get_dependencies(
+        project_root: str = Query(
+            ...,
+            description="Path to the project root to get dependencies for",
+        ),
+    ):
+        """
+        Return the dependencies from a project's ato.yaml file.
+
+        Includes installed version and latest available version info.
+        """
+        project_path = Path(project_root)
+
+        if not project_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Project not found: {project_root}",
+            )
+
+        # Get installed packages for this project
+        installed = get_installed_packages_for_project(project_path)
+
+        # Convert to DependencyInfo objects with latest version info
+        dependencies: list[DependencyInfo] = []
+        for pkg in installed:
+            # Parse identifier to get publisher and name
+            parts = pkg.identifier.split("/")
+            publisher = parts[0] if len(parts) > 1 else "unknown"
+            name = parts[-1]
+
+            # Try to get latest version from registry (cached in packages state)
+            latest_version = None
+            has_update = False
+
+            # Check if we have this package in our cached packages list
+            cached_pkg = server_state.packages_by_id.get(pkg.identifier)
+            if cached_pkg:
+                latest_version = cached_pkg.latest_version
+                if latest_version and pkg.version and latest_version != pkg.version:
+                    has_update = True
+                # Get repository from cached package info
+                repository = cached_pkg.repository
+            else:
+                repository = None
+
+            dependencies.append(
+                DependencyInfo(
+                    identifier=pkg.identifier,
+                    version=pkg.version,
+                    latest_version=latest_version,
+                    name=name,
+                    publisher=publisher,
+                    repository=repository,
+                    has_update=has_update,
+                )
+            )
+
+        return DependenciesResponse(dependencies=dependencies, total=len(dependencies))
 
     @app.get("/api/summary")
     async def get_summary():

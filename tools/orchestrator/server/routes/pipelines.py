@@ -21,7 +21,11 @@ from ...models import (
     PipelineStatus,
     UpdatePipelineRequest,
 )
-from ..dependencies import get_pipeline_executor, get_pipeline_session_store, get_pipeline_store
+from ..dependencies import (
+    get_pipeline_executor,
+    get_pipeline_session_store,
+    get_pipeline_store,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +80,9 @@ async def get_pipeline(
     """Get a specific pipeline."""
     pipeline = pipeline_store.get(pipeline_id)
     if pipeline is None:
-        raise HTTPException(status_code=404, detail=f"Pipeline not found: {pipeline_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Pipeline not found: {pipeline_id}"
+        )
     return pipeline
 
 
@@ -92,11 +98,15 @@ async def update_pipeline(
 
     pipeline = pipeline_store.get(pipeline_id)
     if pipeline is None:
-        raise HTTPException(status_code=404, detail=f"Pipeline not found: {pipeline_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Pipeline not found: {pipeline_id}"
+        )
 
     # Check for running sessions (sessions track execution state, not pipeline.status)
     sessions = session_store.get_sessions_for_pipeline(pipeline_id)
-    running_sessions = [s for s in sessions if s.status == PipelineSessionStatus.RUNNING]
+    running_sessions = [
+        s for s in sessions if s.status == PipelineSessionStatus.RUNNING
+    ]
 
     if running_sessions:
         raise HTTPException(
@@ -134,11 +144,15 @@ async def delete_pipeline(
 
     pipeline = pipeline_store.get(pipeline_id)
     if pipeline is None:
-        raise HTTPException(status_code=404, detail=f"Pipeline not found: {pipeline_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Pipeline not found: {pipeline_id}"
+        )
 
     # Check for running sessions (sessions track execution state, not pipeline.status)
     sessions = session_store.get_sessions_for_pipeline(pipeline_id)
-    running_sessions = [s for s in sessions if s.status == PipelineSessionStatus.RUNNING]
+    running_sessions = [
+        s for s in sessions if s.status == PipelineSessionStatus.RUNNING
+    ]
 
     if running_sessions:
         raise HTTPException(
@@ -161,7 +175,9 @@ async def run_pipeline(
     """Start or resume a pipeline execution."""
     pipeline = pipeline_store.get(pipeline_id)
     if pipeline is None:
-        raise HTTPException(status_code=404, detail=f"Pipeline not found: {pipeline_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Pipeline not found: {pipeline_id}"
+        )
 
     # Note: We allow multiple sessions to run concurrently
     # Each run creates a new session
@@ -200,7 +216,9 @@ async def pause_pipeline(
     """Pause a running pipeline - deprecated, use session-level operations."""
     pipeline = pipeline_store.get(pipeline_id)
     if pipeline is None:
-        raise HTTPException(status_code=404, detail=f"Pipeline not found: {pipeline_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Pipeline not found: {pipeline_id}"
+        )
 
     # Pipeline-level pause is deprecated - sessions manage execution state
     return PipelineActionResponse(
@@ -218,7 +236,9 @@ async def resume_pipeline(
     """Resume a paused pipeline - deprecated, use Run to start a new session."""
     pipeline = pipeline_store.get(pipeline_id)
     if pipeline is None:
-        raise HTTPException(status_code=404, detail=f"Pipeline not found: {pipeline_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Pipeline not found: {pipeline_id}"
+        )
 
     # Pipeline-level resume is deprecated - use Run to start a new session
     return PipelineActionResponse(
@@ -242,11 +262,15 @@ async def stop_pipeline(
 
     pipeline = pipeline_store.get(pipeline_id)
     if pipeline is None:
-        raise HTTPException(status_code=404, detail=f"Pipeline not found: {pipeline_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Pipeline not found: {pipeline_id}"
+        )
 
     # Get all running sessions for this pipeline
     sessions = session_store.get_sessions_for_pipeline(pipeline_id)
-    running_sessions = [s for s in sessions if s.status == PipelineSessionStatus.RUNNING]
+    running_sessions = [
+        s for s in sessions if s.status == PipelineSessionStatus.RUNNING
+    ]
 
     if not running_sessions:
         return PipelineActionResponse(
@@ -286,6 +310,7 @@ async def stop_pipeline(
                         a.status = AgentStatus.TERMINATED
                         a.finished_at = datetime.now()
                         return a
+
                     return updater
 
                 agent_store.update(agent_id, make_updater())
@@ -298,7 +323,9 @@ async def stop_pipeline(
 
         session_store.update(session.id, session_updater)
 
-    logger.info(f"Stopped {len(running_sessions)} sessions of pipeline {pipeline_id}, terminated {len(terminated_agents)} agents")
+    logger.info(
+        f"Stopped {len(running_sessions)} sessions of pipeline {pipeline_id}, terminated {len(terminated_agents)} agents"
+    )
 
     return PipelineActionResponse(
         status="stopped",
@@ -315,7 +342,9 @@ async def get_pipeline_status(
     """Get the execution status of a pipeline."""
     pipeline = pipeline_store.get(pipeline_id)
     if pipeline is None:
-        raise HTTPException(status_code=404, detail=f"Pipeline not found: {pipeline_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Pipeline not found: {pipeline_id}"
+        )
 
     return PipelineStateResponse(pipeline=pipeline)
 
@@ -334,7 +363,9 @@ async def list_pipeline_sessions(
     # Verify pipeline exists
     pipeline = pipeline_store.get(pipeline_id)
     if pipeline is None:
-        raise HTTPException(status_code=404, detail=f"Pipeline not found: {pipeline_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Pipeline not found: {pipeline_id}"
+        )
 
     sessions = session_store.get_sessions_for_pipeline(pipeline_id)
 
@@ -345,7 +376,9 @@ async def list_pipeline_sessions(
     return PipelineSessionListResponse(sessions=sessions, total=len(sessions))
 
 
-@router.get("/{pipeline_id}/sessions/{session_id}", response_model=PipelineSessionResponse)
+@router.get(
+    "/{pipeline_id}/sessions/{session_id}", response_model=PipelineSessionResponse
+)
 async def get_pipeline_session(
     pipeline_id: str,
     session_id: str,
@@ -356,7 +389,9 @@ async def get_pipeline_session(
     # Verify pipeline exists
     pipeline = pipeline_store.get(pipeline_id)
     if pipeline is None:
-        raise HTTPException(status_code=404, detail=f"Pipeline not found: {pipeline_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Pipeline not found: {pipeline_id}"
+        )
 
     session = session_store.get(session_id)
     if session is None:
@@ -371,14 +406,18 @@ async def get_pipeline_session(
     return PipelineSessionResponse(session=session)
 
 
-@router.post("/{pipeline_id}/sessions/{session_id}/stop", response_model=PipelineActionResponse)
+@router.post(
+    "/{pipeline_id}/sessions/{session_id}/stop", response_model=PipelineActionResponse
+)
 async def stop_pipeline_session(
     pipeline_id: str,
     session_id: str,
     pipeline_store: Annotated[PipelineStateStore, Depends(get_pipeline_store)],
     session_store: Annotated[PipelineSessionStore, Depends(get_pipeline_session_store)],
     pipeline_executor: Annotated[PipelineExecutor, Depends(get_pipeline_executor)],
-    force: bool = Query(default=False, description="Force kill agents by PID if needed"),
+    force: bool = Query(
+        default=False, description="Force kill agents by PID if needed"
+    ),
 ) -> PipelineActionResponse:
     """Stop a specific pipeline session and terminate its agents."""
     import os
@@ -388,7 +427,9 @@ async def stop_pipeline_session(
     # Verify pipeline exists
     pipeline = pipeline_store.get(pipeline_id)
     if pipeline is None:
-        raise HTTPException(status_code=404, detail=f"Pipeline not found: {pipeline_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Pipeline not found: {pipeline_id}"
+        )
 
     session = session_store.get(session_id)
     if session is None:
@@ -442,6 +483,7 @@ async def stop_pipeline_session(
                     a.status = AgentStatus.TERMINATED
                     a.finished_at = datetime.now()
                     return a
+
                 return updater
 
             agent_store.update(agent_id, make_updater())
@@ -454,7 +496,9 @@ async def stop_pipeline_session(
 
     session_store.update(session_id, session_updater)
 
-    logger.info(f"Stopped session {session_id} of pipeline {pipeline_id}, terminated {len(terminated_agents)} agents")
+    logger.info(
+        f"Stopped session {session_id} of pipeline {pipeline_id}, terminated {len(terminated_agents)} agents"
+    )
 
     return PipelineActionResponse(
         status="stopped",
@@ -470,7 +514,9 @@ async def delete_pipeline_session(
     pipeline_store: Annotated[PipelineStateStore, Depends(get_pipeline_store)],
     session_store: Annotated[PipelineSessionStore, Depends(get_pipeline_session_store)],
     pipeline_executor: Annotated[PipelineExecutor, Depends(get_pipeline_executor)],
-    force: bool = Query(default=False, description="Force stop running agents before delete"),
+    force: bool = Query(
+        default=False, description="Force stop running agents before delete"
+    ),
 ) -> dict:
     """Delete a pipeline session and optionally terminate its agents."""
     import os
@@ -480,7 +526,9 @@ async def delete_pipeline_session(
     # Verify pipeline exists
     pipeline = pipeline_store.get(pipeline_id)
     if pipeline is None:
-        raise HTTPException(status_code=404, detail=f"Pipeline not found: {pipeline_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Pipeline not found: {pipeline_id}"
+        )
 
     session = session_store.get(session_id)
     if session is None:
@@ -518,7 +566,9 @@ async def delete_pipeline_session(
                 all_agent_ids.add(agent_id)
 
     agent_ids = list(all_agent_ids)
-    logger.info(f"Found {len(agent_ids)} agents to delete for session {session_id}: {agent_ids}")
+    logger.info(
+        f"Found {len(agent_ids)} agents to delete for session {session_id}: {agent_ids}"
+    )
 
     # 1. Stop all running agents
     for agent_id in agent_ids:
@@ -538,6 +588,7 @@ async def delete_pipeline_session(
                     a.status = AgentStatus.TERMINATED
                     a.finished_at = datetime.now()
                     return a
+
                 return updater
 
             agent_store.update(agent_id, make_updater())
@@ -564,6 +615,8 @@ async def delete_pipeline_session(
     # 4. Delete session
     session_store.delete(session_id)
 
-    logger.info(f"Deleted session {session_id} of pipeline {pipeline_id} and {len(agent_ids)} agents")
+    logger.info(
+        f"Deleted session {session_id} of pipeline {pipeline_id} and {len(agent_ids)} agents"
+    )
 
     return {"status": "deleted", "session_id": session_id, "pipeline_id": pipeline_id}

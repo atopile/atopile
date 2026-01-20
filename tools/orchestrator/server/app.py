@@ -19,7 +19,13 @@ from ..exceptions import (
     SessionNotFoundError,
 )
 from .dependencies import ConnectionManager, get_orchestrator_state
-from .routes import agents_router, bridge_router, pipelines_router, sessions_router, websocket_router
+from .routes import (
+    agents_router,
+    bridge_router,
+    pipelines_router,
+    sessions_router,
+    websocket_router,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -166,9 +172,7 @@ def create_app() -> FastAPI:
             },
             "websockets": {
                 "connections": (
-                    state._ws_manager.get_connection_count()
-                    if state._ws_manager
-                    else 0
+                    state._ws_manager.get_connection_count() if state._ws_manager else 0
                 ),
             },
         }

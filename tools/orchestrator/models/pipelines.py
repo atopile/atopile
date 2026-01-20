@@ -230,9 +230,15 @@ class PipelineSession(BaseModel):
     status: PipelineSessionStatus = PipelineSessionStatus.RUNNING
     node_agent_map: dict[str, str] = Field(default_factory=dict)  # node_id -> agent_id
     node_status: dict[str, str] = Field(default_factory=dict)  # node_id -> status
-    wait_until: dict[str, datetime] = Field(default_factory=dict)  # wait_node_id -> resume datetime
-    condition_counts: dict[str, int] = Field(default_factory=dict)  # condition_node_id -> evaluation count
-    execution_order: list[str] = Field(default_factory=list)  # Order nodes were executed
+    wait_until: dict[str, datetime] = Field(
+        default_factory=dict
+    )  # wait_node_id -> resume datetime
+    condition_counts: dict[str, int] = Field(
+        default_factory=dict
+    )  # condition_node_id -> evaluation count
+    execution_order: list[str] = Field(
+        default_factory=list
+    )  # Order nodes were executed
     started_at: datetime = Field(default_factory=datetime.now)
     finished_at: datetime | None = None
     error_message: str | None = None

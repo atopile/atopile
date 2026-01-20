@@ -28,8 +28,8 @@ import httpx
 
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    stream=sys.stderr
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    stream=sys.stderr,
 )
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,9 @@ class BridgeMCPServer:
 
     def run(self):
         """Main loop - JSON-RPC over stdio."""
-        logger.info(f"Bridge MCP starting (agent={self.agent_name}, pipeline={self.pipeline_id}, bridge={self.bridge_url})")
+        logger.info(
+            f"Bridge MCP starting (agent={self.agent_name}, pipeline={self.pipeline_id}, bridge={self.bridge_url})"
+        )
 
         for line in sys.stdin:
             line = line.strip()
@@ -76,8 +78,8 @@ class BridgeMCPServer:
                 "result": {
                     "protocolVersion": "2024-11-05",
                     "serverInfo": {"name": "agent-bridge", "version": "0.1.0"},
-                    "capabilities": {"tools": {}}
-                }
+                    "capabilities": {"tools": {}},
+                },
             }
         elif method == "initialized":
             return None
@@ -103,15 +105,15 @@ class BridgeMCPServer:
                     "properties": {
                         "to": {
                             "type": "string",
-                            "description": "Name of the target agent to send to"
+                            "description": "Name of the target agent to send to",
                         },
                         "message": {
                             "type": "string",
-                            "description": "Message to send (can be plain text or JSON)"
-                        }
+                            "description": "Message to send (can be plain text or JSON)",
+                        },
                     },
-                    "required": ["to", "message"]
-                }
+                    "required": ["to", "message"],
+                },
             }
         ]
 
@@ -130,8 +132,15 @@ class BridgeMCPServer:
             "jsonrpc": "2.0",
             "id": req_id,
             "result": {
-                "content": [{"type": "text", "text": json.dumps(result) if isinstance(result, dict) else str(result)}]
-            }
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(result)
+                        if isinstance(result, dict)
+                        else str(result),
+                    }
+                ]
+            },
         }
 
     def send_and_receive(self, args: dict) -> dict | str:
@@ -144,14 +153,16 @@ class BridgeMCPServer:
         if not message:
             return {"error": "Message is required"}
         if not self.agent_name:
-            return {"error": "AGENT_NAME not set - this agent wasn't spawned by the orchestrator"}
+            return {
+                "error": "AGENT_NAME not set - this agent wasn't spawned by the orchestrator"
+            }
 
         try:
             # POST to orchestrator's bridge endpoint
             payload = {
                 "from_agent": self.agent_name,
                 "to_agent": to,
-                "message": message
+                "message": message,
             }
             if self.pipeline_id:
                 payload["pipeline_id"] = self.pipeline_id
@@ -159,7 +170,7 @@ class BridgeMCPServer:
             response = self.http.post(
                 f"{self.bridge_url}/bridge/send",
                 json=payload,
-                timeout=300.0  # 5 min timeout for long operations
+                timeout=300.0,  # 5 min timeout for long operations
             )
             response.raise_for_status()
             data = response.json()

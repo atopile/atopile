@@ -58,7 +58,7 @@ def main():
         pipeline = resp.json()
         status = pipeline["status"]
         current = pipeline.get("current_node_id", "none")
-        print(f"  [{i*2}s] Status: {status}, current: {current}")
+        print(f"  [{i * 2}s] Status: {status}, current: {current}")
         if status in ("completed", "failed"):
             break
         time.sleep(2)
@@ -76,7 +76,9 @@ def main():
     for agent in agents_resp.json()["agents"]:
         if agent.get("pipeline_id") == pipeline_id:
             resume_count = agent.get("metadata", {}).get("resume_count", 0)
-            print(f"  {agent['name']}: status={agent['status']}, resume_count={resume_count}")
+            print(
+                f"  {agent['name']}: status={agent['status']}, resume_count={resume_count}"
+            )
 
 
 if __name__ == "__main__":

@@ -42,7 +42,8 @@ class PipelineExecutor:
         agent_store: "AgentStateStore",
         pipeline_store: "PipelineStateStore",
         pipeline_session_store: "PipelineSessionStore",
-        on_node_status_change: Callable[[str, str, str, str | None], None] | None = None,
+        on_node_status_change: Callable[[str, str, str, str | None], None]
+        | None = None,
         on_session_status_change: Callable[[str, str, str], None] | None = None,
     ) -> None:
         """Initialize the pipeline executor.
@@ -87,7 +88,9 @@ class PipelineExecutor:
             status=PipelineSessionStatus.RUNNING,
         )
         self._pipeline_session_store.set(session.id, session)
-        logger.info(f"Created pipeline session: {session.id} for pipeline {pipeline_id}")
+        logger.info(
+            f"Created pipeline session: {session.id} for pipeline {pipeline_id}"
+        )
 
         # Update pipeline metadata (don't set status - sessions track execution state)
         def updater(p: PipelineState) -> PipelineState:
@@ -118,7 +121,9 @@ class PipelineExecutor:
             daemon=True,
         )
         thread.start()
-        logger.info(f"Pipeline execution started: {pipeline_id} (session: {session.id})")
+        logger.info(
+            f"Pipeline execution started: {pipeline_id} (session: {session.id})"
+        )
 
         return session.id
 
@@ -176,6 +181,7 @@ class PipelineExecutor:
 
     def _mark_pipeline_failed(self, pipeline_id: str, error: str) -> None:
         """Mark a pipeline thread as failed (error in execution engine)."""
+
         # Note: Pipeline status is managed by sessions now, so we just log the error
         # The session should be marked as failed by the execution context
         def updater(p: PipelineState) -> PipelineState:
@@ -201,7 +207,9 @@ class PipelineExecution:
         self.executor = executor
         self.node_agents: dict[str, str] = {}  # node_id -> agent_id
         self.node_status: dict[str, str] = {}  # node_id -> status
-        self.node_outputs: dict[str, str] = {}  # node_id -> output result (for communication)
+        self.node_outputs: dict[
+            str, str
+        ] = {}  # node_id -> output result (for communication)
         self._should_stop = False
         self._current_agent_id: str | None = None
 
@@ -212,9 +220,13 @@ class PipelineExecution:
         # Terminate current agent if running
         if self._current_agent_id:
             try:
-                self.executor._process_manager.terminate(self._current_agent_id, timeout=5.0)
+                self.executor._process_manager.terminate(
+                    self._current_agent_id, timeout=5.0
+                )
             except Exception as e:
-                logger.warning(f"Failed to terminate agent {self._current_agent_id}: {e}")
+                logger.warning(
+                    f"Failed to terminate agent {self._current_agent_id}: {e}"
+                )
 
     def run(self) -> None:
         """Execute the pipeline."""
@@ -225,7 +237,9 @@ class PipelineExecution:
             raise RuntimeError(f"Pipeline not found: {self.pipeline_id}")
 
         logger.info(f"Starting pipeline execution: {self.pipeline_id}")
-        logger.info(f"Pipeline has {len(pipeline.nodes)} nodes and {len(pipeline.edges)} edges")
+        logger.info(
+            f"Pipeline has {len(pipeline.nodes)} nodes and {len(pipeline.edges)} edges"
+        )
 
         # Pre-register pipeline context with all agent nodes for bridge communication
         # This allows agents to find each other even before they've all executed
@@ -273,17 +287,23 @@ class PipelineExecution:
                     self._update_node_status(node_id, "completed")
                     if next_node_id is None:
                         # No outgoing edge for this path - terminate session
-                        logger.info(f"Condition {node_id} has no outgoing edge, terminating session")
+                        logger.info(
+                            f"Condition {node_id} has no outgoing edge, terminating session"
+                        )
                         self._mark_completed()
                         return
                     # Jump to the next node
                     try:
                         next_index = execution_order.index(next_node_id)
-                        logger.info(f"Condition branching to node {next_node_id} (index {next_index})")
+                        logger.info(
+                            f"Condition branching to node {next_node_id} (index {next_index})"
+                        )
                         current_index = next_index
                         continue  # Skip the increment at the bottom
                     except ValueError:
-                        logger.warning(f"Condition target node {next_node_id} not in execution order")
+                        logger.warning(
+                            f"Condition target node {next_node_id} not in execution order"
+                        )
 
                 self._update_node_status(node_id, "completed")
 
@@ -330,7 +350,7 @@ class PipelineExecution:
         # An agent is a "sender" if it has an edge pointing TO another agent
         agent_set = set(agent_nodes)
         has_incoming_from_agent: set[str] = set()  # Receivers
-        has_outgoing_to_agent: set[str] = set()    # Senders
+        has_outgoing_to_agent: set[str] = set()  # Senders
 
         for edge in pipeline.edges:
             source = edge.source
@@ -340,22 +360,42 @@ class PipelineExecution:
                 target_is_agent = target in agent_set
                 if source_is_agent and target_is_agent:
                     has_incoming_from_agent.add(target)  # target is a receiver
-                    has_outgoing_to_agent.add(source)    # source is a sender
+                    has_outgoing_to_agent.add(source)  # source is a sender
 
         # Order agent nodes: receivers first, then senders
         # Agents that are ONLY receivers go first
         # Agents that are ONLY senders go last
         # Agents that are both go in the middle
-        receivers_only = [n for n in agent_nodes if n in has_incoming_from_agent and n not in has_outgoing_to_agent]
-        both = [n for n in agent_nodes if n in has_incoming_from_agent and n in has_outgoing_to_agent]
-        senders_only = [n for n in agent_nodes if n not in has_incoming_from_agent and n in has_outgoing_to_agent]
-        neither = [n for n in agent_nodes if n not in has_incoming_from_agent and n not in has_outgoing_to_agent]
+        receivers_only = [
+            n
+            for n in agent_nodes
+            if n in has_incoming_from_agent and n not in has_outgoing_to_agent
+        ]
+        both = [
+            n
+            for n in agent_nodes
+            if n in has_incoming_from_agent and n in has_outgoing_to_agent
+        ]
+        senders_only = [
+            n
+            for n in agent_nodes
+            if n not in has_incoming_from_agent and n in has_outgoing_to_agent
+        ]
+        neither = [
+            n
+            for n in agent_nodes
+            if n not in has_incoming_from_agent and n not in has_outgoing_to_agent
+        ]
 
         # Build final order: triggers first, then receivers, then senders
-        order = trigger_nodes + receivers_only + both + neither + senders_only + other_nodes
+        order = (
+            trigger_nodes + receivers_only + both + neither + senders_only + other_nodes
+        )
 
-        logger.debug(f"Execution order breakdown - triggers: {trigger_nodes}, receivers: {receivers_only}, "
-                    f"both: {both}, neither: {neither}, senders: {senders_only}")
+        logger.debug(
+            f"Execution order breakdown - triggers: {trigger_nodes}, receivers: {receivers_only}, "
+            f"both: {both}, neither: {neither}, senders: {senders_only}"
+        )
 
         return order
 
@@ -402,7 +442,7 @@ class PipelineExecution:
 
             if parent_id in self.node_outputs:
                 parent_name = "Unknown"
-                if hasattr(parent_node.data, 'name'):
+                if hasattr(parent_node.data, "name"):
                     parent_name = parent_node.data.name or parent_id
 
                 output = self.node_outputs[parent_id]
@@ -412,7 +452,11 @@ class PipelineExecution:
             return ""
 
         # Use format that won't be misinterpreted as CLI options (avoid starting with dashes)
-        return "[CONTEXT FROM PREVIOUS AGENTS]\n" + "\n".join(context_parts) + "[END CONTEXT]\n\n"
+        return (
+            "[CONTEXT FROM PREVIOUS AGENTS]\n"
+            + "\n".join(context_parts)
+            + "[END CONTEXT]\n\n"
+        )
 
     def _extract_agent_result(self, agent_id: str) -> str:
         """Extract the final result from an agent's output."""
@@ -451,16 +495,20 @@ class PipelineExecution:
         data = node.data
 
         # Build agent config from node data (data is AgentNodeData)
-        backend = data.backend if hasattr(data, 'backend') else AgentBackendType.CLAUDE_CODE
-        prompt = data.prompt if hasattr(data, 'prompt') else ""
-        node_agent_name = data.name if hasattr(data, 'name') else "Pipeline Agent"
+        backend = (
+            data.backend if hasattr(data, "backend") else AgentBackendType.CLAUDE_CODE
+        )
+        prompt = data.prompt if hasattr(data, "prompt") else ""
+        node_agent_name = data.name if hasattr(data, "name") else "Pipeline Agent"
 
         # Generate full agent name: <pipeline_name>.<agent_name>
         full_agent_name = self._make_agent_name(pipeline, node_agent_name)
 
         # Validate prompt - must not be empty
         if not prompt or not prompt.strip():
-            raise ValueError(f"Agent node '{node_agent_name}' ({node_id}) has an empty prompt. Please specify a prompt.")
+            raise ValueError(
+                f"Agent node '{node_agent_name}' ({node_id}) has an empty prompt. Please specify a prompt."
+            )
 
         # Build context from parent node outputs (for inter-agent communication via context injection)
         parent_context = self._build_context_from_parents(pipeline, node_id)
@@ -469,7 +517,7 @@ class PipelineExecution:
             logger.info(f"Injected context from parent nodes into prompt for {node_id}")
 
         # Prepend planning file content if specified
-        planning_file = getattr(data, 'planning_file', None)
+        planning_file = getattr(data, "planning_file", None)
         if planning_file:
             try:
                 with open(planning_file, "r") as f:
@@ -483,7 +531,7 @@ class PipelineExecution:
 
         # Set up environment - always add bridge env vars for pipeline agents
         environment = {}
-        if hasattr(data, 'environment') and data.environment:
+        if hasattr(data, "environment") and data.environment:
             environment.update(data.environment)
 
         # Always set up bridge environment variables for pipeline agents
@@ -499,7 +547,7 @@ class PipelineExecution:
             # This agent can SEND to other agents
             bridge_instructions = f"""You are part of a multi-agent pipeline. You can communicate with other agents using the send_and_receive tool.
 
-Connected agents you can talk to: {', '.join(connected_agents)}
+Connected agents you can talk to: {", ".join(connected_agents)}
 
 To send a message and get a response, use: send_and_receive(to="agent_name", message="your message")
 
@@ -518,17 +566,31 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
 
         # Check if we can resume an existing agent for this node
         existing_agent_id = self.node_agents.get(node_id)
-        existing_agent = self.executor._agent_store.get(existing_agent_id) if existing_agent_id else None
+        existing_agent = (
+            self.executor._agent_store.get(existing_agent_id)
+            if existing_agent_id
+            else None
+        )
 
-        if existing_agent and existing_agent.session_id and existing_agent.is_finished():
+        if (
+            existing_agent
+            and existing_agent.session_id
+            and existing_agent.is_finished()
+        ):
             # Resume existing agent to preserve context
-            logger.info(f"Resuming agent '{full_agent_name}' for node {node_id}: {existing_agent_id}")
+            logger.info(
+                f"Resuming agent '{full_agent_name}' for node {node_id}: {existing_agent_id}"
+            )
             self._resume_agent(existing_agent_id, prompt, pipeline, node_id)
         else:
             # Spawn new agent
             if existing_agent:
-                logger.info(f"Cannot resume agent for {node_id}: session_id={existing_agent.session_id}, status={existing_agent.status}")
-            self._spawn_new_agent(prompt, full_agent_name, pipeline, node, backend, data, environment)
+                logger.info(
+                    f"Cannot resume agent for {node_id}: session_id={existing_agent.session_id}, status={existing_agent.status}"
+                )
+            self._spawn_new_agent(
+                prompt, full_agent_name, pipeline, node, backend, data, environment
+            )
 
     def _resume_agent(
         self,
@@ -538,6 +600,7 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
         node_id: str,
     ) -> None:
         """Resume an existing agent with a new prompt, preserving its context."""
+
         # Prepare agent for resume
         def prepare_updater(a: AgentState) -> AgentState:
             a.config.prompt = prompt
@@ -558,9 +621,13 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
         agent = self.executor._agent_store.get(agent_id)
 
         try:
-            logger.info(f"Spawning process for resumed agent {agent_id} (run_count={agent.run_count})")
+            logger.info(
+                f"Spawning process for resumed agent {agent_id} (run_count={agent.run_count})"
+            )
             managed = self.executor._process_manager.spawn(agent)
-            logger.info(f"Process spawned for agent {agent_id}: pid={managed.process.pid}")
+            logger.info(
+                f"Process spawned for agent {agent_id}: pid={managed.process.pid}"
+            )
 
             def running_updater(a: AgentState) -> AgentState:
                 a.status = AgentStatus.RUNNING
@@ -588,13 +655,17 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
             # Capture the agent's output
             output = self._extract_agent_result(agent_id)
             self.node_outputs[node_id] = output
-            logger.info(f"Captured output from resumed agent {node_id}: {len(output)} chars")
+            logger.info(
+                f"Captured output from resumed agent {node_id}: {len(output)} chars"
+            )
 
             # Update bridge context again after completion
             self._register_pipeline_context(pipeline)
 
         except Exception as e:
-            logger.error(f"Failed to resume agent for node {node_id}: {e}", exc_info=True)
+            logger.error(
+                f"Failed to resume agent for node {node_id}: {e}", exc_info=True
+            )
             raise
         finally:
             self._current_agent_id = None
@@ -615,10 +686,10 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
         config = AgentConfig(
             backend=backend,
             prompt=prompt,
-            max_turns=getattr(data, 'max_turns', None) or 10,
-            max_budget_usd=getattr(data, 'max_budget_usd', None),
-            system_prompt=getattr(data, 'system_prompt', None),
-            working_directory=getattr(data, 'working_directory', None),
+            max_turns=getattr(data, "max_turns", None) or 10,
+            max_budget_usd=getattr(data, "max_budget_usd", None),
+            system_prompt=getattr(data, "system_prompt", None),
+            working_directory=getattr(data, "working_directory", None),
             environment=environment if environment else None,
         )
 
@@ -632,7 +703,9 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
         )
         self.executor._agent_store.set(agent.id, agent)
 
-        logger.info(f"Spawning new agent '{full_agent_name}' for node {node_id}: {agent.id}")
+        logger.info(
+            f"Spawning new agent '{full_agent_name}' for node {node_id}: {agent.id}"
+        )
 
         try:
             managed = self.executor._process_manager.spawn(agent)
@@ -656,7 +729,9 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
                 s.execution_order.append(node_id)
                 return s
 
-            self.executor._pipeline_session_store.update(self.session_id, session_updater)
+            self.executor._pipeline_session_store.update(
+                self.session_id, session_updater
+            )
 
             # Also update pipeline state for backwards compatibility
             def pipeline_updater(p: PipelineState) -> PipelineState:
@@ -711,7 +786,7 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
         data = node.data
 
         # Get wait configuration
-        duration_seconds = getattr(data, 'duration_seconds', 60)
+        duration_seconds = getattr(data, "duration_seconds", 60)
 
         logger.info(f"Wait {node_id}: waiting {duration_seconds}s")
 
@@ -732,11 +807,15 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
         while time.time() - wait_start < duration_seconds:
             if self._should_stop:
                 logger.info(f"Wait {node_id}: stopping during wait")
+
                 # Clear wait_until on stop
                 def clear_wait_on_stop(s: PipelineSession) -> PipelineSession:
                     s.wait_until.pop(node_id, None)
                     return s
-                self.executor._pipeline_session_store.update(self.session_id, clear_wait_on_stop)
+
+                self.executor._pipeline_session_store.update(
+                    self.session_id, clear_wait_on_stop
+                )
                 return
             time.sleep(1.0)
 
@@ -744,6 +823,7 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
         def clear_wait_done(s: PipelineSession) -> PipelineSession:
             s.wait_until.pop(node_id, None)
             return s
+
         self.executor._pipeline_session_store.update(self.session_id, clear_wait_done)
 
         logger.info(f"Wait {node_id}: done waiting")
@@ -764,8 +844,8 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
         data = node.data
 
         # Get condition configuration
-        count_limit = getattr(data, 'count_limit', None)
-        time_limit_seconds = getattr(data, 'time_limit_seconds', None)
+        count_limit = getattr(data, "count_limit", None)
+        time_limit_seconds = getattr(data, "time_limit_seconds", None)
 
         # Get current evaluation count (0-indexed)
         current_count = 0
@@ -777,6 +857,7 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
         def increment_count(s: PipelineSession) -> PipelineSession:
             s.condition_counts[node_id] = s.condition_counts.get(node_id, 0) + 1
             return s
+
         self.executor._pipeline_session_store.update(self.session_id, increment_count)
 
         # Evaluate conditions (all must be true for result to be true)
@@ -786,7 +867,9 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
         if count_limit is not None:
             if current_count >= count_limit:
                 result = False
-                logger.info(f"Condition {node_id}: count {current_count} >= limit {count_limit}, result=false")
+                logger.info(
+                    f"Condition {node_id}: count {current_count} >= limit {count_limit}, result=false"
+                )
 
         # Time condition: true if time since session start < limit
         if time_limit_seconds is not None and result:
@@ -794,9 +877,13 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
                 elapsed = (datetime.now() - session.started_at).total_seconds()
                 if elapsed >= time_limit_seconds:
                     result = False
-                    logger.info(f"Condition {node_id}: elapsed {elapsed:.1f}s >= limit {time_limit_seconds}s, result=false")
+                    logger.info(
+                        f"Condition {node_id}: elapsed {elapsed:.1f}s >= limit {time_limit_seconds}s, result=false"
+                    )
 
-        logger.info(f"Condition {node_id}: evaluated to {result} (count={current_count})")
+        logger.info(
+            f"Condition {node_id}: evaluated to {result} (count={current_count})"
+        )
 
         # Find the appropriate outgoing edge based on result
         # true path: source_handle is None or "true"
@@ -834,10 +921,16 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
             exit_code = self.executor._process_manager.get_exit_code(agent_id)
             if exit_code is not None:
                 # Wait for output threads to finish processing and capture session_id
-                session_id = self.executor._process_manager.wait_for_output_and_get_session_id(agent_id, timeout=2.0)
+                session_id = (
+                    self.executor._process_manager.wait_for_output_and_get_session_id(
+                        agent_id, timeout=2.0
+                    )
+                )
 
                 # Process finished, update agent state
-                new_status = AgentStatus.COMPLETED if exit_code == 0 else AgentStatus.FAILED
+                new_status = (
+                    AgentStatus.COMPLETED if exit_code == 0 else AgentStatus.FAILED
+                )
 
                 def updater(a: AgentState) -> AgentState:
                     a.status = new_status
@@ -868,12 +961,15 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
 
         if self.executor._on_node_status_change:
             try:
-                self.executor._on_node_status_change(self.pipeline_id, node_id, status, self.session_id)
+                self.executor._on_node_status_change(
+                    self.pipeline_id, node_id, status, self.session_id
+                )
             except Exception as e:
                 logger.warning(f"Node status callback failed: {e}")
 
     def _mark_completed(self) -> None:
         """Mark session as completed."""
+
         # Update session
         def session_updater(s: PipelineSession) -> PipelineSession:
             s.status = PipelineSessionStatus.COMPLETED
@@ -889,7 +985,9 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
             return p
 
         self.executor._pipeline_store.update(self.pipeline_id, updater)
-        logger.info(f"Session completed: {self.session_id} (pipeline: {self.pipeline_id})")
+        logger.info(
+            f"Session completed: {self.session_id} (pipeline: {self.pipeline_id})"
+        )
 
         # Notify callback
         if self.executor._on_session_status_change:
@@ -902,6 +1000,7 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
 
     def _mark_stopped(self) -> None:
         """Mark session as stopped."""
+
         # Update session
         def session_updater(s: PipelineSession) -> PipelineSession:
             s.status = PipelineSessionStatus.STOPPED
@@ -917,7 +1016,9 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
             return p
 
         self.executor._pipeline_store.update(self.pipeline_id, updater)
-        logger.info(f"Session stopped: {self.session_id} (pipeline: {self.pipeline_id})")
+        logger.info(
+            f"Session stopped: {self.session_id} (pipeline: {self.pipeline_id})"
+        )
 
         # Notify callback
         if self.executor._on_session_status_change:
@@ -930,6 +1031,7 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
 
     def _mark_failed(self, error: str) -> None:
         """Mark session as failed."""
+
         # Update session
         def session_updater(s: PipelineSession) -> PipelineSession:
             s.status = PipelineSessionStatus.FAILED
@@ -946,7 +1048,9 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
             return p
 
         self.executor._pipeline_store.update(self.pipeline_id, updater)
-        logger.info(f"Session failed: {self.session_id} (pipeline: {self.pipeline_id}): {error}")
+        logger.info(
+            f"Session failed: {self.session_id} (pipeline: {self.pipeline_id}): {error}"
+        )
 
         # Notify callback
         if self.executor._on_session_status_change:
@@ -957,7 +1061,9 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
             except Exception as e:
                 logger.warning(f"Session status callback failed: {e}")
 
-    def _get_connected_agent_names(self, pipeline: PipelineState, node_id: str) -> list[str]:
+    def _get_connected_agent_names(
+        self, pipeline: PipelineState, node_id: str
+    ) -> list[str]:
         """Get names of agents this node can send messages TO via pipeline edges.
 
         Only returns agents connected via OUTGOING edges (source=this node).
@@ -976,7 +1082,7 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
         for target_id in target_node_ids:
             target_node = self._find_node(pipeline, target_id)
             if target_node and target_node.type == "agent":
-                if hasattr(target_node.data, 'name') and target_node.data.name:
+                if hasattr(target_node.data, "name") and target_node.data.name:
                     agent_names.append(target_node.data.name)
                 else:
                     agent_names.append(target_id)
@@ -999,7 +1105,7 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
         """Build a map of node_id -> agent name for all agent nodes."""
         node_names = {}
         for node in pipeline.nodes:
-            if node.type == "agent" and hasattr(node.data, 'name'):
+            if node.type == "agent" and hasattr(node.data, "name"):
                 node_names[node.id] = node.data.name or node.id
         return node_names
 
@@ -1028,11 +1134,13 @@ Do NOT try to contact other agents - just focus on completing the task you're gi
         agents_map = {}
         for node_id, agent_id in self.node_agents.items():
             node = self._find_node(pipeline, node_id)
-            if node and node.type == "agent" and hasattr(node.data, 'name'):
+            if node and node.type == "agent" and hasattr(node.data, "name"):
                 agents_map[node.data.name or node_id] = agent_id
 
         register_pipeline_context(self.pipeline_id, named_edges, agents_map)
-        logger.info(f"Registered pipeline context: {len(named_edges)} edges, {len(agents_map)} agents")
+        logger.info(
+            f"Registered pipeline context: {len(named_edges)} edges, {len(agents_map)} agents"
+        )
 
     def _make_agent_name(self, pipeline: PipelineState, agent_node_name: str) -> str:
         """Generate a full agent name like '<pipeline_name>.<agent_name>'.

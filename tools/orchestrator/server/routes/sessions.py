@@ -143,6 +143,7 @@ async def resume_session(
                 a.error_message = msg
                 a.finished_at = datetime.now()
                 return a
+
             return updater
 
         agent_store.update(agent.id, make_fail_updater(error_msg))

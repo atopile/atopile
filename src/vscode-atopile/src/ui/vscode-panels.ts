@@ -612,6 +612,15 @@ async function handleAction(message: any): Promise<void> {
             break;
         }
 
+        // Project Dependencies
+        case 'fetchDependencies': {
+            const { projectRoot, forceRefresh } = message;
+            if (projectRoot) {
+                await appStateManager.fetchDependencies(projectRoot, forceRefresh || false);
+            }
+            break;
+        }
+
         // Variables (for VariablesPanel)
         case 'fetchVariables': {
             const { projectRoot, target } = message;

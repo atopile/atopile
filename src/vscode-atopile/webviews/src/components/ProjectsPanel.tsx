@@ -7,6 +7,7 @@ import {
   Clock, SkipForward, Circle, Scale, History, Github, Globe, Square,
   Folder, FolderOpen, FileText
 } from 'lucide-react'
+import { DependencyCard, type ProjectDependency } from './DependencyCard'
 
 // Selection type
 interface Selection {
@@ -583,10 +584,13 @@ interface ProjectsPanelProps {
   onOpenLayout?: (projectId: string, buildId: string) => void  // Open layout preview
   onOpen3D?: (projectId: string, buildId: string) => void  // Open 3D viewer
   onFileClick?: (projectId: string, filePath: string) => void  // Open a file in the editor
+  onDependencyVersionChange?: (projectId: string, identifier: string, newVersion: string) => void  // Change dependency version
+  onOpenRepository?: (url: string) => void  // Open repository URL
   filterType?: 'all' | 'projects' | 'packages'
   projects?: Project[]  // Optional - if not provided, uses mockProjects
   projectModules?: Record<string, ModuleDefinition[]>  // Modules for each project root
   projectFiles?: Record<string, FileTreeNode[]>  // File tree for each project root
+  projectDependencies?: Record<string, ProjectDependency[]>  // Dependencies for each project root
 }
 
 // Symbol node component - memoized to prevent unnecessary re-renders in lists
@@ -1899,8 +1903,11 @@ const ProjectNode = memo(function ProjectNode({
   onOpenLayout,
   onOpen3D,
   onFileClick,
+  onDependencyVersionChange,
+  onOpenRepository,
   availableModules = [],
-  projectFiles = []
+  projectFiles = [],
+  projectDependencies = []
 }: {
   project: Project
   selection: Selection
@@ -1920,8 +1927,11 @@ const ProjectNode = memo(function ProjectNode({
   onOpenLayout?: (projectId: string, buildId: string) => void
   onOpen3D?: (projectId: string, buildId: string) => void
   onFileClick?: (projectId: string, filePath: string) => void
+  onDependencyVersionChange?: (projectId: string, identifier: string, newVersion: string) => void
+  onOpenRepository?: (url: string) => void
   availableModules?: ModuleDefinition[]
   projectFiles?: FileTreeNode[]
+  projectDependencies?: ProjectDependency[]
 }) {
   const expanded = isExpanded
   const [isEditingName, setIsEditingName] = useState(false)
@@ -2162,13 +2172,21 @@ const ProjectNode = memo(function ProjectNode({
             files={projectFiles}
             onFileClick={onFileClick ? (path) => onFileClick(project.id, path) : undefined}
           />
+
+          {/* Dependencies */}
+          <DependencyCard
+            dependencies={projectDependencies}
+            projectId={project.id}
+            onVersionChange={onDependencyVersionChange}
+            onOpenRepository={onOpenRepository}
+          />
         </>
       )}
     </div>
   )
 })
 
-export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onStageFilter, onOpenPackageDetail, onPackageInstall, onCreateProject, onProjectExpand, onOpenSource, onOpenKiCad, onOpenLayout, onOpen3D, onFileClick, filterType = 'all', projects: externalProjects, projectModules = {}, projectFiles = {} }: ProjectsPanelProps) {
+export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onStageFilter, onOpenPackageDetail, onPackageInstall, onCreateProject, onProjectExpand, onOpenSource, onOpenKiCad, onOpenLayout, onOpen3D, onFileClick, onDependencyVersionChange, onOpenRepository, filterType = 'all', projects: externalProjects, projectModules = {}, projectFiles = {}, projectDependencies = {} }: ProjectsPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [publisherFilter, setPublisherFilter] = useState<string | null>(null)
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
@@ -2457,8 +2475,11 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
               onOpenLayout={onOpenLayout}
               onOpen3D={onOpen3D}
               onFileClick={onFileClick}
+              onDependencyVersionChange={onDependencyVersionChange}
+              onOpenRepository={onOpenRepository}
               availableModules={projectModules[project.path] || []}
               projectFiles={projectFiles[project.path] || []}
+              projectDependencies={projectDependencies[project.path] || []}
             />
           )
         ))}

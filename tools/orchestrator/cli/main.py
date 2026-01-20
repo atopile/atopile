@@ -41,6 +41,7 @@ def serve(
     # Try tools.orchestrator first (when run from parent dir), fall back to orchestrator
     try:
         import tools.orchestrator.server.app  # noqa: F401
+
         app_path = "tools.orchestrator.server.app:app"
     except ImportError:
         app_path = "orchestrator.server.app:app"

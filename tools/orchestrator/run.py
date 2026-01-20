@@ -21,13 +21,14 @@ import sys
 import time
 from pathlib import Path
 
+
 # Colors for terminal output
 class Colors:
-    RED = '\033[0;31m'
-    GREEN = '\033[0;32m'
-    YELLOW = '\033[0;33m'
-    BLUE = '\033[0;34m'
-    NC = '\033[0m'  # No Color
+    RED = "\033[0;31m"
+    GREEN = "\033[0;32m"
+    YELLOW = "\033[0;33m"
+    BLUE = "\033[0;34m"
+    NC = "\033[0m"  # No Color
 
 
 # Global process references for cleanup
@@ -40,7 +41,9 @@ def cleanup():
     print(f"\n{Colors.YELLOW}Shutting down...{Colors.NC}")
 
     if frontend_process and frontend_process.poll() is None:
-        print(f"{Colors.BLUE}Stopping frontend (PID: {frontend_process.pid}){Colors.NC}")
+        print(
+            f"{Colors.BLUE}Stopping frontend (PID: {frontend_process.pid}){Colors.NC}"
+        )
         try:
             frontend_process.terminate()
             frontend_process.wait(timeout=5)
@@ -76,7 +79,7 @@ def main():
     parser.add_argument(
         "--prod",
         action="store_true",
-        help="Run in production mode (builds frontend, faster on mobile)"
+        help="Run in production mode (builds frontend, faster on mobile)",
     )
     args = parser.parse_args()
 
@@ -126,7 +129,14 @@ def main():
     print(f"{Colors.BLUE}Starting backend server on http://localhost:8765{Colors.NC}")
 
     backend_process = subprocess.Popen(
-        [sys.executable, "-m", "tools.orchestrator.cli.main", "serve", "--port", "8765"],
+        [
+            sys.executable,
+            "-m",
+            "tools.orchestrator.cli.main",
+            "serve",
+            "--port",
+            "8765",
+        ],
         cwd=root_dir,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -150,7 +160,9 @@ def main():
     print()
     if prod_mode:
         # Use vite preview for production build
-        print(f"{Colors.BLUE}Starting frontend preview server on http://localhost:4173{Colors.NC}")
+        print(
+            f"{Colors.BLUE}Starting frontend preview server on http://localhost:4173{Colors.NC}"
+        )
         frontend_process = subprocess.Popen(
             [npm_cmd, "run", "preview"],
             cwd=web_dir,
@@ -160,7 +172,9 @@ def main():
         frontend_port = 4173
     else:
         # Use vite dev for development
-        print(f"{Colors.BLUE}Starting frontend dev server on http://localhost:5173{Colors.NC}")
+        print(
+            f"{Colors.BLUE}Starting frontend dev server on http://localhost:5173{Colors.NC}"
+        )
         frontend_process = subprocess.Popen(
             [npm_cmd, "run", "dev"],
             cwd=web_dir,
@@ -189,9 +203,13 @@ def main():
     print(f"  {Colors.BLUE}Health:{Colors.NC}     http://localhost:8765/health")
     print()
     if prod_mode:
-        print(f"  {Colors.GREEN}Running in production mode (optimized for mobile){Colors.NC}")
+        print(
+            f"  {Colors.GREEN}Running in production mode (optimized for mobile){Colors.NC}"
+        )
     else:
-        print(f"  {Colors.YELLOW}Running in dev mode (use --prod for mobile){Colors.NC}")
+        print(
+            f"  {Colors.YELLOW}Running in dev mode (use --prod for mobile){Colors.NC}"
+        )
     print()
     print(f"{Colors.YELLOW}Press Ctrl+C to stop both servers{Colors.NC}")
     print()

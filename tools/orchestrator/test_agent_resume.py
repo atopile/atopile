@@ -33,7 +33,9 @@ def main():
     if worker_agent:
         print(f"\nFound worker: {worker_agent['id']}")
         print(f"  Status: {worker_agent['status']}")
-        print(f"  Resume count before: {worker_agent.get('metadata', {}).get('resume_count', 0)}")
+        print(
+            f"  Resume count before: {worker_agent.get('metadata', {}).get('resume_count', 0)}"
+        )
 
     # Resume the top agent
     print("\nResuming TopAgent to ask worker another question...")
@@ -53,7 +55,7 @@ def main():
     for i in range(60):
         resp = httpx.get(f"{BASE_URL}/agents/{top_agent['id']}")
         agent = resp.json()["agent"]
-        print(f"  [{i*2}s] Status: {agent['status']}")
+        print(f"  [{i * 2}s] Status: {agent['status']}")
         if agent["status"] in ("completed", "failed"):
             break
         time.sleep(2)
@@ -64,13 +66,13 @@ def main():
     for agent in agents_resp.json()["agents"]:
         if "CommTest2" in (agent.get("name") or ""):
             resume_count = agent.get("metadata", {}).get("resume_count", 0)
-            print(f"  {agent['name']}: status={agent['status']}, resume_count={resume_count}")
+            print(
+                f"  {agent['name']}: status={agent['status']}, resume_count={resume_count}"
+            )
 
     # Count total workers with that name
     worker_count = sum(
-        1
-        for a in agents_resp.json()["agents"]
-        if a.get("name") == "CommTest2.worker"
+        1 for a in agents_resp.json()["agents"] if a.get("name") == "CommTest2.worker"
     )
     print(f"\nTotal 'CommTest2.worker' agents: {worker_count}")
     if worker_count == 1:

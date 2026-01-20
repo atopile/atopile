@@ -82,10 +82,22 @@ export interface BuildTarget {
   lastBuild?: BuildTargetStatus;  // Persisted status from last build
 }
 
+// Dependency info (from ato.yaml)
+export interface ProjectDependency {
+  identifier: string;  // e.g., "atopile/resistors"
+  version: string;     // Installed version
+  latestVersion?: string;  // Latest available version
+  name: string;        // e.g., "resistors"
+  publisher: string;   // e.g., "atopile"
+  repository?: string;
+  hasUpdate?: boolean;
+}
+
 export interface Project {
   root: string;
   name: string;
   targets: BuildTarget[];
+  dependencies?: ProjectDependency[];  // Project dependencies from ato.yaml
 }
 
 /**
@@ -366,6 +378,11 @@ export interface AppState {
   // Map of project root to file tree (.ato and .py files)
   projectFiles: Record<string, FileTreeNode[]>;
   isLoadingFiles: boolean;
+
+  // Project dependencies (from ato.yaml)
+  // Map of project root to dependencies list
+  projectDependencies: Record<string, ProjectDependency[]>;
+  isLoadingDependencies: boolean;
 
   // Variables (from /api/variables endpoint)
   // Current variables for selected project/target - frontend just displays this

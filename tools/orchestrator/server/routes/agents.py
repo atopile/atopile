@@ -28,7 +28,12 @@ from ...models import (
     TerminateAgentResponse,
     UpdateAgentRequest,
 )
-from ..dependencies import broadcast_agent_spawned, broadcast_agent_status_changed, get_agent_store, get_process_manager
+from ..dependencies import (
+    broadcast_agent_spawned,
+    broadcast_agent_status_changed,
+    get_agent_store,
+    get_process_manager,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +96,7 @@ async def spawn_agent(
                 a.error_message = msg
                 a.finished_at = datetime.now()
                 return a
+
             return updater
 
         agent_store.update(agent.id, make_fail_updater(error_msg))
@@ -105,6 +111,7 @@ async def spawn_agent(
                 a.error_message = msg
                 a.finished_at = datetime.now()
                 return a
+
             return updater
 
         agent_store.update(agent.id, make_fail_updater(error_msg))
@@ -270,11 +277,12 @@ async def resume_agent(
             a.metadata["resume_count"] = resume_count + 1
 
             return a
+
         return updater
 
     agent_store.update(
         agent_id,
-        prepare_updater(request.prompt, request.max_turns, request.max_budget_usd)
+        prepare_updater(request.prompt, request.max_turns, request.max_budget_usd),
     )
 
     # Get updated agent
@@ -367,12 +375,12 @@ async def terminate_agent(
             except Exception as e:
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Process manager lost track and PID kill failed: {e}"
+                    detail=f"Process manager lost track and PID kill failed: {e}",
                 ) from e
         else:
             raise HTTPException(
                 status_code=404,
-                detail=f"Agent process not found. Use force=true to kill by PID."
+                detail=f"Agent process not found. Use force=true to kill by PID.",
             )
 
     except Exception as e:
@@ -381,13 +389,15 @@ async def terminate_agent(
             try:
                 os.kill(agent.pid, signal.SIGKILL)
                 killed_by_pid = True
-                logger.info(f"Force killed agent {agent_id} by PID {agent.pid} after error: {e}")
+                logger.info(
+                    f"Force killed agent {agent_id} by PID {agent.pid} after error: {e}"
+                )
             except ProcessLookupError:
                 killed_by_pid = True
             except Exception as kill_err:
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Terminate failed ({e}) and PID kill failed ({kill_err})"
+                    detail=f"Terminate failed ({e}) and PID kill failed ({kill_err})",
                 ) from kill_err
         else:
             raise HTTPException(status_code=500, detail=str(e)) from e
@@ -459,10 +469,14 @@ async def get_full_history(
 
     # Get prompts from metadata (keyed by run number)
     prompts_list = agent.metadata.get("prompts", [])
-    prompts_by_run = {p["run"]: p["prompt"] for p in prompts_list if isinstance(p, dict)}
+    prompts_by_run = {
+        p["run"]: p["prompt"] for p in prompts_list if isinstance(p, dict)
+    }
 
     # Get all run logs (use agent's backend type for correct parsing)
-    run_logs = process_manager.get_all_run_logs(agent_id, backend_type=agent.config.backend)
+    run_logs = process_manager.get_all_run_logs(
+        agent_id, backend_type=agent.config.backend
+    )
 
     # Convert to response format
     runs = []
@@ -490,7 +504,9 @@ async def delete_agent(
     agent_id: str,
     agent_store: Annotated[AgentStateStore, Depends(get_agent_store)],
     process_manager: Annotated[ProcessManager, Depends(get_process_manager)],
-    force: bool = Query(default=False, description="Force kill by PID if process manager fails"),
+    force: bool = Query(
+        default=False, description="Force kill by PID if process manager fails"
+    ),
 ) -> dict:
     """Delete an agent and its associated data.
 

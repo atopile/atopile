@@ -66,8 +66,7 @@ class SpawnHandler:
             try:
                 # Poll for spawn requests
                 response = client.get(
-                    f"{self.broker_url}/spawn/pending",
-                    params={"timeout": 2.0}
+                    f"{self.broker_url}/spawn/pending", params={"timeout": 2.0}
                 )
                 response.raise_for_status()
                 data = response.json()

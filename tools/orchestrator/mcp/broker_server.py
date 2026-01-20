@@ -82,7 +82,7 @@ async def register_agent(request: RegisterRequest):
         _agents[request.name] = {
             "id": agent_id,
             "name": request.name,
-            "registered_at": time.time()
+            "registered_at": time.time(),
         }
 
         # Ensure queue exists
@@ -99,7 +99,7 @@ async def send_message(request: SendRequest):
         from_agent=request.from_agent,
         to=request.to,
         message=request.message,
-        timestamp=time.time()
+        timestamp=time.time(),
     )
 
     async with _lock:
@@ -114,7 +114,9 @@ async def send_message(request: SendRequest):
             return {"status": "broadcast", "recipients": count}
         else:
             if request.to not in _agents:
-                raise HTTPException(status_code=404, detail=f"Agent '{request.to}' not registered")
+                raise HTTPException(
+                    status_code=404, detail=f"Agent '{request.to}' not registered"
+                )
 
             await _message_queues[request.to].put(msg)
             logger.info(f"Message queued: {request.from_agent} -> {request.to}")
@@ -122,7 +124,9 @@ async def send_message(request: SendRequest):
 
 
 @app.get("/receive/{name}")
-async def receive_message(name: str, timeout: float = 30.0, from_agent: str | None = None):
+async def receive_message(
+    name: str, timeout: float = 30.0, from_agent: str | None = None
+):
     """Receive a message (long-poll). Blocks until message or timeout."""
     if name not in _agents:
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not registered")
@@ -133,7 +137,9 @@ async def receive_message(name: str, timeout: float = 30.0, from_agent: str | No
     # Long-poll loop
     while time.time() - start_time < timeout:
         try:
-            msg = await asyncio.wait_for(queue.get(), timeout=min(1.0, timeout - (time.time() - start_time)))
+            msg = await asyncio.wait_for(
+                queue.get(), timeout=min(1.0, timeout - (time.time() - start_time))
+            )
 
             # Filter by sender if specified
             if from_agent and msg.from_agent != from_agent:
@@ -147,7 +153,7 @@ async def receive_message(name: str, timeout: float = 30.0, from_agent: str | No
                 "status": "received",
                 "from": msg.from_agent,
                 "message": msg.message,
-                "timestamp": msg.timestamp
+                "timestamp": msg.timestamp,
             }
         except asyncio.TimeoutError:
             continue
@@ -179,13 +185,15 @@ async def request_spawn(request: SpawnRequest):
     """
     spawn_id = f"spawn-{int(time.time() * 1000)}"
 
-    await _spawn_queue.put({
-        "id": spawn_id,
-        "name": request.name,
-        "prompt": request.prompt,
-        "respond_to": request.respond_to,
-        "requested_at": time.time()
-    })
+    await _spawn_queue.put(
+        {
+            "id": spawn_id,
+            "name": request.name,
+            "prompt": request.prompt,
+            "respond_to": request.respond_to,
+            "requested_at": time.time(),
+        }
+    )
 
     logger.info(f"Spawn request queued: {request.name}")
     return {"status": "queued", "spawn_id": spawn_id, "name": request.name}
@@ -212,6 +220,7 @@ async def health():
 
 def main():
     import uvicorn
+
     uvicorn.run(app, host="127.0.0.1", port=8766)
 
 

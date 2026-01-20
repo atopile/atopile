@@ -225,6 +225,7 @@ class ProcessManager:
                 if managed._log_handle:
                     try:
                         from datetime import datetime
+
                         timestamp = datetime.now().isoformat()
                         managed._log_handle.write(f"{timestamp}|{line}")
                         managed._log_handle.flush()
@@ -439,10 +440,14 @@ class ProcessManager:
         if managed is not None:
             # Process is still in memory, use buffer
             with managed._lock:
-                chunks = [c for c in managed.output_buffer if c.sequence > since_sequence]
+                chunks = [
+                    c for c in managed.output_buffer if c.sequence > since_sequence
+                ]
         else:
             # Process was cleaned up, try to read from log file
-            chunks = self._read_output_from_log(agent_id, since_sequence, backend_type=backend_type)
+            chunks = self._read_output_from_log(
+                agent_id, since_sequence, backend_type=backend_type
+            )
 
         if max_chunks is not None:
             chunks = chunks[:max_chunks]
@@ -580,7 +585,9 @@ class ProcessManager:
                 filename = log_file.stem  # agent-{id}_run-{run_number}
                 run_part = filename.split("_run-")[-1]
                 run_number = int(run_part)
-                chunks = self._read_output_from_log(agent_id, run_number=run_number, backend_type=backend_type)
+                chunks = self._read_output_from_log(
+                    agent_id, run_number=run_number, backend_type=backend_type
+                )
                 if chunks:
                     results.append((run_number, chunks))
             except (ValueError, IndexError) as e:

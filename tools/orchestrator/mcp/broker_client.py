@@ -25,8 +25,8 @@ import httpx
 # Configure logging to stderr
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    stream=sys.stderr
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    stream=sys.stderr,
 )
 logger = logging.getLogger(__name__)
 
@@ -69,11 +69,13 @@ class MCPBrokerClient:
 
     def send_error(self, code: int, message: str, request_id: Any):
         """Send a JSON-RPC error response."""
-        self.send_response({
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "error": {"code": code, "message": message}
-        })
+        self.send_response(
+            {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {"code": code, "message": message},
+            }
+        )
 
     def handle_request(self, request: dict) -> dict | None:
         """Handle a JSON-RPC request."""
@@ -104,14 +106,9 @@ class MCPBrokerClient:
             "id": request_id,
             "result": {
                 "protocolVersion": "2024-11-05",
-                "serverInfo": {
-                    "name": "agent-broker-client",
-                    "version": "0.1.0"
-                },
-                "capabilities": {
-                    "tools": {}
-                }
-            }
+                "serverInfo": {"name": "agent-broker-client", "version": "0.1.0"},
+                "capabilities": {"tools": {}},
+            },
         }
 
     def handle_tools_list(self, request_id: Any) -> dict:
@@ -125,11 +122,11 @@ class MCPBrokerClient:
                     "properties": {
                         "name": {
                             "type": "string",
-                            "description": "Unique name for this agent (e.g., 'coordinator', 'worker-1', 'analyzer')"
+                            "description": "Unique name for this agent (e.g., 'coordinator', 'worker-1', 'analyzer')",
                         }
                     },
-                    "required": ["name"]
-                }
+                    "required": ["name"],
+                },
             },
             {
                 "name": "broker_send",
@@ -139,15 +136,15 @@ class MCPBrokerClient:
                     "properties": {
                         "to": {
                             "type": "string",
-                            "description": "Name of the target agent, or '*' to broadcast to all registered agents"
+                            "description": "Name of the target agent, or '*' to broadcast to all registered agents",
                         },
                         "message": {
                             "type": "string",
-                            "description": "The message content to send. Can be plain text or JSON."
-                        }
+                            "description": "The message content to send. Can be plain text or JSON.",
+                        },
                     },
-                    "required": ["to", "message"]
-                }
+                    "required": ["to", "message"],
+                },
             },
             {
                 "name": "broker_receive",
@@ -157,30 +154,24 @@ class MCPBrokerClient:
                     "properties": {
                         "timeout": {
                             "type": "number",
-                            "description": "Maximum seconds to wait for a message (default: 30)"
+                            "description": "Maximum seconds to wait for a message (default: 30)",
                         },
                         "from_agent": {
                             "type": "string",
-                            "description": "Only receive messages from this specific agent (optional)"
-                        }
-                    }
-                }
+                            "description": "Only receive messages from this specific agent (optional)",
+                        },
+                    },
+                },
             },
             {
                 "name": "broker_list_agents",
                 "description": "List all agents currently registered with the broker.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {}
-                }
+                "inputSchema": {"type": "object", "properties": {}},
             },
             {
                 "name": "broker_check_messages",
                 "description": "Check how many messages are waiting in your queue without blocking.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {}
-                }
+                "inputSchema": {"type": "object", "properties": {}},
             },
             {
                 "name": "broker_spawn_worker",
@@ -190,23 +181,19 @@ class MCPBrokerClient:
                     "properties": {
                         "name": {
                             "type": "string",
-                            "description": "Unique name for the worker agent (e.g., 'analyzer', 'code-reviewer')"
+                            "description": "Unique name for the worker agent (e.g., 'analyzer', 'code-reviewer')",
                         },
                         "task": {
                             "type": "string",
-                            "description": "The task/prompt for the worker to execute. Include instructions to send results back if needed."
-                        }
+                            "description": "The task/prompt for the worker to execute. Include instructions to send results back if needed.",
+                        },
                     },
-                    "required": ["name", "task"]
-                }
-            }
+                    "required": ["name", "task"],
+                },
+            },
         ]
 
-        return {
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "result": {"tools": tools}
-        }
+        return {"jsonrpc": "2.0", "id": request_id, "result": {"tools": tools}}
 
     def handle_tool_call(self, request_id: Any, params: dict) -> dict:
         """Handle a tool call by forwarding to the HTTP broker."""
@@ -236,16 +223,21 @@ class MCPBrokerClient:
                 "id": request_id,
                 "result": {
                     "content": [{"type": "text", "text": json.dumps(result, indent=2)}]
-                }
+                },
             }
         except httpx.ConnectError:
             return {
                 "jsonrpc": "2.0",
                 "id": request_id,
                 "result": {
-                    "content": [{"type": "text", "text": f"Error: Cannot connect to broker at {self.broker_url}. Is the broker server running?"}],
-                    "isError": True
-                }
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Error: Cannot connect to broker at {self.broker_url}. Is the broker server running?",
+                        }
+                    ],
+                    "isError": True,
+                },
             }
         except Exception as e:
             logger.exception(f"Tool call failed: {e}")
@@ -254,8 +246,8 @@ class MCPBrokerClient:
                 "id": request_id,
                 "result": {
                     "content": [{"type": "text", "text": f"Error: {str(e)}"}],
-                    "isError": True
-                }
+                    "isError": True,
+                },
             }
 
     # Tool implementations - forward to HTTP broker
@@ -267,8 +259,7 @@ class MCPBrokerClient:
             return {"error": "Name is required"}
 
         response = self.http_client.post(
-            f"{self.broker_url}/register",
-            json={"name": name}
+            f"{self.broker_url}/register", json={"name": name}
         )
         response.raise_for_status()
         result = response.json()
@@ -290,11 +281,7 @@ class MCPBrokerClient:
 
         response = self.http_client.post(
             f"{self.broker_url}/send",
-            json={
-                "from_agent": self.agent_name,
-                "to": to,
-                "message": message
-            }
+            json={"from_agent": self.agent_name, "to": to, "message": message},
         )
         response.raise_for_status()
         return response.json()
@@ -312,8 +299,7 @@ class MCPBrokerClient:
             params["from_agent"] = from_agent
 
         response = self.http_client.get(
-            f"{self.broker_url}/receive/{self.agent_name}",
-            params=params
+            f"{self.broker_url}/receive/{self.agent_name}", params=params
         )
         response.raise_for_status()
         return response.json()
@@ -329,9 +315,7 @@ class MCPBrokerClient:
         if not self.agent_name:
             return {"error": "Must register first with broker_register"}
 
-        response = self.http_client.get(
-            f"{self.broker_url}/messages/{self.agent_name}"
-        )
+        response = self.http_client.get(f"{self.broker_url}/messages/{self.agent_name}")
         response.raise_for_status()
         return response.json()
 
@@ -358,11 +342,7 @@ When you complete the task, use broker_send to send your result back to '{respon
 
         response = self.http_client.post(
             f"{self.broker_url}/spawn",
-            json={
-                "name": name,
-                "prompt": full_prompt,
-                "respond_to": respond_to
-            }
+            json={"name": name, "prompt": full_prompt, "respond_to": respond_to},
         )
         response.raise_for_status()
         result = response.json()
@@ -370,7 +350,7 @@ When you complete the task, use broker_send to send your result back to '{respon
         return {
             "status": "spawning",
             "worker_name": name,
-            "message": f"Worker '{name}' is being spawned. Use broker_receive(from_agent='{name}') to get the result."
+            "message": f"Worker '{name}' is being spawned. Use broker_receive(from_agent='{name}') to get the result.",
         }
 
 

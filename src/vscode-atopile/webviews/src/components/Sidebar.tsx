@@ -605,6 +605,10 @@ export function Sidebar() {
     if (projectRoot && (!state?.projectFiles || !state.projectFiles[projectRoot])) {
       action('fetchFiles', { projectRoot });
     }
+    // Fetch dependencies if not already loaded
+    if (projectRoot && (!state?.projectDependencies || !state.projectDependencies[projectRoot])) {
+      action('fetchDependencies', { projectRoot });
+    }
   };
 
   // Open source file (ato button) - opens the entry point file
@@ -1107,6 +1111,13 @@ export function Sidebar() {
             projects={projects}
             projectModules={state?.projectModules || {}}
             projectFiles={state?.projectFiles || {}}
+            projectDependencies={state?.projectDependencies || {}}
+            onDependencyVersionChange={(projectId, identifier, newVersion) => {
+              action('changeDependencyVersion', { projectId, identifier, version: newVersion });
+            }}
+            onOpenRepository={(url) => {
+              action('openUrl', { url });
+            }}
           />
         </CollapsibleSection>
 

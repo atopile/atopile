@@ -38,8 +38,8 @@ from queue import Queue, Empty
 # Configure logging to stderr (stdout is for MCP protocol)
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    stream=sys.stderr
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    stream=sys.stderr,
 )
 logger = logging.getLogger(__name__)
 
@@ -84,11 +84,13 @@ class MCPServer:
 
     def send_error(self, code: int, message: str, request_id: Any):
         """Send a JSON-RPC error response."""
-        self.send_response({
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "error": {"code": code, "message": message}
-        })
+        self.send_response(
+            {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {"code": code, "message": message},
+            }
+        )
 
     def handle_request(self, request: dict) -> dict | None:
         """Handle a JSON-RPC request."""
@@ -120,14 +122,9 @@ class MCPServer:
             "id": request_id,
             "result": {
                 "protocolVersion": "2024-11-05",
-                "serverInfo": {
-                    "name": "agent-broker",
-                    "version": "0.1.0"
-                },
-                "capabilities": {
-                    "tools": {}
-                }
-            }
+                "serverInfo": {"name": "agent-broker", "version": "0.1.0"},
+                "capabilities": {"tools": {}},
+            },
         }
 
     def handle_tools_list(self, request_id: Any) -> dict:
@@ -141,11 +138,11 @@ class MCPServer:
                     "properties": {
                         "name": {
                             "type": "string",
-                            "description": "Unique name for this agent (e.g., 'worker', 'coordinator')"
+                            "description": "Unique name for this agent (e.g., 'worker', 'coordinator')",
                         }
                     },
-                    "required": ["name"]
-                }
+                    "required": ["name"],
+                },
             },
             {
                 "name": "send_message",
@@ -155,15 +152,15 @@ class MCPServer:
                     "properties": {
                         "to": {
                             "type": "string",
-                            "description": "Name of the target agent, or '*' to broadcast to all"
+                            "description": "Name of the target agent, or '*' to broadcast to all",
                         },
                         "message": {
                             "type": "string",
-                            "description": "The message content to send"
-                        }
+                            "description": "The message content to send",
+                        },
                     },
-                    "required": ["to", "message"]
-                }
+                    "required": ["to", "message"],
+                },
             },
             {
                 "name": "receive_message",
@@ -173,38 +170,28 @@ class MCPServer:
                     "properties": {
                         "timeout": {
                             "type": "number",
-                            "description": "Maximum seconds to wait for a message (default: 30)"
+                            "description": "Maximum seconds to wait for a message (default: 30)",
                         },
                         "from_agent": {
                             "type": "string",
-                            "description": "Only receive messages from this agent (optional)"
-                        }
-                    }
-                }
+                            "description": "Only receive messages from this agent (optional)",
+                        },
+                    },
+                },
             },
             {
                 "name": "list_agents",
                 "description": "List all currently registered agents.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {}
-                }
+                "inputSchema": {"type": "object", "properties": {}},
             },
             {
                 "name": "check_messages",
                 "description": "Check if there are any pending messages without blocking.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {}
-                }
-            }
+                "inputSchema": {"type": "object", "properties": {}},
+            },
         ]
 
-        return {
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "result": {"tools": tools}
-        }
+        return {"jsonrpc": "2.0", "id": request_id, "result": {"tools": tools}}
 
     def handle_tool_call(self, request_id: Any, params: dict) -> dict:
         """Handle a tool call."""
@@ -232,7 +219,7 @@ class MCPServer:
                 "id": request_id,
                 "result": {
                     "content": [{"type": "text", "text": json.dumps(result, indent=2)}]
-                }
+                },
             }
         except Exception as e:
             logger.exception(f"Tool call failed: {e}")
@@ -241,8 +228,8 @@ class MCPServer:
                 "id": request_id,
                 "result": {
                     "content": [{"type": "text", "text": f"Error: {str(e)}"}],
-                    "isError": True
-                }
+                    "isError": True,
+                },
             }
 
     # Tool implementations
@@ -261,7 +248,7 @@ class MCPServer:
             _agent_registry[name] = {
                 "id": agent_id,
                 "name": name,
-                "registered_at": time.time()
+                "registered_at": time.time(),
             }
             self.agent_id = agent_id
             self.agent_name = name
@@ -288,7 +275,7 @@ class MCPServer:
             "from": from_name,
             "to": to,
             "message": message,
-            "timestamp": time.time()
+            "timestamp": time.time(),
         }
 
         with _lock:
@@ -335,7 +322,7 @@ class MCPServer:
                     "status": "received",
                     "from": msg.get("from"),
                     "message": msg.get("message"),
-                    "timestamp": msg.get("timestamp")
+                    "timestamp": msg.get("timestamp"),
                 }
             except Empty:
                 continue

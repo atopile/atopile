@@ -7,7 +7,14 @@ import threading
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from ..core import AgentStateStore, PipelineExecutor, PipelineSessionStore, PipelineStateStore, ProcessManager, SessionManager
+from ..core import (
+    AgentStateStore,
+    PipelineExecutor,
+    PipelineSessionStore,
+    PipelineStateStore,
+    ProcessManager,
+    SessionManager,
+)
 from ..models import AgentState, AgentStatus, GlobalEvent, GlobalEventType, OutputChunk
 
 if TYPE_CHECKING:
@@ -173,6 +180,7 @@ class OrchestratorState:
                     a.exit_code = code
                     a.finished_at = datetime.now()
                     return a
+
                 return updater
 
             self._agent_store.update(agent_id, make_updater(new_status, exit_code))
@@ -187,11 +195,13 @@ class OrchestratorState:
 
             if session_id:
                 logger.debug(f"Captured session_id {session_id} for agent {agent_id}")
+
                 # Save backend session ID directly to agent state for resume capability
                 def make_session_updater(sid: str):
                     def session_updater(a: AgentState) -> AgentState:
                         a.session_id = sid
                         return a
+
                     return session_updater
 
                 self._agent_store.update(agent_id, make_session_updater(session_id))
@@ -214,6 +224,7 @@ class OrchestratorState:
 
     def _handle_output(self, agent_id: str, chunk: OutputChunk) -> None:
         """Handle new output from an agent."""
+
         # Update agent state
         def updater(agent: AgentState) -> AgentState:
             agent.output_chunks += 1
@@ -229,8 +240,7 @@ class OrchestratorState:
             try:
                 # Schedule the coroutine from this background thread
                 asyncio.run_coroutine_threadsafe(
-                    self._ws_manager.broadcast_output(agent_id, chunk),
-                    self._event_loop
+                    self._ws_manager.broadcast_output(agent_id, chunk), self._event_loop
                 )
             except Exception as e:
                 logger.debug(f"Failed to broadcast output: {e}")
@@ -247,7 +257,7 @@ class OrchestratorState:
                 # Broadcast to agent-specific connections
                 asyncio.run_coroutine_threadsafe(
                     self._ws_manager.broadcast_status(agent_id, status),
-                    self._event_loop
+                    self._event_loop,
                 )
 
                 # Also broadcast as global event
@@ -261,8 +271,7 @@ class OrchestratorState:
                     },
                 )
                 asyncio.run_coroutine_threadsafe(
-                    self._ws_manager.broadcast_global(global_event),
-                    self._event_loop
+                    self._ws_manager.broadcast_global(global_event), self._event_loop
                 )
             except Exception as e:
                 logger.debug(f"Failed to broadcast status: {e}")
@@ -302,8 +311,7 @@ class OrchestratorState:
                     },
                 )
                 asyncio.run_coroutine_threadsafe(
-                    self._ws_manager.broadcast_global(global_event),
-                    self._event_loop
+                    self._ws_manager.broadcast_global(global_event), self._event_loop
                 )
             except Exception as e:
                 logger.debug(f"Failed to broadcast node status: {e}")
@@ -330,8 +338,7 @@ class OrchestratorState:
                     },
                 )
                 asyncio.run_coroutine_threadsafe(
-                    self._ws_manager.broadcast_global(global_event),
-                    self._event_loop
+                    self._ws_manager.broadcast_global(global_event), self._event_loop
                 )
             except Exception as e:
                 logger.debug(f"Failed to broadcast session status: {e}")
@@ -396,8 +403,7 @@ def broadcast_agent_spawned(agent_id: str) -> None:
                 },
             )
             asyncio.run_coroutine_threadsafe(
-                state._ws_manager.broadcast_global(global_event),
-                state._event_loop
+                state._ws_manager.broadcast_global(global_event), state._event_loop
             )
         except Exception as e:
             logger.debug(f"Failed to broadcast agent spawned: {e}")
@@ -419,8 +425,7 @@ def broadcast_agent_status_changed(agent_id: str) -> None:
                 },
             )
             asyncio.run_coroutine_threadsafe(
-                state._ws_manager.broadcast_global(global_event),
-                state._event_loop
+                state._ws_manager.broadcast_global(global_event), state._event_loop
             )
         except Exception as e:
             logger.debug(f"Failed to broadcast agent status changed: {e}")
