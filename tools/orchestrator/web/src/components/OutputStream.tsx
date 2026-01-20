@@ -1,9 +1,11 @@
-import { useEffect, useRef, useMemo, useState, useCallback } from 'react';
+import { useEffect, useRef, useMemo, useState, useCallback, memo } from 'react';
 import { Copy, Check, ChevronDown, ChevronRight, Bot, Wrench, AlertCircle, Terminal, CheckCircle, RotateCcw, User } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { OutputChunk } from '@/logic';
 import { PlanModeDisplay } from './PlanModeDisplay';
 import { QuestionDisplay } from './QuestionDisplay';
+import { DiffViewer } from './DiffViewer';
 
 interface PromptInfo {
   run: number;
@@ -18,6 +20,7 @@ interface OutputStreamProps {
   verbose?: boolean;
   isAgentRunning?: boolean;
   onSendInput?: (input: string) => void;
+  onScroll?: (e: React.UIEvent<HTMLDivElement>) => void;
 }
 
 // Merged display item for friendly mode
@@ -32,6 +35,7 @@ interface DisplayItem {
   timestamp?: string;
   runNumber?: number;
   hasToolResult?: boolean;  // For tool_use items: whether a corresponding result was received
+  parentToolName?: string;  // For tool_result items: which tool produced this result
 }
 
 // Format timestamp for display
@@ -245,6 +249,15 @@ function processChunksForDisplay(
         hasToolResult,
       });
     } else if (chunk.type === 'tool_result') {
+      // Find the most recent tool_use to get the tool name
+      let parentToolName: string | undefined;
+      for (let j = items.length - 1; j >= 0; j--) {
+        if (items[j].type === 'tool_use') {
+          parentToolName = items[j].toolName;
+          break;
+        }
+      }
+
       items.push({
         type: 'tool_result',
         text: typeof chunk.tool_result === 'string' ? chunk.tool_result : JSON.stringify(chunk.tool_result, null, 2),
@@ -252,6 +265,7 @@ function processChunksForDisplay(
         sequences: [chunk.sequence],
         timestamp: chunk.timestamp,
         runNumber: chunkRunNumber,
+        parentToolName,
       });
     } else if (chunk.type === 'error') {
       items.push({
@@ -454,6 +468,36 @@ function FriendlyDisplayItem({ item, isAgentRunning, onSendInput, hasToolResult 
     const isLong = item.text.length > 500;
     const displayText = isLong && !expanded ? item.text.slice(0, 500) + '...' : item.text;
 
+    // Custom components for ReactMarkdown to render diff blocks
+    const markdownComponents = {
+      code({ className, children, ...props }: { className?: string; children?: React.ReactNode }) {
+        const match = /language-(\w+)/.exec(className || '');
+        const language = match ? match[1] : '';
+        const codeString = String(children).replace(/\n$/, '');
+
+        // Render diff blocks with DiffViewer
+        if (language === 'diff') {
+          return <DiffViewer diffText={codeString} />;
+        }
+
+        // For other code blocks, render normally
+        if (language) {
+          return (
+            <pre className="bg-gray-800 border border-gray-700 rounded p-3 overflow-x-auto">
+              <code className={className} {...props}>{children}</code>
+            </pre>
+          );
+        }
+
+        // Inline code
+        return <code className={className} {...props}>{children}</code>;
+      },
+      pre({ children }: { children?: React.ReactNode }) {
+        // Let code component handle the pre wrapper
+        return <>{children}</>;
+      }
+    };
+
     return (
       <CollapsibleMessage
         icon={<Bot className="w-4 h-4 text-green-400" />}
@@ -463,7 +507,7 @@ function FriendlyDisplayItem({ item, isAgentRunning, onSendInput, hasToolResult 
         preview={item.text.slice(0, 60) + (item.text.length > 60 ? '...' : '')}
       >
         <div className="text-sm text-gray-200 prose prose-sm prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-2 prose-code:text-blue-300 prose-code:bg-gray-800 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-800 prose-pre:border prose-pre:border-gray-700">
-          <ReactMarkdown>{displayText}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{displayText}</ReactMarkdown>
           {item.isStreaming && <TypingIndicator />}
         </div>
         {isLong && (
@@ -534,6 +578,11 @@ function FriendlyDisplayItem({ item, isAgentRunning, onSendInput, hasToolResult 
     const isSuccess = !item.isError;
     const [showFull, setShowFull] = useState(false);
 
+    // Check if this is an Edit tool result that contains diff content
+    // Edit tool output format: "The file X has been updated. Here's the result of running `cat -n` on a snippet..."
+    const isEditTool = item.parentToolName === 'Edit';
+    const hasDiffContent = item.text.includes('has been updated') && item.text.includes('cat -n');
+
     return (
       <div className="py-1 pl-11">
         <div
@@ -565,10 +614,16 @@ function FriendlyDisplayItem({ item, isAgentRunning, onSendInput, hasToolResult 
           </div>
           {expanded && (
             <>
-              <pre className={`p-3 text-xs whitespace-pre-wrap break-words overflow-hidden ${isSuccess ? 'text-gray-300' : 'text-red-300'}`}>
-                {isLong && !showFull ? item.text.slice(0, 200) + '...' : item.text}
-              </pre>
-              {isLong && (
+              {isEditTool && hasDiffContent && isSuccess ? (
+                <div className="p-3">
+                  <DiffViewer diffText={item.text} />
+                </div>
+              ) : (
+                <pre className={`p-3 text-xs whitespace-pre-wrap break-words overflow-hidden ${isSuccess ? 'text-gray-300' : 'text-red-300'}`}>
+                  {isLong && !showFull ? item.text.slice(0, 200) + '...' : item.text}
+                </pre>
+              )}
+              {isLong && !(isEditTool && hasDiffContent) && (
                 <div className="px-3 pb-2">
                   <button
                     className="text-xs text-blue-400 hover:text-blue-300"
@@ -709,7 +764,7 @@ function VerboseChunkView({ chunk }: { chunk: OutputChunk }) {
   );
 }
 
-export function OutputStream({ chunks, prompts, initialPrompt, autoScroll = true, verbose = false, isAgentRunning, onSendInput }: OutputStreamProps) {
+export const OutputStream = memo(function OutputStream({ chunks, prompts, initialPrompt, autoScroll = true, verbose = false, isAgentRunning, onSendInput, onScroll }: OutputStreamProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [userScrolled, setUserScrolled] = useState(false);
 
@@ -767,13 +822,16 @@ export function OutputStream({ chunks, prompts, initialPrompt, autoScroll = true
   }, [chunks.length > 0]);
 
   // Track user scroll
-  const handleScroll = () => {
+  const handleScrollInternal = (e: React.UIEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
 
     const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
     const isAtBottom = scrollTop + clientHeight >= scrollHeight - 50;
 
     setUserScrolled(!isAtBottom);
+
+    // Call external scroll handler if provided
+    onScroll?.(e);
   };
 
   if (chunks.length === 0) {
@@ -789,7 +847,7 @@ export function OutputStream({ chunks, prompts, initialPrompt, autoScroll = true
     <div
       ref={containerRef}
       className={`output-stream h-full overflow-y-auto p-4 ${verbose ? 'space-y-0' : 'space-y-0'}`}
-      onScroll={handleScroll}
+      onScroll={handleScrollInternal}
     >
       {verbose ? (
         // Verbose mode - show all chunks with pretty formatting and run separators
@@ -814,6 +872,6 @@ export function OutputStream({ chunks, prompts, initialPrompt, autoScroll = true
       )}
     </div>
   );
-}
+});
 
 export default OutputStream;
