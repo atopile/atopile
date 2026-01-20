@@ -645,12 +645,11 @@ def test_super_simple_literal_folding(
     E = BoundExpressions()
     operands_op = [E.lit_op_single(o) for o in operands]
     expr = expr_type(*operands_op)
+    p = expr.get_sibling_trait(F.Expressions.is_expression).create_representative()
+
     solver = Solver()
 
-    E.less_or_equal(expr, E.lit_op_single(100.0), assert_=True)
-
-    repr_map = solver.simplify(E.tg, E.g).data.mutation_map
-    assert _extract_and_check(expr, repr_map, expected)
+    assert _extract_and_check(p.as_operand.get(), solver, expected)
 
 
 def test_literal_folding_add_multiplicative_1():

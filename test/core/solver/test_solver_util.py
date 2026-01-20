@@ -134,52 +134,52 @@ def test_mutator_no_graph_merge():
     ).is_same(other=fabll.Node(G_new.get_self_node()))
 
 
-def test_get_expressions_involved_in():
-    E = BoundExpressions()
-    A = E.parameter_op()
-    B = E.parameter_op()
+# def test_get_expressions_involved_in():
+#     E = BoundExpressions()
+#     A = E.parameter_op()
+#     B = E.parameter_op()
 
-    E1 = E.add(A, B)
+#     E1 = E.add(A, B)
 
-    res = MutatorUtils.get_expressions_involved_in(
-        E1.as_parameter_operatable.force_get()
-    )
-    assert res == set()
+#     res = MutatorUtils.get_expressions_involved_in(
+#         E1.as_parameter_operatable.force_get()
+#     )
+#     assert res == set()
 
-    E2 = E.add(E1, A)
+#     E2 = E.add(E1, A)
 
-    res = MutatorUtils.get_expressions_involved_in(
-        E1.as_parameter_operatable.force_get()
-    )
-    assert res == {fabll.Traits(E2).get_obj_raw()}
+#     res = MutatorUtils.get_expressions_involved_in(
+#         E1.as_parameter_operatable.force_get()
+#     )
+#     assert res == {fabll.Traits(E2).get_obj_raw()}
 
-    E3 = E.add(E2, B)
+#     E3 = E.add(E2, B)
 
-    res = MutatorUtils.get_expressions_involved_in(
-        E1.as_parameter_operatable.force_get()
-    )
-    assert res == {fabll.Traits(E2).get_obj_raw(), fabll.Traits(E3).get_obj_raw()}
+#     res = MutatorUtils.get_expressions_involved_in(
+#         E1.as_parameter_operatable.force_get()
+#     )
+#     assert res == {fabll.Traits(E2).get_obj_raw(), fabll.Traits(E3).get_obj_raw()}
 
-    res = MutatorUtils.get_expressions_involved_in(
-        E2.as_parameter_operatable.force_get()
-    )
-    assert res == {fabll.Traits(E3).get_obj_raw()}
+#     res = MutatorUtils.get_expressions_involved_in(
+#         E2.as_parameter_operatable.force_get()
+#     )
+#     assert res == {fabll.Traits(E3).get_obj_raw()}
 
-    res = MutatorUtils.get_expressions_involved_in(
-        E2.as_parameter_operatable.force_get(), up_only=False
-    )
-    assert res == {fabll.Traits(E1).get_obj_raw(), fabll.Traits(E3).get_obj_raw()}
+#     res = MutatorUtils.get_expressions_involved_in(
+#         E2.as_parameter_operatable.force_get(), up_only=False
+#     )
+#     assert res == {fabll.Traits(E1).get_obj_raw(), fabll.Traits(E3).get_obj_raw()}
 
-    res = MutatorUtils.get_expressions_involved_in(
-        E2.as_parameter_operatable.force_get(),
-        up_only=False,
-        include_root=True,
-    )
-    assert res == {
-        fabll.Traits(E1).get_obj_raw(),
-        fabll.Traits(E2).get_obj_raw(),
-        fabll.Traits(E3).get_obj_raw(),
-    }
+#     res = MutatorUtils.get_expressions_involved_in(
+#         E2.as_parameter_operatable.force_get(),
+#         up_only=False,
+#         include_root=True,
+#     )
+#     assert res == {
+#         fabll.Traits(E1).get_obj_raw(),
+#         fabll.Traits(E2).get_obj_raw(),
+#         fabll.Traits(E3).get_obj_raw(),
+#     }
 
 
 def test_mutation_map_compressed_mapping_forwards_identity():

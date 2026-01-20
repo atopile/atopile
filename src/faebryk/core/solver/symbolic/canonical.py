@@ -8,7 +8,8 @@ from typing import Callable
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
-from faebryk.core.solver.mutator import Mutator
+from faebryk.core.solver.mutator import ExpressionBuilder, Mutator
+from faebryk.core.solver.utils import S_LOG
 from faebryk.libs.util import not_none
 
 Add = F.Expressions.Add
@@ -37,6 +38,8 @@ Subtract = F.Expressions.Subtract
 Xor = F.Expressions.Xor
 
 logger = logging.getLogger(__name__)
+if S_LOG:
+    logger.setLevel(logging.DEBUG)
 
 # NumericLiteralR = (*QuantityLikeR, Quantity_Interval_Disjoint, Quantity_Interval)
 
@@ -314,17 +317,60 @@ def convert_to_canonical_operations(mutator: Mutator):
         )
 
 
-@algorithm("Fix ss lit invariants", single=True, terminal=False, force_copy=True)
-def fix_ss_lit_invariants(mutator: Mutator):
+@algorithm("Flatten expressions", single=True, terminal=False)
+def flatten_expressions(mutator: Mutator):
     """
-    Makes sure all subset lit exprs are passed through the invariants algorithm.
+    Flatten nested expressions: f(g(A)) -> f(B), B is! g(A)
     """
+    for e in mutator.get_expressions(sort_by_depth=True):
+        e_po = e.as_parameter_operatable.get()
+        e_op = e.as_operand.get()
+        aliases = e_op.get_operations(F.Expressions.Is, predicates_only=True)
+        parents = e_op.get_operations() - aliases
 
-    for e in mutator.get_typed_expressions(
-        F.Expressions.IsSubset,
-        sort_by_depth=True,
-        required_traits=(F.Expressions.is_predicate,),
-        # terminated one's get automatically handled
-        include_terminated=False,
-    ):
-        mutator.mutate_expression(e.is_expression.get())
+        # no aliases for predicates
+        if e.try_get_sibling_trait(F.Expressions.is_predicate):
+            logger.debug(
+                f"No aliases for predicate {e.compact_repr(mutator.print_ctx)}"
+            )
+            mutator.soft_replace(
+                e_po, mutator.make_singleton(True).can_be_operand.get()
+            )
+            continue
+
+        if aliases and (
+            alias_params := {
+                p
+                for alias in aliases
+                for p in alias.is_expression.get().get_operands_with_trait(
+                    F.Parameters.is_parameter
+                )
+            }
+        ):
+            representative = next(iter(alias_params))
+
+        else:
+            representative = mutator.register_created_parameter(
+                e.get_parameter_type()
+                .bind_typegraph(mutator.tg_out)
+                .create_instance(g=mutator.G_out)
+                .setup()
+                .is_parameter.get(),
+                from_ops=[e_po],
+            )
+            logger.debug(
+                f"New alias for expression {e.compact_repr(mutator.print_ctx)}: {representative.compact_repr(mutator.print_ctx)}"
+            )
+        representative_op = representative.as_operand.get()
+
+        if parents:
+            mutator.soft_replace(e_po, representative_op)
+        # TODO used checked version?
+        mutator._create_and_insert_expression(
+            ExpressionBuilder(
+                F.Expressions.Is,
+                [e_op, representative_op],
+                assert_=True,
+                terminate=True,
+            )
+        )

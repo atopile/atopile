@@ -8,6 +8,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
+from faebryk.core.solver.symbolic.invariants import AliasClass
 from faebryk.libs.util import OrderedSet, partition
 
 logger = logging.getLogger(__name__)
@@ -33,9 +34,8 @@ def idempotent_unpack(mutator: Mutator):
 @algorithm("Unary identity unpack", terminal=False)
 def unary_identity_unpack(mutator: Mutator):
     """
-    E(A), A not lit -> A
-    E(A), A lit -> E alias A
-    for E in [Add, Multiply, Or, Union, Intersection]
+    f(A), A not lit -> A (if lit handled by pure literal)
+    for f in [Add, Multiply, Or, Union, Intersection]
     """
 
     exprs = mutator.get_expressions(
@@ -46,21 +46,14 @@ def unary_identity_unpack(mutator: Mutator):
             continue
         inner = expr.get_operands()[0]
         if mutator.utils.is_literal(inner):
-            mutator.create_check_and_insert_expression(
-                F.Expressions.IsSubset,
-                expr.as_operand.get(),
-                inner,
-                assert_=True,
-                terminate=True,
-            )
-        else:
-            mutator.utils.mutate_unpack_expression(expr)
+            continue
+        mutator.utils.mutate_unpack_expression(expr)
 
 
 @algorithm("Involutory fold", terminal=False)
 def involutory_fold(mutator: Mutator):
     """
-    Not(Not(A)) -> A
+    Not(Not(A)) -> A (a not lit, else pure + superset estimate)
     """
 
     exprs = mutator.get_expressions(
@@ -69,24 +62,19 @@ def involutory_fold(mutator: Mutator):
     for expr in exprs:
         if len(expr.get_operands()) != 1:
             continue
-        inner = expr.get_operands()[0]
-        if inner.get_obj_type_node() != expr.get_obj_type_node():
-            continue
-        innest = (
-            inner.as_parameter_operatable.force_get()
-            .as_expression.force_get()
-            .get_operands()[0]
-        )
-        if mutator.utils.is_literal(innest):
-            mutator.create_check_and_insert_expression(
-                F.Expressions.IsSubset,
-                expr.as_operand.get(),
-                innest,
-                assert_=True,
-                terminate=True,
-            )
-        else:
+        for inner in AliasClass.of(expr.get_operands()[0]).get_with_trait(
+            F.Expressions.is_expression
+        ):
+            if (
+                fabll.Traits(inner).get_obj_raw().get_type_node()
+                != expr.get_obj_type_node()
+            ):
+                continue
+            innest = inner.get_operands()[0]
+            if mutator.utils.is_literal(innest):
+                continue
             mutator.utils.mutator_neutralize_expressions(expr)
+            break
 
 
 @dataclass

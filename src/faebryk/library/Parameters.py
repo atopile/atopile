@@ -473,19 +473,7 @@ class ParameterIsNotConstrainedToLiteral(Exception):
 
 @dataclass
 class ReprContext:
-    @dataclass
-    class VariableMapping:
-        # maps is_parameter.uuid to int
-        mapping: dict[int, int] = field(default_factory=dict)
-        next_id: int = 0
-
-        def try_get_id(self, param: "is_parameter") -> int | None:
-            return self.mapping.get(param.instance.node().get_uuid())
-
-        def set_id(self, param: "is_parameter", id: int) -> None:
-            self.mapping[param.instance.node().get_uuid()] = id
-
-    variable_mapping: VariableMapping = field(default_factory=VariableMapping)
+    # TODO replace with trait
     override_names: dict[int, str] = field(default_factory=dict)
 
     def override_name(self, param: "is_parameter", name: str) -> None:
@@ -495,13 +483,11 @@ class ReprContext:
         if name := self.override_names.get(param.instance.node().get_uuid()):
             return name
 
-        if (id := self.variable_mapping.try_get_id(param)) is None:
-            next_id = self.variable_mapping.next_id
-            self.variable_mapping.set_id(param, next_id)
-            self.variable_mapping.next_id += 1
-            id = next_id
-
-        return _param_id_to_human_str(id)
+        name = fabll.Traits(param).get_obj_raw().get_full_name(types=False)
+        if name.startswith("0x"):
+            name = f"P_{name}"
+        self.override_name(param, name)
+        return name
 
     def __hash__(self) -> int:
         return hash(id(self))

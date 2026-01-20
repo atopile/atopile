@@ -316,12 +316,12 @@ class MutatorUtils:
         operator: Callable[[T, T], T],
         lit_t: type[T],
         identity: F.Literals.LiteralValues,
-    ) -> list[F.Literals.is_literal]:
+    ) -> F.Literals.is_literal | None:
         """
         Return 'sum' of all literals in the iterable, or empty list if sum is identity.
         """
         if not operands:
-            return []
+            return None
 
         literal_it = iter(operands)
         const_sum = fabll.Traits(next(literal_it)).get_obj(lit_t)
@@ -333,9 +333,9 @@ class MutatorUtils:
 
         # TODO make work with all the types
         if const_sum_lit.op_setic_equals_singleton(identity):
-            return []
+            return None
 
-        return [const_sum_lit]
+        return const_sum_lit
 
     @staticmethod
     def are_aliased(
@@ -428,30 +428,6 @@ class MutatorUtils:
             return False
         return op.op_setic_is_singleton() or op.op_setic_is_empty()
 
-    def no_other_predicates(
-        self,
-        po: F.Parameters.is_parameter_operatable,
-        *other: F.Expressions.is_assertable,
-        unfulfilled_only: bool = False,
-    ) -> bool:
-        no_other_predicates = (
-            len(
-                [
-                    x
-                    for x in MutatorUtils.get_predicates_involved_in(po).difference(
-                        other
-                    )
-                    if not unfulfilled_only
-                    or not (
-                        (expr := x.try_get_trait(F.Expressions.is_expression))
-                        and self.mutator.is_terminated(expr)
-                    )
-                ]
-            )
-            == 0
-        )
-        return no_other_predicates and not po.has_implicit_predicates_recursive()
-
     @staticmethod
     def get_params_for_expr(
         expr: F.Expressions.is_expression,
@@ -463,45 +439,6 @@ class MutatorUtils:
         for e in expr_ops:
             result.update(MutatorUtils.get_params_for_expr(e))
         return result
-
-    # TODO make generator
-    @staticmethod
-    def get_expressions_involved_in[T: fabll.NodeT](
-        p: F.Parameters.is_parameter_operatable,
-        type_filter: type[T] = fabll.Node,
-        include_root: bool = False,
-        up_only: bool = True,
-        require_trait: type[fabll.NodeT] | None = None,
-    ) -> OrderedSet[T]:
-        dependants = p.get_operations(recursive=True)
-        if e := p.as_expression.try_get():
-            if include_root:
-                dependants.add(fabll.Traits(e).get_obj_raw())
-
-            if not up_only:
-                dependants.update(
-                    fabll.Traits(op).get_obj_raw()
-                    for op in e.get_operands_with_trait(
-                        F.Expressions.is_expression, recursive=True
-                    )
-                )
-
-        res: OrderedSet[T] = OrderedSet(
-            t
-            for p in dependants
-            if (t := p.try_cast(type_filter))
-            and (not require_trait or p.has_trait(require_trait))
-        )
-        return res
-
-    @staticmethod
-    def get_predicates_involved_in[T: fabll.NodeT](
-        p: F.Parameters.is_parameter_operatable,
-        type_filter: type[T] = fabll.Node,
-    ) -> OrderedSet[T]:
-        return MutatorUtils.get_expressions_involved_in(
-            p, type_filter, require_trait=F.Expressions.is_predicate
-        )
 
     @staticmethod
     def get_relevant_predicates(

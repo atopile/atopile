@@ -728,6 +728,27 @@ class is_expression(fabll.Node):
 
         raise ValueError(f"Unknown parameter type for expression {self}")
 
+    def create_representative(self) -> F.Parameters.is_parameter:
+        p_type = self.get_parameter_type()
+        p_instance = p_type.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+        if isinstance(p_instance, F.Parameters.NumericParameter):
+            p_instance.setup(domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
+        elif isinstance(p_instance, F.Parameters.BooleanParameter):
+            p_instance.setup()
+        else:
+            assert False
+
+        p = p_instance.is_parameter.get()
+        F.Expressions.Is.c(self.as_operand.get(), p.as_operand.get(), assert_=True)
+        return p
+
+    def __rich_repr__(self):
+        try:
+            yield self.compact_repr()
+        except Exception as e:
+            yield f"Error in repr: {e}"
+        yield "on " + fabll.Traits(self).get_obj_raw().get_full_name(types=True)
+
 
 # TODO
 class has_implicit_constraints(fabll.Node):
@@ -2867,6 +2888,7 @@ class Is(fabll.Node):
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
     is_setic = fabll.Traits.MakeEdge(is_setic.MakeChild())
+    has_idempotent_operands = fabll.Traits.MakeEdge(has_idempotent_operands.MakeChild())
 
     operands = OperandSet.MakeChild()
 

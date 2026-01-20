@@ -4,8 +4,8 @@
 import logging
 from itertools import combinations
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-import faebryk.library.Expressions as Expressions
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import MutatorUtils
@@ -46,6 +46,7 @@ def resolve_alias_classes(mutator: Mutator):
     of correlation information
     ```
     """
+    return
 
     # A is B, B is C, D is E, F, G is (A+B)
     # -> [{A, B, C}, {D, E}, {F}, {G, (A+B)}]
@@ -174,92 +175,37 @@ def transitive_subset(mutator: Mutator):
     """
     ```
     A ss! B, B ss! C -> new A ss! C
+    B not lit
     ```
     """
+
     # for all A ss! B | B not lit
-    for ss_op in mutator.get_typed_expressions(
+    for ss in mutator.get_typed_expressions(
         F.Expressions.IsSubset,
         include_terminated=True,
         required_traits=(F.Expressions.is_predicate,),
     ):
-        ss_op_e = ss_op.is_expression.get()
-        ss_op_po = ss_op.is_parameter_operatable.get()
-        A, B = ss_op_e.get_operands()
+        ss_e = ss.is_expression.get()
+        A, B = ss_e.get_operands()
         if not (B_po := B.as_parameter_operatable.try_get()):
             continue
 
-        # all B ss! C | C not A
+        # all B ss! C
         for C, e in mutator.utils.get_op_supersets(B_po).items():
+            # performance optimization
             if C.is_same(A):
                 continue
-            # create A ss! C/X
+            # create A ss! C
             mutator.create_check_and_insert_expression(
                 F.Expressions.IsSubset,
                 A,
                 C,
                 from_ops=[
-                    ss_op_po,
+                    ss.is_parameter_operatable.get(),
                     e.is_parameter_operatable.get(),
                 ],
                 assert_=True,
             )
-
-        # all B ss! X, X lit
-        # for non-lits done by eq classes
-        X = mutator.utils.try_extract_superset(B_po)
-        if X is not None:
-            mutator.create_check_and_insert_expression(
-                F.Expressions.IsSubset,
-                A,
-                X.as_operand.get(),
-                from_ops=[ss_op_po, B_po],
-                assert_=True,
-            )
-
-
-@algorithm("Distribute literals across alias classes", terminal=False)
-def distribute_literals_across_alias_classes(mutator: Mutator):
-    """
-    Distribute literals across alias classes
-
-    E is! A, Lit ss! A -> E ss! Lit
-    E is! A, A ss! Lit -> Lit ss! E
-
-    """
-    for p in mutator.get_parameter_operatables():
-        superset = mutator.utils.try_extract_superset(p)
-        subset = mutator.utils.try_extract_subset(p)
-        if superset is None and subset is None:
-            continue
-
-        non_lit_aliases = {
-            e: other_p
-            for e in p.get_operations(Is, predicates_only=True)
-            if not e.is_expression.get().get_operand_literals()
-            for other_p in e.is_expression.get().get_operand_operatables()
-            if not other_p.is_same(p)
-        }
-        for alias_expr, po in non_lit_aliases.items():
-            alias_expr_po = alias_expr.is_expression.get().as_parameter_operatable.get()
-            po_op = po.as_operand.get()
-            if superset is not None:
-                superset_op = superset.as_operand.get()
-                mutator.create_check_and_insert_expression(
-                    F.Expressions.IsSubset,
-                    po_op,
-                    superset_op,
-                    from_ops=[p, alias_expr_po],
-                    assert_=True,
-                )
-            if subset is not None:
-                subset_op = subset.as_operand.get()
-                mutator.create_check_and_insert_expression(
-                    F.Expressions.IsSubset,
-                    subset_op,
-                    po_op,
-                    from_ops=[p, alias_expr_po],
-                    assert_=True,
-                )
 
 
 # Terminal -----------------------------------------------------------------------------
@@ -270,20 +216,8 @@ def remove_unconstrained(mutator: Mutator):
     or expressions with side effects
     Note: Not possible for Parameters, want to keep those around for REPR
     """
-    objs = mutator.get_typed_expressions()
-    for obj in objs:
-        obj_po = obj.get_trait(F.Parameters.is_parameter_operatable)
-        if obj.try_get_trait(F.Expressions.is_predicate):
-            continue
-        if obj.has_trait(Expressions.has_side_effects):
-            continue
-        if any(
-            e.try_get_trait(F.Expressions.is_predicate)
-            or e.has_trait(Expressions.has_side_effects)
-            for e in mutator.utils.get_expressions_involved_in(obj_po)
-        ):
-            continue
-        mutator.remove(obj_po)
+    # TODO rebuild
+    return
 
 
 @algorithm("Predicate unconstrained operands deduce", terminal=True)
@@ -291,6 +225,68 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
     """
     A op! B | A or B unconstrained -> A op!$ B
     """
+    # TODO rebuild (get_expressions_involved_in doesn't work that easily like this)
+    # need to take classes into account
+    return
+    # TODO make generator
+
+    # test for this exists in test_solver_util.py
+    def get_expressions_involved_in[T: fabll.NodeT](
+        p: F.Parameters.is_parameter_operatable,
+        type_filter: type[T] = fabll.Node,
+        include_root: bool = False,
+        up_only: bool = True,
+        require_trait: type[fabll.NodeT] | None = None,
+    ) -> OrderedSet[T]:
+        dependants = p.get_operations(recursive=True)
+        if e := p.as_expression.try_get():
+            if include_root:
+                dependants.add(fabll.Traits(e).get_obj_raw())
+
+            if not up_only:
+                dependants.update(
+                    fabll.Traits(op).get_obj_raw()
+                    for op in e.get_operands_with_trait(
+                        F.Expressions.is_expression, recursive=True
+                    )
+                )
+
+        res: OrderedSet[T] = OrderedSet(
+            t
+            for p in dependants
+            if (t := p.try_cast(type_filter))
+            and (not require_trait or p.has_trait(require_trait))
+        )
+        return res
+
+    def get_predicates_involved_in[T: fabll.NodeT](
+        p: F.Parameters.is_parameter_operatable,
+        type_filter: type[T] = fabll.Node,
+    ) -> OrderedSet[T]:
+        return MutatorUtils.get_expressions_involved_in(
+            p, type_filter, require_trait=F.Expressions.is_predicate
+        )
+
+    def no_other_predicates(
+        po: F.Parameters.is_parameter_operatable,
+        *other: F.Expressions.is_assertable,
+        unfulfilled_only: bool = False,
+    ) -> bool:
+        no_other_predicates = (
+            len(
+                [
+                    x
+                    for x in get_predicates_involved_in(po).difference(other)
+                    if not unfulfilled_only
+                    or not (
+                        (expr := x.try_get_trait(F.Expressions.is_expression))
+                        and mutator.is_terminated(expr)
+                    )
+                ]
+            )
+            == 0
+        )
+        return no_other_predicates and not po.has_implicit_predicates_recursive()
 
     preds = mutator.get_expressions(required_traits=(F.Expressions.is_predicate,))
     for p_e in preds:
@@ -298,7 +294,7 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
             continue
 
         for op in p_e.get_operand_operatables():
-            if mutator.utils.no_other_predicates(
+            if no_other_predicates(
                 op,
                 p_e.as_assertable.force_get(),
                 unfulfilled_only=True,
@@ -339,6 +335,7 @@ def upper_estimation_of_expressions_with_supersets(mutator: Mutator):
         # singletons get taken care of by
         # `convert_operable_aliased_to_single_into_literal`
         and not mutator.utils.is_correlatable_literal(lit_superset)
+        # TODO theoretically not possible with invariants
         and not mutator.utils.is_literal_expression(subset_op)
     }
 

@@ -25,11 +25,9 @@ from faebryk.core.solver.mutator import (
 from faebryk.core.solver.symbolic import (
     expression_groups,
     expression_wise,
-    rewrite,
     structural,
 )
 from faebryk.core.solver.utils import (
-    LOG_PICK_SOLVE,
     MAX_ITERATIONS_HEURISTIC,
     PRINT_START,
     S_LOG,
@@ -51,7 +49,6 @@ class Solver:
         iterative = [
             structural.remove_unconstrained,
             structural.resolve_alias_classes,
-            structural.distribute_literals_across_alias_classes,
             expression_groups.associative_flatten,
             expression_groups.idempotent_unpack,
             expression_groups.involutory_fold,
@@ -61,7 +58,6 @@ class Solver:
             structural.transitive_subset,
             structural.upper_estimation_of_expressions_with_supersets,
             structural.lower_estimation_of_expressions_with_subsets,
-            # rewrite.permutate_equation_operands,
         ]
 
     @dataclass
@@ -335,6 +331,8 @@ class Solver:
                 if not self.state.data.mutation_map.G_out.get_node_count():
                     break
 
+        if S_LOG:
+            self.state.data.mutation_map.last_stage.print_graph_contents()
         logger.info(timings)
         logger.info(
             (
