@@ -72,8 +72,8 @@ export function PackageDetailPanel({
   // Get available versions from details or package
   const availableVersions = details?.versions || pkg.availableVersions?.map(v => ({
     version: v.version,
-    released_at: v.released,
-    requires_atopile: undefined,
+    releasedAt: v.released,
+    requiresAtopile: undefined,
     size: undefined
   })) || []
 
@@ -89,7 +89,7 @@ export function PackageDetailPanel({
   // Get description from details or package
   const description = details?.description || details?.summary || pkg.description
   const isInstalled = details?.installed ?? pkg.installed
-  const installedVersion = details?.installed_version || pkg.version
+  const installedVersion = details?.installedVersion || pkg.version
 
   return (
     <div className="package-detail-panel">
@@ -153,15 +153,15 @@ export function PackageDetailPanel({
                 <Download size={14} />
                 <span>{formatDownloads(details.downloads)} downloads</span>
               </div>
-              {details.downloads_this_week != null && (
+              {details.downloadsThisWeek != null && (
                 <div className="detail-stat">
                   <TrendingUp size={14} />
-                  <span>{formatDownloads(details.downloads_this_week)}/week</span>
+                  <span>{formatDownloads(details.downloadsThisWeek)}/week</span>
                 </div>
               )}
               <div className="detail-stat">
                 <History size={14} />
-                <span>{details.version_count || 0} releases</span>
+                <span>{details.versionCount || 0} releases</span>
               </div>
               {details.license && (
                 <div className="detail-stat">
@@ -231,7 +231,7 @@ export function PackageDetailPanel({
           {availableVersions.length > 0 && (
             <div className="detail-version-info">
               <Calendar size={12} />
-              Released: {formatReleaseDate(availableVersions.find(v => v.version === selectedVersion)?.released_at)}
+              Released: {formatReleaseDate(availableVersions.find(v => v.version === selectedVersion)?.releasedAt)}
             </div>
           )}
         </section>

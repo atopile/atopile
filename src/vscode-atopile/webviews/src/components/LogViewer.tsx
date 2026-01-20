@@ -16,7 +16,8 @@ const vscode = acquireVsCodeApi();
 const ALL_LEVELS: LogLevel[] = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'ALERT'];
 
 // Convert AppState builds to BuildSelector Project format
-function buildsToProjects(builds: Build[]): Project[] {
+function buildsToProjects(builds: Build[] | undefined | null): Project[] {
+  if (!builds || !Array.isArray(builds)) return [];
   const projectMap = new Map<string, Project>();
 
   // Map Build status to BuildTarget status
@@ -32,7 +33,7 @@ function buildsToProjects(builds: Build[]): Project[] {
   };
 
   for (const build of builds) {
-    const projectName = build.project_name || 'Unknown';
+    const projectName = build.projectName || 'Unknown';
 
     if (!projectMap.has(projectName)) {
       projectMap.set(projectName, {
@@ -46,9 +47,9 @@ function buildsToProjects(builds: Build[]): Project[] {
 
     const project = projectMap.get(projectName)!;
     const buildTarget: BuildTarget = {
-      id: build.display_name,
+      id: build.displayName,
       name: build.name,
-      entry: build.display_name,
+      entry: build.displayName,
       status: mapStatus(build.status),
       errors: build.errors,
       warnings: build.warnings,
@@ -65,17 +66,17 @@ function buildNameToSelection(selectedBuildName: string | null, builds: Build[])
     return { type: 'none' };
   }
 
-  const build = builds.find(b => b.display_name === selectedBuildName);
+  const build = builds.find(b => b.displayName === selectedBuildName);
   if (!build) {
     return { type: 'none' };
   }
 
-  const projectName = build.project_name || 'Unknown';
+  const projectName = build.projectName || 'Unknown';
   return {
     type: 'build',
     projectId: projectName,
-    buildId: build.display_name,
-    label: build.display_name,
+    buildId: build.displayName,
+    label: build.displayName,
   };
 }
 
@@ -174,7 +175,7 @@ function LogEntryRow({
   const messageLines = entry.message.split('\n');
   const isMultiLine = messageLines.length > 1;
   const isLongMessage = entry.message.length > 120;
-  const hasTracebacks = !!(entry.ato_traceback || entry.exc_info);
+  const hasTracebacks = !!(entry.atoTraceback || entry.excInfo);
   const isExpandable = isMultiLine || isLongMessage || hasTracebacks;
 
   const isHighlight = entry.level === 'WARNING' || entry.level === 'ERROR' || entry.level === 'ALERT';
@@ -208,16 +209,16 @@ function LogEntryRow({
             </div>
             {hasTracebacks && (
               <div className="tracebacks">
-                {entry.ato_traceback && (
+                {entry.atoTraceback && (
                   <div className="traceback-section">
                     <div className="traceback-label ato">ato traceback</div>
-                    <pre className="traceback-content ato"><AnsiText text={entry.ato_traceback} /></pre>
+                    <pre className="traceback-content ato"><AnsiText text={entry.atoTraceback} /></pre>
                   </div>
                 )}
-                {entry.exc_info && (
+                {entry.excInfo && (
                   <div className="traceback-section">
                     <div className="traceback-label">python traceback</div>
-                    <pre className="traceback-content python"><AnsiText text={entry.exc_info} /></pre>
+                    <pre className="traceback-content python"><AnsiText text={entry.excInfo} /></pre>
                   </div>
                 )}
               </div>
@@ -257,7 +258,22 @@ export function LogViewer() {
       if (msg.type === 'state') {
         const endMark = startMark('logviewer:state-receive');
         logDataSize('logviewer:state-payload', msg.data);
-        setState(msg.data);
+
+        // Ensure arrays are arrays to prevent crashes
+        if (msg.data && typeof msg.data === 'object') {
+          const safeState = {
+            ...msg.data,
+            logEntries: Array.isArray(msg.data.logEntries) ? msg.data.logEntries : [],
+            builds: Array.isArray(msg.data.builds) ? msg.data.builds : [],
+            enabledLogLevels: Array.isArray(msg.data.enabledLogLevels)
+              ? msg.data.enabledLogLevels
+              : ['INFO', 'WARNING', 'ERROR', 'ALERT'],
+          };
+          setState(safeState);
+        } else {
+          console.error('[LogViewer] Invalid state received:', msg.data);
+        }
+
         endMark({ logEntries: msg.data?.logEntries?.length ?? 0 });
       } else if (msg.type === 'update') {
         // Handle partial updates including incremental log appends
@@ -337,7 +353,7 @@ export function LogViewer() {
     }
     
     // Fallback: calculate from current entries (for backward compatibility)
-    const entries = state.logEntries;
+    const entries = state.logEntries || [];
     return {
       DEBUG: entries.filter(e => e.level === 'DEBUG').length,
       INFO: entries.filter(e => e.level === 'INFO').length,

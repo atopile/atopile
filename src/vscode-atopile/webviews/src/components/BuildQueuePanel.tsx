@@ -8,18 +8,18 @@ import { X, Clock, AlertCircle, CheckCircle2, XCircle, Pause, Circle } from 'luc
 import './BuildQueuePanel.css';
 
 export interface QueuedBuild {
-  build_id: string;
+  buildId: string;
   status: 'queued' | 'building' | 'success' | 'failed' | 'cancelled';
-  project_root: string;
+  projectRoot: string;
   targets: string[];
   entry?: string;
-  started_at: number;
-  elapsed_seconds?: number;
+  startedAt: number;
+  elapsedSeconds?: number;
   stages?: Array<{
     name: string;
-    display_name?: string;
+    displayName?: string;
     status: string;
-    elapsed_seconds?: number;
+    elapsedSeconds?: number;
   }>;
   error?: string;
 }
@@ -58,8 +58,8 @@ function getCurrentStage(build: QueuedBuild): { name: string; elapsed?: number }
   const running = build.stages.find(s => s.status === 'running');
   if (running) {
     return {
-      name: running.display_name || running.name,
-      elapsed: running.elapsed_seconds
+      name: running.displayName || running.name,
+      elapsed: running.elapsedSeconds
     };
   }
 
@@ -68,24 +68,24 @@ function getCurrentStage(build: QueuedBuild): { name: string; elapsed?: number }
     s.status === 'success' || s.status === 'failed' || s.status === 'error'
   );
   if (completed) {
-    return { name: completed.display_name || completed.name };
+    return { name: completed.displayName || completed.name };
   }
 
   return null;
 }
 
 function BuildQueueItem({ build, onCancel }: { build: QueuedBuild; onCancel: () => void }) {
-  const [elapsed, setElapsed] = useState(build.elapsed_seconds || 0);
+  const [elapsed, setElapsed] = useState(build.elapsedSeconds || 0);
 
   // Update elapsed time for building status
   useEffect(() => {
     if (build.status !== 'building') {
-      setElapsed(build.elapsed_seconds || 0);
+      setElapsed(build.elapsedSeconds || 0);
       return;
     }
 
     // Calculate from started_at
-    const startTime = build.started_at * 1000;
+    const startTime = build.startedAt * 1000;
     const updateElapsed = () => {
       setElapsed((Date.now() - startTime) / 1000);
     };
@@ -93,9 +93,9 @@ function BuildQueueItem({ build, onCancel }: { build: QueuedBuild; onCancel: () 
     updateElapsed();
     const interval = setInterval(updateElapsed, 1000);
     return () => clearInterval(interval);
-  }, [build.status, build.started_at, build.elapsed_seconds]);
+  }, [build.status, build.startedAt, build.elapsedSeconds]);
 
-  const projectName = getProjectName(build.project_root);
+  const projectName = getProjectName(build.projectRoot);
   // Show all targets, or entry for standalone builds
   const targetName = build.targets.length > 0
     ? (build.targets.length === 1 ? build.targets[0] : build.targets.join(', '))
@@ -172,9 +172,9 @@ export function BuildQueuePanel({ builds, onCancelBuild }: BuildQueuePanelProps)
     <div className="build-queue-panel">
       {builds.map(build => (
         <BuildQueueItem
-          key={build.build_id}
+          key={build.buildId}
           build={build}
-          onCancel={() => onCancelBuild(build.build_id)}
+          onCancel={() => onCancelBuild(build.buildId)}
         />
       ))}
     </div>

@@ -30,10 +30,10 @@ interface BuildSymbol {
 // Build stage timing
 interface BuildStage {
   name: string
-  display_name?: string  // User-friendly name
+  displayName?: string  // User-friendly name
   status: 'pending' | 'running' | 'success' | 'warning' | 'error' | 'skipped'
   duration?: number  // in seconds (from summary)
-  elapsed_seconds?: number  // in seconds (from live status)
+  elapsedSeconds?: number  // in seconds (from live status)
   message?: string
 }
 
@@ -56,7 +56,7 @@ function StageTimer() {
 interface LastBuildStatus {
   status: 'success' | 'warning' | 'failed' | 'error'
   timestamp: string  // ISO timestamp
-  elapsed_seconds?: number
+  elapsedSeconds?: number
   warnings: number
   errors: number
   stages?: BuildStage[]
@@ -991,7 +991,7 @@ const BuildNode = memo(function BuildNode({
     if (build.currentStage) return build.currentStage
     if (!build.stages) return null
     const running = build.stages.find(s => s.status === 'running')
-    return running?.display_name || running?.name || null
+    return running?.displayName || running?.name || null
   }
 
   // Trigger scroll-up animation when stage changes
@@ -1302,7 +1302,7 @@ const BuildNode = memo(function BuildNode({
                 <div className="build-stages-list">
                   {build.stages!.map((stage) => {
                     const isClickable = (stage.status === 'warning' || stage.status === 'error') && onStageFilter
-                    const stageDuration = stage.duration ?? stage.elapsed_seconds
+                    const stageDuration = stage.duration ?? stage.elapsedSeconds
                     return (
                       <div
                         key={stage.name}
@@ -1311,10 +1311,10 @@ const BuildNode = memo(function BuildNode({
                           e.stopPropagation()
                           onStageFilter(stage.name, build.id, projectId)
                         } : undefined}
-                        title={isClickable ? `Filter problems to ${stage.display_name || stage.name} stage` : undefined}
+                        title={isClickable ? `Filter problems to ${stage.displayName || stage.name} stage` : undefined}
                       >
                         {getStageIcon(stage.status)}
-                        <span className="stage-name">{stage.display_name || stage.name}</span>
+                        <span className="stage-name">{stage.displayName || stage.name}</span>
                         {stage.message && (
                           <span className="stage-message">{stage.message}</span>
                         )}

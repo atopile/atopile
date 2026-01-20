@@ -8,20 +8,19 @@ import {
 type StdLibType = 'interface' | 'module' | 'component' | 'trait' | 'parameter'
 
 // Child/field in an interface or module
-// Note: Backend uses snake_case (item_type), frontend mockData uses camelCase (itemType)
-// We support both for compatibility
+// Backend uses to_frontend_dict() which converts snake_case to camelCase
 interface StdLibChild {
   name: string
   type: string  // The type name (e.g., "Electrical", "ElectricLogic")
-  itemType?: StdLibType  // Whether it's interface, parameter, etc. (camelCase - mock data)
-  item_type?: StdLibType // Whether it's interface, parameter, etc. (snake_case - backend)
+  itemType?: StdLibType  // Whether it's interface, parameter, etc.
   children?: StdLibChild[]
-  enum_values?: string[] // For EnumParameter types, the possible values
+  enumValues?: string[] // For EnumParameter types, the possible values
 }
 
-// Helper to get item type from child (handles both naming conventions)
+// Helper to get item type from child
 function getChildItemType(child: StdLibChild): StdLibType {
-  return child.itemType || child.item_type || 'interface'
+  // Backend sends camelCase via to_frontend_dict()
+  return child.itemType || 'interface'
 }
 
 interface StdLibItem {
@@ -482,7 +481,7 @@ function ChildNode({
   const path = `${depth}-${child.name}`
   const isExpanded = expandedPaths.has(path)
   const hasChildren = child.children && child.children.length > 0
-  const hasEnumValues = child.enum_values && child.enum_values.length > 0
+  const hasEnumValues = child.enumValues && child.enumValues.length > 0
   const childType = getChildItemType(child)
   const config = typeConfig[childType]
   const Icon = config.icon
@@ -521,8 +520,8 @@ function ChildNode({
         <span className="stdlib-child-type" style={{ color: config.color }}>
           {child.type}
           {hasEnumValues && (
-            <span className="enum-count" title={`${child.enum_values!.length} possible values`}>
-              ({child.enum_values!.length})
+            <span className="enum-count" title={`${child.enumValues!.length} possible values`}>
+              ({child.enumValues!.length})
             </span>
           )}
         </span>
@@ -531,7 +530,7 @@ function ChildNode({
       {/* Enum values dropdown */}
       {showEnumDropdown && hasEnumValues && (
         <EnumValuesDropdown
-          values={child.enum_values!}
+          values={child.enumValues!}
           onClose={() => setShowEnumDropdown(false)}
         />
       )}

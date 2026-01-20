@@ -8,7 +8,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { BuildTargetItem } from '../components/BuildTargetItem';
 import type { Build, BuildTarget, BuildStage } from '../types/build';
 
-// Test data
+// Test data - uses camelCase to match TypeScript interfaces
 const mockTarget: BuildTarget = {
   name: 'default',
   entry: 'main.ato:App',
@@ -18,8 +18,8 @@ const mockTarget: BuildTarget = {
 const mockStages: BuildStage[] = [
   {
     name: '[bold]init-build-context[/bold]',
-    stage_id: 'init',
-    elapsed_seconds: 0.5,
+    stageId: 'init',
+    elapsedSeconds: 0.5,
     status: 'success',
     infos: 10,
     warnings: 0,
@@ -28,8 +28,8 @@ const mockStages: BuildStage[] = [
   },
   {
     name: "compile 'App'",
-    stage_id: 'compile',
-    elapsed_seconds: 2.3,
+    stageId: 'compile',
+    elapsedSeconds: 2.3,
     status: 'success',
     infos: 50,
     warnings: 2,
@@ -38,8 +38,8 @@ const mockStages: BuildStage[] = [
   },
   {
     name: 'picker',
-    stage_id: 'picker',
-    elapsed_seconds: 5.7,
+    stageId: 'picker',
+    elapsedSeconds: 5.7,
     status: 'warning',
     infos: 100,
     warnings: 5,
@@ -50,13 +50,13 @@ const mockStages: BuildStage[] = [
 
 const mockBuild: Build = {
   name: 'default',
-  display_name: 'default',
-  project_name: 'my-project',
+  displayName: 'default',
+  projectName: 'my-project',
   status: 'warning',
-  elapsed_seconds: 8.5,
+  elapsedSeconds: 8.5,
   warnings: 7,
   errors: 1,
-  return_code: 0,
+  returnCode: 0,
   stages: mockStages,
 };
 
@@ -148,19 +148,19 @@ describe('BuildTargetItem', () => {
 
   describe('time formatting', () => {
     it('formats seconds correctly', () => {
-      const build = { ...mockBuild, elapsed_seconds: 45.2 };
+      const build = { ...mockBuild, elapsedSeconds: 45.2 };
       render(<BuildTargetItem {...defaultProps} build={build} />);
       expect(screen.getByText('45.2s')).toBeInTheDocument();
     });
 
     it('formats minutes and seconds correctly', () => {
-      const build = { ...mockBuild, elapsed_seconds: 125 };
+      const build = { ...mockBuild, elapsedSeconds: 125 };
       render(<BuildTargetItem {...defaultProps} build={build} />);
       expect(screen.getByText('2m 5s')).toBeInTheDocument();
     });
 
     it('hides time for very short durations', () => {
-      const build = { ...mockBuild, elapsed_seconds: 0.05 };
+      const build = { ...mockBuild, elapsedSeconds: 0.05 };
       const { container } = render(<BuildTargetItem {...defaultProps} build={build} />);
       expect(container.querySelector('.build-time')).not.toBeInTheDocument();
     });

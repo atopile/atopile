@@ -8,12 +8,12 @@ import { describe, it, expect, vi } from 'vitest';
 import { BuildItem } from '../components/BuildItem';
 import type { Build, BuildStage } from '../types/build';
 
-// Test data
+// Test data - uses camelCase to match TypeScript interfaces
 const mockStages: BuildStage[] = [
   {
     name: '[bold]init-build-context[/bold]',
-    stage_id: 'init',
-    elapsed_seconds: 0.5,
+    stageId: 'init',
+    elapsedSeconds: 0.5,
     status: 'success',
     infos: 10,
     warnings: 0,
@@ -22,8 +22,8 @@ const mockStages: BuildStage[] = [
   },
   {
     name: "compile 'App'",
-    stage_id: 'compile',
-    elapsed_seconds: 2.3,
+    stageId: 'compile',
+    elapsedSeconds: 2.3,
     status: 'success',
     infos: 50,
     warnings: 2,
@@ -32,8 +32,8 @@ const mockStages: BuildStage[] = [
   },
   {
     name: 'picker',
-    stage_id: 'picker',
-    elapsed_seconds: 5.7,
+    stageId: 'picker',
+    elapsedSeconds: 5.7,
     status: 'warning',
     infos: 100,
     warnings: 5,
@@ -44,13 +44,13 @@ const mockStages: BuildStage[] = [
 
 const mockBuild: Build = {
   name: 'default',
-  display_name: 'default',
-  project_name: 'my-project',
+  displayName: 'default',
+  projectName: 'my-project',
   status: 'warning',
-  elapsed_seconds: 8.5,
+  elapsedSeconds: 8.5,
   warnings: 7,
   errors: 1,
-  return_code: 0,
+  returnCode: 0,
   stages: mockStages,
 };
 
@@ -116,31 +116,31 @@ describe('BuildItem', () => {
 
   describe('time formatting', () => {
     it('formats milliseconds correctly', () => {
-      const build = { ...mockBuild, elapsed_seconds: 0.123 };
+      const build = { ...mockBuild, elapsedSeconds: 0.123 };
       render(<BuildItem {...defaultProps} build={build} />);
       expect(screen.getByText('123ms')).toBeInTheDocument();
     });
 
     it('formats seconds correctly', () => {
-      const build = { ...mockBuild, elapsed_seconds: 45.2 };
+      const build = { ...mockBuild, elapsedSeconds: 45.2 };
       render(<BuildItem {...defaultProps} build={build} />);
       expect(screen.getByText('45.2s')).toBeInTheDocument();
     });
 
     it('formats minutes and seconds correctly', () => {
-      const build = { ...mockBuild, elapsed_seconds: 125 };
+      const build = { ...mockBuild, elapsedSeconds: 125 };
       render(<BuildItem {...defaultProps} build={build} />);
       expect(screen.getByText('2m 5s')).toBeInTheDocument();
     });
 
     it('hides time for very short durations', () => {
-      const build = { ...mockBuild, elapsed_seconds: 0.05, stages: [] };
+      const build = { ...mockBuild, elapsedSeconds: 0.05, stages: [] };
       const { container } = render(<BuildItem {...defaultProps} build={build} />);
       expect(container.querySelector('.build-time')).not.toBeInTheDocument();
     });
 
     it('hides time for zero duration', () => {
-      const build = { ...mockBuild, elapsed_seconds: 0, stages: [] };
+      const build = { ...mockBuild, elapsedSeconds: 0, stages: [] };
       const { container } = render(<BuildItem {...defaultProps} build={build} />);
       expect(container.querySelector('.build-time')).not.toBeInTheDocument();
     });
@@ -390,8 +390,8 @@ describe('BuildItem', () => {
       const stageNoIssues: BuildStage[] = [
         {
           name: 'clean-stage',
-          stage_id: 'clean',
-          elapsed_seconds: 1.0,
+          stageId: 'clean',
+          elapsedSeconds: 1.0,
           status: 'success',
           infos: 5,
           warnings: 0,

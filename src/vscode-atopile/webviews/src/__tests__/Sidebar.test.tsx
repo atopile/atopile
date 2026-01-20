@@ -105,7 +105,7 @@ const mockState = {
   stdlibItems: [],
   isLoadingStdlib: false,
   bomData: null,
-  isLoadingBOM: false,
+  isLoadingBom: false,
   bomError: null,
   selectedPackageDetails: null,
   isLoadingPackageDetails: false,

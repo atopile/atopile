@@ -307,8 +307,9 @@ export function VariablesPanel({
 }: VariablesPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all')
   const [copiedValue, setCopiedValue] = useState<string | null>(null)
+  // Always show all sources (filter removed per user request)
+  const sourceFilter: SourceFilter = 'all'
   const [lastDataVersion, setLastDataVersion] = useState<string | null>(null)
 
   // Extract variables from data
@@ -378,37 +379,6 @@ export function VariablesPanel({
             />
           </div>
         </div>
-
-        {/* Source filter */}
-        <div className="filter-group">
-          <button
-            className={`filter-btn ${sourceFilter === 'all' ? 'active' : ''}`}
-            onClick={() => setSourceFilter('all')}
-          >
-            All
-          </button>
-          <button
-            className={`filter-btn ${sourceFilter === 'user' ? 'active' : ''}`}
-            onClick={() => setSourceFilter('user')}
-            title="User-specified values"
-          >
-            User
-          </button>
-          <button
-            className={`filter-btn ${sourceFilter === 'computed' ? 'active' : ''}`}
-            onClick={() => setSourceFilter('computed')}
-            title="Computed/derived values"
-          >
-            Computed
-          </button>
-          <button
-            className={`filter-btn ${sourceFilter === 'picked' ? 'active' : ''}`}
-            onClick={() => setSourceFilter('picked')}
-            title="Part picker selected"
-          >
-            Picked
-          </button>
-        </div>
       </div>
 
       {/* Variable tree */}
@@ -438,14 +408,7 @@ export function VariablesPanel({
         {!isLoading && !error && variables.length === 0 && (
           <div className="variables-empty">
             <span>No variables found.</span>
-            {onBuild ? (
-              <button onClick={onBuild} className="build-btn primary">
-                <Play size={14} />
-                Build Project
-              </button>
-            ) : (
-              <span className="hint">Run "ato build" to generate variable data.</span>
-            )}
+            <span className="hint">Run "ato build" to generate variable data.</span>
           </div>
         )}
 

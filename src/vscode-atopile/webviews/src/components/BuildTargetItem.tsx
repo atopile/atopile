@@ -64,12 +64,12 @@ function getCurrentStage(build: Build): string | null {
 
 // Historical stage item (read-only, no click handler)
 function HistoricalStageItem({ stage }: { stage: BuildTargetStageStatus }) {
-  const time = stage.elapsed_seconds ? formatTime(stage.elapsed_seconds) : '';
+  const time = stage.elapsedSeconds ? formatTime(stage.elapsedSeconds) : '';
 
   return (
     <div className="stage-item historical">
       <StatusIcon status={stage.status} size={12} />
-      <span className="stage-name">{stage.display_name || stage.name}</span>
+      <span className="stage-name">{stage.displayName || stage.name}</span>
       {time && <span className="stage-time">{time}</span>}
     </div>
   );
@@ -84,7 +84,7 @@ function StageItem({
   isSelected: boolean;
   onSelect: () => void;
 }) {
-  const time = formatTime(stage.elapsed_seconds);
+  const time = formatTime(stage.elapsedSeconds);
 
   return (
     <button
@@ -121,10 +121,10 @@ export function BuildTargetItem({
   onToggleStage,
 }: BuildTargetItemProps) {
   const hasActiveStages = build?.stages && build.stages.length > 0;
-  const hasHistoricalStages = !build && target.last_build?.stages && target.last_build.stages.length > 0;
+  const hasHistoricalStages = !build && target.lastBuild?.stages && target.lastBuild.stages.length > 0;
   const hasStages = hasActiveStages || hasHistoricalStages;
   const currentStage = build ? getCurrentStage(build) : null;
-  const timeStr = build ? formatTime(build.elapsed_seconds) : '';
+  const timeStr = build ? formatTime(build.elapsedSeconds) : '';
 
   const handleExpandClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -150,9 +150,9 @@ export function BuildTargetItem({
           <div className="build-status">
             <StatusIcon status={build.status} size={16} />
           </div>
-        ) : target.last_build ? (
+        ) : target.lastBuild ? (
           <div className="build-status last-build">
-            <StatusIcon status={target.last_build.status} size={16} />
+            <StatusIcon status={target.lastBuild.status} size={16} />
           </div>
         ) : null}
 
@@ -165,9 +165,9 @@ export function BuildTargetItem({
               {currentStage && timeStr && <span className="meta-sep">·</span>}
               {timeStr && <span className="build-time">{timeStr}</span>}
             </span>
-          ) : target.last_build ? (
+          ) : target.lastBuild ? (
             <span className="build-meta last-build-meta">
-              <span className="last-build-time">{formatRelativeTime(target.last_build.timestamp)}</span>
+              <span className="last-build-time">{formatRelativeTime(target.lastBuild.timestamp)}</span>
             </span>
           ) : (
             <span className="target-entry">{target.entry}</span>
@@ -188,16 +188,16 @@ export function BuildTargetItem({
               </span>
             )}
           </div>
-        ) : target.last_build && (target.last_build.warnings > 0 || target.last_build.errors > 0) ? (
+        ) : target.lastBuild && (target.lastBuild.warnings > 0 || target.lastBuild.errors > 0) ? (
           <div className="build-indicators last-build-indicators">
-            {target.last_build.warnings > 0 && (
-              <span className="indicator warning" title={`${target.last_build.warnings} warnings`}>
-                {target.last_build.warnings}
+            {target.lastBuild.warnings > 0 && (
+              <span className="indicator warning" title={`${target.lastBuild.warnings} warnings`}>
+                {target.lastBuild.warnings}
               </span>
             )}
-            {target.last_build.errors > 0 && (
-              <span className="indicator error" title={`${target.last_build.errors} errors`}>
-                {target.last_build.errors}
+            {target.lastBuild.errors > 0 && (
+              <span className="indicator error" title={`${target.lastBuild.errors} errors`}>
+                {target.lastBuild.errors}
               </span>
             )}
           </div>
@@ -220,17 +220,17 @@ export function BuildTargetItem({
         <div className="build-stages">
           {build!.stages!.map((stage) => (
             <StageItem
-              key={stage.stage_id}
+              key={stage.stageId}
               stage={stage}
-              isSelected={selectedStageIds.includes(stage.stage_id)}
-              onSelect={() => onToggleStage(stage.stage_id)}
+              isSelected={selectedStageIds.includes(stage.stageId)}
+              onSelect={() => onToggleStage(stage.stageId)}
             />
           ))}
         </div>
       )}
       {isExpanded && hasHistoricalStages && (
         <div className="build-stages historical-stages">
-          {target.last_build!.stages!.map((stage, idx) => (
+          {target.lastBuild!.stages!.map((stage, idx) => (
             <HistoricalStageItem key={`${stage.name}-${idx}`} stage={stage} />
           ))}
         </div>

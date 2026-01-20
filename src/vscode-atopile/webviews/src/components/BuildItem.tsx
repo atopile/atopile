@@ -48,7 +48,7 @@ function StageItem({
   onSelect: () => void;
 }) {
   // Show milliseconds for stage times (more granular)
-  const time = formatTime(stage.elapsed_seconds, true);
+  const time = formatTime(stage.elapsedSeconds, true);
 
   return (
     <button
@@ -83,10 +83,10 @@ export function BuildItem({
   const [expanded, setExpanded] = useState(false);
   const hasStages = build.stages && build.stages.length > 0;
   const currentStage = getCurrentStage(build);
-  const timeStr = formatTime(build.elapsed_seconds);
+  const timeStr = formatTime(build.elapsedSeconds);
 
   const handleClick = () => {
-    onSelectBuild(build.display_name);
+    onSelectBuild(build.displayName);
     if (hasStages) {
       setExpanded(!expanded);
     }
@@ -100,7 +100,7 @@ export function BuildItem({
         </div>
 
         <div className="build-info">
-          <span className="build-name">{build.display_name}</span>
+          <span className="build-name">{build.displayName}</span>
           <span className="build-meta">
             {currentStage && <span className="build-stage">{stripRichText(currentStage)}</span>}
             {currentStage && timeStr && <span className="meta-sep">·</span>}
@@ -137,7 +137,7 @@ export function BuildItem({
               key={stage.name}
               stage={stage}
               isSelected={isSelected && selectedStageName === stage.name}
-              onSelect={() => onSelectStage(build.display_name, stage.name)}
+              onSelect={() => onSelectStage(build.displayName, stage.name)}
             />
           ))}
         </div>

@@ -35,12 +35,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
+from atopile.config import ProjectConfig
 from atopile.dashboard.stdlib import (
     StdLibItem,
     StdLibItemType,
     StdLibResponse,
     get_standard_library,
 )
+from atopile.dashboard.state import server_state
 from atopile.logging import get_central_log_db
 
 # Registry cache
@@ -487,17 +489,19 @@ class ConnectionManager:
             # Convert to frontend-compatible format
             logs = []
             for row in reversed(rows):  # Reverse to chronological order
-                logs.append({
-                    "id": row["id"],
-                    "timestamp": row["timestamp"],
-                    "stage": row["stage"],
-                    "level": row["level"],
-                    "message": row["message"],
-                    "ato_traceback": row["ato_traceback"],
-                    "python_traceback": row["python_traceback"],
-                    "build_id": row["build_id"],
-                    "target": row["target"],
-                })
+                logs.append(
+                    {
+                        "id": row["id"],
+                        "timestamp": row["timestamp"],
+                        "stage": row["stage"],
+                        "level": row["level"],
+                        "message": row["message"],
+                        "ato_traceback": row["ato_traceback"],
+                        "python_traceback": row["python_traceback"],
+                        "build_id": row["build_id"],
+                        "target": row["target"],
+                    }
+                )
 
             if logs:
                 client.last_log_id = logs[-1]["id"]
@@ -943,9 +947,10 @@ def search_registry_packages(query: str) -> list[PackageInfo]:
         return []
 
 
-# Search terms that together cover all packages in the registry
-# Optimized for maximum coverage with minimum queries:
-# - "atopile" covers most (96), "i2c" adds 32, "st"/"ti" add vendor-specific packages
+# TODO: HACK - Registry API doesn't support listing all packages (empty query returns 0).
+# Workaround: query multiple search terms and merge results to approximate "get all".
+# These terms were empirically chosen for maximum coverage (~149 packages as of 2025-01).
+# Proper fix: add a /v1/packages/list endpoint to the registry API.
 _REGISTRY_SEARCH_TERMS = ["atopile", "i2c", "st", "ti", "ic", "mcu", "esp", "microchip"]
 
 
@@ -1832,6 +1837,9 @@ class BuildQueue:
                     },
                 )
 
+                # Sync to server_state for /ws/state clients
+                _sync_builds_to_state()
+
             elif msg_type == "stage":
                 stages = msg.get("stages", [])
                 with _build_lock:
@@ -1843,6 +1851,9 @@ class BuildQueue:
                     "build:stage",
                     {"build_id": build_id, "stages": stages},
                 )
+
+                # Sync to server_state for /ws/state clients
+                _sync_builds_to_state()
 
             elif msg_type == "completed":
                 return_code = msg.get("return_code", -1)
@@ -1891,6 +1902,12 @@ class BuildQueue:
                     },
                 )
 
+                # Sync to server_state for /ws/state clients
+                _sync_builds_to_state()
+
+                # Refresh problems from logs after build completes
+                _sync_problems_to_state()
+
                 # Save to history
                 with _build_lock:
                     if build_id in _active_builds:
@@ -1914,6 +1931,9 @@ class BuildQueue:
                     "build:cancelled",
                     {"build_id": build_id},
                 )
+
+                # Sync to server_state for /ws/state clients
+                _sync_builds_to_state()
 
     def _dispatch_next(self) -> None:
         """Dispatch next pending build if capacity available."""
@@ -2081,6 +2101,233 @@ _build_settings = {
     "use_default_max_concurrent": True,
     "custom_max_concurrent": _DEFAULT_MAX_CONCURRENT,
 }
+
+
+def _get_state_builds():
+    """
+    Convert _active_builds to StateBuild objects.
+
+    Helper function used by both sync and async state sync functions.
+    """
+    from atopile.dashboard.state import Build as StateBuild, BuildStage as StateStage
+
+    with _build_lock:
+        state_builds = []
+        for build_id, build_info in _active_builds.items():
+            # Convert stages if present
+            stages = None
+            if build_info.get("stages"):
+                stages = [
+                    StateStage(
+                        name=s.get("name", ""),
+                        stage_id=s.get("stage_id", s.get("name", "")),
+                        display_name=s.get("display_name"),
+                        elapsed_seconds=s.get("elapsed_seconds", 0.0),
+                        status=s.get("status", "pending"),
+                        infos=s.get("infos", 0),
+                        warnings=s.get("warnings", 0),
+                        errors=s.get("errors", 0),
+                        alerts=s.get("alerts", 0),
+                    )
+                    for s in build_info["stages"]
+                ]
+
+            # Determine display name and build name
+            # name is used by frontend to match builds to targets
+            entry = build_info.get("entry")
+            targets = build_info.get("targets", [])
+            if entry:
+                display_name = entry.split(":")[-1] if ":" in entry else entry
+                build_name = display_name
+            elif targets:
+                display_name = ", ".join(targets)
+                build_name = targets[0] if len(targets) == 1 else display_name
+            else:
+                display_name = "Build"
+                build_name = build_id
+
+            state_builds.append(
+                StateBuild(
+                    name=build_name,
+                    display_name=display_name,
+                    build_id=build_id,
+                    project_name=Path(build_info.get("project_root", "")).name,
+                    status=build_info.get("status", "queued"),
+                    elapsed_seconds=build_info.get("duration", 0.0),
+                    warnings=build_info.get("warnings", 0),
+                    errors=build_info.get("errors", 0),
+                    return_code=build_info.get("return_code"),
+                    error=build_info.get("error"),  # Include error message
+                    project_root=build_info.get("project_root"),
+                    targets=targets,
+                    entry=entry,
+                    started_at=build_info.get("started_at"),
+                    stages=stages,
+                )
+            )
+        return state_builds
+
+
+def _sync_builds_to_state():
+    """
+    Sync _active_builds to server_state for WebSocket broadcast.
+
+    Called when build status changes (from background thread).
+    Uses asyncio.run_coroutine_threadsafe to schedule on main event loop.
+    """
+    state_builds = _get_state_builds()
+    queued_builds = [b for b in state_builds if b.status in ("queued", "building")]
+
+    # Schedule async state update on main event loop
+    loop = server_state._event_loop
+    if loop is not None and loop.is_running():
+        asyncio.run_coroutine_threadsafe(
+            server_state.set_builds(state_builds), loop
+        )
+        asyncio.run_coroutine_threadsafe(
+            server_state.set_queued_builds(queued_builds), loop
+        )
+    else:
+        log.warning("Cannot sync builds to state: event loop not available")
+
+
+async def _sync_builds_to_state_async():
+    """
+    Async version of _sync_builds_to_state.
+
+    Called from async contexts (like WebSocket handlers) where we want
+    to await the state update rather than scheduling it.
+    """
+    state_builds = _get_state_builds()
+    # Set all builds
+    await server_state.set_builds(state_builds)
+    # Set queued builds (active builds only for queue panel)
+    queued_builds = [b for b in state_builds if b.status in ("queued", "building")]
+    await server_state.set_queued_builds(queued_builds)
+
+
+def _sync_problems_to_state():
+    """
+    Sync problems to server_state for WebSocket broadcast.
+
+    Called after build completes to update problems from log files.
+    Uses asyncio.run_coroutine_threadsafe to schedule on main event loop.
+    """
+    loop = server_state._event_loop
+    if loop is not None and loop.is_running():
+        asyncio.run_coroutine_threadsafe(_sync_problems_to_state_async(), loop)
+    else:
+        log.warning("Cannot sync problems to state: event loop not available")
+
+
+async def _sync_problems_to_state_async():
+    """
+    Async function to refresh problems from build logs.
+
+    Reads problems from all project build logs and updates server_state.
+    """
+    from atopile.dashboard.state import Problem as StateProblem
+
+    workspace_paths = server_state._workspace_paths
+    if not workspace_paths:
+        return
+
+    try:
+        projects = discover_projects_in_paths(workspace_paths)
+        all_problems: list[StateProblem] = []
+
+        for project in projects:
+            project_path = Path(project.root)
+            project_summary = project_path / "build" / "logs" / "latest" / "summary.json"
+
+            if not project_summary.exists():
+                continue
+
+            try:
+                summary_data = json.loads(project_summary.read_text())
+                builds_data = summary_data.get("builds", [])
+
+                for build in builds_data:
+                    log_file_path = build.get("log_file")
+                    if not log_file_path:
+                        continue
+
+                    log_file = Path(log_file_path)
+                    if not log_file.exists():
+                        continue
+
+                    # Parse problems from log
+                    build_problems = parse_problems_from_log_file(
+                        log_file,
+                        build_name=build.get("name", ""),
+                        project_name=project.name,
+                    )
+
+                    # Convert to state types
+                    for p in build_problems:
+                        all_problems.append(
+                            StateProblem(
+                                id=p.id,
+                                level=p.level,
+                                message=p.message,
+                                file=p.file,
+                                line=p.line,
+                                column=p.column,
+                                stage=p.stage,
+                                logger=p.logger,
+                                build_name=p.build_name,
+                                project_name=p.project_name,
+                                timestamp=p.timestamp,
+                                ato_traceback=p.ato_traceback,
+                                exc_info=p.exc_info,
+                            )
+                        )
+            except Exception as e:
+                log.warning(f"Failed to read problems from {project_summary}: {e}")
+
+        await server_state.set_problems(all_problems)
+        log.info(f"Refreshed problems after build: {len(all_problems)} problems found")
+    except Exception as e:
+        log.error(f"Failed to refresh problems: {e}")
+
+
+async def _refresh_packages_async():
+    """Refresh packages and update server_state. Called after install/remove."""
+    from atopile.dashboard.state import PackageInfo as StatePackageInfo
+
+    scan_paths = server_state._workspace_paths
+    if not scan_paths:
+        return
+
+    try:
+        installed = get_all_installed_packages(scan_paths)
+        enriched = enrich_packages_with_registry(installed)
+
+        state_packages = [
+            StatePackageInfo(
+                identifier=p.identifier,
+                name=p.name,
+                publisher=p.publisher,
+                version=p.version,
+                latest_version=p.latest_version,
+                description=p.description,
+                summary=p.summary,
+                homepage=p.homepage,
+                repository=p.repository,
+                license=p.license,
+                installed=p.installed,
+                installed_in=p.installed_in,
+                has_update=_version_is_newer(p.version, p.latest_version),
+                downloads=p.downloads,
+                version_count=p.version_count,
+                keywords=p.keywords or [],
+            )
+            for p in enriched.values()
+        ]
+        await server_state.set_packages(state_packages)
+        log.info(f"Refreshed packages after install/remove: {len(state_packages)} packages")
+    except Exception as e:
+        log.error(f"Failed to refresh packages: {e}")
 
 
 def _find_build_in_summary(
@@ -2276,13 +2523,83 @@ def create_app(
     db_path = get_central_log_db()
     ws_manager.set_paths(db_path, logs_base)
 
+    # Define populate_initial_state first (before startup handler calls it)
+    async def populate_initial_state():
+        """Populate server state with projects and packages on startup."""
+        scan_paths = state["workspace_paths"]
+        if not scan_paths:
+            log.info("No workspace paths configured, skipping initial state population")
+            return
+
+        log.info(f"Populating initial state from {len(scan_paths)} workspace paths")
+
+        # Import state types
+        from atopile.dashboard.state import Project as StateProject
+        from atopile.dashboard.state import BuildTarget as StateBuildTarget
+        from atopile.dashboard.state import PackageInfo as StatePackageInfo
+
+        # Discover and set projects
+        try:
+            projects = discover_projects_in_paths(scan_paths)
+            state_projects = [
+                StateProject(
+                    root=p.root,
+                    name=p.name,
+                    targets=[
+                        StateBuildTarget(name=t.name, entry=t.entry, root=t.root)
+                        for t in p.targets
+                    ],
+                )
+                for p in projects
+            ]
+            await server_state.set_projects(state_projects)
+            log.info(f"Loaded {len(state_projects)} projects")
+        except Exception as e:
+            log.error(f"Failed to load projects: {e}")
+
+        # Discover and set packages
+        try:
+            installed = get_all_installed_packages(scan_paths)
+            enriched = enrich_packages_with_registry(installed)
+
+            state_packages = [
+                StatePackageInfo(
+                    identifier=p.identifier,
+                    name=p.name,
+                    publisher=p.publisher,
+                    version=p.version,
+                    latest_version=p.latest_version,
+                    description=p.description,
+                    summary=p.summary,
+                    homepage=p.homepage,
+                    repository=p.repository,
+                    license=p.license,
+                    installed=p.installed,
+                    installed_in=p.installed_in,
+                    has_update=_version_is_newer(p.version, p.latest_version),
+                    downloads=p.downloads,
+                    version_count=p.version_count,
+                    keywords=p.keywords or [],
+                )
+                for p in enriched.values()
+            ]
+            await server_state.set_packages(state_packages)
+            log.info(f"Loaded {len(state_packages)} packages")
+        except Exception as e:
+            log.error(f"Failed to load packages: {e}")
+
     # Capture event loop on startup for background thread broadcasts
     @app.on_event("startup")
     async def capture_event_loop():
         """Store the main event loop for use in background threads."""
         loop = asyncio.get_running_loop()
         ws_manager.set_event_loop(loop)
+        server_state.set_event_loop(loop)
+        server_state.set_workspace_paths(state["workspace_paths"])
         log.info("Event loop captured for WebSocket broadcasts")
+
+        # Populate initial state with projects and packages
+        await populate_initial_state()
 
     # Initialize build history database
     if logs_base:
@@ -2309,6 +2626,825 @@ def create_app(
         except Exception as e:
             log.error(f"WebSocket error: {e}")
             ws_manager.disconnect(websocket)
+
+    async def handle_data_action(action: str, payload: dict) -> dict:
+        """Handle data-fetching actions that need access to server.py functions."""
+        global _package_op_counter, _build_counter
+
+        log.info(f"handle_data_action called: action={action}, payload={payload}")
+
+        try:
+            if action == "refreshProjects":
+                # Discover projects and update state
+                scan_paths = state["workspace_paths"]
+                if scan_paths:
+                    from atopile.dashboard.state import Project as StateProject
+                    from atopile.dashboard.state import BuildTarget as StateBuildTarget
+
+                    projects = discover_projects_in_paths(scan_paths)
+                    # Convert to state types
+                    state_projects = [
+                        StateProject(
+                            root=p.root,
+                            name=p.name,
+                            targets=[
+                                StateBuildTarget(name=t.name, entry=t.entry, root=t.root)
+                                for t in p.targets
+                            ],
+                        )
+                        for p in projects
+                    ]
+                    await server_state.set_projects(state_projects)
+                return {"success": True}
+
+            elif action == "refreshPackages":
+                # Fetch packages using existing function
+                scan_paths = state["workspace_paths"]
+                if scan_paths:
+                    from atopile.dashboard.state import PackageInfo as StatePackageInfo
+
+                    # Use existing function from server.py
+                    installed = get_all_installed_packages(scan_paths)
+                    enriched = enrich_packages_with_registry(installed)
+
+                    # Convert to state types
+                    state_packages = [
+                        StatePackageInfo(
+                            identifier=p.identifier,
+                            name=p.name,
+                            publisher=p.publisher,
+                            version=p.version,
+                            latest_version=p.latest_version,
+                            description=p.description,
+                            summary=p.summary,
+                            homepage=p.homepage,
+                            repository=p.repository,
+                            license=p.license,
+                            installed=p.installed,
+                            installed_in=p.installed_in,
+                            has_update=_version_is_newer(p.version, p.latest_version),
+                            downloads=p.downloads,
+                            version_count=p.version_count,
+                            keywords=p.keywords or [],
+                        )
+                        for p in enriched.values()
+                    ]
+                    await server_state.set_packages(state_packages)
+                return {"success": True}
+
+            elif action == "refreshStdlib":
+                # Fetch stdlib
+                from atopile.dashboard.state import StdLibItem as StateStdLibItem
+
+                items = get_standard_library()
+                # Convert - StdLibItem is similar between modules
+                state_items = [
+                    StateStdLibItem(
+                        id=item.id,
+                        name=item.name,
+                        type=item.type,
+                        description=item.description,
+                        usage=item.usage,
+                        children=[],  # Simplified
+                        parameters=[],
+                    )
+                    for item in items.items
+                ]
+                await server_state.set_stdlib_items(state_items)
+                return {"success": True}
+
+            elif action == "build":
+                # Support multiple payload formats:
+                # 1. Backend: { projectRoot, targets, entry?, standalone?, frozen? }
+                # 2. Frontend: { level, id, label } - level determines meaning of id
+                # 3. REST-style: { project_root, targets }
+                #
+                # Frontend level meanings:
+                # - level='project': id is project root path, build all targets
+                # - level='build': id is project root, buildId or label is target name
+                # - level='symbol': id is project root, build specific entry
+
+                project_root = payload.get("projectRoot") or payload.get("project_root", "")
+                targets = payload.get("targets", [])
+                entry = payload.get("entry")
+                standalone = payload.get("standalone", False)
+                frozen = payload.get("frozen", False)
+                level = payload.get("level")
+                payload_id = payload.get("id")
+                payload_label = payload.get("label")
+
+                log.info(f"Build action: level={level}, id={payload_id}, label={payload_label}, targets={targets}")
+
+                # Handle frontend level/id/label format
+                # Flag to indicate we should build all targets from ato.yaml
+                build_all_targets = False
+                if level and payload_id:
+                    if level == "project":
+                        # id is the project root, build all targets from ato.yaml
+                        project_root = payload_id
+                        # For project-level build, we'll read all targets from ato.yaml later
+                        if not targets:
+                            build_all_targets = True
+                        log.info(f"Build project: {project_root}, build_all_targets={build_all_targets}")
+                    elif level == "build":
+                        # Frontend sends id as "${projectId}:${targetName}"
+                        # For projects: projectId is filesystem path
+                        # For packages: projectId is package identifier (e.g., "atopile/package-name")
+                        if ":" in payload_id:
+                            # Split from the right to handle paths that might contain colons (Windows)
+                            parts = payload_id.rsplit(":", 1)
+                            project_root = parts[0]
+                            # If label not provided, use the parsed target
+                            if not payload_label and len(parts) > 1:
+                                payload_label = parts[1]
+                        else:
+                            project_root = payload_id
+
+                        if payload_label and not targets:
+                            targets = [payload_label]
+                        log.info(f"Build target: {targets} in {project_root}")
+                    elif level == "symbol":
+                        # id is project root, entry should be set
+                        project_root = payload_id
+                        log.info(f"Build symbol: {entry} in {project_root}")
+
+                # If no projectRoot provided, try to use selected project from state
+                if not project_root:
+                    project_root = server_state._state.selected_project_root or ""
+                    log.info(f"Using selected project from state: {project_root}")
+
+                # If no targets provided, try to use selected targets from state
+                if not targets:
+                    targets = server_state._state.selected_target_names or []
+                    log.info(f"Using selected targets from state: {targets}")
+
+                # Validate project path - if not a valid path, try to resolve as package identifier
+                project_path = Path(project_root) if project_root else Path("")
+                log.info(f"Validating project path: {project_path}, exists={project_path.exists() if project_root else False}")
+                if project_root and not project_path.exists():
+                    # Check if this looks like a package identifier (e.g., "atopile/package-name")
+                    if "/" in project_root and not project_root.startswith("/"):
+                        package_identifier = project_root
+                        log.info(f"Project root looks like package identifier: {package_identifier}")
+                        # Look up the package in state to find its installed_in paths
+                        packages = server_state._state.packages or []
+                        pkg = next((p for p in packages if p.identifier == package_identifier), None)
+                        if pkg and pkg.installed_in:
+                            # Find the package's actual directory within the installed project
+                            # Packages are installed at: {project_root}/.ato/modules/{identifier}/
+                            consuming_project = pkg.installed_in[0]
+                            package_dir = Path(consuming_project) / ".ato" / "modules" / package_identifier
+                            if package_dir.exists():
+                                log.info(f"Resolved package {package_identifier} to package dir: {package_dir}")
+                                project_root = str(package_dir)
+                                project_path = package_dir
+                            else:
+                                # Fallback to the consuming project (for backwards compatibility)
+                                log.warning(f"Package dir {package_dir} not found, using project: {consuming_project}")
+                                project_root = consuming_project
+                                project_path = Path(project_root)
+                        else:
+                            log.warning(f"Package {package_identifier} not found in state or not installed anywhere")
+
+                if not project_root or not project_path.exists():
+                    log.warning(f"Build failed: Project path does not exist: {project_root}")
+                    return {
+                        "success": False,
+                        "error": f"Project path does not exist: {project_root}",
+                    }
+
+                # Validate ato.yaml or entry for standalone
+                if standalone:
+                    if not entry:
+                        return {
+                            "success": False,
+                            "error": "Standalone builds require an entry point",
+                        }
+                    entry_file = entry.split(":")[0] if ":" in entry else entry
+                    entry_path = project_path / entry_file
+                    if not entry_path.exists():
+                        return {
+                            "success": False,
+                            "error": f"Entry file not found: {entry_path}",
+                        }
+                else:
+                    ato_yaml_path = project_path / "ato.yaml"
+                    log.info(f"Checking for ato.yaml: {ato_yaml_path}, exists={ato_yaml_path.exists()}")
+                    if not ato_yaml_path.exists():
+                        log.warning(f"Build failed: No ato.yaml found in: {project_root}")
+                        return {
+                            "success": False,
+                            "error": f"No ato.yaml found in: {project_root}",
+                        }
+
+                    # If build_all_targets is set, read all targets from ato.yaml
+                    if build_all_targets:
+                        try:
+                            # Use atopile's ProjectConfig to parse ato.yaml properly
+                            project_config = ProjectConfig.from_path(project_path)
+                            all_targets = list(project_config.builds.keys()) if project_config else []
+                            if all_targets:
+                                log.info(f"Found {len(all_targets)} targets in ato.yaml: {all_targets}")
+                                # Queue a separate build for each target
+                                build_ids = []
+                                for target_name in all_targets:
+                                    # Check for duplicate
+                                    target_build_key = _make_build_key(project_root, [target_name], entry)
+                                    existing_id = _is_duplicate_build(target_build_key)
+                                    if existing_id:
+                                        log.info(f"Target {target_name} already building: {existing_id}")
+                                        build_ids.append(existing_id)
+                                        continue
+
+                                    # Generate build ID for this target
+                                    with _build_lock:
+                                        global _build_counter
+                                        _build_counter += 1
+                                        build_id = f"build-{_build_counter}-{int(time.time())}"
+
+                                        # Register the build
+                                        _active_builds[build_id] = {
+                                            "status": "queued",
+                                            "project_root": project_root,
+                                            "targets": [target_name],
+                                            "entry": entry,
+                                            "standalone": standalone,
+                                            "frozen": frozen,
+                                            "build_key": target_build_key,
+                                            "return_code": None,
+                                            "error": None,
+                                            "started_at": time.time(),
+                                            "stages": [],
+                                        }
+
+                                    # Enqueue the build
+                                    log.info(f"Enqueueing build for target {target_name}: {build_id}")
+                                    _build_queue.enqueue(build_id)
+                                    build_ids.append(build_id)
+
+                                # Sync to server_state for WebSocket broadcast
+                                await _sync_builds_to_state_async()
+                                log.info(f"Queued {len(build_ids)} builds for project: {project_root}")
+
+                                return {
+                                    "success": True,
+                                    "message": f"Queued {len(build_ids)} builds for all targets",
+                                    "build_ids": build_ids,
+                                    "targets": all_targets,
+                                }
+                            else:
+                                # No targets found, fall back to default
+                                log.info("No targets found in ato.yaml, falling back to 'default'")
+                                targets = ["default"]
+                        except Exception as e:
+                            log.warning(f"Failed to read targets from ato.yaml: {e}, falling back to 'default'")
+                            targets = ["default"]
+
+                # Check for duplicate builds
+                build_key = _make_build_key(project_root, targets, entry)
+                existing_build_id = _is_duplicate_build(build_key)
+                if existing_build_id:
+                    return {
+                        "success": True,
+                        "message": "Build already in progress",
+                        "build_id": existing_build_id,
+                    }
+
+                # Generate build ID
+                build_label = entry if standalone else "project"
+                with _build_lock:
+                    _build_counter += 1
+                    build_id = f"build-{_build_counter}-{int(time.time())}"
+
+                    # Register the build
+                    _active_builds[build_id] = {
+                        "status": "queued",
+                        "project_root": project_root,
+                        "targets": targets,
+                        "entry": entry,
+                        "standalone": standalone,
+                        "frozen": frozen,
+                        "build_key": build_key,
+                        "return_code": None,
+                        "error": None,
+                        "started_at": time.time(),
+                        "stages": [],
+                    }
+
+                # Enqueue the build
+                log.info(f"Enqueueing build: {build_id}")
+                _build_queue.enqueue(build_id)
+                log.info(f"Build enqueued: {build_id}")
+
+                # Sync to server_state for WebSocket broadcast (use async version)
+                await _sync_builds_to_state_async()
+                log.info(f"Build state synced to WebSocket clients")
+
+                log.info(f"Build queued via WebSocket: {build_id} for {build_label}")
+                return {
+                    "success": True,
+                    "message": f"Build queued for {build_label}",
+                    "build_id": build_id,
+                }
+
+            elif action == "cancelBuild":
+                build_id = payload.get("buildId", "")
+                if not build_id:
+                    return {"success": False, "error": "Missing buildId"}
+
+                if build_id not in _active_builds:
+                    return {"success": False, "error": f"Build not found: {build_id}"}
+
+                success = cancel_build(build_id)
+                if success:
+                    log.info(f"Build cancelled via WebSocket: {build_id}")
+                    return {"success": True, "message": f"Build {build_id} cancelled"}
+                else:
+                    return {
+                        "success": False,
+                        "message": f"Build {build_id} cannot be cancelled (already completed)",
+                    }
+
+            elif action == "fetchModules":
+                project_root = payload.get("projectRoot", "")
+                if project_root:
+                    from atopile.dashboard.state import (
+                        ModuleDefinition as StateModuleDefinition,
+                    )
+
+                    modules = discover_modules_in_project(Path(project_root))
+                    state_modules = [
+                        StateModuleDefinition(
+                            name=m.name,
+                            type=m.type,
+                            file=m.file,
+                            entry=m.entry,
+                            line=m.line,
+                            super_type=m.super_type,
+                        )
+                        for m in modules
+                    ]
+                    await server_state.set_project_modules(project_root, state_modules)
+                return {"success": True}
+
+            elif action == "getPackageDetails":
+                package_id = payload.get("packageId", "")
+                if package_id:
+                    from atopile.dashboard.state import (
+                        PackageDetails as StatePackageDetails,
+                    )
+
+                    details = get_package_details_from_registry(package_id)
+                    if details:
+                        state_details = StatePackageDetails(
+                            identifier=details.identifier,
+                            name=details.name,
+                            publisher=details.publisher,
+                            version=details.version,
+                            summary=details.summary,
+                            description=details.description,
+                            homepage=details.homepage,
+                            repository=details.repository,
+                            license=details.license,
+                            downloads=details.downloads,
+                            downloads_this_week=details.downloads_this_week,
+                            downloads_this_month=details.downloads_this_month,
+                            versions=[],  # Simplified
+                            version_count=details.version_count,
+                            installed=details.installed,
+                            installed_version=details.installed_version,
+                            installed_in=details.installed_in,
+                        )
+                        await server_state.set_package_details(state_details)
+                    else:
+                        await server_state.set_package_details(
+                            None, f"Package not found: {package_id}"
+                        )
+                return {"success": True}
+
+            elif action == "clearPackageDetails":
+                await server_state.set_package_details(None)
+                return {"success": True}
+
+            elif action == "refreshBOM":
+                # Fetch BOM for a project/target
+                project_root = payload.get("projectRoot", "")
+                target = payload.get("target", "default")
+
+                if not project_root:
+                    # Use selected project if not specified
+                    selected = server_state._state.selected_project_root
+                    if selected:
+                        project_root = selected
+
+                if not project_root:
+                    await server_state.set_bom_data(None, "No project selected")
+                    return {"success": False, "error": "No project selected"}
+
+                project_path = Path(project_root)
+                bom_path = project_path / "build" / "builds" / target / f"{target}.bom.json"
+
+                if not bom_path.exists():
+                    await server_state.set_bom_data(
+                        None, f"BOM not found. Run build first."
+                    )
+                    return {"success": True, "info": "BOM not found"}
+
+                try:
+                    from atopile.dashboard.state import BOMData
+
+                    bom_json = json.loads(bom_path.read_text())
+                    # BOM data is generic JSON, pass it through
+                    await server_state.set_bom_data(bom_json)
+                    return {"success": True}
+                except Exception as e:
+                    await server_state.set_bom_data(None, str(e))
+                    return {"success": False, "error": str(e)}
+
+            elif action == "refreshProblems":
+                # Fetch problems from all projects
+                from atopile.dashboard.state import Problem as StateProblem
+
+                workspace_paths = state.get("workspace_paths", [])
+                projects = discover_projects_in_paths(workspace_paths)
+                all_problems: list[StateProblem] = []
+
+                for project in projects:
+                    project_path = Path(project.root)
+                    project_summary = (
+                        project_path / "build" / "logs" / "latest" / "summary.json"
+                    )
+
+                    if not project_summary.exists():
+                        continue
+
+                    try:
+                        summary_data = json.loads(project_summary.read_text())
+                        builds_data = summary_data.get("builds", [])
+
+                        for build in builds_data:
+                            log_file_path = build.get("log_file")
+                            if not log_file_path:
+                                continue
+
+                            log_file = Path(log_file_path)
+                            if not log_file.exists():
+                                continue
+
+                            # Parse problems from log
+                            build_problems = parse_problems_from_log_file(
+                                log_file,
+                                build_name=build.get("name", ""),
+                                project_name=project.name,
+                            )
+
+                            # Convert to state types
+                            for p in build_problems:
+                                all_problems.append(
+                                    StateProblem(
+                                        id=p.id,
+                                        level=p.level,
+                                        message=p.message,
+                                        file=p.file,
+                                        line=p.line,
+                                        column=p.column,
+                                        stage=p.stage,
+                                        logger=p.logger,
+                                        build_name=p.build_name,
+                                        project_name=p.project_name,
+                                        timestamp=p.timestamp,
+                                        ato_traceback=p.ato_traceback,
+                                        exc_info=p.exc_info,
+                                    )
+                                )
+                    except Exception as e:
+                        log.warning(f"Failed to read problems from {project_summary}: {e}")
+
+                await server_state.set_problems(all_problems)
+                return {"success": True}
+
+            elif action == "fetchVariables":
+                # Fetch variables for a project/target
+                project_root = payload.get("projectRoot", "")
+                target = payload.get("target", "default")
+
+                if not project_root:
+                    await server_state.set_variables_data(None, "No project specified")
+                    return {"success": False, "error": "No project specified"}
+
+                project_path = Path(project_root)
+                variables_path = (
+                    project_path / "build" / "builds" / target / f"{target}.variables.json"
+                )
+
+                if not variables_path.exists():
+                    await server_state.set_variables_data(
+                        None, "Variables not found. Run build first."
+                    )
+                    return {"success": True, "info": "Variables not found"}
+
+                try:
+                    variables_json = json.loads(variables_path.read_text())
+                    await server_state.set_variables_data(variables_json)
+                    return {"success": True}
+                except Exception as e:
+                    await server_state.set_variables_data(None, str(e))
+                    return {"success": False, "error": str(e)}
+
+            elif action == "installPackage":
+                # Install a package into a project
+                package_id = payload.get("packageId", "")
+                project_root = payload.get("projectRoot", "")
+                version = payload.get("version")
+
+                if not package_id or not project_root:
+                    return {"success": False, "error": "Missing packageId or projectRoot"}
+
+                project_path = Path(project_root)
+                if not project_path.exists():
+                    return {"success": False, "error": f"Project not found: {project_root}"}
+
+                if not (project_path / "ato.yaml").exists():
+                    return {"success": False, "error": f"No ato.yaml in: {project_root}"}
+
+                # Generate operation ID
+                with _package_op_lock:
+                    _package_op_counter += 1
+                    op_id = f"pkg-install-{_package_op_counter}-{int(time.time())}"
+
+                    _active_package_ops[op_id] = {
+                        "action": "install",
+                        "status": "running",
+                        "package": package_id,
+                        "project_root": project_root,
+                        "error": None,
+                    }
+
+                # Build command
+                cmd = ["ato", "add", package_id]
+                if version:
+                    cmd.append(f"@{version}")
+
+                # Run in thread
+                def run_install():
+                    try:
+                        result = subprocess.run(
+                            cmd,
+                            cwd=project_root,
+                            capture_output=True,
+                            text=True,
+                            timeout=120,
+                        )
+                        with _package_op_lock:
+                            if result.returncode == 0:
+                                _active_package_ops[op_id]["status"] = "success"
+                                # Refresh packages after install
+                                loop = server_state._event_loop
+                                if loop and loop.is_running():
+                                    asyncio.run_coroutine_threadsafe(
+                                        _refresh_packages_async(), loop
+                                    )
+                            else:
+                                _active_package_ops[op_id]["status"] = "failed"
+                                _active_package_ops[op_id]["error"] = result.stderr[:500]
+                    except Exception as e:
+                        with _package_op_lock:
+                            _active_package_ops[op_id]["status"] = "failed"
+                            _active_package_ops[op_id]["error"] = str(e)
+
+                import threading
+                threading.Thread(target=run_install, daemon=True).start()
+
+                log.info(f"Package install started via WebSocket: {package_id}")
+                return {
+                    "success": True,
+                    "message": f"Installing {package_id}...",
+                    "op_id": op_id,
+                }
+
+            elif action == "removePackage":
+                # Remove a package from a project
+                package_id = payload.get("packageId", "")
+                project_root = payload.get("projectRoot", "")
+
+                if not package_id or not project_root:
+                    return {"success": False, "error": "Missing packageId or projectRoot"}
+
+                project_path = Path(project_root)
+                if not project_path.exists():
+                    return {"success": False, "error": f"Project not found: {project_root}"}
+
+                # Generate operation ID
+                with _package_op_lock:
+                    _package_op_counter += 1
+                    op_id = f"pkg-remove-{_package_op_counter}-{int(time.time())}"
+
+                    _active_package_ops[op_id] = {
+                        "action": "remove",
+                        "status": "running",
+                        "package": package_id,
+                        "project_root": project_root,
+                        "error": None,
+                    }
+
+                # Build command
+                cmd = ["ato", "remove", package_id]
+
+                # Run in thread
+                def run_remove():
+                    try:
+                        result = subprocess.run(
+                            cmd,
+                            cwd=project_root,
+                            capture_output=True,
+                            text=True,
+                            timeout=120,
+                        )
+                        with _package_op_lock:
+                            if result.returncode == 0:
+                                _active_package_ops[op_id]["status"] = "success"
+                                # Refresh packages after remove
+                                loop = server_state._event_loop
+                                if loop and loop.is_running():
+                                    asyncio.run_coroutine_threadsafe(
+                                        _refresh_packages_async(), loop
+                                    )
+                            else:
+                                _active_package_ops[op_id]["status"] = "failed"
+                                _active_package_ops[op_id]["error"] = result.stderr[:500]
+                    except Exception as e:
+                        with _package_op_lock:
+                            _active_package_ops[op_id]["status"] = "failed"
+                            _active_package_ops[op_id]["error"] = str(e)
+
+                import threading
+                threading.Thread(target=run_remove, daemon=True).start()
+
+                log.info(f"Package remove started via WebSocket: {package_id}")
+                return {
+                    "success": True,
+                    "message": f"Removing {package_id}...",
+                    "op_id": op_id,
+                }
+
+            elif action == "fetchFiles":
+                # Fetch file tree for a project
+                project_root = payload.get("projectRoot", "")
+                if not project_root:
+                    return {"success": True, "info": "No project specified"}
+
+                project_path = Path(project_root)
+                if not project_path.exists():
+                    return {"success": False, "error": f"Project not found: {project_root}"}
+
+                from atopile.dashboard.state import FileTreeNode
+
+                def build_file_tree(path: Path, relative_to: Path) -> list[FileTreeNode]:
+                    """Build file tree for a directory, only including .ato and .py files."""
+                    nodes = []
+                    excluded = {"build", ".ato", "__pycache__", ".git", "node_modules", ".venv", ".pytest_cache", ".mypy_cache", "dist"}
+
+                    try:
+                        for item in sorted(path.iterdir()):
+                            if item.name.startswith("."):
+                                continue
+                            if item.name in excluded:
+                                continue
+
+                            rel_path = str(item.relative_to(relative_to))
+
+                            if item.is_dir():
+                                children = build_file_tree(item, relative_to)
+                                # Only include directories that have .ato or .py files
+                                if children:
+                                    nodes.append(
+                                        FileTreeNode(
+                                            name=item.name,
+                                            path=rel_path,
+                                            type="folder",
+                                            children=children,
+                                        )
+                                    )
+                            elif item.is_file():
+                                # Only include .ato and .py files
+                                ext = item.suffix.lower()
+                                if ext in {".ato", ".py"}:
+                                    nodes.append(
+                                        FileTreeNode(
+                                            name=item.name,
+                                            path=rel_path,
+                                            type="file",
+                                            extension=ext[1:] if ext else None,  # Remove leading dot
+                                        )
+                                    )
+                    except PermissionError:
+                        pass
+
+                    return nodes
+
+                file_tree = build_file_tree(project_path, project_path)
+                await server_state.set_project_files(project_root, file_tree)
+                return {"success": True}
+
+            elif action == "getMaxConcurrentSetting":
+                # Return current max concurrent build settings
+                return {
+                    "success": True,
+                    "setting": {
+                        "use_default": _build_settings["use_default_max_concurrent"],
+                        "custom_value": _build_settings["custom_max_concurrent"],
+                        "default_value": _DEFAULT_MAX_CONCURRENT,
+                        "current_value": _build_queue.get_max_concurrent(),
+                    }
+                }
+
+            elif action == "setMaxConcurrentSetting":
+                # Update max concurrent build settings
+                use_default = payload.get("useDefault", True)
+                custom_value = payload.get("customValue")
+
+                _build_settings["use_default_max_concurrent"] = use_default
+
+                if use_default:
+                    _build_queue.set_max_concurrent(_DEFAULT_MAX_CONCURRENT)
+                elif custom_value is not None:
+                    # Clamp value to reasonable range
+                    custom = max(1, min(32, int(custom_value)))
+                    _build_settings["custom_max_concurrent"] = custom
+                    _build_queue.set_max_concurrent(custom)
+
+                return {
+                    "success": True,
+                    "setting": {
+                        "use_default": _build_settings["use_default_max_concurrent"],
+                        "custom_value": _build_settings["custom_max_concurrent"],
+                        "default_value": _DEFAULT_MAX_CONCURRENT,
+                        "current_value": _build_queue.get_max_concurrent(),
+                    }
+                }
+
+            else:
+                # Not a data action, let state.py handle it
+                return None
+
+        except Exception as e:
+            log.error(f"Error handling data action {action}: {e}")
+            return {"success": False, "error": str(e)}
+
+    @app.websocket("/ws/state")
+    async def websocket_state_endpoint(websocket: WebSocket):
+        """
+        WebSocket endpoint for full AppState push.
+
+        This is the primary endpoint for the new thin-client architecture:
+        - On connect: sends full AppState immediately
+        - On state change: broadcasts full AppState to all clients
+        - Receives actions: handles client actions and updates state
+
+        Message format:
+        - Server -> Client: {"type": "state", "data": <AppState>}
+        - Client -> Server: {"type": "action", "action": "<action>", "payload": {...}}
+        - Server -> Client: {"type": "action_result", "success": bool, "error"?: string}
+        """
+        client_id = await server_state.connect_client(websocket)
+        log.info(f"WebSocket state client connected: {client_id}")
+        try:
+            while True:
+                data = await websocket.receive_json()
+                msg_type = data.get("type")
+                log.info(f"WebSocket state received: type={msg_type}, data={data}")
+
+                if msg_type == "action":
+                    action = data.get("action", "")
+                    # Support both formats:
+                    # 1. { type, action, payload: {...} } - backend format
+                    # 2. { type, action, key1, key2, ... } - frontend format (no payload wrapper)
+                    if "payload" in data:
+                        payload = data["payload"]
+                    else:
+                        # Extract everything except type and action as payload
+                        payload = {k: v for k, v in data.items() if k not in ("type", "action")}
+                    log.info(f"Processing action: {action}, payload: {payload}")
+
+                    # Try data actions first (need access to server.py functions)
+                    result = await handle_data_action(action, payload)
+                    if result is None:
+                        # Not a data action, let state.py handle it
+                        result = await server_state.handle_action(action, payload)
+
+                    await websocket.send_json({"type": "action_result", **result})
+
+                elif msg_type == "ping":
+                    await websocket.send_json({"type": "pong"})
+
+                else:
+                    log.debug(f"Unknown message type from {client_id}: {msg_type}")
+
+        except WebSocketDisconnect:
+            await server_state.disconnect_client(client_id)
+        except Exception as e:
+            log.error(f"WebSocket state error for {client_id}: {e}")
+            await server_state.disconnect_client(client_id)
 
     @app.get("/api/projects", response_model=ProjectsResponse)
     async def get_projects(
@@ -2713,6 +3849,9 @@ def create_app(
         # Enqueue the build
         _build_queue.enqueue(build_id)
 
+        # Sync to server_state for WebSocket broadcast
+        _sync_builds_to_state()
+
         return BuildResponse(
             success=True,
             message=f"Build queued for {build_label}",
@@ -2934,9 +4073,7 @@ def create_app(
         build_name: Optional[str] = Query(
             None, description="Filter by build/target name (e.g., 'project:target')"
         ),
-        project_name: Optional[str] = Query(
-            None, description="Filter by project name"
-        ),
+        project_name: Optional[str] = Query(None, description="Filter by project name"),
         levels: Optional[str] = Query(
             None, description="Comma-separated log levels (DEBUG,INFO,WARNING,ERROR)"
         ),
@@ -2951,9 +4088,7 @@ def create_app(
         project_path: Optional[str] = Query(None, description="Filter by project path"),
         target: Optional[str] = Query(None, description="Filter by target name"),
         stage: Optional[str] = Query(None, description="Filter by build stage"),
-        level: Optional[str] = Query(
-            None, description="Filter by single log level"
-        ),
+        level: Optional[str] = Query(None, description="Filter by single log level"),
         audience: Optional[str] = Query(
             None, description="Filter by audience (user, developer, agent)"
         ),
@@ -3108,9 +4243,7 @@ def create_app(
         build_name: Optional[str] = Query(
             None, description="Filter by build/target name"
         ),
-        project_name: Optional[str] = Query(
-            None, description="Filter by project name"
-        ),
+        project_name: Optional[str] = Query(None, description="Filter by project name"),
         stage: Optional[str] = Query(None, description="Filter by build stage"),
     ):
         """

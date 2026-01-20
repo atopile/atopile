@@ -8,10 +8,24 @@
 
 const DEV_SERVER_URL = 'ws://localhost:3001';
 
+// Global error handler for uncaught errors
+window.onerror = (message, source, lineno, colno, error) => {
+  console.error('[Dev] Global error:', { message, source, lineno, colno, error });
+  return false;
+};
+
+// Global handler for unhandled promise rejections
+window.onunhandledrejection = (event) => {
+  console.error('[Dev] Unhandled promise rejection:', event.reason);
+};
+
 // Shared WebSocket connection for all components
 let sharedWs: WebSocket | null = null;
 let wsReady = false;
 const pendingMessages: unknown[] = [];
+
+// Cache the last received state to replay for late-mounting components
+let lastReceivedState: unknown = null;
 
 function connectWebSocket() {
   sharedWs = new WebSocket(DEV_SERVER_URL);
@@ -29,6 +43,20 @@ function connectWebSocket() {
   sharedWs.onmessage = (event) => {
     try {
       const msg = JSON.parse(event.data);
+      // Log state messages for debugging
+      if (msg.type === 'state') {
+        console.log('[Dev] Received state:', {
+          projects: msg.data?.projects?.length,
+          packages: msg.data?.packages?.length,
+          builds: msg.data?.builds?.length,
+          problems: msg.data?.problems?.length,
+          isConnected: msg.data?.isConnected,
+          selectedProjectRoot: msg.data?.selectedProjectRoot,
+          keys: Object.keys(msg.data || {}).slice(0, 20),
+        });
+        // Cache state for late-mounting components
+        lastReceivedState = msg;
+      }
       // Dispatch as a window message event (same as VS Code does)
       window.dispatchEvent(new MessageEvent('message', { data: msg }));
     } catch (e) {
@@ -54,6 +82,18 @@ connectWebSocket();
 // All components share the same WebSocket connection
 (window as any).acquireVsCodeApi = () => ({
   postMessage: (message: unknown) => {
+    // When a component signals 'ready', replay the cached state if available
+    // This handles the race condition where state arrives before components mount
+    if (typeof message === 'object' && message !== null && (message as any).type === 'ready') {
+      if (lastReceivedState) {
+        console.log('[Dev] Component ready, replaying cached state');
+        // Use setTimeout to ensure the event listener is registered
+        setTimeout(() => {
+          window.dispatchEvent(new MessageEvent('message', { data: lastReceivedState }));
+        }, 0);
+      }
+    }
+
     if (wsReady && sharedWs?.readyState === WebSocket.OPEN) {
       sharedWs.send(JSON.stringify(message));
     } else {

@@ -2,10 +2,13 @@
 #
 # Development server startup script for atopile webviews.
 #
+# Architecture (Python owns all state):
+#   Browser <--WS--> Dev Server <--WS--> Python Backend
+#
 # Starts all required servers in order:
-#   1. Python dashboard backend (http://localhost:8501)
-#   2. TypeScript WebSocket dev server (ws://localhost:3001)
-#   3. Vite dev server (http://localhost:5173)
+#   1. Python dashboard backend (http://localhost:8501) - owns ALL state
+#   2. TypeScript WebSocket proxy (ws://localhost:3001) - thin proxy, 88 lines
+#   3. Vite dev server (http://localhost:5173) - serves React UI
 #
 # Usage:
 #   ./dev.sh [workspace_paths...]
@@ -165,8 +168,8 @@ else
 fi
 echo ""
 
-# Step 3: Start TypeScript WebSocket dev server
-echo -e "${YELLOW}[3/4] Starting WebSocket dev server...${NC}"
+# Step 3: Start TypeScript WebSocket proxy (thin - just proxies to Python)
+echo -e "${YELLOW}[3/4] Starting WebSocket proxy...${NC}"
 cd "$SCRIPT_DIR"
 
 # Install deps if needed
@@ -175,13 +178,16 @@ if [ ! -d "node_modules" ]; then
     npm install --silent
 fi
 
-npx tsx server/dev-server.ts "${WORKSPACE_PATHS[@]}" &
+# The thin dev-server is just a proxy to Python's /ws/state endpoint
+# No workspace paths needed - Python owns all state
+npx tsx server/dev-server.ts &
 DEV_SERVER_PID=$!
 
-if wait_for_port $DEV_SERVER_PORT "Dev Server"; then
-    echo -e "${GREEN}  Dev Server ready at ws://localhost:$DEV_SERVER_PORT${NC}"
+if wait_for_port $DEV_SERVER_PORT "WebSocket Proxy"; then
+    echo -e "${GREEN}  WebSocket proxy ready at ws://localhost:$DEV_SERVER_PORT${NC}"
+    echo -e "  ${BLUE}(proxies to Python ws://localhost:$DASHBOARD_PORT/ws/state)${NC}"
 else
-    echo -e "${RED}  Failed to start dev server${NC}"
+    echo -e "${RED}  Failed to start WebSocket proxy${NC}"
     exit 1
 fi
 echo ""
@@ -203,9 +209,12 @@ echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}All servers started successfully!${NC}"
 echo ""
-echo -e "  ${BLUE}UI:${NC}        http://localhost:$VITE_PORT"
-echo -e "  ${BLUE}WebSocket:${NC} ws://localhost:$DEV_SERVER_PORT"
-echo -e "  ${BLUE}Backend:${NC}   http://localhost:$DASHBOARD_PORT"
+echo -e "  ${BLUE}UI:${NC}           http://localhost:$VITE_PORT"
+echo -e "  ${BLUE}WS Proxy:${NC}     ws://localhost:$DEV_SERVER_PORT"
+echo -e "  ${BLUE}Python API:${NC}   http://localhost:$DASHBOARD_PORT"
+echo -e "  ${BLUE}Python WS:${NC}    ws://localhost:$DASHBOARD_PORT/ws/state"
+echo ""
+echo -e "  ${YELLOW}Architecture:${NC} Browser <-> WS Proxy <-> Python (owns state)"
 echo ""
 echo -e "  Press ${YELLOW}Ctrl+C${NC} to stop all servers"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

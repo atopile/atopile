@@ -1,0 +1,310 @@
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  height: 100vh;
+  padding: var(--space-3);
+  overflow: hidden;
+}
+
+/* Sidebar Header */
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.sidebar-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+}
+
+.sidebar-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-title {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sidebar-version {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+/* Server Status Indicator / Button */
+.server-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.server-status.connected {
+  background: rgba(46, 160, 67, 0.15);
+  color: var(--color-success, #2ea043);
+}
+
+.server-status.connected:hover {
+  background: rgba(46, 160, 67, 0.25);
+}
+
+.server-status.disconnected {
+  background: rgba(248, 81, 73, 0.15);
+  color: var(--color-error, #f85149);
+}
+
+.server-status.disconnected:hover {
+  background: rgba(248, 81, 73, 0.3);
+  color: #ff6b6b;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-text {
+  font-weight: 500;
+}
+
+/* Card Component */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.card-flex {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+}
+
+.card-title {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.card-badge {
+  font-size: var(--font-size-xs);
+  padding: 1px 6px;
+  background: var(--border-subtle);
+  border-radius: 10px;
+  color: var(--text-muted);
+}
+
+.card-content {
+  padding: var(--space-2);
+}
+
+.card-flex .card-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+
+/* Actions Grid */
+.actions-grid {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* Builds List */
+.builds-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Empty State */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+}
+
+.empty-icon {
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--space-3);
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.empty-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.empty-title {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-1);
+}
+
+.empty-desc {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.select-project-btn {
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.select-project-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-default);
+}
+
+/* Build Targets Section */
+.builds-targets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.empty-state-small {
+  padding: var(--space-3);
+  text-align: center;
+}
+
+/* Project Header with Play Button */
+.project-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  margin-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.project-selector {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  margin: calc(-1 * var(--space-1)) 0;
+  margin-left: calc(-1 * var(--space-2));
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.project-selector:hover {
+  background: var(--bg-hover);
+}
+
+.project-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.project-name {
+  flex: 1;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.project-chevron {
+  width: 12px;
+  height: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+
+.project-selector:hover .project-chevron {
+  opacity: 1;
+}
+
+.build-play-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: var(--color-success);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: white;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.build-play-button:hover:not(:disabled) {
+  background: var(--color-success-hover, #22a559);
+}
+
+.build-play-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.build-play-button svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Build Targets List */
+.build-targets-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}

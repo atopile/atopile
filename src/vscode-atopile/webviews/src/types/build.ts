@@ -13,15 +13,15 @@ export interface LogEntry {
   logger: string;
   stage: string;
   message: string;
-  ato_traceback?: string;
-  exc_info?: string;
+  atoTraceback?: string;
+  excInfo?: string;
 }
 
 export interface BuildStage {
   name: string;
-  stage_id: string;
-  display_name?: string;  // User-friendly name
-  elapsed_seconds: number;
+  stageId: string;
+  displayName?: string;  // User-friendly name
+  elapsedSeconds: number;
   status: StageStatus;
   infos: number;
   warnings: number;
@@ -32,43 +32,44 @@ export interface BuildStage {
 export interface Build {
   // Core identification
   name: string;
-  display_name: string;
-  project_name: string | null;
-  build_id?: string;  // Present for active/tracked builds
+  displayName: string;
+  projectName: string | null;
+  buildId?: string;  // Present for active/tracked builds
 
   // Status
   status: BuildStatus;
-  elapsed_seconds: number;
+  elapsedSeconds: number;
   warnings: number;
   errors: number;
-  return_code: number | null;
+  returnCode: number | null;
+  error?: string;  // Error message from build failure
 
   // Context (present for active builds)
-  project_root?: string;
+  projectRoot?: string;
   targets?: string[];
   entry?: string;
-  started_at?: number;  // Unix timestamp
+  startedAt?: number;  // Unix timestamp
 
   // Stages and logs
   stages?: BuildStage[];
-  log_dir?: string;
-  log_file?: string;
+  logDir?: string;
+  logFile?: string;
 
   // Queue info
-  queue_position?: number;  // Position in queue (1-indexed), only set when status is 'queued'
+  queuePosition?: number;  // Position in queue (1-indexed), only set when status is 'queued'
 }
 
 export interface BuildTargetStageStatus {
   name: string;  // Internal stage name
-  display_name: string;  // User-friendly name
+  displayName: string;  // User-friendly name
   status: StageStatus;
-  elapsed_seconds?: number;
+  elapsedSeconds?: number;
 }
 
 export interface BuildTargetStatus {
   status: BuildStatus;
   timestamp: string;  // ISO format timestamp of when the build completed
-  elapsed_seconds?: number;
+  elapsedSeconds?: number;
   warnings: number;
   errors: number;
   stages?: BuildTargetStageStatus[];  // Stage breakdown from last build
@@ -78,7 +79,7 @@ export interface BuildTarget {
   name: string;
   entry: string;
   root: string;
-  last_build?: BuildTargetStatus;  // Persisted status from last build
+  lastBuild?: BuildTargetStatus;  // Persisted status from last build
 }
 
 export interface Project {
@@ -98,25 +99,26 @@ export interface PackageInfo {
   name: string;        // e.g., "bosch-bme280"
   publisher: string;   // e.g., "atopile"
   version?: string;    // Installed version
-  latest_version?: string;  // Latest available (snake_case from backend)
+  latestVersion?: string;  // Latest available (camelCase from backend)
   description?: string;
   summary?: string;
   homepage?: string;
   repository?: string;
   license?: string;
   installed: boolean;
-  installed_in: string[];  // List of project roots where installed (snake_case from backend)
+  installedIn: string[];  // List of project roots where installed (camelCase from backend)
+  hasUpdate?: boolean;
   // Package stats (from registry) - these may come from registry API later
   downloads?: number;
-  version_count?: number;
+  versionCount?: number;
   keywords?: string[];
 }
 
 // Package version/release info (from /api/packages/{id}/details)
 export interface PackageVersion {
   version: string;
-  released_at: string | null;
-  requires_atopile?: string;
+  releasedAt: string | null;
+  requiresAtopile?: string;
   size?: number;
 }
 
@@ -133,22 +135,22 @@ export interface PackageDetails {
   license?: string;
   // Stats
   downloads?: number;
-  downloads_this_week?: number;
-  downloads_this_month?: number;
+  downloadsThisWeek?: number;
+  downloadsThisMonth?: number;
   // Versions
   versions: PackageVersion[];
-  version_count: number;
+  versionCount: number;
   // Installation status
   installed: boolean;
-  installed_version?: string;
-  installed_in: string[];
+  installedVersion?: string;
+  installedIn: string[];
 }
 
 // --- Package Summary Types (from /api/packages/summary) ---
 
 /**
  * Display-ready package info from the unified packages endpoint.
- * Backend merges installed + registry data and pre-computes has_update.
+ * Backend merges installed + registry data and pre-computes hasUpdate.
  */
 export interface PackageSummaryItem {
   identifier: string;  // e.g., "atopile/bosch-bme280"
@@ -158,11 +160,11 @@ export interface PackageSummaryItem {
   // Installation status (matches PackageInfo field names)
   installed: boolean;
   version?: string;  // Installed version (same as PackageInfo.version)
-  installed_in: string[];
+  installedIn: string[];
 
   // Registry info (pre-merged by backend)
-  latest_version?: string;
-  has_update: boolean;  // Pre-computed: version < latest_version
+  latestVersion?: string;
+  hasUpdate: boolean;  // Pre-computed: version < latestVersion
 
   // Display metadata
   summary?: string;
@@ -173,7 +175,7 @@ export interface PackageSummaryItem {
 
   // Stats
   downloads?: number;
-  version_count?: number;
+  versionCount?: number;
   keywords?: string[];
 }
 
@@ -191,8 +193,8 @@ export interface RegistryStatus {
 export interface PackagesSummaryResponse {
   packages: PackageSummaryItem[];
   total: number;
-  installed_count: number;
-  registry_status: RegistryStatus;
+  installedCount: number;
+  registryStatus: RegistryStatus;
 }
 
 // --- Standard Library Types ---
@@ -202,7 +204,7 @@ export type StdLibItemType = 'interface' | 'module' | 'component' | 'trait' | 'p
 export interface StdLibChild {
   name: string;
   type: string;
-  item_type: StdLibItemType;
+  itemType: StdLibItemType;
   children: StdLibChild[];
 }
 
@@ -283,8 +285,9 @@ export interface AppState {
   isLoadingStdlib: boolean;
 
   // BOM (from dashboard API /api/bom)
+  // Note: Python camelCase converts is_loading_bom to isLoadingBom (not isLoadingBOM)
   bomData: BOMData | null;
-  isLoadingBOM: boolean;
+  isLoadingBom: boolean;
   bomError: string | null;
 
   // Package details (from /api/packages/{id}/details)
@@ -385,8 +388,8 @@ export interface Problem {
   buildName?: string;    // Which build target
   projectName?: string;  // Which project
   timestamp?: string;    // When it occurred
-  ato_traceback?: string; // Source traceback if available
-  exc_info?: string;     // Exception info if available
+  atoTraceback?: string; // Source traceback if available
+  excInfo?: string;     // Exception info if available
 }
 
 // Module Definition Types (from /api/modules endpoint)
@@ -396,7 +399,7 @@ export interface ModuleDefinition {
   file: string;
   entry: string;
   line?: number;
-  super_type?: string;
+  superType?: string;
 }
 
 // File Tree Types (from /api/files endpoint)

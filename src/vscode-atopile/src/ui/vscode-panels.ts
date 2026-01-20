@@ -864,6 +864,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Start polling for build updates
     appStateManager.startPolling(500);
 
+    // Connect to Python backend for real-time state updates
+    // This enables the new architecture where Python owns state
+    appStateManager.connectToBackend();
+
     // Fetch stdlib, packages, and problems (non-blocking)
     // These load in the background since they can be slow
     appStateManager.fetchStdlib().catch(e => traceError(`Failed to fetch stdlib: ${e}`));
@@ -880,6 +884,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 export function deactivate(): void {
+    appStateManager.disconnectFromBackend();
     appStateManager.stopPolling();
     appStateManager.dispose();
 }

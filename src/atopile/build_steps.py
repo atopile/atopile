@@ -678,7 +678,9 @@ def generate_bom(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     # Generate CSV BOM (for JLCPCB manufacturing)
     write_bom(pickable_parts, config.build.paths.output_base.with_suffix(".bom.csv"))
     # Generate JSON BOM (for VSCode extension BOM panel)
-    write_json_bom(pickable_parts, config.build.paths.output_base.with_suffix(".bom.json"))
+    write_json_bom(
+        pickable_parts, config.build.paths.output_base.with_suffix(".bom.json")
+    )
 
 
 @muster.register(

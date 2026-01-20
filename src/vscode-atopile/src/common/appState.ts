@@ -9,6 +9,9 @@ import * as vscode from 'vscode';
 import axios from 'axios';
 import { traceInfo, traceError, traceVerbose } from './log/logging';
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const WebSocket = require('ws');
+
 // Types - import from shared location to avoid duplication
 export type BuildStatus = 'queued' | 'building' | 'success' | 'warning' | 'failed';
 export type StageStatus = 'success' | 'warning' | 'failed';
@@ -39,6 +42,7 @@ export interface Build {
     name: string;
     display_name: string;
     project_name: string | null;
+    build_id?: string;  // Present for active/tracked builds
     status: BuildStatus;
     elapsed_seconds: number;
     warnings: number;
@@ -711,6 +715,30 @@ class AppStateManager {
         this._emit();
         // Trigger server refresh with new filter
         this._triggerLogRefresh();
+    }
+
+    // Alias methods for compatibility
+    toggleStage(stageId: string): void {
+        this.toggleStageFilter(stageId);
+    }
+
+    selectAllStages(): void {
+        // Get all available stages from current build
+        const build = this._state.builds.find(b => b.display_name === this._state.selectedBuildName);
+        if (build?.stages) {
+            this._state.selectedStageIds = build.stages.map(s => s.stage_id);
+            this._emit();
+            this._triggerLogRefresh();
+        }
+    }
+
+    clearAllStages(): void {
+        this.clearStageFilter();
+    }
+
+    // Alias for typo compatibility
+    setAtopieBranch(branch: string | null): void {
+        this.setAtopileBranch(branch);
     }
 
     // --- Log viewer UI ---
@@ -1436,7 +1464,126 @@ class AppStateManager {
         }
     }
 
+    // --- WebSocket Connection to Python Backend ---
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    private _ws: any = null;
+    private _wsReconnectTimer: NodeJS.Timeout | null = null;
+    private _wsConnected: boolean = false;
+
+    /**
+     * Connect to Python backend via WebSocket for real-time state updates.
+     * The Python backend pushes full AppState on connect and on any change.
+     */
+    connectToBackend(url: string = 'ws://localhost:8501/ws/state'): void {
+        if (this._ws && this._ws.readyState === WebSocket.OPEN) {
+            traceVerbose('AppState: Already connected to backend');
+            return;
+        }
+
+        traceInfo(`AppState: Connecting to Python backend at ${url}`);
+
+        try {
+            this._ws = new WebSocket(url);
+
+            this._ws.on('open', () => {
+                this._wsConnected = true;
+                this._state.isConnected = true;
+                this._emit();
+                traceInfo('AppState: Connected to Python backend');
+            });
+
+            this._ws.on('message', (data: Buffer | ArrayBuffer | Buffer[]) => {
+                try {
+                    const message = JSON.parse(data.toString());
+                    if (message.type === 'state') {
+                        // Merge backend state into local state
+                        this._mergeBackendState(message.data);
+                    } else if (message.type === 'action_result') {
+                        traceVerbose(`AppState: Action result: ${JSON.stringify(message)}`);
+                    }
+                } catch (e) {
+                    traceError(`AppState: Failed to parse WebSocket message: ${e}`);
+                }
+            });
+
+            this._ws.on('close', () => {
+                this._wsConnected = false;
+                this._state.isConnected = false;
+                this._emit();
+                traceInfo('AppState: Disconnected from Python backend');
+                this._scheduleReconnect(url);
+            });
+
+            this._ws.on('error', (err: Error) => {
+                traceError(`AppState: WebSocket error: ${err.message}`);
+                this._scheduleReconnect(url);
+            });
+
+        } catch (e) {
+            traceError(`AppState: Failed to create WebSocket: ${e}`);
+            this._scheduleReconnect(url);
+        }
+    }
+
+    private _scheduleReconnect(url: string): void {
+        if (this._wsReconnectTimer) return;
+        this._wsReconnectTimer = setTimeout(() => {
+            this._wsReconnectTimer = null;
+            this.connectToBackend(url);
+        }, 3000);
+    }
+
+    disconnectFromBackend(): void {
+        if (this._wsReconnectTimer) {
+            clearTimeout(this._wsReconnectTimer);
+            this._wsReconnectTimer = null;
+        }
+        if (this._ws) {
+            this._ws.close();
+            this._ws = null;
+        }
+        this._wsConnected = false;
+    }
+
+    /**
+     * Send an action to the Python backend via WebSocket.
+     */
+    sendBackendAction(action: string, payload: Record<string, unknown> = {}): void {
+        if (!this._ws || this._ws.readyState !== WebSocket.OPEN) {
+            traceError(`AppState: Cannot send action ${action}: not connected to backend`);
+            return;
+        }
+        const message = { type: 'action', action, payload };
+        this._ws.send(JSON.stringify(message));
+        traceVerbose(`AppState: Sent action to backend: ${action}`);
+    }
+
+    /**
+     * Merge state received from Python backend into local state.
+     * Backend state takes precedence for shared fields.
+     */
+    private _mergeBackendState(backendState: Partial<AppState>): void {
+        // Merge backend state, preserving local-only fields
+        const localOnlyFields = ['version', 'logoUri', 'atopile'];
+
+        for (const [key, value] of Object.entries(backendState)) {
+            if (!localOnlyFields.includes(key) && value !== undefined) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (this._state as any)[key] = value;
+            }
+        }
+
+        this._emit();
+        traceVerbose('AppState: Merged state from backend');
+    }
+
+    get isConnectedToBackend(): boolean {
+        return this._wsConnected;
+    }
+
     dispose(): void {
+        this.disconnectFromBackend();
         this.stopPolling();
         this._onStateChange.dispose();
     }
