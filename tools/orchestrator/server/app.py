@@ -189,6 +189,47 @@ def create_app() -> FastAPI:
             ]
         }
 
+    @app.post("/dev/restart")
+    async def restart_servers():
+        """Restart the backend and frontend dev servers.
+
+        This endpoint spawns a background process that:
+        1. Waits 1 second for this response to be sent
+        2. Kills the current uvicorn and vite processes
+        3. Restarts both servers
+
+        Only for development use.
+        """
+        import os
+        import subprocess
+        import sys
+
+        # Get the orchestrator directory
+        orchestrator_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        web_dir = os.path.join(orchestrator_dir, "web")
+
+        # Create a restart script that runs in the background
+        restart_script = f"""
+sleep 1
+# Kill existing servers
+pkill -f "uvicorn orchestrator" 2>/dev/null || true
+pkill -f "vite.*5173" 2>/dev/null || true
+sleep 1
+# Restart backend
+cd "{os.path.dirname(orchestrator_dir)}" && uv run uvicorn orchestrator.server.app:app --host 0.0.0.0 --port 8765 &
+# Restart frontend
+cd "{web_dir}" && npm run dev &
+"""
+        # Run the restart script in background
+        subprocess.Popen(
+            ["bash", "-c", restart_script],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+
+        return {"status": "restarting", "message": "Servers will restart in ~2 seconds"}
+
     return app
 
 

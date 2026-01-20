@@ -1,10 +1,47 @@
-import { useEffect, useState, useCallback } from 'react';
-import { Square, Send, X, Clock, Cpu, Hash, Code, RotateCcw, Pencil, Check, History } from 'lucide-react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { Square, Send, X, Clock, Cpu, Hash, Code, RotateCcw, Pencil, Check, History, Sparkles, Settings } from 'lucide-react';
 import type { AgentViewModel } from '@/logic/viewmodels';
 import { useDispatch, useAgentOutput, useLoading } from '@/hooks';
 import { StatusBadge } from './StatusBadge';
 import { OutputStream } from './OutputStream';
 import { VimTextarea } from './VimTextarea';
+
+// Completion settings stored in localStorage
+type CompletionMode = 'code' | 'prompt';
+
+interface CompletionSettings {
+  enabled: boolean;
+  endpoint: string;
+  model: string;
+  mode: CompletionMode;
+}
+
+const DEFAULT_COMPLETION_SETTINGS: CompletionSettings = {
+  enabled: false,
+  endpoint: 'http://localhost:11434/api/generate',
+  model: 'qwen2.5:7b',
+  mode: 'prompt',
+};
+
+function loadCompletionSettings(): CompletionSettings {
+  try {
+    const stored = localStorage.getItem('vim-completion-settings');
+    if (stored) {
+      return { ...DEFAULT_COMPLETION_SETTINGS, ...JSON.parse(stored) };
+    }
+  } catch (e) {
+    console.error('Failed to load completion settings:', e);
+  }
+  return DEFAULT_COMPLETION_SETTINGS;
+}
+
+function saveCompletionSettings(settings: CompletionSettings) {
+  try {
+    localStorage.setItem('vim-completion-settings', JSON.stringify(settings));
+  } catch (e) {
+    console.error('Failed to save completion settings:', e);
+  }
+}
 
 interface AgentDetailProps {
   agent: AgentViewModel;
@@ -24,6 +61,41 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(agent.name || '');
   const [vimMode, setVimMode] = useState(false);
+  const [completionSettings, setCompletionSettings] = useState<CompletionSettings>(loadCompletionSettings);
+  const [showCompletionSettings, setShowCompletionSettings] = useState(false);
+  const settingsPopoverRef = useRef<HTMLDivElement>(null);
+
+  // Close settings popover when clicking outside
+  useEffect(() => {
+    if (!showCompletionSettings) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (settingsPopoverRef.current && !settingsPopoverRef.current.contains(e.target as Node)) {
+        setShowCompletionSettings(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showCompletionSettings]);
+
+  // Memoize completion config for VimTextarea
+  const completionConfig = useMemo(() => ({
+    enabled: completionSettings.enabled,
+    endpoint: completionSettings.endpoint,
+    model: completionSettings.model,
+    mode: completionSettings.mode,
+    debounceMs: 400,
+  }), [completionSettings]);
+
+  // Save completion settings when they change
+  const updateCompletionSettings = useCallback((updates: Partial<CompletionSettings>) => {
+    setCompletionSettings(prev => {
+      const newSettings = { ...prev, ...updates };
+      saveCompletionSettings(newSettings);
+      return newSettings;
+    });
+  }, []);
 
   const hasMultipleRuns = agent.runCount > 0;
 
@@ -299,6 +371,93 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
             <Code className="w-4 h-4" />
             <span>Verbose</span>
           </label>
+          {/* Completion settings */}
+          <div className="relative" ref={settingsPopoverRef}>
+            <button
+              className={`flex items-center gap-1.5 text-xs cursor-pointer select-none ${
+                completionSettings.enabled ? 'text-purple-400' : 'text-gray-400'
+              } hover:text-purple-300`}
+              onClick={() => setShowCompletionSettings(!showCompletionSettings)}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>AI</span>
+              <Settings className="w-3 h-3" />
+            </button>
+            {showCompletionSettings && (
+              <div className="absolute right-0 top-full mt-1 w-72 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 p-3">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium text-gray-200">Tab Completion</span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={completionSettings.enabled}
+                      onChange={(e) => updateCompletionSettings({ enabled: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+                  </label>
+                </div>
+                <div className="space-y-2">
+                  {/* Mode selector */}
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">Mode</label>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => updateCompletionSettings({ mode: 'prompt' })}
+                        className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${
+                          completionSettings.mode === 'prompt'
+                            ? 'bg-purple-600 text-white'
+                            : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                        }`}
+                      >
+                        Prompt
+                      </button>
+                      <button
+                        onClick={() => updateCompletionSettings({ mode: 'code' })}
+                        className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${
+                          completionSettings.mode === 'code'
+                            ? 'bg-purple-600 text-white'
+                            : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                        }`}
+                      >
+                        Code
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-gray-500 mt-1">
+                      {completionSettings.mode === 'prompt'
+                        ? 'Multi-line natural language suggestions'
+                        : 'Single-line code completions'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">Model</label>
+                    <input
+                      type="text"
+                      value={completionSettings.model}
+                      onChange={(e) => updateCompletionSettings({ model: e.target.value })}
+                      className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-purple-500"
+                      placeholder="qwen2.5:7b"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">Ollama Endpoint</label>
+                    <input
+                      type="text"
+                      value={completionSettings.endpoint}
+                      onChange={(e) => updateCompletionSettings({ endpoint: e.target.value })}
+                      className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-purple-500"
+                      placeholder="http://localhost:11434/api/generate"
+                    />
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-2">
+                    {completionSettings.mode === 'prompt'
+                      ? 'Good models: qwen2.5:7b, qwen2.5:3b, llama3.2:3b, mistral:7b'
+                      : 'Good models: qwen2.5-coder:7b, deepseek-coder:6.7b, codellama:7b'}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -333,6 +492,7 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
               vimMode={vimMode}
               onVimModeToggle={setVimMode}
               className="flex-1"
+              completion={completionConfig}
             />
             <button
               className="btn btn-primary self-end"
@@ -366,6 +526,7 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
               vimMode={vimMode}
               onVimModeToggle={setVimMode}
               className="flex-1"
+              completion={completionConfig}
             />
             <button
               className="btn btn-primary self-end"

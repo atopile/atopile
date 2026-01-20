@@ -83,6 +83,10 @@ export class APIClient {
     return this.fetchJson('/backends');
   }
 
+  restartServers(): Promise<{ status: string; message: string }> {
+    return this.fetchJson('/dev/restart', { method: 'POST' });
+  }
+
   // Agents
   agents = {
     list: (params?: { status?: string; backend?: string; limit?: number; offset?: number }): Promise<AgentListResponse> => {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Activity, GitBranch, ChevronLeft, ChevronRight, Plus, Terminal } from 'lucide-react';
-import { useMobile, useAgents, usePipelines, useSelectedAgent, useUIState, useDispatch } from '@/hooks';
+import { Activity, GitBranch, ChevronLeft, ChevronRight, Plus, Terminal, RotateCcw } from 'lucide-react';
+import { useMobile, useAgents, usePipelines, useSelectedAgent, useUIState, useDispatch, useLogic } from '@/hooks';
 import { AgentList } from './AgentList';
 import { AgentDetail } from './AgentDetail';
 import { SpawnAgentDialog } from './SpawnAgentDialog';
@@ -11,6 +11,7 @@ type ViewMode = 'agents' | 'pipelines';
 
 export function Layout() {
   const dispatch = useDispatch();
+  const logic = useLogic();
   const isMobile = useMobile();
   const agents = useAgents();
   const pipelines = usePipelines();
@@ -21,6 +22,22 @@ export function Layout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [spawnDialogOpen, setSpawnDialogOpen] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+
+  const handleRestart = useCallback(async () => {
+    if (restarting) return;
+    setRestarting(true);
+    try {
+      await logic.api.restartServers();
+      // Show restarting state for a few seconds while servers restart
+      setTimeout(() => {
+        window.location.reload();
+      }, 3000);
+    } catch (e) {
+      console.error('Failed to restart servers:', e);
+      setRestarting(false);
+    }
+  }, [logic.api, restarting]);
 
   // Load initial data
   useEffect(() => {
@@ -118,13 +135,23 @@ export function Layout() {
               <span className="text-sm font-semibold">Orchestrator</span>
             </div>
           )}
-          <button
-            className="p-1 hover:bg-gray-700 rounded text-gray-400 hover:text-gray-200"
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              className={`p-1 hover:bg-gray-700 rounded text-gray-400 hover:text-gray-200 ${restarting ? 'animate-spin' : ''}`}
+              onClick={handleRestart}
+              disabled={restarting}
+              title="Restart servers"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
+            <button
+              className="p-1 hover:bg-gray-700 rounded text-gray-400 hover:text-gray-200"
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
 
         {/* View mode selector */}

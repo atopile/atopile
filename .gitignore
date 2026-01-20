@@ -222,3 +222,6 @@ CLAUDE.md
 # Do NOT ignore visualizer frontend lib (explicit whitelist)
 !src/atopile/visualizer/web/src/lib/
 
+
+# Orchestrator state
+.orchestrator/
