@@ -12,6 +12,7 @@ import type {
   BackendsResponse,
   CreatePipelineRequest,
   HealthResponse,
+  ImportSessionRequest,
   Pipeline,
   PipelineListResponse,
   PipelineSession,
@@ -153,6 +154,13 @@ export class APIClient {
       return this.fetchJson(`/agents/${id}/resume`, {
         method: 'POST',
         body: JSON.stringify({ prompt, ...options }),
+      });
+    },
+
+    importSession: (request: ImportSessionRequest): Promise<SpawnAgentResponse> => {
+      return this.fetchJson('/agents/import', {
+        method: 'POST',
+        body: JSON.stringify(request),
       });
     },
   };

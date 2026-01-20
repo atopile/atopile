@@ -18,6 +18,7 @@ from ...models import (
     AgentState,
     AgentStateResponse,
     AgentStatus,
+    ImportSessionRequest,
     ResumeAgentRequest,
     RunOutput,
     SendInputRequest,
@@ -114,6 +115,99 @@ async def spawn_agent(
         ) from e
 
 
+@router.post("/import", response_model=SpawnAgentResponse)
+async def import_session(
+    request: ImportSessionRequest,
+    agent_store: Annotated[AgentStateStore, Depends(get_agent_store)],
+    process_manager: Annotated[ProcessManager, Depends(get_process_manager)],
+) -> SpawnAgentResponse:
+    """Import and resume an external session not started through the orchestrator.
+
+    This allows resuming sessions that were started in Claude Code CLI or other
+    tools outside of the orchestrator. The session is imported as a new agent
+    and resumed with the given prompt.
+    """
+    # Create agent config for resume
+    config = AgentConfig(
+        backend=request.backend,
+        prompt=request.prompt,
+        session_id=request.session_id,
+        resume_session=True,
+        working_directory=request.working_directory,
+        model=request.model,
+        max_turns=request.max_turns,
+        max_budget_usd=request.max_budget_usd,
+    )
+
+    # Create agent state
+    agent = AgentState(
+        config=config,
+        name=request.name or f"Imported: {request.session_id[:8]}",
+        status=AgentStatus.STARTING,
+        session_id=request.session_id,  # Set session_id immediately
+    )
+    agent_store.set(agent.id, agent)
+
+    logger.info(f"Importing session {request.session_id} as agent {agent.id}")
+
+    try:
+        # Spawn the process
+        managed = process_manager.spawn(agent)
+
+        # Update state
+        def updater(a: AgentState) -> AgentState:
+            a.status = AgentStatus.RUNNING
+            a.pid = managed.process.pid
+            a.started_at = datetime.now()
+            a.run_count = 0  # First run in orchestrator (original session runs not tracked)
+            # Track prompt for this run
+            a.metadata["prompts"] = [{"run": 0, "prompt": a.config.prompt}]
+            a.metadata["imported_session"] = request.session_id
+            return a
+
+        agent_store.update(agent.id, updater)
+
+        # Broadcast agent spawned event
+        broadcast_agent_spawned(agent.id)
+
+        return SpawnAgentResponse(
+            agent_id=agent.id,
+            status=AgentStatus.RUNNING,
+            message=f"Session imported and resumed with PID {managed.process.pid}",
+        )
+
+    except BackendSpawnError as e:
+        error_msg = str(e)
+
+        def make_fail_updater(msg: str):
+            def updater(a: AgentState) -> AgentState:
+                a.status = AgentStatus.FAILED
+                a.error_message = msg
+                a.finished_at = datetime.now()
+                return a
+            return updater
+
+        agent_store.update(agent.id, make_fail_updater(error_msg))
+        raise HTTPException(status_code=500, detail=error_msg) from e
+
+    except Exception as e:
+        error_msg = str(e)
+
+        def make_fail_updater(msg: str):
+            def updater(a: AgentState) -> AgentState:
+                a.status = AgentStatus.FAILED
+                a.error_message = msg
+                a.finished_at = datetime.now()
+                return a
+            return updater
+
+        agent_store.update(agent.id, make_fail_updater(error_msg))
+        logger.exception(f"Failed to import session as agent {agent.id}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to import session: {error_msg}"
+        ) from e
+
+
 @router.get("", response_model=AgentListResponse)
 async def list_agents(
     agent_store: Annotated[AgentStateStore, Depends(get_agent_store)],
@@ -151,6 +245,26 @@ async def get_agent(
         raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
 
     return AgentStateResponse(agent=agent)
+
+
+@router.get("/{agent_id}/todos")
+async def get_agent_todos(
+    agent_id: str,
+    agent_store: Annotated[AgentStateStore, Depends(get_agent_store)],
+):
+    """Get the current todo list for an agent."""
+    agent = agent_store.get(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+
+    return {
+        "agent_id": agent_id,
+        "todos": [t.model_dump() for t in agent.todos],
+        "total": len(agent.todos),
+        "completed": sum(1 for t in agent.todos if t.status == "completed"),
+        "in_progress": sum(1 for t in agent.todos if t.status == "in_progress"),
+        "pending": sum(1 for t in agent.todos if t.status == "pending"),
+    }
 
 
 @router.patch("/{agent_id}", response_model=AgentStateResponse)

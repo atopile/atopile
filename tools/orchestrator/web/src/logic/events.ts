@@ -60,6 +60,20 @@ export type AgentRefreshOneEvent = {
   payload: { agentId: string };
 };
 
+export type AgentImportSessionEvent = {
+  type: 'agents.importSession';
+  payload: {
+    sessionId: string;
+    prompt: string;
+    name?: string;
+    backend?: AgentBackendType;
+    workingDirectory?: string;
+    model?: string;
+    maxTurns?: number;
+    maxBudgetUsd?: number;
+  };
+};
+
 // Output Events
 export type OutputConnectEvent = {
   type: 'output.connect';
@@ -257,6 +271,7 @@ export type UIEvent =
   | AgentRenameEvent
   | AgentRefreshEvent
   | AgentRefreshOneEvent
+  | AgentImportSessionEvent
   // Output events
   | OutputConnectEvent
   | OutputDisconnectEvent

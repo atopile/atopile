@@ -79,7 +79,6 @@ export function useUIState(): UIState {
   useEffect(() => {
     // CRITICAL: This subscription callback MUST call forceUpdate() to trigger re-renders
     const unsubscribe = logic.subscribe((newState) => {
-      console.log('[useUIState] State updated, version:', newState._version);
       stateRef.current = newState;
       forceUpdate();
     });
@@ -329,6 +328,7 @@ function agentToViewModel(agent: AgentState): AgentViewModel {
     exitCode: agent.exit_code ?? null,
     errorMessage: agent.error_message ?? null,
     maxTurns: agent.config.max_turns ?? null,
+    todos: agent.todos ?? [],
 
     // Computed
     isRunning,

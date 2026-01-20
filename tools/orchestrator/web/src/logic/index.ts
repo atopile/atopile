@@ -139,8 +139,6 @@ export class UILogic {
    * If UI updates stop working, add console.log to verify events are received.
    */
   private handleGlobalEvent(event: GlobalEvent): void {
-    // Debug logging for troubleshooting UI update issues:
-    console.log('%c[UILogic] Processing global event: ' + event.type, 'background: #222; color: #bada55; font-size: 14px;', event);
 
     switch (event.type) {
       case 'connected':
@@ -174,6 +172,23 @@ export class UILogic {
             const newAgents = new Map(s.agents);
             newAgents.delete(event.agent_id!);
             return { ...s, agents: newAgents };
+          });
+        }
+        break;
+
+      case 'agent_todos_changed':
+        if (event.agent_id && event.data?.todos) {
+          const todos = event.data.todos as AgentState['todos'];
+          this.setState((s) => {
+            const agent = s.agents.get(event.agent_id!);
+            if (agent) {
+              const updatedAgent = { ...agent, todos };
+              return {
+                ...s,
+                agents: updateMap(s.agents, event.agent_id!, updatedAgent),
+              };
+            }
+            return s;
           });
         }
         break;

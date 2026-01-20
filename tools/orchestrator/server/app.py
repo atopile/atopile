@@ -230,6 +230,68 @@ cd "{web_dir}" && npm run dev &
 
         return {"status": "restarting", "message": "Servers will restart in ~2 seconds"}
 
+    @app.post("/screenshot")
+    async def take_screenshot_endpoint(
+        screenshot_type: str = "main",
+        agent_name: str | None = None,
+    ):
+        """Take a screenshot of the orchestrator web UI.
+
+        Args:
+            screenshot_type: Type of screenshot:
+                - "main": Dashboard view
+                - "agent": Agent detail (clicks first/named agent)
+                - "agent-top": Agent detail scrolled to top
+                - "agent-scroll": Agent detail scrolled to bottom
+            agent_name: Optional agent name to click on
+
+        Returns:
+            Path to the saved screenshot
+        """
+        import asyncio
+        from pathlib import Path
+
+        from ..screenshot import take_screenshot
+
+        # Run in thread pool to avoid blocking
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: take_screenshot(screenshot_type, agent_name),  # type: ignore
+        )
+
+        if result is None:
+            return JSONResponse(
+                status_code=500,
+                content={"error": "Failed to take screenshot"},
+            )
+
+        return {
+            "path": str(result),
+            "filename": result.name,
+            "type": screenshot_type,
+        }
+
+    @app.get("/screenshot/latest")
+    async def get_latest_screenshot_endpoint():
+        """Get information about the latest screenshot."""
+        from ..screenshot import get_latest_screenshot, list_screenshots
+
+        latest = get_latest_screenshot()
+        if latest is None:
+            return JSONResponse(
+                status_code=404,
+                content={"error": "No screenshots found"},
+            )
+
+        screenshots = list_screenshots()
+        return {
+            "latest": str(latest),
+            "filename": latest.name,
+            "count": len(screenshots),
+            "all": [str(p) for p in screenshots[:10]],  # Last 10
+        }
+
     return app
 
 

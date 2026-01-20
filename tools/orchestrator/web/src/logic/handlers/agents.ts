@@ -40,6 +40,9 @@ export async function handleAgentEvent(
     case 'agents.refreshOne':
       await handleRefreshOne(logic, event);
       break;
+    case 'agents.importSession':
+      await handleImportSession(logic, event);
+      break;
   }
 }
 
@@ -295,5 +298,43 @@ async function handleRefreshOne(
     logic.setState((s) =>
       addError(s, e instanceof Error ? e.message : 'Failed to fetch agent', 'agents.refreshOne')
     );
+  }
+}
+
+async function handleImportSession(
+  logic: UILogic,
+  event: Extract<UIEvent, { type: 'agents.importSession' }>
+): Promise<void> {
+  const { payload } = event;
+
+  logic.setState((s) => setLoading(s, 'importSession', true));
+
+  try {
+    const response = await logic.api.agents.importSession({
+      session_id: payload.sessionId,
+      prompt: payload.prompt,
+      name: payload.name,
+      backend: payload.backend,
+      working_directory: payload.workingDirectory,
+      model: payload.model,
+      max_turns: payload.maxTurns,
+      max_budget_usd: payload.maxBudgetUsd,
+    });
+
+    // Fetch the full agent state
+    const agentResponse = await logic.api.agents.get(response.agent_id);
+
+    logic.setState((s) => ({
+      ...s,
+      agents: updateMap(s.agents, response.agent_id, agentResponse.agent),
+      selectedAgentId: response.agent_id,
+      loading: { ...s.loading, importSession: false },
+    }));
+  } catch (e) {
+    logic.setState((s) => ({
+      ...setLoading(s, 'importSession', false),
+      ...addError(s, e instanceof Error ? e.message : 'Failed to import session', 'agents.importSession'),
+    }));
+    throw e;
   }
 }
