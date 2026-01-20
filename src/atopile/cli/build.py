@@ -49,13 +49,14 @@ def build(
     eg. `ato build --target my_target path/to/source.ato:module.path`
     """
     from atopile import build as buildlib
-    from atopile import buildutil
+    from atopile import buildutil, errors
     from atopile.cli.logging_ import NOW
     from atopile.config import config
     from faebryk.libs.app.pcb import open_pcb
     from faebryk.libs.exceptions import accumulate, log_user_errors
     from faebryk.libs.kicad.ipc import reload_pcb
     from faebryk.libs.project.dependencies import ProjectDependencies
+    from faebryk.libs.util import md_list
 
     config.apply_options(
         entry=entry,
@@ -73,6 +74,23 @@ def build(
     if deps.not_installed_dependencies:
         logger.info("Installing missing dependencies")
         deps.install_missing_dependencies()
+
+    mismatches = deps.find_version_mismatches()
+    if mismatches:
+        mismatch_list = md_list(
+            [
+                (
+                    f"{dep.identifier}: installed "
+                    f"{installed or '<missing>'}, required {required}"
+                )
+                for dep, installed, required in mismatches
+            ]
+        )
+
+        raise errors.UserException(
+            "Installed dependencies do not match the pinned versions in `ato.yaml`.\n"
+            f"{mismatch_list}\n\nRun `ato sync` to update installed packages."
+        )
 
     if open_layout is not None:
         config.project.open_layout_on_build = open_layout

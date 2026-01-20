@@ -98,4 +98,18 @@
 		(options "")
 		(descr "atopile: part lib: STMicroelectronics_USBLC6_2SC6")
 	)
+	(lib
+		(name "Samsung_Electro_Mechanics_CL05A105KP5NNNC")
+		(type "KiCad")
+		(uri "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL05A105KP5NNNC")
+		(options "")
+		(descr "atopile: part lib: Samsung_Electro_Mechanics_CL05A105KP5NNNC")
+	)
+	(lib
+		(name "Samsung_Electro_Mechanics_CL21A226MAQNNNE")
+		(type "KiCad")
+		(uri "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL21A226MAQNNNE")
+		(options "")
+		(descr "atopile: part lib: Samsung_Electro_Mechanics_CL21A226MAQNNNE")
+	)
 )

@@ -37,6 +37,7 @@ def setup_project_config(tmp_path):
     config.project = ProjectConfig.skeleton(
         entry="", paths=ProjectPaths(build=tmp_path / "build", root=tmp_path)
     )
+    config.project.dependencies = []
     yield
 
 
