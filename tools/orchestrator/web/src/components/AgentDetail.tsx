@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { Square, Send, X, Clock, Cpu, Hash, Code, RotateCcw, Pencil, Check, History, Sparkles, Settings, ChevronDown, ChevronUp } from 'lucide-react';
+import { Square, Send, X, Clock, Cpu, Hash, Code, RotateCcw, Pencil, Check, History, Sparkles, Settings, ChevronDown, ChevronUp, ArrowLeft } from 'lucide-react';
 import type { AgentViewModel } from '@/logic/viewmodels';
 import { useDispatch, useAgentOutput, useLoading, useMobile, useMobileGestures } from '@/hooks';
 import { StatusBadge } from './StatusBadge';
@@ -287,6 +287,16 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
           }}
         >
           <div className="flex items-center gap-2 min-w-0 flex-1">
+            {/* Back button for mobile */}
+            {isMobile && onClose && (
+              <button
+                className="btn btn-icon btn-secondary btn-sm mr-1"
+                onClick={onClose}
+                title="Back to list"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+            )}
             <div className="min-w-0 flex-1">
               {/* Editable name */}
               <div className="flex items-center gap-2">
