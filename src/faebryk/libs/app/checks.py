@@ -9,7 +9,7 @@ import pytest
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.exceptions import UserDesignCheckException, accumulate, downgrade
+from atopile.exceptions import UserDesignCheckException, accumulate, downgrade
 
 logger = logging.getLogger(__name__)
 

@@ -11,7 +11,6 @@ import json
 import logging
 import os
 import queue
-import select
 import socket
 import sqlite3
 import subprocess
@@ -2219,7 +2218,7 @@ def create_app(
                 if item.is_dir():
                     # Recursively process directory
                     children = build_file_tree(item, base_path)
-                    # Only include directories that have .ato or .py files (or subdirs with them)
+                    # Only include dirs with .ato/.py files
                     if children:
                         nodes.append(
                             FileTreeNode(
@@ -2308,8 +2307,8 @@ def create_app(
                     if "builds" in data:
                         # Add project name to each build for context
                         for build in data["builds"]:
-                            # Mark stale "building"/"queued" statuses from disk as failed
-                            # These are only valid if tracked in _active_builds
+                            # Mark stale building/queued from disk as failed
+                            # (only valid if tracked in _active_builds)
                             if build.get("status") in ("building", "queued"):
                                 log.debug(
                                     f"Marking stale '{build.get('status')}' build "
@@ -2466,7 +2465,7 @@ def create_app(
         if existing_build_id:
             return BuildResponse(
                 success=True,
-                message=f"Build already in progress",
+                message="Build already in progress",
                 build_id=existing_build_id,
             )
 
@@ -2579,7 +2578,7 @@ def create_app(
                         # Display-ready fields
                         "project_name": project_name,
                         "display_name": f"{project_name}:{target_name}",
-                        # Timing - use building_started_at for builds, started_at for queued
+                        # Timing - prefer building_started_at, else started_at
                         "started_at": b.get("building_started_at")
                         or b.get("started_at"),
                         "elapsed_seconds": elapsed,

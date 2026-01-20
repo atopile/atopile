@@ -25,14 +25,13 @@ from atopile.errors import (
     UserExportError,
     UserPickError,
 )
+from atopile.exceptions import accumulate, iter_leaf_exceptions
 from atopile.logging import LoggingStage
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom
-from faebryk.exporters.bom.json_bom import write_json_bom
 from faebryk.exporters.documentation.datasheets import export_datasheets
 
 # from faebryk.exporters.documentation.i2c import export_i2c_tree
-from faebryk.exporters.parameters.json_parameters import write_json_variables
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
 from faebryk.exporters.pcb.kicad.artifacts import (
     KicadCliExportError,
@@ -63,7 +62,6 @@ from faebryk.libs.app.pcb import (
     load_net_names,
 )
 from faebryk.libs.app.picking import save_part_info_to_pcb
-from faebryk.libs.exceptions import accumulate, iter_leaf_exceptions
 from faebryk.libs.kicad.fileformats import Property, kicad
 from faebryk.libs.net_naming import attach_net_names
 from faebryk.libs.nets import bind_electricals_to_fbrk_nets
@@ -666,36 +664,17 @@ def build_design(ctx: BuildStepContext, log_context: LoggingStage) -> None:
 def generate_bom(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     """Generate a BOM for the project."""
     app = ctx.require_app()
-    parts = [
-        m.get_trait(F.Pickable.has_part_picked)
+    pickable_parts = [
+        part
         for m in app.get_children(
             direct_only=False,
             types=fabll.Node,
             required_trait=F.Pickable.has_part_picked,
         )
-        if not m.has_trait(F.has_part_removed)
+        for part in [m.get_trait(F.Pickable.has_part_picked)]
+        if not part.is_removed()
     ]
-    write_bom(parts, config.build.paths.output_base.with_suffix(".bom.csv"))
-
-
-@muster.register(
-    "bom-json",
-    dependencies=[build_design],
-    produces_artifact=True,
-)
-def generate_bom_json(ctx: BuildStepContext, log_context: LoggingStage) -> None:
-    """Generate a JSON BOM for the VSCode extension."""
-    app = ctx.require_app()
-    parts = [
-        m.get_trait(F.Pickable.has_part_picked)
-        for m in app.get_children(
-            direct_only=False,
-            types=fabll.Node,
-            required_trait=F.Pickable.has_part_picked,
-        )
-        if not m.has_trait(F.has_part_removed)
-    ]
-    write_json_bom(parts, config.build.paths.output_base.with_suffix(".bom.json"))
+    write_bom(pickable_parts, config.build.paths.output_base.with_suffix(".bom.csv"))
 
 
 @muster.register(
@@ -890,20 +869,6 @@ def generate_variable_report(ctx: BuildStepContext, log_context: LoggingStage) -
 
 
 @muster.register(
-    "variables-json",
-    dependencies=[build_design],
-    produces_artifact=True,
-)
-def generate_variables_json(ctx: BuildStepContext, log_context: LoggingStage) -> None:
-    """Generate a JSON variables report for the VSCode extension."""
-    app = ctx.require_app()
-    solver = ctx.require_solver()
-    write_json_variables(
-        app, solver, config.build.paths.output_base.with_suffix(".variables.json")
-    )
-
-
-@muster.register(
     "power-tree",
     dependencies=[build_design],
     produces_artifact=True,
@@ -951,10 +916,8 @@ def generate_datasheets(ctx: BuildStepContext, log_context: LoggingStage) -> Non
     aliases=["__default__"],  # for backwards compatibility
     dependencies=[
         generate_bom,
-        generate_bom_json,
         generate_manifest,
         generate_variable_report,
-        generate_variables_json,
         # generate_power_tree,
         generate_datasheets,
     ],

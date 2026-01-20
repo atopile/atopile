@@ -556,7 +556,12 @@ class MutationStage:
         created_ops = self.transformations.created
 
         def ___repr_op(op: F.Parameters.is_parameter_operatable) -> str:
-            return op.compact_repr(self.print_ctx)
+            try:
+                return op.compact_repr(self.print_ctx)
+            except AssertionError:
+                # Node may have been removed/orphaned and lost its trait linkages
+                obj = op.get_obj()
+                return f"<orphaned:{obj.get_full_name(types=True) or 'unknown'}>"
 
         rows: list[tuple[str, str]] = []
 

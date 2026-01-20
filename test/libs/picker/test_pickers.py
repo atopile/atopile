@@ -129,7 +129,7 @@ def test_no_pick():
     pick_part_recursively(module, Solver())
 
     assert module.has_trait(F.Pickable.has_part_picked)
-    assert module.get_trait(F.Pickable.has_part_picked).removed
+    assert module.get_trait(F.Pickable.has_part_picked).is_removed()
 
 
 def test_construct_pick_tree_simple():

@@ -20,6 +20,11 @@ def bind_fbrk_nets_to_kicad_nets(
     Gets fbrk nets and attempts to map them to existing kicad nets
     """
 
+    # Track which KiCad net names have already been bound to prevent duplicates
+    # This can happen when multiple faebryk nets reference the same KiCad net name
+    # (e.g., multiple QFN packages with exposed pads named "EP")
+    used_kicad_net_names: set[str] = set()
+
     # get all nets
     for fbrk_net in F.Net.bind_typegraph(tg).get_instances(g):
         pad_count = 0
@@ -73,11 +78,22 @@ def bind_fbrk_nets_to_kicad_nets(
             )
             continue
 
+        # Skip if this KiCad net name is already bound to another faebryk net
+        # This prevents duplicate net name errors when multiple components have
+        # pads with the same net name (e.g., "EP" for exposed pads on QFN packages)
+        if best_kicad_net_name in used_kicad_net_names:
+            logger.warning(
+                f"KiCad net '{best_kicad_net_name}' is already bound to another "
+                f"faebryk net - skipping to avoid duplicate net names"
+            )
+            continue
+
         # bind the kicad net to the fabll net
         trait_instance = fabll.Traits.create_and_add_instance_to(
             fbrk_net, F.KiCadFootprints.has_associated_kicad_pcb_net
         )
         trait_instance.setup(nets_by_name[best_kicad_net_name], transformer)
+        used_kicad_net_names.add(best_kicad_net_name)
 
 
 def bind_electricals_to_fbrk_nets(

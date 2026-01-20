@@ -7,11 +7,10 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.solver.solver import Solver
 from atopile.config import BuildType, config
 from atopile.errors import UserToolNotAvailableError
+from atopile.exceptions import accumulate
 from faebryk.core.solver.solver import Solver
-from faebryk.libs.exceptions import accumulate
 from faebryk.libs.util import once
 
 if TYPE_CHECKING:

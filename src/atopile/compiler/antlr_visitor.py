@@ -16,7 +16,7 @@ from atopile.compiler import DslException
 from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
-from faebryk.libs.exceptions import DeprecatedException, downgrade
+from atopile.exceptions import DeprecatedException, downgrade
 
 logger = logging.getLogger(__name__)
 

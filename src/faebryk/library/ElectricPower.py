@@ -5,7 +5,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.exceptions import DeprecatedException, downgrade
+from atopile.exceptions import DeprecatedException, downgrade
 
 
 class ElectricPower(fabll.Node):

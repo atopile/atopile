@@ -213,9 +213,10 @@ async function atoShell() {
     await _runInTerminal('shell', undefined, ['--help'], false);
 }
 
-async function atoBuild() {
-    const builds = _getSelectedBuilds();
-    const root = getProjectRoot();
+async function atoBuild(buildsArg?: Build[]) {
+    // Use passed builds or fall back to selected builds
+    const builds = buildsArg && buildsArg.length > 0 ? buildsArg : _getSelectedBuilds();
+    const root = builds[0]?.root || getProjectRoot();
 
     if (!root) {
         vscode.window.showErrorMessage('No project folder selected');
@@ -415,8 +416,9 @@ async function atoChooseBuild() {
     quickPick.show();
 }
 
-async function atoLaunchKicad() {
-    const build = _getBuildTarget();
+async function atoLaunchKicad(buildArg?: Build) {
+    // Use passed build or fall back to selected build target
+    const build = buildArg || _getBuildTarget();
 
     const pcb_name = build.name + '.kicad_pcb';
     const search_path = `**/${build.name}/${pcb_name}`;

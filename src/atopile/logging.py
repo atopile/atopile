@@ -15,7 +15,6 @@ import json
 import logging
 import os
 import pickle
-import shutil
 import sqlite3
 import struct
 import sys
@@ -33,6 +32,7 @@ from types import ModuleType, TracebackType
 from typing import TYPE_CHECKING
 
 import pathvalidate
+import rich
 from rich._null_file import NullFile
 from rich.console import Console, ConsoleRenderable, RenderableType
 from rich.logging import RichHandler
@@ -50,13 +50,40 @@ from rich.progress import (
 )
 from rich.table import Column
 from rich.text import Text
+from rich.theme import Theme
 from rich.traceback import Traceback
 
 import atopile
 import faebryk
-from atopile.cli import console
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
 from faebryk.libs.util import Advancable
+
+# =============================================================================
+# Rich Console Configuration (formerly cli/console.py)
+# =============================================================================
+
+# Theme for faebryk-style node highlighting
+faebryk_theme = Theme(
+    {
+        "node.Node": "bold magenta",
+        "node.Type": "bright_cyan",
+        "node.Parent": "bright_red",
+        "node.Child": "bright_yellow",
+        "node.Root": "bold yellow",
+        "node.Number": "bright_green",
+        "logging.level.warning": "yellow",
+        "node.Quantity": "bright_yellow",
+        "node.IsSubset": "bright_blue",
+        "node.Predicate": "bright_magenta",
+        "node.Op": "red",
+    }
+)
+
+rich.reconfigure(theme=faebryk_theme)
+
+# Console should be a singleton to avoid intermixing logging w/ other output
+console = rich.get_console()
+error_console = rich.console.Console(theme=faebryk_theme, stderr=True)
 
 if TYPE_CHECKING:
     pass
@@ -78,25 +105,68 @@ logging.addLevelName(ALERT, "ALERT")
 
 
 # =============================================================================
+# Shared logging utilities
+# =============================================================================
+
+
+def _atopile_log_filter(record: logging.LogRecord) -> bool:
+    """Filter to only include atopile and faebryk logs."""
+    return record.name.startswith("atopile") or record.name.startswith("faebryk")
+
+
+def get_exception_display_message(exc: BaseException) -> str:
+    """
+    Get a unified display message for any exception.
+
+    For UserException types, returns the message attribute (the detailed description).
+    Falls back to str(exc) for other exceptions.
+
+    This is the SINGLE source of truth for exception message extraction
+    across all logging handlers.
+    """
+    if isinstance(exc, _BaseBaseUserException):
+        # Use message for the detailed error description
+        # message is the user-facing explanation of what went wrong
+        return exc.message or str(exc) or type(exc).__name__
+    return str(exc) or type(exc).__name__
+
+
+# =============================================================================
 # SQLite Logging - Typed API for structured build logs
 # =============================================================================
 
 # Schema for the logs table
 SCHEMA_SQL = """
+-- Builds table: maps project/target/instance to a unique build_id
+CREATE TABLE IF NOT EXISTS builds (
+    build_id TEXT PRIMARY KEY,
+    project_path TEXT NOT NULL,
+    target TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_builds_project ON builds(project_path);
+CREATE INDEX IF NOT EXISTS idx_builds_timestamp ON builds(timestamp);
+
+-- Logs table: all log entries from all builds
 CREATE TABLE IF NOT EXISTS logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    build_id TEXT NOT NULL,
     timestamp TEXT NOT NULL,
     stage TEXT NOT NULL,
     level TEXT NOT NULL,
-    level_no INTEGER NOT NULL,
     audience TEXT NOT NULL DEFAULT 'developer',
     message TEXT NOT NULL,
     ato_traceback TEXT,
-    python_traceback TEXT
+    python_traceback TEXT,
+    objects TEXT,
+    FOREIGN KEY (build_id) REFERENCES builds(build_id)
 );
 
+CREATE INDEX IF NOT EXISTS idx_logs_build_id ON logs(build_id);
 CREATE INDEX IF NOT EXISTS idx_logs_stage ON logs(stage);
-CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level_no);
+CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level);
 CREATE INDEX IF NOT EXISTS idx_logs_audience ON logs(audience);
 """
 
@@ -118,27 +188,35 @@ class Level(StrEnum):
     ERROR = "ERROR"
 
 
-class LevelNo(IntEnum):
-    """Numeric log levels for filtering."""
-
-    DEBUG = logging.DEBUG
-    INFO = logging.INFO
-    WARNING = logging.WARNING
-    ERROR = logging.ERROR
-
-
 @dataclass
 class LogEntry:
     """A structured log entry."""
 
+    build_id: str
     timestamp: str
     stage: str
     level: Level
-    level_no: int
     message: str
     audience: Audience = Audience.DEVELOPER
     ato_traceback: str | None = None
     python_traceback: str | None = None
+    objects: dict | None = None
+
+
+def get_central_log_db() -> Path:
+    """Get the path to the central log database."""
+    from faebryk.libs.paths import get_log_dir
+
+    return get_log_dir() / "build_logs.db"
+
+
+def generate_build_id(project_path: str, target: str, timestamp: str) -> str:
+    """Generate a unique build ID from project, target, and timestamp."""
+    import hashlib
+
+    # Create a deterministic but unique ID
+    content = f"{project_path}:{target}:{timestamp}"
+    return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
 class SQLiteLogWriter:
@@ -146,6 +224,26 @@ class SQLiteLogWriter:
 
     BATCH_SIZE = 50
     FLUSH_INTERVAL = 1.0  # seconds
+
+    # Singleton instance for central database
+    _instance: SQLiteLogWriter | None = None
+    _instance_lock = threading.Lock()
+
+    @classmethod
+    def get_instance(cls) -> SQLiteLogWriter:
+        """Get the singleton instance of the central log writer."""
+        with cls._instance_lock:
+            if cls._instance is None:
+                cls._instance = cls(get_central_log_db())
+            return cls._instance
+
+    @classmethod
+    def close_instance(cls) -> None:
+        """Close the singleton instance."""
+        with cls._instance_lock:
+            if cls._instance is not None:
+                cls._instance.close()
+                cls._instance = None
 
     def __init__(self, db_path: Path):
         self._db_path = db_path
@@ -178,6 +276,30 @@ class SQLiteLogWriter:
         conn.executescript(SCHEMA_SQL)
         conn.commit()
 
+    def register_build(
+        self, project_path: str, target: str, timestamp: str
+    ) -> str:
+        """
+        Register a new build and return its build_id.
+
+        If a build with the same project/target/timestamp already exists,
+        returns the existing build_id.
+        """
+        build_id = generate_build_id(project_path, target, timestamp)
+        conn = self._get_connection()
+        try:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO builds (build_id, project_path, target, timestamp)
+                VALUES (?, ?, ?, ?)
+                """,
+                (build_id, project_path, target, timestamp),
+            )
+            conn.commit()
+        except sqlite3.Error:
+            pass  # Best effort
+        return build_id
+
     def write(self, entry: LogEntry) -> None:
         """Write a log entry (batched for performance)."""
         if self._closed:
@@ -193,6 +315,15 @@ class SQLiteLogWriter:
 
         if should_flush:
             self.flush()
+
+    def _serialize_objects(self, objects: dict | None) -> str | None:
+        """Serialize objects dict to JSON string."""
+        if objects is None:
+            return None
+        try:
+            return json.dumps(objects)
+        except (TypeError, ValueError):
+            return None
 
     def flush(self) -> None:
         """Force write all buffered entries."""
@@ -211,20 +342,21 @@ class SQLiteLogWriter:
             conn.executemany(
                 """
                 INSERT INTO logs (
-                    timestamp, stage, level, level_no, audience,
-                    message, ato_traceback, python_traceback
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    build_id, timestamp, stage, level, audience,
+                    message, ato_traceback, python_traceback, objects
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
+                        e.build_id,
                         e.timestamp,
                         e.stage,
                         e.level,
-                        e.level_no,
                         e.audience,
                         e.message,
                         e.ato_traceback,
                         e.python_traceback,
+                        self._serialize_objects(e.objects),
                     )
                     for e in entries
                 ],
@@ -238,20 +370,21 @@ class SQLiteLogWriter:
                 conn.executemany(
                     """
                     INSERT INTO logs (
-                        timestamp, stage, level, level_no, audience,
-                        message, ato_traceback, python_traceback
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        build_id, timestamp, stage, level, audience,
+                        message, ato_traceback, python_traceback, objects
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         (
+                            e.build_id,
                             e.timestamp,
                             e.stage,
                             e.level,
-                            e.level_no,
                             e.audience,
                             e.message,
                             e.ato_traceback,
                             e.python_traceback,
+                            self._serialize_objects(e.objects),
                         )
                         for e in entries
                     ],
@@ -275,10 +408,10 @@ class SQLiteLogWriter:
 class BuildLogger:
     """Typed logging interface for structured build logs."""
 
-    def __init__(self, stage: str = ""):
+    def __init__(self, build_id: str, stage: str = ""):
+        self._build_id = build_id
         self._stage = stage
         self._writer: SQLiteLogWriter | None = None
-        self._db_path: Path | None = None
 
     def set_stage(self, stage: str) -> None:
         """Update the current build stage."""
@@ -288,6 +421,11 @@ class BuildLogger:
         """Set the SQLite writer for this logger."""
         self._writer = writer
 
+    @property
+    def build_id(self) -> str:
+        """Get the build ID for this logger."""
+        return self._build_id
+
     def log(
         self,
         level: Level,
@@ -296,6 +434,7 @@ class BuildLogger:
         audience: Audience = Audience.DEVELOPER,
         ato_traceback: str | None = None,
         python_traceback: str | None = None,
+        objects: dict | None = None,
     ) -> None:
         """
         Log a structured message to the build database.
@@ -306,19 +445,21 @@ class BuildLogger:
             audience: Who this message is intended for (default: DEVELOPER)
             ato_traceback: Optional ato source context for user exceptions
             python_traceback: Optional Python traceback string
+            objects: Optional dict of structured data (serialized to JSON)
         """
         if self._writer is None:
             return
 
         entry = LogEntry(
+            build_id=self._build_id,
             timestamp=datetime.now().isoformat(),
             stage=self._stage,
             level=level,
-            level_no=LevelNo[level.name].value,
             message=message,
             audience=audience,
             ato_traceback=ato_traceback,
             python_traceback=python_traceback,
+            objects=objects,
         )
         self._writer.write(entry)
 
@@ -329,6 +470,7 @@ class BuildLogger:
         audience: Audience = Audience.DEVELOPER,
         ato_traceback: str | None = None,
         python_traceback: str | None = None,
+        objects: dict | None = None,
     ) -> None:
         """Log a DEBUG level message."""
         self.log(
@@ -337,6 +479,7 @@ class BuildLogger:
             audience=audience,
             ato_traceback=ato_traceback,
             python_traceback=python_traceback,
+            objects=objects,
         )
 
     def info(
@@ -346,6 +489,7 @@ class BuildLogger:
         audience: Audience = Audience.DEVELOPER,
         ato_traceback: str | None = None,
         python_traceback: str | None = None,
+        objects: dict | None = None,
     ) -> None:
         """Log an INFO level message."""
         self.log(
@@ -354,6 +498,7 @@ class BuildLogger:
             audience=audience,
             ato_traceback=ato_traceback,
             python_traceback=python_traceback,
+            objects=objects,
         )
 
     def warning(
@@ -363,6 +508,7 @@ class BuildLogger:
         audience: Audience = Audience.DEVELOPER,
         ato_traceback: str | None = None,
         python_traceback: str | None = None,
+        objects: dict | None = None,
     ) -> None:
         """Log a WARNING level message."""
         self.log(
@@ -371,6 +517,7 @@ class BuildLogger:
             audience=audience,
             ato_traceback=ato_traceback,
             python_traceback=python_traceback,
+            objects=objects,
         )
 
     def error(
@@ -380,6 +527,7 @@ class BuildLogger:
         audience: Audience = Audience.DEVELOPER,
         ato_traceback: str | None = None,
         python_traceback: str | None = None,
+        objects: dict | None = None,
     ) -> None:
         """Log an ERROR level message."""
         self.log(
@@ -388,6 +536,7 @@ class BuildLogger:
             audience=audience,
             ato_traceback=ato_traceback,
             python_traceback=python_traceback,
+            objects=objects,
         )
 
     def exception(
@@ -462,155 +611,83 @@ class BuildLogger:
             self._writer.flush()
 
 
-# Build-level logger registry
-_build_loggers: dict[Path, BuildLogger] = {}
-_build_writers: dict[Path, SQLiteLogWriter] = {}
+# Build-level logger registry (keyed by build_id)
+_build_loggers: dict[str, BuildLogger] = {}
 
 
-def get_build_logger(log_dir: Path, stage: str = "") -> BuildLogger:
+def get_build_logger(
+    project_path: str,
+    target: str,
+    timestamp: str | None = None,
+    stage: str = "",
+) -> BuildLogger:
     """
-    Get or create a build logger for a log directory.
+    Get or create a build logger for a project/target/timestamp combination.
 
-    All stages in a build share the same SQLite database (build_logs.db).
-    The stage name is updated when entering each stage.
+    All logs go to the central database at ~/.local/share/atopile/build_logs.db.
+    Each build is identified by a unique build_id generated from project+target+timestamp.
+
+    Args:
+        project_path: Path to the project root
+        target: Build target name
+        timestamp: Build timestamp (defaults to NOW)
+        stage: Initial build stage name
+
+    Returns:
+        BuildLogger instance for this build
     """
-    db_path = log_dir / "build_logs.db"
+    if timestamp is None:
+        timestamp = NOW
 
-    if log_dir not in _build_loggers:
-        # Create the writer if it doesn't exist
-        if db_path not in _build_writers:
-            _build_writers[db_path] = SQLiteLogWriter(db_path)
+    # Get the central writer
+    writer = SQLiteLogWriter.get_instance()
 
-        build_logger = BuildLogger(stage)
-        build_logger.set_writer(_build_writers[db_path])
-        build_logger._db_path = db_path
-        _build_loggers[log_dir] = build_logger
+    # Register the build and get its ID
+    build_id = writer.register_build(project_path, target, timestamp)
+
+    if build_id not in _build_loggers:
+        build_logger = BuildLogger(build_id, stage)
+        build_logger.set_writer(writer)
+        _build_loggers[build_id] = build_logger
     else:
-        build_logger = _build_loggers[log_dir]
+        build_logger = _build_loggers[build_id]
         build_logger.set_stage(stage)
 
     return build_logger
 
 
-def close_build_logger(log_dir: Path) -> None:
-    """Close and flush a build logger."""
-    if log_dir in _build_loggers:
-        build_logger = _build_loggers.pop(log_dir)
-        if build_logger._db_path and build_logger._db_path in _build_writers:
-            writer = _build_writers.pop(build_logger._db_path)
-            writer.close()
+def get_build_logger_by_id(build_id: str) -> BuildLogger | None:
+    """Get an existing build logger by its build ID."""
+    return _build_loggers.get(build_id)
+
+
+def close_build_logger(build_id: str) -> None:
+    """Close and flush a build logger by its build ID."""
+    if build_id in _build_loggers:
+        build_logger = _build_loggers.pop(build_id)
+        build_logger.flush()
 
 
 def close_all_build_loggers() -> None:
-    """Close all build loggers (typically called at end of build)."""
-    for log_dir in list(_build_loggers.keys()):
-        close_build_logger(log_dir)
-
-
-class SQLiteLogHandler(logging.Handler):
     """
-    A logging.Handler that bridges standard Python logging to SQLite.
+    Close all build loggers and the central SQLite writer.
 
-    This handler captures logs from the standard logging framework and
-    writes them to the SQLite database using the BuildLogger.
+    This should be called at the end of a build session to ensure
+    all logs are flushed and resources are properly released.
     """
+    # Flush and close all build loggers
+    for build_id in list(_build_loggers.keys()):
+        close_build_logger(build_id)
 
-    def __init__(
-        self,
-        build_logger: BuildLogger,
-        level: int = logging.DEBUG,
-    ):
-        super().__init__(level)
-        self._build_logger = build_logger
-        self._logged_exceptions: set[tuple] = set()
+    # Close the central writer
+    SQLiteLogWriter.close_instance()
 
-        # Filter to atopile/faebryk logs only
-        self.addFilter(
-            lambda record: record.name.startswith("atopile")
-            or record.name.startswith("faebryk")
-        )
 
-    def _get_hashable(self, record: logging.LogRecord) -> tuple | None:
-        """Get hashable representation of exception to deduplicate."""
-        if exc_info := getattr(record, "exc_info", None):
-            _, exc_value, _ = exc_info
-            if exc_value and isinstance(exc_value, _BaseBaseUserException):
-                return exc_value.get_frozen()
-        return None
+# Register atexit handler to ensure logs are flushed on process exit
+# This is a safety net for subprocess workers that may exit unexpectedly
+import atexit
 
-    def _level_to_enum(self, levelno: int) -> Level:
-        """Convert logging level number to Level enum."""
-        if levelno >= logging.ERROR:
-            return Level.ERROR
-        elif levelno >= logging.WARNING:
-            return Level.WARNING
-        elif levelno >= logging.INFO:
-            return Level.INFO
-        return Level.DEBUG
-
-    def emit(self, record: logging.LogRecord) -> None:
-        """Write log record to SQLite via BuildLogger."""
-        # Deduplicate exceptions
-        hashable = self._get_hashable(record)
-        if hashable and hashable in self._logged_exceptions:
-            return
-
-        try:
-            level = self._level_to_enum(record.levelno)
-
-            # Handle user exceptions specially
-            exc_value = None
-            if record.exc_info and record.exc_info[1] is not None:
-                exc_value = record.exc_info[1]
-
-            if exc_value and isinstance(exc_value, _BaseBaseUserException):
-                # Use exception title as message
-                message = exc_value.title or type(exc_value).__name__
-
-                # Extract ato-specific context
-                ato_tb = self._build_logger._extract_ato_traceback(exc_value)
-
-                # Get Python traceback
-                exc_type, exc_val, exc_tb = record.exc_info  # type: ignore[misc]
-                python_tb = "".join(
-                    traceback.format_exception(exc_type, exc_val, exc_tb)
-                )
-
-                self._build_logger.log(
-                    level,
-                    message,
-                    audience=Audience.USER,  # User exceptions are for users
-                    ato_traceback=ato_tb,
-                    python_traceback=python_tb,
-                )
-            else:
-                # Regular log message
-                message = record.getMessage()
-
-                # Add Python traceback if present
-                python_tb = None
-                if record.exc_info and record.exc_info[1] is not None:
-                    exc_type, exc_val, exc_tb = record.exc_info
-                    python_tb = "".join(
-                        traceback.format_exception(exc_type, exc_val, exc_tb)
-                    )
-
-                self._build_logger.log(
-                    level,
-                    message,
-                    python_traceback=python_tb,
-                )
-
-            if hashable:
-                self._logged_exceptions.add(hashable)
-
-        except Exception:
-            self.handleError(record)
-
-    def close(self) -> None:
-        """Flush the build logger on close."""
-        self._build_logger.flush()
-        super().close()
+atexit.register(close_all_build_loggers)
 
 
 # =============================================================================
@@ -643,7 +720,6 @@ class ProjectState:
     current_build: str | None = None
     current_stage: str | None = None
     elapsed: float = 0.0
-    log_dir: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -725,10 +801,8 @@ class LogHandler(RichHandler):
         self._logged_exceptions = set()
         self._is_terminal = force_terminal or console.is_terminal
 
-        self.addFilter(
-            lambda record: record.name.startswith("atopile")
-            or record.name.startswith("faebryk")
-        )
+        # Use shared filter for atopile/faebryk logs only
+        self.addFilter(_atopile_log_filter)
 
     def _get_suppress(
         self, exc_type: type[BaseException] | None
@@ -904,11 +978,90 @@ class LogHandler(RichHandler):
 
 
 class LiveLogHandler(LogHandler):
-    def __init__(self, status: "LoggingStage", *args, **kwargs):
+    """
+    Log handler for build stages with integrated SQLite logging.
+
+    Handles:
+    - Rich console output (via parent LogHandler)
+    - Progress bar updates (warning/error counts)
+    - SQLite database logging (via BuildLogger)
+    """
+
+    def __init__(
+        self,
+        status: "LoggingStage",
+        build_logger: "BuildLogger | None" = None,
+        *args,
+        **kwargs,
+    ):
         super().__init__(*args, console=status._console, **kwargs)
         self.status = status
+        self._build_logger = build_logger
         # In worker mode, we only count warnings/errors but don't print to console
         self._suppress_output = status._in_worker_mode
+
+    def _level_to_enum(self, levelno: int) -> Level:
+        """Convert logging level number to Level enum."""
+        if levelno >= logging.ERROR:
+            return Level.ERROR
+        elif levelno >= logging.WARNING:
+            return Level.WARNING
+        elif levelno >= logging.INFO:
+            return Level.INFO
+        return Level.DEBUG
+
+    def _write_to_sqlite(self, record: logging.LogRecord) -> None:
+        """Write log record to SQLite via BuildLogger."""
+        if self._build_logger is None:
+            return
+
+        try:
+            level = self._level_to_enum(record.levelno)
+
+            # Handle user exceptions specially
+            exc_value = None
+            if record.exc_info and record.exc_info[1] is not None:
+                exc_value = record.exc_info[1]
+
+            if exc_value and isinstance(exc_value, _BaseBaseUserException):
+                # Use unified message extraction
+                message = get_exception_display_message(exc_value)
+
+                # Extract ato-specific context
+                ato_tb = self._build_logger._extract_ato_traceback(exc_value)
+
+                # Get Python traceback
+                exc_type, exc_val, exc_tb = record.exc_info  # type: ignore[misc]
+                python_tb = "".join(
+                    traceback.format_exception(exc_type, exc_val, exc_tb)
+                )
+
+                self._build_logger.log(
+                    level,
+                    message,
+                    audience=Audience.USER,
+                    ato_traceback=ato_tb,
+                    python_traceback=python_tb,
+                )
+            else:
+                # Regular log message
+                message = record.getMessage()
+
+                # Add Python traceback if present
+                python_tb = None
+                if record.exc_info and record.exc_info[1] is not None:
+                    exc_type, exc_val, exc_tb = record.exc_info
+                    python_tb = "".join(
+                        traceback.format_exception(exc_type, exc_val, exc_tb)
+                    )
+
+                self._build_logger.log(
+                    level,
+                    message,
+                    python_traceback=python_tb,
+                )
+        except Exception:
+            pass  # Don't fail the build if SQLite logging fails
 
     def emit(self, record: logging.LogRecord) -> None:
         hashable = self._get_hashable(record)
@@ -916,6 +1069,7 @@ class LiveLogHandler(LogHandler):
             return
 
         try:
+            # Update progress bar counts
             if record.levelno >= logging.ERROR:
                 self.status._error_count += 1
             elif record.levelno >= logging.WARNING:
@@ -927,8 +1081,12 @@ class LiveLogHandler(LogHandler):
 
             self.status.refresh()
 
-            # In worker mode, only print errors to console
+            # Write to SQLite database (always, regardless of console suppression)
+            self._write_to_sqlite(record)
+
+            # Console output handling
             if self._suppress_output:
+                # In worker mode, only print errors to console
                 if record.levelno >= logging.ERROR:
                     super().emit(record)
                 return
@@ -1024,39 +1182,10 @@ class CompletableSpinnerColumn(SpinnerColumn):
 
 
 # =============================================================================
-# Context Variables and Handler Registry
+# Context Variables
 # =============================================================================
 
 _log_sink_var = ContextVar[io.StringIO | None]("log_sink", default=None)
-
-# Build-level SQLite log handler registry - shared across all stages in a build
-# Key: log_dir path, Value: SQLiteLogHandler
-_build_sqlite_handlers: dict[Path, SQLiteLogHandler] = {}
-
-
-def get_or_create_sqlite_log_handler(log_dir: Path, stage: str) -> SQLiteLogHandler:
-    """
-    Get or create a shared SQLite log handler for a build.
-
-    All stages in a build share the same SQLite database (build_logs.db).
-    The stage name is updated when entering each stage.
-    """
-    if log_dir not in _build_sqlite_handlers:
-        build_logger = get_build_logger(log_dir, stage)
-        handler = SQLiteLogHandler(build_logger, level=logging.DEBUG)
-        _build_sqlite_handlers[log_dir] = handler
-    else:
-        handler = _build_sqlite_handlers[log_dir]
-        handler._build_logger.set_stage(stage)
-    return handler
-
-
-def close_sqlite_log_handler(log_dir: Path) -> None:
-    """Close and remove the SQLite log handler for a log directory."""
-    if log_dir in _build_sqlite_handlers:
-        handler = _build_sqlite_handlers.pop(log_dir)
-        handler.close()
-    close_build_logger(log_dir)
 
 
 @contextmanager
@@ -1102,7 +1231,7 @@ class LoggingStage(Advancable):
         self.description = description
         self.indent = indent
         self.steps = steps
-        self._console = console.error_console
+        self._console = error_console
         self._info_count = 0
         self._warning_count = 0
         self._error_count = 0
@@ -1110,14 +1239,11 @@ class LoggingStage(Advancable):
         self._info_log_path = None
         self._log_handler = None
         self._capture_log_handler = None
-        self._file_handlers: list = []
         self._original_handlers: dict = {}
         self._sanitized_name = pathvalidate.sanitize_filename(self.name)
         self._result = None
-        self._log_dir: Path | None = None
         self._stage_start_time: float = 0.0
         self._original_level = logging.INFO
-        self._shared_file_handler = False
 
         # Worker subprocesses are identified by IPC env vars set by the parent.
         self._in_worker_mode = bool(os.environ.get("ATO_BUILD_EVENT_FD"))
@@ -1281,24 +1407,20 @@ class LoggingStage(Advancable):
         elapsed = time.time() - getattr(self, "_stage_start_time", time.time())
         if exc_type is not None:
             try:
-                from faebryk.libs.exceptions import iter_leaf_exceptions
+                from atopile.exceptions import iter_leaf_exceptions
 
                 if isinstance(exc_val, BaseExceptionGroup):
                     for leaf in iter_leaf_exceptions(exc_val):
-                        if isinstance(leaf, _BaseBaseUserException):
-                            msg = leaf.message
-                        else:
-                            msg = str(leaf)
+                        # Use unified message extraction
+                        msg = get_exception_display_message(leaf)
                         # Pass exc_info so LogHandler can render rich source chunks
                         logger.error(
                             msg or "Build step failed",
                             exc_info=(type(leaf), leaf, leaf.__traceback__),
                         )
                 else:
-                    if isinstance(exc_val, _BaseBaseUserException):
-                        msg = exc_val.message
-                    else:
-                        msg = str(exc_val)
+                    # Use unified message extraction
+                    msg = get_exception_display_message(exc_val)
                     logger.error(
                         msg or "Build step failed",
                         exc_info=(type(exc_val), exc_val, exc_val.__traceback__),
@@ -1374,43 +1496,9 @@ class LoggingStage(Advancable):
         except Exception:
             pass
 
-    def _create_log_dir(self) -> Path:
+    def _setup_logging(self) -> None:
         from atopile.config import config
 
-        base_log_dir = Path(config.project.paths.logs) / "archive" / NOW
-
-        try:
-            build_cfg = config.build
-            log_dir = base_log_dir / pathvalidate.sanitize_filename(build_cfg.name)
-        except RuntimeError:
-            log_dir = base_log_dir
-
-        log_dir.mkdir(parents=True, exist_ok=True)
-
-        # Store log directory for parallel display
-        self._log_dir = log_dir
-
-        # Skip symlink update in worker mode - it's handled by the summary generator
-        if self._in_worker_mode:
-            return log_dir
-
-        # Update the latest symlink (single-threaded mode only)
-        latest_link = Path(config.project.paths.logs) / "latest"
-        try:
-            if latest_link.is_symlink():
-                latest_link.unlink()
-            elif latest_link.exists():
-                shutil.rmtree(latest_link)
-            latest_link.symlink_to(base_log_dir, target_is_directory=True)
-        except OSError:
-            # If we can't symlink, just don't symlink
-            # Logs are still written to the dated directory
-            # Seems to happen on Windows if 'Developer Mode' is not enabled
-            pass
-
-        return log_dir
-
-    def _setup_logging(self) -> None:
         root_logger = logging.getLogger()
 
         self._original_level = root_logger.level
@@ -1419,7 +1507,23 @@ class LoggingStage(Advancable):
         # log all messages to at least one handler
         root_logger.setLevel(logging.DEBUG)
 
-        self._log_handler = LiveLogHandler(self)
+        # Get project and target info for the central database
+        # Use resolved absolute path to ensure consistency with summary generation
+        try:
+            project_path = str(config.project.paths.root.resolve())
+            target = config.build.name
+        except RuntimeError:
+            # Fallback if config is not fully initialized
+            project_path = "unknown"
+            target = "default"
+
+        # Get or create BuildLogger for SQLite logging
+        build_logger = get_build_logger(project_path, target, stage=self.name)
+        self._build_id = build_logger.build_id
+        logger.debug(f"Logs build_id: {self._build_id} (project={project_path}, target={target}, ts={NOW})")
+
+        # Create LiveLogHandler with integrated SQLite logging
+        self._log_handler = LiveLogHandler(self, build_logger=build_logger)
         self._log_handler.setFormatter(_DEFAULT_FORMATTER)
         self._log_handler.setLevel(self._original_level)
 
@@ -1429,8 +1533,6 @@ class LoggingStage(Advancable):
             self._capture_log_handler.setFormatter(_DEFAULT_FORMATTER)
             self._capture_log_handler.setLevel(logging.INFO)
 
-        log_dir = self._create_log_dir()
-
         for handler in root_logger.handlers.copy():
             root_logger.removeHandler(handler)
 
@@ -1438,23 +1540,15 @@ class LoggingStage(Advancable):
         if self._capture_log_handler is not None:
             root_logger.addHandler(self._capture_log_handler)
 
-        self._file_handlers = []
-
-        # Use shared SQLite log database (build_logs.db) with stage field
-        # All stages in a build write to the same database
-        sqlite_handler = get_or_create_sqlite_log_handler(log_dir, self.name)
-        self._file_handlers.append(sqlite_handler)
-        self._shared_file_handler = True  # Mark as shared, don't close on restore
-        root_logger.addHandler(sqlite_handler)
-
-        log_file = log_dir / "build_logs.db"
+        # Show central log database path for info
+        log_file = get_central_log_db()
         try:
             self._info_log_path = log_file.relative_to(Path.cwd())
         except ValueError:
             self._info_log_path = log_file
 
     def _restore_logging(self) -> None:
-        if not self._log_handler and not self._file_handlers:
+        if not self._log_handler:
             return
 
         root_logger = logging.getLogger()
@@ -1466,13 +1560,6 @@ class LoggingStage(Advancable):
         if self._capture_log_handler in root_logger.handlers:
             root_logger.removeHandler(self._capture_log_handler)
 
-        for file_handler in self._file_handlers:
-            if file_handler in root_logger.handlers:
-                root_logger.removeHandler(file_handler)
-                # Don't close shared handlers - they persist across stages
-                if not getattr(self, "_shared_file_handler", False):
-                    file_handler.close()
-
         for handler in root_logger.handlers.copy():
             root_logger.removeHandler(handler)
 
@@ -1483,8 +1570,6 @@ class LoggingStage(Advancable):
         self._original_level = logging.INFO
         self._log_handler = None
         self._capture_log_handler = None
-        self._file_handlers = []
-        self._shared_file_handler = False
 
 
 # =============================================================================
@@ -1707,7 +1792,7 @@ def setup_basic_logging():
         flog_handler = RichHandler(
             console=Console(
                 safe_box=False,
-                theme=console.faebryk_theme,
+                theme=faebryk_theme,
                 force_terminal=True,
                 width=int(TERMINAL_WIDTH),
             ),
@@ -1739,7 +1824,7 @@ def setup_basic_logging():
 # Module-level initialization
 # =============================================================================
 
-handler = LogHandler(console=console.error_console)
+handler = LogHandler(console=error_console)
 handler.setFormatter(_DEFAULT_FORMATTER)
 
 if FLOG_FMT:
