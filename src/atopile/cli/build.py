@@ -1424,7 +1424,7 @@ def build(
     dashboard_url = None
     if not verbose:
         try:
-            from atopile.dashboard.server import start_dashboard_server
+            from atopile.server.server import start_dashboard_server
 
             dashboard_server, dashboard_url = start_dashboard_server(
                 project_root,

@@ -36,13 +36,13 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from atopile.config import ProjectConfig
-from atopile.dashboard.stdlib import (
+from atopile.server.stdlib import (
     StdLibItem,
     StdLibItemType,
     StdLibResponse,
     get_standard_library,
 )
-from atopile.dashboard.state import server_state
+from atopile.server.state import server_state
 from atopile.logging import get_central_log_db
 
 # Registry cache
@@ -2128,7 +2128,7 @@ def _get_state_builds():
 
     Helper function used by both sync and async state sync functions.
     """
-    from atopile.dashboard.state import Build as StateBuild, BuildStage as StateStage
+    from atopile.server.state import Build as StateBuild, BuildStage as StateStage
 
     with _build_lock:
         state_builds = []
@@ -2243,7 +2243,7 @@ async def _sync_problems_to_state_async():
 
     Reads problems from all project build logs and updates server_state.
     """
-    from atopile.dashboard.state import Problem as StateProblem
+    from atopile.server.state import Problem as StateProblem
 
     workspace_paths = server_state._workspace_paths
     if not workspace_paths:
@@ -2316,7 +2316,7 @@ async def _refresh_packages_async():
     This mirrors the logic from the refreshPackages action handler to ensure
     we get ALL packages (installed + registry), not just installed ones.
     """
-    from atopile.dashboard.state import PackageInfo as StatePackageInfo
+    from atopile.server.state import PackageInfo as StatePackageInfo
 
     scan_paths = server_state._workspace_paths
     if not scan_paths:
@@ -2612,9 +2612,9 @@ def create_app(
         log.info(f"Populating initial state from {len(scan_paths)} workspace paths")
 
         # Import state types
-        from atopile.dashboard.state import Project as StateProject
-        from atopile.dashboard.state import BuildTarget as StateBuildTarget
-        from atopile.dashboard.state import PackageInfo as StatePackageInfo
+        from atopile.server.state import Project as StateProject
+        from atopile.server.state import BuildTarget as StateBuildTarget
+        from atopile.server.state import PackageInfo as StatePackageInfo
 
         # Discover and set projects
         try:
@@ -2716,8 +2716,8 @@ def create_app(
                 # Discover projects and update state
                 scan_paths = state["workspace_paths"]
                 if scan_paths:
-                    from atopile.dashboard.state import Project as StateProject
-                    from atopile.dashboard.state import BuildTarget as StateBuildTarget
+                    from atopile.server.state import Project as StateProject
+                    from atopile.server.state import BuildTarget as StateBuildTarget
 
                     projects = discover_projects_in_paths(scan_paths)
                     # Convert to state types
@@ -2740,7 +2740,7 @@ def create_app(
             elif action == "refreshPackages":
                 # Fetch ALL packages: installed + registry
                 # This mirrors the logic from /api/packages/summary endpoint
-                from atopile.dashboard.state import PackageInfo as StatePackageInfo
+                from atopile.server.state import PackageInfo as StatePackageInfo
 
                 packages_map: dict[str, StatePackageInfo] = {}
                 scan_paths = state.get("workspace_paths", [])
@@ -2829,7 +2829,7 @@ def create_app(
 
             elif action == "refreshStdlib":
                 # Fetch stdlib
-                from atopile.dashboard.state import StdLibItem as StateStdLibItem
+                from atopile.server.state import StdLibItem as StateStdLibItem
 
                 items = get_standard_library()
                 # Convert - StdLibItem is similar between modules
@@ -3154,7 +3154,7 @@ def create_app(
             elif action == "fetchModules":
                 project_root = payload.get("projectRoot", "")
                 if project_root:
-                    from atopile.dashboard.state import (
+                    from atopile.server.state import (
                         ModuleDefinition as StateModuleDefinition,
                     )
 
@@ -3176,7 +3176,7 @@ def create_app(
             elif action == "getPackageDetails":
                 package_id = payload.get("packageId", "")
                 if package_id:
-                    from atopile.dashboard.state import (
+                    from atopile.server.state import (
                         PackageDetails as StatePackageDetails,
                     )
 
@@ -3239,7 +3239,7 @@ def create_app(
                     return {"success": True, "info": "BOM not found"}
 
                 try:
-                    from atopile.dashboard.state import BOMData
+                    from atopile.server.state import BOMData
 
                     bom_json = json.loads(bom_path.read_text())
                     # BOM data is generic JSON, pass it through
@@ -3251,7 +3251,7 @@ def create_app(
 
             elif action == "refreshProblems":
                 # Fetch problems from all projects
-                from atopile.dashboard.state import Problem as StateProblem
+                from atopile.server.state import Problem as StateProblem
 
                 workspace_paths = state.get("workspace_paths", [])
                 projects = discover_projects_in_paths(workspace_paths)
@@ -3515,7 +3515,7 @@ def create_app(
                         "error": f"Project not found: {project_root}",
                     }
 
-                from atopile.dashboard.state import FileTreeNode
+                from atopile.server.state import FileTreeNode
 
                 def build_file_tree(
                     path: Path, relative_to: Path
@@ -3591,7 +3591,7 @@ def create_app(
                         "error": f"Project not found: {project_root}",
                     }
 
-                from atopile.dashboard.state import DependencyInfo
+                from atopile.server.state import DependencyInfo
 
                 # Get installed packages for this project
                 installed = get_installed_packages_for_project(project_path)
@@ -3676,7 +3676,7 @@ def create_app(
                 # Select a build and load its logs
                 build_name = payload.get("buildName")
                 project_name = payload.get("projectName")
-                from atopile.dashboard.state import LogEntry as StateLogEntry
+                from atopile.server.state import LogEntry as StateLogEntry
 
                 # Update selected build name in state
                 await server_state.set_selected_build(build_name)

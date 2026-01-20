@@ -207,7 +207,7 @@ If you need to run servers individually:
 # Terminal 1: Python backend
 cd src/vscode-atopile/webviews
 python -c "
-from atopile.dashboard.server import create_app
+from atopile.server.server import create_app
 import uvicorn
 from pathlib import Path
 app = create_app(

@@ -130,7 +130,7 @@ from pathlib import Path
 # Add atopile to path
 sys.path.insert(0, os.environ.get('ATOPILE_ROOT', '.') + '/src')
 
-from atopile.dashboard.server import create_app, find_free_port
+from atopile.server.server import create_app, find_free_port
 import uvicorn
 
 workspace_paths = [Path(p) for p in sys.argv[1:] if p]

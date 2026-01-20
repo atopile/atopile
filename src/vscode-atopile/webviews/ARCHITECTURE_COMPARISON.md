@@ -12,6 +12,7 @@ This document analyzes the orchestrator architecture from `tools/orchestrator/` 
 7. [High-Level Proposed Architecture](#7-high-level-proposed-architecture)
 8. [Complete Feature Flows: Current vs Proposed](#8-complete-feature-flows-current-vs-proposed)
 9. [Proposed Project Structure](#9-proposed-project-structure)
+10. [Testing Strategy](#10-testing-strategy)
 
 ---
 
@@ -4083,6 +4084,636 @@ backend/                             # PYTHON BACKEND (ato serve)
    - Pydantic schemas in backend are source of truth
    - Generate TypeScript types using pydantic2ts or similar
    - Ensures frontend/backend type consistency
+
+---
+
+## 10. Testing Strategy
+
+This section details testing patterns based on the orchestrator implementation in `tools/orchestrator/`.
+
+### 10.1 Testing Philosophy
+
+The orchestrator uses **integration testing** as the primary testing approach:
+
+1. **Real server instances** - Tests spin up actual FastAPI servers
+2. **HTTP clients** - Tests use httpx to make real HTTP requests
+3. **Polling for async** - Tests poll endpoints until conditions are met
+4. **No mocks** - Prefer real components over mocked ones
+5. **Standalone scripts** - Tests can run directly with `python test_*.py`
+
+### 10.2 Backend Testing (Python)
+
+#### 10.2.1 Test File Structure
+
+```
+backend/
+├── tests/
+│   ├── test_integration.py     # Full integration tests
+│   ├── test_builds.py          # Build-specific tests
+│   ├── test_packages.py        # Package API tests
+│   └── conftest.py             # Shared fixtures (minimal)
+```
+
+#### 10.2.2 Integration Test Pattern
+
+Based on `tools/orchestrator/test_full_pipeline.py`:
+
+```python
+"""
+Integration test for build pipeline.
+
+Usage: python -m backend.tests.test_builds
+"""
+import httpx
+import time
+from typing import Optional
+
+# Test configuration
+BASE_URL = "http://localhost:8501"
+TIMEOUT = 30.0
+POLL_INTERVAL = 0.5
+
+
+def wait_for_build(
+    client: httpx.Client,
+    build_id: str,
+    timeout: float = TIMEOUT
+) -> dict:
+    """Poll until build completes or times out."""
+    start = time.time()
+    while time.time() - start < timeout:
+        response = client.get(f"/api/builds/{build_id}")
+        response.raise_for_status()
+        build = response.json()
+
+        if build["status"] in ("completed", "failed"):
+            return build
+
+        time.sleep(POLL_INTERVAL)
+
+    raise TimeoutError(f"Build {build_id} did not complete within {timeout}s")
+
+
+def test_build_lifecycle():
+    """Test complete build lifecycle: start → poll → complete."""
+    with httpx.Client(base_url=BASE_URL, timeout=30.0) as client:
+        # 1. Start build
+        response = client.post("/api/builds", json={
+            "project_root": "/path/to/project",
+            "target_ids": ["default"]
+        })
+        response.raise_for_status()
+        build = response.json()
+        build_id = build["id"]
+        print(f"✓ Started build: {build_id}")
+
+        # 2. Wait for completion
+        final_build = wait_for_build(client, build_id)
+        assert final_build["status"] == "completed", f"Build failed: {final_build}"
+        print(f"✓ Build completed: {final_build['status']}")
+
+        # 3. Verify artifacts
+        assert "artifacts" in final_build
+        print(f"✓ Artifacts present: {len(final_build['artifacts'])} files")
+
+
+def test_build_failure_handling():
+    """Test that build failures are properly reported."""
+    with httpx.Client(base_url=BASE_URL, timeout=30.0) as client:
+        # Start build with invalid path
+        response = client.post("/api/builds", json={
+            "project_root": "/nonexistent/path",
+            "target_ids": ["default"]
+        })
+        response.raise_for_status()
+        build = response.json()
+
+        # Wait and verify failure
+        final_build = wait_for_build(client, build["id"])
+        assert final_build["status"] == "failed"
+        assert "error" in final_build
+        print(f"✓ Build failed as expected: {final_build['error']}")
+
+
+if __name__ == "__main__":
+    print("Running build integration tests...")
+    print("-" * 50)
+
+    tests = [
+        ("Build Lifecycle", test_build_lifecycle),
+        ("Build Failure Handling", test_build_failure_handling),
+    ]
+
+    passed = 0
+    failed = 0
+
+    for name, test_fn in tests:
+        try:
+            print(f"\n[TEST] {name}")
+            test_fn()
+            passed += 1
+            print(f"[PASS] {name}")
+        except Exception as e:
+            failed += 1
+            print(f"[FAIL] {name}: {e}")
+
+    print("-" * 50)
+    print(f"Results: {passed} passed, {failed} failed")
+```
+
+#### 10.2.3 Dependency Injection for Testing
+
+Based on `tools/orchestrator/server/dependencies.py`:
+
+```python
+# backend/server/dependencies.py
+from functools import lru_cache
+from typing import Optional
+
+from ..core.builds import BuildRunner
+from ..core.projects import ProjectManager
+from ..models.packages_api import PackagesAPIClient
+
+
+class AppState:
+    """Singleton holding shared state."""
+    def __init__(self):
+        self.build_runner = BuildRunner()
+        self.project_manager = ProjectManager()
+        self.packages_client = PackagesAPIClient()
+
+
+_app_state: Optional[AppState] = None
+
+
+def get_app_state() -> AppState:
+    """Get or create the app state singleton."""
+    global _app_state
+    if _app_state is None:
+        _app_state = AppState()
+    return _app_state
+
+
+def reset_app_state():
+    """Reset state for testing."""
+    global _app_state
+    _app_state = None
+```
+
+```python
+# backend/server/routes/builds.py
+from fastapi import APIRouter, Depends
+from ..dependencies import get_app_state, AppState
+
+router = APIRouter(prefix="/api/builds")
+
+
+@router.post("")
+async def start_build(
+    request: BuildRequest,
+    state: AppState = Depends(get_app_state)
+):
+    """Start a new build."""
+    return await state.build_runner.start(
+        request.project_root,
+        request.target_ids
+    )
+```
+
+#### 10.2.4 Testing with Dependency Override
+
+```python
+# backend/tests/test_builds_unit.py
+from fastapi.testclient import TestClient
+from unittest.mock import MagicMock
+
+from ..server.app import app
+from ..server.dependencies import get_app_state
+
+
+def test_build_start_calls_runner():
+    """Unit test with mocked dependencies."""
+    # Create mock state
+    mock_state = MagicMock()
+    mock_state.build_runner.start.return_value = {
+        "id": "test-123",
+        "status": "pending"
+    }
+
+    # Override dependency
+    app.dependency_overrides[get_app_state] = lambda: mock_state
+
+    try:
+        client = TestClient(app)
+        response = client.post("/api/builds", json={
+            "project_root": "/test/path",
+            "target_ids": ["default"]
+        })
+
+        assert response.status_code == 200
+        mock_state.build_runner.start.assert_called_once_with(
+            "/test/path", ["default"]
+        )
+    finally:
+        # Clean up override
+        app.dependency_overrides.clear()
+```
+
+### 10.3 UI Server Testing (TypeScript/React)
+
+#### 10.3.1 Test File Structure
+
+```
+webviews/src/
+├── __tests__/
+│   ├── setup.ts                # Test setup (vitest)
+│   ├── store/
+│   │   ├── store.test.ts       # Zustand store tests
+│   │   └── slices.test.ts      # Individual slice tests
+│   ├── api/
+│   │   └── client.test.ts      # API client tests (msw)
+│   └── components/
+│       ├── BuildItem.test.tsx  # Component tests
+│       └── ...
+```
+
+#### 10.3.2 Store Testing (Zustand)
+
+```typescript
+// webviews/src/__tests__/store/store.test.ts
+import { describe, it, expect, beforeEach } from 'vitest';
+import { useStore } from '../../store';
+
+describe('Store', () => {
+  beforeEach(() => {
+    // Reset store between tests
+    useStore.setState({
+      projects: [],
+      builds: [],
+      selectedProject: null,
+      isLoading: false,
+    });
+  });
+
+  describe('projects', () => {
+    it('adds a project', () => {
+      const project = { id: '1', name: 'Test', root: '/test' };
+
+      useStore.getState().addProject(project);
+
+      expect(useStore.getState().projects).toContainEqual(project);
+    });
+
+    it('selects a project', () => {
+      const project = { id: '1', name: 'Test', root: '/test' };
+      useStore.getState().addProject(project);
+
+      useStore.getState().selectProject('1');
+
+      expect(useStore.getState().selectedProject).toBe('1');
+    });
+  });
+
+  describe('builds', () => {
+    it('starts a build and updates status', () => {
+      useStore.getState().startBuild({
+        id: 'build-1',
+        status: 'pending',
+        targetIds: ['default'],
+      });
+
+      expect(useStore.getState().builds).toHaveLength(1);
+      expect(useStore.getState().builds[0].status).toBe('pending');
+
+      useStore.getState().updateBuild('build-1', { status: 'completed' });
+
+      expect(useStore.getState().builds[0].status).toBe('completed');
+    });
+  });
+});
+```
+
+#### 10.3.3 API Client Testing (MSW)
+
+```typescript
+// webviews/src/__tests__/setup.ts
+import { beforeAll, afterEach, afterAll } from 'vitest';
+import { setupServer } from 'msw/node';
+import { http, HttpResponse } from 'msw';
+
+// Mock handlers
+export const handlers = [
+  http.get('http://localhost:8501/api/projects', () => {
+    return HttpResponse.json([
+      { id: '1', name: 'Project A', root: '/projects/a' },
+    ]);
+  }),
+
+  http.post('http://localhost:8501/api/builds', async ({ request }) => {
+    const body = await request.json();
+    return HttpResponse.json({
+      id: 'build-123',
+      status: 'pending',
+      targetIds: body.targetIds,
+    });
+  }),
+];
+
+export const server = setupServer(...handlers);
+
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
+```
+
+```typescript
+// webviews/src/__tests__/api/client.test.ts
+import { describe, it, expect } from 'vitest';
+import { api } from '../../api/client';
+import { server } from '../setup';
+import { http, HttpResponse } from 'msw';
+
+describe('API Client', () => {
+  describe('projects', () => {
+    it('fetches projects', async () => {
+      const projects = await api.projects.list();
+
+      expect(projects).toHaveLength(1);
+      expect(projects[0].name).toBe('Project A');
+    });
+  });
+
+  describe('builds', () => {
+    it('starts a build', async () => {
+      const build = await api.builds.start(['default']);
+
+      expect(build.id).toBe('build-123');
+      expect(build.status).toBe('pending');
+    });
+
+    it('handles API errors', async () => {
+      // Override handler for this test
+      server.use(
+        http.post('http://localhost:8501/api/builds', () => {
+          return HttpResponse.json(
+            { detail: 'Invalid target' },
+            { status: 400 }
+          );
+        })
+      );
+
+      await expect(api.builds.start(['invalid']))
+        .rejects
+        .toThrow('Invalid target');
+    });
+  });
+});
+```
+
+#### 10.3.4 Component Testing (React Testing Library)
+
+```typescript
+// webviews/src/__tests__/components/BuildItem.test.tsx
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { BuildItem } from '../../components/builds/BuildItem';
+
+describe('BuildItem', () => {
+  const mockBuild = {
+    id: 'build-1',
+    status: 'completed',
+    targetIds: ['default'],
+    startedAt: '2024-01-01T00:00:00Z',
+    completedAt: '2024-01-01T00:01:00Z',
+  };
+
+  it('renders build information', () => {
+    render(<BuildItem build={mockBuild} />);
+
+    expect(screen.getByText('default')).toBeInTheDocument();
+    expect(screen.getByText('completed')).toBeInTheDocument();
+  });
+
+  it('shows completed status with success style', () => {
+    render(<BuildItem build={mockBuild} />);
+
+    const statusBadge = screen.getByTestId('status-badge');
+    expect(statusBadge).toHaveClass('success');
+  });
+
+  it('calls onClick when clicked', () => {
+    const onClick = vi.fn();
+    render(<BuildItem build={mockBuild} onClick={onClick} />);
+
+    fireEvent.click(screen.getByRole('listitem'));
+
+    expect(onClick).toHaveBeenCalledWith('build-1');
+  });
+
+  it('shows spinner when build is pending', () => {
+    const pendingBuild = { ...mockBuild, status: 'pending' };
+    render(<BuildItem build={pendingBuild} />);
+
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+  });
+});
+```
+
+### 10.4 WebSocket Testing
+
+#### 10.4.1 Backend WebSocket Test
+
+```python
+# backend/tests/test_websocket.py
+import httpx
+import asyncio
+from httpx_ws import aconnect_ws
+
+
+async def test_build_logs_websocket():
+    """Test WebSocket log streaming."""
+    async with httpx.AsyncClient(base_url=BASE_URL) as client:
+        # Start a build
+        response = await client.post("/api/builds", json={
+            "project_root": "/test/path",
+            "target_ids": ["default"]
+        })
+        build = response.json()
+        build_id = build["id"]
+
+        # Connect to log stream
+        logs_received = []
+        async with aconnect_ws(
+            f"{BASE_URL.replace('http', 'ws')}/ws/builds/{build_id}/logs"
+        ) as ws:
+            # Collect logs with timeout
+            try:
+                async with asyncio.timeout(10.0):
+                    while True:
+                        message = await ws.receive_json()
+                        logs_received.append(message)
+                        if message.get("type") == "complete":
+                            break
+            except asyncio.TimeoutError:
+                pass
+
+        assert len(logs_received) > 0
+        print(f"✓ Received {len(logs_received)} log messages")
+
+
+if __name__ == "__main__":
+    asyncio.run(test_build_logs_websocket())
+```
+
+#### 10.4.2 UI Server WebSocket Test
+
+```typescript
+// webviews/src/__tests__/api/websocket.test.ts
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import WS from 'vitest-websocket-mock';
+import { connectToLogStream } from '../../api/websocket';
+
+describe('WebSocket Client', () => {
+  let server: WS;
+
+  beforeEach(() => {
+    server = new WS('ws://localhost:8501/ws/builds/test-123/logs');
+  });
+
+  afterEach(() => {
+    WS.clean();
+  });
+
+  it('receives log messages', async () => {
+    const onMessage = vi.fn();
+    const connection = connectToLogStream('test-123', { onMessage });
+
+    await server.connected;
+
+    server.send(JSON.stringify({ type: 'log', message: 'Building...' }));
+    server.send(JSON.stringify({ type: 'log', message: 'Complete!' }));
+
+    expect(onMessage).toHaveBeenCalledTimes(2);
+    expect(onMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Building...' })
+    );
+
+    connection.close();
+  });
+
+  it('handles disconnection', async () => {
+    const onDisconnect = vi.fn();
+    const connection = connectToLogStream('test-123', { onDisconnect });
+
+    await server.connected;
+    server.close();
+
+    expect(onDisconnect).toHaveBeenCalled();
+  });
+});
+```
+
+### 10.5 Test Running
+
+#### 10.5.1 Backend Tests
+
+```bash
+# Run all tests (requires server running)
+python -m pytest backend/tests/ -v
+
+# Run integration tests standalone
+python -m backend.tests.test_builds
+
+# Run with coverage
+python -m pytest backend/tests/ --cov=backend --cov-report=html
+```
+
+#### 10.5.2 UI Server Tests
+
+```bash
+# Run all tests
+cd webviews && npm test
+
+# Run with coverage
+cd webviews && npm test -- --coverage
+
+# Run specific test file
+cd webviews && npm test -- src/__tests__/store/store.test.ts
+
+# Watch mode for development
+cd webviews && npm test -- --watch
+```
+
+### 10.6 Test Guidelines
+
+#### 10.6.1 What to Test
+
+| Layer | What to Test | How |
+|-------|--------------|-----|
+| **Backend API** | Endpoint behavior, error handling | Integration tests with httpx |
+| **Backend Core** | Business logic, edge cases | Unit tests with mocks |
+| **UI Store** | State transitions, actions | Unit tests (Zustand direct) |
+| **UI API Client** | Request/response handling | Unit tests with MSW |
+| **UI Components** | Rendering, interactions | React Testing Library |
+| **WebSockets** | Message flow, reconnection | Mock servers |
+
+#### 10.6.2 What NOT to Test
+
+- Extension code (minimal, just opens webview)
+- Third-party libraries
+- Type definitions
+- Configuration files
+
+#### 10.6.3 Test Naming
+
+```python
+# Python: test_<action>_<expected_outcome>
+def test_build_start_returns_pending_status(): ...
+def test_build_with_invalid_path_returns_error(): ...
+```
+
+```typescript
+// TypeScript: describe('<Unit>') + it('<action> <outcome>')
+describe('BuildRunner') {
+  it('starts build and returns pending status', ...);
+  it('throws error for invalid path', ...);
+}
+```
+
+### 10.7 Continuous Integration
+
+```yaml
+# .github/workflows/test.yml
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -e ".[test]"
+      - run: |
+          # Start server in background
+          python -m backend.server &
+          sleep 5
+          # Run tests
+          python -m pytest backend/tests/ -v
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: cd webviews && npm ci
+      - run: cd webviews && npm test -- --coverage
+```
 
 ---
 

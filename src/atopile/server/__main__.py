@@ -2,7 +2,7 @@
 CLI entry point for the dashboard server.
 
 Usage:
-    python -m atopile.dashboard [--port PORT] [--workspace PATH]
+    python -m atopile.server [--port PORT] [--workspace PATH]
 
 Starts the dashboard server for the atopile extension.
 """
@@ -13,7 +13,7 @@ import sys
 import time
 from pathlib import Path
 
-from atopile.dashboard.server import DashboardServer
+from atopile.server.server import DashboardServer
 
 
 def main():
