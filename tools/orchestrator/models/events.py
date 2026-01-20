@@ -85,6 +85,7 @@ class GlobalEventType(StrEnum):
     AGENT_SPAWNED = auto()
     AGENT_STATUS_CHANGED = auto()
     AGENT_DELETED = auto()
+    AGENT_TODOS_CHANGED = auto()  # Agent's todo list updated
 
     # Pipeline session events
     SESSION_CREATED = auto()

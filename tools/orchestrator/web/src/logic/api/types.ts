@@ -2,6 +2,13 @@
 export type AgentStatus = 'pending' | 'starting' | 'running' | 'completed' | 'failed' | 'terminated';
 export type AgentBackendType = 'claude-code' | 'codex' | 'cursor';
 export type OutputType = 'system' | 'assistant' | 'tool_use' | 'tool_result' | 'error' | 'raw' | 'result' | 'text_delta' | 'stream_start' | 'stream_stop';
+export type TodoStatus = 'pending' | 'in_progress' | 'completed';
+
+export interface TodoItem {
+  content: string;
+  status: TodoStatus;
+  active_form?: string;
+}
 
 export interface AgentConfig {
   backend: AgentBackendType;
@@ -36,6 +43,7 @@ export interface AgentState {
   last_activity_at?: string;
   run_count?: number;
   metadata: Record<string, unknown>;
+  todos?: TodoItem[];
 }
 
 export interface OutputChunk {
@@ -114,6 +122,17 @@ export interface SpawnAgentResponse {
   agent_id: string;
   status: AgentStatus;
   message: string;
+}
+
+export interface ImportSessionRequest {
+  session_id: string;
+  prompt: string;
+  name?: string;
+  backend?: AgentBackendType;
+  working_directory?: string;
+  model?: string;
+  max_turns?: number;
+  max_budget_usd?: number;
 }
 
 export interface TerminateAgentRequest {
@@ -333,6 +352,7 @@ export type GlobalEventType =
   | 'agent_spawned'
   | 'agent_status_changed'
   | 'agent_deleted'
+  | 'agent_todos_changed'
   | 'session_created'
   | 'session_status_changed'
   | 'session_node_status_changed'

@@ -10,6 +10,7 @@ from .agents import (
     AgentState,
     AgentStateResponse,
     AgentStatus,
+    ImportSessionRequest,
     ResumeAgentRequest,
     RunOutput,
     SendInputRequest,
@@ -18,6 +19,7 @@ from .agents import (
     SpawnAgentResponse,
     TerminateAgentRequest,
     TerminateAgentResponse,
+    TodoItem,
     UpdateAgentRequest,
 )
 from .events import (
@@ -72,6 +74,7 @@ __all__ = [
     "AgentState",
     "AgentStateResponse",
     "AgentStatus",
+    "ImportSessionRequest",
     "ResumeAgentRequest",
     "RunOutput",
     "SendInputRequest",
@@ -80,6 +83,7 @@ __all__ = [
     "SpawnAgentResponse",
     "TerminateAgentRequest",
     "TerminateAgentResponse",
+    "TodoItem",
     "UpdateAgentRequest",
     # Event models
     "ClaudeCodeMessage",

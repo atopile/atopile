@@ -61,6 +61,14 @@ class AgentConfig(BaseModel):
     extra_args: list[str] | None = None
 
 
+class TodoItem(BaseModel):
+    """A single todo item from the agent's TodoWrite tool."""
+
+    content: str
+    status: str  # "pending", "in_progress", "completed"
+    active_form: str | None = None  # The -ing form of the task
+
+
 class AgentState(BaseModel):
     """Runtime state of an agent."""
 
@@ -81,6 +89,7 @@ class AgentState(BaseModel):
     last_activity_at: datetime | None = None
     run_count: int = 0  # Incremented on each spawn/resume for versioned logs
     metadata: dict[str, Any] = Field(default_factory=dict)
+    todos: list[TodoItem] = Field(default_factory=list)  # Current todo list from TodoWrite
 
     def is_running(self) -> bool:
         """Check if the agent is currently running."""
@@ -180,6 +189,19 @@ class ResumeAgentRequest(BaseModel):
     """Request to resume a completed agent with a new prompt."""
 
     prompt: str
+    max_turns: int | None = None
+    max_budget_usd: float | None = None
+
+
+class ImportSessionRequest(BaseModel):
+    """Request to import and resume an external session not started through the orchestrator."""
+
+    session_id: str
+    prompt: str
+    name: str | None = None  # Optional human-readable name
+    backend: AgentBackendType = AgentBackendType.CLAUDE_CODE
+    working_directory: str | None = None
+    model: str | None = None
     max_turns: int | None = None
     max_budget_usd: float | None = None
 

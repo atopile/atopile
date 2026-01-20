@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from ..core import AgentStateStore, PipelineExecutor, PipelineSessionStore, PipelineStateStore, ProcessManager, SessionManager
-from ..models import AgentState, AgentStatus, GlobalEvent, GlobalEventType, OutputChunk
+from ..models import AgentState, AgentStatus, GlobalEvent, GlobalEventType, OutputChunk, TodoItem
 
 if TYPE_CHECKING:
     pass
@@ -214,6 +214,18 @@ class OrchestratorState:
 
     def _handle_output(self, agent_id: str, chunk: OutputChunk) -> None:
         """Handle new output from an agent."""
+        from ..models import OutputType
+
+        # Check for TodoWrite tool calls
+        todos_updated = False
+        # Debug logging
+        if chunk.tool_name:
+            logger.info(f"[TODO DEBUG] chunk.type={chunk.type}, tool_name={chunk.tool_name}")
+        if chunk.type == OutputType.TOOL_USE and chunk.tool_name == "TodoWrite":
+            logger.info(f"[TODO DEBUG] Found TodoWrite! Processing...")
+            todos_updated = self._handle_todo_update(agent_id, chunk)
+            logger.info(f"[TODO DEBUG] todos_updated={todos_updated}")
+
         # Update agent state
         def updater(agent: AgentState) -> AgentState:
             agent.output_chunks += 1
@@ -232,8 +244,55 @@ class OrchestratorState:
                     self._ws_manager.broadcast_output(agent_id, chunk),
                     self._event_loop
                 )
+
+                # If todos were updated, broadcast that too
+                if todos_updated:
+                    agent = self._agent_store.get(agent_id)
+                    if agent:
+                        global_event = GlobalEvent(
+                            type=GlobalEventType.AGENT_TODOS_CHANGED,
+                            agent_id=agent_id,
+                            data={
+                                "todos": [t.model_dump() for t in agent.todos],
+                            },
+                        )
+                        asyncio.run_coroutine_threadsafe(
+                            self._ws_manager.broadcast_global(global_event),
+                            self._event_loop
+                        )
             except Exception as e:
                 logger.debug(f"Failed to broadcast output: {e}")
+
+    def _handle_todo_update(self, agent_id: str, chunk: OutputChunk) -> bool:
+        """Handle TodoWrite tool call and update agent's todos.
+
+        Returns True if todos were updated.
+        """
+        from ..models import TodoItem
+
+        if not chunk.tool_input:
+            return False
+
+        todos_data = chunk.tool_input.get("todos", [])
+        if not isinstance(todos_data, list):
+            return False
+
+        new_todos = []
+        for item in todos_data:
+            if isinstance(item, dict):
+                new_todos.append(TodoItem(
+                    content=item.get("content", ""),
+                    status=item.get("status", "pending"),
+                    active_form=item.get("activeForm"),
+                ))
+
+        def updater(agent: AgentState) -> AgentState:
+            agent.todos = new_todos
+            return agent
+
+        self._agent_store.update(agent_id, updater)
+        logger.debug(f"Updated todos for agent {agent_id}: {len(new_todos)} items")
+        return True
 
     def _handle_status_change(self, agent_id: str, status: AgentStatus) -> None:
         """Handle agent status change."""

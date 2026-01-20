@@ -8,6 +8,8 @@ export { SpawnAgentDialog } from './SpawnAgentDialog';
 export { PipelineSessionsPanel } from './PipelineSessionsPanel';
 export { PlanModeDisplay } from './PlanModeDisplay';
 export { QuestionDisplay } from './QuestionDisplay';
+export { TodoList } from './TodoList';
+export { CodeBlock } from './CodeBlock';
 export {
   Skeleton,
   AgentCardSkeleton,

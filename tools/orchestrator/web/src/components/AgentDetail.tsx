@@ -5,6 +5,7 @@ import { useDispatch, useAgentOutput, useLoading, useMobile, useMobileGestures }
 import { StatusBadge } from './StatusBadge';
 import { OutputStream } from './OutputStream';
 import { VimTextarea } from './VimTextarea';
+import { TodoList } from './TodoList';
 
 // Completion settings stored in localStorage
 type CompletionMode = 'code' | 'prompt';
@@ -67,6 +68,12 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
   const [showStats, setShowStats] = useState(!isMobile); // Collapsed by default on mobile
   const settingsPopoverRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Refs for stable callbacks (prevents re-renders when input values change)
+  const inputValueRef = useRef(inputValue);
+  const resumePromptRef = useRef(resumePrompt);
+  inputValueRef.current = inputValue;
+  resumePromptRef.current = resumePrompt;
 
   // Mobile gestures hook
   const {
@@ -157,25 +164,29 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
     }
   }, [dispatch, agent.id]);
 
+  // Stable callback - uses ref to avoid recreating on every keystroke
   const handleSendInput = useCallback(async () => {
-    if (!inputValue.trim() || !agent.isRunning) return;
+    const value = inputValueRef.current;
+    if (!value.trim() || !agent.isRunning) return;
 
     setSending(true);
     try {
       await dispatch({
         type: 'agents.sendInput',
-        payload: { agentId: agent.id, input: inputValue },
+        payload: { agentId: agent.id, input: value },
       });
       setInputValue('');
     } finally {
       setSending(false);
     }
-  }, [dispatch, agent.id, agent.isRunning, inputValue]);
+  }, [dispatch, agent.id, agent.isRunning]);
 
+  // Stable callback - uses ref to avoid recreating on every keystroke
   const handleResume = useCallback(async () => {
-    if (!resumePrompt.trim() || !agent.canResume) return;
+    const value = resumePromptRef.current;
+    if (!value.trim() || !agent.canResume) return;
 
-    const promptText = resumePrompt.trim();
+    const promptText = value.trim();
     setResumePrompt('');
 
     try {
@@ -186,7 +197,7 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
     } catch (e) {
       // Error is handled in logic layer
     }
-  }, [dispatch, agent.id, agent.canResume, resumePrompt]);
+  }, [dispatch, agent.id, agent.canResume]);
 
   const handleSaveName = useCallback(async () => {
     if (editedName.trim() !== (agent.name || '')) {
@@ -572,6 +583,11 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
           </div>
           <span className="text-gray-500">{formatDuration()}</span>
         </div>
+      )}
+
+      {/* Todo list (if agent has todos) */}
+      {agent.todos && agent.todos.length > 0 && (
+        <TodoList todos={agent.todos} compact={isMobile} />
       )}
 
       {/* Output stream */}

@@ -12,6 +12,7 @@ import type {
   PipelineNode,
   PipelineEdge,
   PipelineConfig,
+  TodoItem,
 } from './api/types';
 
 // Agent View Models
@@ -31,6 +32,7 @@ export interface AgentViewModel {
   exitCode: number | null;
   errorMessage: string | null;
   maxTurns: number | null;
+  todos: TodoItem[];
 
   // Computed for display
   isRunning: boolean;
