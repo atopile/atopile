@@ -5,8 +5,11 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-# Default storage directory (relative to working directory)
-DEFAULT_STORAGE_DIR = Path(".orchestrator")
+# Get the orchestrator package directory
+_PACKAGE_DIR = Path(__file__).parent.resolve()
+
+# Default storage directory (relative to the orchestrator package)
+DEFAULT_STORAGE_DIR = _PACKAGE_DIR / ".data"
 
 # Subdirectories
 SESSIONS_DIR = "sessions"
@@ -17,8 +20,15 @@ PIPELINE_SESSIONS_DIR = "pipeline_sessions"
 
 
 def get_storage_dir() -> Path:
-    """Get the storage directory, creating it if needed."""
-    storage_dir = Path(os.environ.get("ORCHESTRATOR_STORAGE_DIR", DEFAULT_STORAGE_DIR))
+    """Get the storage directory, creating it if needed.
+
+    The storage directory is located at tools/orchestrator/.data by default,
+    but can be overridden with the ORCHESTRATOR_STORAGE_DIR environment variable.
+    """
+    if env_dir := os.environ.get("ORCHESTRATOR_STORAGE_DIR"):
+        storage_dir = Path(env_dir)
+    else:
+        storage_dir = DEFAULT_STORAGE_DIR
     storage_dir.mkdir(parents=True, exist_ok=True)
     return storage_dir
 
