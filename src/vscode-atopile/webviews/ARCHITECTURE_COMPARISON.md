@@ -836,26 +836,23 @@ test('cancel build sets loading and calls API', async () => {
 
 This section provides a clear, high-level overview of the proposed layered architecture with emphasis on keeping the webview as a pure presentation layer.
 
-### 7.1 Core Principle: Webview is Just a URL
+### 7.1 Core Principle: Extension is Stateless
 
-**The webview should contain NO business logic.** It is purely a presentation layer that:
-- Receives state via WebSocket (from Python backend)
-- Renders that state as UI
-- Sends user actions back via WebSocket (to Python backend)
+**The VS Code extension should have NO state and NO logic.** It is purely a launcher that:
+- Registers commands
+- Opens webview panels
+- Nothing else
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              WEBVIEW PRINCIPLE                                   │
+│                              EXTENSION PRINCIPLE                                 │
 ├─────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
-│   Development:  Vite dev server (http://localhost:5173)                         │
-│   Production:   Compiled JS bundle loaded via webview.html                      │
-│                                                                                  │
-│   The webview is a DUMB TERMINAL:                                               │
-│     • Receives state from Python backend → Renders UI                           │
-│     • User clicks → Sends action to Python backend                              │
-│     • Single WebSocket connection to backend                                    │
-│     • NO business logic, NO REST API calls                                      │
+│   The extension is a STATELESS LAUNCHER:                                        │
+│     • Registers VS Code commands                                                │
+│     • Opens webview panels that load the UI Server                              │
+│     • NO state, NO logic, NO message passing                                    │
+│     • Does NOT sit between webview and backend                                  │
 │                                                                                  │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -863,87 +860,63 @@ This section provides a clear, high-level overview of the proposed layered archi
 ### 7.2 Architecture Overview Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              WEBVIEW (React App)                                 │
-│                     Loaded as URL: Vite dev server OR compiled bundle           │
-│  ┌───────────────────────────────────────────────────────────────────────────┐  │
-│  │                         PRESENTATION ONLY                                  │  │
-│  │                                                                            │  │
-│  │   Components: Sidebar, LogViewer, ProjectsPanel, BuildQueue, etc.         │  │
-│  │   • Renders state received via WebSocket                                   │  │
-│  │   • Dispatches user actions via WebSocket                                  │  │
-│  │   • Selectors transform state for display (memoized)                      │  │
-│  │   • NO business logic                                                      │  │
-│  │                                                                            │  │
-│  └───────────────────────────────────────────────────────────────────────────┘  │
-│                     │ { type: 'action', ... }      ▲ { type: 'state', data }    │
-│                     ▼ User actions                 │ Full/partial state         │
-└─────────────────────│──────────────────────────────│────────────────────────────┘
-                      │         WebSocket            │
-                      │                              │
-┌─────────────────────│──────────────────────────────│────────────────────────────┐
-│                     │  VS CODE EXTENSION           │                             │
-│                     │  (Bootstrap + Thin View)     │                             │
-│  ┌──────────────────▼──────────────────────────────│─────────────────────────┐  │
-│  │                      RESPONSIBILITIES                                      │  │
-│  │                                                                            │  │
-│  │  1. BOOTSTRAP INSTALL                                                     │  │
-│  │     • Download and install uv (if needed)                                 │  │
-│  │     • Install atopile via uv                                              │  │
-│  │                                                                            │  │
-│  │  2. BOOTSTRAP STARTUP                                                     │  │
-│  │     • Start Python backend server: `ato serve`                            │  │
-│  │     • Wait for server ready signal                                        │  │
-│  │                                                                            │  │
-│  │  3. THIN VIEW                                                             │  │
-│  │     • Create webview panels                                               │  │
-│  │     • Pass backend WebSocket URL to webview                               │  │
-│  │     • Handle webview lifecycle (show/hide/dispose)                        │  │
-│  │                                                                            │  │
-│  │  NO business logic, NO state management, NO action handling               │  │
-│  │  The extension is just a LAUNCHER + CONTAINER                             │  │
-│  │                                                                            │  │
-│  └───────────────────────────────────────────────────────────────────────────┘  │
-│                              │ spawn process                                     │
-└──────────────────────────────│───────────────────────────────────────────────────┘
-                               │
-                               ▼
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│                          PYTHON BACKEND (ato serve)                              │
+│                                  VS Code                                          │
+│                                                                                   │
+│  ┌────────────────────────────────────────────────────────────────────────────┐  │
+│  │                           Extension                                         │  │
+│  │                      (stateless launcher)                                   │  │
+│  │                                                                             │  │
+│  │   • registers commands                                                      │  │
+│  │   • opens webview panel                                                     │  │
+│  │   • no state, no logic                                                      │  │
+│  │                                                                             │  │
+│  └─────────────────────────────────┬───────────────────────────────────────────┘  │
+│                                    │ creates panel                                │
+│                                    ▼                                              │
+│  ┌────────────────────────────────────────────────────────────────────────────┐  │
+│  │                           Webview                                           │  │
+│  │                   (iframe loading UI Server)                                │  │
+│  └─────────────────────────────────┬───────────────────────────────────────────┘  │
+│                                    │ loads from                                   │
+└────────────────────────────────────│──────────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                            UI Server (Vite / React)                               │
+│                                                                                   │
+│  ┌────────────────────────────────────────────────────────────────────────────┐  │
+│  │   • Owns UI state                                                          │  │
+│  │   • Renders UI components                                                  │  │
+│  │   • No VS Code dependency                                                  │  │
+│  │   • Connects to backends via HTTP / WebSocket                              │  │
+│  └─────────────────────────────────┬───────────────────────────────────────────┘  │
+│                                    │ HTTP / WS                                    │
+└────────────────────────────────────│──────────────────────────────────────────────┘
+                                     │
+                                     ▼
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                          Python Backend (ato serve)                              │
 │                                                                                  │
 │  ┌────────────────────────────────────────────────────────────────────────────┐  │
-│  │                      STATE MANAGER (UIState)                               │  │
-│  │  • Single source of truth for ALL UI state                                │  │
-│  │  • Handles ALL user actions from webview                                  │  │
-│  │  • Broadcasts state updates to webview via WebSocket                      │  │
-│  │  • Computes derived state / ViewModels                                    │  │
-│  └────────────────────────────────────────────────────────────────────────────┘  │
-│                              │                     ▲                             │
-│                              ▼                     │                             │
-│  ┌────────────────────────────────────────────────────────────────────────────┐  │
-│  │                      API LAYER (FastAPI)                                    │  │
-│  │  • WebSocket: /ws/ui (bidirectional: state ↔ actions)                     │  │
-│  │  • WebSocket: /ws/logs/{build_id} (live build logs)                       │  │
-│  │  • REST endpoints for external integrations                               │  │
-│  └────────────────────────────────────────────────────────────────────────────┘  │
-│                              │                     ▲                             │
-│                              ▼                     │                             │
-│  ┌────────────────────────────────────────────────────────────────────────────┐  │
-│  │                      CORE LAYER (Business Logic)                           │  │
-│  │  • Wraps existing atopile: ConfigManager, Compiler, Solver, LSP           │  │
-│  │  • Manages build execution and state                                      │  │
-│  │  • Aggregates data from multiple sources                                  │  │
-│  │  • Handles package operations, project discovery                          │  │
-│  └────────────────────────────────────────────────────────────────────────────┘  │
-│                              │                     ▲                             │
-│                              ▼                     │                             │
-│  ┌────────────────────────────────────────────────────────────────────────────┐  │
-│  │                      MODELS LAYER (Pydantic)                               │  │
-│  │  • Canonical data definitions (Project, Build, Package, Problem)          │  │
-│  │  • UIState model (what gets sent to webview)                              │  │
-│  │  • Action models (what comes from webview)                                │  │
-│  │  • TypeScript types generated from Pydantic for webview                   │  │
-│  └────────────────────────────────────────────────────────────────────────────┘  │
+│  │                      API LAYER (FastAPI)                                   │  │
+│  │   • WebSocket: /ws/logs/{build_id} (live build logs)                       │  │
+│  │   • REST: /api/projects, /api/builds, /api/packages                        │  │
+│  │   • Serves data to UI Server                                               │  │
+│  └──────────────────────────────┬─────────────────────────────────────────────┘  │
+│                                 │                                                │
+│               ┌─────────────────┴─────────────────┐                              │
+│               │                                   │                              │
+│               ▼                                   ▼                              │
+│  ┌─────────────────────────────┐   ┌─────────────────────────────────────────┐  │
+│  │      MODELS LAYER           │   │           CORE LAYER                     │  │
+│  │   (External API Clients)    │   │      (Atopile Wrapper)                   │  │
+│  ├─────────────────────────────┤   ├─────────────────────────────────────────┤  │
+│  │ • packages.atopile.io API   │   │ • ConfigManager (ato.yaml)              │  │
+│  │ • Registry search/details   │   │ • BuildRunner (ato build)               │  │
+│  │ • Package metadata          │   │ • Compiler, Solver, LSP                 │  │
+│  └─────────────────────────────┘   └─────────────────────────────────────────┘  │
+│                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -951,142 +924,156 @@ This section provides a clear, high-level overview of the proposed layered archi
 
 | Layer | Location | Responsibility | What It Does NOT Do |
 |-------|----------|----------------|---------------------|
-| **Webview** | `webviews/` | Render UI, send actions via WS | NO business logic, NO state management |
-| **Extension** | `src/` | Bootstrap (install uv/ato), start backend, create webview | NO business logic, NO state, NO action handling |
-| **Backend State** | Python `state/` | UIState management, action handling | NO HTTP concerns |
-| **Backend API** | Python `server/` | WebSocket + REST endpoints | NO state logic |
-| **Backend Core** | Python `core/` | Business logic, atopile integration | NO UI concerns |
-| **Backend Models** | Python `models/` | Data definitions (Pydantic) | NO logic |
+| **Extension** | `src/` | Register commands, open webview panels | NO state, NO logic, NO message passing |
+| **UI Server** | `webviews/` | Own UI state, render components, call APIs | NO VS Code dependency |
+| **Backend API** | Python `server/` | HTTP/WebSocket endpoints, routes requests | NO business logic |
+| **Backend Models** | Python `models/` | External API clients (packages.atopile.io) | NO atopile internals |
+| **Backend Core** | Python `core/` | Atopile wrapper (ConfigManager, BuildRunner) | NO external APIs |
 
-### 7.3.1 Extension is Minimal
+### 7.3.1 Extension Code Example
 
-The VS Code extension has **three jobs only**:
+The VS Code extension is **extremely simple** - it just opens a webview:
 
 ```typescript
-// src/extension.ts - THE ENTIRE EXTENSION LOGIC
+// src/extension.ts - THE ENTIRE EXTENSION
 
 export async function activate(context: vscode.ExtensionContext) {
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 1. BOOTSTRAP INSTALL
-  // ═══════════════════════════════════════════════════════════════════════════
-  const uvPath = await ensureUvInstalled(context);
-  const atoPath = await ensureAtopileInstalled(uvPath, context);
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 2. BOOTSTRAP STARTUP
-  // ═══════════════════════════════════════════════════════════════════════════
-  const serverProcess = spawn(atoPath, ['serve', '--port', '8501']);
-  const wsUrl = await waitForServerReady(serverProcess);  // e.g., ws://localhost:8501/ws/ui
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 3. THIN VIEW
-  // ═══════════════════════════════════════════════════════════════════════════
-  const sidebarProvider = new SidebarViewProvider(wsUrl);
+  // Register the sidebar webview provider
+  const sidebarProvider = new SidebarViewProvider(context.extensionUri);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('atopile.sidebar', sidebarProvider)
   );
 
-  // That's it. No logic, no state, no action handling.
+  // Register commands that open panels
+  context.subscriptions.push(
+    vscode.commands.registerCommand('atopile.openLogViewer', () => {
+      LogViewerPanel.createOrShow(context.extensionUri);
+    })
+  );
+
+  // That's it. No state, no logic, no message handling.
 }
 
 class SidebarViewProvider implements vscode.WebviewViewProvider {
-  constructor(private wsUrl: string) {}
+  constructor(private extensionUri: vscode.Uri) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView) {
     webviewView.webview.options = { enableScripts: true };
+    // Load the UI Server (Vite in dev, compiled bundle in prod)
     webviewView.webview.html = this.getHtml(webviewView.webview);
   }
 
   private getHtml(webview: vscode.Webview): string {
-    // Just inject the WebSocket URL - webview connects directly to backend
-    return `
-      <!DOCTYPE html>
+    // Development: Load from Vite dev server
+    if (process.env.NODE_ENV === 'development') {
+      return `<!DOCTYPE html>
+        <html>
+          <body>
+            <div id="root"></div>
+            <script type="module" src="http://localhost:5173/src/main.tsx"></script>
+          </body>
+        </html>`;
+    }
+
+    // Production: Load compiled bundle
+    const scriptUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.extensionUri, 'webviews', 'dist', 'main.js')
+    );
+    return `<!DOCTYPE html>
       <html>
         <body>
           <div id="root"></div>
-          <script>window.ATOPILE_WS_URL = "${this.wsUrl}";</script>
-          <script src="${this.getBundleUri(webview)}"></script>
+          <script src="${scriptUri}"></script>
         </body>
-      </html>
-    `;
+      </html>`;
   }
 }
 ```
 
-### 7.3.2 Webview Connects Directly to Backend
+### 7.3.2 UI Server Owns State
 
-The webview talks directly to the Python backend via WebSocket - **not through the extension**:
+The UI Server (Vite/React app) **owns all UI state** and talks directly to the backend:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                         DIRECT CONNECTION                                        │
+│                         UI SERVER RESPONSIBILITIES                               │
 ├─────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
-│   Webview ◄─────── WebSocket ───────► Python Backend                            │
+│   UI Server (React App)                                                         │
+│     │                                                                           │
+│     ├── Owns UI state (React state, Zustand, etc.)                             │
+│     ├── Renders all UI components                                               │
+│     ├── Makes HTTP/WebSocket calls to Python backend                           │
+│     ├── Has NO dependency on VS Code APIs                                       │
+│     └── Can run standalone in browser for development                          │
 │                                                                                  │
-│   The extension is NOT in the data path.                                        │
-│   Extension only:                                                                │
-│     1. Starts the backend process                                               │
-│     2. Gives the webview the WebSocket URL                                      │
-│     3. Creates the webview container                                            │
-│                                                                                  │
-│   After startup, the extension does NOTHING.                                    │
+│   Extension does NOT:                                                           │
+│     • Hold any state                                                            │
+│     • Pass messages between webview and backend                                 │
+│     • Handle any user actions                                                   │
+│     • Know about builds, projects, packages, etc.                              │
 │                                                                                  │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 7.4 Webview Development Setup
+### 7.4 Development Setup
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                          WEBVIEW BUILD MODES                                     │
+│                          DEVELOPMENT WORKFLOW                                    │
 ├─────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
-│  DEVELOPMENT MODE                                                                │
-│  ─────────────────                                                               │
-│  1. Start Vite dev server:                                                      │
-│     $ cd webviews && npm run dev                                                │
-│     → Serves at http://localhost:5173                                           │
+│  STEP 1: Start Python Backend                                                   │
+│  ────────────────────────────                                                   │
+│  $ ato serve --port 8501                                                        │
+│  → Backend ready at http://localhost:8501                                       │
 │                                                                                  │
-│  2. Extension loads webview URL:                                                │
-│     webview.html = "http://localhost:5173"                                      │
+│  STEP 2: Start UI Server (Vite)                                                 │
+│  ─────────────────────────────                                                  │
+│  $ cd webviews && npm run dev                                                   │
+│  → UI Server at http://localhost:5173                                           │
+│  → Can open in browser for standalone development!                              │
 │                                                                                  │
-│  3. Benefits:                                                                   │
-│     • Hot module replacement (HMR)                                              │
-│     • Fast refresh on file changes                                              │
-│     • React DevTools support                                                    │
-│     • Source maps for debugging                                                 │
+│  STEP 3: Launch Extension (optional)                                            │
+│  ───────────────────────────────────                                            │
+│  → F5 in VS Code to test in extension host                                      │
+│  → Webview loads from http://localhost:5173                                     │
 │                                                                                  │
-│  PRODUCTION MODE                                                                 │
-│  ────────────────                                                                │
-│  1. Build webview:                                                              │
-│     $ cd webviews && npm run build                                              │
-│     → Outputs to webviews/dist/                                                 │
+│  BENEFITS:                                                                       │
+│  • Develop UI in browser with React DevTools                                    │
+│  • Hot Module Replacement (HMR) for instant updates                             │
+│  • No VS Code reload needed for UI changes                                      │
+│  • UI Server has no VS Code dependency                                          │
 │                                                                                  │
-│  2. Extension loads compiled bundle:                                            │
-│     webview.html = webview.asWebviewUri(distPath)                               │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                          PRODUCTION BUILD                                        │
+├─────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
-│  3. Bundle contains:                                                            │
-│     • Minified JS                                                               │
-│     • CSS                                                                        │
-│     • Static assets                                                             │
+│  $ cd webviews && npm run build                                                 │
+│  → Outputs to webviews/dist/                                                    │
+│                                                                                  │
+│  Extension loads compiled bundle via webview.asWebviewUri()                     │
 │                                                                                  │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 7.5 WebSocket Protocol (Webview ↔ Backend)
+### 7.5 UI Server Communication with Backend
 
-The webview connects **directly to the Python backend** via WebSocket. The extension is NOT in the data path.
+The UI Server connects **directly to the Python backend** via HTTP/WebSocket. The extension is NOT involved.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                      COMMUNICATION ARCHITECTURE                                   │
 ├─────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
-│   WEBVIEW ◄─────────── WebSocket ────────────► PYTHON BACKEND                   │
+│   UI SERVER (React) ◄────── HTTP / WebSocket ──────► PYTHON BACKEND             │
 │                                                                                  │
-│   Extension does NOT relay messages.                                             │
-│   Extension only provides the WebSocket URL at startup.                         │
+│   • REST API calls for CRUD operations                                          │
+│   • WebSocket for live updates (build logs, status changes)                     │
+│   • Extension does NOT relay messages                                           │
+│   • UI Server can run standalone in browser                                     │
 │                                                                                  │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -1187,238 +1174,231 @@ function App() {
 }
 ```
 
-### 7.6 Backend Handles ALL Logic
+### 7.6 UI Server State Management
 
-**All business logic lives in the Python backend**, not in the extension or webview:
+The UI Server (React app) **owns all UI state** using standard React patterns:
 
-```python
-# backend/state/ui_state_manager.py
+```typescript
+// webviews/src/store/index.ts - Using Zustand for state management
 
-class UIStateManager:
-    """
-    Single source of truth for ALL UI state.
-    Handles ALL user actions from webview.
-    Lives in Python backend, NOT in VS Code extension.
-    """
+import { create } from 'zustand';
+import { api } from '../api';
 
-    def __init__(
-        self,
-        config_manager: ConfigManager,      # Existing atopile
-        build_runner: BuildRunner,          # Build execution
-        package_service: PackageService,    # Package operations
-    ):
-        self.state = create_initial_state()
-        self.connections: set[WebSocket] = set()
+interface UIState {
+  // Data from backend
+  projects: Project[];
+  builds: Build[];
+  packages: Package[];
 
-        # Use existing atopile components - don't reimplement!
-        self._config = config_manager
-        self._builds = build_runner
-        self._packages = package_service
+  // UI-specific state (owned by UI Server)
+  selectedProjectRoot: string | null;
+  expandedSections: Set<string>;
+  loading: Record<string, boolean>;
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # Handle actions from webview (via WebSocket)
-    # ─────────────────────────────────────────────────────────────────────────
+  // Actions
+  selectProject: (root: string) => void;
+  startBuild: (targetIds: string[]) => Promise<void>;
+  installPackage: (packageId: string) => Promise<void>;
+}
 
-    async def handle_action(self, action: str, payload: dict) -> None:
-        match action:
-            case 'build':
-                await self._handle_build(payload['targetIds'])
-            case 'cancelBuild':
-                await self._handle_cancel_build(payload['buildId'])
-            case 'selectProject':
-                await self._handle_select_project(payload['projectRoot'])
-            case 'installPackage':
-                await self._handle_install_package(payload['packageId'])
-            case 'openFile':
-                await self._handle_open_file(payload['file'], payload.get('line'))
-            # ... other actions
+export const useStore = create<UIState>((set, get) => ({
+  projects: [],
+  builds: [],
+  packages: [],
+  selectedProjectRoot: null,
+  expandedSections: new Set(),
+  loading: {},
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # Action handlers (business logic lives HERE in Python backend)
-    # ─────────────────────────────────────────────────────────────────────────
+  selectProject: (root) => set({ selectedProjectRoot: root }),
 
-    async def _handle_build(self, target_ids: list[str]) -> None:
-        # Update UI state to show building
-        self._update_state(loading={'build': True})
+  startBuild: async (targetIds) => {
+    set({ loading: { ...get().loading, build: true } });
+    try {
+      // Call backend API
+      const build = await api.builds.start(targetIds);
+      set((state) => ({
+        builds: [...state.builds, build],
+        loading: { ...state.loading, build: false },
+      }));
+    } catch (error) {
+      set({ loading: { ...get().loading, build: false } });
+    }
+  },
 
-        try:
-            # Start build using existing atopile build system
-            build = await self._builds.start(target_ids)
-
-            # Update state with new build
-            self._update_state(
-                builds={**self.state.builds, build.id: build},
-                current_build_id=build.id,
-                loading={'build': False}
-            )
-
-            # Stream logs via WebSocket
-            async for log_entry in self._builds.stream_logs(build.id):
-                await self._broadcast_event('build.log', log_entry)
-
-        except Exception as e:
-            self._update_state(
-                loading={'build': False},
-                errors={'build': str(e)}
-            )
-
-    async def _handle_install_package(self, package_id: str) -> None:
-        project_root = self.state.selected_project_root
-
-        self._update_state(
-            package_operations={**self.state.package_operations, package_id: 'installing'}
-        )
-
-        try:
-            # Use existing atopile package system
-            await self._packages.install(package_id, project_root)
-
-            # Refresh project config using existing ConfigManager
-            project = self._config.load(project_root)
-
-            self._update_state(
-                projects={**self.state.projects, project_root: project},
-                package_operations={**self.state.package_operations, package_id: 'complete'}
-            )
-
-        except Exception as e:
-            self._update_state(
-                package_operations={**self.state.package_operations, package_id: 'error'},
-                errors={f'package:{package_id}': str(e)}
-            )
-
-    async def _handle_open_file(self, file: str, line: int | None) -> None:
-        # Backend can trigger VS Code to open file via LSP or command server
-        # This keeps VS Code-specific logic in the communication layer
-        await self._notify_vscode('openFile', {'file': file, 'line': line})
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # State management
-    # ─────────────────────────────────────────────────────────────────────────
-
-    def _update_state(self, **updates) -> None:
-        self.state = self.state.model_copy(update=updates)
-        self._broadcast_state()
-
-    async def _broadcast_state(self) -> None:
-        """Send state to all connected webviews."""
-        message = json.dumps({'type': 'state', 'data': self.state.model_dump()})
-        for ws in self.connections:
-            await ws.send_text(message)
-
-    async def _broadcast_event(self, event: str, data: dict) -> None:
-        """Send live event to all connected webviews."""
-        message = json.dumps({'type': 'event', 'event': event, 'data': data})
-        for ws in self.connections:
-            await ws.send_text(message)
+  installPackage: async (packageId) => {
+    set({ loading: { ...get().loading, [`package:${packageId}`]: true } });
+    try {
+      await api.packages.install(packageId, get().selectedProjectRoot!);
+      // Refresh projects to get updated dependencies
+      const projects = await api.projects.list();
+      set((state) => ({
+        projects,
+        loading: { ...state.loading, [`package:${packageId}`]: false },
+      }));
+    } catch (error) {
+      set({ loading: { ...get().loading, [`package:${packageId}`]: false } });
+    }
+  },
+}));
 ```
 
-### 7.7 Why All Logic in Backend?
+### 7.7 Backend Layers: Models vs Core
+
+The API layer connects to two parallel layers:
+
+**MODELS LAYER** - External API clients (packages.atopile.io, etc.):
+
+```python
+# backend/models/packages_api.py
+
+import httpx
+
+class PackagesAPI:
+    """Client for packages.atopile.io registry API."""
+
+    BASE_URL = "https://packages.atopile.io/api"
+
+    async def search(self, query: str) -> list[PackageInfo]:
+        """Search the package registry."""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{self.BASE_URL}/search", params={"q": query})
+            return [PackageInfo(**p) for p in response.json()]
+
+    async def get_details(self, package_id: str) -> PackageDetails:
+        """Get detailed package info from registry."""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{self.BASE_URL}/packages/{package_id}")
+            return PackageDetails(**response.json())
+```
+
+**CORE LAYER** - Atopile wrapper (ConfigManager, BuildRunner, etc.):
+
+```python
+# backend/core/projects.py
+
+from atopile.config import ConfigManager  # Use existing atopile!
+
+class ProjectsCore:
+    """Wrapper around existing atopile functionality."""
+
+    def get_installed_packages(self, project_root: str) -> list[InstalledPackage]:
+        """Get packages installed in a project from ato.yaml."""
+        config = ConfigManager.load(project_root)  # Use existing atopile!
+        return [
+            InstalledPackage(id=dep.name, version=dep.version)
+            for dep in config.dependencies
+        ]
+
+    def install_package(self, project_root: str, package_id: str) -> None:
+        """Install a package using existing atopile PackageManager."""
+        from atopile.packages import PackageManager
+        pm = PackageManager(project_root)
+        pm.install(package_id)
+```
+
+**API LAYER** - Routes that use both:
+
+```python
+# backend/server/routes/packages.py
+
+@router.get("/api/packages/search")
+async def search_packages(query: str, packages_api: PackagesAPI):
+    """Search registry - uses MODELS layer."""
+    return await packages_api.search(query)
+
+@router.get("/api/projects/{root}/packages")
+async def get_installed(root: str, projects_core: ProjectsCore):
+    """Get installed packages - uses CORE layer."""
+    return projects_core.get_installed_packages(root)
+
+@router.post("/api/packages/install")
+async def install(request: InstallRequest, projects_core: ProjectsCore):
+    """Install package - uses CORE layer."""
+    projects_core.install_package(request.project_root, request.package_id)
+    return {"status": "success"}
+```
+
+### 7.8 Why This Architecture?
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                     WHY PUT ALL LOGIC IN PYTHON BACKEND?                         │
+│                     WHY UI SERVER OWNS STATE + BACKEND PROVIDES DATA?            │
 ├─────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                  │
-│  1. REUSE EXISTING ATOPILE CODE                                                  │
+│  1. STANDARD REACT PATTERNS                                                      │
+│     • UI state management with Zustand/Redux/Context                            │
+│     • Familiar to React developers                                              │
+│     • Rich ecosystem of tools (DevTools, testing libraries)                     │
+│                                                                                  │
+│  2. NO VS CODE DEPENDENCY                                                        │
+│     • UI Server can run standalone in browser                                   │
+│     • Develop and test without VS Code                                          │
+│     • Extension is just a container                                             │
+│                                                                                  │
+│  3. BACKEND REUSES EXISTING ATOPILE                                              │
 │     • ConfigManager already parses ato.yaml                                     │
 │     • BuildRunner already executes builds                                       │
-│     • PackageService already handles ato add/remove                             │
-│     • Don't reimplement in TypeScript - just wrap in Python                     │
+│     • PackageManager already handles ato add/remove                             │
+│     • Backend wraps these - doesn't reimplement                                 │
 │                                                                                  │
-│  2. SINGLE SOURCE OF TRUTH                                                       │
-│     • State lives in Python backend (UIStateManager)                            │
-│     • Webview is just a "view" of that state                                   │
-│     • Extension is just a launcher - no state                                   │
-│     • No synchronization issues between multiple copies                         │
+│  4. CLEAR SEPARATION                                                             │
+│     • Extension: launcher (stateless)                                           │
+│     • UI Server: presentation + UI state                                        │
+│     • Backend: business logic + data                                            │
 │                                                                                  │
-│  3. SIMPLER EXTENSION                                                            │
-│     • Extension only does: install uv, install ato, start backend, show webview │
-│     • No business logic in TypeScript                                           │
-│     • Easier to maintain - all logic in one place (Python)                      │
-│     • Extension changes rarely needed                                           │
-│                                                                                  │
-│  4. TESTABILITY                                                                  │
-│     • Python backend is easily unit tested with pytest                          │
-│     • Mock ConfigManager, BuildRunner, etc.                                     │
-│     • Webview tests are just "does it render state correctly?"                 │
-│     • No need to test TypeScript business logic                                 │
-│                                                                                  │
-│  5. PORTABILITY                                                                  │
-│     • Same Python backend could serve web dashboard                             │
-│     • Same backend could serve CLI dashboard                                    │
-│     • Different frontends, same logic                                           │
-│                                                                                  │
-│  6. DEVELOPMENT EXPERIENCE                                                       │
-│     • Vite HMR for fast UI iteration on webview                                 │
-│     • Python changes just restart backend                                       │
-│     • Don't need to reload VS Code extension for logic changes                  │
+│  5. DEVELOPMENT EXPERIENCE                                                       │
+│     • Vite HMR for instant UI updates                                           │
+│     • React DevTools in browser                                                 │
+│     • Backend changes don't require extension reload                            │
 │                                                                                  │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 7.8 Data Flow Summary
+### 7.9 Data Flow Summary
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │ EXAMPLE: User clicks "Install Package"                                           │
 └─────────────────────────────────────────────────────────────────────────────────┘
 
-1. WEBVIEW (React)
+1. UI SERVER (React)
    User clicks button
         │
         ▼
-   dispatchAction('installPackage', { packageId: 'atopile/resistors' })
+   useStore().installPackage('atopile/resistors')
         │
         ▼
-   websocket.send({ type: 'action', action: 'installPackage', payload: {...} })
+   set({ loading: { 'package:atopile/resistors': true } })
         │
-        ▼ WebSocket (DIRECT to backend - extension NOT involved)
+        ▼ UI re-renders with loading spinner
+        │
+        ▼
+   await api.packages.install('atopile/resistors', projectRoot)
+        │
+        ▼ HTTP POST (DIRECT to backend - extension NOT involved)
 ────────────────────────────────────────────────────────────────────────────────────
 
-2. PYTHON BACKEND (state/ui_state_manager.py)
-   ws_handler receives message
+2. PYTHON BACKEND (server/routes/packages.py)
+   POST /api/packages/install
         │
         ▼
-   state_manager.handle_action('installPackage', { packageId: 'atopile/resistors' })
+   PackageManager.install('atopile/resistors')  ◄── Use existing atopile!
+        │
+        ▼ Runs: ato add atopile/resistors
         │
         ▼
-   _handle_install_package({ packageId })
+   Return { status: 'success' }
         │
-        ├──▶ _update_state(package_operations={packageId: 'installing'})
-        │           │
-        │           ▼ _broadcast_state()
-        │    websocket.send({ type: 'state', data: newState })
-        │           │
-        │           ▼ Webview re-renders with loading spinner
-        │
-        ├──▶ packages.install(packageId, projectRoot)  ◄── Use existing atopile!
-        │           │
-        │           ▼ Runs: ato add atopile/resistors
-        │    Returns success
-        │
-        ├──▶ config.load(projectRoot)  ◄── Refresh using existing ConfigManager
-        │           │
-        │           ▼ Returns updated project with new dependency
-        │
-        └──▶ _update_state(
-               projects={root: updatedProject},
-               package_operations={packageId: 'complete'}
-             )
-                    │
-                    ▼ _broadcast_state()
-             websocket.send({ type: 'state', data: newState })
-                    │
-                    ▼ WebSocket
+        ▼ HTTP 200 OK
 ────────────────────────────────────────────────────────────────────────────────────
 
-3. WEBVIEW (React)
+3. UI SERVER (React)
         │
         ▼
-   ws.onmessage receives new state
+   await api.projects.list()  ◄── Refresh to get updated dependencies
         │
         ▼
-   setState(message.data)
+   set({ projects: updatedProjects, loading: { 'package:...': false } })
         │
         ▼
    Components re-render showing package installed ✓
@@ -1428,29 +1408,37 @@ class UIStateManager:
 │ NOTE: The VS Code extension is NOT in this data flow!                            │
 │                                                                                  │
 │ Extension only:                                                                  │
-│   1. Installed uv and atopile at startup                                        │
-│   2. Started the Python backend server                                          │
-│   3. Created the webview and gave it the WebSocket URL                          │
+│   1. Registered a command                                                        │
+│   2. Opened a webview panel that loads the UI Server                            │
 │                                                                                  │
-│ After that, the extension does NOTHING. It's just a container.                  │
+│ Extension does NOTHING during the actual operation.                             │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 7.10 Simplified Webview Structure
+### 7.10 UI Server Project Structure
 
-Since the webview has no business logic, its structure is minimal:
+The UI Server is a standard React app that owns its state and calls backend APIs:
 
 ```
-webviews/
+webviews/                        # UI Server (Vite / React)
 ├── src/
 │   ├── main.tsx                 # Entry point
-│   ├── App.tsx                  # State receiver, action dispatcher
+│   ├── App.tsx                  # Root component
 │   │
-│   ├── context/                 # Simple React context (NO logic hooks)
-│   │   ├── StateContext.tsx     # Holds state from extension
-│   │   └── ActionContext.tsx    # Dispatch function to extension
+│   ├── store/                   # State management (Zustand)
+│   │   ├── index.ts             # Main store with all state + actions
+│   │   └── slices/              # Optional: split by domain
+│   │       ├── projects.ts
+│   │       ├── builds.ts
+│   │       └── packages.ts
 │   │
-│   ├── components/              # Pure presentational components
+│   ├── api/                     # Backend API client
+│   │   ├── client.ts            # Base HTTP/WS client
+│   │   ├── projects.ts          # GET /api/projects, etc.
+│   │   ├── builds.ts            # POST /api/builds, GET /ws/logs
+│   │   └── packages.ts          # GET /api/packages, POST /api/packages/install
+│   │
+│   ├── components/              # UI components
 │   │   ├── Sidebar/
 │   │   │   ├── index.tsx
 │   │   │   ├── ProjectsSection.tsx
@@ -1467,44 +1455,38 @@ webviews/
 │   │       ├── Spinner.tsx
 │   │       └── CollapsibleSection.tsx
 │   │
-│   ├── selectors/               # Memoized state selectors (optional, for performance)
-│   │   ├── projects.ts          # selectProjects(state) → ProjectViewModel[]
-│   │   ├── builds.ts            # selectBuilds(state) → BuildViewModel[]
-│   │   └── problems.ts          # selectProblems(state) → ProblemViewModel[]
-│   │
-│   └── types/                   # TypeScript types (shared with extension)
-│       ├── state.ts             # UIState type
-│       ├── actions.ts           # Action types
-│       └── models.ts            # Project, Build, Package, etc.
+│   └── types/                   # TypeScript types (generated from Pydantic)
+│       ├── models.ts            # Project, Build, Package, etc.
+│       └── api.ts               # API request/response types
 │
 ├── vite.config.ts               # Vite configuration
 ├── package.json
 └── tsconfig.json
 
-NO logic/, NO api/, NO hooks/ for business logic
-The webview is JUST rendering + dispatching
+KEY POINTS:
+• Has store/ for state management (Zustand, Redux, etc.)
+• Has api/ for calling Python backend
+• NO VS Code dependency - can run standalone in browser
 ```
 
-**Key difference from typical React apps:**
-- NO `useEffect` for data fetching
-- NO `useState` for form state that calls APIs
-- NO custom hooks that encapsulate business logic
-- Just `useState` to hold what the extension sends
-- Just `useContext` to read state and dispatch actions
+**Standard React patterns - nothing special:**
+- Use Zustand/Redux for state management
+- Use `useEffect` for data fetching on mount
+- Use async actions that call backend APIs
+- Standard React hooks and patterns
 
 ```typescript
 // webviews/src/components/ProjectsSection.tsx
 
-import { useContext, useMemo } from 'react';
-import { StateContext, ActionContext } from '../context';
-import { selectProjects } from '../selectors/projects';
+import { useStore } from '../store';
 
 export function ProjectsSection() {
-  const state = useContext(StateContext);
-  const dispatch = useContext(ActionContext);
+  const projects = useStore(state => state.projects);
+  const selectedProjectRoot = useStore(state => state.selectedProjectRoot);
+  const selectProject = useStore(state => state.selectProject);
+  const loading = useStore(state => state.loading.projects);
 
-  // Selector transforms state for display (memoized)
-  const projects = useMemo(() => selectProjects(state), [state]);
+  if (loading) return <Spinner />;
 
   return (
     <section>
@@ -1512,28 +1494,52 @@ export function ProjectsSection() {
       {projects.map(project => (
         <div
           key={project.root}
-          onClick={() => dispatch('selectProject', { projectRoot: project.root })}
+          className={project.root === selectedProjectRoot ? 'selected' : ''}
+          onClick={() => selectProject(project.root)}
         >
           {project.name}
-          {project.isSelected && ' ✓'}
         </div>
       ))}
     </section>
   );
 }
 
-// NO API calls, NO business logic
-// Just: read state → render → dispatch on click
+// Standard React component - nothing VS Code specific
 ```
 
-### 7.11 The Model Layer In Depth
+### 7.11 Type Definitions
 
-The Model layer defines the **shape of data** throughout the application. It serves as the contract between frontend and backend.
+Types are defined in **Pydantic** (backend) and **generated** or mirrored in **TypeScript** (UI Server). This ensures consistency.
 
-#### 7.11.1 Model Type Definitions
+#### 7.11.1 Backend Pydantic Models (Source of Truth)
+
+```python
+# backend/schemas/package.py
+
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
+
+class Package(BaseModel):
+    """Package as stored in backend state."""
+    id: str
+    name: str
+    description: str
+    author: str
+    latest_version: str
+    installed_version: Optional[str] = None
+    is_installed: bool = False
+    is_updatable: bool = False
+    download_count: int
+    tags: list[str]
+    repository_url: Optional[str] = None
+```
+
+#### 7.11.2 TypeScript Types (Generated or Mirrored)
 
 ```typescript
-// webviews/src/logic/models/package.ts
+// webviews/src/types/models.ts
+// Generated from Pydantic using pydantic2ts or manually maintained
 
 /**
  * Package as returned from the packages.atopile.io API
@@ -1772,534 +1778,236 @@ export interface AtopileVersion {
 
 The API layer lives in the **Python backend**, providing WebSocket and REST endpoints. The webview communicates directly with these endpoints - **not through the extension**.
 
-#### 7.12.1 Backend API Architecture (Python)
+#### 7.12.1 UI Server API Client
+
+The UI Server makes direct HTTP calls to the backend (no extension in the middle):
+
+```typescript
+// webviews/src/api/client.ts
+
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8501';
+
+async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`${BASE_URL}${url}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+}
+
+export const api = {
+  // ─────────────────────────────────────────────────────────────────────
+  // PACKAGES API (uses Models layer for search, Core layer for install)
+  // ─────────────────────────────────────────────────────────────────────
+
+  packages: {
+    search: (query: string) =>
+      fetchJSON<Package[]>(`/api/packages/search?q=${encodeURIComponent(query)}`),
+
+    getDetails: (packageId: string) =>
+      fetchJSON<PackageDetails>(`/api/packages/${encodeURIComponent(packageId)}`),
+
+    getInstalled: (projectRoot: string) =>
+      fetchJSON<InstalledPackage[]>(`/api/projects/${encodeURIComponent(projectRoot)}/packages`),
+
+    install: (packageId: string, projectRoot: string, version?: string) =>
+      fetchJSON<void>('/api/packages/install', {
+        method: 'POST',
+        body: JSON.stringify({ packageId, projectRoot, version }),
+      }),
+
+    remove: (packageId: string, projectRoot: string) =>
+      fetchJSON<void>('/api/packages/remove', {
+        method: 'POST',
+        body: JSON.stringify({ packageId, projectRoot }),
+      }),
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // BUILDS API (uses Core layer - BuildRunner wrapper)
+  // ─────────────────────────────────────────────────────────────────────
+
+  builds: {
+    start: (targetIds: string[]) =>
+      fetchJSON<Build>('/api/builds', {
+        method: 'POST',
+        body: JSON.stringify({ targetIds }),
+      }),
+
+    cancel: (buildId: string) =>
+      fetchJSON<void>(`/api/builds/${buildId}/cancel`, { method: 'POST' }),
+
+    get: (buildId: string) =>
+      fetchJSON<Build>(`/api/builds/${buildId}`),
+
+    list: (projectRoot: string, limit = 10) =>
+      fetchJSON<Build[]>(`/api/projects/${encodeURIComponent(projectRoot)}/builds?limit=${limit}`),
+  },
+
+  // ─────────────────────────────────────────────────────────────────────
+  // PROJECTS API (uses Core layer - ConfigManager wrapper)
+  // ─────────────────────────────────────────────────────────────────────
+
+  projects: {
+    list: () => fetchJSON<Project[]>('/api/projects'),
+
+    get: (projectRoot: string) =>
+      fetchJSON<Project>(`/api/projects/${encodeURIComponent(projectRoot)}`),
+  },
+};
+```
+
+#### 7.12.2 WebSocket for Live Updates
+
+For build logs and real-time events, use WebSocket:
+
+```typescript
+// webviews/src/api/websocket.ts
+
+export function connectToBuildLogs(buildId: string, onLog: (entry: LogEntry) => void): () => void {
+  const ws = new WebSocket(`ws://localhost:8501/ws/logs/${buildId}`);
+
+  ws.onmessage = (event) => {
+    const entry = JSON.parse(event.data) as LogEntry;
+    onLog(entry);
+  };
+
+  return () => ws.close();
+}
+```
+
+#### 7.12.3 Backend Routes (Python)
+
+The backend exposes these endpoints:
 
 ```python
-# backend/server/routes/ui.py
+# backend/server/routes/packages.py
 
-from fastapi import APIRouter, WebSocket
-from ..state import UIStateManager
+@router.get("/api/packages/search")
+async def search_packages(q: str, packages_api: PackagesAPI):
+    """Search package registry - uses MODELS layer."""
+    return await packages_api.search(q)
 
-router = APIRouter()
+@router.post("/api/packages/install")
+async def install_package(request: InstallRequest, core: ProjectsCore):
+    """Install package - uses CORE layer (atopile wrapper)."""
+    core.install_package(request.project_root, request.package_id)
+    return {"status": "success"}
 
-@router.websocket("/ws/ui")
-async def ui_websocket(websocket: WebSocket, state_manager: UIStateManager):
-    """
-    Main WebSocket endpoint for UI communication.
-    Webview connects DIRECTLY here - extension is NOT involved.
-    """
+# backend/server/routes/builds.py
+
+@router.post("/api/builds")
+async def start_build(request: BuildRequest, core: BuildsCore):
+    """Start build - uses CORE layer (BuildRunner wrapper)."""
+    return await core.start(request.target_ids)
+
+@router.websocket("/ws/logs/{build_id}")
+async def build_logs(websocket: WebSocket, build_id: str, core: BuildsCore):
+    """Stream build logs via WebSocket."""
     await websocket.accept()
-    state_manager.connections.add(websocket)
-
-    # Send initial state
-    await websocket.send_json({'type': 'state', 'data': state_manager.state.model_dump()})
-
-    try:
-        while True:
-            message = await websocket.receive_json()
-            if message['type'] == 'action':
-                await state_manager.handle_action(message['action'], message['payload'])
-    finally:
-        state_manager.connections.discard(websocket)
+    async for log_entry in core.stream_logs(build_id):
+        await websocket.send_json(log_entry.model_dump())
 ```
 
-#### 7.12.2 TypeScript Types for Frontend
-
-The webview uses TypeScript types that match the backend Pydantic models:
-
-```typescript
-// webviews/src/types/api.ts (generated from Pydantic or manually maintained)
-
-import type {
-  Package, PackageDetails,
-  Build,
-  Project,
-  AtopileVersion
-} from './models';
-
-/**
- * WebSocket message types - matches backend protocol
- */
-export type WebSocketMessage =
-  | { type: 'state'; data: UIState }
-  | { type: 'patch'; path: string[]; value: unknown }
-  | { type: 'event'; event: string; data: unknown };
-
-/**
- * Action message sent from webview to backend
- */
-export type ActionMessage = {
-  type: 'action';
-  action: string;
-  payload: unknown;
-};
-
-  // ─────────────────────────────────────────────────────────────────────
-  // PACKAGES API
-  // ─────────────────────────────────────────────────────────────────────
-
-  packages = {
-    /**
-     * Search packages in the registry
-     */
-    search: async (query: string, options?: PackageSearchOptions): Promise<Package[]> => {
-      return this.bridge.send({
-        type: 'api.packages.search',
-        payload: { query, ...options }
-      });
-    },
-
-    /**
-     * Get detailed information about a specific package
-     */
-    getDetails: async (packageId: string): Promise<PackageDetails> => {
-      return this.bridge.send({
-        type: 'api.packages.getDetails',
-        payload: { packageId }
-      });
-    },
-
-    /**
-     * Get packages installed in a project
-     */
-    getInstalled: async (projectRoot: string): Promise<InstalledPackage[]> => {
-      return this.bridge.send({
-        type: 'api.packages.getInstalled',
-        payload: { projectRoot }
-      });
-    },
-
-    /**
-     * Install a package into a project
-     */
-    install: async (packageId: string, projectRoot: string, version?: string): Promise<void> => {
-      return this.bridge.send({
-        type: 'api.packages.install',
-        payload: { packageId, projectRoot, version }
-      });
-    },
-
-    /**
-     * Update a package to latest version
-     */
-    update: async (packageId: string, projectRoot: string): Promise<void> => {
-      return this.bridge.send({
-        type: 'api.packages.update',
-        payload: { packageId, projectRoot }
-      });
-    },
-
-    /**
-     * Remove a package from a project
-     */
-    remove: async (packageId: string, projectRoot: string): Promise<void> => {
-      return this.bridge.send({
-        type: 'api.packages.remove',
-        payload: { packageId, projectRoot }
-      });
-    }
-  };
-
-  // ─────────────────────────────────────────────────────────────────────
-  // BUILDS API
-  // ─────────────────────────────────────────────────────────────────────
-
-  builds = {
-    /**
-     * Start a build for specified targets
-     */
-    start: async (targetIds: string[]): Promise<Build> => {
-      return this.bridge.send({
-        type: 'api.builds.start',
-        payload: { targetIds }
-      });
-    },
-
-    /**
-     * Cancel a running build
-     */
-    cancel: async (buildId: string): Promise<void> => {
-      return this.bridge.send({
-        type: 'api.builds.cancel',
-        payload: { buildId }
-      });
-    },
-
-    /**
-     * Get build details including logs
-     */
-    get: async (buildId: string): Promise<Build> => {
-      return this.bridge.send({
-        type: 'api.builds.get',
-        payload: { buildId }
-      });
-    },
-
-    /**
-     * Get recent builds for a project
-     */
-    list: async (projectRoot: string, limit?: number): Promise<Build[]> => {
-      return this.bridge.send({
-        type: 'api.builds.list',
-        payload: { projectRoot, limit: limit ?? 10 }
-      });
-    }
-  };
-
-  // ─────────────────────────────────────────────────────────────────────
-  // PROJECTS API
-  // ─────────────────────────────────────────────────────────────────────
-
-  projects = {
-    /**
-     * Discover all projects in workspace
-     */
-    discover: async (): Promise<Project[]> => {
-      return this.bridge.send({
-        type: 'api.projects.discover',
-        payload: {}
-      });
-    },
-
-    /**
-     * Get project details including targets
-     */
-    get: async (projectRoot: string): Promise<Project> => {
-      return this.bridge.send({
-        type: 'api.projects.get',
-        payload: { projectRoot }
-      });
-    },
-
-    /**
-     * Get modules defined in a project
-     */
-    getModules: async (projectRoot: string): Promise<Module[]> => {
-      return this.bridge.send({
-        type: 'api.projects.getModules',
-        payload: { projectRoot }
-      });
-    },
-
-    /**
-     * Get variables/parameters in a project
-     */
-    getVariables: async (projectRoot: string): Promise<Variable[]> => {
-      return this.bridge.send({
-        type: 'api.projects.getVariables',
-        payload: { projectRoot }
-      });
-    }
-  };
-
-  // ─────────────────────────────────────────────────────────────────────
-  // ATOPILE API
-  // ─────────────────────────────────────────────────────────────────────
-
-  atopile = {
-    /**
-     * Get available atopile versions
-     */
-    getVersions: async (): Promise<AtopileVersion[]> => {
-      return this.bridge.send({
-        type: 'api.atopile.getVersions',
-        payload: {}
-      });
-    },
-
-    /**
-     * Get current installation info
-     */
-    getInstallation: async (): Promise<AtopileInstallation> => {
-      return this.bridge.send({
-        type: 'api.atopile.getInstallation',
-        payload: {}
-      });
-    },
-
-    /**
-     * Set the atopile version/source
-     */
-    setVersion: async (source: AtopileSource, value: string): Promise<void> => {
-      return this.bridge.send({
-        type: 'api.atopile.setVersion',
-        payload: { source, value }
-      });
-    }
-  };
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// API REQUEST/RESPONSE TYPES
-// ─────────────────────────────────────────────────────────────────────────
-
-export interface PackageSearchOptions {
-  tags?: string[];
-  author?: string;
-  limit?: number;
-  offset?: number;
-}
-
-export interface InstalledPackage {
-  packageId: string;
-  version: string;
-  installedAt: Date;
-}
-
-export interface Module {
-  name: string;
-  file: string;
-  line: number;
-  type: 'module' | 'component' | 'interface';
-}
-
-export interface Variable {
-  name: string;
-  value: string;
-  unit: string | null;
-  file: string;
-  line: number;
-}
-```
-
-#### 7.12.2 Bridge Message Types
-
-```typescript
-// webviews/src/logic/api/messages.ts
-
-/**
- * Messages sent from webview to extension
- */
-export type BridgeMessage =
-  // Package operations
-  | { type: 'api.packages.search'; payload: { query: string; tags?: string[]; limit?: number } }
-  | { type: 'api.packages.getDetails'; payload: { packageId: string } }
-  | { type: 'api.packages.getInstalled'; payload: { projectRoot: string } }
-  | { type: 'api.packages.install'; payload: { packageId: string; projectRoot: string; version?: string } }
-  | { type: 'api.packages.update'; payload: { packageId: string; projectRoot: string } }
-  | { type: 'api.packages.remove'; payload: { packageId: string; projectRoot: string } }
-
-  // Build operations
-  | { type: 'api.builds.start'; payload: { targetIds: string[] } }
-  | { type: 'api.builds.cancel'; payload: { buildId: string } }
-  | { type: 'api.builds.get'; payload: { buildId: string } }
-  | { type: 'api.builds.list'; payload: { projectRoot: string; limit: number } }
-
-  // Project operations
-  | { type: 'api.projects.discover'; payload: {} }
-  | { type: 'api.projects.get'; payload: { projectRoot: string } }
-  | { type: 'api.projects.getModules'; payload: { projectRoot: string } }
-  | { type: 'api.projects.getVariables'; payload: { projectRoot: string } }
-
-  // Atopile operations
-  | { type: 'api.atopile.getVersions'; payload: {} }
-  | { type: 'api.atopile.getInstallation'; payload: {} }
-  | { type: 'api.atopile.setVersion'; payload: { source: AtopileSource; value: string } }
-
-  // Navigation (VS Code specific)
-  | { type: 'navigation.openFile'; payload: { file: string; line?: number; column?: number } }
-  | { type: 'navigation.revealInExplorer'; payload: { path: string } }
-
-  // Terminal (VS Code specific)
-  | { type: 'terminal.run'; payload: { command: string } }
-  | { type: 'terminal.focus'; payload: {} };
-
-/**
- * Messages sent from extension to webview
- */
-export type IncomingMessage =
-  // State updates
-  | { type: 'state.full'; data: UIState }
-  | { type: 'state.patch'; path: string[]; value: unknown }
-
-  // Real-time events
-  | { type: 'event.build.started'; data: { buildId: string; targetId: string } }
-  | { type: 'event.build.progress'; data: { buildId: string; stage: string; progress: number } }
-  | { type: 'event.build.completed'; data: { buildId: string; status: BuildStatus } }
-  | { type: 'event.build.log'; data: { buildId: string; entry: LogEntry } }
-
-  // Package events
-  | { type: 'event.package.installed'; data: { packageId: string; projectRoot: string } }
-  | { type: 'event.package.removed'; data: { packageId: string; projectRoot: string } }
-
-  // File system events
-  | { type: 'event.file.changed'; data: { path: string } }
-  | { type: 'event.project.discovered'; data: { project: Project } };
-```
-
-#### 7.12.3 Example: Package Data Flow
+### 7.12.4 Example: Package Search Data Flow
 
 Here's a complete example showing how package data flows through all layers:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ EXAMPLE: User searches for "resistor" packages                               │
+│                                                                              │
+│ NOTE: Extension is NOT involved - UI Server talks directly to Backend       │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-1. PRESENTATION LAYER
+1. UI SERVER - Component (standard React)
    ┌─────────────────────────────────────────────────────────────────────────┐
-   │ PackagesSection.tsx:                                                     │
-   │   const dispatch = useDispatch();                                       │
-   │   <SearchInput onChange={(q) => dispatch({                              │
-   │     type: 'packages.search',                                            │
-   │     payload: { query: q }                                               │
-   │   })} />                                                                 │
+   │ components/PackagesSection.tsx:                                          │
+   │                                                                          │
+   │   const searchPackages = useStore(state => state.searchPackages);       │
+   │   const packages = useStore(state => state.searchResults);              │
+   │   const loading = useStore(state => state.loading.packages);            │
+   │                                                                          │
+   │   <SearchInput onChange={(q) => searchPackages(q)} />                   │
+   │   {loading ? <Spinner /> : <PackageList packages={packages} />}         │
    └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
-2. LOGIC LAYER (Handler)
+2. UI SERVER - Zustand Store Action
    ┌─────────────────────────────────────────────────────────────────────────┐
-   │ handlers/packages.ts:                                                    │
-   │   async function handleSearch(logic: UILogic, event: PackageSearchEvent) {│
-   │     const { query } = event.payload;                                    │
+   │ store/index.ts:                                                          │
    │                                                                          │
-   │     // Set loading state                                                │
-   │     logic.setState(s => ({                                              │
-   │       ...s,                                                              │
-   │       packagesLoading: true,                                            │
-   │       packagesSearchQuery: query                                        │
-   │     }));                                                                 │
-   │                                                                          │
+   │   searchPackages: async (query) => {                                    │
+   │     set({ loading: { packages: true } });                               │
    │     try {                                                               │
-   │       // Call API                                                       │
-   │       const results = await logic.api.packages.search(query);          │
-   │                                                                          │
-   │       // Transform API response → Model                                 │
-   │       const packages = results.map(transformPackageResponse);          │
-   │                                                                          │
-   │       // Update state with new packages                                 │
-   │       logic.setState(s => ({                                            │
-   │         ...s,                                                            │
-   │         packages: mergePackages(s.packages, packages),                  │
-   │         packagesSearchResults: packages.map(p => p.id),                 │
-   │         packagesLoading: false                                          │
-   │       }));                                                               │
+   │       const results = await api.packages.search(query);                 │
+   │       set({ searchResults: results, loading: { packages: false } });    │
    │     } catch (error) {                                                   │
-   │       logic.setState(s => ({                                            │
-   │         ...s,                                                            │
-   │         packagesLoading: false,                                         │
-   │         packagesError: error.message                                    │
-   │       }));                                                               │
+   │       set({ error: error.message, loading: { packages: false } });      │
    │     }                                                                    │
    │   }                                                                      │
    └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
-3. API LAYER (Client)
+3. UI SERVER - API Client (direct HTTP)
    ┌─────────────────────────────────────────────────────────────────────────┐
    │ api/client.ts:                                                           │
-   │   packages.search = async (query) => {                                  │
-   │     return this.bridge.send({                                           │
-   │       type: 'api.packages.search',                                      │
-   │       payload: { query }                                                │
-   │     });                                                                  │
-   │   }                                                                      │
-   └─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼ postMessage
-4. EXTENSION BRIDGE
-   ┌─────────────────────────────────────────────────────────────────────────┐
-   │ bridge/handlers.ts:                                                      │
-   │   case 'api.packages.search':                                           │
-   │     const results = await packageService.search(payload.query);         │
-   │     return results;                                                     │
-   └─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼ HTTP
-5. PYTHON BACKEND (or external API)
-   ┌─────────────────────────────────────────────────────────────────────────┐
-   │ GET https://packages.atopile.io/api/search?q=resistor                   │
    │                                                                          │
-   │ Response:                                                                │
-   │ [                                                                        │
-   │   {                                                                      │
-   │     "id": "atopile/resistors",                                          │
-   │     "name": "resistors",                                                │
-   │     "description": "Common resistor footprints and symbols",            │
-   │     "author": "atopile",                                                │
-   │     "version": "1.2.3",                                                 │
-   │     "downloads": 1234,                                                  │
-   │     ...                                                                  │
+   │   packages: {                                                            │
+   │     search: (query) => fetchJSON(`/api/packages/search?q=${query}`)     │
    │   }                                                                      │
-   │ ]                                                                        │
+   └─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼ HTTP GET
+4. BACKEND - API Layer (FastAPI route)
+   ┌─────────────────────────────────────────────────────────────────────────┐
+   │ backend/server/routes/packages.py:                                       │
+   │                                                                          │
+   │   @router.get("/api/packages/search")                                   │
+   │   async def search_packages(q: str, packages_api: PackagesAPI):         │
+   │       return await packages_api.search(q)                               │
+   └─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+5. BACKEND - Models Layer (external API client)
+   ┌─────────────────────────────────────────────────────────────────────────┐
+   │ backend/models/packages_api.py:                                          │
+   │                                                                          │
+   │   class PackagesAPI:                                                     │
+   │       async def search(self, query: str) -> list[Package]:              │
+   │           response = await httpx.get(                                   │
+   │               f"https://packages.atopile.io/api/search?q={query}"       │
+   │           )                                                              │
+   │           return [Package(**p) for p in response.json()]                │
    └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼ Response flows back up
-6. MODEL TRANSFORMATION
+6. UI SERVER - Component Re-renders
    ┌─────────────────────────────────────────────────────────────────────────┐
-   │ models/transforms.ts:                                                    │
-   │   function transformPackageResponse(api: PackageAPIResponse): Package { │
-   │     return {                                                            │
-   │       id: api.id,                                                       │
-   │       name: api.name,                                                   │
-   │       description: api.description,                                     │
-   │       author: api.author,                                               │
-   │       latestVersion: api.version,                                       │
-   │       installedVersion: null,  // Will be enriched later               │
-   │       isInstalled: false,                                               │
-   │       isUpdatable: false,                                               │
-   │       downloadCount: api.downloads,                                     │
-   │       tags: api.tags,                                                   │
-   │       repositoryUrl: api.repository_url                                 │
-   │     };                                                                   │
-   │   }                                                                      │
+   │ Zustand notifies subscribers                                             │
+   │ → PackagesSection re-renders with new packages                          │
+   │ → PackageList displays results                                          │
    └─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-7. VIEWMODEL SELECTOR (in Hooks layer)
-   ┌─────────────────────────────────────────────────────────────────────────┐
-   │ hooks/usePackages.ts:                                                    │
-   │   export function usePackageSearchResults(): PackageViewModel[] {       │
-   │     const state = useUIState();                                         │
-   │                                                                          │
-   │     return useMemo(() => {                                              │
-   │       return state.packagesSearchResults                                │
-   │         .map(id => state.packages.get(id))                              │
-   │         .filter(Boolean)                                                │
-   │         .map(pkg => ({                                                  │
-   │           id: pkg.id,                                                   │
-   │           displayName: pkg.id,                                          │
-   │           description: pkg.description,                                 │
-   │           authorDisplay: `by ${pkg.author}`,                            │
-   │           versionDisplay: pkg.isUpdatable                               │
-   │             ? `v${pkg.installedVersion} → v${pkg.latestVersion}`        │
-   │             : `v${pkg.latestVersion}`,                                  │
-   │           statusBadge: pkg.isUpdatable ? 'updatable'                    │
-   │             : pkg.isInstalled ? 'installed' : 'available',              │
-   │           downloadCountFormatted: formatNumber(pkg.downloadCount),      │
-   │           tags: pkg.tags,                                               │
-   │           actions: getAvailableActions(pkg)                             │
-   │         }));                                                             │
-   │     }, [state.packagesSearchResults, state.packages]);                  │
-   │   }                                                                      │
-   └─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-8. PRESENTATION (Re-render)
-   ┌─────────────────────────────────────────────────────────────────────────┐
-   │ PackageList.tsx:                                                         │
-   │   const packages = usePackageSearchResults();                           │
-   │   const loading = useLoading('packages');                               │
-   │                                                                          │
-   │   if (loading) return <Spinner />;                                      │
-   │                                                                          │
-   │   return (                                                               │
-   │     <ul>                                                                 │
-   │       {packages.map(pkg => (                                            │
-   │         <PackageItem key={pkg.id} package={pkg} />                      │
-   │       ))}                                                                │
-   │     </ul>                                                                │
-   │   );                                                                     │
-   └─────────────────────────────────────────────────────────────────────────┘
+
+KEY POINTS:
+• Extension is NOT in this flow (it just opened the webview)
+• UI Server owns state (Zustand) and makes HTTP calls directly
+• Backend Models layer calls external packages.atopile.io API
+• Standard React patterns - nothing VS Code specific
 ```
 
 ### 7.13 State Shape (UIState)
 
-The UIState is the single source of truth, **owned by the Python backend** and sent to the webview via WebSocket:
+The UIState is **owned by the UI Server** (React app using Zustand/Redux). The state combines:
+- **Data from backend** (projects, builds, packages) - fetched via API
+- **UI-specific state** (selections, expanded sections) - local to UI Server
 
 ```typescript
-// webviews/src/types/state.ts (TypeScript mirror of Python Pydantic model)
-// OR generated from backend/models/ui_state.py using pydantic2ts
+// webviews/src/store/index.ts (Zustand store)
 
 export interface UIState {
   // Version for change detection
@@ -2428,13 +2136,12 @@ export function createInitialState(): UIState {
 
 | Decision | Rationale |
 |----------|-----------|
-| **Maps over Arrays** | O(1) lookups, easy updates without array scanning |
-| **Normalized State** | Avoid data duplication, single source of truth |
-| **ViewModels in Webview** | Memoized selectors transform backend state for display |
-| **All Logic in Python** | Reuse existing atopile code, single language for logic |
-| **Direct WebSocket** | Webview talks directly to backend, extension is just launcher |
-| **Minimal Extension** | Bootstrap only: install deps, start backend, create webview |
-| **Pydantic Models** | Define once in Python, generate TypeScript types |
+| **Stateless Extension** | Extension just opens webview panel - no state, no logic |
+| **UI Server Owns UI State** | Standard React state management (Zustand/Redux) |
+| **UI Server Calls Backend** | HTTP/WebSocket from React to Python - no extension in middle |
+| **No VS Code Dependency in UI** | UI Server can run standalone in browser for development |
+| **Backend Wraps Atopile** | Reuse existing ConfigManager, BuildRunner, PackageManager |
+| **Pydantic → TypeScript** | Define models once in Python, generate TypeScript types |
 
 ### 7.15 Backend Model Integration
 
@@ -2948,6 +2655,14 @@ async function handleLoadProject(logic: UILogic, event: LoadProjectEvent) {
 ---
 
 ## 8. Complete Feature Flows: Current vs Proposed
+
+> **NOTE**: The "Proposed" flows in this section were based on an earlier architecture that has been superseded.
+> See **Section 7** for the current architecture where:
+> - **Extension** is a stateless launcher (no logic, no state)
+> - **UI Server** (Vite/React) owns UI state and calls backend APIs directly
+> - **Backend** has Models layer (external APIs) and Core layer (atopile wrapper)
+>
+> The "Current" flows below remain accurate for documentation purposes.
 
 This section documents every major feature in the extension with its current implementation flow and proposed re-architected flow.
 
@@ -4229,80 +3944,40 @@ Problems:
 
 ```
 src/vscode-atopile/
-├── src/
-│   ├── extension.ts                 # Entry point - thin activation
+├── src/                             # VS CODE EXTENSION (stateless launcher)
+│   ├── extension.ts                 # Entry point - MINIMAL
+│   │                                # Just registers commands and opens webviews
+│   │                                # NO state, NO logic, NO message handling
 │   │
-│   ├── services/                    # VS Code API abstractions
-│   │   ├── index.ts                 # Service exports
-│   │   ├── files.ts                 # FileService (workspace.findFiles, fs)
-│   │   ├── settings.ts              # SettingsService (configuration)
-│   │   ├── terminal.ts              # TerminalService (runInTerminal)
-│   │   └── dialogs.ts               # DialogService (showInputBox, etc.)
-│   │
-│   ├── lsp/                         # Language Server (isolated)
-│   │   ├── index.ts                 # LspService class
-│   │   ├── client.ts                # LanguageClient wrapper
-│   │   └── notifications.ts         # LSP notification types
-│   │
-│   ├── panels/                      # Webview panels (thin wrappers)
-│   │   ├── sidebar.ts               # SidebarPanel - message relay
-│   │   ├── logViewer.ts             # LogViewerPanel - message relay
-│   │   ├── kicanvas.ts              # KiCanvasPanel
-│   │   ├── modelviewer.ts           # ModelViewerPanel
-│   │   └── packageexplorer.ts       # PackageExplorerPanel
-│   │
-│   ├── commands/                    # Command registrations (thin)
-│   │   ├── index.ts                 # Register all commands
-│   │   └── handlers.ts              # Delegates to UILogic
-│   │
-│   ├── bridge/                      # Extension ↔ Webview bridge
-│   │   ├── index.ts                 # ExtensionBridge class
-│   │   ├── messages.ts              # Message type definitions
-│   │   └── handlers.ts              # Handle messages from webview
-│   │
-│   └── utils/                       # Pure utilities
-│       ├── manifest.ts              # YAML parsing (pure functions)
-│       ├── paths.ts                 # Path resolution helpers
-│       └── uv.ts                    # uv binary management
+│   └── panels/                      # Webview panel providers (thin)
+│       ├── sidebar.ts               # SidebarPanel - loads UI Server URL
+│       ├── logViewer.ts             # LogViewerPanel - loads UI Server URL
+│       ├── kicanvas.ts              # KiCanvasPanel
+│       └── modelviewer.ts           # ModelViewerPanel
 │
-└── webviews/
-    └── src/
+└── webviews/                        # UI SERVER (Vite / React)
+    └── src/                         # Standard React app structure
         ├── main.tsx                 # Entry point
-        ├── App.tsx                  # Router + LogicProvider
+        ├── App.tsx                  # Root component
         │
-        ├── logic/                   # Pure TypeScript logic layer
-        │   ├── index.ts             # UILogic class
-        │   ├── state.ts             # UIState interface, initialState
-        │   ├── events.ts            # UIEvent discriminated union
-        │   ├── viewmodels.ts        # ViewModel interfaces + selectors
-        │   │
-        │   ├── handlers/            # Event handlers by domain
-        │   │   ├── index.ts         # Event routing
-        │   │   ├── builds.ts        # Build-related handlers
-        │   │   ├── projects.ts      # Project/target handlers
-        │   │   ├── packages.ts      # Package handlers
-        │   │   ├── problems.ts      # Problem handlers
-        │   │   ├── logs.ts          # Log viewer handlers
-        │   │   ├── atopile.ts       # Atopile version handlers
-        │   │   ├── ui.ts            # UI state handlers
-        │   │   └── navigation.ts    # File navigation handlers
-        │   │
-        │   └── api/                 # Extension bridge client
-        │       ├── bridge.ts        # ExtensionBridge interface
-        │       └── messages.ts      # Message type definitions
+        ├── store/                   # State management (Zustand)
+        │   ├── index.ts             # Main store export
+        │   └── slices/              # Optional: split by domain
+        │       ├── projects.ts
+        │       ├── builds.ts
+        │       └── packages.ts
         │
-        ├── hooks/                   # React bindings
-        │   ├── useLogic.tsx         # LogicProvider, useDispatch, useUIState
-        │   ├── useProjects.ts       # Project selector hook
-        │   ├── useProblems.ts       # Problems selector hook
-        │   ├── useBuilds.ts         # Build queue selector hook
-        │   └── usePackages.ts       # Packages selector hook
+        ├── api/                     # Backend API clients
+        │   ├── client.ts            # Base HTTP/WS client
+        │   ├── projects.ts          # GET /api/projects, etc.
+        │   ├── builds.ts            # POST /api/builds, WS /ws/logs
+        │   └── packages.ts          # GET /api/packages, etc.
         │
-        ├── components/              # React components (presentation)
+        ├── components/              # React components
         │   ├── Sidebar/
-        │   │   ├── index.tsx        # ~100 lines, layout shell
-        │   │   ├── Header.tsx       # Settings button
-        │   │   └── Footer.tsx       # Version info
+        │   │   ├── index.tsx
+        │   │   ├── Header.tsx
+        │   │   └── Footer.tsx
         │   │
         │   ├── projects/
         │   │   ├── ProjectsSection.tsx
@@ -4326,8 +4001,7 @@ src/vscode-atopile/
         │   ├── logs/
         │   │   ├── LogViewer.tsx
         │   │   ├── LogEntry.tsx
-        │   │   ├── LogFilters.tsx
-        │   │   └── StageSelector.tsx
+        │   │   └── LogFilters.tsx
         │   │
         │   └── shared/
         │       ├── CollapsibleSection.tsx
@@ -4335,67 +4009,90 @@ src/vscode-atopile/
         │       ├── ErrorBoundary.tsx
         │       └── Icons.tsx
         │
-        ├── types/                   # Type definitions
-        │   ├── build.ts             # Build, Problem, etc.
-        │   ├── project.ts           # Project, Target
-        │   └── package.ts           # Package types
+        ├── types/                   # Type definitions (generated from Pydantic)
+        │   ├── models.ts            # Project, Build, Package, Problem, etc.
+        │   └── api.ts               # API request/response types
         │
         └── __tests__/               # Tests
-            ├── logic/
-            │   ├── handlers/
-            │   │   ├── builds.test.ts
-            │   │   ├── projects.test.ts
-            │   │   └── ...
-            │   └── state.test.ts
-            └── hooks/
-                └── useProjects.test.ts
+            ├── store/
+            │   └── store.test.ts    # State management tests
+            ├── api/
+            │   └── client.test.ts   # API client tests (mock backend)
+            └── components/
+                └── ...
+
+backend/                             # PYTHON BACKEND (ato serve)
+├── server/                          # API LAYER (FastAPI)
+│   ├── app.py                       # FastAPI app setup
+│   ├── routes/
+│   │   ├── projects.py              # /api/projects endpoints
+│   │   ├── builds.py                # /api/builds + /ws/logs
+│   │   └── packages.py              # /api/packages endpoints
+│   └── dependencies.py              # Dependency injection
+│
+├── models/                          # MODELS LAYER (External APIs)
+│   ├── packages_api.py              # packages.atopile.io client
+│   └── registry.py                  # Package registry models
+│
+├── core/                            # CORE LAYER (Atopile Wrapper)
+│   ├── projects.py                  # Wraps ConfigManager
+│   ├── builds.py                    # Wraps BuildRunner
+│   └── packages.py                  # Wraps PackageManager
+│
+└── schemas/                         # Pydantic schemas (shared types)
+    ├── project.py
+    ├── build.py
+    └── package.py
 ```
 
 ### Key Structural Principles
 
 1. **Separation of Concerns**
-   - `services/` - VS Code API abstractions (testable via mocks)
-   - `logic/` - Pure TypeScript business logic (no React/VS Code)
-   - `hooks/` - React bindings for logic layer
-   - `components/` - Presentation only
+   - **Extension**: Stateless launcher (just opens webviews)
+   - **UI Server**: Owns UI state, renders components, calls backend APIs
+   - **Backend API**: FastAPI routes (HTTP/WebSocket endpoints)
+   - **Backend Models**: External API clients (packages.atopile.io)
+   - **Backend Core**: Atopile wrappers (ConfigManager, BuildRunner)
 
-2. **Domain-Based Organization**
-   - Handlers split by domain (builds, projects, packages)
-   - Components organized by feature area
-   - Clear ownership of state per domain
+2. **No VS Code Dependency in UI**
+   - UI Server has NO VS Code imports
+   - Can run standalone in browser (http://localhost:5173)
+   - Standard React patterns (Zustand for state, fetch for API)
 
 3. **Dependency Direction**
    ```
-   components → hooks → logic → services
-                                    ↓
-                              VS Code APIs
+   Extension → opens → UI Server → calls → Backend API
+                                              │
+                              ┌───────────────┴───────────────┐
+                              ▼                               ▼
+                       Models Layer                     Core Layer
+                    (External APIs)                  (Atopile Wrapper)
    ```
 
 4. **File Size Guidelines**
    - No file should exceed 300 lines
-   - Extract when a file has multiple responsibilities
    - One component per file
+   - Split store into slices if large
 
 5. **Testing Strategy**
-   - `logic/` layer: Unit tests in Node.js/Bun (fast)
-   - `hooks/` layer: React Testing Library
-   - `services/` layer: Integration tests with VS Code mocks
+   - UI Server: Standard React testing (Vitest + React Testing Library)
+   - Backend: pytest with mocked atopile components
+   - Extension: Minimal testing (just verifies webview opens)
 
-6. **Naming Conventions**
-   - Event types: `domain.action` (e.g., `builds.start`)
-   - Handler functions: `handle{Action}` (e.g., `handleStartBuild`)
-   - Selectors: `select{Data}` (e.g., `selectCurrentProject`)
-   - Hooks: `use{Data}` (e.g., `useProjects`)
+6. **Type Generation**
+   - Pydantic schemas in backend are source of truth
+   - Generate TypeScript types using pydantic2ts or similar
+   - Ensures frontend/backend type consistency
 
 ---
 
 ## Summary
 
-The orchestrator architecture provides:
-- **Clear separation** between UI, logic, and API layers
-- **Type-safe events** preventing runtime errors
-- **Testable business logic** without React/VS Code
-- **Scalable patterns** for adding new features
-- **Predictable state flow** via single dispatch
+The new architecture provides:
+- **Stateless extension** - just a launcher, easy to maintain
+- **Standalone UI Server** - develop in browser, standard React patterns
+- **Backend separation** - Models (external APIs) vs Core (atopile wrapper)
+- **Type-safe** - Pydantic → TypeScript generation
+- **Testable** - Each layer can be tested independently
 
-The migration maintains backward compatibility while incrementally adopting the new patterns.
+No migration needed - start fresh with new architecture.

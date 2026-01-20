@@ -2341,7 +2341,9 @@ async def _refresh_packages_async():
         # 2. Get ALL registry packages (uses multiple search terms)
         try:
             registry_packages = get_all_registry_packages()
-            log.info(f"[_refresh_packages_async] Registry returned {len(registry_packages)} packages")
+            log.info(
+                f"[_refresh_packages_async] Registry returned {len(registry_packages)} packages"
+            )
 
             # Merge registry data into packages_map
             for reg_pkg in registry_packages:
@@ -2361,7 +2363,9 @@ async def _refresh_packages_async():
                         license=reg_pkg.license,
                         installed=True,
                         installed_in=existing.installed_in,
-                        has_update=_version_is_newer(existing.version, reg_pkg.latest_version),
+                        has_update=_version_is_newer(
+                            existing.version, reg_pkg.latest_version
+                        ),
                         downloads=reg_pkg.downloads,
                         version_count=reg_pkg.version_count,
                         keywords=reg_pkg.keywords or [],
@@ -2758,7 +2762,9 @@ def create_app(
                 # 2. Get ALL registry packages (uses multiple search terms)
                 try:
                     registry_packages = get_all_registry_packages()
-                    log.info(f"[refreshPackages] Registry returned {len(registry_packages)} packages")
+                    log.info(
+                        f"[refreshPackages] Registry returned {len(registry_packages)} packages"
+                    )
 
                     # Merge registry data into packages_map
                     for reg_pkg in registry_packages:
@@ -2778,7 +2784,9 @@ def create_app(
                                 license=reg_pkg.license,
                                 installed=True,
                                 installed_in=existing.installed_in,
-                                has_update=_version_is_newer(existing.version, reg_pkg.latest_version),
+                                has_update=_version_is_newer(
+                                    existing.version, reg_pkg.latest_version
+                                ),
                                 downloads=reg_pkg.downloads,
                                 version_count=reg_pkg.version_count,
                                 keywords=reg_pkg.keywords or [],
@@ -2813,7 +2821,9 @@ def create_app(
                     key=lambda p: (not p.installed, p.identifier.lower()),
                 )
 
-                log.info(f"[refreshPackages] Setting {len(state_packages)} total packages")
+                log.info(
+                    f"[refreshPackages] Setting {len(state_packages)} total packages"
+                )
                 await server_state.set_packages(list(state_packages), registry_error)
                 return {"success": True}
 
@@ -3602,7 +3612,11 @@ def create_app(
                     cached_pkg = server_state.packages_by_id.get(pkg.identifier)
                     if cached_pkg:
                         latest_version = cached_pkg.latest_version
-                        if latest_version and pkg.version and latest_version != pkg.version:
+                        if (
+                            latest_version
+                            and pkg.version
+                            and latest_version != pkg.version
+                        ):
                             has_update = True
                         repository = cached_pkg.repository
 
@@ -3687,12 +3701,17 @@ def create_app(
                 if not log_file_path:
                     workspace_paths = state.get("workspace_paths", [])
                     for ws_path in workspace_paths:
-                        summary_path = Path(ws_path) / "build" / "logs" / "latest" / "summary.json"
+                        summary_path = (
+                            Path(ws_path) / "build" / "logs" / "latest" / "summary.json"
+                        )
                         if summary_path.exists():
                             try:
                                 summary = json.loads(summary_path.read_text())
                                 for build in summary.get("builds", []):
-                                    if build.get("name") == build_name or build.get("display_name") == build_name:
+                                    if (
+                                        build.get("name") == build_name
+                                        or build.get("display_name") == build_name
+                                    ):
                                         log_file_path = build.get("log_file")
                                         break
                             except Exception:
@@ -3701,7 +3720,9 @@ def create_app(
                             break
 
                 if not log_file_path or not Path(log_file_path).exists():
-                    log.warning(f"[selectBuild] Log file not found for build: {build_name}")
+                    log.warning(
+                        f"[selectBuild] Log file not found for build: {build_name}"
+                    )
                     return {"success": True, "info": "Log file not found"}
 
                 # Parse log entries from JSONL file
@@ -3714,20 +3735,24 @@ def create_app(
                             continue
                         try:
                             entry = json.loads(line)
-                            log_entries.append(StateLogEntry(
-                                timestamp=entry.get("timestamp", ""),
-                                level=entry.get("level", "INFO"),
-                                message=entry.get("message", ""),
-                                logger=entry.get("logger", ""),
-                                stage=entry.get("stage"),
-                                ato_traceback=entry.get("ato_traceback"),
-                                exc_info=entry.get("exc_info"),
-                            ))
+                            log_entries.append(
+                                StateLogEntry(
+                                    timestamp=entry.get("timestamp", ""),
+                                    level=entry.get("level", "INFO"),
+                                    message=entry.get("message", ""),
+                                    logger=entry.get("logger", ""),
+                                    stage=entry.get("stage"),
+                                    ato_traceback=entry.get("ato_traceback"),
+                                    exc_info=entry.get("exc_info"),
+                                )
+                            )
                         except json.JSONDecodeError:
                             continue
 
                     await server_state.set_log_entries(log_entries)
-                    log.info(f"[selectBuild] Loaded {len(log_entries)} log entries for {build_name}")
+                    log.info(
+                        f"[selectBuild] Loaded {len(log_entries)} log entries for {build_name}"
+                    )
 
                 except Exception as e:
                     log.error(f"[selectBuild] Failed to load logs: {e}")
