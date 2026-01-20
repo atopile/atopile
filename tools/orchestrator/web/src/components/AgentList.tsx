@@ -2,6 +2,7 @@ import { useEffect, useMemo, memo, useCallback, useState, useRef } from 'react';
 import { RefreshCw, Plus, Search, X, Filter } from 'lucide-react';
 import { useAgents, useUIState, useDispatch, useLoading } from '@/hooks';
 import { AgentCard } from './AgentCard';
+import { AgentListSkeleton } from './Skeleton';
 import type { AgentStatus } from '@/logic/api/types';
 
 type StatusFilter = 'all' | AgentStatus;
@@ -194,7 +195,9 @@ export const AgentList = memo(function AgentList({ onSpawnClick }: AgentListProp
 
       {/* List */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {filteredAndSortedAgents.length === 0 && hasActiveFilters ? (
+        {loading && agents.length === 0 ? (
+          <AgentListSkeleton count={3} />
+        ) : filteredAndSortedAgents.length === 0 && hasActiveFilters ? (
           <div className="text-center text-gray-500 py-8">
             <p>No agents match your filters</p>
             <button
