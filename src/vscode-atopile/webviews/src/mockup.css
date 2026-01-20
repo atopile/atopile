@@ -7953,3 +7953,148 @@ body {
   color: var(--ctp-red);
 }
 
+/* ============================================
+   File Explorer
+   ============================================ */
+
+.file-explorer {
+  margin-top: var(--spacing-md);
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--spacing-sm);
+}
+
+.file-explorer-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.file-explorer-header svg {
+  color: var(--ctp-overlay1);
+}
+
+.file-explorer-tree {
+  margin-top: var(--spacing-xs);
+}
+
+.file-explorer-empty {
+  padding: var(--spacing-md);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-style: italic;
+}
+
+/* File tree node */
+.file-tree-node {
+  /* Container */
+}
+
+.file-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  font-size: 11px;
+}
+
+.file-tree-row:hover {
+  background: var(--bg-hover);
+}
+
+.file-tree-row.folder {
+  font-weight: 500;
+}
+
+.file-tree-row.file:hover {
+  background: var(--bg-active);
+}
+
+/* Folder icons */
+.folder-icon {
+  color: var(--ctp-yellow);
+  flex-shrink: 0;
+}
+
+.folder-icon.open {
+  color: var(--ctp-peach);
+}
+
+/* File icons */
+.file-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.file-icon.ato {
+  color: var(--ato-orange);
+}
+
+.file-icon.python {
+  color: var(--ctp-blue);
+}
+
+/* Tree expand/spacer */
+.file-tree-expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.file-tree-spacer {
+  width: 14px;
+  flex-shrink: 0;
+}
+
+/* File/folder name */
+.file-tree-name {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-tree-row.folder .file-tree-name {
+  color: var(--text-secondary);
+}
+
+.file-tree-row.file.ato .file-tree-name {
+  color: var(--text-primary);
+}
+
+.file-tree-row.file.py .file-tree-name {
+  color: var(--ctp-subtext1);
+}
+
+/* Children container */
+.file-tree-children {
+  /* Inherits from parent */
+}
+
+/* Hover effect - highlight file row */
+.file-tree-row.file:hover .file-tree-name {
+  color: var(--accent);
+}
+
+.file-tree-row.file.ato:hover .file-icon {
+  color: var(--ato-orange-light);
+}
+
+.file-tree-row.file.py:hover .file-icon {
+  color: var(--ctp-sapphire);
+}
+

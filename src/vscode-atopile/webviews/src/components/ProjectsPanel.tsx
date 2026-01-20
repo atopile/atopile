@@ -4,7 +4,8 @@ import {
   FileCode, Box, Zap, Cpu, CircuitBoard, Check, X,
   AlertTriangle, AlertCircle, Search, Download,
   Plus, ArrowUpCircle, Grid3X3, Layout, Cuboid,
-  Clock, SkipForward, Circle, Scale, History, Github, Globe, Square
+  Clock, SkipForward, Circle, Scale, History, Github, Globe, Square,
+  Folder, FolderOpen, FileText
 } from 'lucide-react'
 
 // Selection type
@@ -581,9 +582,11 @@ interface ProjectsPanelProps {
   onOpenKiCad?: (projectId: string, buildId: string) => void  // Open in KiCad
   onOpenLayout?: (projectId: string, buildId: string) => void  // Open layout preview
   onOpen3D?: (projectId: string, buildId: string) => void  // Open 3D viewer
+  onFileClick?: (projectId: string, filePath: string) => void  // Open a file in the editor
   filterType?: 'all' | 'projects' | 'packages'
   projects?: Project[]  // Optional - if not provided, uses mockProjects
   projectModules?: Record<string, ModuleDefinition[]>  // Modules for each project root
+  projectFiles?: Record<string, FileTreeNode[]>  // File tree for each project root
 }
 
 // Symbol node component - memoized to prevent unnecessary re-renders in lists
@@ -694,6 +697,129 @@ interface ModuleDefinition {
   line?: number
   super_type?: string
 }
+
+// File tree node for file explorer
+export interface FileTreeNode {
+  name: string
+  path: string
+  type: 'file' | 'folder'
+  extension?: string  // 'ato' | 'py'
+  children?: FileTreeNode[]
+}
+
+// File icon component
+function getFileIcon(extension: string | undefined, size: number = 12) {
+  switch (extension) {
+    case 'ato':
+      return <FileCode size={size} className="file-icon ato" />
+    case 'py':
+      return <FileText size={size} className="file-icon python" />
+    default:
+      return <FileText size={size} className="file-icon" />
+  }
+}
+
+// File tree node component - memoized for performance
+const FileTreeNodeComponent = memo(function FileTreeNodeComponent({
+  node,
+  depth,
+  onFileClick,
+  defaultExpanded = false
+}: {
+  node: FileTreeNode
+  depth: number
+  onFileClick?: (path: string) => void
+  defaultExpanded?: boolean
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded)
+  const isFolder = node.type === 'folder'
+  const hasChildren = isFolder && node.children && node.children.length > 0
+
+  return (
+    <div className="file-tree-node">
+      <div
+        className={`file-tree-row ${isFolder ? 'folder' : 'file'} ${node.extension || ''}`}
+        style={{ paddingLeft: `${depth * 12 + 4}px` }}
+        onClick={() => {
+          if (isFolder) {
+            setExpanded(!expanded)
+          } else if (onFileClick) {
+            onFileClick(node.path)
+          }
+        }}
+      >
+        {isFolder ? (
+          <>
+            <span className="file-tree-expand">
+              {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            </span>
+            {expanded ? (
+              <FolderOpen size={14} className="folder-icon open" />
+            ) : (
+              <Folder size={14} className="folder-icon" />
+            )}
+          </>
+        ) : (
+          <>
+            <span className="file-tree-spacer" />
+            {getFileIcon(node.extension, 14)}
+          </>
+        )}
+        <span className="file-tree-name">{node.name}</span>
+      </div>
+      {expanded && hasChildren && (
+        <div className="file-tree-children">
+          {node.children!.map((child) => (
+            <FileTreeNodeComponent
+              key={child.path}
+              node={child}
+              depth={depth + 1}
+              onFileClick={onFileClick}
+              defaultExpanded={false}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+})
+
+// File Explorer component
+const FileExplorer = memo(function FileExplorer({
+  files,
+  onFileClick
+}: {
+  files: FileTreeNode[]
+  onFileClick?: (path: string) => void
+}) {
+  if (!files || files.length === 0) {
+    return (
+      <div className="file-explorer-empty">
+        <span>No .ato or .py files found</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="file-explorer">
+      <div className="file-explorer-header">
+        <Folder size={12} />
+        <span>Files</span>
+      </div>
+      <div className="file-explorer-tree">
+        {files.map((node) => (
+          <FileTreeNodeComponent
+            key={node.path}
+            node={node}
+            depth={0}
+            onFileClick={onFileClick}
+            defaultExpanded={node.type === 'folder'}
+          />
+        ))}
+      </div>
+    </div>
+  )
+})
 
 // Format time in mm:ss or hh:mm:ss
 function formatBuildTime(seconds: number): string {
@@ -1688,7 +1814,9 @@ const ProjectNode = memo(function ProjectNode({
   onOpenKiCad,
   onOpenLayout,
   onOpen3D,
-  availableModules = []
+  onFileClick,
+  availableModules = [],
+  projectFiles = []
 }: {
   project: Project
   selection: Selection
@@ -1707,7 +1835,9 @@ const ProjectNode = memo(function ProjectNode({
   onOpenKiCad?: (projectId: string, buildId: string) => void
   onOpenLayout?: (projectId: string, buildId: string) => void
   onOpen3D?: (projectId: string, buildId: string) => void
+  onFileClick?: (projectId: string, filePath: string) => void
   availableModules?: ModuleDefinition[]
+  projectFiles?: FileTreeNode[]
 }) {
   const expanded = isExpanded
   const [isEditingName, setIsEditingName] = useState(false)
@@ -1930,7 +2060,7 @@ const ProjectNode = memo(function ProjectNode({
             ))}
             
             {/* Add new build button */}
-            <button 
+            <button
               className="add-build-btn"
               onClick={(e) => {
                 e.stopPropagation()
@@ -1944,13 +2074,19 @@ const ProjectNode = memo(function ProjectNode({
               <span>Add build</span>
             </button>
           </div>
+
+          {/* File Explorer */}
+          <FileExplorer
+            files={projectFiles}
+            onFileClick={onFileClick ? (path) => onFileClick(project.id, path) : undefined}
+          />
         </>
       )}
     </div>
   )
 })
 
-export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onStageFilter, onOpenPackageDetail, onPackageInstall, onCreateProject, onProjectExpand, onOpenSource, onOpenKiCad, onOpenLayout, onOpen3D, filterType = 'all', projects: externalProjects, projectModules = {} }: ProjectsPanelProps) {
+export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onStageFilter, onOpenPackageDetail, onPackageInstall, onCreateProject, onProjectExpand, onOpenSource, onOpenKiCad, onOpenLayout, onOpen3D, onFileClick, filterType = 'all', projects: externalProjects, projectModules = {}, projectFiles = {} }: ProjectsPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [publisherFilter, setPublisherFilter] = useState<string | null>(null)
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
@@ -2141,9 +2277,15 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value)
-              // Clear selection when user starts typing to avoid confusion
-              if (e.target.value && selection.type !== 'none') {
-                onSelect({ type: 'none' })
+              // Clear selection and collapse expanded project when user starts typing
+              if (e.target.value) {
+                if (selection.type !== 'none') {
+                  onSelect({ type: 'none' })
+                }
+                // Collapse any expanded project so search results show all matches
+                if (expandedProjectId !== null) {
+                  setExpandedProjectId(null)
+                }
               }
             }}
           />
@@ -2232,7 +2374,9 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
               onOpenKiCad={onOpenKiCad}
               onOpenLayout={onOpenLayout}
               onOpen3D={onOpen3D}
+              onFileClick={onFileClick}
               availableModules={projectModules[project.path] || []}
+              projectFiles={projectFiles[project.path] || []}
             />
           )
         ))}
