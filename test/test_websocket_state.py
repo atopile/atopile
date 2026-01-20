@@ -82,11 +82,13 @@ class TestWebSocketStateEndpoint:
             ws.receive_json()
 
             # Send selectProject action
-            ws.send_json({
-                "type": "action",
-                "action": "selectProject",
-                "payload": {"projectRoot": project_root}
-            })
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "selectProject",
+                    "payload": {"projectRoot": project_root},
+                }
+            )
 
             # May receive state broadcast before action_result
             messages = []
@@ -115,11 +117,7 @@ class TestWebSocketStateEndpoint:
             ws.receive_json()
 
             # Send refreshProjects action
-            ws.send_json({
-                "type": "action",
-                "action": "refreshProjects",
-                "payload": {}
-            })
+            ws.send_json({"type": "action", "action": "refreshProjects", "payload": {}})
 
             # May receive state broadcast before action_result
             messages = []
@@ -146,14 +144,13 @@ class TestWebSocketStateEndpoint:
             ws.receive_json()
 
             # Send build action
-            ws.send_json({
-                "type": "action",
-                "action": "build",
-                "payload": {
-                    "projectRoot": project_root,
-                    "targets": ["default"]
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "build",
+                    "payload": {"projectRoot": project_root, "targets": ["default"]},
                 }
-            })
+            )
 
             # May receive multiple state updates (builds + queuedBuilds) before action_result
             # Collect messages until we find action_result
@@ -179,14 +176,16 @@ class TestWebSocketStateEndpoint:
             ws.receive_json()
 
             # Send build action with invalid path
-            ws.send_json({
-                "type": "action",
-                "action": "build",
-                "payload": {
-                    "projectRoot": "/nonexistent/path",
-                    "targets": ["default"]
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "build",
+                    "payload": {
+                        "projectRoot": "/nonexistent/path",
+                        "targets": ["default"],
+                    },
                 }
-            })
+            )
 
             # Should receive action_result with error
             result = ws.receive_json()
@@ -214,11 +213,7 @@ class TestWebSocketStateEndpoint:
             ws.receive_json()
 
             # Send unknown action
-            ws.send_json({
-                "type": "action",
-                "action": "unknownAction",
-                "payload": {}
-            })
+            ws.send_json({"type": "action", "action": "unknownAction", "payload": {}})
 
             # Should receive action_result (likely with error or success)
             result = ws.receive_json()
@@ -233,11 +228,13 @@ class TestWebSocketStateEndpoint:
             ws.receive_json()
 
             # Send toggleTarget action
-            ws.send_json({
-                "type": "action",
-                "action": "toggleTarget",
-                "payload": {"targetName": "default"}
-            })
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "toggleTarget",
+                    "payload": {"targetName": "default"},
+                }
+            )
 
             # May receive state broadcast before action_result
             messages = []
@@ -259,11 +256,7 @@ class TestWebSocketStateEndpoint:
             ws.receive_json()
 
             # Send refreshPackages action
-            ws.send_json({
-                "type": "action",
-                "action": "refreshPackages",
-                "payload": {}
-            })
+            ws.send_json({"type": "action", "action": "refreshPackages", "payload": {}})
 
             # May receive state broadcast before action_result
             messages = []
@@ -297,11 +290,13 @@ class TestWebSocketStateBroadcast:
                 ws2.receive_json()
 
                 # Client 1 sends action
-                ws1.send_json({
-                    "type": "action",
-                    "action": "selectProject",
-                    "payload": {"projectRoot": project_root}
-                })
+                ws1.send_json(
+                    {
+                        "type": "action",
+                        "action": "selectProject",
+                        "payload": {"projectRoot": project_root},
+                    }
+                )
 
                 # Client 1 receives action_result and state (order may vary)
                 messages1 = []
@@ -340,14 +335,13 @@ class TestBuildStateSync:
             initial_builds = initial["data"].get("builds", [])
 
             # Send build action
-            ws.send_json({
-                "type": "action",
-                "action": "build",
-                "payload": {
-                    "projectRoot": project_root,
-                    "targets": ["default"]
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "build",
+                    "payload": {"projectRoot": project_root, "targets": ["default"]},
                 }
-            })
+            )
 
             # Receive messages until we get a state update with the build
             build_found = False
@@ -361,7 +355,12 @@ class TestBuildStateSync:
                         # Verify build has expected fields
                         new_build = builds[-1]  # Most recent build
                         assert "status" in new_build
-                        assert new_build["status"] in ["queued", "building", "success", "failed"]
+                        assert new_build["status"] in [
+                            "queued",
+                            "building",
+                            "success",
+                            "failed",
+                        ]
                         assert "buildId" in new_build or "name" in new_build
                         break
                 elif msg["type"] == "action_result":
@@ -381,14 +380,13 @@ class TestBuildStateSync:
             ws.receive_json()
 
             # Send build action
-            ws.send_json({
-                "type": "action",
-                "action": "build",
-                "payload": {
-                    "projectRoot": project_root,
-                    "targets": ["default"]
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "build",
+                    "payload": {"projectRoot": project_root, "targets": ["default"]},
                 }
-            })
+            )
 
             # Get state update (should come before action_result due to await)
             msg = ws.receive_json()
@@ -418,14 +416,13 @@ class TestBuildStateSync:
             ws.receive_json()
 
             # Send build action
-            ws.send_json({
-                "type": "action",
-                "action": "build",
-                "payload": {
-                    "projectRoot": project_root,
-                    "targets": ["default"]
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "build",
+                    "payload": {"projectRoot": project_root, "targets": ["default"]},
                 }
-            })
+            )
 
             # Get state update
             msg = ws.receive_json()
@@ -437,8 +434,9 @@ class TestBuildStateSync:
 
             build = builds[0]
             # Project name should be extracted from path
-            assert build.get("projectName") == "test_project", \
+            assert build.get("projectName") == "test_project", (
                 f"Expected projectName='test_project', got '{build.get('projectName')}'"
+            )
 
     def test_state_broadcast_includes_all_active_builds(
         self, test_client: TestClient, temp_workspace: Path
@@ -451,14 +449,13 @@ class TestBuildStateSync:
             ws.receive_json()
 
             # Start first build
-            ws.send_json({
-                "type": "action",
-                "action": "build",
-                "payload": {
-                    "projectRoot": project_root,
-                    "targets": ["default"]
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "build",
+                    "payload": {"projectRoot": project_root, "targets": ["default"]},
                 }
-            })
+            )
 
             # Collect build IDs from the state update and action_result
             # Note: We only get 2 messages from the initial sync - background
@@ -471,7 +468,9 @@ class TestBuildStateSync:
                         if b.get("buildId"):
                             build_ids.add(b["buildId"])
 
-            assert len(build_ids) >= 1, f"Should have tracked at least 1 build, got {len(build_ids)}"
+            assert len(build_ids) >= 1, (
+                f"Should have tracked at least 1 build, got {len(build_ids)}"
+            )
 
     def test_build_status_transitions_in_state(
         self, test_client: TestClient, temp_workspace: Path
@@ -484,14 +483,13 @@ class TestBuildStateSync:
             ws.receive_json()
 
             # Send build action
-            ws.send_json({
-                "type": "action",
-                "action": "build",
-                "payload": {
-                    "projectRoot": project_root,
-                    "targets": ["default"]
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "build",
+                    "payload": {"projectRoot": project_root, "targets": ["default"]},
                 }
-            })
+            )
 
             # The state sync happens before action_result, so first message should be state
             msg1 = ws.receive_json()
@@ -513,8 +511,9 @@ class TestBuildStateSync:
                         statuses_seen.add(b.get("status"))
 
             # Should have seen at least queued status (from the immediate state sync)
-            assert "queued" in statuses_seen, \
+            assert "queued" in statuses_seen, (
                 f"Should have seen 'queued' status, got: {statuses_seen}"
+            )
 
 
 class TestCancelBuild:
@@ -527,11 +526,13 @@ class TestCancelBuild:
             ws.receive_json()
 
             # Send cancelBuild action for non-existent build
-            ws.send_json({
-                "type": "action",
-                "action": "cancelBuild",
-                "payload": {"buildId": "nonexistent-build-id"}
-            })
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "cancelBuild",
+                    "payload": {"buildId": "nonexistent-build-id"},
+                }
+            )
 
             # Should receive action_result with error
             result = ws.receive_json()
@@ -546,11 +547,7 @@ class TestCancelBuild:
             ws.receive_json()
 
             # Send cancelBuild action without buildId
-            ws.send_json({
-                "type": "action",
-                "action": "cancelBuild",
-                "payload": {}
-            })
+            ws.send_json({"type": "action", "action": "cancelBuild", "payload": {}})
 
             # Should receive action_result with error
             result = ws.receive_json()
@@ -573,11 +570,13 @@ class TestFetchModules:
             ws.receive_json()
 
             # Send fetchModules action
-            ws.send_json({
-                "type": "action",
-                "action": "fetchModules",
-                "payload": {"projectRoot": project_root}
-            })
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "fetchModules",
+                    "payload": {"projectRoot": project_root},
+                }
+            )
 
             # May receive state broadcast before action_result
             messages = []
@@ -599,11 +598,13 @@ class TestFetchModules:
             ws.receive_json()
 
             # Send fetchModules action with empty project
-            ws.send_json({
-                "type": "action",
-                "action": "fetchModules",
-                "payload": {"projectRoot": ""}
-            })
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "fetchModules",
+                    "payload": {"projectRoot": ""},
+                }
+            )
 
             # Should receive action_result (success with no modules)
             result = ws.receive_json()
@@ -623,11 +624,13 @@ class TestLogActions:
             initial_levels = initial["data"]["enabledLogLevels"]
 
             # Toggle DEBUG level
-            ws.send_json({
-                "type": "action",
-                "action": "toggleLogLevel",
-                "payload": {"level": "DEBUG"}
-            })
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "toggleLogLevel",
+                    "payload": {"level": "DEBUG"},
+                }
+            )
 
             # Receive state update and action_result
             messages = []
@@ -657,11 +660,13 @@ class TestLogActions:
             ws.receive_json()
 
             # Set log search query
-            ws.send_json({
-                "type": "action",
-                "action": "setLogSearchQuery",
-                "payload": {"query": "error"}
-            })
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "setLogSearchQuery",
+                    "payload": {"query": "error"},
+                }
+            )
 
             # Receive state update and action_result
             messages = []
@@ -684,11 +689,9 @@ class TestLogActions:
             initial_mode = initial["data"]["logTimestampMode"]
 
             # Toggle timestamp mode
-            ws.send_json({
-                "type": "action",
-                "action": "toggleLogTimestampMode",
-                "payload": {}
-            })
+            ws.send_json(
+                {"type": "action", "action": "toggleLogTimestampMode", "payload": {}}
+            )
 
             # Receive state update and action_result
             messages = []
@@ -719,11 +722,9 @@ class TestPackageActions:
             ws.receive_json()
 
             # Clear package details
-            ws.send_json({
-                "type": "action",
-                "action": "clearPackageDetails",
-                "payload": {}
-            })
+            ws.send_json(
+                {"type": "action", "action": "clearPackageDetails", "payload": {}}
+            )
 
             # Receive state update and action_result
             messages = []
@@ -748,11 +749,7 @@ class TestPackageActions:
             ws.receive_json()
 
             # Refresh packages
-            ws.send_json({
-                "type": "action",
-                "action": "refreshPackages",
-                "payload": {}
-            })
+            ws.send_json({"type": "action", "action": "refreshPackages", "payload": {}})
 
             # Receive state update and action_result
             messages = []
@@ -783,14 +780,13 @@ class TestQueuedBuilds:
             initial_queued_count = len(initial["data"].get("queuedBuilds", []))
 
             # Trigger a build
-            ws.send_json({
-                "type": "action",
-                "action": "build",
-                "payload": {
-                    "projectRoot": project_root,
-                    "targets": ["default"]
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "build",
+                    "payload": {"projectRoot": project_root, "targets": ["default"]},
                 }
-            })
+            )
 
             # Look for state with new build in queuedBuilds
             found_new_queued = False
@@ -810,7 +806,9 @@ class TestQueuedBuilds:
                 elif msg["type"] == "action_result":
                     continue
 
-            assert found_new_queued, "queuedBuilds should be populated when build is queued"
+            assert found_new_queued, (
+                "queuedBuilds should be populated when build is queued"
+            )
 
     def test_build_name_matches_target(
         self, test_client: TestClient, temp_workspace: Path
@@ -823,14 +821,13 @@ class TestQueuedBuilds:
             ws.receive_json()
 
             # Trigger a build
-            ws.send_json({
-                "type": "action",
-                "action": "build",
-                "payload": {
-                    "projectRoot": project_root,
-                    "targets": ["default"]
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "build",
+                    "payload": {"projectRoot": project_root, "targets": ["default"]},
                 }
-            })
+            )
 
             # Find the build in state
             build_found = None
@@ -846,8 +843,9 @@ class TestQueuedBuilds:
 
             assert build_found is not None, "Should find build in state"
             # Build name should match target name for frontend matching
-            assert build_found["name"] == "default", \
+            assert build_found["name"] == "default", (
                 f"Build name should be 'default', got '{build_found['name']}'"
+            )
 
     def test_build_with_level_build_format(
         self, test_client: TestClient, temp_workspace: Path
@@ -865,15 +863,17 @@ class TestQueuedBuilds:
             initial_build_count = len(initial["data"].get("builds", []))
 
             # Trigger a build using the frontend format
-            ws.send_json({
-                "type": "action",
-                "action": "build",
-                "payload": {
-                    "level": "build",
-                    "id": f"{project_root}:usage",  # Frontend sends projectId:targetName
-                    "label": "usage"
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "build",
+                    "payload": {
+                        "level": "build",
+                        "id": f"{project_root}:usage",  # Frontend sends projectId:targetName
+                        "label": "usage",
+                    },
                 }
-            })
+            )
 
             # Collect messages until we get action_result and state
             action_result = None
@@ -881,7 +881,9 @@ class TestQueuedBuilds:
             messages_received = 0
             max_messages = 10
 
-            while messages_received < max_messages and (action_result is None or not found_build):
+            while messages_received < max_messages and (
+                action_result is None or not found_build
+            ):
                 try:
                     msg = ws.receive_json()
                     messages_received += 1
@@ -892,8 +894,7 @@ class TestQueuedBuilds:
                         builds = msg["data"].get("builds", [])
                         # Check if we have a build with target "usage"
                         new_build = next(
-                            (b for b in builds if b.get("name") == "usage"),
-                            None
+                            (b for b in builds if b.get("name") == "usage"), None
                         )
                         if new_build:
                             found_build = True
@@ -902,8 +903,9 @@ class TestQueuedBuilds:
                     break
 
             assert action_result is not None, "Should receive action_result"
-            assert action_result["success"] is True, \
+            assert action_result["success"] is True, (
                 f"Build should succeed, got: {action_result.get('error')}"
+            )
 
     def test_package_identifier_resolution(
         self, test_client: TestClient, temp_workspace: Path
@@ -916,7 +918,9 @@ class TestQueuedBuilds:
         """
         # Create a mock package structure
         project_root = temp_workspace / "test_project"
-        package_dir = project_root / ".ato" / "modules" / "test-publisher" / "test-package"
+        package_dir = (
+            project_root / ".ato" / "modules" / "test-publisher" / "test-package"
+        )
         package_dir.mkdir(parents=True, exist_ok=True)
 
         # Create ato.yaml in the package directory
@@ -944,15 +948,17 @@ builds:
             # but we can verify the log output shows the resolution attempt
 
             # Try to build a package that doesn't exist in state
-            ws.send_json({
-                "type": "action",
-                "action": "build",
-                "payload": {
-                    "level": "build",
-                    "id": "test-publisher/test-package:usage",
-                    "label": "usage"
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "build",
+                    "payload": {
+                        "level": "build",
+                        "id": "test-publisher/test-package:usage",
+                        "label": "usage",
+                    },
                 }
-            })
+            )
 
             # Should get an error since the package isn't in state
             action_result = None
@@ -984,15 +990,17 @@ builds:
             initial_build_count = len(initial["data"].get("builds", []))
 
             # Trigger first build (default)
-            ws.send_json({
-                "type": "action",
-                "action": "build",
-                "payload": {
-                    "level": "build",
-                    "id": f"{project_root}:default",
-                    "label": "default"
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "build",
+                    "payload": {
+                        "level": "build",
+                        "id": f"{project_root}:default",
+                        "label": "default",
+                    },
                 }
-            })
+            )
 
             # Wait for first build to be queued
             result1 = None
@@ -1003,20 +1011,24 @@ builds:
                     break
 
             assert result1 is not None
-            assert result1["success"] is True, f"First build should succeed: {result1.get('error')}"
+            assert result1["success"] is True, (
+                f"First build should succeed: {result1.get('error')}"
+            )
             build_id_1 = result1.get("build_id")
             assert build_id_1 is not None, "First build should have a build_id"
 
             # Trigger second build (usage)
-            ws.send_json({
-                "type": "action",
-                "action": "build",
-                "payload": {
-                    "level": "build",
-                    "id": f"{project_root}:usage",
-                    "label": "usage"
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "build",
+                    "payload": {
+                        "level": "build",
+                        "id": f"{project_root}:usage",
+                        "label": "usage",
+                    },
                 }
-            })
+            )
 
             # Wait for second build to be queued
             result2 = None
@@ -1027,12 +1039,16 @@ builds:
                     break
 
             assert result2 is not None
-            assert result2["success"] is True, f"Second build should succeed: {result2.get('error')}"
+            assert result2["success"] is True, (
+                f"Second build should succeed: {result2.get('error')}"
+            )
             build_id_2 = result2.get("build_id")
             assert build_id_2 is not None, "Second build should have a build_id"
 
             # The two builds should have different IDs
-            assert build_id_1 != build_id_2, "Two different targets should create separate builds"
+            assert build_id_1 != build_id_2, (
+                "Two different targets should create separate builds"
+            )
 
 
 class TestStateFieldNameFormat:
@@ -1117,14 +1133,13 @@ class TestStateFieldNameFormat:
             ws.receive_json()
 
             # Trigger a build to get build data in state
-            ws.send_json({
-                "type": "action",
-                "action": "build",
-                "payload": {
-                    "projectRoot": project_root,
-                    "targets": ["default"]
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "build",
+                    "payload": {"projectRoot": project_root, "targets": ["default"]},
                 }
-            })
+            )
 
             # Get state with build
             msg = ws.receive_json()
@@ -1200,15 +1215,17 @@ builds:
             initial_build_count = len(initial["data"].get("builds", []))
 
             # Trigger a project-level build (no specific target)
-            ws.send_json({
-                "type": "action",
-                "action": "build",
-                "payload": {
-                    "level": "project",
-                    "id": str(project_root),
-                    "label": "test_project"
+            ws.send_json(
+                {
+                    "type": "action",
+                    "action": "build",
+                    "payload": {
+                        "level": "project",
+                        "id": str(project_root),
+                        "label": "test_project",
+                    },
                 }
-            })
+            )
 
             # Collect messages to find action_result and state with builds
             action_result = None
@@ -1231,21 +1248,25 @@ builds:
 
             # Verify action_result indicates success with multiple builds
             assert action_result is not None, "Should receive action_result"
-            assert action_result["success"] is True, \
+            assert action_result["success"] is True, (
                 f"Build should succeed, got: {action_result.get('error')}"
+            )
 
             # Should have multiple build IDs in the response
             if "build_ids" in action_result:
-                assert len(action_result["build_ids"]) == 3, \
+                assert len(action_result["build_ids"]) == 3, (
                     f"Should queue 3 builds (default, usage, test), got {len(action_result['build_ids'])}"
+                )
             elif "targets" in action_result:
-                assert len(action_result["targets"]) == 3, \
+                assert len(action_result["targets"]) == 3, (
                     f"Should have 3 targets, got {action_result['targets']}"
+                )
 
             # Verify builds appear in state - should have 3 new builds
             new_builds = len(builds_found) - initial_build_count
-            assert new_builds >= 3, \
+            assert new_builds >= 3, (
                 f"Should have at least 3 new builds in state, found {new_builds}"
+            )
 
             # Verify each target has a build
             target_names = {b.get("name") for b in builds_found}

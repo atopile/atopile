@@ -66,7 +66,9 @@ class ConnectionManager:
         client = ClientState(client_id=client_id, websocket=websocket)
         async with self._lock:
             self._clients[client_id] = client
-        log.info(f"WebSocket client connected: {client_id} (total: {len(self._clients)})")
+        log.info(
+            f"WebSocket client connected: {client_id} (total: {len(self._clients)})"
+        )
         return client_id
 
     async def disconnect(self, client_id: str) -> None:
@@ -79,7 +81,9 @@ class ConnectionManager:
                     await client.streaming_task
                 except asyncio.CancelledError:
                     pass
-        log.info(f"WebSocket client disconnected: {client_id} (total: {len(self._clients)})")
+        log.info(
+            f"WebSocket client disconnected: {client_id} (total: {len(self._clients)})"
+        )
 
     async def get_client(self, client_id: str) -> Optional[ClientState]:
         """Get client state by ID."""
@@ -331,7 +335,9 @@ async def _stream_logs_to_client(client_id: str, subscription: LogSubscription) 
             time_since_send = time.time() - last_send_time
             should_send = (
                 len(log_buffer) >= max_batch_size  # Buffer full
-                or (log_buffer and time_since_send >= max_batch_interval)  # Time elapsed
+                or (
+                    log_buffer and time_since_send >= max_batch_interval
+                )  # Time elapsed
             )
 
             if should_send and log_buffer:
@@ -593,7 +599,9 @@ def create_app(
                             if client and client.subscription:
                                 # Update filter settings
                                 if "min_level" in msg_data:
-                                    client.subscription.min_level = msg_data["min_level"]
+                                    client.subscription.min_level = msg_data[
+                                        "min_level"
+                                    ]
                                 if "stages" in msg_data:
                                     client.subscription.stages = msg_data["stages"]
                                 if "target" in msg_data:
@@ -611,7 +619,9 @@ def create_app(
                                         pass
 
                                 task = asyncio.create_task(
-                                    _stream_logs_to_client(client_id, client.subscription)
+                                    _stream_logs_to_client(
+                                        client_id, client.subscription
+                                    )
                                 )
                                 await _ws_manager.set_streaming_task(client_id, task)
 
@@ -636,7 +646,9 @@ def create_app(
                             log.info(f"Client {client_id} unsubscribed from logs")
 
                         else:
-                            log.debug(f"Unknown message type from {client_id}: {msg_type}")
+                            log.debug(
+                                f"Unknown message type from {client_id}: {msg_type}"
+                            )
 
                     except json.JSONDecodeError:
                         log.warning(f"Invalid JSON from client {client_id}")
@@ -737,7 +749,9 @@ def create_app(
 
             # Start background thread to monitor build completion
             def monitor_build():
-                summary_interval = 0.5  # Send summary updates every 0.5 seconds for responsive UI
+                summary_interval = (
+                    0.5  # Send summary updates every 0.5 seconds for responsive UI
+                )
                 last_summary_update = time.time()
 
                 while process.poll() is None:
@@ -894,9 +908,7 @@ def create_app(
 
     @app.get("/api/logs/query")
     async def query_logs(
-        build_id: str = Query(
-            ..., description="Build ID to query logs for (required)"
-        ),
+        build_id: str = Query(..., description="Build ID to query logs for (required)"),
         levels: Optional[str] = Query(
             None,
             description="Filter by log levels (comma-separated, e.g. 'INFO,WARNING,ERROR')",
@@ -946,9 +958,7 @@ def create_app(
                     conditions.append(f"l.stage IN ({placeholders})")
                     params.extend(stage_list)
 
-            where_clause = (
-                "WHERE " + " AND ".join(conditions) if conditions else ""
-            )
+            where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
 
             # Query logs with build info joined
             query = f"""
@@ -1031,9 +1041,7 @@ def create_app(
 
     @app.get("/api/builds")
     async def list_builds(
-        project_path: Optional[str] = Query(
-            None, description="Filter by project path"
-        ),
+        project_path: Optional[str] = Query(None, description="Filter by project path"),
         limit: int = Query(100, ge=1, le=1000, description="Maximum results"),
     ):
         """
@@ -1102,9 +1110,7 @@ def find_free_port() -> int:
 class DashboardServer:
     """Manages the dashboard server lifecycle."""
 
-    def __init__(
-        self, port: Optional[int] = None, project_root: Optional[Path] = None
-    ):
+    def __init__(self, port: Optional[int] = None, project_root: Optional[Path] = None):
         self.port = port or find_free_port()
         self.app = create_app(project_root)
         self._server: Optional[uvicorn.Server] = None

@@ -253,6 +253,15 @@ export function Sidebar() {
     };
     window.addEventListener('message', handleMessage);
     vscode.postMessage({ type: 'ready' });
+
+    // Trigger initial data refresh after ready signal
+    // This ensures problems, packages, and stdlib are loaded
+    setTimeout(() => {
+      action('refreshProblems');
+      action('refreshPackages');
+      action('refreshStdlib');
+    }, 100);
+
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 

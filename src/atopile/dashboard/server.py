@@ -2181,9 +2181,7 @@ def _sync_builds_to_state():
     # Schedule async state update on main event loop
     loop = server_state._event_loop
     if loop is not None and loop.is_running():
-        asyncio.run_coroutine_threadsafe(
-            server_state.set_builds(state_builds), loop
-        )
+        asyncio.run_coroutine_threadsafe(server_state.set_builds(state_builds), loop)
         asyncio.run_coroutine_threadsafe(
             server_state.set_queued_builds(queued_builds), loop
         )
@@ -2238,7 +2236,9 @@ async def _sync_problems_to_state_async():
 
         for project in projects:
             project_path = Path(project.root)
-            project_summary = project_path / "build" / "logs" / "latest" / "summary.json"
+            project_summary = (
+                project_path / "build" / "logs" / "latest" / "summary.json"
+            )
 
             if not project_summary.exists():
                 continue
@@ -2292,7 +2292,11 @@ async def _sync_problems_to_state_async():
 
 
 async def _refresh_packages_async():
-    """Refresh packages and update server_state. Called after install/remove."""
+    """Refresh packages and update server_state. Called after install/remove.
+
+    This mirrors the logic from the refreshPackages action handler to ensure
+    we get ALL packages (installed + registry), not just installed ones.
+    """
     from atopile.dashboard.state import PackageInfo as StatePackageInfo
 
     scan_paths = server_state._workspace_paths
@@ -2300,32 +2304,83 @@ async def _refresh_packages_async():
         return
 
     try:
-        installed = get_all_installed_packages(scan_paths)
-        enriched = enrich_packages_with_registry(installed)
+        packages_map: dict[str, StatePackageInfo] = {}
+        registry_error: str | None = None
 
-        state_packages = [
-            StatePackageInfo(
-                identifier=p.identifier,
-                name=p.name,
-                publisher=p.publisher,
-                version=p.version,
-                latest_version=p.latest_version,
-                description=p.description,
-                summary=p.summary,
-                homepage=p.homepage,
-                repository=p.repository,
-                license=p.license,
-                installed=p.installed,
-                installed_in=p.installed_in,
-                has_update=_version_is_newer(p.version, p.latest_version),
-                downloads=p.downloads,
-                version_count=p.version_count,
-                keywords=p.keywords or [],
+        # 1. Get installed packages
+        installed = get_all_installed_packages(scan_paths)
+        for pkg in installed.values():
+            packages_map[pkg.identifier] = StatePackageInfo(
+                identifier=pkg.identifier,
+                name=pkg.name,
+                publisher=pkg.publisher,
+                version=pkg.version,
+                installed=True,
+                installed_in=pkg.installed_in,
             )
-            for p in enriched.values()
-        ]
-        await server_state.set_packages(state_packages)
-        log.info(f"Refreshed packages after install/remove: {len(state_packages)} packages")
+
+        # 2. Get ALL registry packages (uses multiple search terms)
+        try:
+            registry_packages = get_all_registry_packages()
+            log.info(f"[_refresh_packages_async] Registry returned {len(registry_packages)} packages")
+
+            # Merge registry data into packages_map
+            for reg_pkg in registry_packages:
+                if reg_pkg.identifier in packages_map:
+                    # Update installed package with registry metadata
+                    existing = packages_map[reg_pkg.identifier]
+                    packages_map[reg_pkg.identifier] = StatePackageInfo(
+                        identifier=existing.identifier,
+                        name=existing.name,
+                        publisher=existing.publisher,
+                        version=existing.version,
+                        latest_version=reg_pkg.latest_version,
+                        description=reg_pkg.description or reg_pkg.summary,
+                        summary=reg_pkg.summary,
+                        homepage=reg_pkg.homepage,
+                        repository=reg_pkg.repository,
+                        license=reg_pkg.license,
+                        installed=True,
+                        installed_in=existing.installed_in,
+                        has_update=_version_is_newer(existing.version, reg_pkg.latest_version),
+                        downloads=reg_pkg.downloads,
+                        version_count=reg_pkg.version_count,
+                        keywords=reg_pkg.keywords or [],
+                    )
+                else:
+                    # Add uninstalled registry package
+                    packages_map[reg_pkg.identifier] = StatePackageInfo(
+                        identifier=reg_pkg.identifier,
+                        name=reg_pkg.name,
+                        publisher=reg_pkg.publisher,
+                        latest_version=reg_pkg.latest_version,
+                        description=reg_pkg.description or reg_pkg.summary,
+                        summary=reg_pkg.summary,
+                        homepage=reg_pkg.homepage,
+                        repository=reg_pkg.repository,
+                        license=reg_pkg.license,
+                        installed=False,
+                        installed_in=[],
+                        has_update=False,
+                        downloads=reg_pkg.downloads,
+                        version_count=reg_pkg.version_count,
+                        keywords=reg_pkg.keywords or [],
+                    )
+
+        except Exception as e:
+            registry_error = str(e)
+            log.warning(f"[_refresh_packages_async] Registry fetch failed: {e}")
+
+        # Sort: installed first, then alphabetically
+        state_packages = sorted(
+            packages_map.values(),
+            key=lambda p: (not p.installed, p.identifier.lower()),
+        )
+
+        await server_state.set_packages(list(state_packages), registry_error)
+        log.info(
+            f"Refreshed packages after install/remove: {len(state_packages)} packages"
+        )
     except Exception as e:
         log.error(f"Failed to refresh packages: {e}")
 
@@ -2648,7 +2703,9 @@ def create_app(
                             root=p.root,
                             name=p.name,
                             targets=[
-                                StateBuildTarget(name=t.name, entry=t.entry, root=t.root)
+                                StateBuildTarget(
+                                    name=t.name, entry=t.entry, root=t.root
+                                )
                                 for t in p.targets
                             ],
                         )
@@ -2658,38 +2715,87 @@ def create_app(
                 return {"success": True}
 
             elif action == "refreshPackages":
-                # Fetch packages using existing function
-                scan_paths = state["workspace_paths"]
+                # Fetch ALL packages: installed + registry
+                # This mirrors the logic from /api/packages/summary endpoint
+                from atopile.dashboard.state import PackageInfo as StatePackageInfo
+
+                packages_map: dict[str, StatePackageInfo] = {}
+                scan_paths = state.get("workspace_paths", [])
+                registry_error: str | None = None
+
+                # 1. Get installed packages
                 if scan_paths:
-                    from atopile.dashboard.state import PackageInfo as StatePackageInfo
-
-                    # Use existing function from server.py
                     installed = get_all_installed_packages(scan_paths)
-                    enriched = enrich_packages_with_registry(installed)
-
-                    # Convert to state types
-                    state_packages = [
-                        StatePackageInfo(
-                            identifier=p.identifier,
-                            name=p.name,
-                            publisher=p.publisher,
-                            version=p.version,
-                            latest_version=p.latest_version,
-                            description=p.description,
-                            summary=p.summary,
-                            homepage=p.homepage,
-                            repository=p.repository,
-                            license=p.license,
-                            installed=p.installed,
-                            installed_in=p.installed_in,
-                            has_update=_version_is_newer(p.version, p.latest_version),
-                            downloads=p.downloads,
-                            version_count=p.version_count,
-                            keywords=p.keywords or [],
+                    for pkg in installed.values():
+                        packages_map[pkg.identifier] = StatePackageInfo(
+                            identifier=pkg.identifier,
+                            name=pkg.name,
+                            publisher=pkg.publisher,
+                            version=pkg.version,
+                            installed=True,
+                            installed_in=pkg.installed_in,
                         )
-                        for p in enriched.values()
-                    ]
-                    await server_state.set_packages(state_packages)
+
+                # 2. Get ALL registry packages (uses multiple search terms)
+                try:
+                    registry_packages = get_all_registry_packages()
+                    log.info(f"[refreshPackages] Registry returned {len(registry_packages)} packages")
+
+                    # Merge registry data into packages_map
+                    for reg_pkg in registry_packages:
+                        if reg_pkg.identifier in packages_map:
+                            # Update installed package with registry metadata
+                            existing = packages_map[reg_pkg.identifier]
+                            packages_map[reg_pkg.identifier] = StatePackageInfo(
+                                identifier=existing.identifier,
+                                name=existing.name,
+                                publisher=existing.publisher,
+                                version=existing.version,
+                                latest_version=reg_pkg.latest_version,
+                                description=reg_pkg.description or reg_pkg.summary,
+                                summary=reg_pkg.summary,
+                                homepage=reg_pkg.homepage,
+                                repository=reg_pkg.repository,
+                                license=reg_pkg.license,
+                                installed=True,
+                                installed_in=existing.installed_in,
+                                has_update=_version_is_newer(existing.version, reg_pkg.latest_version),
+                                downloads=reg_pkg.downloads,
+                                version_count=reg_pkg.version_count,
+                                keywords=reg_pkg.keywords or [],
+                            )
+                        else:
+                            # Add uninstalled registry package
+                            packages_map[reg_pkg.identifier] = StatePackageInfo(
+                                identifier=reg_pkg.identifier,
+                                name=reg_pkg.name,
+                                publisher=reg_pkg.publisher,
+                                latest_version=reg_pkg.latest_version,
+                                description=reg_pkg.description or reg_pkg.summary,
+                                summary=reg_pkg.summary,
+                                homepage=reg_pkg.homepage,
+                                repository=reg_pkg.repository,
+                                license=reg_pkg.license,
+                                installed=False,
+                                installed_in=[],
+                                has_update=False,
+                                downloads=reg_pkg.downloads,
+                                version_count=reg_pkg.version_count,
+                                keywords=reg_pkg.keywords or [],
+                            )
+
+                except Exception as e:
+                    registry_error = str(e)
+                    log.warning(f"[refreshPackages] Registry fetch failed: {e}")
+
+                # Sort: installed first, then alphabetically
+                state_packages = sorted(
+                    packages_map.values(),
+                    key=lambda p: (not p.installed, p.identifier.lower()),
+                )
+
+                log.info(f"[refreshPackages] Setting {len(state_packages)} total packages")
+                await server_state.set_packages(list(state_packages), registry_error)
                 return {"success": True}
 
             elif action == "refreshStdlib":
@@ -2698,6 +2804,7 @@ def create_app(
 
                 items = get_standard_library()
                 # Convert - StdLibItem is similar between modules
+                # Note: get_standard_library() returns a list directly, not an object with .items
                 state_items = [
                     StateStdLibItem(
                         id=item.id,
@@ -2708,7 +2815,7 @@ def create_app(
                         children=[],  # Simplified
                         parameters=[],
                     )
-                    for item in items.items
+                    for item in items
                 ]
                 await server_state.set_stdlib_items(state_items)
                 return {"success": True}
@@ -2724,7 +2831,9 @@ def create_app(
                 # - level='build': id is project root, buildId or label is target name
                 # - level='symbol': id is project root, build specific entry
 
-                project_root = payload.get("projectRoot") or payload.get("project_root", "")
+                project_root = payload.get("projectRoot") or payload.get(
+                    "project_root", ""
+                )
                 targets = payload.get("targets", [])
                 entry = payload.get("entry")
                 standalone = payload.get("standalone", False)
@@ -2733,7 +2842,9 @@ def create_app(
                 payload_id = payload.get("id")
                 payload_label = payload.get("label")
 
-                log.info(f"Build action: level={level}, id={payload_id}, label={payload_label}, targets={targets}")
+                log.info(
+                    f"Build action: level={level}, id={payload_id}, label={payload_label}, targets={targets}"
+                )
 
                 # Handle frontend level/id/label format
                 # Flag to indicate we should build all targets from ato.yaml
@@ -2745,7 +2856,9 @@ def create_app(
                         # For project-level build, we'll read all targets from ato.yaml later
                         if not targets:
                             build_all_targets = True
-                        log.info(f"Build project: {project_root}, build_all_targets={build_all_targets}")
+                        log.info(
+                            f"Build project: {project_root}, build_all_targets={build_all_targets}"
+                        )
                     elif level == "build":
                         # Frontend sends id as "${projectId}:${targetName}"
                         # For projects: projectId is filesystem path
@@ -2780,34 +2893,54 @@ def create_app(
 
                 # Validate project path - if not a valid path, try to resolve as package identifier
                 project_path = Path(project_root) if project_root else Path("")
-                log.info(f"Validating project path: {project_path}, exists={project_path.exists() if project_root else False}")
+                log.info(
+                    f"Validating project path: {project_path}, exists={project_path.exists() if project_root else False}"
+                )
                 if project_root and not project_path.exists():
                     # Check if this looks like a package identifier (e.g., "atopile/package-name")
                     if "/" in project_root and not project_root.startswith("/"):
                         package_identifier = project_root
-                        log.info(f"Project root looks like package identifier: {package_identifier}")
+                        log.info(
+                            f"Project root looks like package identifier: {package_identifier}"
+                        )
                         # Look up the package in state to find its installed_in paths
                         packages = server_state._state.packages or []
-                        pkg = next((p for p in packages if p.identifier == package_identifier), None)
+                        pkg = next(
+                            (p for p in packages if p.identifier == package_identifier),
+                            None,
+                        )
                         if pkg and pkg.installed_in:
                             # Find the package's actual directory within the installed project
                             # Packages are installed at: {project_root}/.ato/modules/{identifier}/
                             consuming_project = pkg.installed_in[0]
-                            package_dir = Path(consuming_project) / ".ato" / "modules" / package_identifier
+                            package_dir = (
+                                Path(consuming_project)
+                                / ".ato"
+                                / "modules"
+                                / package_identifier
+                            )
                             if package_dir.exists():
-                                log.info(f"Resolved package {package_identifier} to package dir: {package_dir}")
+                                log.info(
+                                    f"Resolved package {package_identifier} to package dir: {package_dir}"
+                                )
                                 project_root = str(package_dir)
                                 project_path = package_dir
                             else:
                                 # Fallback to the consuming project (for backwards compatibility)
-                                log.warning(f"Package dir {package_dir} not found, using project: {consuming_project}")
+                                log.warning(
+                                    f"Package dir {package_dir} not found, using project: {consuming_project}"
+                                )
                                 project_root = consuming_project
                                 project_path = Path(project_root)
                         else:
-                            log.warning(f"Package {package_identifier} not found in state or not installed anywhere")
+                            log.warning(
+                                f"Package {package_identifier} not found in state or not installed anywhere"
+                            )
 
                 if not project_root or not project_path.exists():
-                    log.warning(f"Build failed: Project path does not exist: {project_root}")
+                    log.warning(
+                        f"Build failed: Project path does not exist: {project_root}"
+                    )
                     return {
                         "success": False,
                         "error": f"Project path does not exist: {project_root}",
@@ -2829,9 +2962,13 @@ def create_app(
                         }
                 else:
                     ato_yaml_path = project_path / "ato.yaml"
-                    log.info(f"Checking for ato.yaml: {ato_yaml_path}, exists={ato_yaml_path.exists()}")
+                    log.info(
+                        f"Checking for ato.yaml: {ato_yaml_path}, exists={ato_yaml_path.exists()}"
+                    )
                     if not ato_yaml_path.exists():
-                        log.warning(f"Build failed: No ato.yaml found in: {project_root}")
+                        log.warning(
+                            f"Build failed: No ato.yaml found in: {project_root}"
+                        )
                         return {
                             "success": False,
                             "error": f"No ato.yaml found in: {project_root}",
@@ -2842,17 +2979,27 @@ def create_app(
                         try:
                             # Use atopile's ProjectConfig to parse ato.yaml properly
                             project_config = ProjectConfig.from_path(project_path)
-                            all_targets = list(project_config.builds.keys()) if project_config else []
+                            all_targets = (
+                                list(project_config.builds.keys())
+                                if project_config
+                                else []
+                            )
                             if all_targets:
-                                log.info(f"Found {len(all_targets)} targets in ato.yaml: {all_targets}")
+                                log.info(
+                                    f"Found {len(all_targets)} targets in ato.yaml: {all_targets}"
+                                )
                                 # Queue a separate build for each target
                                 build_ids = []
                                 for target_name in all_targets:
                                     # Check for duplicate
-                                    target_build_key = _make_build_key(project_root, [target_name], entry)
+                                    target_build_key = _make_build_key(
+                                        project_root, [target_name], entry
+                                    )
                                     existing_id = _is_duplicate_build(target_build_key)
                                     if existing_id:
-                                        log.info(f"Target {target_name} already building: {existing_id}")
+                                        log.info(
+                                            f"Target {target_name} already building: {existing_id}"
+                                        )
                                         build_ids.append(existing_id)
                                         continue
 
@@ -2860,7 +3007,9 @@ def create_app(
                                     with _build_lock:
                                         global _build_counter
                                         _build_counter += 1
-                                        build_id = f"build-{_build_counter}-{int(time.time())}"
+                                        build_id = (
+                                            f"build-{_build_counter}-{int(time.time())}"
+                                        )
 
                                         # Register the build
                                         _active_builds[build_id] = {
@@ -2878,13 +3027,17 @@ def create_app(
                                         }
 
                                     # Enqueue the build
-                                    log.info(f"Enqueueing build for target {target_name}: {build_id}")
+                                    log.info(
+                                        f"Enqueueing build for target {target_name}: {build_id}"
+                                    )
                                     _build_queue.enqueue(build_id)
                                     build_ids.append(build_id)
 
                                 # Sync to server_state for WebSocket broadcast
                                 await _sync_builds_to_state_async()
-                                log.info(f"Queued {len(build_ids)} builds for project: {project_root}")
+                                log.info(
+                                    f"Queued {len(build_ids)} builds for project: {project_root}"
+                                )
 
                                 return {
                                     "success": True,
@@ -2894,10 +3047,14 @@ def create_app(
                                 }
                             else:
                                 # No targets found, fall back to default
-                                log.info("No targets found in ato.yaml, falling back to 'default'")
+                                log.info(
+                                    "No targets found in ato.yaml, falling back to 'default'"
+                                )
                                 targets = ["default"]
                         except Exception as e:
-                            log.warning(f"Failed to read targets from ato.yaml: {e}, falling back to 'default'")
+                            log.warning(
+                                f"Failed to read targets from ato.yaml: {e}, falling back to 'default'"
+                            )
                             targets = ["default"]
 
                 # Check for duplicate builds
@@ -3042,7 +3199,9 @@ def create_app(
                     return {"success": False, "error": "No project selected"}
 
                 project_path = Path(project_root)
-                bom_path = project_path / "build" / "builds" / target / f"{target}.bom.json"
+                bom_path = (
+                    project_path / "build" / "builds" / target / f"{target}.bom.json"
+                )
 
                 if not bom_path.exists():
                     await server_state.set_bom_data(
@@ -3118,7 +3277,9 @@ def create_app(
                                     )
                                 )
                     except Exception as e:
-                        log.warning(f"Failed to read problems from {project_summary}: {e}")
+                        log.warning(
+                            f"Failed to read problems from {project_summary}: {e}"
+                        )
 
                 await server_state.set_problems(all_problems)
                 return {"success": True}
@@ -3134,7 +3295,11 @@ def create_app(
 
                 project_path = Path(project_root)
                 variables_path = (
-                    project_path / "build" / "builds" / target / f"{target}.variables.json"
+                    project_path
+                    / "build"
+                    / "builds"
+                    / target
+                    / f"{target}.variables.json"
                 )
 
                 if not variables_path.exists():
@@ -3158,14 +3323,23 @@ def create_app(
                 version = payload.get("version")
 
                 if not package_id or not project_root:
-                    return {"success": False, "error": "Missing packageId or projectRoot"}
+                    return {
+                        "success": False,
+                        "error": "Missing packageId or projectRoot",
+                    }
 
                 project_path = Path(project_root)
                 if not project_path.exists():
-                    return {"success": False, "error": f"Project not found: {project_root}"}
+                    return {
+                        "success": False,
+                        "error": f"Project not found: {project_root}",
+                    }
 
                 if not (project_path / "ato.yaml").exists():
-                    return {"success": False, "error": f"No ato.yaml in: {project_root}"}
+                    return {
+                        "success": False,
+                        "error": f"No ato.yaml in: {project_root}",
+                    }
 
                 # Generate operation ID
                 with _package_op_lock:
@@ -3206,13 +3380,16 @@ def create_app(
                                     )
                             else:
                                 _active_package_ops[op_id]["status"] = "failed"
-                                _active_package_ops[op_id]["error"] = result.stderr[:500]
+                                _active_package_ops[op_id]["error"] = result.stderr[
+                                    :500
+                                ]
                     except Exception as e:
                         with _package_op_lock:
                             _active_package_ops[op_id]["status"] = "failed"
                             _active_package_ops[op_id]["error"] = str(e)
 
                 import threading
+
                 threading.Thread(target=run_install, daemon=True).start()
 
                 log.info(f"Package install started via WebSocket: {package_id}")
@@ -3228,11 +3405,17 @@ def create_app(
                 project_root = payload.get("projectRoot", "")
 
                 if not package_id or not project_root:
-                    return {"success": False, "error": "Missing packageId or projectRoot"}
+                    return {
+                        "success": False,
+                        "error": "Missing packageId or projectRoot",
+                    }
 
                 project_path = Path(project_root)
                 if not project_path.exists():
-                    return {"success": False, "error": f"Project not found: {project_root}"}
+                    return {
+                        "success": False,
+                        "error": f"Project not found: {project_root}",
+                    }
 
                 # Generate operation ID
                 with _package_op_lock:
@@ -3271,13 +3454,16 @@ def create_app(
                                     )
                             else:
                                 _active_package_ops[op_id]["status"] = "failed"
-                                _active_package_ops[op_id]["error"] = result.stderr[:500]
+                                _active_package_ops[op_id]["error"] = result.stderr[
+                                    :500
+                                ]
                     except Exception as e:
                         with _package_op_lock:
                             _active_package_ops[op_id]["status"] = "failed"
                             _active_package_ops[op_id]["error"] = str(e)
 
                 import threading
+
                 threading.Thread(target=run_remove, daemon=True).start()
 
                 log.info(f"Package remove started via WebSocket: {package_id}")
@@ -3295,14 +3481,29 @@ def create_app(
 
                 project_path = Path(project_root)
                 if not project_path.exists():
-                    return {"success": False, "error": f"Project not found: {project_root}"}
+                    return {
+                        "success": False,
+                        "error": f"Project not found: {project_root}",
+                    }
 
                 from atopile.dashboard.state import FileTreeNode
 
-                def build_file_tree(path: Path, relative_to: Path) -> list[FileTreeNode]:
+                def build_file_tree(
+                    path: Path, relative_to: Path
+                ) -> list[FileTreeNode]:
                     """Build file tree for a directory, only including .ato and .py files."""
                     nodes = []
-                    excluded = {"build", ".ato", "__pycache__", ".git", "node_modules", ".venv", ".pytest_cache", ".mypy_cache", "dist"}
+                    excluded = {
+                        "build",
+                        ".ato",
+                        "__pycache__",
+                        ".git",
+                        "node_modules",
+                        ".venv",
+                        ".pytest_cache",
+                        ".mypy_cache",
+                        "dist",
+                    }
 
                     try:
                         for item in sorted(path.iterdir()):
@@ -3334,7 +3535,9 @@ def create_app(
                                             name=item.name,
                                             path=rel_path,
                                             type="file",
-                                            extension=ext[1:] if ext else None,  # Remove leading dot
+                                            extension=ext[1:]
+                                            if ext
+                                            else None,  # Remove leading dot
                                         )
                                     )
                     except PermissionError:
@@ -3355,7 +3558,7 @@ def create_app(
                         "custom_value": _build_settings["custom_max_concurrent"],
                         "default_value": _DEFAULT_MAX_CONCURRENT,
                         "current_value": _build_queue.get_max_concurrent(),
-                    }
+                    },
                 }
 
             elif action == "setMaxConcurrentSetting":
@@ -3380,8 +3583,85 @@ def create_app(
                         "custom_value": _build_settings["custom_max_concurrent"],
                         "default_value": _DEFAULT_MAX_CONCURRENT,
                         "current_value": _build_queue.get_max_concurrent(),
-                    }
+                    },
                 }
+
+            elif action == "selectBuild":
+                # Select a build and load its logs
+                build_name = payload.get("buildName")
+                project_name = payload.get("projectName")
+                from atopile.dashboard.state import LogEntry as StateLogEntry
+
+                # Update selected build name in state
+                await server_state.set_selected_build(build_name)
+
+                # Clear existing logs first
+                await server_state.set_log_entries([])
+
+                # If no build selected, just return
+                if not build_name:
+                    log.info("[selectBuild] No build selected, cleared logs")
+                    return {"success": True}
+
+                # Find the build's log file
+                log_file_path = None
+                with _build_lock:
+                    for bid, build_info in _active_builds.items():
+                        if build_info.get("display_name") == build_name:
+                            log_file_path = build_info.get("log_file")
+                            break
+
+                # Also check summary.json for completed builds
+                if not log_file_path:
+                    workspace_paths = state.get("workspace_paths", [])
+                    for ws_path in workspace_paths:
+                        summary_path = Path(ws_path) / "build" / "logs" / "latest" / "summary.json"
+                        if summary_path.exists():
+                            try:
+                                summary = json.loads(summary_path.read_text())
+                                for build in summary.get("builds", []):
+                                    if build.get("name") == build_name or build.get("display_name") == build_name:
+                                        log_file_path = build.get("log_file")
+                                        break
+                            except Exception:
+                                pass
+                        if log_file_path:
+                            break
+
+                if not log_file_path or not Path(log_file_path).exists():
+                    log.warning(f"[selectBuild] Log file not found for build: {build_name}")
+                    return {"success": True, "info": "Log file not found"}
+
+                # Parse log entries from JSONL file
+                log_entries: list[StateLogEntry] = []
+                try:
+                    log_file = Path(log_file_path)
+                    content = log_file.read_text()
+                    for line in content.strip().split("\n"):
+                        if not line.strip():
+                            continue
+                        try:
+                            entry = json.loads(line)
+                            log_entries.append(StateLogEntry(
+                                timestamp=entry.get("timestamp", ""),
+                                level=entry.get("level", "INFO"),
+                                message=entry.get("message", ""),
+                                logger=entry.get("logger", ""),
+                                stage=entry.get("stage"),
+                                ato_traceback=entry.get("ato_traceback"),
+                                exc_info=entry.get("exc_info"),
+                            ))
+                        except json.JSONDecodeError:
+                            continue
+
+                    await server_state.set_log_entries(log_entries)
+                    log.info(f"[selectBuild] Loaded {len(log_entries)} log entries for {build_name}")
+
+                except Exception as e:
+                    log.error(f"[selectBuild] Failed to load logs: {e}")
+                    return {"success": False, "error": str(e)}
+
+                return {"success": True, "log_count": len(log_entries)}
 
             else:
                 # Not a data action, let state.py handle it
@@ -3423,7 +3703,9 @@ def create_app(
                         payload = data["payload"]
                     else:
                         # Extract everything except type and action as payload
-                        payload = {k: v for k, v in data.items() if k not in ("type", "action")}
+                        payload = {
+                            k: v for k, v in data.items() if k not in ("type", "action")
+                        }
                     log.info(f"Processing action: {action}, payload: {payload}")
 
                     # Try data actions first (need access to server.py functions)

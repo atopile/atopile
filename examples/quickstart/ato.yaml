@@ -8,3 +8,13 @@ builds:
   default:
     entry: quickstart.ato:App
 
+dependencies:
+- type: registry
+  identifier: atopile/addressable-leds
+  release: 0.2.6
+- type: registry
+  identifier: atopile/adi-adxl345
+  release: 0.2.1
+- type: registry
+  identifier: atopile/batteries
+  release: 0.2.3

@@ -3,8 +3,8 @@
  * Similar to VS Code's Problems panel.
  */
 
-import { useState } from 'react';
-import { AlertCircle, AlertTriangle, FileCode, ChevronDown, ChevronRight } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { AlertCircle, AlertTriangle, FileCode, ChevronDown, ChevronRight, Search, X } from 'lucide-react';
 import { BuildSelector, type Selection, type Project } from './BuildSelector';
 import './ProblemsPanel.css';
 
@@ -65,10 +65,23 @@ export function ProblemsPanel({
 }: ProblemsPanelProps) {
   // Track collapsed file groups
   const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
+  // Search query state
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const errorCount = problems.filter(p => p.level === 'error').length;
-  const warningCount = problems.filter(p => p.level === 'warning').length;
-  const grouped = groupByFile(problems);
+  // Filter problems by search query
+  const filteredProblems = useMemo(() => {
+    if (!searchQuery.trim()) return problems;
+    const query = searchQuery.toLowerCase();
+    return problems.filter(p =>
+      p.message.toLowerCase().includes(query) ||
+      p.file?.toLowerCase().includes(query) ||
+      p.stage?.toLowerCase().includes(query)
+    );
+  }, [problems, searchQuery]);
+
+  const errorCount = filteredProblems.filter(p => p.level === 'error').length;
+  const warningCount = filteredProblems.filter(p => p.level === 'warning').length;
+  const grouped = groupByFile(filteredProblems);
 
   // Check if a filter is active
   const showErrors = !filter?.levels?.length || filter.levels.includes('error');
@@ -86,30 +99,54 @@ export function ProblemsPanel({
     });
   };
 
-  if (problems.length === 0) {
+  // Check if no problems at all or just filtered to empty
+  const hasNoProblems = problems.length === 0;
+  const hasNoMatches = !hasNoProblems && filteredProblems.length === 0;
+
+  if (hasNoProblems || hasNoMatches) {
     return (
       <div className="problems-panel empty" data-testid="problems-panel">
-        {/* Toolbar even when empty */}
-        <div className="problems-toolbar">
-          <div className="problems-filters">
-            <button
-              className={`problems-filter-btn ${showErrors ? 'active' : ''} error`}
-              onClick={() => onToggleLevelFilter?.('error')}
-              title={showErrors ? 'Hide errors' : 'Show errors'}
-            >
-              <AlertCircle size={12} />
-              <span>0</span>
-            </button>
-            <button
-              className={`problems-filter-btn ${showWarnings ? 'active' : ''} warning`}
-              onClick={() => onToggleLevelFilter?.('warning')}
-              title={showWarnings ? 'Hide warnings' : 'Show warnings'}
-            >
-              <AlertTriangle size={12} />
-              <span>0</span>
-            </button>
-          </div>
-          <div className="problems-actions">
+        {/* Unified toolbar */}
+        <div className="panel-toolbar">
+          <div className="panel-toolbar-row">
+            <div className="filter-group">
+              <button
+                className={`filter-btn ${showErrors ? 'active' : ''} error`}
+                onClick={() => onToggleLevelFilter?.('error')}
+                title={showErrors ? 'Hide errors' : 'Show errors'}
+              >
+                <AlertCircle size={12} />
+                <span>{hasNoProblems ? 0 : problems.filter(p => p.level === 'error').length}</span>
+              </button>
+              <button
+                className={`filter-btn ${showWarnings ? 'active' : ''} warning`}
+                onClick={() => onToggleLevelFilter?.('warning')}
+                title={showWarnings ? 'Hide warnings' : 'Show warnings'}
+              >
+                <AlertTriangle size={12} />
+                <span>{hasNoProblems ? 0 : problems.filter(p => p.level === 'warning').length}</span>
+              </button>
+            </div>
+
+            <div className="search-box">
+              <Search size={14} />
+              <input
+                type="text"
+                placeholder="Filter problems..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              {searchQuery && (
+                <button
+                  className="search-clear"
+                  onClick={() => setSearchQuery('')}
+                  title="Clear search"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+
             {selection && onSelectionChange && projects.length > 0 && (
               <BuildSelector
                 selection={selection}
@@ -123,7 +160,9 @@ export function ProblemsPanel({
         </div>
         <div className="problems-empty-state">
           <AlertCircle size={24} className="problems-empty-icon" />
-          <span className="problems-empty-text">No problems</span>
+          <span className="problems-empty-text">
+            {hasNoMatches ? 'No matching problems' : 'No problems'}
+          </span>
         </div>
       </div>
     );
@@ -131,27 +170,47 @@ export function ProblemsPanel({
 
   return (
     <div className="problems-panel" data-testid="problems-panel">
-      {/* Toolbar with filters and build selector */}
-      <div className="problems-toolbar">
-        <div className="problems-filters">
-          <button
-            className={`problems-filter-btn ${showErrors ? 'active' : ''} error`}
-            onClick={() => onToggleLevelFilter?.('error')}
-            title={showErrors ? 'Hide errors' : 'Show errors'}
-          >
-            <AlertCircle size={12} />
-            <span>{errorCount}</span>
-          </button>
-          <button
-            className={`problems-filter-btn ${showWarnings ? 'active' : ''} warning`}
-            onClick={() => onToggleLevelFilter?.('warning')}
-            title={showWarnings ? 'Hide warnings' : 'Show warnings'}
-          >
-            <AlertTriangle size={12} />
-            <span>{warningCount}</span>
-          </button>
-        </div>
-        <div className="problems-actions">
+      {/* Unified toolbar */}
+      <div className="panel-toolbar">
+        <div className="panel-toolbar-row">
+          <div className="filter-group">
+            <button
+              className={`filter-btn ${showErrors ? 'active' : ''} error`}
+              onClick={() => onToggleLevelFilter?.('error')}
+              title={showErrors ? 'Hide errors' : 'Show errors'}
+            >
+              <AlertCircle size={12} />
+              <span>{errorCount}</span>
+            </button>
+            <button
+              className={`filter-btn ${showWarnings ? 'active' : ''} warning`}
+              onClick={() => onToggleLevelFilter?.('warning')}
+              title={showWarnings ? 'Hide warnings' : 'Show warnings'}
+            >
+              <AlertTriangle size={12} />
+              <span>{warningCount}</span>
+            </button>
+          </div>
+
+          <div className="search-box">
+            <Search size={14} />
+            <input
+              type="text"
+              placeholder="Filter problems..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button
+                className="search-clear"
+                onClick={() => setSearchQuery('')}
+                title="Clear search"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+
           {selection && onSelectionChange && projects.length > 0 && (
             <BuildSelector
               selection={selection}

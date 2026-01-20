@@ -11,7 +11,7 @@
 }
 
 .problems-panel.empty {
-  padding: var(--spacing-lg);
+  /* Empty state handled by flex layout - no extra padding */
 }
 
 /* Empty state */
@@ -35,102 +35,22 @@
   opacity: 0.7;
 }
 
-/* Toolbar */
-.problems-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-tertiary);
-  flex-shrink: 0;
-}
-
-/* Legacy summary bar */
-.problems-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-tertiary);
-}
-
-.problems-filters {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-}
-
-.problems-filter-btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  cursor: pointer;
-  opacity: 0.5;
-  transition: all var(--transition-fast);
-}
-
-.problems-filter-btn:hover {
-  opacity: 0.8;
-  background: var(--bg-hover);
-}
-
-.problems-filter-btn.active {
-  opacity: 1;
-}
-
-.problems-filter-btn.error {
+/* Error/Warning filter button color variants */
+.filter-btn.error {
   color: var(--ctp-red);
 }
 
-.problems-filter-btn.warning {
+.filter-btn.error.active {
+  background: rgba(243, 139, 168, 0.15);
+  color: var(--ctp-red);
+}
+
+.filter-btn.warning {
   color: var(--ctp-yellow);
 }
 
-.problems-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-}
-
-.problems-action-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.problems-action-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.problems-count {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-}
-
-.problems-count.error {
-  color: var(--ctp-red);
-}
-
-.problems-count.warning {
+.filter-btn.warning.active {
+  background: rgba(249, 226, 175, 0.15);
   color: var(--ctp-yellow);
 }
 
@@ -286,3 +206,4 @@
   border-radius: var(--radius-sm);
   color: var(--text-muted);
 }
+

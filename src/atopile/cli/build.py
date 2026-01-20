@@ -165,9 +165,9 @@ class BuildProcess:
         self._event_rfd: int | None = None
         self._event_wfd: int | None = None
         self._event_buffer: bytes = b""
-        self._stage_printer: Callable[[StageCompleteEvent, Path | None], None] | None = (
-            None
-        )
+        self._stage_printer: (
+            Callable[[StageCompleteEvent, Path | None], None] | None
+        ) = None
 
     def start(self) -> None:
         """Start the build subprocess."""
@@ -403,6 +403,7 @@ class BuildProcess:
                 self.process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self.process.kill()
+
 
 class ParallelBuildManager:
     """Manages multiple build processes with live display and job queue."""
@@ -990,7 +991,9 @@ class ParallelBuildManager:
                                     )
                                     bp._error_reported = True
                                 elif ret != 0 and not bp._error_reported:
-                                    console.print(f"[red bold]✗ {display_name}[/red bold]\n")
+                                    console.print(
+                                        f"[red bold]✗ {display_name}[/red bold]\n"
+                                    )
                                     bp._error_reported = True
                                 elif ret == 0 and bp.warnings > 0:
                                     console.print(
@@ -1067,7 +1070,9 @@ class ParallelBuildManager:
         # Use resolved absolute path to ensure consistency with subprocess
         project_path = str(bp.project_root.resolve()) if bp.project_root else "unknown"
         build_id = generate_build_id(project_path, bp.name, self._now)
-        logger.debug(f"Summary build_id: {build_id} (project={project_path}, target={bp.name}, ts={self._now})")
+        logger.debug(
+            f"Summary build_id: {build_id} (project={project_path}, target={bp.name}, ts={self._now})"
+        )
 
         data = {
             "name": bp.name,  # Target name for matching
@@ -1443,6 +1448,7 @@ def build(
 
     # Flush and close all build loggers to ensure logs are written to SQLite
     from atopile.logging import close_all_build_loggers
+
     close_all_build_loggers()
 
     failed = [name for name, code in results.items() if code != 0]

@@ -971,19 +971,68 @@ const BuildNode = memo(function BuildNode({
     return () => clearInterval(interval)
   }, [isBuilding, build.elapsedSeconds, build.duration])
 
-  // Calculate progress from stages
-  // Use estimated total of 20 stages (typically ~19) since we don't know upfront
-  // TODO: Once builds are defined in the graph, get actual stage count from backend
-  const ESTIMATED_TOTAL_STAGES = 20
+  // Calculate progress from stages with weights to reflect actual time distribution
+  // Picker stage takes ~50% of total build time, so it gets higher weight
+  const STAGE_WEIGHTS: Record<string, number> = {
+    // Quick stages (parsing, setup) - 1 weight each
+    'init': 1,
+    'modify-type-graph': 1,
+    'instantiate': 1,
+    'prepare-build': 1,
+    'verify-instance-graph': 1,
+    'modify-instance-graph': 1,
+    'verify-electrical-design': 1,
+    'load-pcb': 1,
+    // Heavy stage - picker takes most of the time
+    'picker': 10,
+    // Post-picker stages - medium weight
+    'prepare-nets': 2,
+    'post-solve-checks': 1,
+    'update-pcb': 3,
+    'post-pcb-checks': 1,
+    // Export stages
+    'export': 2,
+  }
+  const DEFAULT_WEIGHT = 1
+  const TOTAL_WEIGHT = Object.values(STAGE_WEIGHTS).reduce((a, b) => a + b, 0) + 5 // +5 for unknown stages
+
+  const getStageWeight = (stage: { stageId?: string; name?: string }) => {
+    // Try to match by stageId first, then by name keywords
+    const id = stage.stageId?.toLowerCase() || ''
+    const name = stage.name?.toLowerCase() || ''
+
+    for (const [key, weight] of Object.entries(STAGE_WEIGHTS)) {
+      if (id.includes(key) || name.includes(key)) {
+        return weight
+      }
+    }
+    // Special case for picking - match various forms
+    if (id.includes('pick') || name.includes('pick')) return STAGE_WEIGHTS['picker']
+    return DEFAULT_WEIGHT
+  }
+
   const getProgress = () => {
     if (!build.stages || build.stages.length === 0) return 0
-    const completed = build.stages.filter(s =>
-      s.status === 'success' || s.status === 'warning' || s.status === 'error' || s.status === 'skipped'
-    ).length
-    const running = build.stages.filter(s => s.status === 'running').length
-    // Add half credit for running stage, use estimated total for smoother progress
-    const progress = ((completed + running * 0.5) / ESTIMATED_TOTAL_STAGES) * 100
-    return Math.min(progress, 100) // Cap at 100% in case we exceed estimate
+
+    let completedWeight = 0
+    let runningWeight = 0
+
+    for (const stage of build.stages) {
+      const weight = getStageWeight(stage)
+      const isComplete = stage.status === 'success' || stage.status === 'warning' ||
+                        stage.status === 'error' || stage.status === 'skipped'
+      const isRunning = stage.status === 'running'
+
+      if (isComplete) {
+        completedWeight += weight
+      } else if (isRunning) {
+        // Give partial credit for running stage (30% to be conservative)
+        runningWeight += weight * 0.3
+      }
+    }
+
+    const progress = ((completedWeight + runningWeight) / TOTAL_WEIGHT) * 100
+    return Math.min(progress, 100)
   }
 
   // Get current running stage name (use display_name if available)
@@ -1516,10 +1565,14 @@ function InstallDropdown({
   const isInstalled = installStatus.installed
   const needsUpdate = installStatus.needsUpdate
   
+  // Truncate project name if too long
+  const targetName = selectedTarget?.name || 'project'
+  const displayName = targetName.length > 15 ? targetName.slice(0, 12) + '...' : targetName
+
   return (
     <div className="install-dropdown" ref={dropdownRef}>
-      <button 
-        className={`install-btn ${isInstalled ? (needsUpdate ? 'update-available' : 'installed') : ''}`}
+      <button
+        className={`install-btn install-btn-wide ${isInstalled ? (needsUpdate ? 'update-available' : 'installed') : ''}`}
         onClick={handleInstall}
         title={needsUpdate ? `Update to v${installStatus.latestVersion} in ${selectedTarget?.name}` : `Install to ${selectedTarget?.name}`}
       >
@@ -1527,28 +1580,28 @@ function InstallDropdown({
           needsUpdate ? (
             <>
               <ArrowUpCircle size={12} />
-              <span>Update</span>
+              <span>Update in {displayName}</span>
             </>
           ) : (
             <>
               <Check size={12} />
-              <span>Installed</span>
+              <span>Installed in {displayName}</span>
             </>
           )
         ) : (
           <>
             <Download size={12} />
-            <span>Install</span>
+            <span>Install to {displayName}</span>
           </>
         )}
       </button>
-      <button 
+      <button
         className="install-dropdown-toggle"
         onClick={(e) => {
           e.stopPropagation()
           setIsOpen(!isOpen)
         }}
-        title={`Target: ${selectedTarget?.name}`}
+        title={`Change target project (${selectedTarget?.name})`}
       >
         <ChevronDown size={12} />
       </button>

@@ -74,7 +74,7 @@ describe('ProblemsPanel', () => {
     it('shows error count in toolbar', () => {
       const { container } = render(<ProblemsPanel problems={testProblems} />);
       // Two errors in test data - find in the error filter button
-      const errorButton = container.querySelector('.problems-filter-btn.error span');
+      const errorButton = container.querySelector('.filter-btn.error span');
       expect(errorButton?.textContent).toBe('2');
     });
 
@@ -161,7 +161,7 @@ describe('ProblemsPanel', () => {
         <ProblemsPanel problems={testProblems} onToggleLevelFilter={onToggleLevelFilter} />
       );
 
-      const errorButton = container.querySelector('.problems-filter-btn.error');
+      const errorButton = container.querySelector('.filter-btn.error');
       fireEvent.click(errorButton!);
 
       expect(onToggleLevelFilter).toHaveBeenCalledWith('error');
@@ -173,7 +173,7 @@ describe('ProblemsPanel', () => {
         <ProblemsPanel problems={testProblems} onToggleLevelFilter={onToggleLevelFilter} />
       );
 
-      const warningButton = container.querySelector('.problems-filter-btn.warning');
+      const warningButton = container.querySelector('.filter-btn.warning');
       fireEvent.click(warningButton!);
 
       expect(onToggleLevelFilter).toHaveBeenCalledWith('warning');
@@ -187,8 +187,8 @@ describe('ProblemsPanel', () => {
         />
       );
 
-      const errorButton = container.querySelector('.problems-filter-btn.error');
-      const warningButton = container.querySelector('.problems-filter-btn.warning');
+      const errorButton = container.querySelector('.filter-btn.error');
+      const warningButton = container.querySelector('.filter-btn.warning');
 
       expect(errorButton).toHaveClass('active');
       expect(warningButton).not.toHaveClass('active');
@@ -197,8 +197,8 @@ describe('ProblemsPanel', () => {
     it('shows both as active when no filter or empty levels', () => {
       const { container } = render(<ProblemsPanel problems={testProblems} />);
 
-      const errorButton = container.querySelector('.problems-filter-btn.error');
-      const warningButton = container.querySelector('.problems-filter-btn.warning');
+      const errorButton = container.querySelector('.filter-btn.error');
+      const warningButton = container.querySelector('.filter-btn.warning');
 
       expect(errorButton).toHaveClass('active');
       expect(warningButton).toHaveClass('active');

@@ -395,9 +395,98 @@ BOM needs a build selector and search bar, standardized with other panels.
 - [x] Package descriptions show (DONE - implementation verified)
 - [x] Problems display from builds (DONE - auto-refresh after build completion)
 - [x] Settings parallel workers config (DONE - WebSocket handlers added)
+- [x] Standard library shows correct count (DONE - fixed items.items bug)
+- [x] Build progress bar weighted by stage duration (DONE - picker gets higher weight)
+- [x] Packages show all ~140 from registry (DONE - refreshPackages now uses get_all_registry_packages)
+- [ ] File clicking opens file in editor
+- [ ] Log viewer displays logs
+- [ ] Log viewer filter by project/target works
+- [ ] Problems panel shows problems and has search bar
 - [ ] Build selectors work across panels
 - [ ] Search filtering works
 - [ ] Dependencies display correctly
+- [ ] UI polish - buttons, spacing to match theme
+
+---
+
+## New Issues (Needs Investigation)
+
+### Task 10: File Clicking Doesn't Open Files
+**Priority:** High | **Complexity:** Medium
+
+#### Problem
+Clicking on .ato or .py files in the Projects tab file tree doesn't open them in the editor.
+
+#### Current Behavior
+- Files display correctly in the tree
+- Clicking on files does nothing
+
+#### Expected Behavior
+- Click on file -> opens in VS Code editor
+- Navigate to correct line if specified
+
+#### Investigation
+- Check if `openFile` action is being sent correctly from Sidebar.tsx
+- Verify vscode-panels.ts receives and handles the action
+- Check if path resolution is correct (relative vs absolute)
+
+---
+
+### Task 11: Log Viewer Not Displaying Logs
+**Priority:** High | **Complexity:** Medium
+
+#### Problem
+Log viewer panel shows no logs.
+
+#### Investigation Areas
+1. Check if logs are being fetched from backend
+2. Verify log filtering works (level filters, search)
+3. Check filter by project/target works
+4. Ensure WebSocket is pushing log updates
+
+---
+
+### Task 12: Packages Only Showing 26 (Should Be ~140)
+**Priority:** High | **Complexity:** Medium | **Status:** FIXED
+
+#### Problem
+Only 26 packages are being displayed. Previous implementation used multiple merged queries to get ~140 packages.
+
+#### Fix Applied
+- Updated `refreshPackages` action handler in server.py to call `get_all_registry_packages()`
+- This function uses multiple search terms ("atopile", "i2c", "st", "ti", "ic", "mcu", "esp", "microchip") and merges results
+- Now properly merges installed packages with all registry packages
+- **Also fixed:** `_refresh_packages_async()` (called after install/remove) now uses the same logic to fetch all registry packages, not just installed ones
+
+---
+
+### Task 13: Problems Panel Issues
+**Priority:** High | **Complexity:** Medium
+
+#### Problem
+- No search bar in problems panel
+- Problems not displaying (e.g., adxl345 has 2 warnings but shows none)
+
+#### Investigation
+1. Check if problems are being parsed from build logs correctly
+2. Verify problems auto-refresh after build works
+3. Add search bar to problems panel (standardized SearchBar component)
+
+---
+
+### Task 14: UI Polish
+**Priority:** Medium | **Complexity:** Low
+
+#### Problem
+- Buttons look ugly
+- Spacing is inconsistent
+- Doesn't match overall UI theme
+
+#### Fix Areas
+- Review button styles in styles.css
+- Standardize padding/margins
+- Ensure consistent color scheme
+- Match VS Code theme variables
 
 ---
 
@@ -412,3 +501,84 @@ BOM needs a build selector and search bar, standardized with other panels.
 - Build selection may need to be global or per-panel
 - Consider adding `selectedBuildTarget` to app state
 - Search state should be local to each panel
+
+---
+
+## Task 15: Restore Log Viewer (Build View Tab)
+**Priority:** High | **Complexity:** Medium | **Status:** IN PROGRESS
+
+### Problem
+User reports the "build view tab" has disappeared. This refers to the Log Viewer panel that shows build logs in the VS Code bottom panel area.
+
+### Investigation
+1. The Log Viewer is registered as `atopile.logViewer` in package.json (confirmed in `atopile-panel` container)
+2. It's registered in vscode-panels.ts as `logViewerPanel`
+3. Assets are built: `dist/logViewer.js` and `dist/logViewer.css` exist
+
+### Potential Issues
+1. Panel may not be visible by default - user may need to manually show it via View menu
+2. Logs may not be fetched/streamed from backend
+3. WebSocket state updates may not be reaching the panel
+
+### Implementation Plan
+1. Verify the panel appears in VS Code panel area
+2. Check if `broadcastState()` is sending state to logViewerPanel
+3. Verify logs are being fetched from backend API
+4. Test log filtering and search functionality
+5. Add command to focus log viewer for easier access
+
+### Testing
+1. Open VS Code with atopile project
+2. Verify "Atopile Logs" appears in the panel selector (bottom area)
+3. Trigger a build and verify logs appear
+4. Test level filters, search, and build selection
+
+---
+
+## Task 16: Add Dependency Viewer to Package Cards
+**Priority:** Medium | **Complexity:** Medium | **Status:** PENDING
+
+### Problem
+Need to add a dependency viewer to package cards in the Packages section. Should show:
+- Package dependencies with versions
+- Similar style to build queue
+- Ability to select different versions
+
+### Design
+```
+┌─────────────────────────────────────────┐
+│ Package: atopile/sensor-driver          │
+├─────────────────────────────────────────┤
+│ 📁 Files                                │
+│    └── sensor.ato                       │
+│    └── usage.ato                        │
+├─────────────────────────────────────────┤
+│ 📦 Dependencies (2)                     │
+│  ┌─────────────────────────────────┐    │
+│  │ atopile/i2c-sensor    v0.2.1 ▼ │    │
+│  └─────────────────────────────────┘    │
+│  ┌─────────────────────────────────┐    │
+│  │ atopile/resistors     v0.1.3 ▼ │    │
+│  └─────────────────────────────────┘    │
+└─────────────────────────────────────────┘
+```
+
+### Implementation Plan
+1. Add `DependencyCard` component in `src/components/DependencyCard.tsx`
+2. Add `DependencyCard.css` with styles matching build queue cards
+3. Add dependency data to package state from backend
+4. Integrate into `PackageCard` in `ProjectsPanel.tsx`
+5. Add version selector dropdown to each dependency
+6. Wire up version change action to backend
+
+### Files to Create/Modify
+- `src/components/DependencyCard.tsx` (NEW) - Dependency card component
+- `src/components/DependencyCard.css` (NEW) - Dependency card styles
+- `src/components/ProjectsPanel.tsx` - Integrate into PackageCard
+- `src/atopile/dashboard/server.py` - Ensure dependencies are in package state
+
+### Testing
+1. View a package with dependencies
+2. Verify dependencies section appears under files
+3. Click version dropdown and select different version
+4. Verify version change is reflected in project

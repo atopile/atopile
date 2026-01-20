@@ -233,6 +233,11 @@
                 "command": "atopile.llm.setup",
                 "title": "Setup LLM rules & MCP",
                 "category": "atopile"
+            },
+            {
+                "command": "atopile.showBuildLogs",
+                "title": "Show Build Logs",
+                "category": "atopile"
             }
         ],
         "languages": [

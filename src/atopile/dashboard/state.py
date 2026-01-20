@@ -718,9 +718,7 @@ class ServerState:
         self._state.log_search_query = query
         await self.broadcast_state()
 
-    async def set_log_timestamp_mode(
-        self, mode: Literal["absolute", "delta"]
-    ) -> None:
+    async def set_log_timestamp_mode(self, mode: Literal["absolute", "delta"]) -> None:
         """Set log timestamp mode."""
         self._state.log_timestamp_mode = mode
         await self.broadcast_state()
