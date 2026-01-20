@@ -431,6 +431,7 @@ async def get_output(
         agent_id,
         since_sequence=since_sequence,
         max_chunks=max_chunks,
+        backend_type=agent.config.backend,
     )
 
     return AgentOutputResponse(
@@ -460,8 +461,8 @@ async def get_full_history(
     prompts_list = agent.metadata.get("prompts", [])
     prompts_by_run = {p["run"]: p["prompt"] for p in prompts_list if isinstance(p, dict)}
 
-    # Get all run logs
-    run_logs = process_manager.get_all_run_logs(agent_id)
+    # Get all run logs (use agent's backend type for correct parsing)
+    run_logs = process_manager.get_all_run_logs(agent_id, backend_type=agent.config.backend)
 
     # Convert to response format
     runs = []

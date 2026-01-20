@@ -422,6 +422,7 @@ class ProcessManager:
         agent_id: str,
         since_sequence: int = 0,
         max_chunks: int | None = None,
+        backend_type: AgentBackendType | None = None,
     ) -> list[OutputChunk]:
         """Get buffered output chunks.
 
@@ -429,6 +430,7 @@ class ProcessManager:
             agent_id: The agent ID
             since_sequence: Only return chunks after this sequence number
             max_chunks: Maximum number of chunks to return
+            backend_type: The backend type to use for parsing log files
 
         Returns:
             List of output chunks
@@ -440,7 +442,7 @@ class ProcessManager:
                 chunks = [c for c in managed.output_buffer if c.sequence > since_sequence]
         else:
             # Process was cleaned up, try to read from log file
-            chunks = self._read_output_from_log(agent_id, since_sequence)
+            chunks = self._read_output_from_log(agent_id, since_sequence, backend_type=backend_type)
 
         if max_chunks is not None:
             chunks = chunks[:max_chunks]
@@ -451,12 +453,14 @@ class ProcessManager:
         self,
         log_file: Path,
         since_sequence: int = 0,
+        backend_type: AgentBackendType | None = None,
     ) -> list[OutputChunk]:
         """Read output chunks from a specific log file.
 
         Args:
             log_file: Path to the log file
             since_sequence: Only return chunks after this sequence number
+            backend_type: The backend type to use for parsing (defaults to Claude Code)
 
         Returns:
             List of output chunks
@@ -468,8 +472,8 @@ class ProcessManager:
 
         chunks = []
         try:
-            # Use a default backend for parsing (Claude Code format)
-            backend = get_backend(AgentBackendType.CLAUDE_CODE)
+            # Use the specified backend for parsing, default to Claude Code
+            backend = get_backend(backend_type or AgentBackendType.CLAUDE_CODE)
 
             with open(log_file, "r") as f:
                 for seq, line in enumerate(f, start=1):
@@ -509,6 +513,7 @@ class ProcessManager:
         agent_id: str,
         since_sequence: int = 0,
         run_number: int | None = None,
+        backend_type: AgentBackendType | None = None,
     ) -> list[OutputChunk]:
         """Read output chunks from the log file for a completed agent.
 
@@ -516,6 +521,7 @@ class ProcessManager:
             agent_id: The agent ID
             since_sequence: Only return chunks after this sequence number
             run_number: Specific run number to read from, or None for latest
+            backend_type: The backend type to use for parsing
 
         Returns:
             List of output chunks
@@ -534,16 +540,18 @@ class ProcessManager:
                 # Fall back to legacy naming
                 log_file = logs_dir / f"agent-{agent_id}.log"
 
-        return self._read_log_file(log_file, since_sequence)
+        return self._read_log_file(log_file, since_sequence, backend_type)
 
     def get_all_run_logs(
         self,
         agent_id: str,
+        backend_type: AgentBackendType | None = None,
     ) -> list[tuple[int, list[OutputChunk]]]:
         """Get output from all runs of an agent.
 
         Args:
             agent_id: The agent ID
+            backend_type: The backend type to use for parsing
 
         Returns:
             List of (run_number, chunks) tuples sorted by run number
@@ -560,7 +568,7 @@ class ProcessManager:
         if legacy_file.exists() and not run_0_versioned.exists():
             # Legacy file exists and no _run-0 file - read legacy file directly as run 0
             # Can't use _read_output_from_log(run_number=None) because that reads latest run
-            chunks = self._read_log_file(legacy_file)
+            chunks = self._read_log_file(legacy_file, backend_type=backend_type)
             if chunks:
                 results.append((0, chunks))
 
@@ -572,7 +580,7 @@ class ProcessManager:
                 filename = log_file.stem  # agent-{id}_run-{run_number}
                 run_part = filename.split("_run-")[-1]
                 run_number = int(run_part)
-                chunks = self._read_output_from_log(agent_id, run_number=run_number)
+                chunks = self._read_output_from_log(agent_id, run_number=run_number, backend_type=backend_type)
                 if chunks:
                     results.append((run_number, chunks))
             except (ValueError, IndexError) as e:
