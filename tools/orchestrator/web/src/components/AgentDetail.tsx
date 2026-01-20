@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { Square, Send, X, Clock, Cpu, Hash, Code, RotateCcw, Pencil, Check, History, Sparkles, Settings } from 'lucide-react';
+import { Square, Send, X, Clock, Cpu, Hash, Code, RotateCcw, Pencil, Check, History, Sparkles, Settings, ChevronDown, ChevronUp } from 'lucide-react';
 import type { AgentViewModel } from '@/logic/viewmodels';
-import { useDispatch, useAgentOutput, useLoading } from '@/hooks';
+import { useDispatch, useAgentOutput, useLoading, useMobile } from '@/hooks';
 import { StatusBadge } from './StatusBadge';
 import { OutputStream } from './OutputStream';
 import { VimTextarea } from './VimTextarea';
@@ -50,6 +50,7 @@ interface AgentDetailProps {
 
 export function AgentDetail({ agent, onClose }: AgentDetailProps) {
   const dispatch = useDispatch();
+  const isMobile = useMobile();
   const output = useAgentOutput(agent.id);
   const loadingResume = useLoading(`resume-${agent.id}`);
 
@@ -63,7 +64,73 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
   const [vimMode, setVimMode] = useState(false);
   const [completionSettings, setCompletionSettings] = useState<CompletionSettings>(loadCompletionSettings);
   const [showCompletionSettings, setShowCompletionSettings] = useState(false);
+  const [showStats, setShowStats] = useState(!isMobile); // Collapsed by default on mobile
   const settingsPopoverRef = useRef<HTMLDivElement>(null);
+
+  // Mobile: header visibility on scroll
+  const [showMobileHeader, setShowMobileHeader] = useState(false);
+  const lastScrollY = useRef(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Mobile: swipe to close
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const isSwipingRef = useRef(false);
+
+  // Handle scroll to show/hide mobile header
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (!isMobile) return;
+    const currentScrollY = e.currentTarget.scrollTop;
+
+    // Show header when scrolling up, hide when scrolling down
+    if (currentScrollY < lastScrollY.current - 10) {
+      setShowMobileHeader(true);
+    } else if (currentScrollY > lastScrollY.current + 10) {
+      setShowMobileHeader(false);
+    }
+
+    // Always show header at top
+    if (currentScrollY < 20) {
+      setShowMobileHeader(true);
+    }
+
+    lastScrollY.current = currentScrollY;
+  }, [isMobile]);
+
+  // Touch handlers for swipe to close
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (!isMobile || !onClose) return;
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+    isSwipingRef.current = false;
+  }, [isMobile, onClose]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!isMobile || !onClose) return;
+
+    const deltaX = e.touches[0].clientX - touchStartX.current;
+    const deltaY = e.touches[0].clientY - touchStartY.current;
+
+    // Only swipe if horizontal movement is greater than vertical
+    if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 20) {
+      isSwipingRef.current = true;
+      // Only allow right swipe (positive deltaX)
+      setSwipeOffset(Math.min(deltaX, 200));
+    }
+  }, [isMobile, onClose]);
+
+  const handleTouchEnd = useCallback(() => {
+    if (!isMobile || !onClose) return;
+
+    // If swiped more than 100px, close
+    if (swipeOffset > 100 && isSwipingRef.current) {
+      onClose();
+    }
+
+    setSwipeOffset(0);
+    isSwipingRef.current = false;
+  }, [isMobile, onClose, swipeOffset]);
 
   // Close settings popover when clicking outside
   useEffect(() => {
@@ -228,238 +295,337 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
     return `${hours}h ${mins}m`;
   };
 
+  // Calculate swipe opacity for visual feedback
+  const swipeOpacity = isMobile ? Math.max(0, 1 - swipeOffset / 200) : 1;
+
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-700">
-        <div className="flex items-center gap-4">
-          <div>
-            {/* Editable name */}
-            <div className="flex items-center gap-2 mb-1">
-              {isEditingName ? (
-                <>
-                  <input
-                    type="text"
-                    className="input text-sm py-0.5 px-2 w-48"
-                    value={editedName}
-                    onChange={(e) => setEditedName(e.target.value)}
-                    onKeyDown={handleNameKeyDown}
-                    onBlur={handleSaveName}
-                    autoFocus
-                    placeholder="Enter name..."
-                  />
-                  <button
-                    className="btn btn-icon btn-sm btn-primary"
-                    onClick={handleSaveName}
-                    title="Save"
-                  >
-                    <Check className="w-3 h-3" />
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span className="text-sm font-medium text-gray-200">
-                    {agent.name || <span className="text-gray-500 italic">Unnamed</span>}
+    <div
+      ref={containerRef}
+      className="flex flex-col h-full relative"
+      style={{
+        transform: isMobile && swipeOffset > 0 ? `translateX(${swipeOffset}px)` : undefined,
+        opacity: swipeOpacity,
+        transition: swipeOffset === 0 ? 'transform 0.2s ease-out, opacity 0.2s ease-out' : undefined,
+      }}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* Mobile swipe indicator */}
+      {isMobile && (
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-16 bg-gray-600 rounded-r opacity-30" />
+      )}
+
+      {/* Header - hidden by default on mobile, shown on scroll up */}
+      {(!isMobile || showMobileHeader) && (
+        <div
+          className={`flex items-center justify-between border-b border-gray-700 ${
+            isMobile
+              ? 'px-3 py-2 absolute top-0 left-0 right-0 bg-gray-900/95 backdrop-blur z-10 transition-transform duration-200'
+              : 'p-4'
+          }`}
+          style={{
+            transform: isMobile && !showMobileHeader ? 'translateY(-100%)' : 'translateY(0)',
+          }}
+        >
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="min-w-0 flex-1">
+              {/* Editable name */}
+              <div className="flex items-center gap-2">
+                {isEditingName ? (
+                  <>
+                    <input
+                      type="text"
+                      className={`input py-0.5 px-2 ${isMobile ? 'text-xs w-32' : 'text-sm w-48'}`}
+                      value={editedName}
+                      onChange={(e) => setEditedName(e.target.value)}
+                      onKeyDown={handleNameKeyDown}
+                      onBlur={handleSaveName}
+                      autoFocus
+                      placeholder="Enter name..."
+                    />
+                    <button
+                      className="btn btn-icon btn-sm btn-primary"
+                      onClick={handleSaveName}
+                      title="Save"
+                    >
+                      <Check className="w-3 h-3" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className={`font-medium text-gray-200 truncate ${isMobile ? 'text-xs max-w-[120px]' : 'text-sm'}`}>
+                      {agent.name || <span className="text-gray-500 italic">Unnamed</span>}
+                    </span>
+                    {!isMobile && (
+                      <button
+                        className="btn btn-icon btn-sm btn-secondary opacity-50 hover:opacity-100"
+                        onClick={() => {
+                          setEditedName(agent.name || '');
+                          setIsEditingName(true);
+                        }}
+                        title="Rename"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    )}
+                  </>
+                )}
+                <StatusBadge status={agent.status} isAgent />
+                {output.isConnected && (
+                  <span className="flex items-center gap-1 text-xs text-green-400">
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                    {!isMobile && 'Live'}
                   </span>
-                  <button
-                    className="btn btn-icon btn-sm btn-secondary opacity-50 hover:opacity-100"
-                    onClick={() => {
-                      setEditedName(agent.name || '');
-                      setIsEditingName(true);
-                    }}
-                    title="Rename"
-                  >
-                    <Pencil className="w-3 h-3" />
-                  </button>
-                </>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <code className="text-xs font-mono text-gray-500">{agent.id.slice(0, 8)}</code>
-              <StatusBadge status={agent.status} isAgent />
-              {output.isConnected && (
-                <span className="flex items-center gap-1 text-xs text-green-400">
-                  <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-                  Live
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {agent.canTerminate && (
-            <button
-              className="btn btn-danger btn-sm"
-              onClick={handleTerminate}
-            >
-              <Square className="w-4 h-4 mr-1" />
-              Terminate
-            </button>
-          )}
-          {onClose && (
-            <button
-              className="btn btn-icon btn-secondary btn-sm"
-              onClick={onClose}
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Stats bar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-800/50 border-b border-gray-700 text-sm">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-1.5 text-gray-400">
-            <Cpu className="w-4 h-4" />
-            <span>{agent.backend}</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-gray-400">
-            <Clock className="w-4 h-4" />
-            <span>{formatDuration()}</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-gray-400">
-            <Hash className="w-4 h-4" />
-            <span>{output.chunks.length} chunks</span>
-          </div>
-          {hasMultipleRuns && (
-            <div className="flex items-center gap-1.5 text-blue-400">
-              <RotateCcw className="w-4 h-4" />
-              <span>Run {agent.runCount + 1}</span>
-            </div>
-          )}
-          {agent.maxTurns && (
-            <div className="text-gray-400">
-              Max turns: {agent.maxTurns}
-            </div>
-          )}
-          {agent.pid && (
-            <div className="text-gray-400">
-              PID: {agent.pid}
-            </div>
-          )}
-        </div>
-        <div className="flex items-center gap-4">
-          {hasMultipleRuns && !output.hasHistory && (
-            <button
-              className="flex items-center gap-1.5 text-blue-400 hover:text-blue-300 text-xs"
-              onClick={handleLoadHistory}
-              disabled={loadingHistory}
-            >
-              {loadingHistory ? (
-                <span className="w-3.5 h-3.5 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin" />
-              ) : (
-                <History className="w-3.5 h-3.5" />
-              )}
-              <span>Load Full History</span>
-            </button>
-          )}
-          {output.hasHistory && (
-            <span className="flex items-center gap-1.5 text-green-400 text-xs">
-              <History className="w-3.5 h-3.5" />
-              <span>Full History</span>
-            </span>
-          )}
-          <label className="flex items-center gap-2 text-gray-400 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={verbose}
-              onChange={(e) => setVerbose(e.target.checked)}
-              className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800"
-            />
-            <Code className="w-4 h-4" />
-            <span>Verbose</span>
-          </label>
-          {/* Completion settings */}
-          <div className="relative" ref={settingsPopoverRef}>
-            <button
-              className={`flex items-center gap-1.5 text-xs cursor-pointer select-none ${
-                completionSettings.enabled ? 'text-purple-400' : 'text-gray-400'
-              } hover:text-purple-300`}
-              onClick={() => setShowCompletionSettings(!showCompletionSettings)}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>AI</span>
-              <Settings className="w-3 h-3" />
-            </button>
-            {showCompletionSettings && (
-              <div className="absolute right-0 top-full mt-1 w-72 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 p-3">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium text-gray-200">Tab Completion</span>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={completionSettings.enabled}
-                      onChange={(e) => updateCompletionSettings({ enabled: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
-                  </label>
-                </div>
-                <div className="space-y-2">
-                  {/* Mode selector */}
-                  <div>
-                    <label className="text-xs text-gray-400 block mb-1">Mode</label>
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => updateCompletionSettings({ mode: 'prompt' })}
-                        className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${
-                          completionSettings.mode === 'prompt'
-                            ? 'bg-purple-600 text-white'
-                            : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                        }`}
-                      >
-                        Prompt
-                      </button>
-                      <button
-                        onClick={() => updateCompletionSettings({ mode: 'code' })}
-                        className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${
-                          completionSettings.mode === 'code'
-                            ? 'bg-purple-600 text-white'
-                            : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                        }`}
-                      >
-                        Code
-                      </button>
-                    </div>
-                    <p className="text-[10px] text-gray-500 mt-1">
-                      {completionSettings.mode === 'prompt'
-                        ? 'Multi-line natural language suggestions'
-                        : 'Single-line code completions'}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-400 block mb-1">Model</label>
-                    <input
-                      type="text"
-                      value={completionSettings.model}
-                      onChange={(e) => updateCompletionSettings({ model: e.target.value })}
-                      className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-purple-500"
-                      placeholder="qwen2.5:7b"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-400 block mb-1">Ollama Endpoint</label>
-                    <input
-                      type="text"
-                      value={completionSettings.endpoint}
-                      onChange={(e) => updateCompletionSettings({ endpoint: e.target.value })}
-                      className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-purple-500"
-                      placeholder="http://localhost:11434/api/generate"
-                    />
-                  </div>
-                  <p className="text-[10px] text-gray-500 mt-2">
-                    {completionSettings.mode === 'prompt'
-                      ? 'Good models: qwen2.5:7b, qwen2.5:3b, llama3.2:3b, mistral:7b'
-                      : 'Good models: qwen2.5-coder:7b, deepseek-coder:6.7b, codellama:7b'}
-                  </p>
-                </div>
+                )}
               </div>
+              {!isMobile && (
+                <code className="text-xs font-mono text-gray-500">{agent.id.slice(0, 8)}</code>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1">
+            {agent.canTerminate && (
+              <button
+                className={`btn btn-danger ${isMobile ? 'btn-icon' : 'btn-sm'}`}
+                onClick={handleTerminate}
+                title="Terminate"
+              >
+                <Square className="w-4 h-4" />
+                {!isMobile && <span className="ml-1">Terminate</span>}
+              </button>
+            )}
+            {onClose && !isMobile && (
+              <button
+                className="btn btn-icon btn-secondary btn-sm"
+                onClick={onClose}
+              >
+                <X className="w-4 h-4" />
+              </button>
             )}
           </div>
         </div>
+      )}
+
+      {/* Stats bar - collapsible on mobile */}
+      <div className={`bg-gray-800/50 border-b border-gray-700 ${isMobile ? 'text-xs' : 'text-sm'}`}>
+        {/* Mobile: show toggle + key stats */}
+        {isMobile ? (
+          <>
+            <div
+              className="flex items-center justify-between px-3 py-1.5 cursor-pointer"
+              onClick={() => setShowStats(!showStats)}
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-gray-400">{agent.backend}</span>
+                <span className="text-gray-400">{formatDuration()}</span>
+                {hasMultipleRuns && (
+                  <span className="text-blue-400">Run {agent.runCount + 1}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-1 text-gray-400">
+                  <input
+                    type="checkbox"
+                    checked={verbose}
+                    onChange={(e) => { e.stopPropagation(); setVerbose(e.target.checked); }}
+                    className="w-3 h-3 rounded border-gray-600 bg-gray-700 text-blue-500"
+                  />
+                  <Code className="w-3 h-3" />
+                </label>
+                {showStats ? <ChevronUp className="w-3 h-3 text-gray-500" /> : <ChevronDown className="w-3 h-3 text-gray-500" />}
+              </div>
+            </div>
+            {showStats && (
+              <div className="px-3 py-2 border-t border-gray-700/50 space-y-2">
+                <div className="flex items-center gap-4 flex-wrap">
+                  <span className="text-gray-400">{output.chunks.length} chunks</span>
+                  {agent.maxTurns && <span className="text-gray-400">Max: {agent.maxTurns}</span>}
+                  {agent.pid && <span className="text-gray-400">PID: {agent.pid}</span>}
+                </div>
+                <div className="flex items-center gap-3">
+                  {hasMultipleRuns && !output.hasHistory && (
+                    <button
+                      className="flex items-center gap-1 text-blue-400 hover:text-blue-300"
+                      onClick={handleLoadHistory}
+                      disabled={loadingHistory}
+                    >
+                      <History className="w-3 h-3" />
+                      <span>Load History</span>
+                    </button>
+                  )}
+                  <button
+                    className={`flex items-center gap-1 ${completionSettings.enabled ? 'text-purple-400' : 'text-gray-400'}`}
+                    onClick={() => setShowCompletionSettings(!showCompletionSettings)}
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>AI</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          /* Desktop: full stats bar */
+          <div className="flex items-center justify-between px-4 py-2">
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-1.5 text-gray-400">
+                <Cpu className="w-4 h-4" />
+                <span>{agent.backend}</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-gray-400">
+                <Clock className="w-4 h-4" />
+                <span>{formatDuration()}</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-gray-400">
+                <Hash className="w-4 h-4" />
+                <span>{output.chunks.length} chunks</span>
+              </div>
+              {hasMultipleRuns && (
+                <div className="flex items-center gap-1.5 text-blue-400">
+                  <RotateCcw className="w-4 h-4" />
+                  <span>Run {agent.runCount + 1}</span>
+                </div>
+              )}
+              {agent.maxTurns && (
+                <div className="text-gray-400">
+                  Max turns: {agent.maxTurns}
+                </div>
+              )}
+              {agent.pid && (
+                <div className="text-gray-400">
+                  PID: {agent.pid}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-4">
+              {hasMultipleRuns && !output.hasHistory && (
+                <button
+                  className="flex items-center gap-1.5 text-blue-400 hover:text-blue-300 text-xs"
+                  onClick={handleLoadHistory}
+                  disabled={loadingHistory}
+                >
+                  {loadingHistory ? (
+                    <span className="w-3.5 h-3.5 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin" />
+                  ) : (
+                    <History className="w-3.5 h-3.5" />
+                  )}
+                  <span>Load Full History</span>
+                </button>
+              )}
+              {output.hasHistory && (
+                <span className="flex items-center gap-1.5 text-green-400 text-xs">
+                  <History className="w-3.5 h-3.5" />
+                  <span>Full History</span>
+                </span>
+              )}
+              <label className="flex items-center gap-2 text-gray-400 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={verbose}
+                  onChange={(e) => setVerbose(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800"
+                />
+                <Code className="w-4 h-4" />
+                <span>Verbose</span>
+              </label>
+              {/* Completion settings */}
+              <div className="relative" ref={settingsPopoverRef}>
+                <button
+                  className={`flex items-center gap-1.5 text-xs cursor-pointer select-none ${
+                    completionSettings.enabled ? 'text-purple-400' : 'text-gray-400'
+                  } hover:text-purple-300`}
+                  onClick={() => setShowCompletionSettings(!showCompletionSettings)}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>AI</span>
+                  <Settings className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Completion settings popover - shared between mobile and desktop */}
+        {showCompletionSettings && (
+          <div ref={settingsPopoverRef} className={`${isMobile ? 'px-3 py-2 border-t border-gray-700/50' : 'absolute right-4 top-full mt-1 w-72 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 p-3'}`}>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-gray-200">Tab Completion</span>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={completionSettings.enabled}
+                  onChange={(e) => updateCompletionSettings({ enabled: e.target.checked })}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+              </label>
+            </div>
+            <div className="space-y-2">
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Mode</label>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => updateCompletionSettings({ mode: 'prompt' })}
+                    className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${
+                      completionSettings.mode === 'prompt'
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                    }`}
+                  >
+                    Prompt
+                  </button>
+                  <button
+                    onClick={() => updateCompletionSettings({ mode: 'code' })}
+                    className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${
+                      completionSettings.mode === 'code'
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                    }`}
+                  >
+                    Code
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Model</label>
+                <input
+                  type="text"
+                  value={completionSettings.model}
+                  onChange={(e) => updateCompletionSettings({ model: e.target.value })}
+                  className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-purple-500"
+                  placeholder="qwen2.5:7b"
+                />
+              </div>
+              {!isMobile && (
+                <div>
+                  <label className="text-xs text-gray-400 block mb-1">Ollama Endpoint</label>
+                  <input
+                    type="text"
+                    value={completionSettings.endpoint}
+                    onChange={(e) => updateCompletionSettings({ endpoint: e.target.value })}
+                    className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-purple-500"
+                    placeholder="http://localhost:11434/api/generate"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Mobile: Always-visible agent name bar */}
+      {isMobile && (
+        <div className="flex items-center justify-between px-3 py-1.5 bg-gray-800/80 border-b border-gray-700/50 text-xs">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-medium text-gray-300 truncate">
+              {agent.name || 'Unnamed'}
+            </span>
+            <StatusBadge status={agent.status} isAgent />
+          </div>
+          <span className="text-gray-500">{formatDuration()}</span>
+        </div>
+      )}
 
       {/* Output stream */}
       <div className="flex-1 overflow-hidden">
@@ -476,75 +642,67 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
               payload: { agentId: agent.id, input },
             });
           }}
+          onScroll={handleScroll}
         />
       </div>
 
       {/* Input bar (only for running agents that support input) */}
       {agent.isRunning && (
-        <div className="p-4 border-t border-gray-700">
-          <div className="flex gap-2">
+        <div className={`border-t border-gray-700 ${isMobile ? 'p-2' : 'p-4'}`}>
+          <div className="flex gap-2 items-end">
             <VimTextarea
               value={inputValue}
               onChange={setInputValue}
               onSubmit={handleSendInput}
-              placeholder="Send input to agent..."
+              placeholder="Send input..."
               disabled={sending}
               vimMode={vimMode}
               onVimModeToggle={setVimMode}
               className="flex-1"
               completion={completionConfig}
+              compact={isMobile}
             />
             <button
-              className="btn btn-primary self-end"
+              className="rounded-full w-9 h-9 mb-0.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center text-white shadow-lg flex-shrink-0"
               onClick={handleSendInput}
               disabled={!inputValue.trim() || sending}
+              title="Send (⌘+Enter)"
             >
               <Send className="w-4 h-4" />
             </button>
           </div>
-          <p className="text-xs text-gray-500 mt-1">
-            Note: Input support depends on the agent backend
-          </p>
         </div>
       )}
 
       {/* Resume bar (for finished agents with session) */}
       {agent.canResume && (
-        <div className="p-4 border-t border-gray-700 bg-gray-800/30">
-          <div className="flex items-center gap-2 mb-2">
-            <RotateCcw className="w-4 h-4 text-blue-400" />
-            <span className="text-sm text-gray-300">Resume this session</span>
-            <span className="text-xs text-gray-500">(session: {agent.sessionId?.slice(0, 8)}...)</span>
-          </div>
-          <div className="flex gap-2">
+        <div className={`border-t border-gray-700 bg-gray-800/30 ${isMobile ? 'p-2' : 'p-4'}`}>
+          <div className="flex gap-2 items-end">
             <VimTextarea
               value={resumePrompt}
               onChange={setResumePrompt}
               onSubmit={handleResume}
-              placeholder="New prompt..."
+              placeholder="Continue conversation..."
               disabled={loadingResume}
               vimMode={vimMode}
               onVimModeToggle={setVimMode}
               className="flex-1"
               completion={completionConfig}
+              compact={isMobile}
             />
             <button
-              className="btn btn-primary self-end"
+              className="rounded-full w-9 h-9 mb-0.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center text-white shadow-lg flex-shrink-0"
               onClick={handleResume}
               disabled={!resumePrompt.trim() || loadingResume}
-              title="Send (Cmd/Ctrl+Enter)"
+              title="Send (⌘+Enter)"
             >
               {loadingResume ? (
                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
                 <Send className="w-4 h-4" />
               )}
-              <span className="ml-1">Send</span>
             </button>
           </div>
-          <p className="text-xs text-gray-500 mt-1">
-            Creates a new agent that continues this conversation with full history
-          </p>
         </div>
       )}
 

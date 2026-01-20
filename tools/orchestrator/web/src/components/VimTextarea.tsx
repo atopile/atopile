@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, KeyboardEvent } from 'react';
+import { useState, useRef, useCallback, useEffect, KeyboardEvent, memo } from 'react';
 
 type VimMode = 'normal' | 'insert' | 'visual-char' | 'visual-line';
 type CompletionMode = 'code' | 'prompt';
@@ -22,6 +22,7 @@ interface VimTextareaProps {
   onVimModeToggle: (enabled: boolean) => void;
   className?: string;
   completion?: CompletionConfig;
+  compact?: boolean; // Hide vim toggle and toolbar, simpler mobile UI
 }
 
 interface CompletionResponse {
@@ -158,7 +159,7 @@ async function fetchFIMCompletion(
   }
 }
 
-export function VimTextarea({
+export const VimTextarea = memo(function VimTextarea({
   value,
   onChange,
   onSubmit,
@@ -168,6 +169,7 @@ export function VimTextarea({
   onVimModeToggle,
   className = '',
   completion,
+  compact = false,
 }: VimTextareaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -189,6 +191,9 @@ export function VimTextarea({
   const [completionError, setCompletionError] = useState<string | null>(null);
   const completionAbortRef = useRef<AbortController | null>(null);
 
+  // Detect mobile for performance tuning
+  const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
+
   // Sync local value to parent (debounced for performance)
   const syncToParent = useCallback((newValue: string) => {
     localValueRef.current = newValue;
@@ -200,10 +205,12 @@ export function VimTextarea({
     }
 
     // Debounce sync to parent - keeps typing snappy
+    // Mobile gets longer debounce to reduce re-renders
+    const debounceMs = isMobile ? 100 : 16;
     syncTimeoutRef.current = setTimeout(() => {
       onChange(newValue);
-    }, 16); // ~1 frame, feels instant but batches updates
-  }, [onChange]);
+    }, debounceMs);
+  }, [onChange, isMobile]);
 
   // Sync from parent when value prop changes externally
   useEffect(() => {
@@ -229,10 +236,14 @@ export function VimTextarea({
     }
   }, [vimMode]);
 
-  // Clear suggestion when value changes
+  // Clear suggestion when value changes - but only if there was a suggestion
+  const prevLocalValueRef = useRef(localValue);
   useEffect(() => {
-    setSuggestion('');
-  }, [localValue]);
+    if (prevLocalValueRef.current !== localValue && suggestion) {
+      setSuggestion('');
+    }
+    prevLocalValueRef.current = localValue;
+  }, [localValue, suggestion]);
 
   // Debounced completion fetching
   useEffect(() => {
@@ -838,46 +849,69 @@ export function VimTextarea({
     );
   };
 
+  // In compact mode, force vim mode off for simpler mobile UI
+  const effectiveVimMode = compact ? false : vimMode;
+
+  // Auto-grow textarea in compact mode
+  const lineHeight = 24; // Approximate line height in pixels
+  const maxLines = 10;
+  const minHeight = 36; // Single line - tight fit
+  const maxHeight = lineHeight * maxLines;
+
+  // Auto-resize effect for compact mode
+  useEffect(() => {
+    if (!compact || !textareaRef.current) return;
+
+    const textarea = textareaRef.current;
+    // Reset height to measure actual content height
+    textarea.style.height = `${minHeight}px`;
+    const scrollHeight = textarea.scrollHeight;
+    const newHeight = Math.min(Math.max(scrollHeight, minHeight), maxHeight);
+    textarea.style.height = `${newHeight}px`;
+  }, [localValue, compact]);
+
   return (
     <div className={`flex flex-col ${className}`}>
-      {/* Toolbar */}
-      <div className="flex items-center justify-between px-2 py-1 bg-gray-800 border border-gray-700 border-b-0 rounded-t">
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={vimMode}
-              onChange={(e) => onVimModeToggle(e.target.checked)}
-              className="rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-900 w-3 h-3"
-            />
-            Vim
-          </label>
-          {vimMode && (
-            <span className={`px-1.5 py-0.5 text-[10px] font-mono font-bold rounded ${getModeColor()}`}>
-              {getModeDisplay()}
-            </span>
-          )}
-          {vimMode && pendingCommand && (
-            <span className="text-[10px] text-yellow-400 font-mono">{pendingCommand}</span>
-          )}
-          {completion?.enabled && (
-            <span className="flex items-center gap-1 text-[10px] text-gray-500" title={completionError || undefined}>
-              <span className={`w-1.5 h-1.5 rounded-full ${
-                completionError ? 'bg-red-500' :
-                isLoadingSuggestion ? 'bg-yellow-400 animate-pulse' : 'bg-green-500'
-              }`} />
-              {completionError ? 'Error' : completion.model.split(':')[0]}
-            </span>
-          )}
+      {/* Toolbar - hidden in compact mode */}
+      {!compact && (
+        <div className="flex items-center justify-between px-2 py-1 bg-gray-800 border border-gray-700 border-b-0 rounded-t">
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={vimMode}
+                onChange={(e) => onVimModeToggle(e.target.checked)}
+                className="rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-900 w-3 h-3"
+              />
+              Vim
+            </label>
+            {vimMode && (
+              <span className={`px-1.5 py-0.5 text-[10px] font-mono font-bold rounded ${getModeColor()}`}>
+                {getModeDisplay()}
+              </span>
+            )}
+            {vimMode && pendingCommand && (
+              <span className="text-[10px] text-yellow-400 font-mono">{pendingCommand}</span>
+            )}
+            {completion?.enabled && (
+              <span className="flex items-center gap-1 text-[10px] text-gray-500" title={completionError || undefined}>
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  completionError ? 'bg-red-500' :
+                  isLoadingSuggestion ? 'bg-yellow-400 animate-pulse' : 'bg-green-500'
+                }`} />
+                {completionError ? 'Error' : completion.model.split(':')[0]}
+              </span>
+            )}
+          </div>
+          <span className="text-[10px] text-gray-500 hidden sm:inline">
+            {vimMode
+              ? 'Esc: normal, i: insert'
+              : suggestion
+                ? 'Tab: accept'
+                : '⌘+Enter'}
+          </span>
         </div>
-        <span className="text-[10px] text-gray-500">
-          {vimMode
-            ? 'Esc: normal, i: insert, v: visual, V: v-line'
-            : suggestion
-              ? 'Tab: accept, Esc: dismiss'
-              : 'Cmd/Ctrl+Enter to send'}
-        </span>
-      </div>
+      )}
 
       {/* Textarea with ghost text overlay */}
       <div className="relative">
@@ -891,23 +925,28 @@ export function VimTextarea({
           onScroll={handleScroll}
           placeholder={placeholder}
           disabled={disabled}
-          className={`w-full bg-gray-900 border border-gray-700 rounded-b text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none font-mono ${
-            vimMode ? 'h-48 p-3' : 'h-20 p-2'
-          } ${vimMode && mode === 'normal' ? 'caret-transparent' : ''} ${
+          className={`w-full bg-gray-900 border border-gray-700 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none font-mono ${
+            compact ? 'py-2 px-3 rounded-lg overflow-hidden' : 'rounded-b'
+          } ${
+            effectiveVimMode ? 'h-48 p-3' : compact ? '' : 'h-20 p-2'
+          } ${effectiveVimMode && mode === 'normal' ? 'caret-transparent' : ''} ${
             suggestion ? 'bg-transparent relative z-10' : ''
           }`}
-          style={vimMode && mode === 'normal' ? { caretColor: 'transparent' } : undefined}
+          style={{
+            ...(effectiveVimMode && mode === 'normal' ? { caretColor: 'transparent' } : {}),
+            ...(compact ? { minHeight: `${minHeight}px`, maxHeight: `${maxHeight}px` } : {}),
+          }}
         />
       </div>
 
-      {/* Help text */}
-      {vimMode && (
-        <div className="text-[10px] text-gray-600 mt-1 px-1">
-          hjkl: move | w/b/e: word | 0/$: line | i/a/o: insert | v: visual | V: v-line | d/y: del/yank | p: paste | Tab: accept | Cmd+Enter: send
+      {/* Help text - hidden on mobile and in compact mode */}
+      {effectiveVimMode && !compact && (
+        <div className="text-[10px] text-gray-600 mt-1 px-1 hidden sm:block">
+          hjkl: move | w/b/e: word | 0/$: line | i/a/o: insert | v/V: visual | d/y: del/yank | p: paste | ⌘+Enter: send
         </div>
       )}
     </div>
   );
-}
+});
 
 export default VimTextarea;

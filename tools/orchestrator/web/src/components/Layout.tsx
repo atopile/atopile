@@ -58,43 +58,41 @@ export function Layout() {
 
   // Mobile layout
   if (isMobile) {
+    // When viewing an agent detail, hide the header/tabs for more space
+    const showMobileNav = !(viewMode === 'agents' && selectedAgent);
+
     return (
       <div className="flex flex-col h-screen bg-gray-900">
-        {/* Mobile header */}
-        <header className="mobile-header">
-          <div className="flex items-center gap-2">
-            <img src="/atopile-logo.svg" alt="atopile" className="w-5 h-5" />
-            <span className="font-semibold">Orchestrator</span>
-          </div>
-        </header>
-
-        {/* View selector tabs */}
-        <div className="flex border-b border-gray-700 bg-gray-800">
-          <button
-            className={`flex-1 py-2 px-4 text-sm font-medium flex items-center justify-center gap-2 ${viewMode === 'agents' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400'}`}
-            onClick={() => setViewMode('agents')}
-          >
-            <Activity className="w-4 h-4" />
-            Agents
-            {runningAgentsCount > 0 && (
-              <span className="px-1.5 py-0.5 text-xs rounded-full bg-green-900/50 text-green-300">
-                {runningAgentsCount}
-              </span>
-            )}
-          </button>
-          <button
-            className={`flex-1 py-2 px-4 text-sm font-medium flex items-center justify-center gap-2 ${viewMode === 'pipelines' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-400'}`}
-            onClick={() => setViewMode('pipelines')}
-          >
-            <GitBranch className="w-4 h-4" />
-            Pipelines
-            {runningPipelinesCount > 0 && (
-              <span className="px-1.5 py-0.5 text-xs rounded-full bg-green-900/50 text-green-300">
-                {runningPipelinesCount}
-              </span>
-            )}
-          </button>
-        </div>
+        {/* Mobile header + tabs - hidden when viewing agent detail */}
+        {showMobileNav && (
+          <header className="flex items-center justify-between px-3 py-1.5 bg-gray-800 border-b border-gray-700">
+            <div className="flex items-center gap-1.5">
+              <img src="/atopile-logo.svg" alt="atopile" className="w-4 h-4" />
+              <span className="text-sm font-medium">Orchestrator</span>
+            </div>
+            {/* Compact tabs inline */}
+            <div className="flex items-center gap-1">
+              <button
+                className={`px-2 py-1 text-xs font-medium rounded flex items-center gap-1 ${viewMode === 'agents' ? 'bg-blue-600 text-white' : 'text-gray-400'}`}
+                onClick={() => setViewMode('agents')}
+              >
+                <Activity className="w-3 h-3" />
+                {runningAgentsCount > 0 && (
+                  <span className="text-[10px] text-green-300">{runningAgentsCount}</span>
+                )}
+              </button>
+              <button
+                className={`px-2 py-1 text-xs font-medium rounded flex items-center gap-1 ${viewMode === 'pipelines' ? 'bg-blue-600 text-white' : 'text-gray-400'}`}
+                onClick={() => setViewMode('pipelines')}
+              >
+                <GitBranch className="w-3 h-3" />
+                {runningPipelinesCount > 0 && (
+                  <span className="text-[10px] text-green-300">{runningPipelinesCount}</span>
+                )}
+              </button>
+            </div>
+          </header>
+        )}
 
         {/* Main content */}
         <main className="flex-1 overflow-hidden">
