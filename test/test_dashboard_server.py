@@ -15,22 +15,30 @@ import pytest
 from fastapi.testclient import TestClient
 
 from atopile.dashboard.server import (
-    DEFAULT_BUILD_STAGES,
+    BuildQueue,
     BuildRequest,
     _active_builds,
     _build_lock,
-    _update_build_stage_from_output,
+    _build_queue,
+    _is_duplicate_build,
+    _make_build_key,
     create_app,
     discover_projects_in_paths,
+    load_recent_builds_from_history,
+    save_build_to_history,
 )
 
 
 @pytest.fixture
 def clear_active_builds():
-    """Clear active builds before and after each test."""
+    """Clear active builds and build queue before and after each test."""
+    # Stop and clear the global build queue
+    _build_queue.clear()
     with _build_lock:
         _active_builds.clear()
     yield
+    # Cleanup after test
+    _build_queue.clear()
     with _build_lock:
         _active_builds.clear()
 
@@ -3238,3 +3246,338 @@ class TestStaleBuildDetection:
         assert queued_build is not None
         # Status should be corrected to "failed"
         assert queued_build["status"] == "failed"
+
+
+# =============================================================================
+# BuildQueue Tests
+# =============================================================================
+
+
+class TestBuildQueue:
+    """Tests for the BuildQueue class."""
+
+    def test_build_queue_initialization(self):
+        """BuildQueue initializes with correct defaults."""
+        bq = BuildQueue(max_concurrent=2)
+        status = bq.get_status()
+
+        assert status["queue_size"] == 0
+        assert status["active_count"] == 0
+        assert status["active_builds"] == []
+        assert status["max_concurrent"] == 2
+        assert status["worker_running"] is False
+
+    def test_build_queue_enqueue(self, clear_active_builds):
+        """BuildQueue enqueues builds correctly."""
+        bq = BuildQueue(max_concurrent=4)
+
+        # Don't register in _active_builds - worker will skip it
+        # This tests that enqueue returns True and starts the worker
+        result = bq.enqueue("test-build-1")
+        assert result is True
+
+        # Worker should have started
+        status = bq.get_status()
+        assert status["worker_running"] is True
+
+    def test_build_queue_prevents_duplicate_enqueue(self, clear_active_builds):
+        """BuildQueue prevents enqueueing the same build twice."""
+        bq = BuildQueue(max_concurrent=4)
+
+        # Manually add to active set to simulate running build
+        with bq._lock:
+            bq._active.add("test-build-dup")
+
+        result = bq.enqueue("test-build-dup")
+        assert result is False
+
+
+class TestBuildDeduplication:
+    """Tests for build deduplication functionality."""
+
+    def test_make_build_key_deterministic(self):
+        """_make_build_key produces consistent keys for same inputs."""
+        key1 = _make_build_key("/path/to/project", ["default"], None)
+        key2 = _make_build_key("/path/to/project", ["default"], None)
+
+        assert key1 == key2
+        assert len(key1) == 16  # Truncated hash
+
+    def test_make_build_key_different_for_different_inputs(self):
+        """_make_build_key produces different keys for different inputs."""
+        key1 = _make_build_key("/path/to/project", ["default"], None)
+        key2 = _make_build_key("/path/to/project", ["other"], None)
+        key3 = _make_build_key("/other/project", ["default"], None)
+        key4 = _make_build_key("/path/to/project", ["default"], "main.ato:App")
+
+        assert key1 != key2
+        assert key1 != key3
+        assert key1 != key4
+
+    def test_make_build_key_target_order_independent(self):
+        """_make_build_key produces same key regardless of target order."""
+        key1 = _make_build_key("/path", ["a", "b", "c"], None)
+        key2 = _make_build_key("/path", ["c", "a", "b"], None)
+
+        assert key1 == key2
+
+    def test_is_duplicate_build_returns_none_for_new(self, clear_active_builds):
+        """_is_duplicate_build returns None when no duplicate exists."""
+        result = _is_duplicate_build("unique-key-12345")
+        assert result is None
+
+    def test_is_duplicate_build_returns_id_for_running(self, clear_active_builds):
+        """_is_duplicate_build returns build_id when duplicate is running."""
+        build_key = "duplicate-key-xyz"
+
+        with _build_lock:
+            _active_builds["existing-build"] = {
+                "status": "building",
+                "build_key": build_key,
+            }
+
+        result = _is_duplicate_build(build_key)
+        assert result == "existing-build"
+
+    def test_is_duplicate_build_ignores_completed(self, clear_active_builds):
+        """_is_duplicate_build ignores completed builds."""
+        build_key = "duplicate-key-xyz"
+
+        with _build_lock:
+            _active_builds["completed-build"] = {
+                "status": "success",
+                "build_key": build_key,
+            }
+
+        result = _is_duplicate_build(build_key)
+        assert result is None
+
+
+class TestBuildQueueEndpoint:
+    """Tests for the /api/builds/queue endpoint."""
+
+    def test_queue_status_endpoint(self, test_client: TestClient):
+        """GET /api/builds/queue returns queue status."""
+        response = test_client.get("/api/builds/queue")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "queue_size" in data
+        assert "active_count" in data
+        assert "active_builds" in data
+        assert "max_concurrent" in data
+        assert "worker_running" in data
+
+
+class TestBuildHistoryEndpoint:
+    """Tests for the /api/builds/history endpoint."""
+
+    def test_history_endpoint_returns_list(self, test_client: TestClient):
+        """GET /api/builds/history returns a list of builds."""
+        response = test_client.get("/api/builds/history")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "builds" in data
+        assert "total" in data
+        assert isinstance(data["builds"], list)
+
+    def test_history_endpoint_accepts_filters(self, test_client: TestClient):
+        """GET /api/builds/history accepts filter parameters."""
+        response = test_client.get(
+            "/api/builds/history",
+            params={
+                "project_root": "/some/path",
+                "status": "failed",
+                "limit": 10,
+            },
+        )
+
+        assert response.status_code == 200
+
+
+class TestBuildQueueEndToEnd:
+    """
+    End-to-end tests for the build queue lifecycle.
+
+    Tests the full flow: start build -> track status -> cancel build.
+    """
+
+    def test_start_build_appears_in_active_builds(
+        self, tmp_path: Path, clear_active_builds
+    ):
+        """Starting a build makes it appear in /api/builds/active."""
+        # Create a project
+        project_dir = tmp_path / "test_project"
+        project_dir.mkdir()
+        (project_dir / "ato.yaml").write_text(
+            "requires-atopile: '^0.9.0'\nbuilds:\n  default:\n    entry: main.ato:App\n"
+        )
+        (project_dir / "main.ato").write_text("module App:\n    pass\n")
+
+        summary_file = tmp_path / "summary.json"
+        summary_file.write_text("{}")
+        app = create_app(
+            summary_file=summary_file,
+            logs_base=tmp_path,
+            workspace_paths=[tmp_path],
+        )
+        client = TestClient(app)
+
+        # Start a build (use mock to prevent actual subprocess)
+        with patch("atopile.dashboard.server._run_build_subprocess"):
+            response = client.post(
+                "/api/build",
+                json={
+                    "project_root": str(project_dir),
+                    "targets": ["default"],
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        build_id = data["build_id"]
+        assert build_id is not None
+
+        # Check that it appears in active builds with queued status
+        active_response = client.get("/api/builds/active")
+        assert active_response.status_code == 200
+        active_data = active_response.json()
+
+        build_ids = [b["build_id"] for b in active_data["builds"]]
+        assert build_id in build_ids
+
+        # Verify the build has queued status
+        active_build = next(
+            (b for b in active_data["builds"] if b["build_id"] == build_id),
+            None,
+        )
+        assert active_build is not None
+        assert active_build["status"] == "queued"
+
+    def test_cancel_build_marks_as_cancelled(
+        self, tmp_path: Path, clear_active_builds
+    ):
+        """Cancelling a build marks it as cancelled."""
+        # Setup
+        project_dir = tmp_path / "test_project"
+        project_dir.mkdir()
+        (project_dir / "ato.yaml").write_text(
+            "requires-atopile: '^0.9.0'\nbuilds:\n  default:\n    entry: main.ato:App\n"
+        )
+        (project_dir / "main.ato").write_text("module App:\n    pass\n")
+
+        summary_file = tmp_path / "summary.json"
+        summary_file.write_text("{}")
+        app = create_app(
+            summary_file=summary_file,
+            logs_base=tmp_path,
+            workspace_paths=[tmp_path],
+        )
+        client = TestClient(app)
+
+        # Start a build
+        with patch("atopile.dashboard.server._run_build_subprocess"):
+            start_response = client.post(
+                "/api/build",
+                json={
+                    "project_root": str(project_dir),
+                    "targets": ["default"],
+                },
+            )
+
+        assert start_response.status_code == 200
+        build_id = start_response.json()["build_id"]
+
+        # Cancel the build
+        cancel_response = client.post(f"/api/build/{build_id}/cancel")
+        assert cancel_response.status_code == 200
+        assert cancel_response.json()["success"] is True
+
+        # Verify status is cancelled in active builds
+        active_response = client.get("/api/builds/active")
+        active_data = active_response.json()
+
+        cancelled_build = next(
+            (b for b in active_data["builds"] if b["build_id"] == build_id),
+            None,
+        )
+        assert cancelled_build is not None
+        assert cancelled_build["status"] == "cancelled"
+
+    def test_cancel_nonexistent_build_returns_404(
+        self, test_client: TestClient, clear_active_builds
+    ):
+        """Cancelling a non-existent build returns 404."""
+        response = test_client.post("/api/build/nonexistent-build-id/cancel")
+        assert response.status_code == 404
+
+    def test_duplicate_build_request_returns_existing(
+        self, tmp_path: Path, clear_active_builds
+    ):
+        """Requesting a duplicate build returns the existing build_id."""
+        # Setup
+        project_dir = tmp_path / "test_project"
+        project_dir.mkdir()
+        (project_dir / "ato.yaml").write_text(
+            "requires-atopile: '^0.9.0'\nbuilds:\n  default:\n    entry: main.ato:App\n"
+        )
+        (project_dir / "main.ato").write_text("module App:\n    pass\n")
+
+        summary_file = tmp_path / "summary.json"
+        summary_file.write_text("{}")
+        app = create_app(
+            summary_file=summary_file,
+            logs_base=tmp_path,
+            workspace_paths=[tmp_path],
+        )
+        client = TestClient(app)
+
+        build_request = {
+            "project_root": str(project_dir),
+            "targets": ["default"],
+        }
+
+        # Start first build
+        with patch("atopile.dashboard.server._run_build_subprocess"):
+            first_response = client.post("/api/build", json=build_request)
+
+        assert first_response.status_code == 200
+        first_build_id = first_response.json()["build_id"]
+
+        # Try to start duplicate build
+        with patch("atopile.dashboard.server._run_build_subprocess"):
+            second_response = client.post("/api/build", json=build_request)
+
+        assert second_response.status_code == 200
+        second_data = second_response.json()
+
+        # Should return the existing build_id
+        assert second_data["build_id"] == first_build_id
+        assert second_data.get("message") == "Build already in progress"
+
+    def test_build_queue_status_reflects_queue_state(
+        self, tmp_path: Path, clear_active_builds
+    ):
+        """The /api/builds/queue endpoint reflects queue state."""
+        summary_file = tmp_path / "summary.json"
+        summary_file.write_text("{}")
+        app = create_app(
+            summary_file=summary_file,
+            logs_base=tmp_path,
+            workspace_paths=[tmp_path],
+        )
+        client = TestClient(app)
+
+        # Check initial queue status
+        response = client.get("/api/builds/queue")
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "queue_size" in data
+        assert "active_count" in data
+        assert "max_concurrent" in data
+        assert data["max_concurrent"] == 4  # Default concurrency limit

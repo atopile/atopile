@@ -5,7 +5,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { Settings, ChevronDown, FolderOpen, Loader2, AlertCircle, Check, GitBranch, Package, Search } from 'lucide-react';
-import type { AppState } from '../types/build';
+import type { AppState, Build } from '../types/build';
 import { CollapsibleSection } from './CollapsibleSection';
 import { ProjectsPanel } from './ProjectsPanel';
 import { ProblemsPanel } from './ProblemsPanel';
@@ -13,9 +13,55 @@ import { StandardLibraryPanel } from './StandardLibraryPanel';
 import { VariablesPanel } from './VariablesPanel';
 import { BOMPanel } from './BOMPanel';
 import { PackageDetailPanel } from './PackageDetailPanel';
+import { BuildQueuePanel, type QueuedBuild } from './BuildQueuePanel';
 import { logPerf, logDataSize, startMark } from '../perf';
 import './Sidebar.css';
 import '../mockup.css';
+
+/**
+ * Find a build for a specific target in a project.
+ *
+ * UNIFIED BUILD MATCHING: This function is the single source of truth for matching
+ * builds to targets. Used by both projects and packages.
+ *
+ * Priority:
+ * 1. Active builds (building/queued) matching by project_name + target
+ * 2. Completed builds matching by name + project_name
+ */
+function findBuildForTarget(
+  builds: Build[],
+  projectName: string,
+  targetName: string
+): Build | undefined {
+  // 1. Find active build (building/queued) for this specific target
+  let build = builds.find(b => {
+    if (b.status !== 'building' && b.status !== 'queued') return false;
+
+    // Match by project (use project_name or derive from project_root)
+    const buildProjectName = b.project_name || (b.project_root ? b.project_root.split('/').pop() : null);
+    if (buildProjectName !== projectName) return false;
+
+    // Match by target - use targets[] array (backend provides this)
+    const targets = b.targets || [];
+    if (targets.length > 0) {
+      return targets.includes(targetName);
+    }
+
+    // If no targets specified (standalone build), match by name
+    return b.name === targetName;
+  });
+
+  // 2. Fall back to any build (including completed) by name and project
+  // This ensures completed builds show their final status and stages
+  if (!build) {
+    build = builds.find(b =>
+      b.name === targetName &&
+      (b.project_name === projectName || b.project_name === null)
+    );
+  }
+
+  return build;
+}
 
 // Default logo as SVG data URI for dev mode fallback
 const DEFAULT_LOGO = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23f95015'/%3E%3Ctext x='50' y='65' font-size='50' font-weight='bold' fill='white' text-anchor='middle' font-family='system-ui'%3Ea%3C/text%3E%3C/svg%3E`;
@@ -68,6 +114,13 @@ export function Sidebar() {
   // Settings dropdown state
   const [showSettings, setShowSettings] = useState(false);
 
+  // Max concurrent builds setting
+  // Use navigator.hardwareConcurrency for accurate core count in webview
+  const detectedCores = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 4 : 4;
+  const [maxConcurrentUseDefault, setMaxConcurrentUseDefault] = useState(true);
+  const [maxConcurrentValue, setMaxConcurrentValue] = useState(detectedCores);
+  const [defaultMaxConcurrent, setDefaultMaxConcurrent] = useState(detectedCores);
+
   // Branch search state
   const [branchSearchQuery, setBranchSearchQuery] = useState('');
   const [showBranchDropdown, setShowBranchDropdown] = useState(false);
@@ -97,6 +150,13 @@ export function Sidebar() {
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showSettings]);
+
+  // Fetch max concurrent setting when settings open
+  useEffect(() => {
+    if (showSettings) {
+      action('getMaxConcurrentSetting');
+    }
   }, [showSettings]);
 
   // Close branch dropdown when clicking outside
@@ -154,6 +214,11 @@ export function Sidebar() {
         });
 
         endMark({ fields: fields.length, fieldNames: fields.join(',') });
+      } else if (msg.type === 'maxConcurrentSetting') {
+        // Max concurrent builds setting response
+        setMaxConcurrentUseDefault(msg.data.use_default);
+        setMaxConcurrentValue(msg.data.custom_value || msg.data.default_value);
+        setDefaultMaxConcurrent(msg.data.default_value);
       }
     };
     window.addEventListener('message', handleMessage);
@@ -272,43 +337,11 @@ export function Sidebar() {
     const start = performance.now();
     if (!state?.projects?.length) return [];
 
-    // Pre-index builds by name for O(1) lookup instead of O(n) find
-    const buildsByName = new Map(state.builds.map(b => [b.name, b]));
-
     const result = state.projects.map(p => {
       // Transform builds/targets with last_build info
       const builds = p.targets.map(t => {
-        // PRIORITY: First check for active builds (building/queued), then fall back to completed builds
-        // This ensures we show the spinner and live progress for active builds
-
-        // 1. Find active build for this project that includes this target
-        let build = state.builds.find(b => {
-          if (b.status !== 'building' && b.status !== 'queued') return false;
-          if ((b as any).project_name !== p.name) return false;
-
-          const targetNames = (b as any).target_names;
-          // If target_names is provided, check if this target is included
-          if (targetNames && targetNames.length > 0) {
-            return targetNames.includes(t.name);
-          }
-          // If target_names is empty array, it means "all targets"
-          if (targetNames && targetNames.length === 0) {
-            return true;
-          }
-          // If target_names is undefined/null (server not updated yet), assume all targets
-          // This is a fallback until the backend includes target_names
-          return true;
-        });
-
-        // 2. Fall back to completed build by name (e.g., "default" from summary.json)
-        // IMPORTANT: Must also match by project name to avoid showing build status
-        // for all projects when only one is building (target names like "default" are shared)
-        if (!build) {
-          build = state.builds.find(b => 
-            b.name === t.name && 
-            ((b as any).project_name === p.name || (b as any).project_name === null)
-          );
-        }
+        // UNIFIED: Use shared findBuildForTarget helper
+        const build = findBuildForTarget(state.builds, p.name, t.name);
         const rootSymbol = parseEntryToSymbol(t.entry);
         // Get stages from active build or fall back to last_build
         const activeStages = build?.stages && build.stages.length > 0 ? build.stages : null;
@@ -395,39 +428,56 @@ export function Sidebar() {
   }, [state?.projects, state?.builds]);
 
   // Transform state packages to the format that ProjectsPanel expects
-  // Memoized to prevent recalculation on every render
+  // UNIFIED: Uses same findBuildForTarget helper as projects
   const transformedPackages = useMemo((): any[] => {
     if (!state?.packages?.length) return [];
 
     return state.packages
       .filter(pkg => pkg && pkg.identifier && pkg.name)
-      .map(pkg => ({
-        id: pkg.identifier,
-        name: pkg.name,
-        type: 'package' as const,
-        path: `packages/${pkg.identifier}`,
-        version: pkg.version || 'unknown',
-        latestVersion: pkg.latest_version,
-        installed: pkg.installed ?? false,
-        installedIn: pkg.installed_in || [],
-        publisher: pkg.publisher || 'unknown',
-        summary: pkg.summary || pkg.description || '',
-        description: pkg.description || pkg.summary || '',
-        homepage: pkg.homepage,
-        repository: pkg.repository,
-        license: pkg.license,
-        keywords: pkg.keywords || [],
-        downloads: pkg.downloads,
-        versionCount: pkg.version_count,
-        builds: [{
-          id: 'default',
-          name: 'default',
-          entry: `${pkg.name || 'unknown'}.ato:${(pkg.name || 'unknown').replace(/-/g, '_')}`,
-          status: 'idle' as const,
-          stages: [],
-        }],
-      }));
-  }, [state?.packages]);
+      .map(pkg => {
+        // Standard target names for packages
+        const targetNames = ['default', 'usage'];
+
+        // Look up builds for this package using the unified helper
+        const packageBuilds = targetNames.map(targetName => {
+          const build = findBuildForTarget(state.builds, pkg.name, targetName);
+
+          return {
+            id: targetName,
+            name: targetName,
+            entry: `${pkg.name || 'unknown'}.ato:${(pkg.name || 'unknown').replace(/-/g, '_')}`,
+            status: build?.status || 'idle',
+            buildId: build?.build_id,
+            elapsedSeconds: build?.elapsed_seconds,
+            warnings: build?.warnings,
+            errors: build?.errors,
+            stages: build?.stages || [],
+            queuePosition: build?.queue_position,
+          };
+        });
+
+        return {
+          id: pkg.identifier,
+          name: pkg.name,
+          type: 'package' as const,
+          path: `packages/${pkg.identifier}`,
+          version: pkg.version || 'unknown',
+          latestVersion: pkg.latest_version,
+          installed: pkg.installed ?? false,
+          installedIn: pkg.installed_in || [],
+          publisher: pkg.publisher || 'unknown',
+          summary: pkg.summary || pkg.description || '',
+          description: pkg.description || pkg.summary || '',
+          homepage: pkg.homepage,
+          repository: pkg.repository,
+          license: pkg.license,
+          keywords: pkg.keywords || [],
+          downloads: pkg.downloads,
+          versionCount: pkg.version_count,
+          builds: packageBuilds,
+        };
+      });
+  }, [state?.packages, state?.builds]);
 
   // Combine projects and packages - NO mock data fallback
   const projects = useMemo((): any[] => {
@@ -456,6 +506,11 @@ export function Sidebar() {
 
   const handleCancelBuild = (buildId: string) => {
     action('cancelBuild', { buildId });
+  };
+
+  // Cancel build from queue panel (uses build_id format)
+  const handleCancelQueuedBuild = (build_id: string) => {
+    action('cancelBuild', { buildId: build_id });
   };
 
   const handleStageFilter = (stageName: string, buildId?: string, projectId?: string) => {
@@ -576,6 +631,11 @@ export function Sidebar() {
     return { projectCount: projCount, packageCount: pkgCount };
   }, [projects]);
 
+  // STATELESS: Use queuedBuilds directly from state - backend provides display-ready data
+  const queuedBuilds = useMemo((): QueuedBuild[] => {
+    return (state?.queuedBuilds || []) as QueuedBuild[];
+  }, [state?.queuedBuilds]);
+
   // Pre-index projects by ID for O(1) lookup during filtering
   const projectsById = useMemo(() => {
     return new Map(projects.map(p => [p.id, p]));
@@ -693,9 +753,6 @@ export function Sidebar() {
             </button>
             {showSettings && (
               <div className="settings-dropdown">
-                {/* Atopile Version Section */}
-                <div className="settings-section-title">Atopile Version</div>
-
                 {/* Installation Progress */}
                 {state.atopile?.isInstalling && (
                   <div className="install-progress">
@@ -906,14 +963,55 @@ export function Sidebar() {
 
                 <div className="settings-divider" />
 
-                {/* Other Settings */}
-                <label className="settings-checkbox">
-                  <input type="checkbox" defaultChecked />
-                  <div>
-                    <span className="settings-label-title">Auto-refresh</span>
-                    <span className="settings-label-desc">Automatically refresh build status</span>
+                {/* Parallel Builds Setting */}
+                <div className="settings-group">
+                  <div className="settings-row">
+                    <span className="settings-label-title">Parallel builds</span>
+                    <div className="settings-inline-control">
+                      {maxConcurrentUseDefault ? (
+                        <button
+                          className="settings-value-btn"
+                          onClick={() => setMaxConcurrentUseDefault(false)}
+                          title="Click to set custom limit"
+                        >
+                          Auto ({defaultMaxConcurrent})
+                        </button>
+                      ) : (
+                        <div className="settings-custom-input">
+                          <input
+                            type="number"
+                            className="settings-input small"
+                            min={1}
+                            max={32}
+                            value={maxConcurrentValue}
+                            onChange={(e) => {
+                              const value = Math.max(1, Math.min(32, parseInt(e.target.value) || 1));
+                              setMaxConcurrentValue(value);
+                              action('setMaxConcurrentSetting', {
+                                useDefault: false,
+                                customValue: value
+                              });
+                            }}
+                          />
+                          <button
+                            className="settings-reset-btn"
+                            onClick={() => {
+                              setMaxConcurrentUseDefault(true);
+                              action('setMaxConcurrentSetting', {
+                                useDefault: true,
+                                customValue: null
+                              });
+                            }}
+                            title="Reset to auto"
+                          >
+                            Auto
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </label>
+                </div>
+
               </div>
             )}
           </div>
@@ -921,14 +1019,15 @@ export function Sidebar() {
       </div>
 
       <div className="panel-sections" ref={containerRef}>
-        {/* Projects Section - limit height when many projects */}
+        {/* Projects Section - auto-size with max height, or use manual height if user resized */}
         <CollapsibleSection
           id="projects"
           title="Projects"
           badge={projectCount}
           collapsed={collapsedSections.has('projects')}
           onToggle={() => toggleSection('projects')}
-          height={collapsedSections.has('projects') ? undefined : (sectionHeights.projects || (projectCount > 6 ? 200 : undefined))}
+          height={sectionHeights.projects}
+          maxHeight={!sectionHeights.projects ? 400 : undefined}
           onResizeStart={(e) => handleResizeStart('projects', e)}
         >
           <ProjectsPanel
@@ -949,14 +1048,32 @@ export function Sidebar() {
           />
         </CollapsibleSection>
 
-        {/* Packages Section - limit height when many packages */}
+        {/* Build Queue Section - always visible */}
+        <CollapsibleSection
+          id="buildQueue"
+          title="Build Queue"
+          badge={queuedBuilds.length > 0 ? queuedBuilds.length : undefined}
+          badgeType="count"
+          collapsed={collapsedSections.has('buildQueue')}
+          onToggle={() => toggleSection('buildQueue')}
+          height={collapsedSections.has('buildQueue') ? undefined : sectionHeights.buildQueue}
+          onResizeStart={(e) => handleResizeStart('buildQueue', e)}
+        >
+          <BuildQueuePanel
+            builds={queuedBuilds}
+            onCancelBuild={handleCancelQueuedBuild}
+          />
+        </CollapsibleSection>
+
+        {/* Packages Section - auto-size with max height, or use manual height if user resized */}
         <CollapsibleSection
           id="packages"
           title="Packages"
           badge={packageCount}
           collapsed={collapsedSections.has('packages')}
           onToggle={() => toggleSection('packages')}
-          height={collapsedSections.has('packages') ? undefined : (sectionHeights.packages || (packageCount > 6 ? 200 : undefined))}
+          height={sectionHeights.packages}
+          maxHeight={!sectionHeights.packages ? 400 : undefined}
           onResizeStart={(e) => handleResizeStart('packages', e)}
         >
           <ProjectsPanel

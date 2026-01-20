@@ -28,6 +28,7 @@ interface AppState {
   selectedProjectRoot: string | null;
   selectedTargetNames: string[];
   builds: Build[];
+  queuedBuilds: Build[];  // From /api/builds/active - display-ready queue data
   // Packages
   packages: PackageInfo[];
   isLoadingPackages: boolean;
@@ -661,7 +662,7 @@ class DevServer {
    */
   private handleBackendEvent(message: { event: string; data: any }): void {
     const { event, data } = message;
-    console.log('Backend event:', event);
+    console.log('Backend event:', event, JSON.stringify(data, null, 2));
 
     switch (event) {
       case 'logs':
@@ -736,143 +737,36 @@ class DevServer {
 
   /**
    * Handle build:started event.
+   * STATELESS: Just log and fetch fresh data from backend.
+   * Backend is the source of truth - no local state manipulation.
    */
-  private handleBuildStartedEvent(data: {
-    build_id: string;
-    project_root: string;
-    targets: string[];
-    stages: any[];
-  }): void {
-    console.log(`Build started: ${data.build_id}`);
-
-    const projectName = this.extractProjectName(data.project_root);
-    const targetNames = data.targets.length > 0 ? data.targets : ['default'];
-
-    // Create a new Build entry for this active build
-    const newBuild: Build = {
-      name: `${projectName}:${targetNames[0]}`,
-      display_name: `${projectName} / ${targetNames[0]}`,
-      project_name: projectName,
-      status: 'building',
-      elapsed_seconds: 0,
-      warnings: 0,
-      errors: 0,
-      return_code: null,
-      build_id: data.build_id,
-      target_names: targetNames,
-      stages: data.stages.map((s) => ({
-        name: s.name,
-        stage_id: s.name,
-        display_name: s.display_name || s.name,
-        elapsed_seconds: s.elapsed_seconds || 0,
-        status: (s.status || 'pending') as BuildStage['status'],
-        infos: 0,
-        warnings: 0,
-        errors: 0,
-        alerts: 0,
-      })),
-    };
-
-    // Check if this build already exists, update it; otherwise add
-    const existingIdx = this.state.builds.findIndex(
-      (b) => b.build_id === data.build_id || 
-             (b.name === newBuild.name && b.status === 'building')
-    );
-    
-    if (existingIdx >= 0) {
-      this.state.builds[existingIdx] = newBuild;
-    } else {
-      this.state.builds = [newBuild, ...this.state.builds];
-    }
-
-    this.queueUpdate('builds');
+  private handleBuildStartedEvent(data: any): void {
+    console.log('=== build:started event ===');
+    console.log('Event data:', JSON.stringify(data, null, 2));
+    // Fetch fresh data from backend - it knows the current state
+    this.fetchBuilds();
   }
 
   /**
    * Handle build:stage event.
+   * STATELESS: Just log and fetch fresh data from backend.
    */
-  private handleBuildStageEvent(data: {
-    build_id: string;
-    stage_name: string;
-    display_name: string;
-    status: string;
-    stage_index?: number;
-    project_root?: string;
-  }): void {
-    console.log(`Build stage: ${data.stage_name} -> ${data.status}`);
-
-    // Find and update the build
-    this.state.builds = this.state.builds.map((build) => {
-      if (build.build_id === data.build_id) {
-        return {
-          ...build,
-          stages: build.stages?.map((stage, idx) => {
-            if (stage.name === data.stage_name || idx === data.stage_index) {
-              return {
-                ...stage,
-                status: data.status as BuildStage['status'],
-              };
-            }
-            // Mark previous stages as success if they were pending
-            if (data.stage_index !== undefined && idx < data.stage_index && stage.status === 'pending') {
-              return { ...stage, status: 'success' as const };
-            }
-            return stage;
-          }),
-        };
-      }
-      return build;
-    });
-
-    this.queueUpdate('builds');
+  private handleBuildStageEvent(data: any): void {
+    console.log('=== build:stage event ===');
+    console.log('Event data:', JSON.stringify(data, null, 2));
+    // Fetch fresh data from backend - it knows the current state
+    this.fetchBuilds();
   }
 
   /**
    * Handle build:completed event.
+   * STATELESS: Just log and fetch fresh data from backend.
    */
-  private handleBuildCompletedEvent(data: {
-    build_id: string;
-    project_root: string;
-    targets: string[];
-    status: string;
-    return_code: number;
-    stages?: any[];
-    error?: string;
-  }): void {
-    console.log(`Build completed: ${data.build_id} -> ${data.status}`);
-
-    // Map status to Build status type
-    const finalStatus: Build['status'] = 
-      data.status === 'success' ? 'success' :
-      data.status === 'warning' ? 'warning' : 'failed';
-
-    // Find and update the build
-    this.state.builds = this.state.builds.map((build) => {
-      if (build.build_id === data.build_id) {
-        return {
-          ...build,
-          status: finalStatus,
-          return_code: data.return_code,
-          stages: data.stages?.map((s) => ({
-            name: s.name,
-            stage_id: s.name,
-            display_name: s.display_name || s.name,
-            elapsed_seconds: s.elapsed_seconds || 0,
-            status: s.status as BuildStage['status'],
-            infos: 0,
-            warnings: 0,
-            errors: 0,
-            alerts: 0,
-          })) || build.stages,
-        };
-      }
-      return build;
-    });
-
-    this.queueUpdate('builds');
-
-    // Fetch fresh summary to get final build details
-    setTimeout(() => this.fetchBuilds(), 500);
+  private handleBuildCompletedEvent(data: any): void {
+    console.log('=== build:completed event ===');
+    console.log('Event data:', JSON.stringify(data, null, 2));
+    // Fetch fresh data from backend - it knows the current state
+    this.fetchBuilds();
   }
 
   /**
@@ -1062,7 +956,12 @@ class DevServer {
         break;
 
       case 'cancelBuild':
-        console.log('Cancelling build:', message.buildId);
+        console.log('Cancel build action received. buildId:', message.buildId);
+        console.log('Current queued builds:', this.state.queuedBuilds.map(b => ({ id: b.build_id, status: b.status })));
+        if (!message.buildId) {
+          console.error('No buildId provided for cancel action');
+          break;
+        }
         await this.cancelBuild(message.buildId);
         break;
 
@@ -1219,170 +1118,37 @@ class DevServer {
 
     console.log(`Starting build for ${projectRoot} with targets:`, targets, 'standalone:', standalone, 'entry:', entry);
 
-    // Update UI to show building state
-    this.updateBuildStatus(projectRoot, targets.length > 0 ? targets : ['standalone'], 'building');
+    // STATELESS: Just call the backend API and fetch fresh state
+    // Backend handles all tracking, queuing, and deduplication
+    const buildTargets = standalone ? [[]] : targets.map(t => [t]);
 
-    try {
-      const requestBody: any = {
-        project_root: projectRoot,
-        targets: targets,
-        frozen: false,
-      };
+    for (const targetList of buildTargets) {
+      try {
+        const requestBody: any = {
+          project_root: projectRoot,
+          targets: targetList,
+          frozen: false,
+        };
 
-      // Add standalone build parameters if needed
-      if (standalone && entry) {
-        requestBody.standalone = true;
-        requestBody.entry = entry;
+        if (standalone && entry) {
+          requestBody.standalone = true;
+          requestBody.entry = entry;
+        }
+
+        const response = await this.httpPost(`${DASHBOARD_URL}/api/build`, requestBody);
+        const result = JSON.parse(response);
+        console.log('Build API response:', result);
+      } catch (e) {
+        console.error('Failed to start build:', e);
       }
-
-      const response = await this.httpPost(`${DASHBOARD_URL}/api/build`, requestBody);
-
-      const result = JSON.parse(response);
-      console.log('Build started:', result);
-      // Build events will come via WebSocket - no polling needed
-    } catch (e) {
-      console.error('Failed to start build:', e);
-      this.updateBuildStatus(projectRoot, targets.length > 0 ? targets : ['standalone'], 'failed');
     }
+
+    // Fetch fresh state from backend - it's the source of truth
+    await this.fetchBuilds();
   }
 
-  // NOTE: pollBuildStatus() removed - using WebSocket build:* events instead
-
-  /**
-   * Update the build status in the UI state.
-   */
-  private updateBuildStatus(
-    projectRoot: string,
-    targets: string[],
-    status: string,
-    buildInfo?: {
-      buildId?: string;
-      elapsedSeconds?: number;
-      currentStage?: string | null;
-      stages?: { name: string; display_name: string; status: string; elapsed_seconds: number | null }[];
-    }
-  ): void {
-    const projectName = projectRoot.split('/').pop() || '';
-
-    // First, try to find the build by build_id (for active builds)
-    // This ensures we update the correct build entry, not an old completed one
-    let existingBuild = buildInfo?.buildId
-      ? this.state.builds.find(b => b.name === buildInfo.buildId || (b as any).build_id === buildInfo.buildId)
-      : null;
-
-    // If not found by build_id, create or update a synthetic build entry for this active build
-    if (!existingBuild && buildInfo?.buildId) {
-      // Create a new build entry for this active build
-      const stages = buildInfo?.stages?.map(s => ({
-        name: s.name,
-        stage_id: s.name,
-        display_name: s.display_name,
-        elapsed_seconds: s.elapsed_seconds || 0,
-        status: s.status as any,
-        infos: 0,
-        warnings: 0,
-        errors: 0,
-        alerts: 0,
-      })) || [];
-
-      const newBuild: Build = {
-        name: buildInfo.buildId,
-        display_name: `${projectName} (building)`,
-        project_name: projectName,
-        status: status as any,
-        elapsed_seconds: buildInfo.elapsedSeconds || 0,
-        warnings: 0,
-        errors: 0,
-        return_code: null,
-        stages,
-        target_names: targets,
-        build_id: buildInfo.buildId,
-      };
-      this.state.builds.unshift(newBuild);
-      this.queueUpdate('builds');
-      return;
-    }
-
-    // Fall back to updating by target name (for legacy compatibility)
-    for (const targetName of targets) {
-      if (!existingBuild) {
-        existingBuild = this.state.builds.find(
-          b => b.name === targetName || b.display_name?.includes(targetName)
-        );
-      }
-
-      if (existingBuild) {
-        existingBuild.status = status as any;
-        // Update target_names and build_id for matching in frontend
-        if (targets.length > 0) {
-          existingBuild.target_names = targets;
-        }
-        if (buildInfo) {
-          if (buildInfo.buildId) {
-            existingBuild.build_id = buildInfo.buildId;
-          }
-          existingBuild.elapsed_seconds = buildInfo.elapsedSeconds || existingBuild.elapsed_seconds;
-          // Update stages in-place to avoid causing React re-renders
-          if (buildInfo.stages && buildInfo.stages.length > 0) {
-            // If we don't have stages yet, or the count differs, replace entirely
-            if (!existingBuild.stages || existingBuild.stages.length !== buildInfo.stages.length) {
-              existingBuild.stages = buildInfo.stages.map(s => ({
-                name: s.name,
-                stage_id: s.name,
-                display_name: s.display_name,
-                elapsed_seconds: s.elapsed_seconds || 0,
-                status: s.status as any,
-                infos: 0,
-                warnings: 0,
-                errors: 0,
-                alerts: 0,
-              }));
-            } else {
-              // Update stages in-place to preserve array reference
-              for (let i = 0; i < buildInfo.stages.length; i++) {
-                const newStage = buildInfo.stages[i];
-                const existingStage = existingBuild.stages[i];
-                if (existingStage) {
-                  existingStage.status = newStage.status as any;
-                  existingStage.elapsed_seconds = newStage.elapsed_seconds || 0;
-                  existingStage.display_name = newStage.display_name;
-                }
-              }
-            }
-          }
-        }
-      } else {
-        // Create a new build entry
-        const stages = buildInfo?.stages?.map(s => ({
-          name: s.name,
-          stage_id: s.name,
-          display_name: s.display_name,
-          elapsed_seconds: s.elapsed_seconds || 0,
-          status: s.status as any,
-          infos: 0,
-          warnings: 0,
-          errors: 0,
-          alerts: 0,
-        })) || [];
-
-        this.state.builds.push({
-          name: buildInfo?.buildId || targetName,
-          display_name: `${projectRoot.split('/').pop()}:${targetName}`,
-          project_name: projectRoot.split('/').pop() || null,
-          status: status as any,
-          elapsed_seconds: buildInfo?.elapsedSeconds || 0,
-          warnings: 0,
-          errors: 0,
-          return_code: null,
-          stages: stages,
-          target_names: [targetName],
-          build_id: buildInfo?.buildId,
-        });
-      }
-    }
-
-    this.queueUpdate('builds');
-  }
+  // NOTE: All build state management removed - backend is source of truth.
+  // Frontend just fetches and renders.
 
   /**
    * Select a build and load its logs via WebSocket subscription.
@@ -1821,74 +1587,40 @@ class DevServer {
    * Fetch builds from the Python backend.
    */
   private async fetchBuilds(): Promise<void> {
+    // STATELESS: Just fetch from backend and use directly - no caching/merging
     try {
+      // Fetch summary (completed builds)
       const response = await this.httpGet(`${DASHBOARD_URL}/api/summary`);
       const summary: BuildSummaryResponse = JSON.parse(response);
 
-      if (summary.builds) {
-        // Build a set of names from the summary for fast lookup
-        const summaryBuildNames = new Set(summary.builds.map(b => b.name));
-        const summaryBuildDisplayNames = new Set(summary.builds.map(b => b.display_name));
+      // Fetch active builds (queued/building)
+      const activeResponse = await this.httpGet(`${DASHBOARD_URL}/api/builds/active`);
+      const activeData = JSON.parse(activeResponse);
+      const queuedBuilds: Build[] = activeData.builds || [];
 
-        // Merge summary builds with existing builds to preserve live stage data
-        const mergedBuilds = summary.builds.map(summaryBuild => {
-          const existing = this.state.builds.find(
-            b => b.name === summaryBuild.name || b.display_name === summaryBuild.display_name
-          );
+      // Debug: Log what we're receiving from backend
+      console.log('=== fetchBuilds ===');
+      console.log('Summary builds:', summary.builds?.map(b => ({
+        name: b.name,
+        project_name: b.project_name,
+        status: b.status,
+        stages_count: b.stages?.length || 0,
+        build_id: (b as any).build_id,
+      })));
+      console.log('Active/queued builds:', queuedBuilds.map(b => ({
+        build_id: b.build_id,
+        status: b.status,
+        project_name: b.project_name,
+        targets: (b as any).targets,
+        stages_count: b.stages?.length || 0,
+      })));
 
-          // If we have existing stages from live polling and summary has no stages,
-          // preserve the live stages (they have display_name)
-          if (existing?.stages && existing.stages.length > 0) {
-            const existingHasLiveStages = existing.stages.some(s => s.display_name);
-            const summaryHasStages = summaryBuild.stages && summaryBuild.stages.length > 0;
+      // Use summary builds directly - backend is source of truth
+      this.state.builds = summary.builds || [];
+      this.state.queuedBuilds = queuedBuilds;
+      this.state.isConnected = true;
 
-            if (existingHasLiveStages && !summaryHasStages) {
-              // Preserve live stages, update other fields
-              return {
-                ...summaryBuild,
-                stages: existing.stages,
-                // Also preserve live status if build is still active
-                status: existing.status === 'building' || existing.status === 'queued'
-                  ? existing.status
-                  : summaryBuild.status,
-              };
-            }
-          }
-
-          // If existing build is actively building, preserve its status and stages
-          if (existing && (existing.status === 'building' || existing.status === 'queued')) {
-            return {
-              ...summaryBuild,
-              status: existing.status,
-              elapsed_seconds: existing.elapsed_seconds,
-              stages: existing.stages || summaryBuild.stages,
-            };
-          }
-
-          return summaryBuild;
-        });
-
-        // Also include any active builds that aren't in the summary yet
-        // (builds that just started and haven't completed)
-        for (const existingBuild of this.state.builds) {
-          if (existingBuild.status === 'building' || existingBuild.status === 'queued') {
-            const inSummary = summaryBuildNames.has(existingBuild.name) ||
-                             summaryBuildDisplayNames.has(existingBuild.display_name);
-            if (!inSummary) {
-              // This is an active build not yet in summary - keep it
-              mergedBuilds.push(existingBuild);
-            }
-          }
-        }
-
-        this.state.builds = mergedBuilds;
-        this.state.isConnected = true;
-
-        // Note: No auto-selection of builds - let users manually select
-        // to avoid overriding "All" selection or user preferences
-
-        this.queueUpdate('builds', 'isConnected');
-      }
+      this.queueUpdate('builds', 'queuedBuilds', 'isConnected');
     } catch (e) {
       // Dashboard not available
       if (this.state.isConnected) {
@@ -2168,15 +1900,26 @@ class DevServer {
    * Cancel a running build.
    */
   private async cancelBuild(buildId: string): Promise<void> {
+    const url = `${DASHBOARD_URL}/api/build/${buildId}/cancel`;
+    console.log('Sending cancel request to:', url);
+
     try {
-      const response = await this.httpPost(`${DASHBOARD_URL}/api/build/${buildId}/cancel`, {});
+      const response = await this.httpPost(url, {});
       const data = JSON.parse(response);
-      console.log('Build cancelled:', data);
+      console.log('Cancel response:', data);
+
+      if (data.success) {
+        console.log('Build cancelled successfully, refreshing state');
+      } else {
+        console.warn('Cancel returned success=false:', data.message);
+      }
 
       // Refresh builds to get the updated status
       await this.fetchBuilds();
     } catch (e: any) {
       console.error('Failed to cancel build:', e.message || e);
+      // Still try to refresh in case state changed
+      await this.fetchBuilds();
     }
   }
 
@@ -2808,6 +2551,41 @@ input ~> capacitor ~> output`,
         return;
       }
 
+      // Route: /api/state - Debug endpoint to inspect dev-server state
+      if (url.pathname === '/api/state') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        const debugState = {
+          queuedBuilds: this.state.queuedBuilds,
+          builds: this.state.builds.map(b => ({
+            build_id: b.build_id,
+            name: b.name,
+            status: b.status,
+            elapsed_seconds: b.elapsed_seconds,
+            stages_count: b.stages?.length || 0,
+          })),
+          buildsCount: this.state.builds.length,
+          projectsCount: this.state.projects.length,
+          isConnected: this.state.isConnected,
+          clientsCount: this.clients.size,
+          backendConnected: this.backendSocket?.readyState === WebSocket.OPEN,
+        };
+        res.end(JSON.stringify(debugState, null, 2));
+        return;
+      }
+
+      // Route: /api/state/full - Full state dump (large)
+      if (url.pathname === '/api/state/full') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        // Exclude large fields for readability
+        const { logEntries, stdlibItems, ...rest } = this.state;
+        res.end(JSON.stringify({
+          ...rest,
+          logEntriesCount: logEntries.length,
+          stdlibItemsCount: stdlibItems.length,
+        }, null, 2));
+        return;
+      }
+
       // Route: /layout - KiCanvas viewer
       if (url.pathname === '/layout') {
         const filePath = url.searchParams.get('file');
@@ -2949,6 +2727,7 @@ input ~> capacitor ~> output`,
       selectedProjectRoot: null,
       selectedTargetNames: [],
       builds: [],
+      queuedBuilds: [],
       packages: [],
       isLoadingPackages: false,
       registryResults: [],

@@ -291,6 +291,68 @@ body {
   color: var(--text-muted);
 }
 
+.settings-input.small {
+  width: 60px;
+  text-align: center;
+  padding: 4px 8px;
+}
+
+/* Number input wrapper for max concurrent setting */
+/* Inline settings row (label on left, control on right) */
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.settings-inline-control {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+/* Clickable value button (shows current value, click to edit) */
+.settings-value-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.settings-value-btn:hover {
+  border-color: var(--ato-orange);
+  color: var(--text-primary);
+}
+
+/* Custom input with reset button */
+.settings-custom-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.settings-reset-btn {
+  padding: 4px 8px;
+  font-size: 10px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.settings-reset-btn:hover {
+  border-color: var(--text-muted);
+  color: var(--text-secondary);
+}
+
 /* Settings Section Title */
 .settings-section-title {
   font-size: 10px;
@@ -2523,6 +2585,16 @@ body {
   overflow-y: auto;
 }
 
+/* Auto-size with max-height constraint - section grows/shrinks with content */
+.collapsible-section.has-max-height {
+  overflow: hidden;
+}
+
+.collapsible-section.has-max-height .section-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
 /* flexGrow sections expand to fill remaining space */
 .collapsible-section.flex-grow {
   flex: 1 1 auto;
@@ -3645,8 +3717,14 @@ body {
 }
 
 .project-card .building-indicator {
-  color: var(--ctp-blue);
+  color: var(--ato-orange);
   flex-shrink: 0;
+  animation: pulse-building 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-building {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
 }
 
 /* Error and warning indicators with icons */
@@ -4118,6 +4196,40 @@ body {
   color: var(--text-primary);
 }
 
+/* Inline stage display next to build name during building */
+.build-inline-stage {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-left: var(--spacing-xs);
+  overflow: hidden;
+  position: relative;
+}
+
+/* Scroll-up animation when stage changes */
+.build-inline-stage.animating {
+  animation: stage-scroll-up 0.3s ease-out;
+}
+
+@keyframes stage-scroll-up {
+  0% {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Inline elapsed time during building */
+.build-elapsed-time-inline {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
 /* Build target play button - slides in from right on hover */
 .build-target-play-btn {
   display: flex;
@@ -4220,7 +4332,7 @@ body {
 }
 
 .build-elapsed-time {
-  color: var(--info);
+  color: var(--text-muted);
   font-family: var(--font-mono);
   font-weight: 500;
 }
@@ -4505,7 +4617,7 @@ body {
 .stage-icon.success { color: var(--success); }
 .stage-icon.warning { color: var(--warning); }
 .stage-icon.error { color: var(--error); }
-.stage-icon.running { color: var(--ctp-blue); }
+.stage-icon.running { color: var(--ato-orange); animation: pulse-building 1.5s ease-in-out infinite; }
 .stage-icon.skipped { color: var(--text-muted); }
 .stage-icon.pending { color: var(--text-muted); opacity: 0.5; }
 
@@ -4595,7 +4707,8 @@ body {
 }
 
 .status-icon.building {
-  color: var(--accent);
+  color: var(--ato-orange);
+  animation: pulse-building 1.5s ease-in-out infinite;
 }
 
 .status-icon.queued {

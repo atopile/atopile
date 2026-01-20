@@ -49,6 +49,19 @@ export interface Build {
     stages?: BuildStage[];
 }
 
+// Active build in the queue (from /api/builds/active)
+export interface ActiveBuild {
+    build_id: string;
+    status: 'queued' | 'building' | 'success' | 'failed' | 'cancelled';
+    project_root: string;
+    targets: string[];
+    entry?: string;
+    started_at: number;
+    elapsed_seconds?: number;
+    stages?: BuildStage[];
+    error?: string;
+}
+
 export interface BuildTargetStageStatus {
     name: string;  // Internal stage name
     display_name: string;  // User-friendly name
@@ -308,8 +321,11 @@ export interface AppState {
     selectedProjectRoot: string | null;
     selectedTargetNames: string[];
 
-    // Builds (from dashboard API)
+    // Builds (from dashboard API summary)
     builds: Build[];
+
+    // Active builds in queue (from /api/builds/active)
+    activeBuilds: ActiveBuild[];
 
     // Standard Library
     stdlibItems: StdLibItem[];
@@ -417,6 +433,9 @@ class AppStateManager {
 
         // Builds
         builds: [],
+
+        // Active builds in queue
+        activeBuilds: [],
 
         // Standard Library
         stdlibItems: [],
@@ -734,11 +753,18 @@ class AppStateManager {
         const apiUrl = getDashboardApiUrl();
 
         try {
-            const response = await axios.get<BuildSummary>(`${apiUrl}/api/summary`, { timeout: 5000 });
-            const newBuilds = response.data.builds || [];
+            // Fetch both summary and active builds in parallel
+            const [summaryResponse, activeResponse] = await Promise.all([
+                axios.get<BuildSummary>(`${apiUrl}/api/summary`, { timeout: 5000 }),
+                axios.get<{ builds: ActiveBuild[] }>(`${apiUrl}/api/builds/active`, { timeout: 5000 }).catch(() => ({ data: { builds: [] } })),
+            ]);
+
+            const newBuilds = summaryResponse.data.builds || [];
+            const newActiveBuilds = activeResponse.data.builds || [];
 
             // Only emit if data actually changed to avoid unnecessary re-renders
             const buildsChanged = JSON.stringify(newBuilds) !== JSON.stringify(this._state.builds);
+            const activeBuildsChanged = JSON.stringify(newActiveBuilds) !== JSON.stringify(this._state.activeBuilds);
             const connectionChanged = !this._state.isConnected;
 
             // Detect builds that just completed (transitioned from building to success/warning/failed)
@@ -753,14 +779,15 @@ class AppStateManager {
 
             this._state.isConnected = true;
             this._state.builds = newBuilds;
+            this._state.activeBuilds = newActiveBuilds;
 
             // Note: No auto-selection of builds - let users manually select
             // to avoid overriding "All" selection or user preferences
 
             // Only emit if something actually changed
-            if (buildsChanged || connectionChanged) {
+            if (buildsChanged || activeBuildsChanged || connectionChanged) {
                 this._emit();
-                traceVerbose(`AppState: fetched summary with ${this._state.builds.length} builds (changed: ${buildsChanged})`);
+                traceVerbose(`AppState: fetched summary with ${this._state.builds.length} builds, ${this._state.activeBuilds.length} active (changed: ${buildsChanged || activeBuildsChanged})`);
             }
 
             // Auto-fetch variables for completed builds (only if it's the selected project)

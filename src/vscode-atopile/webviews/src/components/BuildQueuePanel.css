@@ -1,0 +1,216 @@
+/**
+ * BuildQueuePanel styles - Compact build queue display
+ */
+
+.build-queue-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs);
+}
+
+.queue-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-md);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* Individual queue item */
+.queue-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  transition: border-color 0.15s ease;
+}
+
+.queue-item:hover {
+  border-color: var(--ctp-surface2);
+}
+
+.queue-item.building {
+  border-left: 2px solid var(--ato-orange);
+}
+
+.queue-item.queued {
+  border-left: 2px solid var(--ctp-blue);
+}
+
+.queue-item.failed {
+  border-left: 2px solid var(--ctp-red);
+}
+
+.queue-item.success {
+  border-left: 2px solid var(--ctp-green);
+}
+
+/* Main row layout */
+.queue-item-main {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-height: 20px;
+}
+
+/* Status icon */
+.queue-item-main .status-icon {
+  flex-shrink: 0;
+}
+
+.queue-item-main .status-icon.building {
+  color: var(--ato-orange);
+}
+
+.queue-item-main .status-icon.queued {
+  color: var(--ctp-blue);
+}
+
+.queue-item-main .status-icon.success {
+  color: var(--ctp-green);
+}
+
+.queue-item-main .status-icon.failed {
+  color: var(--ctp-red);
+}
+
+.queue-item-main .status-icon.cancelled {
+  color: var(--ctp-yellow);
+}
+
+/* Removed spinning icon - glow effect is on cancel button instead */
+
+/* Info section */
+.queue-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.queue-item-name {
+  color: var(--text-primary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.queue-item-target {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.queue-item-stage {
+  color: var(--text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Meta section (time + cancel) */
+.queue-item-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex-shrink: 0;
+}
+
+.queue-item-time {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.queue-item-cancel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.queue-item:hover .queue-item-cancel {
+  opacity: 1;
+}
+
+.queue-item-cancel:hover {
+  color: var(--ctp-red);
+  background: rgba(243, 139, 168, 0.1);
+}
+
+/* Glowing spin effect around cancel button when building */
+.queue-item-cancel.building {
+  opacity: 1;
+  position: relative;
+  overflow: visible;
+}
+
+.queue-item-cancel.building::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: calc(100% + 6px);
+  height: calc(100% + 6px);
+  transform: translate(-50%, -50%);
+  border-radius: calc(var(--radius-sm) + 3px);
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    var(--ato-orange) 30deg,
+    var(--ato-orange) 90deg,
+    transparent 120deg,
+    transparent 360deg
+  );
+  animation: glow-spin 1.2s linear infinite;
+  z-index: -1;
+  opacity: 0.8;
+}
+
+.queue-item-cancel.building::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
+  transform: translate(-50%, -50%);
+  border-radius: calc(var(--radius-sm) + 1px);
+  background: var(--bg-secondary);
+  z-index: -1;
+}
+
+@keyframes glow-spin {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Error message */
+.queue-item-error {
+  color: var(--ctp-red);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: 16px;
+}

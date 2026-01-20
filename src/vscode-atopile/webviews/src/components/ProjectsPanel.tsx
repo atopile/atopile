@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, memo } from 'react'
 import {
   ChevronDown, ChevronRight, Play, Layers, Package,
   FileCode, Box, Zap, Cpu, CircuitBoard, Check, X,
-  AlertTriangle, AlertCircle, Loader2, Search, Download,
+  AlertTriangle, AlertCircle, Search, Download,
   Plus, ArrowUpCircle, Grid3X3, Layout, Cuboid,
   Clock, SkipForward, Circle, Scale, History, Github, Globe, Square
 } from 'lucide-react'
@@ -537,7 +537,7 @@ function getTypeIcon(type: BuildSymbol['type'], size: number = 12) {
 function getStatusIcon(status: BuildTarget['status'], size: number = 12, queuePosition?: number) {
   switch (status) {
     case 'building':
-      return <Loader2 size={size} className="status-icon building spin" />
+      return <Circle size={size} className="status-icon building" />
     case 'queued':
       return (
         <span className="status-icon queued" title={queuePosition ? `Queue position: ${queuePosition}` : 'Queued'}>
@@ -670,7 +670,7 @@ const SymbolNode = memo(function SymbolNode({
 function getStageIcon(status: BuildStage['status'], size: number = 12) {
   switch (status) {
     case 'running':
-      return <Loader2 size={size} className="stage-icon running spin" />
+      return <Circle size={size} className="stage-icon running" />
     case 'success':
       return <Check size={size} className="stage-icon success" />
     case 'warning':
@@ -792,6 +792,10 @@ const BuildNode = memo(function BuildNode({
   const [elapsedTime, setElapsedTime] = useState(build.elapsedSeconds || 0)
   const isBuilding = build.status === 'building'
 
+  // Track previous stage for animation
+  const [prevStage, setPrevStage] = useState<string | null>(null)
+  const [stageAnimating, setStageAnimating] = useState(false)
+
   // Update timer every second while building
   useEffect(() => {
     if (!isBuilding) {
@@ -811,14 +815,18 @@ const BuildNode = memo(function BuildNode({
   }, [isBuilding, build.elapsedSeconds, build.duration])
 
   // Calculate progress from stages
+  // Use estimated total of 20 stages (typically ~19) since we don't know upfront
+  // TODO: Once builds are defined in the graph, get actual stage count from backend
+  const ESTIMATED_TOTAL_STAGES = 20
   const getProgress = () => {
     if (!build.stages || build.stages.length === 0) return 0
     const completed = build.stages.filter(s =>
       s.status === 'success' || s.status === 'warning' || s.status === 'error' || s.status === 'skipped'
     ).length
     const running = build.stages.filter(s => s.status === 'running').length
-    // Add half credit for running stage
-    return ((completed + running * 0.5) / build.stages.length) * 100
+    // Add half credit for running stage, use estimated total for smoother progress
+    const progress = ((completed + running * 0.5) / ESTIMATED_TOTAL_STAGES) * 100
+    return Math.min(progress, 100) // Cap at 100% in case we exceed estimate
   }
 
   // Get current running stage name (use display_name if available)
@@ -828,6 +836,18 @@ const BuildNode = memo(function BuildNode({
     const running = build.stages.find(s => s.status === 'running')
     return running?.display_name || running?.name || null
   }
+
+  // Trigger scroll-up animation when stage changes
+  const currentStage = getCurrentStage()
+  useEffect(() => {
+    if (currentStage && currentStage !== prevStage) {
+      setStageAnimating(true)
+      setPrevStage(currentStage)
+      // Reset animation after it completes
+      const timer = setTimeout(() => setStageAnimating(false), 300)
+      return () => clearTimeout(timer)
+    }
+  }, [currentStage, prevStage])
 
   // Filter modules based on search - only show modules (not interfaces)
   const filteredModules = availableModules
@@ -911,7 +931,7 @@ const BuildNode = memo(function BuildNode({
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <span 
+            <span
               className={`build-card-name ${isSelected ? 'editable' : ''}`}
               onClick={isSelected ? (e) => {
                 e.stopPropagation()
@@ -922,18 +942,23 @@ const BuildNode = memo(function BuildNode({
               {buildName}
             </span>
           )}
+
+          {/* Current stage shown inline during building */}
+          {isBuilding && currentStage && (
+            <span className={`build-inline-stage ${stageAnimating ? 'animating' : ''}`}>
+              {currentStage}
+            </span>
+          )}
         </div>
         
         <div className="build-header-right">
           {/* Indicators wrapper - slides left on hover to make room for play button */}
           <div className="build-indicators">
-            {/* During build: only show elapsed time */}
-            {isBuilding ? (
-              <span className="build-duration building">
-                <Clock size={10} />
-                {formatBuildTime(elapsedTime)}
-              </span>
-            ) : (
+            {/* During build: show elapsed time on right */}
+            {isBuilding && (
+              <span className="build-elapsed-time-inline">{formatBuildTime(elapsedTime)}</span>
+            )}
+            {!isBuilding && (
               <>
                 {/* Error/warning indicators - clickable to filter problems */}
                 {build.errors !== undefined && build.errors > 0 && (
@@ -963,17 +988,15 @@ const BuildNode = memo(function BuildNode({
                   </span>
                 )}
 
-                {/* Duration/last build info shown inline when not selected */}
-                {!isSelected && (
-                  build.duration ? (
-                    <span className="build-duration">{build.duration.toFixed(1)}s</span>
-                  ) : build.lastBuild ? (
-                    <span className="last-build-info" title={`Last build: ${build.lastBuild.status}`}>
-                      {getLastBuildStatusIcon(build.lastBuild.status, 10)}
-                      <span className="last-build-time">{formatRelativeTime(build.lastBuild.timestamp)}</span>
-                    </span>
-                  ) : null
-                )}
+                {/* Time info - duration or relative time */}
+                {build.duration ? (
+                  <span className="build-duration">{build.duration.toFixed(1)}s</span>
+                ) : build.lastBuild ? (
+                  <span className="last-build-info" title={`Last build: ${build.lastBuild.status}`}>
+                    {getLastBuildStatusIcon(build.lastBuild.status, 10)}
+                    <span className="last-build-time">{formatRelativeTime(build.lastBuild.timestamp)}</span>
+                  </span>
+                ) : null}
               </>
             )}
           </div>
@@ -1010,12 +1033,6 @@ const BuildNode = memo(function BuildNode({
       {/* Build progress bar - shown when building */}
       {isBuilding && (
         <div className="build-progress-container">
-          <div className="build-progress-info">
-            {getCurrentStage() && (
-              <span className="build-current-stage">{getCurrentStage()}</span>
-            )}
-            <span className="build-elapsed-time">{formatBuildTime(elapsedTime)}</span>
-          </div>
           <div className="build-progress-bar">
             <div
               className="build-progress-fill"
@@ -1784,9 +1801,9 @@ const ProjectNode = memo(function ProjectNode({
         <div className="project-card-actions-row">
           {/* Indicators wrapper - slides left on hover to make room for play button */}
           <div className="project-indicators">
-            {/* During build: only show spinner. Otherwise show errors/warnings/last build */}
+            {/* During build: only show building indicator. Otherwise show errors/warnings/last build */}
             {isBuilding ? (
-              <Loader2 size={14} className="spin building-indicator" />
+              <Circle size={14} className="building-indicator" />
             ) : (
               <>
                 {totalErrors > 0 && (

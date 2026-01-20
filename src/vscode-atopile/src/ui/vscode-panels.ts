@@ -722,6 +722,38 @@ async function handleAction(message: any): Promise<void> {
         case 'refreshAtopieBranches':
             await fetchAtopieBranches();
             break;
+
+        // Max Concurrent Builds Setting
+        case 'getMaxConcurrentSetting': {
+            try {
+                const apiUrl = vscode.workspace.getConfiguration('atopile').get<string>('dashboardApiUrl', 'http://localhost:8501');
+                const axios = require('axios');
+                const response = await axios.get(`${apiUrl}/api/settings/max-concurrent`, { timeout: 5000 });
+                // Send the setting back to the webview
+                sidebarPanel?.postMessage('maxConcurrentSetting', response.data);
+            } catch (error) {
+                traceError(`Failed to get max concurrent setting: ${error}`);
+            }
+            break;
+        }
+
+        case 'setMaxConcurrentSetting': {
+            const { useDefault, customValue } = message;
+            try {
+                const apiUrl = vscode.workspace.getConfiguration('atopile').get<string>('dashboardApiUrl', 'http://localhost:8501');
+                const axios = require('axios');
+                const response = await axios.post(`${apiUrl}/api/settings/max-concurrent`, {
+                    use_default: useDefault,
+                    custom_value: customValue,
+                }, { timeout: 5000 });
+                // Send the updated setting back to the webview
+                sidebarPanel?.postMessage('maxConcurrentSetting', response.data);
+                traceInfo(`Max concurrent builds set to ${response.data.current_value}`);
+            } catch (error) {
+                traceError(`Failed to set max concurrent setting: ${error}`);
+            }
+            break;
+        }
     }
 }
 

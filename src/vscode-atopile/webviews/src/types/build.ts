@@ -30,17 +30,31 @@ export interface BuildStage {
 }
 
 export interface Build {
+  // Core identification
   name: string;
   display_name: string;
   project_name: string | null;
+  build_id?: string;  // Present for active/tracked builds
+
+  // Status
   status: BuildStatus;
   elapsed_seconds: number;
   warnings: number;
   errors: number;
   return_code: number | null;
+
+  // Context (present for active builds)
+  project_root?: string;
+  targets?: string[];
+  entry?: string;
+  started_at?: number;  // Unix timestamp
+
+  // Stages and logs
+  stages?: BuildStage[];
   log_dir?: string;
   log_file?: string;
-  stages?: BuildStage[];
+
+  // Queue info
   queue_position?: number;  // Position in queue (1-indexed), only set when status is 'queued'
 }
 
@@ -201,8 +215,12 @@ export interface AppState {
   selectedProjectRoot: string | null;
   selectedTargetNames: string[];
 
-  // Builds (from dashboard API)
+  // Builds from /api/summary - completed builds and project context
   builds: Build[];
+
+  // Queued builds from /api/builds/active - display-ready for queue panel
+  // Backend formats this data, frontend just renders
+  queuedBuilds: Build[];
 
   // Packages (from dashboard API)
   packages: PackageInfo[];

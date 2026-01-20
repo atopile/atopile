@@ -11,6 +11,7 @@ interface CollapsibleSectionProps {
   onToggle: () => void
   onClearFilter?: () => void
   height?: number
+  maxHeight?: number  // Auto-size up to this max, then scroll
   onResizeStart?: (e: React.MouseEvent) => void
   children: React.ReactNode
   flexGrow?: boolean
@@ -27,17 +28,27 @@ export function CollapsibleSection({
   onToggle,
   onClearFilter,
   height,
+  maxHeight,
   onResizeStart,
   children,
   flexGrow
 }: CollapsibleSectionProps) {
   // Has a manually set height?
   const hasManualHeight = !collapsed && height && !flexGrow
+  // Auto-size with max constraint?
+  const hasMaxHeight = !collapsed && !height && maxHeight && !flexGrow
+
+  // Build style object
+  const sectionStyle: React.CSSProperties | undefined = hasManualHeight
+    ? { height, flex: '0 0 auto' }
+    : hasMaxHeight
+    ? { maxHeight, flex: '0 0 auto' }
+    : undefined
 
   return (
     <div
-      className={`collapsible-section ${collapsed ? 'collapsed' : ''} ${flexGrow ? 'flex-grow' : ''} ${hasManualHeight ? 'has-height' : ''}`}
-      style={hasManualHeight ? { height, flex: '0 0 auto' } : undefined}
+      className={`collapsible-section ${collapsed ? 'collapsed' : ''} ${flexGrow ? 'flex-grow' : ''} ${hasManualHeight ? 'has-height' : ''} ${hasMaxHeight ? 'has-max-height' : ''}`}
+      style={sectionStyle}
       data-section-id={id}
     >
       <div className="section-title-bar" onClick={onToggle}>
