@@ -90,6 +90,7 @@ def main():
     # Determine paths
     script_dir = Path(__file__).parent.resolve()
     root_dir = script_dir.parent.parent
+    tools_dir = script_dir.parent  # tools/ directory where state is stored
     web_dir = script_dir / "web"
 
     mode_label = "Production" if prod_mode else "Development"
@@ -126,8 +127,8 @@ def main():
     print(f"{Colors.BLUE}Starting backend server on http://localhost:8765{Colors.NC}")
 
     backend_process = subprocess.Popen(
-        [sys.executable, "-m", "tools.orchestrator.cli.main", "serve", "--port", "8765"],
-        cwd=root_dir,
+        [sys.executable, "-m", "orchestrator.cli.main", "serve", "--port", "8765"],
+        cwd=tools_dir,  # Run from tools/ to use existing .orchestrator state
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
