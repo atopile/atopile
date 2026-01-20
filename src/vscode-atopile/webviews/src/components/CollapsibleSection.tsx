@@ -7,6 +7,7 @@ interface CollapsibleSectionProps {
   badgeType?: 'count' | 'filter'
   errorCount?: number
   warningCount?: number
+  warningMessage?: string | null  // Tooltip message for warnings (e.g., "Registry unavailable")
   collapsed: boolean
   onToggle: () => void
   onClearFilter?: () => void
@@ -24,6 +25,7 @@ export function CollapsibleSection({
   badgeType = 'count',
   errorCount,
   warningCount,
+  warningMessage,
   collapsed,
   onToggle,
   onClearFilter,
@@ -65,9 +67,15 @@ export function CollapsibleSection({
           </span>
         )}
         {warningCount !== undefined && warningCount > 0 && (
-          <span className="section-warning-count">
+          <span className="section-warning-count" title={warningMessage || undefined}>
             <AlertTriangle size={10} />
             {warningCount}
+          </span>
+        )}
+        {/* Show warning icon for message-only warnings (no count) */}
+        {warningMessage && (warningCount === undefined || warningCount === 0) && (
+          <span className="section-warning-message" title={warningMessage}>
+            <AlertTriangle size={10} />
           </span>
         )}
         

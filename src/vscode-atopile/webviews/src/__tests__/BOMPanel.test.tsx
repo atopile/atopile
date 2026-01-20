@@ -9,21 +9,6 @@ import { BOMPanel, mockBOM } from '../components/BOMPanel';
 import type { BOMData } from '../types/build';
 
 // Test data
-const testSelection = {
-  type: 'none' as const,
-};
-
-const testProjects = [
-  {
-    id: '/test/project',
-    name: 'test-project',
-    type: 'project' as const,
-    path: '/test/project',
-    builds: [
-      { id: 'default', name: 'default', entry: 'main.ato:App', status: 'idle' as const, stages: [] },
-    ],
-  },
-];
 
 const testBOMData: BOMData = {
   version: '1.0',
@@ -91,11 +76,7 @@ const testBOMData: BOMData = {
   ],
 };
 
-const defaultProps = {
-  selection: testSelection,
-  onSelectionChange: vi.fn(),
-  projects: testProjects,
-};
+const defaultProps = {};
 
 describe('BOMPanel', () => {
   beforeEach(() => {
@@ -115,11 +96,14 @@ describe('BOMPanel', () => {
         expect(component.quantity).toBeGreaterThan(0);
       });
     });
+  });
 
-    it('can render with mock data', () => {
+  describe('empty state (no BOM data)', () => {
+    it('shows empty state when no bomData provided', () => {
       render(<BOMPanel {...defaultProps} />);
-      // Should show first mock component value
-      expect(screen.getByText('10kΩ ±1%')).toBeInTheDocument();
+      // Should show empty state message, not mock data
+      expect(screen.getByText('No BOM data available')).toBeInTheDocument();
+      expect(screen.getByText(/Select a project and run a build/)).toBeInTheDocument();
     });
   });
 
@@ -141,23 +125,23 @@ describe('BOMPanel', () => {
       expect(screen.getByText('Failed to load BOM')).toBeInTheDocument();
     });
 
-    it('shows retry button when onRefresh provided', () => {
-      const onRefresh = vi.fn();
-      render(<BOMPanel {...defaultProps} error="Error" onRefresh={onRefresh} />);
-      expect(screen.getByText('Retry')).toBeInTheDocument();
-    });
-
-    it('calls onRefresh when retry clicked', () => {
-      const onRefresh = vi.fn();
-      render(<BOMPanel {...defaultProps} error="Error" onRefresh={onRefresh} />);
-      fireEvent.click(screen.getByText('Retry'));
-      expect(onRefresh).toHaveBeenCalledTimes(1);
+    it('shows user-friendly message for 404 errors', () => {
+      render(<BOMPanel {...defaultProps} error="Run 'ato build' first to generate the BOM" />);
+      // Should show helpful message, not raw error
+      expect(screen.getByText('No BOM data available')).toBeInTheDocument();
+      expect(screen.getByText('Run a build to generate the Bill of Materials')).toBeInTheDocument();
     });
   });
 
-  describe('empty state', () => {
-    it('shows empty state when no components match filter', () => {
-      render(<BOMPanel {...defaultProps} bomData={{ version: '1.0', components: [] }} />);
+  describe('filter empty state', () => {
+    it('shows "No components found" when search/filter returns no matches', () => {
+      // Use real BOM data, then filter to nothing
+      render(<BOMPanel {...defaultProps} bomData={testBOMData} />);
+      const searchInput = screen.getByPlaceholderText('Search value, MPN...');
+
+      fireEvent.change(searchInput, { target: { value: 'xyz123nonexistent' } });
+
+      // This is different from "No BOM data available" - we have data, just no matches
       expect(screen.getByText('No components found')).toBeInTheDocument();
     });
   });
@@ -499,21 +483,22 @@ describe('BOMPanel', () => {
   });
 
   describe('props handling', () => {
-    it('uses mock data when bomData not provided', () => {
+    it('shows empty state when bomData not provided', () => {
       render(<BOMPanel {...defaultProps} />);
-      // Should show mock data
-      expect(screen.getByText('10kΩ ±1%')).toBeInTheDocument();
+      // Should show empty state, not mock data
+      expect(screen.getByText('No BOM data available')).toBeInTheDocument();
     });
 
-    it('handles null bomData', () => {
+    it('shows empty state when bomData is null', () => {
       render(<BOMPanel {...defaultProps} bomData={null} />);
-      // Should fall back to mock data
-      expect(screen.getByText('10kΩ ±1%')).toBeInTheDocument();
+      // Should show empty state, not mock data
+      expect(screen.getByText('No BOM data available')).toBeInTheDocument();
     });
 
-    it('handles empty components array', () => {
+    it('shows empty state when components array is empty', () => {
       render(<BOMPanel {...defaultProps} bomData={{ version: '1.0', components: [] }} />);
-      expect(screen.getByText('No components found')).toBeInTheDocument();
+      // Empty components array should also show empty state
+      expect(screen.getByText('No BOM data available')).toBeInTheDocument();
     });
   });
 });

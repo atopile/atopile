@@ -29,6 +29,7 @@ from atopile.exceptions import accumulate, iter_leaf_exceptions
 from atopile.logging import LoggingStage
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom
+from faebryk.exporters.bom.json_bom import write_json_bom
 from faebryk.exporters.documentation.datasheets import export_datasheets
 
 # from faebryk.exporters.documentation.i2c import export_i2c_tree
@@ -662,7 +663,7 @@ def build_design(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     produces_artifact=True,
 )
 def generate_bom(ctx: BuildStepContext, log_context: LoggingStage) -> None:
-    """Generate a BOM for the project."""
+    """Generate a BOM for the project in both CSV and JSON formats."""
     app = ctx.require_app()
     pickable_parts = [
         part
@@ -674,7 +675,10 @@ def generate_bom(ctx: BuildStepContext, log_context: LoggingStage) -> None:
         for part in [m.get_trait(F.Pickable.has_part_picked)]
         if not part.is_removed()
     ]
+    # Generate CSV BOM (for JLCPCB manufacturing)
     write_bom(pickable_parts, config.build.paths.output_base.with_suffix(".bom.csv"))
+    # Generate JSON BOM (for VSCode extension BOM panel)
+    write_json_bom(pickable_parts, config.build.paths.output_base.with_suffix(".bom.json"))
 
 
 @muster.register(

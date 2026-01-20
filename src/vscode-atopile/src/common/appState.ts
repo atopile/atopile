@@ -343,6 +343,7 @@ export interface AppState {
     // Packages
     packages: PackageInfo[];
     isLoadingPackages: boolean;
+    packagesError: string | null;  // Exposed for UI error display (e.g., registry unavailable)
 
     // BOM (Bill of Materials)
     bomData: BOMData | null;
@@ -458,6 +459,7 @@ class AppStateManager {
         // Packages
         packages: [],
         isLoadingPackages: false,
+        packagesError: null,
 
         // BOM
         bomData: null,
@@ -880,6 +882,16 @@ class AppStateManager {
 
     // --- Packages ---
 
+    /**
+     * Fetch packages from the unified /api/packages/summary endpoint.
+     *
+     * This is the SINGLE call for the packages panel. The backend handles:
+     * - Merging installed packages with registry metadata
+     * - Pre-computing has_update flag
+     * - Reporting registry status for error visibility
+     *
+     * No merge logic needed here - backend provides display-ready data.
+     */
     async fetchPackages(forceRefresh: boolean = false): Promise<void> {
         const apiUrl = getDashboardApiUrl();
 
@@ -889,64 +901,43 @@ class AppStateManager {
         }
 
         this._state.isLoadingPackages = true;
+        this._state.packagesError = null;
         this._emit();
 
         try {
-            // Fetch installed packages
-            const installedResponse = await axios.get<{ packages: PackageInfo[]; total: number }>(
-                `${apiUrl}/api/packages`,
-                { timeout: 10000 }
+            // Get workspace paths for the request
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            const pathsParam = workspaceFolders
+                ? `?paths=${encodeURIComponent(workspaceFolders.map(f => f.uri.fsPath).join(','))}`
+                : '';
+
+            // SINGLE CALL - backend does all merging
+            const response = await axios.get<{
+                packages: PackageInfo[];
+                total: number;
+                installed_count: number;
+                registry_status: { available: boolean; error: string | null };
+            }>(
+                `${apiUrl}/api/packages/summary${pathsParam}`,
+                { timeout: 15000 }
             );
 
-            // Try to fetch registry packages to augment with latest versions
-            // Note: empty query returns 0 results from the registry API, so we use
-            // "atopile" as the default query since most packages are from atopile
-            let registryPackages: PackageInfo[] = [];
-            try {
-                const registryResponse = await axios.get<{ packages: PackageInfo[]; total: number }>(
-                    `${apiUrl}/api/registry/search?query=atopile`,
-                    { timeout: 10000 }
-                );
-                registryPackages = registryResponse.data.packages || [];
-            } catch {
-                traceInfo('AppState: registry search not available, using installed packages only');
-            }
-
-            // Merge installed with registry data
-            const installedPackages = installedResponse.data.packages || [];
-            const packageMap = new Map<string, PackageInfo>();
-
-            // Add installed packages
-            for (const pkg of installedPackages) {
-                packageMap.set(pkg.identifier, pkg);
-            }
-
-            // Add registry packages (or update with latest_version)
-            for (const pkg of registryPackages) {
-                if (packageMap.has(pkg.identifier)) {
-                    // Update with registry data
-                    const existing = packageMap.get(pkg.identifier)!;
-                    packageMap.set(pkg.identifier, {
-                        ...existing,
-                        latest_version: pkg.latest_version,
-                        summary: existing.summary || pkg.summary,
-                        description: existing.description || pkg.description,
-                        homepage: existing.homepage || pkg.homepage,
-                        repository: existing.repository || pkg.repository,
-                    });
-                } else {
-                    // Add uninstalled registry package
-                    packageMap.set(pkg.identifier, pkg);
-                }
-            }
-
-            this._state.packages = Array.from(packageMap.values());
+            this._state.packages = response.data.packages || [];
             this._state.isLoadingPackages = false;
+
+            // Expose registry status for UI feedback
+            if (!response.data.registry_status.available) {
+                this._state.packagesError = response.data.registry_status.error;
+            } else {
+                this._state.packagesError = null;
+            }
+
             this._emit();
-            traceInfo(`AppState: loaded ${this._state.packages.length} packages`);
+            traceInfo(`AppState: loaded ${this._state.packages.length} packages (${response.data.installed_count} installed)`);
         } catch (error) {
             traceError(`AppState: failed to fetch packages: ${error}`);
             this._state.isLoadingPackages = false;
+            this._state.packagesError = 'Failed to fetch packages';
             this._emit();
         }
     }

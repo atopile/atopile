@@ -29,10 +29,11 @@ interface AppState {
   selectedTargetNames: string[];
   builds: Build[];
   queuedBuilds: Build[];  // From /api/builds/active - display-ready queue data
-  // Packages
+  // Packages (from /api/packages/summary)
   packages: PackageInfo[];
   isLoadingPackages: boolean;
-  // Registry search
+  packagesError: string | null;  // Registry error visibility
+  // Registry search (deprecated - use /api/packages/summary instead)
   registryResults: PackageInfo[];
   isSearchingRegistry: boolean;
   registrySearchQuery: string;
@@ -680,6 +681,9 @@ class DevServer {
 
     // Subscribe to logs channel with current filter
     this.updateLogSubscription();
+
+    // Fetch initial log counts
+    this.fetchLogCounts(this.state.selectedBuildName, this.state.selectedProjectName);
   }
 
   /**
@@ -687,7 +691,10 @@ class DevServer {
    */
   private sendToBackend(message: object): void {
     if (this.backendSocket && this.backendSocket.readyState === WebSocket.OPEN) {
+      console.log('Sending to backend:', JSON.stringify(message));
       this.backendSocket.send(JSON.stringify(message));
+    } else {
+      console.warn('Backend WebSocket not connected, cannot send:', JSON.stringify(message));
     }
   }
 
@@ -825,12 +832,21 @@ class DevServer {
   /**
    * Handle build:completed event.
    * STATELESS: Just log and fetch fresh data from backend.
+   * Also refreshes BOM if the build succeeded (new BOM generated).
    */
   private handleBuildCompletedEvent(data: any): void {
     console.log('=== build:completed event ===');
     console.log('Event data:', JSON.stringify(data, null, 2));
     // Fetch fresh data from backend - it knows the current state
     this.fetchBuilds();
+
+    // Refresh BOM if build succeeded - a new BOM file may have been generated
+    if (data.status === 'success' && data.project_root) {
+      console.log('Build succeeded, refreshing BOM for:', data.project_root);
+      // Use the target from the event, default to 'default'
+      const target = data.targets?.[0] || 'default';
+      this.fetchBOM(data.project_root, target);
+    }
   }
 
   /**
@@ -904,12 +920,14 @@ class DevServer {
         return;
 
       case 'toggleLogLevel':
+        console.log(`toggleLogLevel: ${message.level}, current levels: ${this.state.enabledLogLevels.join(',')}`);
         const levelIdx = this.state.enabledLogLevels.indexOf(message.level);
         if (levelIdx >= 0) {
           this.state.enabledLogLevels = this.state.enabledLogLevels.filter(l => l !== message.level);
         } else {
           this.state.enabledLogLevels = [...this.state.enabledLogLevels, message.level];
         }
+        console.log(`toggleLogLevel: new levels: ${this.state.enabledLogLevels.join(',')}`);
         this.queueUpdate('enabledLogLevels');
         // Trigger server refresh with new level filter
         this.triggerLogRefresh();
@@ -1228,8 +1246,11 @@ class DevServer {
    * Select a build and load its logs via WebSocket subscription.
    */
   private async selectBuild(buildName: string | null, projectName: string | null = null): Promise<void> {
+    console.log(`selectBuild called: buildName=${buildName}, projectName=${projectName}`);
+
     // Check if selection actually changed
     if (this.state.selectedBuildName === buildName && this.state.selectedProjectName === projectName) {
+      console.log('Selection unchanged, skipping');
       return;
     }
 
@@ -1256,6 +1277,9 @@ class DevServer {
 
     // Update WebSocket subscription with new filter
     this.updateLogSubscription();
+
+    // Fetch log counts for the new selection (for UI badges)
+    this.fetchLogCounts(buildName, projectName);
   }
 
   /**
@@ -1378,7 +1402,9 @@ class DevServer {
       };
 
       this.state.logCounts = data.counts;
-      // Don't emit separately - will be batched with log fetch
+      this.state.logTotalCount = data.total;
+      this.queueUpdate('logCounts', 'logTotalCount');
+      console.log(`Fetched log counts: ${JSON.stringify(data.counts)}, total: ${data.total}`);
     } catch (error) {
       console.error(`Failed to fetch log counts: ${error}`);
     }
@@ -1391,6 +1417,7 @@ class DevServer {
    * Updates the WebSocket subscription to get new filtered data.
    */
   private triggerLogRefresh(): void {
+    console.log('triggerLogRefresh called');
     this.lastLogId = 0;
     this.state.isLoadingLogs = true;
     this.state.logEntries = [];  // Clear current logs
@@ -1729,76 +1756,52 @@ class DevServer {
   }
 
   /**
-   * Fetch packages from the Python backend.
-   * Fetches both installed packages and registry packages, then merges them.
+   * Fetch packages from the unified /api/packages/summary endpoint.
+   *
+   * This is the SINGLE call for packages. The backend handles:
+   * - Merging installed packages with registry metadata
+   * - Pre-computing has_update flag
+   * - Reporting registry status for error visibility
+   *
+   * No merge logic needed here - backend provides display-ready data.
    */
   private async fetchPackages(): Promise<void> {
     this.state.isLoadingPackages = true;
-    this.queueUpdate('isLoadingPackages');
+    this.state.packagesError = null;
+    this.queueUpdate('isLoadingPackages', 'packagesError');
 
     try {
       const pathsParam = this.workspacePaths.length > 0
         ? `?paths=${encodeURIComponent(this.workspacePaths.join(','))}`
         : '';
 
-      // Fetch installed packages
-      const installedResponse = await this.httpGet(`${DASHBOARD_URL}/api/packages${pathsParam}`);
-      const installedData: PackagesResponse = JSON.parse(installedResponse);
-      const installedPackages = installedData.packages || [];
+      // SINGLE CALL - backend does all merging
+      const response = await this.httpGet(`${DASHBOARD_URL}/api/packages/summary${pathsParam}`);
+      const data: {
+        packages: PackageInfo[];
+        total: number;
+        installed_count: number;
+        registry_status: { available: boolean; error: string | null };
+      } = JSON.parse(response);
 
-      // Try to fetch registry packages to augment with latest versions
-      // Note: empty query returns 0 results from the registry API, so we use
-      // "atopile" as the default query since most packages are from atopile
-      let registryPackages: PackageInfo[] = [];
-      try {
-        const registryPathsParam = this.workspacePaths.length > 0
-          ? `&paths=${encodeURIComponent(this.workspacePaths.join(','))}`
-          : '';
-        const registryResponse = await this.httpGet(
-          `${DASHBOARD_URL}/api/registry/search?query=atopile${registryPathsParam}`
-        );
-        const registryData: RegistrySearchResponse = JSON.parse(registryResponse);
-        registryPackages = registryData.packages || [];
-      } catch (e) {
-        console.log('Registry search not available, using installed packages only');
-      }
-
-      // Merge installed with registry data
-      const packageMap = new Map<string, PackageInfo>();
-
-      // Add installed packages
-      for (const pkg of installedPackages) {
-        packageMap.set(pkg.identifier, pkg);
-      }
-
-      // Add registry packages (or update with latest_version)
-      for (const pkg of registryPackages) {
-        if (packageMap.has(pkg.identifier)) {
-          // Update with registry data
-          const existing = packageMap.get(pkg.identifier)!;
-          packageMap.set(pkg.identifier, {
-            ...existing,
-            latest_version: pkg.latest_version,
-            summary: existing.summary || pkg.summary,
-            description: existing.description || pkg.description,
-            homepage: existing.homepage || pkg.homepage,
-            repository: existing.repository || pkg.repository,
-          });
-        } else {
-          // Add uninstalled registry package
-          packageMap.set(pkg.identifier, pkg);
-        }
-      }
-
-      this.state.packages = Array.from(packageMap.values());
+      this.state.packages = data.packages || [];
       this.state.isLoadingPackages = false;
-      console.log(`Fetched ${this.state.packages.length} packages (${installedPackages.length} installed, ${registryPackages.length} from registry)`);
-      this.queueUpdate('packages', 'isLoadingPackages');
+
+      // Expose registry status for UI feedback
+      if (!data.registry_status.available) {
+        this.state.packagesError = data.registry_status.error;
+      } else {
+        this.state.packagesError = null;
+      }
+
+      console.log(`Fetched ${this.state.packages.length} packages (${data.installed_count} installed)`);
+      this.queueUpdate('packages', 'isLoadingPackages', 'packagesError');
     } catch (e) {
       console.log('Failed to fetch packages from backend, using mock data');
       this.state.packages = this.createMockPackages();
       this.state.isLoadingPackages = false;
-      this.queueUpdate('packages', 'isLoadingPackages');
+      this.state.packagesError = 'Failed to fetch packages';
+      this.queueUpdate('packages', 'isLoadingPackages', 'packagesError');
     }
   }
 
@@ -2860,6 +2863,7 @@ input ~> capacitor ~> output`,
       queuedBuilds: [],
       packages: [],
       isLoadingPackages: false,
+      packagesError: null,
       registryResults: [],
       isSearchingRegistry: false,
       registrySearchQuery: '',

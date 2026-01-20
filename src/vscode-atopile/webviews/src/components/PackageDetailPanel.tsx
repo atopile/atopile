@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   X, Package, Download, Home, Globe, ExternalLink,
-  CheckCircle, Box, Zap, Tag, Calendar, FileCode, Play,
+  CheckCircle, Tag, Calendar, FileCode, Play,
   Loader2, AlertCircle, TrendingUp, History, Scale
 } from 'lucide-react'
 import type { PackageDetails } from '../types/build'
@@ -23,41 +23,6 @@ interface PackageDetailProps {
   onClose: () => void
   onInstall: (version: string) => void
   onBuild: (entry?: string) => void
-}
-
-// Mock symbol data for the package
-const mockPackageSymbols = [
-  {
-    name: 'RP2040',
-    type: 'module' as const,
-    exported: true,
-    description: 'Main RP2040 module with full peripheral support',
-    children: [
-      { name: 'gpio', type: 'interface' as const, typeName: 'ElectricLogic' },
-      { name: 'i2c', type: 'interface' as const, typeName: 'I2C' },
-      { name: 'spi', type: 'interface' as const, typeName: 'SPI' },
-      { name: 'uart', type: 'interface' as const, typeName: 'UART' },
-      { name: 'power', type: 'interface' as const, typeName: 'ElectricPower' },
-      { name: 'usb', type: 'interface' as const, typeName: 'USB2' },
-    ]
-  },
-  {
-    name: 'RP2040_Minimal',
-    type: 'module' as const,
-    exported: true,
-    description: 'Minimal RP2040 configuration without optional peripherals',
-  }
-]
-
-function getTypeIcon(type: 'module' | 'interface' | 'component' | 'parameter') {
-  switch (type) {
-    case 'module':
-      return <Box size={14} className="type-icon module" />
-    case 'interface':
-      return <Zap size={14} className="type-icon interface" />
-    default:
-      return <Box size={14} />
-  }
 }
 
 // Format download count for display (e.g., 12847 -> "12.8k")
@@ -113,7 +78,6 @@ export function PackageDetailPanel({
   })) || []
 
   const [selectedVersion, setSelectedVersion] = useState(details?.version || pkg.version || '')
-  const [expandedSymbols, setExpandedSymbols] = useState<Set<string>>(new Set(['RP2040']))
 
   // Update selected version when details load
   useEffect(() => {
@@ -121,18 +85,6 @@ export function PackageDetailPanel({
       setSelectedVersion(details.version)
     }
   }, [details?.version])
-
-  const toggleSymbol = (name: string) => {
-    setExpandedSymbols(prev => {
-      const next = new Set(prev)
-      if (next.has(name)) {
-        next.delete(name)
-      } else {
-        next.add(name)
-      }
-      return next
-    })
-  }
 
   // Get description from details or package
   const description = details?.description || details?.summary || pkg.description
@@ -304,42 +256,13 @@ export function PackageDetailPanel({
           </section>
         )}
 
-        {/* Exports */}
+        {/* Exports - placeholder until backend provides symbol introspection */}
         <section className="detail-section">
           <h3 className="detail-section-title">
             <FileCode size={14} />
             Exported Symbols
           </h3>
-          <div className="detail-symbols">
-            {mockPackageSymbols.map(symbol => (
-              <div key={symbol.name} className="detail-symbol">
-                <div 
-                  className="detail-symbol-header"
-                  onClick={() => symbol.children && toggleSymbol(symbol.name)}
-                >
-                  {getTypeIcon(symbol.type)}
-                  <span className="detail-symbol-name">{symbol.name}</span>
-                  {symbol.exported && <span className="detail-export-badge">EXPORT</span>}
-                </div>
-                {symbol.description && (
-                  <p className="detail-symbol-desc">{symbol.description}</p>
-                )}
-                {symbol.children && expandedSymbols.has(symbol.name) && (
-                  <div className="detail-symbol-children">
-                    {symbol.children.map(child => (
-                      <div key={child.name} className="detail-symbol-child">
-                        {getTypeIcon(child.type)}
-                        <span className="detail-child-name">{child.name}</span>
-                        {child.typeName && (
-                          <span className="detail-child-type">: {child.typeName}</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+          <p className="muted">Symbol introspection coming soon</p>
         </section>
 
         {/* Usage Example */}

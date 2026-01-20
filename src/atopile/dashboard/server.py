@@ -207,6 +207,63 @@ class PackageDetails(BaseModel):
     installed_in: list[str] = []
 
 
+# --- Package Summary Models (for unified packages panel endpoint) ---
+
+
+class PackageSummaryItem(BaseModel):
+    """Display-ready package info for the packages panel.
+
+    This is the unified type sent from /api/packages/summary that merges
+    installed package data with registry metadata.
+
+    Note: Uses same field names as PackageInfo for frontend compatibility.
+    """
+
+    identifier: str  # e.g., "atopile/bosch-bme280"
+    name: str  # e.g., "bosch-bme280"
+    publisher: str  # e.g., "atopile"
+
+    # Installation status (matches PackageInfo field names)
+    installed: bool
+    version: str | None = None  # Installed version (same as PackageInfo.version)
+    installed_in: list[str] = []
+
+    # Registry info (pre-merged)
+    latest_version: str | None = None
+    has_update: bool = False  # Pre-computed: version < latest_version
+
+    # Display metadata
+    summary: str | None = None
+    description: str | None = None
+    homepage: str | None = None
+    repository: str | None = None
+    license: str | None = None
+
+    # Stats
+    downloads: int | None = None
+    version_count: int | None = None
+    keywords: list[str] = []
+
+
+class RegistryStatus(BaseModel):
+    """Status of the registry connection for error visibility."""
+
+    available: bool
+    error: str | None = None
+
+
+class PackagesSummaryResponse(BaseModel):
+    """Response for /api/packages/summary endpoint.
+
+    Single response containing all data needed for the packages panel.
+    """
+
+    packages: list[PackageSummaryItem]
+    total: int
+    installed_count: int
+    registry_status: RegistryStatus
+
+
 # --- Problem Models ---
 
 
@@ -340,64 +397,107 @@ class ConnectionManager:
             if channel == "logs":
                 client.log_filters = message.get("filters", {"limit": 100})
                 client.last_log_id = 0  # Reset cursor on filter change
+                log.info(f"WebSocket: update_filter for logs: {client.log_filters}")
                 await self.send_filtered_logs(client)
 
         elif action == "unsubscribe":
             client.subscribed_channels.discard(channel)
 
     async def send_filtered_logs(self, client: ClientSubscription):
-        """Query SQLite with client's filters and send results."""
+        """Query central log database with client's filters and send results."""
+        log.info(f"send_filtered_logs called with db_path={self._db_path}")
         if not self._db_path or not self._db_path.exists():
+            log.warning(f"Log DB not found at {self._db_path}, sending empty logs")
+            await client.websocket.send_json(
+                {"event": "logs", "data": {"logs": [], "total": 0, "has_more": False}}
+            )
             return
 
         filters = client.log_filters
         try:
-            conn = sqlite3.connect(str(self._db_path))
+            conn = sqlite3.connect(str(self._db_path), timeout=5.0)
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
             # Build WHERE clause based on filters
+            # Use new schema: logs JOIN builds
             conditions = []
-            params = []
+            params: list = []
 
+            # Handle build_name (format: "project:target" or just "target")
             if filters.get("build_name"):
-                conditions.append("build_name = ?")
-                params.append(filters["build_name"])
+                build_name = filters["build_name"]
+                if ":" in build_name:
+                    # Format: "project:target" - filter by both
+                    project_part, target_part = build_name.split(":", 1)
+                    conditions.append("builds.target = ?")
+                    params.append(target_part)
+                    conditions.append("builds.project_path LIKE ?")
+                    params.append(f"%/{project_part}")
+                else:
+                    conditions.append("builds.target = ?")
+                    params.append(build_name)
 
+            # Handle project_name - match end of project_path
             if filters.get("project_name"):
-                conditions.append("build_name LIKE ?")
-                params.append(f"%{filters['project_name']}%")
+                conditions.append("builds.project_path LIKE ?")
+                params.append(f"%/{filters['project_name']}")
 
+            # Handle multiple levels
             if filters.get("levels"):
-                placeholders = ",".join("?" * len(filters["levels"]))
-                conditions.append(f"level IN ({placeholders})")
-                params.extend(filters["levels"])
+                level_list = filters["levels"]
+                if isinstance(level_list, str):
+                    level_list = [lv.strip().upper() for lv in level_list.split(",")]
+                placeholders = ",".join("?" * len(level_list))
+                conditions.append(f"logs.level IN ({placeholders})")
+                params.extend([lv.upper() for lv in level_list])
 
+            # Search in message
             if filters.get("search"):
-                conditions.append("message LIKE ?")
+                conditions.append("logs.message LIKE ?")
                 params.append(f"%{filters['search']}%")
 
+            # Incremental fetch
             if filters.get("after_id"):
-                conditions.append("id > ?")
+                conditions.append("logs.id > ?")
                 params.append(filters["after_id"])
 
-            where_clause = " AND ".join(conditions) if conditions else "1=1"
+            where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
             limit = filters.get("limit", 100)
 
             query = f"""
-                SELECT id, timestamp, level, message, source, build_name
+                SELECT logs.id, logs.build_id, logs.timestamp, logs.stage,
+                       logs.level, logs.audience, logs.message,
+                       logs.ato_traceback, logs.python_traceback,
+                       builds.project_path, builds.target
                 FROM logs
-                WHERE {where_clause}
-                ORDER BY id DESC
+                JOIN builds ON logs.build_id = builds.build_id
+                {where_clause}
+                ORDER BY logs.id DESC
                 LIMIT ?
             """
             params.append(limit)
 
+            log.info(f"Executing query: {where_clause}, params={params}")
             cursor.execute(query, params)
             rows = cursor.fetchall()
+            log.info(f"Query returned {len(rows)} rows")
             conn.close()
 
-            logs = [dict(row) for row in reversed(rows)]  # Reverse to chronological
+            # Convert to frontend-compatible format
+            logs = []
+            for row in reversed(rows):  # Reverse to chronological order
+                logs.append({
+                    "id": row["id"],
+                    "timestamp": row["timestamp"],
+                    "stage": row["stage"],
+                    "level": row["level"],
+                    "message": row["message"],
+                    "ato_traceback": row["ato_traceback"],
+                    "python_traceback": row["python_traceback"],
+                    "build_id": row["build_id"],
+                    "target": row["target"],
+                })
 
             if logs:
                 client.last_log_id = logs[-1]["id"]
@@ -415,17 +515,44 @@ class ConnectionManager:
 
         except Exception as e:
             log.error(f"Error querying logs for WebSocket client: {e}")
+            await client.websocket.send_json(
+                {"event": "logs", "data": {"logs": [], "total": 0, "has_more": False}}
+            )
 
     def log_matches_filter(self, log_entry: dict, filters: dict) -> bool:
         """Check if a log entry matches client's filter criteria."""
-        if filters.get("levels") and log_entry.get("level") not in filters["levels"]:
-            return False
+        # Check log levels
+        if filters.get("levels"):
+            level_list = filters["levels"]
+            if isinstance(level_list, str):
+                level_list = [lv.strip().upper() for lv in level_list.split(",")]
+            entry_level = log_entry.get("level", "").upper()
+            if entry_level not in [lv.upper() for lv in level_list]:
+                return False
+
+        # Check build_name (matches target and optionally project)
         if filters.get("build_name"):
-            if log_entry.get("build_name") != filters["build_name"]:
-                return False
+            build_name = filters["build_name"]
+            target = log_entry.get("target", "")
+            project_path = log_entry.get("project_path", "")
+            if ":" in build_name:
+                # Format: "project:target" - check both
+                project_part, target_part = build_name.split(":", 1)
+                if target != target_part:
+                    return False
+                if not project_path.endswith(f"/{project_part}"):
+                    return False
+            else:
+                if target != build_name:
+                    return False
+
+        # Check project_name (matches end of project_path)
         if filters.get("project_name"):
-            if filters["project_name"] not in log_entry.get("build_name", ""):
+            project_path = log_entry.get("project_path", "")
+            if not project_path.endswith(f"/{filters['project_name']}"):
                 return False
+
+        # Check search term
         if filters.get("search"):
             if filters["search"].lower() not in log_entry.get("message", "").lower():
                 return False
@@ -717,6 +844,41 @@ def parse_problems_from_log_file(
     return problems
 
 
+def _version_is_newer(installed: str | None, latest: str | None) -> bool:
+    """
+    Check if latest version is newer than installed version.
+
+    Simple semver comparison - handles common version formats.
+    Returns False if either version is None or comparison fails.
+    """
+    if not installed or not latest:
+        return False
+
+    try:
+        # Strip 'v' prefix if present
+        installed = installed.lstrip("v")
+        latest = latest.lstrip("v")
+
+        # Parse version parts
+        def parse_version(v: str) -> tuple[int, ...]:
+            # Handle versions like "1.0.0-beta.1" by taking only the numeric part
+            base = v.split("-")[0].split("+")[0]
+            return tuple(int(x) for x in base.split(".") if x.isdigit())
+
+        installed_parts = parse_version(installed)
+        latest_parts = parse_version(latest)
+
+        # Pad to same length
+        max_len = max(len(installed_parts), len(latest_parts))
+        installed_padded = installed_parts + (0,) * (max_len - len(installed_parts))
+        latest_padded = latest_parts + (0,) * (max_len - len(latest_parts))
+
+        return latest_padded > installed_padded
+
+    except (ValueError, AttributeError):
+        return False
+
+
 def search_registry_packages(query: str) -> list[PackageInfo]:
     """
     Search the package registry for packages matching the query.
@@ -734,13 +896,16 @@ def search_registry_packages(query: str) -> list[PackageInfo]:
         cache_key in _registry_cache
         and (now - _registry_cache_time) < _REGISTRY_CACHE_TTL
     ):
-        return _registry_cache[cache_key]
+        cached = _registry_cache[cache_key]
+        log.debug(f"[registry] Cache HIT for '{query}': {len(cached)} packages")
+        return cached
 
     try:
         from faebryk.libs.backend.packages.api import PackagesAPIClient
 
         api = PackagesAPIClient()
         result = api.query_packages(query)
+        log.debug(f"[registry] Fetched {len(result.packages)} packages for '{query}'")
 
         packages: list[PackageInfo] = []
         for pkg in result.packages:
@@ -776,6 +941,56 @@ def search_registry_packages(query: str) -> list[PackageInfo]:
     except Exception as e:
         log.warning(f"Failed to search registry: {e}")
         return []
+
+
+# Search terms that together cover all packages in the registry
+# Optimized for maximum coverage with minimum queries:
+# - "atopile" covers most (96), "i2c" adds 32, "st"/"ti" add vendor-specific packages
+_REGISTRY_SEARCH_TERMS = ["atopile", "i2c", "st", "ti", "ic", "mcu", "esp", "microchip"]
+
+
+def get_all_registry_packages() -> list[PackageInfo]:
+    """
+    Get all packages from the registry by querying multiple search terms.
+
+    The registry API requires a search term (empty/wildcard returns 0 results).
+    This function queries multiple terms and merges results to get all packages.
+    Results are cached for 5 minutes.
+    """
+    global _registry_cache, _registry_cache_time
+
+    cache_key = "all_packages"
+    now = time.time()
+
+    # Check cache
+    if (
+        cache_key in _registry_cache
+        and (now - _registry_cache_time) < _REGISTRY_CACHE_TTL
+    ):
+        cached = _registry_cache[cache_key]
+        log.debug(f"[registry] Cache HIT for all packages: {len(cached)} packages")
+        return cached
+
+    # Query multiple terms and merge results
+    packages_map: dict[str, PackageInfo] = {}
+
+    for term in _REGISTRY_SEARCH_TERMS:
+        try:
+            results = search_registry_packages(term)
+            for pkg in results:
+                if pkg.identifier not in packages_map:
+                    packages_map[pkg.identifier] = pkg
+        except Exception as e:
+            log.warning(f"Failed to search registry for '{term}': {e}")
+
+    packages = list(packages_map.values())
+    log.info(f"[registry] Merged {len(packages)} unique packages from registry")
+
+    # Update cache
+    _registry_cache[cache_key] = packages
+    _registry_cache_time = now
+
+    return packages
 
 
 def get_package_details_from_registry(identifier: str) -> PackageDetails | None:
@@ -2715,6 +2930,21 @@ def create_app(
 
     @app.get("/api/logs/query")
     async def query_logs(
+        # Frontend-compatible parameters
+        build_name: Optional[str] = Query(
+            None, description="Filter by build/target name (e.g., 'project:target')"
+        ),
+        project_name: Optional[str] = Query(
+            None, description="Filter by project name"
+        ),
+        levels: Optional[str] = Query(
+            None, description="Comma-separated log levels (DEBUG,INFO,WARNING,ERROR)"
+        ),
+        search: Optional[str] = Query(None, description="Search in log messages"),
+        after_id: Optional[int] = Query(
+            None, description="Return logs after this ID (for incremental fetch)"
+        ),
+        # Backend parameters (also supported)
         build_id: Optional[str] = Query(
             None, description="Filter by build ID (from central database)"
         ),
@@ -2722,34 +2952,52 @@ def create_app(
         target: Optional[str] = Query(None, description="Filter by target name"),
         stage: Optional[str] = Query(None, description="Filter by build stage"),
         level: Optional[str] = Query(
-            None, description="Filter by log level (DEBUG, INFO, WARNING, ERROR)"
+            None, description="Filter by single log level"
         ),
         audience: Optional[str] = Query(
             None, description="Filter by audience (user, developer, agent)"
         ),
-        limit: int = Query(1000, ge=1, le=10000, description="Maximum results"),
+        limit: int = Query(500, ge=1, le=10000, description="Maximum results"),
         offset: int = Query(0, ge=0, description="Result offset for pagination"),
     ):
         """
         Query logs from the central SQLite database with optional filters.
 
-        Returns structured log entries from the central build_logs.db database
-        at ~/.local/share/atopile/build_logs.db
+        Supports both frontend-friendly params (build_name, levels, search)
+        and backend params (build_id, project_path, target).
         """
         try:
             # Use central log database
             central_db = get_central_log_db()
             if not central_db.exists():
-                return {"logs": [], "total": 0}
+                return {"logs": [], "total": 0, "max_id": 0, "has_more": False}
 
             conn = sqlite3.connect(str(central_db), timeout=5.0)
             conn.row_factory = sqlite3.Row
 
             # Build query with filters
-            # Join logs with builds table to filter by project/target
             conditions = []
             params: list = []
 
+            # Handle build_name (format: "project:target" or just "target")
+            if build_name:
+                if ":" in build_name:
+                    # Format: "project:target" - filter by both
+                    project_part, target_part = build_name.split(":", 1)
+                    conditions.append("builds.target = ?")
+                    params.append(target_part)
+                    conditions.append("builds.project_path LIKE ?")
+                    params.append(f"%/{project_part}")
+                else:
+                    conditions.append("builds.target = ?")
+                    params.append(build_name)
+
+            # Handle project_name - match end of project_path
+            if project_name:
+                conditions.append("builds.project_path LIKE ?")
+                params.append(f"%/{project_name}")
+
+            # Direct filters
             if build_id:
                 conditions.append("logs.build_id = ?")
                 params.append(build_id)
@@ -2762,16 +3010,36 @@ def create_app(
             if stage:
                 conditions.append("logs.stage = ?")
                 params.append(stage)
-            if level:
+
+            # Handle multiple levels (comma-separated)
+            if levels:
+                level_list = [lv.strip().upper() for lv in levels.split(",")]
+                placeholders = ",".join("?" * len(level_list))
+                conditions.append(f"logs.level IN ({placeholders})")
+                params.extend(level_list)
+            elif level:
                 conditions.append("logs.level = ?")
                 params.append(level.upper())
+
             if audience:
                 conditions.append("logs.audience = ?")
                 params.append(audience.lower())
 
+            # Search in message
+            if search:
+                conditions.append("logs.message LIKE ?")
+                params.append(f"%{search}%")
+
+            # Incremental fetch - only logs after a certain ID
+            if after_id is not None:
+                conditions.append("logs.id > ?")
+                params.append(after_id)
+
             where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
 
-            # Query with pagination, joining logs with builds for filtering
+            # Query with pagination
+            # Use ASC order for incremental (after_id), DESC otherwise
+            order = "ASC" if after_id is not None else "DESC"
             query = f"""
                 SELECT logs.id, logs.build_id, logs.timestamp, logs.stage,
                        logs.level, logs.audience, logs.message,
@@ -2780,7 +3048,7 @@ def create_app(
                 FROM logs
                 JOIN builds ON logs.build_id = builds.build_id
                 {where_clause}
-                ORDER BY logs.id DESC
+                ORDER BY logs.id {order}
                 LIMIT ? OFFSET ?
             """
             params.extend([limit, offset])
@@ -2789,10 +3057,14 @@ def create_app(
             rows = cursor.fetchall()
 
             all_logs: list[dict] = []
+            max_id = 0
             for row in rows:
+                log_id = row["id"]
+                if log_id > max_id:
+                    max_id = log_id
                 all_logs.append(
                     {
-                        "id": row["id"],
+                        "id": log_id,
                         "build_id": row["build_id"],
                         "timestamp": row["timestamp"],
                         "stage": row["stage"],
@@ -2806,23 +3078,123 @@ def create_app(
                     }
                 )
 
-            # Get total count for pagination
+            # Get total count for pagination (without limit/offset)
+            count_params = params[:-2] if len(params) >= 2 else []
             count_query = f"""
                 SELECT COUNT(*) as total
                 FROM logs
                 JOIN builds ON logs.build_id = builds.build_id
                 {where_clause}
             """
-            # Remove limit/offset from params for count query
-            count_params = params[:-2] if params else []
             total = conn.execute(count_query, count_params).fetchone()["total"]
+            has_more = len(all_logs) == limit and total > len(all_logs) + offset
 
             conn.close()
-            return {"logs": all_logs, "total": total}
+            return {
+                "logs": all_logs,
+                "total": total,
+                "max_id": max_id,
+                "has_more": has_more,
+            }
 
         except sqlite3.Error as e:
             log.warning(f"Error reading logs from central database: {e}")
-            return {"logs": [], "total": 0}
+            return {"logs": [], "total": 0, "max_id": 0, "has_more": False}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.get("/api/logs/counts")
+    async def get_log_counts(
+        build_name: Optional[str] = Query(
+            None, description="Filter by build/target name"
+        ),
+        project_name: Optional[str] = Query(
+            None, description="Filter by project name"
+        ),
+        stage: Optional[str] = Query(None, description="Filter by build stage"),
+    ):
+        """
+        Get log counts by level for UI badges.
+
+        Returns counts for each log level (DEBUG, INFO, WARNING, ERROR, ALERT).
+        """
+        try:
+            central_db = get_central_log_db()
+            if not central_db.exists():
+                return {
+                    "counts": {
+                        "DEBUG": 0,
+                        "INFO": 0,
+                        "WARNING": 0,
+                        "ERROR": 0,
+                        "ALERT": 0,
+                    },
+                    "total": 0,
+                }
+
+            conn = sqlite3.connect(str(central_db), timeout=5.0)
+            conn.row_factory = sqlite3.Row
+
+            conditions = []
+            params: list = []
+
+            if build_name:
+                if ":" in build_name:
+                    # Format: "project:target" - filter by both
+                    project_part, target_part = build_name.split(":", 1)
+                    conditions.append("builds.target = ?")
+                    params.append(target_part)
+                    conditions.append("builds.project_path LIKE ?")
+                    params.append(f"%/{project_part}")
+                else:
+                    conditions.append("builds.target = ?")
+                    params.append(build_name)
+
+            if project_name:
+                conditions.append("builds.project_path LIKE ?")
+                params.append(f"%/{project_name}")
+
+            if stage:
+                conditions.append("logs.stage = ?")
+                params.append(stage)
+
+            where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+
+            query = f"""
+                SELECT logs.level, COUNT(*) as count
+                FROM logs
+                JOIN builds ON logs.build_id = builds.build_id
+                {where_clause}
+                GROUP BY logs.level
+            """
+
+            cursor = conn.execute(query, params)
+            rows = cursor.fetchall()
+
+            counts = {"DEBUG": 0, "INFO": 0, "WARNING": 0, "ERROR": 0, "ALERT": 0}
+            total = 0
+            for row in rows:
+                level = row["level"].upper()
+                count = row["count"]
+                if level in counts:
+                    counts[level] = count
+                total += count
+
+            conn.close()
+            return {"counts": counts, "total": total}
+
+        except sqlite3.Error as e:
+            log.warning(f"Error getting log counts: {e}")
+            return {
+                "counts": {
+                    "DEBUG": 0,
+                    "INFO": 0,
+                    "WARNING": 0,
+                    "ERROR": 0,
+                    "ALERT": 0,
+                },
+                "total": 0,
+            }
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -3402,6 +3774,134 @@ def create_app(
             packages=registry_packages,
             total=len(registry_packages),
             query=query,
+        )
+
+    @app.get("/api/packages/summary", response_model=PackagesSummaryResponse)
+    async def get_packages_summary(
+        paths: Optional[str] = Query(
+            None,
+            description="Comma-separated list of paths to scan for projects. "
+            "If not provided, uses configured workspace paths.",
+        ),
+    ):
+        """
+        Get unified packages summary for the packages panel.
+
+        This is the single endpoint that the frontend should call for the packages
+        panel. It merges installed packages with registry metadata and provides
+        a pre-computed display-ready response.
+
+        Benefits:
+        - Single API call instead of two racing calls
+        - Registry errors are visible via registry_status
+        - has_update is pre-computed
+        - All merge logic happens on the backend
+
+        Returns packages sorted by: installed first, then alphabetically.
+        """
+        # Parse paths
+        if paths:
+            scan_paths = [Path(p.strip()) for p in paths.split(",")]
+        else:
+            scan_paths = state["workspace_paths"]
+
+        # 1. Get installed packages (always works - local files)
+        packages_map: dict[str, PackageSummaryItem] = {}
+        installed_count = 0
+
+        if scan_paths:
+            installed = get_all_installed_packages(scan_paths)
+            installed_count = len(installed)
+
+            for identifier, pkg in installed.items():
+                packages_map[identifier] = PackageSummaryItem(
+                    identifier=pkg.identifier,
+                    name=pkg.name,
+                    publisher=pkg.publisher,
+                    installed=True,
+                    version=pkg.version,
+                    installed_in=pkg.installed_in,
+                )
+
+        # 2. Try registry (with error handling)
+        # Use get_all_registry_packages() which queries multiple terms to get all pkgs
+        registry_status = RegistryStatus(available=True, error=None)
+        registry_error: str | None = None
+
+        try:
+            registry_packages = get_all_registry_packages()
+            log.info(
+                f"[packages/summary] Registry returned {len(registry_packages)} pkgs, "
+                f"installed: {installed_count}"
+            )
+
+            # Merge registry data into packages_map
+            for reg_pkg in registry_packages:
+                if reg_pkg.identifier in packages_map:
+                    # Update installed package with registry metadata
+                    existing = packages_map[reg_pkg.identifier]
+                    packages_map[reg_pkg.identifier] = PackageSummaryItem(
+                        identifier=existing.identifier,
+                        name=existing.name,
+                        publisher=existing.publisher,
+                        installed=True,
+                        version=existing.version,
+                        installed_in=existing.installed_in,
+                        latest_version=reg_pkg.latest_version,
+                        has_update=_version_is_newer(
+                            existing.version, reg_pkg.latest_version
+                        ),
+                        summary=reg_pkg.summary,
+                        description=reg_pkg.description or reg_pkg.summary,
+                        homepage=reg_pkg.homepage,
+                        repository=reg_pkg.repository,
+                        license=reg_pkg.license,
+                        downloads=reg_pkg.downloads,
+                        version_count=reg_pkg.version_count,
+                        keywords=reg_pkg.keywords or [],
+                    )
+                else:
+                    # Add uninstalled registry package
+                    packages_map[reg_pkg.identifier] = PackageSummaryItem(
+                        identifier=reg_pkg.identifier,
+                        name=reg_pkg.name,
+                        publisher=reg_pkg.publisher,
+                        installed=False,
+                        latest_version=reg_pkg.latest_version,
+                        has_update=False,
+                        summary=reg_pkg.summary,
+                        description=reg_pkg.description or reg_pkg.summary,
+                        homepage=reg_pkg.homepage,
+                        repository=reg_pkg.repository,
+                        license=reg_pkg.license,
+                        downloads=reg_pkg.downloads,
+                        version_count=reg_pkg.version_count,
+                        keywords=reg_pkg.keywords or [],
+                    )
+
+        except Exception as e:
+            registry_error = str(e)
+            registry_status = RegistryStatus(
+                available=False,
+                error=f"Registry unavailable: {registry_error}",
+            )
+            log.warning(f"Registry fetch failed for packages summary: {e}")
+
+        # 3. Sort packages: installed first, then alphabetically
+        packages_list = sorted(
+            packages_map.values(),
+            key=lambda p: (not p.installed, p.identifier.lower()),
+        )
+
+        log.info(
+            f"[packages/summary] Returning {len(packages_list)} total packages "
+            f"(installed: {installed_count})"
+        )
+        return PackagesSummaryResponse(
+            packages=packages_list,
+            total=len(packages_list),
+            installed_count=installed_count,
+            registry_status=registry_status,
         )
 
     @app.get("/api/packages", response_model=PackagesResponse)

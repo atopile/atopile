@@ -144,6 +144,57 @@ export interface PackageDetails {
   installed_in: string[];
 }
 
+// --- Package Summary Types (from /api/packages/summary) ---
+
+/**
+ * Display-ready package info from the unified packages endpoint.
+ * Backend merges installed + registry data and pre-computes has_update.
+ */
+export interface PackageSummaryItem {
+  identifier: string;  // e.g., "atopile/bosch-bme280"
+  name: string;        // e.g., "bosch-bme280"
+  publisher: string;   // e.g., "atopile"
+
+  // Installation status (matches PackageInfo field names)
+  installed: boolean;
+  version?: string;  // Installed version (same as PackageInfo.version)
+  installed_in: string[];
+
+  // Registry info (pre-merged by backend)
+  latest_version?: string;
+  has_update: boolean;  // Pre-computed: version < latest_version
+
+  // Display metadata
+  summary?: string;
+  description?: string;
+  homepage?: string;
+  repository?: string;
+  license?: string;
+
+  // Stats
+  downloads?: number;
+  version_count?: number;
+  keywords?: string[];
+}
+
+/**
+ * Registry connection status for error visibility.
+ */
+export interface RegistryStatus {
+  available: boolean;
+  error: string | null;
+}
+
+/**
+ * Response from /api/packages/summary endpoint.
+ */
+export interface PackagesSummaryResponse {
+  packages: PackageSummaryItem[];
+  total: number;
+  installed_count: number;
+  registry_status: RegistryStatus;
+}
+
 // --- Standard Library Types ---
 
 export type StdLibItemType = 'interface' | 'module' | 'component' | 'trait' | 'parameter';
@@ -222,9 +273,10 @@ export interface AppState {
   // Backend formats this data, frontend just renders
   queuedBuilds: Build[];
 
-  // Packages (from dashboard API)
+  // Packages (from dashboard API /api/packages/summary)
   packages: PackageInfo[];
   isLoadingPackages: boolean;
+  packagesError: string | null;  // Registry error visibility
 
   // Standard Library (from dashboard API)
   stdlibItems: StdLibItem[];

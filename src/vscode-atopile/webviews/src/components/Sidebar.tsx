@@ -498,6 +498,15 @@ export function Sidebar() {
 
   const handleSelect = (sel: Selection) => {
     setSelection(sel);
+
+    // Notify server when project changes - this triggers BOM fetch etc.
+    if (sel.type === 'project' || sel.type === 'build' || sel.type === 'symbol') {
+      // Find the project root for this selection
+      const project = projects.find(p => p.id === sel.projectId);
+      if (project?.root) {
+        action('selectProject', { root: project.root });
+      }
+    }
   };
 
   const handleBuild = (level: 'project' | 'build' | 'symbol', id: string, label: string) => {
@@ -1084,6 +1093,7 @@ export function Sidebar() {
           id="packages"
           title="Packages"
           badge={packageCount}
+          warningMessage={state?.packagesError || null}
           collapsed={collapsedSections.has('packages')}
           onToggle={() => toggleSection('packages')}
           height={sectionHeights.packages}
@@ -1201,17 +1211,9 @@ export function Sidebar() {
           onResizeStart={(e) => handleResizeStart('bom', e)}
         >
           <BOMPanel
-            selection={selection}
-            onSelectionChange={setSelection}
-            projects={projects}
             bomData={state?.bomData}
             isLoading={state?.isLoadingBOM}
             error={state?.bomError}
-            onRefresh={() => {
-              // Send the currently selected project root to fetch BOM for
-              const projectRoot = state?.selectedProjectRoot || (state?.projects?.[0]?.root);
-              action('refreshBOM', { projectRoot, target: 'default' });
-            }}
             onGoToSource={(path, line) => {
               action('openFile', { file: path, line });
             }}

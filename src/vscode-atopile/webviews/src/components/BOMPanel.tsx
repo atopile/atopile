@@ -3,10 +3,8 @@ import {
   ChevronDown, ChevronRight, Search, Package,
   Hash, Layers,
   ExternalLink, Copy, Check, AlertTriangle,
-  RefreshCw, Cpu, Plug, Lightbulb, Radio
+  RefreshCw, Cpu, Plug, Lightbulb, Radio, Play
 } from 'lucide-react'
-import { BuildSelector } from './BuildSelector'
-import type { Selection, Project } from './BuildSelector'
 import type {
   BOMComponent as BOMComponentAPI,
   BOMData,
@@ -681,25 +679,17 @@ const BOMRow = memo(function BOMRow({
 type TypeFilter = 'all' | ComponentType
 
 interface BOMPanelProps {
-  selection: Selection
-  onSelectionChange: (selection: Selection) => void
-  projects: Project[]
-  // API data props
+  // API data props - BOM follows the currently selected project
   bomData?: BOMData | null
   isLoading?: boolean
   error?: string | null
-  onRefresh?: () => void
   onGoToSource?: (path: string, line?: number) => void
 }
 
 export function BOMPanel({
-  selection,
-  onSelectionChange,
-  projects,
   bomData,
   isLoading = false,
   error = null,
-  onRefresh,
   onGoToSource: externalGoToSource,
 }: BOMPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
@@ -707,12 +697,15 @@ export function BOMPanel({
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [copiedValue, setCopiedValue] = useState<string | null>(null)
 
-  // Memoize API data transformation
+  // Memoize API data transformation - no mock data fallback
   const bomComponents = useMemo((): BOMComponentUI[] => {
     return bomData?.components
       ? bomData.components.map(transformBOMComponent)
-      : mockBOM
+      : []
   }, [bomData?.components])
+
+  // Check if we have BOM data available
+  const hasBOMData = bomData?.components && bomData.components.length > 0
 
   // Memoize callbacks to prevent child re-renders
   const handleToggle = useCallback((id: string) => {
@@ -753,19 +746,41 @@ export function BOMPanel({
     )
   }
 
-  // Error state
+  // Error state - but make 404 errors more user-friendly
   if (error) {
+    const is404 = error.includes('404') || error.includes('not found') || error.includes("Run 'ato build'")
     return (
       <div className="bom-panel">
-        <div className="bom-error">
-          <AlertTriangle size={24} />
-          <span>{error}</span>
-          {onRefresh && (
-            <button className="refresh-btn" onClick={onRefresh}>
-              <RefreshCw size={12} />
-              Retry
-            </button>
+        <div className="bom-empty-state">
+          {is404 ? (
+            <>
+              <Play size={24} />
+              <span className="empty-title">No BOM data available</span>
+              <span className="empty-description">
+                Run a build to generate the Bill of Materials
+              </span>
+            </>
+          ) : (
+            <>
+              <AlertTriangle size={24} />
+              <span>{error}</span>
+            </>
           )}
+        </div>
+      </div>
+    )
+  }
+
+  // No data state (not loading, no error, but no BOM data)
+  if (!hasBOMData) {
+    return (
+      <div className="bom-panel">
+        <div className="bom-empty-state">
+          <Play size={24} />
+          <span className="empty-title">No BOM data available</span>
+          <span className="empty-description">
+            Select a project and run a build to generate the Bill of Materials
+          </span>
         </div>
       </div>
     )
@@ -851,17 +866,8 @@ export function BOMPanel({
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <BuildSelector
-            selection={selection}
-            onSelectionChange={onSelectionChange}
-            projects={projects}
-            showSymbols={true}
-            compact
-          />
-        </div>
-        
-        {/* Type filters with icons */}
-        <div className="filter-group">
+          {/* Type filters with icons */}
+          <div className="filter-group">
           <button 
             className={`filter-btn ${typeFilter === 'all' ? 'active' : ''}`}
             onClick={() => setTypeFilter('all')}
@@ -904,16 +910,17 @@ export function BOMPanel({
           >
             <Lightbulb size={12} />
           </button>
-          <button 
+          <button
             className={`filter-btn icon-filter ${typeFilter === 'crystal' ? 'active' : ''}`}
             onClick={() => setTypeFilter('crystal')}
             title="Crystals / Oscillators"
           >
             <Radio size={12} />
           </button>
+          </div>
         </div>
       </div>
-      
+
       {/* Component list */}
       <div className="bom-list">
         {filteredComponents.map(component => (
