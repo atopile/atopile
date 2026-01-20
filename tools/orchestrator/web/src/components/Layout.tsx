@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Activity, GitBranch, ChevronLeft, ChevronRight, Plus, Terminal, RotateCcw } from 'lucide-react';
 import { useMobile, useAgents, usePipelines, useSelectedAgent, useUIState, useDispatch, useLogic } from '@/hooks';
 import { AgentList } from './AgentList';
@@ -8,6 +8,9 @@ import { PipelineEditor, PipelineToolbar } from '@/pipeline';
 import { PipelineSessionsPanel } from './PipelineSessionsPanel';
 
 type ViewMode = 'agents' | 'pipelines';
+
+// Narrow viewport threshold (between mobile and full desktop)
+const NARROW_BREAKPOINT = 1024;
 
 export function Layout() {
   const dispatch = useDispatch();
@@ -19,10 +22,50 @@ export function Layout() {
   const state = useUIState();
 
   const [viewMode, setViewMode] = useState<ViewMode>('agents');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    // Start collapsed on narrow viewports
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < NARROW_BREAKPOINT && window.innerWidth >= 768;
+    }
+    return false;
+  });
   const [spawnDialogOpen, setSpawnDialogOpen] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [restarting, setRestarting] = useState(false);
+
+  // Track if user manually toggled sidebar (to prevent auto-collapse from overriding)
+  const userToggledRef = useRef(false);
+  const prevWidthRef = useRef(typeof window !== 'undefined' ? window.innerWidth : 1200);
+
+  // Auto-collapse sidebar only when resizing from wide to narrow (not on user toggle)
+  useEffect(() => {
+    const checkWidth = () => {
+      const currentWidth = window.innerWidth;
+      const wasWide = prevWidthRef.current >= NARROW_BREAKPOINT;
+      const isNowNarrow = currentWidth < NARROW_BREAKPOINT && currentWidth >= 768;
+
+      // Only auto-collapse when transitioning from wide to narrow, and user hasn't manually toggled
+      if (wasWide && isNowNarrow && !userToggledRef.current) {
+        setSidebarCollapsed(true);
+      }
+
+      // Reset user toggle flag when going back to wide viewport
+      if (currentWidth >= NARROW_BREAKPOINT) {
+        userToggledRef.current = false;
+      }
+
+      prevWidthRef.current = currentWidth;
+    };
+
+    window.addEventListener('resize', checkWidth);
+    return () => window.removeEventListener('resize', checkWidth);
+  }, []);
+
+  // Wrapper to track manual toggle
+  const handleSidebarToggle = useCallback((collapsed: boolean) => {
+    userToggledRef.current = true;
+    setSidebarCollapsed(collapsed);
+  }, []);
 
   const handleRestart = useCallback(async () => {
     if (restarting) return;
@@ -124,31 +167,47 @@ export function Layout() {
   return (
     <div className="flex h-screen bg-gray-900">
       {/* Sidebar */}
-      <aside className={`flex flex-col border-r border-gray-700 bg-gray-900 transition-all duration-200 ${sidebarCollapsed ? 'w-12' : 'w-80'}`}>
+      <aside className={`flex flex-col border-r border-gray-700 bg-gray-900 transition-all duration-200 relative ${sidebarCollapsed ? 'w-14' : 'w-80'}`}>
+        {/* Expand handle - visible edge when collapsed */}
+        {sidebarCollapsed && (
+          <button
+            className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-10 w-6 h-12 bg-gray-800 border border-gray-600 rounded-r-md flex items-center justify-center hover:bg-gray-700 hover:border-gray-500 transition-colors group"
+            onClick={() => handleSidebarToggle(false)}
+            title="Expand sidebar"
+          >
+            <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-200" />
+          </button>
+        )}
+
         {/* Logo and collapse toggle */}
-        <div className="flex items-center justify-between p-3 border-b border-gray-700">
+        <div className={`flex items-center border-b border-gray-700 ${sidebarCollapsed ? 'flex-col p-2 gap-2' : 'justify-between p-3'}`}>
           {!sidebarCollapsed && (
             <div className="flex items-center gap-2">
               <img src="/atopile-logo.svg" alt="atopile" className="w-5 h-5" />
               <span className="text-sm font-semibold">Orchestrator</span>
             </div>
           )}
-          <div className="flex items-center gap-1">
+          {sidebarCollapsed && (
+            <img src="/atopile-logo.svg" alt="atopile" className="w-5 h-5" />
+          )}
+          <div className={`flex items-center ${sidebarCollapsed ? 'flex-col gap-2' : 'gap-1'}`}>
             <button
-              className={`p-1 hover:bg-gray-700 rounded text-gray-400 hover:text-gray-200 ${restarting ? 'animate-spin' : ''}`}
+              className={`p-2 hover:bg-gray-700 rounded text-gray-400 hover:text-gray-200 ${restarting ? 'animate-spin' : ''}`}
               onClick={handleRestart}
               disabled={restarting}
               title="Restart servers"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
-            <button
-              className="p-1 hover:bg-gray-700 rounded text-gray-400 hover:text-gray-200"
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            >
-              {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-            </button>
+            {!sidebarCollapsed && (
+              <button
+                className="p-2 hover:bg-gray-700 rounded text-gray-400 hover:text-gray-200"
+                onClick={() => handleSidebarToggle(true)}
+                title="Collapse sidebar"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -219,7 +278,7 @@ export function Layout() {
           ) : (
             <div className="flex flex-col h-full">
               <PipelineToolbar
-                onOpenPipelineList={() => setSidebarCollapsed(false)}
+                onOpenPipelineList={() => handleSidebarToggle(false)}
                 onToggleSessions={() => setShowSessions(!showSessions)}
                 showSessions={showSessions}
               />
