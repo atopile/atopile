@@ -38,8 +38,15 @@ def serve(
     console.print(f"[dim]API docs: http://{host}:{port}/docs[/]")
     console.print("[dim]Press Ctrl+C to stop[/]")
 
+    # Try tools.orchestrator first (when run from parent dir), fall back to orchestrator
+    try:
+        import tools.orchestrator.server.app  # noqa: F401
+        app_path = "tools.orchestrator.server.app:app"
+    except ImportError:
+        app_path = "orchestrator.server.app:app"
+
     uvicorn.run(
-        "tools.orchestrator.server.app:app",
+        app_path,
         host=host,
         port=port,
         reload=reload,
