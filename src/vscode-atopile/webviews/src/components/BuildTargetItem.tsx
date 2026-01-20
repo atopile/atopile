@@ -3,7 +3,7 @@
  * All state (including expanded) comes from props.
  */
 
-import type { Build, BuildStage, BuildTarget } from '../types/build';
+import type { Build, BuildStage, BuildTarget, BuildTargetStageStatus } from '../types/build';
 import { StatusIcon } from './StatusIcon';
 import './BuildTargetItem.css';
 
@@ -31,9 +31,48 @@ function formatTime(seconds: number): string {
   return `${mins}m ${secs.toFixed(0)}s`;
 }
 
+// Parse timestamp that may be in format "YYYY-MM-DD_HH-MM-SS" or ISO format
+function parseTimestamp(timestamp: string): Date {
+  // Handle format "2026-01-20_09-27-03" -> "2026-01-20T09:27:03"
+  const normalized = timestamp.replace(/_/g, 'T').replace(/-(\d{2})-(\d{2})$/, ':$1:$2');
+  return new Date(normalized);
+}
+
+function formatRelativeTime(timestamp: string): string {
+  const date = parseTimestamp(timestamp);
+  if (isNaN(date.getTime())) return '';  // Invalid date
+
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffSecs = Math.floor(diffMs / 1000);
+  const diffMins = Math.floor(diffSecs / 60);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffSecs < 60) return 'just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 1) return 'yesterday';
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
+
 function getCurrentStage(build: Build): string | null {
   if (!build.stages || build.stages.length === 0) return null;
   return build.stages[build.stages.length - 1].name;
+}
+
+// Historical stage item (read-only, no click handler)
+function HistoricalStageItem({ stage }: { stage: BuildTargetStageStatus }) {
+  const time = stage.elapsed_seconds ? formatTime(stage.elapsed_seconds) : '';
+
+  return (
+    <div className="stage-item historical">
+      <StatusIcon status={stage.status} size={12} />
+      <span className="stage-name">{stage.display_name || stage.name}</span>
+      {time && <span className="stage-time">{time}</span>}
+    </div>
+  );
 }
 
 function StageItem({
@@ -81,7 +120,9 @@ export function BuildTargetItem({
   onToggleExpand,
   onToggleStage,
 }: BuildTargetItemProps) {
-  const hasStages = build?.stages && build.stages.length > 0;
+  const hasActiveStages = build?.stages && build.stages.length > 0;
+  const hasHistoricalStages = !build && target.last_build?.stages && target.last_build.stages.length > 0;
+  const hasStages = hasActiveStages || hasHistoricalStages;
   const currentStage = build ? getCurrentStage(build) : null;
   const timeStr = build ? formatTime(build.elapsed_seconds) : '';
 
@@ -104,12 +145,16 @@ export function BuildTargetItem({
           onClick={(e) => e.stopPropagation()}
         />
 
-        {/* Status icon (if build exists) */}
-        {build && (
+        {/* Status icon - show active build status, or last build status if no active build */}
+        {build ? (
           <div className="build-status">
             <StatusIcon status={build.status} size={16} />
           </div>
-        )}
+        ) : target.last_build ? (
+          <div className="build-status last-build">
+            <StatusIcon status={target.last_build.status} size={16} />
+          </div>
+        ) : null}
 
         {/* Target info */}
         <div className="build-target-info" onClick={handleExpandClick}>
@@ -120,13 +165,17 @@ export function BuildTargetItem({
               {currentStage && timeStr && <span className="meta-sep">·</span>}
               {timeStr && <span className="build-time">{timeStr}</span>}
             </span>
+          ) : target.last_build ? (
+            <span className="build-meta last-build-meta">
+              <span className="last-build-time">{formatRelativeTime(target.last_build.timestamp)}</span>
+            </span>
           ) : (
             <span className="target-entry">{target.entry}</span>
           )}
         </div>
 
-        {/* Indicators */}
-        {build && (
+        {/* Indicators - show for active build or last build */}
+        {build ? (
           <div className="build-indicators">
             {build.warnings > 0 && (
               <span className="indicator warning" title={`${build.warnings} warnings`}>
@@ -139,7 +188,20 @@ export function BuildTargetItem({
               </span>
             )}
           </div>
-        )}
+        ) : target.last_build && (target.last_build.warnings > 0 || target.last_build.errors > 0) ? (
+          <div className="build-indicators last-build-indicators">
+            {target.last_build.warnings > 0 && (
+              <span className="indicator warning" title={`${target.last_build.warnings} warnings`}>
+                {target.last_build.warnings}
+              </span>
+            )}
+            {target.last_build.errors > 0 && (
+              <span className="indicator error" title={`${target.last_build.errors} errors`}>
+                {target.last_build.errors}
+              </span>
+            )}
+          </div>
+        ) : null}
 
         {/* Expand chevron */}
         {hasStages && (
@@ -153,8 +215,8 @@ export function BuildTargetItem({
         )}
       </div>
 
-      {/* Stages list */}
-      {isExpanded && hasStages && (
+      {/* Stages list - show active stages or historical stages */}
+      {isExpanded && hasActiveStages && (
         <div className="build-stages">
           {build!.stages!.map((stage) => (
             <StageItem
@@ -163,6 +225,13 @@ export function BuildTargetItem({
               isSelected={selectedStageIds.includes(stage.stage_id)}
               onSelect={() => onToggleStage(stage.stage_id)}
             />
+          ))}
+        </div>
+      )}
+      {isExpanded && hasHistoricalStages && (
+        <div className="build-stages historical-stages">
+          {target.last_build!.stages!.map((stage, idx) => (
+            <HistoricalStageItem key={`${stage.name}-${idx}`} stage={stage} />
           ))}
         </div>
       )}

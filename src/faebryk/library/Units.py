@@ -745,11 +745,44 @@ class is_unit(fabll.Node):
         if symbols := is_unit._extract_symbols(self):
             return symbols[0]
 
-        # otherwise, render the basis vector
+        # otherwise, try to find a known derived unit that matches the basis vector
         vector = is_unit._extract_basis_vector(self)
         multiplier = is_unit._extract_multiplier(self)
         offset = is_unit._extract_offset(self)
 
+        # Try to match against known derived units (e.g., V, F, Ω)
+        if offset == 0.0:
+            # For units without offset, try to find SI prefix + base unit
+            # Check if multiplier is a power of 10 and we have a matching base unit
+            import math
+
+            if multiplier > 0:
+                log_mult = math.log10(multiplier) if multiplier != 0 else 0
+                # Check for exact power of 10
+                if abs(log_mult - round(log_mult)) < 1e-9:
+                    exp_mult = int(round(log_mult))
+                    # Try to find base unit (multiplier=1.0) first
+                    if base_symbol := _get_symbol_for_basis_vector(vector, 1.0):
+                        # Apply SI prefix
+                        prefixes = {
+                            -12: "p",
+                            -9: "n",
+                            -6: "µ",
+                            -3: "m",
+                            0: "",
+                            3: "k",
+                            6: "M",
+                            9: "G",
+                            12: "T",
+                        }
+                        if exp_mult in prefixes:
+                            return f"{prefixes[exp_mult]}{base_symbol}"
+                        # For other exponents, show as multiplier
+                        if exp_mult != 0:
+                            return f"{format_number(multiplier)}{base_symbol}"
+                        return base_symbol
+
+        # Fall back to rendering the basis vector
         result = "·".join(
             [
                 f"{symbol}{to_superscript(exp)}" if exp != 1 else symbol
@@ -1173,6 +1206,52 @@ _UNIT_SYMBOLS: dict[_UnitRegistry, tuple[str, ...]] = {
     _UnitRegistry.Rpm: ("rpm", "RPM"),
     _UnitRegistry.AmpereHour: ("Ah",),
 }
+
+# Lookup table mapping (basis_vector_tuple, multiplier) to primary symbol
+# Used by compact_repr to display friendly unit symbols instead of SI base units
+# The basis_vector_tuple is (ampere, second, meter, kilogram, kelvin, mole, candela,
+#                            radian, steradian, bit)
+_BASIS_VECTOR_TO_SYMBOL: dict[tuple[tuple[int, ...], float], str] = {
+    # Derived units with multiplier=1.0
+    ((1, 0, 0, 0, 0, 0, 0, 0, 0, 0), 1.0): "A",  # Ampere
+    ((0, 1, 0, 0, 0, 0, 0, 0, 0, 0), 1.0): "s",  # Second
+    ((0, 0, 1, 0, 0, 0, 0, 0, 0, 0), 1.0): "m",  # Meter
+    ((0, 0, 0, 1, 0, 0, 0, 0, 0, 0), 1.0): "kg",  # Kilogram
+    ((0, 0, 0, 0, 1, 0, 0, 0, 0, 0), 1.0): "K",  # Kelvin
+    ((-1, -3, 2, 1, 0, 0, 0, 0, 0, 0), 1.0): "V",  # Volt: kg·m²·s⁻³·A⁻¹
+    ((2, 4, -2, -1, 0, 0, 0, 0, 0, 0), 1.0): "F",  # Farad: A²·s⁴·kg⁻¹·m⁻²
+    ((-2, -3, 2, 1, 0, 0, 0, 0, 0, 0), 1.0): "Ω",  # Ohm: kg·m²·s⁻³·A⁻²
+    ((0, -1, 0, 0, 0, 0, 0, 0, 0, 0), 1.0): "Hz",  # Hertz: s⁻¹
+    ((0, -3, 2, 1, 0, 0, 0, 0, 0, 0), 1.0): "W",  # Watt: kg·m²·s⁻³ (no A)
+    ((0, -2, 1, 1, 0, 0, 0, 0, 0, 0), 1.0): "N",  # Newton
+    ((-1, -2, -1, 1, 0, 0, 0, 0, 0, 0), 1.0): "Pa",  # Pascal
+    ((0, -2, 2, 1, 0, 0, 0, 0, 0, 0), 1.0): "J",  # Joule
+    ((1, 1, 0, 0, 0, 0, 0, 0, 0, 0), 1.0): "C",  # Coulomb
+    ((2, 3, -2, -1, 0, 0, 0, 0, 0, 0), 1.0): "S",  # Siemens
+    ((-1, -2, 2, 1, 0, 0, 0, 0, 0, 0), 1.0): "Wb",  # Weber
+    ((-1, -2, 0, 1, 0, 0, 0, 0, 0, 0), 1.0): "T",  # Tesla
+    ((-2, -2, 2, 1, 0, 0, 0, 0, 0, 0), 1.0): "H",  # Henry
+}
+
+
+def _get_symbol_for_basis_vector(
+    vector: "BasisVector", multiplier: float
+) -> str | None:
+    """Look up a friendly symbol for a basis vector and multiplier."""
+    # Create tuple representation of the basis vector
+    vector_tuple = (
+        vector.ampere,
+        vector.second,
+        vector.meter,
+        vector.kilogram,
+        vector.kelvin,
+        vector.mole,
+        vector.candela,
+        vector.radian,
+        vector.steradian,
+        vector.bit,
+    )
+    return _BASIS_VECTOR_TO_SYMBOL.get((vector_tuple, multiplier))
 
 
 class Dimensionless(fabll.Node):

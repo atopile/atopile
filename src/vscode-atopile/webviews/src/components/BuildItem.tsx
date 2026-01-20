@@ -22,8 +22,11 @@ function stripRichText(text: string): string {
   return text.replace(/\[\/?\w+\]/g, '').replace(/'/g, '');
 }
 
-function formatTime(seconds: number): string {
-  if (seconds < 0.1) return '';
+function formatTime(seconds: number, showMs: boolean = false): string {
+  if (seconds <= 0) return '';
+  if (seconds < 0.001) return showMs ? '<1ms' : '';
+  if (seconds < 0.1) return showMs ? `${Math.round(seconds * 1000)}ms` : '';
+  if (seconds < 1) return `${(seconds * 1000).toFixed(0)}ms`;
   if (seconds < 60) return `${seconds.toFixed(1)}s`;
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
@@ -44,7 +47,8 @@ function StageItem({
   isSelected: boolean;
   onSelect: () => void;
 }) {
-  const time = formatTime(stage.elapsed_seconds);
+  // Show milliseconds for stage times (more granular)
+  const time = formatTime(stage.elapsed_seconds, true);
 
   return (
     <button

@@ -16,7 +16,6 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import buildutil, layout
 from atopile.buildutil import BuildContext, BuildStepContext
-from atopile.logging import LoggingStage
 from atopile.compiler import format_message
 from atopile.compiler.build import build_stage_2
 from atopile.config import BuildType, config
@@ -26,11 +25,14 @@ from atopile.errors import (
     UserExportError,
     UserPickError,
 )
+from atopile.logging import LoggingStage
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom
+from faebryk.exporters.bom.json_bom import write_json_bom
 from faebryk.exporters.documentation.datasheets import export_datasheets
 
 # from faebryk.exporters.documentation.i2c import export_i2c_tree
+from faebryk.exporters.parameters.json_parameters import write_json_variables
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
 from faebryk.exporters.pcb.kicad.artifacts import (
     KicadCliExportError,
@@ -677,6 +679,26 @@ def generate_bom(ctx: BuildStepContext, log_context: LoggingStage) -> None:
 
 
 @muster.register(
+    "bom-json",
+    dependencies=[build_design],
+    produces_artifact=True,
+)
+def generate_bom_json(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+    """Generate a JSON BOM for the VSCode extension."""
+    app = ctx.require_app()
+    parts = [
+        m.get_trait(F.Pickable.has_part_picked)
+        for m in app.get_children(
+            direct_only=False,
+            types=fabll.Node,
+            required_trait=F.Pickable.has_part_picked,
+        )
+        if not m.has_trait(F.has_part_removed)
+    ]
+    write_json_bom(parts, config.build.paths.output_base.with_suffix(".bom.json"))
+
+
+@muster.register(
     name="glb",
     aliases=["3d-model"],
     tags={Tags.REQUIRES_KICAD},
@@ -868,6 +890,20 @@ def generate_variable_report(ctx: BuildStepContext, log_context: LoggingStage) -
 
 
 @muster.register(
+    "variables-json",
+    dependencies=[build_design],
+    produces_artifact=True,
+)
+def generate_variables_json(ctx: BuildStepContext, log_context: LoggingStage) -> None:
+    """Generate a JSON variables report for the VSCode extension."""
+    app = ctx.require_app()
+    solver = ctx.require_solver()
+    write_json_variables(
+        app, solver, config.build.paths.output_base.with_suffix(".variables.json")
+    )
+
+
+@muster.register(
     "power-tree",
     dependencies=[build_design],
     produces_artifact=True,
@@ -915,8 +951,10 @@ def generate_datasheets(ctx: BuildStepContext, log_context: LoggingStage) -> Non
     aliases=["__default__"],  # for backwards compatibility
     dependencies=[
         generate_bom,
+        generate_bom_json,
         generate_manifest,
         generate_variable_report,
+        generate_variables_json,
         # generate_power_tree,
         generate_datasheets,
     ],

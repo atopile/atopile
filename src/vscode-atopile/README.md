@@ -161,6 +161,93 @@ If you encounter problems with syntax highlighting or IntelliSense:
 - **GitHub Repository**: [github.com/atopile/atopile](https://github.com/atopile/atopile)
 - **Community**: Join our [Discord]((https://discord.gg/CRe5xaDBr3]https://discord.gg/CRe5xaDBr3)) or [discussions](https://github.com/atopile/atopile/discussions)
 
+## 🛠️ Development
+
+### Starting the Dev Server
+
+The extension UI is built with React and requires three servers running together:
+
+1. **Python Dashboard Backend** (port 8501) - FastAPI server for project/build data
+2. **TypeScript WebSocket Server** (port 3001) - Bridges backend to frontend
+3. **Vite Dev Server** (port 5173) - React hot-reload development server
+
+#### Quick Start (Recommended)
+
+Use the provided startup script that handles everything:
+
+```bash
+cd src/vscode-atopile/webviews
+./dev.sh
+```
+
+This will:
+- Kill any existing processes on the required ports
+- Start the Python backend
+- Start the WebSocket dev server  
+- Start Vite with hot reloading
+- Show you URLs for all services
+
+Press `Ctrl+C` to stop all servers.
+
+#### Custom Workspace Paths
+
+You can specify custom workspace paths to scan for projects:
+
+```bash
+./dev.sh /path/to/your/project /another/project
+```
+
+By default, it uses the atopile repo and `../packages` as workspaces.
+
+#### Manual Startup
+
+If you need to run servers individually:
+
+```bash
+# Terminal 1: Python backend
+cd src/vscode-atopile/webviews
+python -c "
+from atopile.dashboard.server import create_app
+import uvicorn
+from pathlib import Path
+app = create_app(
+    summary_file=Path('/tmp/ato-build-summary.json'),
+    logs_base=Path('/tmp'),
+    workspace_paths=[Path('../../..')],
+)
+uvicorn.run(app, host='127.0.0.1', port=8501)
+"
+
+# Terminal 2: WebSocket dev server
+cd src/vscode-atopile/webviews
+npx tsx server/dev-server.ts
+
+# Terminal 3: Vite
+cd src/vscode-atopile/webviews
+npm run dev
+```
+
+#### Accessing the UI
+
+Once running, open http://localhost:5173 in your browser to see the development UI.
+
+### Project Structure
+
+```
+src/vscode-atopile/
+├── src/                    # Extension TypeScript source
+│   ├── extension.ts        # Main extension entry point
+│   └── ui/                 # VS Code webview integration
+├── webviews/               # React UI
+│   ├── src/
+│   │   ├── components/     # React components
+│   │   └── types/          # TypeScript types
+│   ├── server/
+│   │   └── dev-server.ts   # WebSocket dev server
+│   └── dev.sh              # Dev environment startup script
+└── README.md
+```
+
 ## 🤝 Contributing
 
 Found a bug or want to contribute?

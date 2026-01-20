@@ -1,3 +1,8 @@
+/**
+ * Status Icon Styles
+ * Atopile Design System
+ */
+
 /* Status Icon */
 .status-icon {
   display: flex;
@@ -18,4 +23,74 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Status Dot */
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.status-dot.success { 
+  background: var(--ctp-green); 
+}
+
+.status-dot.error { 
+  background: var(--ctp-red); 
+}
+
+.status-dot.warning { 
+  background: var(--ctp-yellow); 
+}
+
+.status-dot.idle { 
+  background: var(--text-muted); 
+}
+
+.status-dot.building {
+  background: var(--ato-orange);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.status-dot.queued {
+  background: var(--ctp-blue);
+}
+
+/* Status Badge */
+.status-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  border-radius: 8px;
+}
+
+.status-badge.error {
+  background: rgba(243, 139, 168, 0.2);
+  color: var(--ctp-red);
+}
+
+.status-badge.warning {
+  background: rgba(249, 226, 175, 0.2);
+  color: var(--ctp-yellow);
+}
+
+.status-badge.success {
+  background: rgba(166, 227, 161, 0.2);
+  color: var(--ctp-green);
+}
+
+.status-badge.info {
+  background: rgba(137, 180, 250, 0.2);
+  color: var(--ctp-blue);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }

@@ -5,12 +5,79 @@
 
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import AnsiToHtml from 'ansi-to-html';
-import type { AppState, LogLevel, LogEntry } from '../types/build';
+import { ArrowDownToLine, Clock, Timer } from 'lucide-react';
+import { BuildSelector, type Selection, type Project, type BuildTarget } from './BuildSelector';
+import type { AppState, LogLevel, LogEntry, Build } from '../types/build';
+import { logDataSize, startMark } from '../perf';
 import './LogViewer.css';
 
 const vscode = acquireVsCodeApi();
 
 const ALL_LEVELS: LogLevel[] = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'ALERT'];
+
+// Convert AppState builds to BuildSelector Project format
+function buildsToProjects(builds: Build[]): Project[] {
+  const projectMap = new Map<string, Project>();
+
+  // Map Build status to BuildTarget status
+  const mapStatus = (status: Build['status']): BuildTarget['status'] => {
+    switch (status) {
+      case 'failed': return 'error';
+      case 'queued': return 'idle';
+      case 'building': return 'building';
+      case 'success': return 'success';
+      case 'warning': return 'warning';
+      default: return 'idle';
+    }
+  };
+
+  for (const build of builds) {
+    const projectName = build.project_name || 'Unknown';
+
+    if (!projectMap.has(projectName)) {
+      projectMap.set(projectName, {
+        id: projectName,
+        name: projectName,
+        type: 'project',
+        path: '',
+        builds: [],
+      });
+    }
+
+    const project = projectMap.get(projectName)!;
+    const buildTarget: BuildTarget = {
+      id: build.display_name,
+      name: build.name,
+      entry: build.display_name,
+      status: mapStatus(build.status),
+      errors: build.errors,
+      warnings: build.warnings,
+    };
+    project.builds.push(buildTarget);
+  }
+
+  return Array.from(projectMap.values());
+}
+
+// Convert selectedBuildName to Selection format
+function buildNameToSelection(selectedBuildName: string | null, builds: Build[]): Selection {
+  if (!selectedBuildName) {
+    return { type: 'none' };
+  }
+
+  const build = builds.find(b => b.display_name === selectedBuildName);
+  if (!build) {
+    return { type: 'none' };
+  }
+
+  const projectName = build.project_name || 'Unknown';
+  return {
+    type: 'build',
+    projectId: projectName,
+    buildId: build.display_name,
+    label: build.display_name,
+  };
+}
 
 // Send action to extension
 const action = (name: string, data?: object) => {
@@ -100,59 +167,78 @@ function LogEntryRow({
   prevTimestamp?: string;
   isSearchMatch: boolean;
 }) {
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const [isExpanded, setIsExpanded] = useState(false);
   const levelClass = entry.level.toLowerCase();
 
-  const toggleSection = (section: string) => {
-    setExpandedSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(section)) {
-        next.delete(section);
-      } else {
-        next.add(section);
-      }
-      return next;
-    });
-  };
+  // Check if message is multi-line or long enough to need expansion
+  const messageLines = entry.message.split('\n');
+  const isMultiLine = messageLines.length > 1;
+  const isLongMessage = entry.message.length > 120;
+  const hasTracebacks = !!(entry.ato_traceback || entry.exc_info);
+  const isExpandable = isMultiLine || isLongMessage || hasTracebacks;
 
   const isHighlight = entry.level === 'WARNING' || entry.level === 'ERROR' || entry.level === 'ALERT';
 
+  // Get the first line for collapsed display
+  const firstLine = messageLines[0];
+  const displayMessage = isExpanded ? entry.message : (
+    isLongMessage && !isMultiLine ? entry.message.slice(0, 120) + '...' : firstLine
+  );
+
+  const handleClick = () => {
+    if (isExpandable) {
+      setIsExpanded(!isExpanded);
+    }
+  };
+
   return (
-    <div className={`log-entry ${isHighlight ? levelClass : ''} ${isSearchMatch ? 'search-match' : ''}`}>
+    <div
+      className={`log-entry ${isHighlight ? levelClass : ''} ${isSearchMatch ? 'search-match' : ''} ${isExpandable ? 'expandable' : ''} ${isExpanded ? 'expanded' : ''}`}
+      onClick={handleClick}
+    >
       <span className="log-timestamp">{formatTimestamp(entry.timestamp, timestampMode, prevTimestamp)}</span>
       <span className={`log-level ${levelClass}`}>{entry.level}</span>
       <div className="log-body">
-        <span className="log-message"><AnsiText text={entry.message} /></span>
-
-        {(entry.ato_traceback || entry.exc_info) && (
-          <div className="traceback-toggles">
-            {entry.ato_traceback && (
-              <button
-                className="traceback-toggle ato"
-                onClick={() => toggleSection('ato')}
-              >
-                <span className={`chevron ${expandedSections.has('ato') ? 'expanded' : ''}`}>▶</span>
-                ato traceback
-              </button>
+        {isExpanded ? (
+          // Expanded view - full message in a pre-like div
+          <>
+            <div className="log-message-expanded">
+              <span className="expand-chevron expanded">▶</span>
+              <pre className="log-message-content"><AnsiText text={entry.message} /></pre>
+            </div>
+            {hasTracebacks && (
+              <div className="tracebacks">
+                {entry.ato_traceback && (
+                  <div className="traceback-section">
+                    <div className="traceback-label ato">ato traceback</div>
+                    <pre className="traceback-content ato"><AnsiText text={entry.ato_traceback} /></pre>
+                  </div>
+                )}
+                {entry.exc_info && (
+                  <div className="traceback-section">
+                    <div className="traceback-label">python traceback</div>
+                    <pre className="traceback-content python"><AnsiText text={entry.exc_info} /></pre>
+                  </div>
+                )}
+              </div>
             )}
-            {entry.exc_info && (
-              <button
-                className="traceback-toggle"
-                onClick={() => toggleSection('py')}
-              >
-                <span className={`chevron ${expandedSections.has('py') ? 'expanded' : ''}`}>▶</span>
-                python traceback
-              </button>
+          </>
+        ) : (
+          // Collapsed view - single line with badges
+          <div className="log-message-row">
+            {isExpandable && (
+              <span className="expand-chevron">▶</span>
+            )}
+            <span className="log-message collapsed">
+              <AnsiText text={displayMessage} />
+            </span>
+            {isMultiLine && (
+              <span className="line-count">+{messageLines.length - 1} lines</span>
+            )}
+            {hasTracebacks && (
+              <span className="has-traceback">traceback</span>
             )}
           </div>
-        )}
-
-        {expandedSections.has('ato') && entry.ato_traceback && (
-          <pre className="traceback-content ato"><AnsiText text={entry.ato_traceback} /></pre>
-        )}
-
-        {expandedSections.has('py') && entry.exc_info && (
-          <pre className="traceback-content python"><AnsiText text={entry.exc_info} /></pre>
         )}
       </div>
     </div>
@@ -169,7 +255,29 @@ export function LogViewer() {
     const handleMessage = (event: MessageEvent) => {
       const msg = event.data;
       if (msg.type === 'state') {
+        const endMark = startMark('logviewer:state-receive');
+        logDataSize('logviewer:state-payload', msg.data);
         setState(msg.data);
+        endMark({ logEntries: msg.data?.logEntries?.length ?? 0 });
+      } else if (msg.type === 'update') {
+        // Handle partial updates including incremental log appends
+        setState(prev => {
+          if (!prev) return msg.data;
+
+          // Handle incremental log append (optimization for large log files)
+          if (msg.data._appendLogEntries) {
+            const newEntries = msg.data._appendLogEntries;
+            const { _appendLogEntries, ...rest } = msg.data;
+            return {
+              ...prev,
+              ...rest,
+              logEntries: [...(prev.logEntries || []), ...newEntries],
+            };
+          }
+
+          // Shallow merge for other fields
+          return { ...prev, ...msg.data };
+        });
       }
     };
     window.addEventListener('message', handleMessage);
@@ -211,27 +319,25 @@ export function LogViewer() {
     }
   }, [state?.logAutoScroll]);
 
-  // Filter logs (computed from state)
-  const filteredEntries = useMemo(() => {
+  // Server-side filtered logs - no client-side filtering needed
+  // The server already applies level, stage, and search filters
+  const displayedEntries = useMemo(() => {
     if (!state) return [];
-    const query = state.logSearchQuery.toLowerCase();
-    return state.logEntries.filter(entry => {
-      // Level filter
-      if (!state.enabledLogLevels.includes(entry.level)) return false;
-      // Stage filter (empty = show all)
-      if (state.selectedStageIds.length > 0 && !state.selectedStageIds.includes(entry.stage)) return false;
-      // Search filter
-      if (query && !entry.message.toLowerCase().includes(query) && !entry.logger.toLowerCase().includes(query)) return false;
-      return true;
-    });
-  }, [state]);
+    // logEntries are already filtered by the server
+    return state.logEntries;
+  }, [state?.logEntries]);
 
-  // Level counts (computed)
+  // Level counts - use server-provided counts if available, otherwise calculate
   const levelCounts = useMemo(() => {
     if (!state) return { DEBUG: 0, INFO: 0, WARNING: 0, ERROR: 0, ALERT: 0 };
-    const entries = state.selectedStageIds.length > 0
-      ? state.logEntries.filter(e => state.selectedStageIds.includes(e.stage))
-      : state.logEntries;
+    
+    // Prefer server-provided counts (from /api/logs/counts)
+    if (state.logCounts) {
+      return state.logCounts;
+    }
+    
+    // Fallback: calculate from current entries (for backward compatibility)
+    const entries = state.logEntries;
     return {
       DEBUG: entries.filter(e => e.level === 'DEBUG').length,
       INFO: entries.filter(e => e.level === 'INFO').length,
@@ -239,14 +345,14 @@ export function LogViewer() {
       ERROR: entries.filter(e => e.level === 'ERROR').length,
       ALERT: entries.filter(e => e.level === 'ALERT').length,
     };
-  }, [state]);
+  }, [state?.logCounts, state?.logEntries]);
 
-  // Search matches for highlighting
+  // Search matches for highlighting (still needed for UI highlighting)
   const searchMatches = useMemo(() => {
     if (!state?.logSearchQuery.trim()) return new Set<number>();
     const query = state.logSearchQuery.toLowerCase();
     const matches = new Set<number>();
-    filteredEntries.forEach((entry, idx) => {
+    displayedEntries.forEach((entry, idx) => {
       if (
         entry.message.toLowerCase().includes(query) ||
         entry.logger.toLowerCase().includes(query) ||
@@ -256,17 +362,40 @@ export function LogViewer() {
       }
     });
     return matches;
-  }, [filteredEntries, state?.logSearchQuery]);
+  }, [displayedEntries, state?.logSearchQuery]);
+
+  // Convert state to BuildSelector format (must be before early return to maintain hook order)
+  const projects = useMemo(
+    () => (state ? buildsToProjects(state.builds) : []),
+    [state?.builds]
+  );
+  const selection = useMemo(
+    () => (state ? buildNameToSelection(state.selectedBuildName, state.builds) : { type: 'none' as const }),
+    [state?.selectedBuildName, state?.builds]
+  );
+
+  const handleSelectionChange = useCallback((newSelection: Selection) => {
+    if (!state) return;
+    if (newSelection.type === 'none') {
+      // "All" selected - pass null to show logs from all builds
+      action('selectBuild', { buildName: null, projectName: null });
+    } else if (newSelection.buildId) {
+      // Specific build selected
+      action('selectBuild', { buildName: newSelection.buildId, projectName: null });
+    } else if (newSelection.projectId) {
+      // Project selected (not a specific build) - filter by project
+      action('selectBuild', { buildName: null, projectName: newSelection.projectId });
+    }
+  }, [state?.builds]);
 
   if (!state) {
     return <div className="log-viewer loading">Loading...</div>;
   }
 
-  const logFilename = state.logFile?.split('/').pop() || '';
-
   return (
     <div className="log-viewer">
       <div className="log-header">
+        {/* Level filters */}
         <div className="log-filters">
           {ALL_LEVELS.map((level) => (
             <FilterButton
@@ -296,11 +425,14 @@ export function LogViewer() {
           {state.logSearchQuery && (
             <>
               <span className="search-count">
-                {filteredEntries.length}/{state.logEntries.length}
+                {displayedEntries.length}/{state.logTotalCount ?? state.logEntries.length}
               </span>
               <button
                 className="search-clear"
-                onClick={() => action('setLogSearchQuery', { query: '' })}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  action('setLogSearchQuery', { query: '' });
+                }}
                 title="Clear search"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -316,47 +448,33 @@ export function LogViewer() {
           <button
             className={`action-btn ${state.logTimestampMode === 'delta' ? 'active' : ''}`}
             onClick={() => action('toggleLogTimestampMode')}
-            title={state.logTimestampMode === 'absolute' ? 'Switch to delta timestamps' : 'Switch to absolute timestamps'}
+            title={state.logTimestampMode === 'absolute' ? 'Show relative time (Δt)' : 'Show absolute time'}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              {state.logTimestampMode === 'absolute' ? (
-                <>
-                  <circle cx="12" cy="12" r="10" />
-                  <polyline points="12 6 12 12 16 14" />
-                </>
-              ) : (
-                <>
-                  <path d="M5 12h14" />
-                  <path d="M12 5v14" />
-                </>
-              )}
-            </svg>
+            {state.logTimestampMode === 'absolute' ? (
+              <Clock size={14} />
+            ) : (
+              <Timer size={14} />
+            )}
           </button>
 
-          <div className="action-divider" />
-
-          {state.logFile && (
-            <>
-              <button className="log-file-btn" onClick={() => action('copyLogPath')} title={`Copy: ${state.logFile}`}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                </svg>
-                {logFilename}
-              </button>
-              <div className="action-divider" />
-            </>
-          )}
+          {/* Auto-scroll / pin to bottom */}
           <button
-            className={`scroll-btn ${state.logAutoScroll ? 'active' : ''}`}
+            className={`action-btn ${state.logAutoScroll ? 'active' : ''}`}
             onClick={() => action('setLogAutoScroll', { enabled: !state.logAutoScroll })}
-            title={state.logAutoScroll ? 'Auto-scroll enabled' : 'Auto-scroll disabled'}
+            title={state.logAutoScroll ? 'Following new logs (click to unpin)' : 'Click to follow new logs'}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-            </svg>
+            <ArrowDownToLine size={14} />
           </button>
         </div>
+
+        {/* Build selector - right side */}
+        <BuildSelector
+          selection={selection}
+          onSelectionChange={handleSelectionChange}
+          projects={projects}
+          showSymbols={false}
+          compact
+        />
       </div>
 
       <div className="log-content" ref={logRef} onScroll={handleScroll}>
@@ -365,7 +483,7 @@ export function LogViewer() {
             <div className="spinner" />
             Loading logs...
           </div>
-        ) : filteredEntries.length === 0 ? (
+        ) : displayedEntries.length === 0 ? (
           <div className="log-empty">
             <div className="log-empty-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -385,12 +503,12 @@ export function LogViewer() {
             </p>
           </div>
         ) : (
-          filteredEntries.map((entry, idx) => (
+          displayedEntries.map((entry, idx) => (
             <LogEntryRow
               key={idx}
               entry={entry}
               timestampMode={state.logTimestampMode}
-              prevTimestamp={idx > 0 ? filteredEntries[idx - 1].timestamp : undefined}
+              prevTimestamp={idx > 0 ? displayedEntries[idx - 1].timestamp : undefined}
               isSearchMatch={searchMatches.has(idx)}
             />
           ))

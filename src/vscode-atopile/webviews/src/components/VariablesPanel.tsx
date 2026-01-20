@@ -1,0 +1,478 @@
+import { useState, useEffect, useCallback, useMemo, memo } from 'react'
+import {
+  ChevronDown, ChevronRight, Search, Box, Zap,
+  Hash, Percent, CircuitBoard, RefreshCw,
+  Check, AlertTriangle, Loader2, Play
+} from 'lucide-react'
+
+// Variable types
+type VariableType = 'voltage' | 'current' | 'resistance' | 'capacitance' | 'ratio' | 'frequency' | 'power' | 'percentage' | 'dimensionless'
+
+interface Variable {
+  name: string
+  spec?: string              // Design spec (what the design requires - user input or calculated)
+  specTolerance?: string     // Spec tolerance
+  actual?: string            // Component actual rating (from datasheet)
+  actualTolerance?: string   // Actual tolerance
+  unit?: string
+  type: VariableType
+  meetsSpec?: boolean        // Does actual meet spec? (false = error)
+  source?: string            // Where this value came from (e.g., "user", "derived", "picked", "datasheet")
+}
+
+interface VariableNode {
+  name: string
+  type: 'module' | 'interface' | 'component'
+  path: string
+  typeName?: string  // The type name (e.g., "I2C", "SPI", "Resistor")
+  variables?: Variable[]
+  children?: VariableNode[]
+  expanded?: boolean
+}
+
+interface VariablesData {
+  version: string
+  nodes: VariableNode[]
+}
+
+// Get icon for variable type
+function getVariableIcon(type: VariableType) {
+  switch (type) {
+    case 'voltage':
+      return <Zap size={12} className="var-icon voltage" />
+    case 'current':
+      return <Zap size={12} className="var-icon current" />
+    case 'resistance':
+      return <Hash size={12} className="var-icon resistance" />
+    case 'capacitance':
+      return <Hash size={12} className="var-icon capacitance" />
+    case 'ratio':
+    case 'percentage':
+      return <Percent size={12} className="var-icon ratio" />
+    case 'frequency':
+      return <RefreshCw size={12} className="var-icon frequency" />
+    case 'power':
+      return <Zap size={12} className="var-icon power" />
+    default:
+      return <Hash size={12} className="var-icon" />
+  }
+}
+
+// Get node type icon
+function getNodeIcon(type: 'module' | 'interface' | 'component') {
+  switch (type) {
+    case 'module':
+      return <Box size={14} className="node-type-icon module" />
+    case 'interface':
+      return <Zap size={14} className="node-type-icon interface" />
+    case 'component':
+      return <CircuitBoard size={14} className="node-type-icon component" />
+  }
+}
+
+// Variable row component - table style, memoized to prevent unnecessary re-renders
+const VariableRow = memo(function VariableRow({ variable, onCopy }: { variable: Variable; onCopy: (value: string) => void }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = () => {
+    let fullValue = `${variable.name}: `
+    if (variable.spec) fullValue += `${variable.spec}${variable.specTolerance || ''}`
+    if (variable.actual) fullValue += ` → ${variable.actual}${variable.actualTolerance || ''}`
+    if (variable.unit) fullValue += ` ${variable.unit}`
+    onCopy(fullValue)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  const hasSpec = variable.spec !== undefined
+  const hasActual = variable.actual !== undefined
+  const hasError = variable.meetsSpec === false
+
+  return (
+    <div
+      className={`variable-table-row ${hasError ? 'error' : ''}`}
+      onClick={handleCopy}
+      title="Click to copy"
+    >
+      {/* Name column */}
+      <div className="var-col-name">
+        {getVariableIcon(variable.type)}
+        <span className="var-name-text">{variable.name}</span>
+      </div>
+
+      {/* Spec column */}
+      <div className="var-col-spec">
+        {hasSpec ? (
+          <>
+            <span className="var-spec-value">{variable.spec}</span>
+            {variable.specTolerance && <span className="var-tolerance">{variable.specTolerance}</span>}
+          </>
+        ) : (
+          <span className="var-empty">—</span>
+        )}
+      </div>
+
+      {/* Actual column */}
+      <div className={`var-col-actual ${hasError ? 'error' : hasActual ? 'ok' : ''}`}>
+        {hasActual ? (
+          <>
+            <span className="var-actual-value">{variable.actual}</span>
+            {variable.actualTolerance && <span className="var-tolerance">{variable.actualTolerance}</span>}
+          </>
+        ) : (
+          <span className="var-empty">—</span>
+        )}
+      </div>
+
+      {/* Status */}
+      <div className="var-col-status">
+        {hasError && <AlertTriangle size={12} className="status-error" />}
+        {copied && <Check size={12} className="status-copied" />}
+      </div>
+    </div>
+  )
+})
+
+// Helper function to check if a variable matches source filter
+function matchesSourceFilter(source: string | undefined, sourceFilter: SourceFilter): boolean {
+  if (sourceFilter === 'all') return true
+  const s = source || 'derived'
+  if (sourceFilter === 'user') return s === 'user'
+  if (sourceFilter === 'computed') return s === 'derived'
+  if (sourceFilter === 'picked') return s === 'picked' || s === 'datasheet'
+  return true
+}
+
+// Helper function to check if a variable matches search query (pre-lowercased)
+function matchesSearch(v: Variable, searchLower: string): boolean {
+  if (!searchLower) return true
+  return (
+    v.name.toLowerCase().includes(searchLower) ||
+    (v.spec?.toLowerCase().includes(searchLower) ?? false) ||
+    (v.actual?.toLowerCase().includes(searchLower) ?? false)
+  )
+}
+
+// Recursive function to check if any descendant matches filters
+// Memoized at component level to avoid recalculating on every render
+function nodeOrDescendantsMatch(
+  node: VariableNode,
+  searchLower: string,
+  sourceFilter: SourceFilter
+): boolean {
+  // Check if node name matches
+  if (searchLower && node.name.toLowerCase().includes(searchLower)) return true
+
+  // Check if any variables match
+  const hasMatchingVar = node.variables?.some(v =>
+    matchesSourceFilter(v.source, sourceFilter) && matchesSearch(v, searchLower)
+  )
+  if (hasMatchingVar) return true
+
+  // Check children recursively
+  if (node.children?.some(child => nodeOrDescendantsMatch(child, searchLower, sourceFilter))) {
+    return true
+  }
+
+  return false
+}
+
+// Tree node component - memoized to prevent unnecessary re-renders
+const VariableNodeComponent = memo(function VariableNodeComponent({
+  node,
+  depth,
+  searchQuery,
+  sourceFilter,
+  expandedNodes,
+  onToggleExpand,
+  onCopyValue
+}: {
+  node: VariableNode
+  depth: number
+  searchQuery: string
+  sourceFilter: SourceFilter
+  expandedNodes: Set<string>
+  onToggleExpand: (path: string) => void
+  onCopyValue: (value: string) => void
+}) {
+  const isExpanded = expandedNodes.has(node.path)
+  const hasChildren = (node.children && node.children.length > 0) || (node.variables && node.variables.length > 0)
+
+  // Pre-compute lowercase search query once
+  const searchLower = useMemo(() => searchQuery.toLowerCase(), [searchQuery])
+
+  // Memoize filtered variables
+  const filteredVariables = useMemo(() => {
+    if (!node.variables) return []
+    return node.variables.filter(v =>
+      matchesSourceFilter(v.source, sourceFilter) && matchesSearch(v, searchLower)
+    )
+  }, [node.variables, sourceFilter, searchLower])
+
+  // Memoize the filter match check
+  const matchesFilters = useMemo(() => {
+    // No filtering needed if no search and showing all sources
+    if (!searchQuery && sourceFilter === 'all') return true
+
+    // Check this node and its descendants
+    return nodeOrDescendantsMatch(node, searchLower, sourceFilter)
+  }, [node, searchQuery, sourceFilter, searchLower])
+
+  if (!matchesFilters) return null
+
+  // Use minimal indentation with visual depth indicator
+  const depthIndicator = depth > 0 ? '· '.repeat(depth) : ''
+
+  return (
+    <div className={`variable-tree-node depth-${Math.min(depth, 4)}`}>
+      <div
+        className={`variable-node-header ${isExpanded ? 'expanded' : ''}`}
+        onClick={() => onToggleExpand(node.path)}
+      >
+        {hasChildren ? (
+          <span className="tree-expand">
+            {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          </span>
+        ) : (
+          <span className="tree-expand-spacer" />
+        )}
+        {depth > 0 && <span className="depth-indicator">{depthIndicator}</span>}
+        {getNodeIcon(node.type)}
+        <span className="node-name">{node.name}</span>
+        {node.typeName && (
+          <span className="node-type-name">{node.typeName}</span>
+        )}
+        {node.variables && node.variables.length > 0 && (
+          <span className="var-count">{node.variables.length}</span>
+        )}
+      </div>
+
+      {isExpanded && (
+        <div className="variable-node-content">
+          {/* Variables table */}
+          {filteredVariables.length > 0 && (
+            <div className="variables-table">
+              <div className="variables-table-header">
+                <div className="var-col-name">Parameter</div>
+                <div className="var-col-spec">Spec</div>
+                <div className="var-col-actual">Actual</div>
+                <div className="var-col-status"></div>
+              </div>
+              {filteredVariables.map((variable, idx) => (
+                <VariableRow
+                  key={`${node.path}-${variable.name}-${idx}`}
+                  variable={variable}
+                  onCopy={onCopyValue}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Children */}
+          {node.children?.map((child, idx) => (
+            <VariableNodeComponent
+              key={`${child.path}-${idx}`}
+              node={child}
+              depth={depth + 1}
+              searchQuery={searchQuery}
+              sourceFilter={sourceFilter}
+              expandedNodes={expandedNodes}
+              onToggleExpand={onToggleExpand}
+              onCopyValue={onCopyValue}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+})
+
+// Source filter options
+type SourceFilter = 'all' | 'user' | 'computed' | 'picked'
+
+interface VariablesPanelProps {
+  // Variables data from state - frontend just displays this
+  variablesData?: VariablesData | null
+  isLoading?: boolean
+  error?: string | null
+  // Callbacks
+  onBuild?: () => void
+}
+
+export function VariablesPanel({
+  variablesData,
+  isLoading = false,
+  error = null,
+  onBuild
+}: VariablesPanelProps) {
+  const [searchQuery, setSearchQuery] = useState('')
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all')
+  const [copiedValue, setCopiedValue] = useState<string | null>(null)
+  const [lastDataVersion, setLastDataVersion] = useState<string | null>(null)
+
+  // Extract variables from data
+  const variables = variablesData?.nodes || []
+
+  // Auto-expand root nodes when new data arrives
+  useEffect(() => {
+    const version = variablesData?.version
+    if (variables.length > 0 && version && version !== lastDataVersion) {
+      setExpandedNodes(new Set(variables.map(n => n.path)))
+      setLastDataVersion(version)
+    }
+  }, [variables, variablesData?.version, lastDataVersion])
+
+  // Memoized callbacks to prevent child re-renders
+  const handleToggleExpand = useCallback((path: string) => {
+    setExpandedNodes(prev => {
+      const next = new Set(prev)
+      if (next.has(path)) {
+        next.delete(path)
+      } else {
+        next.add(path)
+      }
+      return next
+    })
+  }, [])
+
+  const handleCopyValue = useCallback((value: string) => {
+    navigator.clipboard.writeText(value)
+    setCopiedValue(value)
+    setTimeout(() => setCopiedValue(null), 2000)
+  }, [])
+
+  // Memoized total variable count - recursive but only recalculates when data changes
+  const totalVariables = useMemo(() => {
+    const countVariables = (nodes: VariableNode[]): number => {
+      let count = 0
+      for (const node of nodes) {
+        if (node.variables) {
+          for (const v of node.variables) {
+            if (matchesSourceFilter(v.source, sourceFilter)) {
+              count++
+            }
+          }
+        }
+        if (node.children) {
+          count += countVariables(node.children)
+        }
+      }
+      return count
+    }
+    return countVariables(variables)
+  }, [variables, sourceFilter])
+
+  return (
+    <div className="variables-panel">
+      {/* Toolbar */}
+      <div className="panel-toolbar">
+        <div className="panel-toolbar-row">
+          <div className="search-box">
+            <Search size={14} />
+            <input
+              type="text"
+              placeholder="Search variables..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* Source filter */}
+        <div className="filter-group">
+          <button
+            className={`filter-btn ${sourceFilter === 'all' ? 'active' : ''}`}
+            onClick={() => setSourceFilter('all')}
+          >
+            All
+          </button>
+          <button
+            className={`filter-btn ${sourceFilter === 'user' ? 'active' : ''}`}
+            onClick={() => setSourceFilter('user')}
+            title="User-specified values"
+          >
+            User
+          </button>
+          <button
+            className={`filter-btn ${sourceFilter === 'computed' ? 'active' : ''}`}
+            onClick={() => setSourceFilter('computed')}
+            title="Computed/derived values"
+          >
+            Computed
+          </button>
+          <button
+            className={`filter-btn ${sourceFilter === 'picked' ? 'active' : ''}`}
+            onClick={() => setSourceFilter('picked')}
+            title="Part picker selected"
+          >
+            Picked
+          </button>
+        </div>
+      </div>
+
+      {/* Variable tree */}
+      <div className="variables-tree">
+        {isLoading && (
+          <div className="variables-loading">
+            <Loader2 size={24} className="spinner" />
+            <span>Loading variables...</span>
+          </div>
+        )}
+
+        {error && !isLoading && (
+          <div className="variables-error">
+            <AlertTriangle size={16} />
+            <span>{error}</span>
+            {onBuild && (
+              <div className="error-actions">
+                <button onClick={onBuild} className="build-btn">
+                  <Play size={12} />
+                  Build
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!isLoading && !error && variables.length === 0 && (
+          <div className="variables-empty">
+            <span>No variables found.</span>
+            {onBuild ? (
+              <button onClick={onBuild} className="build-btn primary">
+                <Play size={14} />
+                Build Project
+              </button>
+            ) : (
+              <span className="hint">Run "ato build" to generate variable data.</span>
+            )}
+          </div>
+        )}
+
+        {!isLoading && !error && variables.map((node, idx) => (
+          <VariableNodeComponent
+            key={`${node.path}-${idx}`}
+            node={node}
+            depth={0}
+            searchQuery={searchQuery}
+            sourceFilter={sourceFilter}
+            expandedNodes={expandedNodes}
+            onToggleExpand={handleToggleExpand}
+            onCopyValue={handleCopyValue}
+          />
+        ))}
+      </div>
+
+      {/* Status bar */}
+      <div className="variables-status">
+        <span>{totalVariables} variables</span>
+        {copiedValue && (
+          <span className="copied-toast">
+            <Check size={10} />
+            Copied: {copiedValue}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
