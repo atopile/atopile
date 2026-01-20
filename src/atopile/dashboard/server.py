@@ -41,6 +41,7 @@ from atopile.dashboard.stdlib import (
     StdLibResponse,
     get_standard_library,
 )
+from atopile.logging import get_central_log_db
 
 # Registry cache
 _registry_cache: dict[str, "PackageInfo"] = {}
@@ -2056,8 +2057,8 @@ def create_app(
         "workspace_paths": workspace_paths or [],
     }
 
-    # Set up WebSocket manager with database path
-    db_path = logs_base / "build_logs.db" if logs_base else None
+    # Set up WebSocket manager with central log database path
+    db_path = get_central_log_db()
     ws_manager.set_paths(db_path, logs_base)
 
     # Capture event loop on startup for background thread broadcasts
@@ -2273,7 +2274,8 @@ def create_app(
         Return the current build summary, including any active builds.
 
         Aggregates build summaries from all discovered projects in the workspace.
-        Each project's build/logs/latest/summary.json is read and merged.
+        Each project's per-target summaries at build/builds/{target}/build_summary.json
+        are read and merged.
         """
         all_builds: list[dict] = []
         totals = {"builds": 0, "successful": 0, "failed": 0, "warnings": 0, "errors": 0}
@@ -2291,52 +2293,55 @@ def create_app(
             except (json.JSONDecodeError, Exception):
                 pass
 
-        # Then, scan all workspace projects for their summaries
+        # Then, scan all workspace projects for their per-target summaries
+        # New structure: {project}/build/builds/{target}/build_summary.json
         workspace_paths = state.get("workspace_paths", [])
         projects = discover_projects_in_paths(workspace_paths)
 
         for project in projects:
             project_root = Path(project.root)
-            project_summary = (
-                project_root / "build" / "logs" / "latest" / "summary.json"
-            )
+            builds_dir = project_root / "build" / "builds"
 
-            if project_summary.exists():
+            if not builds_dir.exists():
+                continue
+
+            # Scan all target directories for build_summary.json files
+            for summary_file in builds_dir.glob("*/build_summary.json"):
                 try:
-                    data = json.loads(project_summary.read_text())
-                    if "builds" in data:
-                        # Add project name to each build for context
-                        for build in data["builds"]:
-                            # Mark stale building/queued from disk as failed
-                            # (only valid if tracked in _active_builds)
-                            if build.get("status") in ("building", "queued"):
-                                log.debug(
-                                    f"Marking stale '{build.get('status')}' build "
-                                    f"as failed: {build.get('name')}"
-                                )
-                                build["status"] = "failed"
-                                build["error"] = "Build was interrupted"
+                    data = json.loads(summary_file.read_text())
+                    # Each summary file contains a single build
+                    build = data
 
-                            if not build.get("project_name"):
-                                build["project_name"] = project.name
-                            # Update display_name to include project
-                            if (
-                                build.get("display_name")
-                                and project.name not in build["display_name"]
-                            ):
-                                build["display_name"] = (
-                                    f"{project.name}:{build['display_name']}"
-                                )
-                            elif build.get("name") and not build.get("display_name"):
-                                build["display_name"] = (
-                                    f"{project.name}:{build['name']}"
-                                )
-                        all_builds.extend(data["builds"])
-                    if "totals" in data:
-                        for key in totals:
-                            totals[key] += data["totals"].get(key, 0)
+                    # Mark stale building/queued from disk as failed
+                    # (only valid if tracked in _active_builds)
+                    if build.get("status") in ("building", "queued"):
+                        log.debug(
+                            f"Marking stale '{build.get('status')}' build "
+                            f"as failed: {build.get('name')}"
+                        )
+                        build["status"] = "failed"
+                        build["error"] = "Build was interrupted"
+
+                    if not build.get("project_name"):
+                        build["project_name"] = project.name
+                    # Update display_name to include project
+                    if (
+                        build.get("display_name")
+                        and project.name not in build["display_name"]
+                    ):
+                        build["display_name"] = (
+                            f"{project.name}:{build['display_name']}"
+                        )
+                    elif build.get("name") and not build.get("display_name"):
+                        build["display_name"] = f"{project.name}:{build['name']}"
+
+                    all_builds.append(build)
+
+                    # Aggregate totals from each build
+                    totals["warnings"] += build.get("warnings", 0)
+                    totals["errors"] += build.get("errors", 0)
                 except (json.JSONDecodeError, Exception) as e:
-                    log.warning(f"Failed to read summary from {project_summary}: {e}")
+                    log.warning(f"Failed to read summary from {summary_file}: {e}")
 
         # Add tracked builds from _active_builds to the response
         # This includes: queued, building, AND recently completed/cancelled
@@ -2710,7 +2715,11 @@ def create_app(
 
     @app.get("/api/logs/query")
     async def query_logs(
-        build_name: Optional[str] = Query(None, description="Filter by build name"),
+        build_id: Optional[str] = Query(
+            None, description="Filter by build ID (from central database)"
+        ),
+        project_path: Optional[str] = Query(None, description="Filter by project path"),
+        target: Optional[str] = Query(None, description="Filter by target name"),
         stage: Optional[str] = Query(None, description="Filter by build stage"),
         level: Optional[str] = Query(
             None, description="Filter by log level (DEBUG, INFO, WARNING, ERROR)"
@@ -2722,106 +2731,98 @@ def create_app(
         offset: int = Query(0, ge=0, description="Result offset for pagination"),
     ):
         """
-        Query logs from SQLite with optional filters.
+        Query logs from the central SQLite database with optional filters.
 
-        Returns structured log entries from the build_logs.db database.
+        Returns structured log entries from the central build_logs.db database
+        at ~/.local/share/atopile/build_logs.db
         """
         try:
-            summary_path = state["summary_file"]
-            if summary_path is None or not summary_path.exists():
-                raise HTTPException(status_code=404, detail="No summary file found")
-
-            summary = json.loads(summary_path.read_text())
-
-            # If build_name specified, find its log_dir
-            # Otherwise, query all builds' logs
-            log_dirs: list[Path] = []
-            for build in summary.get("builds", []):
-                if (
-                    build_name is None
-                    or build.get("name") == build_name
-                    or build.get("display_name") == build_name
-                ):
-                    if log_dir := build.get("log_dir"):
-                        log_dirs.append(Path(log_dir))
-
-            if not log_dirs:
-                if build_name:
-                    raise HTTPException(
-                        status_code=404, detail=f"Build not found: {build_name}"
-                    )
+            # Use central log database
+            central_db = get_central_log_db()
+            if not central_db.exists():
                 return {"logs": [], "total": 0}
 
-            # Collect logs from all matching builds
+            conn = sqlite3.connect(str(central_db), timeout=5.0)
+            conn.row_factory = sqlite3.Row
+
+            # Build query with filters
+            # Join logs with builds table to filter by project/target
+            conditions = []
+            params: list = []
+
+            if build_id:
+                conditions.append("logs.build_id = ?")
+                params.append(build_id)
+            if project_path:
+                conditions.append("builds.project_path = ?")
+                params.append(project_path)
+            if target:
+                conditions.append("builds.target = ?")
+                params.append(target)
+            if stage:
+                conditions.append("logs.stage = ?")
+                params.append(stage)
+            if level:
+                conditions.append("logs.level = ?")
+                params.append(level.upper())
+            if audience:
+                conditions.append("logs.audience = ?")
+                params.append(audience.lower())
+
+            where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+
+            # Query with pagination, joining logs with builds for filtering
+            query = f"""
+                SELECT logs.id, logs.build_id, logs.timestamp, logs.stage,
+                       logs.level, logs.audience, logs.message,
+                       logs.ato_traceback, logs.python_traceback,
+                       builds.project_path, builds.target
+                FROM logs
+                JOIN builds ON logs.build_id = builds.build_id
+                {where_clause}
+                ORDER BY logs.id DESC
+                LIMIT ? OFFSET ?
+            """
+            params.extend([limit, offset])
+
+            cursor = conn.execute(query, params)
+            rows = cursor.fetchall()
+
             all_logs: list[dict] = []
-            for log_dir in log_dirs:
-                db_path = log_dir / "build_logs.db"
-                if not db_path.exists():
-                    continue
+            for row in rows:
+                all_logs.append(
+                    {
+                        "id": row["id"],
+                        "build_id": row["build_id"],
+                        "timestamp": row["timestamp"],
+                        "stage": row["stage"],
+                        "level": row["level"],
+                        "audience": row["audience"],
+                        "message": row["message"],
+                        "ato_traceback": row["ato_traceback"],
+                        "python_traceback": row["python_traceback"],
+                        "project_path": row["project_path"],
+                        "target": row["target"],
+                    }
+                )
 
-                try:
-                    conn = sqlite3.connect(str(db_path), timeout=5.0)
-                    conn.row_factory = sqlite3.Row
+            # Get total count for pagination
+            count_query = f"""
+                SELECT COUNT(*) as total
+                FROM logs
+                JOIN builds ON logs.build_id = builds.build_id
+                {where_clause}
+            """
+            # Remove limit/offset from params for count query
+            count_params = params[:-2] if params else []
+            total = conn.execute(count_query, count_params).fetchone()["total"]
 
-                    # Build query with filters
-                    conditions = []
-                    params: list = []
+            conn.close()
+            return {"logs": all_logs, "total": total}
 
-                    if stage:
-                        conditions.append("stage = ?")
-                        params.append(stage)
-                    if level:
-                        conditions.append("level = ?")
-                        params.append(level.upper())
-                    if audience:
-                        conditions.append("audience = ?")
-                        params.append(audience.lower())
-
-                    where_clause = (
-                        "WHERE " + " AND ".join(conditions) if conditions else ""
-                    )
-
-                    # Query with pagination
-                    query = f"""
-                        SELECT id, timestamp, stage, level, level_no, audience,
-                               message, ato_traceback, python_traceback
-                        FROM logs
-                        {where_clause}
-                        ORDER BY id DESC
-                        LIMIT ? OFFSET ?
-                    """
-                    params.extend([limit, offset])
-
-                    cursor = conn.execute(query, params)
-                    rows = cursor.fetchall()
-
-                    for row in rows:
-                        all_logs.append(
-                            {
-                                "id": row["id"],
-                                "timestamp": row["timestamp"],
-                                "stage": row["stage"],
-                                "level": row["level"],
-                                "level_no": row["level_no"],
-                                "audience": row["audience"],
-                                "message": row["message"],
-                                "ato_traceback": row["ato_traceback"],
-                                "python_traceback": row["python_traceback"],
-                                "build_dir": str(log_dir),
-                            }
-                        )
-
-                    conn.close()
-                except sqlite3.Error as e:
-                    log.warning(f"Error reading logs from {db_path}: {e}")
-                    continue
-
-            # Sort by timestamp descending and apply limit
-            all_logs.sort(key=lambda x: x["timestamp"], reverse=True)
-            return {"logs": all_logs[:limit], "total": len(all_logs)}
-
-        except HTTPException:
-            raise
+        except sqlite3.Error as e:
+            log.warning(f"Error reading logs from central database: {e}")
+            return {"logs": [], "total": 0}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
