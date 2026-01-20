@@ -59,6 +59,108 @@ function FilterButton({
   );
 }
 
+function StageFilterDropdown({
+  availableStages,
+  enabledStages,
+}: {
+  availableStages: string[];
+  enabledStages: string[];
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen]);
+
+  // Determine if a stage is checked
+  // Empty enabledStages = all stages are shown
+  const isAllSelected = enabledStages.length === 0;
+  const isStageEnabled = (stage: string) => {
+    if (enabledStages.length === 0) return true;  // All selected
+    if (enabledStages.includes('__NONE__')) return false;  // None selected
+    return enabledStages.includes(stage);
+  };
+
+  const selectedCount = isAllSelected
+    ? availableStages.length
+    : enabledStages.includes('__NONE__')
+      ? 0
+      : enabledStages.filter(s => availableStages.includes(s)).length;
+
+  const hasStages = availableStages.length > 0;
+  const isFiltered = !isAllSelected && selectedCount !== availableStages.length;
+
+  return (
+    <div className="stage-filter-dropdown" ref={dropdownRef}>
+      <button
+        className={`stage-filter-btn ${isFiltered ? 'filtered' : ''} ${isOpen ? 'open' : ''}`}
+        onClick={() => hasStages && setIsOpen(!isOpen)}
+        disabled={!hasStages}
+        title={hasStages ? 'Filter by build stage' : 'No stages available'}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+        </svg>
+        Stages
+        {hasStages && (
+          <span className="stage-count">
+            {selectedCount}/{availableStages.length}
+          </span>
+        )}
+        <svg className={`chevron ${isOpen ? 'open' : ''}`} width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="stage-dropdown-panel">
+          <div className="stage-dropdown-actions">
+            <button
+              className="stage-action-btn"
+              onClick={() => {
+                action('selectAllStages');
+                // Don't close - let user see the change
+              }}
+            >
+              Select All
+            </button>
+            <button
+              className="stage-action-btn"
+              onClick={() => {
+                action('clearAllStages');
+              }}
+            >
+              Clear
+            </button>
+          </div>
+          <div className="stage-dropdown-list">
+            {availableStages.map((stage) => (
+              <label key={stage} className="stage-checkbox-item">
+                <input
+                  type="checkbox"
+                  checked={isStageEnabled(stage)}
+                  onChange={() => action('toggleStage', { stage })}
+                />
+                <span className="stage-name" title={stage}>{stage}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function formatTimestamp(isoString: string, mode: 'absolute' | 'delta', prevTimestamp?: string): string {
   try {
     const date = new Date(isoString);
@@ -261,6 +363,11 @@ export function LogViewer() {
               onToggle={() => action('toggleLogLevel', { level })}
             />
           ))}
+          <div className="filter-divider" />
+          <StageFilterDropdown
+            availableStages={state.availableStages}
+            enabledStages={state.enabledStages}
+          />
         </div>
 
         {/* Search input */}

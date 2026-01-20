@@ -81,6 +81,8 @@ export interface AppState {
 
   // Log viewer UI
   enabledLogLevels: LogLevel[];
+  availableStages: string[];  // Stages available for current build
+  enabledStages: string[];    // Stages to show (empty = all)
   logSearchQuery: string;
   logTimestampMode: 'absolute' | 'delta';
   logAutoScroll: boolean;

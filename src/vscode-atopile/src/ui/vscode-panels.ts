@@ -181,6 +181,18 @@ async function handleAction(message: any): Promise<void> {
             await appStateManager.toggleLogLevel(message.level as LogLevel);
             break;
 
+        case 'toggleStage':
+            await appStateManager.toggleStage(message.stage);
+            break;
+
+        case 'selectAllStages':
+            await appStateManager.selectAllStages();
+            break;
+
+        case 'clearAllStages':
+            await appStateManager.clearAllStages();
+            break;
+
         case 'setLogSearchQuery':
             appStateManager.setLogSearchQuery(message.query);
             break;

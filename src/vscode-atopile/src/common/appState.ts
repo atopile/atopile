@@ -93,6 +93,7 @@ interface LogQueryResponse {
         timestamp: string;
         created_at: string;
     }>;
+    stages: string[];
 }
 
 // Info about the currently displayed build's logs
@@ -127,6 +128,8 @@ export interface AppState {
 
     // Log viewer UI
     enabledLogLevels: LogLevel[];
+    availableStages: string[];  // Stages available for current build
+    enabledStages: string[];    // Stages to show (empty = all)
     logSearchQuery: string;
     logTimestampMode: 'absolute' | 'delta';
     logAutoScroll: boolean;
@@ -168,6 +171,8 @@ class AppStateManager {
 
         // Log viewer UI
         enabledLogLevels: [...DEFAULT_LOG_LEVELS],
+        availableStages: [],
+        enabledStages: [],  // Empty = all stages
         logSearchQuery: '',
         logTimestampMode: 'absolute',
         logAutoScroll: true,
@@ -253,6 +258,8 @@ class AppStateManager {
         this._state.selectedBuildId = null;
         this._state.currentBuildInfo = null;
         this._state.logEntries = [];
+        this._state.availableStages = [];
+        this._state.enabledStages = [];  // Reset to all stages
         this._lastLogId = 0;
 
         const build = this._state.builds.find(b => b.display_name === buildName);
@@ -278,6 +285,53 @@ class AppStateManager {
         }
         this._emit();
         // Re-fetch logs with new filter
+        if (this._state.selectedBuildId) {
+            await this._fetchLogs(this._state.selectedBuildId);
+        }
+    }
+
+    async toggleStage(stage: string): Promise<void> {
+        const idx = this._state.enabledStages.indexOf(stage);
+        if (idx >= 0) {
+            this._state.enabledStages = this._state.enabledStages.filter(s => s !== stage);
+        } else {
+            this._state.enabledStages = [...this._state.enabledStages, stage];
+        }
+        this._emit();
+        // Re-fetch logs with new filter
+        if (this._state.selectedBuildId) {
+            await this._fetchLogs(this._state.selectedBuildId);
+        }
+    }
+
+    async selectAllStages(): Promise<void> {
+        this._state.enabledStages = [];  // Empty = all stages
+        this._emit();
+        if (this._state.selectedBuildId) {
+            await this._fetchLogs(this._state.selectedBuildId);
+        }
+    }
+
+    async clearAllStages(): Promise<void> {
+        // Set to a special marker that means "none" - use an impossible stage name
+        // Actually, for clarity let's keep track of "explicit none" vs "all"
+        // We'll use: empty array = all stages, non-empty = only those stages
+        // For "clear all", we should set it to an empty filter that matches nothing
+        // But that would show no logs, which might not be useful.
+        // Let's interpret "clear all" as "deselect all stages" which means no filter applied
+        // Actually, the most intuitive behavior:
+        // - "Select All" = show all stages (enabledStages = [])
+        // - "Clear All" = show no stages (but we need a way to represent this)
+        // Let's use a special convention: if enabledStages contains all availableStages, it means "all selected"
+        // If it's empty and availableStages is not empty, it means "show all"
+        // For "clear all", we set it to an impossible value... actually let's just not filter if empty
+        // and filter if non-empty. For "clear all" we'd set enabledStages = ['__none__'] or similar
+        //
+        // Simpler approach: empty = all, non-empty = only those stages
+        // "Clear All" just isn't supported in a meaningful way, or it means "reset to default (all)"
+        // Let's make "Clear All" mean "show none" by setting enabledStages to ['__NONE__']
+        this._state.enabledStages = ['__NONE__'];  // Special marker for "show nothing"
+        this._emit();
         if (this._state.selectedBuildId) {
             await this._fetchLogs(this._state.selectedBuildId);
         }
@@ -391,6 +445,13 @@ class AppStateManager {
             params.levels = this._state.enabledLogLevels.join(',');
         }
 
+        // Add stage filter (comma-separated)
+        // Empty enabledStages = all stages (no filter)
+        // Non-empty enabledStages = only those stages
+        if (this._state.enabledStages.length > 0) {
+            params.stages = this._state.enabledStages.join(',');
+        }
+
         try {
             const response = await axios.get<LogQueryResponse>(
                 `${apiUrl}/api/logs/query`,
@@ -399,6 +460,15 @@ class AppStateManager {
                     timeout: 5000,
                 }
             );
+
+            // Update available stages from API response (only if we got stages back)
+            // We need to fetch all stages first before applying filter
+            if (response.data.stages && response.data.stages.length > 0) {
+                // Only update availableStages if we got a full list (when no stage filter applied)
+                if (this._state.enabledStages.length === 0) {
+                    this._state.availableStages = response.data.stages;
+                }
+            }
 
             // Convert API response to LogEntry format
             // API returns logs in descending order (newest first), reverse for display

@@ -94,20 +94,23 @@ def create_app(
         levels: Optional[str] = Query(
             None, description="Filter by log levels (comma-separated, e.g. 'INFO,WARNING,ERROR')"
         ),
+        stages: Optional[str] = Query(
+            None, description="Filter by stages (comma-separated, e.g. 'compile,Picking parts')"
+        ),
         limit: int = Query(1000, ge=1, le=10000, description="Maximum results"),
         offset: int = Query(0, ge=0, description="Result offset for pagination"),
     ):
         """
         Query logs from the central SQLite database.
 
-        Returns structured log entries filtered by build_id and optionally by log levels.
+        Returns structured log entries filtered by build_id and optionally by log levels and stages.
         """
         from atopile.logging import get_central_log_db
 
         try:
             db_path = get_central_log_db()
             if not db_path.exists():
-                return {"logs": [], "total": 0, "builds": []}
+                return {"logs": [], "total": 0, "builds": [], "stages": []}
 
             conn = sqlite3.connect(str(db_path), timeout=5.0)
             conn.row_factory = sqlite3.Row
@@ -126,6 +129,13 @@ def create_app(
                     placeholders = ",".join("?" * len(level_list))
                     conditions.append(f"l.level IN ({placeholders})")
                     params.extend(level_list)
+            # Support multiple stages (comma-separated)
+            if stages:
+                stage_list = [s.strip() for s in stages.split(",") if s.strip()]
+                if stage_list:
+                    placeholders = ",".join("?" * len(stage_list))
+                    conditions.append(f"l.stage IN ({placeholders})")
+                    params.extend(stage_list)
 
             where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
 
@@ -183,12 +193,23 @@ def create_app(
                 for row in builds_cursor.fetchall()
             ]
 
+            # Get list of available stages for this build
+            available_stages: list[str] = []
+            if build_id:
+                stages_query = """
+                    SELECT DISTINCT stage FROM logs
+                    WHERE build_id = ?
+                    ORDER BY stage
+                """
+                stages_cursor = conn.execute(stages_query, [build_id])
+                available_stages = [row["stage"] for row in stages_cursor.fetchall()]
+
             conn.close()
-            return {"logs": logs, "total": len(logs), "builds": builds}
+            return {"logs": logs, "total": len(logs), "builds": builds, "stages": available_stages}
 
         except sqlite3.Error as e:
             log.warning(f"Error reading logs from central database: {e}")
-            return {"logs": [], "total": 0, "builds": [], "error": str(e)}
+            return {"logs": [], "total": 0, "builds": [], "stages": [], "error": str(e)}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
