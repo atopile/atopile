@@ -217,8 +217,15 @@ describe('Sidebar', () => {
       expect(screen.getByTestId('projects-panel-projects')).toBeInTheDocument();
     });
 
-    it('renders ProjectsPanel for packages filter', () => {
-      expect(screen.getByTestId('projects-panel-packages')).toBeInTheDocument();
+    it('renders ProjectsPanel for packages filter when expanded', async () => {
+      // Packages section is collapsed by default, expand it first
+      const packagesTitle = screen.getByText('Packages');
+      const sectionHeader = packagesTitle.closest('.section-title-bar');
+      fireEvent.click(sectionHeader!);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('projects-panel-packages')).toBeInTheDocument();
+      });
     });
 
     // Note: problems, stdlib, variables, and bom sections are collapsed by default
@@ -293,14 +300,14 @@ describe('Sidebar', () => {
       expect(variablesSection).toHaveClass('collapsed');
       expect(bomSection).toHaveClass('collapsed');
 
-      // Projects and Packages should NOT be collapsed
+      // Only Projects should NOT be collapsed by default
       const projectsSection = container.querySelector('[data-section-id="projects"]');
       const packagesSection = container.querySelector('[data-section-id="packages"]');
       const problemsSection = container.querySelector('[data-section-id="problems"]');
 
       expect(projectsSection).not.toHaveClass('collapsed');
-      expect(packagesSection).not.toHaveClass('collapsed');
-      // Problems section is collapsed by default along with stdlib, variables, bom
+      // Packages, problems are collapsed by default along with stdlib, variables, bom
+      expect(packagesSection).toHaveClass('collapsed');
       expect(problemsSection).toHaveClass('collapsed');
     });
 
@@ -440,8 +447,15 @@ describe('Sidebar', () => {
         expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
       });
 
-      // Packages panel should be rendered
-      expect(screen.getByTestId('projects-panel-packages')).toBeInTheDocument();
+      // Packages section is collapsed by default, expand it first
+      const packagesTitle = screen.getByText('Packages');
+      const sectionHeader = packagesTitle.closest('.section-title-bar');
+      fireEvent.click(sectionHeader!);
+
+      // Packages panel should be rendered after expansion
+      await waitFor(() => {
+        expect(screen.getByTestId('projects-panel-packages')).toBeInTheDocument();
+      });
     });
 
     it('filters out malformed packages', async () => {
@@ -466,8 +480,15 @@ describe('Sidebar', () => {
         expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
       });
 
-      // Should render without error
-      expect(screen.getByTestId('projects-panel-packages')).toBeInTheDocument();
+      // Packages section is collapsed by default, expand it first
+      const packagesTitle = screen.getByText('Packages');
+      const sectionHeader = packagesTitle.closest('.section-title-bar');
+      fireEvent.click(sectionHeader!);
+
+      // Should render without error after expansion
+      await waitFor(() => {
+        expect(screen.getByTestId('projects-panel-packages')).toBeInTheDocument();
+      });
     });
   });
 

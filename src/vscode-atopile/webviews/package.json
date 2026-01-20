@@ -29,6 +29,7 @@
     "@types/vscode-webview": "^1.57.0",
     "@types/ws": "^8.5.10",
     "@vitejs/plugin-react": "^4.2.0",
+    "@vitest/coverage-v8": "^1.6.1",
     "jsdom": "^24.0.0",
     "tsx": "^4.7.0",
     "typescript": "^5.3.0",

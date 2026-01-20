@@ -19,12 +19,14 @@ router = APIRouter(tags=["websocket"])
 def _get_ws_manager():
     """Get the WebSocket manager from server module."""
     from ..server import ws_manager
+
     return ws_manager
 
 
 def _get_server_state():
     """Get the server state singleton."""
     from ..state import server_state
+
     return server_state
 
 
@@ -78,16 +80,15 @@ async def websocket_state(websocket: WebSocket):
 
                 # Also handle data-fetching actions that need server.py access
                 from ..server import handle_data_action
+
                 if not result.get("success"):
                     # Try the data action handler
                     result = await handle_data_action(action, payload)
 
                 # Send result back to client
-                await websocket.send_json({
-                    "type": "action_result",
-                    "action": action,
-                    "result": result
-                })
+                await websocket.send_json(
+                    {"type": "action_result", "action": action, "result": result}
+                )
 
     except WebSocketDisconnect:
         await server_state.disconnect_client(client_id)

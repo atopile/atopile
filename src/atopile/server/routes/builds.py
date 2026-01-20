@@ -32,6 +32,7 @@ router = APIRouter(tags=["builds"])
 def _get_state_builds():
     """Get builds from server state."""
     from ..server import _get_state_builds
+
     return _get_state_builds()
 
 
@@ -39,7 +40,7 @@ def _get_state_builds():
 async def start_build(
     request: BuildRequest,
     background_tasks: BackgroundTasks,
-    build_queue=Depends(get_build_queue)
+    build_queue=Depends(get_build_queue),
 ):
     """
     Start a new build.
@@ -57,17 +58,11 @@ async def start_build(
         )
 
         return BuildResponse(
-            success=True,
-            message=f"Build queued successfully",
-            build_id=build_id
+            success=True, message=f"Build queued successfully", build_id=build_id
         )
     except Exception as e:
         log.error(f"Failed to start build: {e}")
-        return BuildResponse(
-            success=False,
-            message=str(e),
-            build_id=None
-        )
+        return BuildResponse(success=False, message=str(e), build_id=None)
 
 
 @router.get("/api/build/{build_id}/status", response_model=BuildStatusResponse)
@@ -86,7 +81,7 @@ async def get_build_status(build_id: str, build_queue=Depends(get_build_queue)):
         project_root=build.project_root or "",
         targets=build.targets or [],
         return_code=build.return_code,
-        error=build.error
+        error=build.error,
     )
 
 
@@ -101,7 +96,10 @@ async def cancel_build(build_id: str):
     if success:
         return {"success": True, "message": "Build cancelled"}
     else:
-        raise HTTPException(status_code=404, detail=f"Build not found or cannot be cancelled: {build_id}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Build not found or cannot be cancelled: {build_id}",
+        )
 
 
 @router.get("/api/builds/active")
@@ -124,7 +122,7 @@ async def get_build_queue_endpoint(build_queue=Depends(get_build_queue)):
 
 @router.get("/api/builds/history")
 async def get_build_history(
-    limit: int = Query(50, description="Maximum number of builds to return")
+    limit: int = Query(50, description="Maximum number of builds to return"),
 ):
     """
     Get build history from the database.
@@ -162,5 +160,5 @@ async def get_build_summary():
             "warnings": warnings,
             "errors": errors,
         },
-        "builds": builds
+        "builds": builds,
     }

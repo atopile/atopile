@@ -34,18 +34,21 @@ router = APIRouter(tags=["projects"])
 def _get_discover_projects():
     """Get the project discovery function from server module."""
     from ..server import discover_projects_in_paths
+
     return discover_projects_in_paths
 
 
 def _get_discover_modules():
     """Get the module discovery function from server module."""
     from ..server import discover_modules_in_project
+
     return discover_modules_in_project
 
 
 def _get_workspace_paths():
     """Get workspace paths from server state."""
     from ..server import state
+
     return state.get("workspace_paths", [])
 
 
@@ -69,7 +72,7 @@ async def list_projects():
 
 @router.get("/api/modules", response_model=ModulesResponse)
 async def list_modules(
-    project_root: str = Query(..., description="Project root directory")
+    project_root: str = Query(..., description="Project root directory"),
 ):
     """
     List all module/interface/component definitions in a project.
@@ -80,7 +83,9 @@ async def list_modules(
 
     project_path = Path(project_root)
     if not project_path.exists():
-        raise HTTPException(status_code=404, detail=f"Project not found: {project_root}")
+        raise HTTPException(
+            status_code=404, detail=f"Project not found: {project_root}"
+        )
 
     modules = discover_modules(project_path)
     return ModulesResponse(modules=modules, total=len(modules))
@@ -88,7 +93,7 @@ async def list_modules(
 
 @router.get("/api/files", response_model=FilesResponse)
 async def list_files(
-    project_root: str = Query(..., description="Project root directory")
+    project_root: str = Query(..., description="Project root directory"),
 ):
     """
     List all .ato and .py files in a project.
@@ -99,7 +104,9 @@ async def list_files(
 
     project_path = Path(project_root)
     if not project_path.exists():
-        raise HTTPException(status_code=404, detail=f"Project not found: {project_root}")
+        raise HTTPException(
+            status_code=404, detail=f"Project not found: {project_root}"
+        )
 
     files = build_file_tree(project_path)
 
@@ -118,7 +125,7 @@ async def list_files(
 
 @router.get("/api/dependencies", response_model=DependenciesResponse)
 async def list_dependencies(
-    project_root: str = Query(..., description="Project root directory")
+    project_root: str = Query(..., description="Project root directory"),
 ):
     """
     List dependencies for a project from ato.yaml.
@@ -127,7 +134,9 @@ async def list_dependencies(
 
     project_path = Path(project_root)
     if not project_path.exists():
-        raise HTTPException(status_code=404, detail=f"Project not found: {project_root}")
+        raise HTTPException(
+            status_code=404, detail=f"Project not found: {project_root}"
+        )
 
     dependencies = get_project_dependencies(project_path)
     return DependenciesResponse(dependencies=dependencies, total=len(dependencies))

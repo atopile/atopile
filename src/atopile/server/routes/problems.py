@@ -20,6 +20,7 @@ router = APIRouter(tags=["problems"])
 def _get_log_db_path():
     """Get the log database path from server state."""
     from ..server import state
+
     logs_base = state.get("logs_base")
     if logs_base:
         return logs_base / "central.db"
@@ -107,9 +108,10 @@ async def get_problems(
 
             if row["ato_traceback"]:
                 import re
+
                 match = re.search(
                     r'File "([^"]+)", line (\d+)(?:, column (\d+))?',
-                    row["ato_traceback"]
+                    row["ato_traceback"],
                 )
                 if match:
                     file_path = match.group(1)
@@ -123,21 +125,25 @@ async def get_problems(
             project_path = row["project_path"] or ""
             project_name = project_path.split("/")[-1] if project_path else None
 
-            problems.append(Problem(
-                id=problem_id,
-                level=problem_level,
-                message=row["message"],
-                file=file_path,
-                line=line,
-                column=column,
-                stage=row["stage"],
-                logger="atopile",
-                build_name=f"{project_name}:{row['target']}" if project_name else row["target"],
-                project_name=project_name,
-                timestamp=row["timestamp"],
-                ato_traceback=row["ato_traceback"],
-                exc_info=row["python_traceback"],
-            ))
+            problems.append(
+                Problem(
+                    id=problem_id,
+                    level=problem_level,
+                    message=row["message"],
+                    file=file_path,
+                    line=line,
+                    column=column,
+                    stage=row["stage"],
+                    logger="atopile",
+                    build_name=f"{project_name}:{row['target']}"
+                    if project_name
+                    else row["target"],
+                    project_name=project_name,
+                    timestamp=row["timestamp"],
+                    ato_traceback=row["ato_traceback"],
+                    exc_info=row["python_traceback"],
+                )
+            )
 
         # Count by level
         error_count = sum(1 for p in problems if p.level == "error")
@@ -147,7 +153,7 @@ async def get_problems(
             problems=problems,
             total=len(problems),
             error_count=error_count,
-            warning_count=warning_count
+            warning_count=warning_count,
         )
 
     except Exception as e:

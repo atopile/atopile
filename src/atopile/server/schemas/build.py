@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field
 
 
 BuildStatus = Literal["queued", "building", "success", "warning", "failed", "cancelled"]
-StageStatus = Literal["pending", "running", "success", "warning", "failed", "error", "skipped"]
+StageStatus = Literal[
+    "pending", "running", "success", "warning", "failed", "error", "skipped"
+]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "ALERT"]
 
 

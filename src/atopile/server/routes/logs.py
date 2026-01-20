@@ -23,6 +23,7 @@ router = APIRouter(tags=["logs"])
 def _get_log_db_path():
     """Get the log database path from server state."""
     from ..server import state
+
     logs_base = state.get("logs_base")
     if logs_base:
         return logs_base / "central.db"
@@ -32,17 +33,24 @@ def _get_log_db_path():
 def _get_logs_base():
     """Get the logs base directory from server state."""
     from ..server import state
+
     return state.get("logs_base")
 
 
 @router.get("/api/logs/query")
 async def query_logs(
-    build_name: Optional[str] = Query(None, description="Filter by build name (format: project:target)"),
+    build_name: Optional[str] = Query(
+        None, description="Filter by build name (format: project:target)"
+    ),
     project_name: Optional[str] = Query(None, description="Filter by project name"),
-    levels: Optional[str] = Query(None, description="Comma-separated list of log levels"),
+    levels: Optional[str] = Query(
+        None, description="Comma-separated list of log levels"
+    ),
     stage: Optional[str] = Query(None, description="Filter by stage"),
     search: Optional[str] = Query(None, description="Search in message"),
-    after_id: Optional[int] = Query(None, description="Fetch logs after this ID (for incremental updates)"),
+    after_id: Optional[int] = Query(
+        None, description="Fetch logs after this ID (for incremental updates)"
+    ),
     limit: int = Query(500, description="Maximum number of logs to return"),
 ):
     """
@@ -137,7 +145,13 @@ async def query_logs(
                 "timestamp": row["timestamp"],
                 "stage": row["stage"],
                 "level": row["level"],
-                "level_no": {"DEBUG": 10, "INFO": 20, "WARNING": 30, "ERROR": 40, "ALERT": 50}.get(row["level"], 20),
+                "level_no": {
+                    "DEBUG": 10,
+                    "INFO": 20,
+                    "WARNING": 30,
+                    "ERROR": 40,
+                    "ALERT": 50,
+                }.get(row["level"], 20),
                 "audience": row["audience"],
                 "message": row["message"],
                 "ato_traceback": row["ato_traceback"],
@@ -175,7 +189,7 @@ async def get_log_counts(
     if not db_path or not db_path.exists():
         return {
             "counts": {"DEBUG": 0, "INFO": 0, "WARNING": 0, "ERROR": 0, "ALERT": 0},
-            "total": 0
+            "total": 0,
         }
 
     try:
@@ -234,7 +248,7 @@ async def get_log_counts(
         return {
             "counts": {"DEBUG": 0, "INFO": 0, "WARNING": 0, "ERROR": 0, "ALERT": 0},
             "total": 0,
-            "error": str(e)
+            "error": str(e),
         }
 
 

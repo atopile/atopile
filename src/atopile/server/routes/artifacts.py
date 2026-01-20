@@ -25,6 +25,7 @@ router = APIRouter(tags=["artifacts"])
 def _get_workspace_paths():
     """Get workspace paths from server state."""
     from ..server import state
+
     return state.get("workspace_paths", [])
 
 
@@ -40,11 +41,15 @@ async def get_bom(
 
     project_path = Path(project_root)
     if not project_path.exists():
-        raise HTTPException(status_code=404, detail=f"Project not found: {project_root}")
+        raise HTTPException(
+            status_code=404, detail=f"Project not found: {project_root}"
+        )
 
     bom = get_bom_data(project_path, target)
     if not bom:
-        raise HTTPException(status_code=404, detail="BOM not found. Run 'ato build' first.")
+        raise HTTPException(
+            status_code=404, detail="BOM not found. Run 'ato build' first."
+        )
 
     return bom
 
@@ -60,7 +65,9 @@ async def get_bom_targets(
 
     project_path = Path(project_root)
     if not project_path.exists():
-        raise HTTPException(status_code=404, detail=f"Project not found: {project_root}")
+        raise HTTPException(
+            status_code=404, detail=f"Project not found: {project_root}"
+        )
 
     targets = get_bom_targets(project_path)
     return {"targets": targets}
@@ -78,11 +85,15 @@ async def get_variables(
 
     project_path = Path(project_root)
     if not project_path.exists():
-        raise HTTPException(status_code=404, detail=f"Project not found: {project_root}")
+        raise HTTPException(
+            status_code=404, detail=f"Project not found: {project_root}"
+        )
 
     variables = get_variables_data(project_path, target)
     if not variables:
-        raise HTTPException(status_code=404, detail="Variables not found. Run 'ato build' first.")
+        raise HTTPException(
+            status_code=404, detail="Variables not found. Run 'ato build' first."
+        )
 
     return variables
 
@@ -98,7 +109,9 @@ async def get_variables_targets(
 
     project_path = Path(project_root)
     if not project_path.exists():
-        raise HTTPException(status_code=404, detail=f"Project not found: {project_root}")
+        raise HTTPException(
+            status_code=404, detail=f"Project not found: {project_root}"
+        )
 
     targets = get_variables_targets(project_path)
     return {"targets": targets}
@@ -106,7 +119,9 @@ async def get_variables_targets(
 
 @router.get("/api/resolve-location")
 async def resolve_location(
-    address: str = Query(..., description="Atopile address (e.g., 'App.power_supply::r_top')"),
+    address: str = Query(
+        ..., description="Atopile address (e.g., 'App.power_supply::r_top')"
+    ),
     project_root: Optional[str] = Query(None, description="Project root for context"),
 ):
     """
@@ -117,14 +132,23 @@ async def resolve_location(
     from ..server import resolve_atopile_address
 
     workspace_paths = _get_workspace_paths()
-    project_path = Path(project_root) if project_root else (workspace_paths[0] if workspace_paths else None)
+    project_path = (
+        Path(project_root)
+        if project_root
+        else (workspace_paths[0] if workspace_paths else None)
+    )
 
     if not project_path:
-        raise HTTPException(status_code=400, detail="No project root provided and no workspace paths configured")
+        raise HTTPException(
+            status_code=400,
+            detail="No project root provided and no workspace paths configured",
+        )
 
     result = resolve_atopile_address(address, project_path)
     if not result:
-        raise HTTPException(status_code=404, detail=f"Could not resolve address: {address}")
+        raise HTTPException(
+            status_code=404, detail=f"Could not resolve address: {address}"
+        )
 
     return result
 

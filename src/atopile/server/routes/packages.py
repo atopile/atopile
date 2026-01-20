@@ -36,12 +36,15 @@ router = APIRouter(tags=["packages"])
 def _get_workspace_paths():
     """Get workspace paths from server state."""
     from ..server import state
+
     return state.get("workspace_paths", [])
 
 
 @router.get("/api/packages", response_model=PackagesResponse)
 async def list_packages(
-    paths: Optional[str] = Query(None, description="Comma-separated list of paths to scan")
+    paths: Optional[str] = Query(
+        None, description="Comma-separated list of paths to scan"
+    ),
 ):
     """
     List installed packages across workspace projects.
@@ -61,7 +64,9 @@ async def list_packages(
 
 @router.get("/api/packages/summary", response_model=PackagesSummaryResponse)
 async def get_packages_summary(
-    paths: Optional[str] = Query(None, description="Comma-separated list of paths to scan")
+    paths: Optional[str] = Query(
+        None, description="Comma-separated list of paths to scan"
+    ),
 ):
     """
     Get packages with registry metadata merged.
@@ -152,8 +157,7 @@ async def get_packages_summary(
 
     # Sort: installed first, then alphabetically
     packages = sorted(
-        packages_map.values(),
-        key=lambda p: (not p.installed, p.identifier.lower())
+        packages_map.values(), key=lambda p: (not p.installed, p.identifier.lower())
     )
 
     installed_count = sum(1 for p in packages if p.installed)
@@ -163,16 +167,17 @@ async def get_packages_summary(
         total=len(packages),
         installed_count=installed_count,
         registry_status=RegistryStatus(
-            available=registry_error is None,
-            error=registry_error
-        )
+            available=registry_error is None, error=registry_error
+        ),
     )
 
 
 @router.get("/api/packages/{package_id:path}/details", response_model=PackageDetails)
 async def get_package_details(
     package_id: str,
-    paths: Optional[str] = Query(None, description="Comma-separated list of paths to check installation")
+    paths: Optional[str] = Query(
+        None, description="Comma-separated list of paths to check installation"
+    ),
 ):
     """
     Get detailed information about a package from the registry.
@@ -212,20 +217,14 @@ async def get_package_info(package_id: str):
 
 
 @router.get("/api/registry/search", response_model=RegistrySearchResponse)
-async def search_registry(
-    q: str = Query(..., description="Search query")
-):
+async def search_registry(q: str = Query(..., description="Search query")):
     """
     Search for packages in the registry.
     """
     from ..server import search_registry_packages
 
     packages = search_registry_packages(q)
-    return RegistrySearchResponse(
-        packages=packages,
-        total=len(packages),
-        query=q
-    )
+    return RegistrySearchResponse(packages=packages, total=len(packages), query=q)
 
 
 @router.post("/api/packages/install", response_model=PackageActionResponse)
@@ -239,20 +238,16 @@ async def install_package(request: PackageActionRequest):
         install_package_to_project(
             package_identifier=request.package_identifier,
             project_root=Path(request.project_root),
-            version=request.version
+            version=request.version,
         )
         return PackageActionResponse(
             success=True,
             message=f"Installed {request.package_identifier}",
-            action="install"
+            action="install",
         )
     except Exception as e:
         log.error(f"Failed to install package: {e}")
-        return PackageActionResponse(
-            success=False,
-            message=str(e),
-            action="install"
-        )
+        return PackageActionResponse(success=False, message=str(e), action="install")
 
 
 @router.post("/api/packages/remove", response_model=PackageActionResponse)
@@ -265,17 +260,13 @@ async def remove_package(request: PackageActionRequest):
     try:
         remove_package_from_project(
             package_identifier=request.package_identifier,
-            project_root=Path(request.project_root)
+            project_root=Path(request.project_root),
         )
         return PackageActionResponse(
             success=True,
             message=f"Removed {request.package_identifier}",
-            action="remove"
+            action="remove",
         )
     except Exception as e:
         log.error(f"Failed to remove package: {e}")
-        return PackageActionResponse(
-            success=False,
-            message=str(e),
-            action="remove"
-        )
+        return PackageActionResponse(success=False, message=str(e), action="remove")

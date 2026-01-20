@@ -61,6 +61,7 @@ class AppDependencies:
         """Get the build queue (lazy-loaded from server.py)."""
         if self._build_queue is None:
             from .server import build_queue
+
             self._build_queue = build_queue
         return self._build_queue
 
@@ -69,6 +70,7 @@ class AppDependencies:
         """Get the server state singleton."""
         if self._server_state is None:
             from .state import server_state
+
             self._server_state = server_state
         return self._server_state
 
@@ -80,6 +82,7 @@ class AppDependencies:
             return self.config.logs_base
 
         from .server import state
+
         return state.get("logs_base")
 
     @property
@@ -89,6 +92,7 @@ class AppDependencies:
             return self.config.workspace_paths
 
         from .server import state
+
         return state.get("workspace_paths", [])
 
 
