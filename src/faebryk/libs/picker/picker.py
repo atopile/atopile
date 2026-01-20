@@ -461,7 +461,7 @@ def pick_topologically(
             tg = relevant[0].tg
             logger.info(f"Simplifying with {len(relevant)} relevant parameters")
             with timings.measure("simplify"):
-                solver.simplify(g, tg, terminal=True, relevant=relevant)
+                solver.simplify(g, tg, terminal=False, relevant=relevant)
             logger.info(f"Solved in {timings.get_formatted('simplify')}")
             with timings.measure("get candidates"):
                 candidates = picker_lib.get_candidates(tree, solver)
@@ -497,7 +497,7 @@ def pick_topologically(
                     break
                 now = time.perf_counter()
                 with timings.measure("simplify"):
-                    solver.simplify(g, tg, terminal=True, relevant=relevant)
+                    solver.simplify(g, tg, terminal=False, relevant=relevant)
                 logger.info(f"Solved in {(time.perf_counter() - now) * 1000:.3f}ms")
                 with timings.measure("get candidates"):
                     candidates = picker_lib.get_candidates(tree, solver)

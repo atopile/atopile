@@ -415,7 +415,6 @@ class MutationStage:
         tg: fbrk.TypeGraph,
         g: graph.GraphView,
         print_context: F.Parameters.ReprContext,
-        algorithm: SolverAlgorithm | str = "identity",
         iteration: int = 0,
     ) -> "MutationStage":
         return MutationStage(
@@ -423,7 +422,7 @@ class MutationStage:
             tg_out=tg,
             G_in=g,
             G_out=g,
-            algorithm=algorithm,
+            algorithm="identity",
             iteration=iteration,
             print_ctx=print_context,
             transformations=Transformations.identity(
@@ -798,17 +797,9 @@ class MutationMap:
         for m in self.non_identity_stages[first_stage:]:
             maps_to = m.map_forward(chain_end)
             if maps_to is None:
-                # is_start = param is chain_end
-                # assert not is_root or is_start, (
-                #    "should never remove root parameters"
-                #    f" chain_end {param} -> {chain_end} interrupted at"
-                #    f" {m.algorithm}:{m.iteration}"
-                # )
-                # if is_root and is_start:
-                #    raise KeyErrorNotFound(
-                #        f"Looking for root parameter not in graph: {param}"
-                #    )
-                return MutationMap.LookupResult(removed=chain_end is not param)
+                is_removed = chain_end in m.transformations.removed
+                is_chain_broken = chain_end is not param
+                return MutationMap.LookupResult(removed=is_removed or is_chain_broken)
             chain_end = maps_to
         return MutationMap.LookupResult(maps_to=chain_end)
 
@@ -947,111 +938,206 @@ class MutationMap:
 
         return g_out, tg_out
 
+    @classmethod
+    def _identity(
+        cls,
+        tg: fbrk.TypeGraph,
+        g: graph.GraphView,
+        iteration: int = 0,
+        print_context: F.Parameters.ReprContext | None = None,
+    ) -> "MutationMap":
+        return cls(
+            MutationStage.identity(
+                tg, g, print_context or F.Parameters.ReprContext(), iteration
+            )
+        )
+
+    @classmethod
+    def _with_relevance_set(
+        cls,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+        relevant: list[F.Parameters.can_be_operand],
+        iteration: int = 0,
+        print_context: F.Parameters.ReprContext | None = None,
+        initial_state: "MutationMap | None" = None,
+    ) -> "MutationMap":
+        if invalid_ops := [
+            op
+            for op in relevant
+            if (
+                (po := op.as_parameter_operatable.force_get()).as_parameter.try_get()
+                is None
+                and po.try_get_sibling_trait(F.Expressions.is_predicate) is None
+            )
+        ]:
+            raise ValueError(f"Invalid relevant operable(s): {invalid_ops}")
+
+        g_out, tg_out = MutationMap._bootstrap_copy(g, tg)
+
+        print_context = (
+            print_context or initial_state.print_ctx
+            if initial_state is not None
+            else F.Parameters.ReprContext()
+        )
+
+        relevant_root_predicates = MutatorUtils.get_relevant_predicates(*relevant)
+
+        if S_LOG:
+            logger.debug(
+                "Relevant root predicates: "
+                + indented_container(
+                    [
+                        p.as_expression.get().compact_repr(
+                            context=print_context,
+                            no_lit_suffix=True,
+                            use_name=True,
+                        )
+                        for p in relevant_root_predicates
+                    ]
+                )
+            )
+
+        if initial_state is not None:
+            relevant_ops = OrderedSet(
+                op
+                for pred in relevant_root_predicates
+                for op in pred.as_expression.get().get_operand_operatables()
+            )
+            prev_ops = initial_state.input_operables
+            ops_match = relevant_ops == prev_ops
+            none_removed = all(
+                initial_state.map_forward(op).maps_to is not None
+                for op in relevant_ops & prev_ops
+            )
+
+            if ops_match and none_removed:
+                # exact same relevance set -> reuse initial state directly
+                g_out.destroy()
+                return initial_state
+
+            for op in relevant_ops & prev_ops:
+                mapped = initial_state.map_forward(op)
+                if mapped.maps_to is not None:
+                    mapped.maps_to.copy_into(g_out)
+
+            if new_ops := [op.as_operand.get() for op in relevant_ops - prev_ops]:
+                for operand in new_ops:
+                    operand.copy_into(g_out)
+
+                for pred in MutatorUtils.get_relevant_predicates(*new_ops):
+                    pred.copy_into(g_out)
+        else:
+            for pred in relevant_root_predicates:
+                # this enforces invariants provided we later run canonicalization +
+                # an algo with force_copy=True
+                pred.copy_into(g_out)
+
+        for op in relevant:
+            if not op.is_in_graph(g_out):
+                op.copy_into(g_out)
+
+        all_ops_out = F.Parameters.is_parameter_operatable.bind_typegraph(
+            tg_out
+        ).get_instances(g=g_out)
+
+        new_mapping = {
+            F.Parameters.is_parameter_operatable.bind_instance(
+                g.bind(node=op.instance.node())
+            ): op
+            for op in all_ops_out
+        }
+
+        if initial_state is not None:
+            full_mapping = (
+                initial_state.compressed_mapping_forwards_complete
+            ) | new_mapping
+            algo_name = "bootstrap_resume"
+        else:
+            full_mapping = new_mapping
+            algo_name = "bootstrap"
+
+        # Copy over source names
+        for p_old, p_new in new_mapping.items():
+            if (p_new_p := p_new.as_parameter.try_get()) is not None:
+                owner = fbrk.EdgeTrait.get_owner_node_of(
+                    bound_node=fabll.Traits(p_old).node.instance
+                )
+                if owner is not None:
+                    print_context.override_name(
+                        p_new_p,
+                        fabll.Node.bind_instance(instance=owner).get_full_name(
+                            include_uuid=False
+                        ),
+                    )
+
+        nodes_uuids = {p.instance.node().get_uuid() for p in relevant}
+        for p_out in fabll.Traits.get_implementors(
+            F.Parameters.can_be_operand.bind_typegraph(tg_out)
+        ):
+            if p_out.instance.node().get_uuid() not in nodes_uuids:
+                continue
+            fabll.Traits.create_and_add_instance_to(p_out, solver_relevant)
+
+        if S_LOG:
+            expr_count = len(
+                fabll.Traits.get_implementors(
+                    F.Expressions.is_expression.bind_typegraph(tg_out)
+                )
+            )
+            param_count = len(
+                fabll.Traits.get_implementors(
+                    F.Parameters.is_parameter.bind_typegraph(tg_out)
+                )
+            )
+            lit_count = len(
+                fabll.Traits.get_implementors(
+                    F.Literals.is_literal.bind_typegraph(tg_out)
+                )
+            )
+            logger.debug(
+                f"|lits|={lit_count}"
+                f", |exprs|={expr_count}"
+                f", |params|={param_count} {g_out}"
+            )
+
+        return MutationMap(
+            MutationStage(
+                tg_in=tg,
+                tg_out=tg_out,
+                algorithm=algo_name,
+                iteration=iteration,
+                print_ctx=print_context,
+                transformations=Transformations(
+                    print_ctx=print_context,
+                    mutated=full_mapping,
+                ),
+                G_in=g,
+                G_out=g_out,
+            )
+        )
+
     @staticmethod
     def bootstrap(
         tg: fbrk.TypeGraph,
         g: graph.GraphView,
-        algorithm: SolverAlgorithm | str = "identity",
         iteration: int = 0,
         print_context: F.Parameters.ReprContext | None = None,
         relevant: list[F.Parameters.can_be_operand] | None = None,
+        initial_state: "MutationMap | None" = None,
     ) -> "MutationMap":
-        if relevant is not None:
-            g_out, tg_out = MutationMap._bootstrap_copy(g, tg)
-            relevant_root_predicates = MutatorUtils.get_relevant_predicates(
-                *relevant,
+        mut_map = (
+            MutationMap._identity(tg, g, iteration, print_context)
+            if relevant is None
+            else MutationMap._with_relevance_set(
+                g,
+                tg,
+                relevant,
+                iteration,
+                print_context,
+                initial_state,
             )
-            for root_expr in relevant_root_predicates:
-                root_expr.copy_into(g_out)
-
-            nodes_uuids = {p.instance.node().get_uuid() for p in relevant}
-            for p_out in fabll.Traits.get_implementors(
-                F.Parameters.can_be_operand.bind_typegraph(tg_out)
-            ):
-                if p_out.instance.node().get_uuid() not in nodes_uuids:
-                    continue
-                fabll.Traits.create_and_add_instance_to(p_out, solver_relevant)
-
-            print_context = print_context or F.Parameters.ReprContext()
-            all_ops_out = F.Parameters.is_parameter_operatable.bind_typegraph(
-                tg_out
-            ).get_instances(g=g_out)
-
-            mapping = {
-                F.Parameters.is_parameter_operatable.bind_instance(
-                    g.bind(node=op.instance.node())
-                ): op
-                for op in all_ops_out
-            }
-            # copy over source name
-            for p_old, p_new in mapping.items():
-                if (p_new_p := p_new.as_parameter.try_get()) is None:
-                    continue
-
-                print_context.override_name(
-                    p_new_p,
-                    fabll.Traits(p_old).get_obj_raw().get_full_name(include_uuid=False),
-                )
-
-            if S_LOG:
-                logger.debug(
-                    "Relevant root predicates: "
-                    + indented_container(
-                        [
-                            p.as_expression.get().compact_repr(
-                                context=print_context,
-                                no_lit_suffix=True,
-                                use_name=True,
-                            )
-                            for p in relevant_root_predicates
-                        ]
-                    )
-                )
-                expr_count = len(
-                    fabll.Traits.get_implementors(
-                        F.Expressions.is_expression.bind_typegraph(tg_out)
-                    )
-                )
-                param_count = len(
-                    fabll.Traits.get_implementors(
-                        F.Parameters.is_parameter.bind_typegraph(tg_out)
-                    )
-                )
-                lit_count = len(
-                    fabll.Traits.get_implementors(
-                        F.Literals.is_literal.bind_typegraph(tg_out)
-                    )
-                )
-                logger.debug(
-                    f"|lits|={lit_count}"
-                    f", |exprs|={expr_count}"
-                    f", |params|={param_count} {g_out}"
-                )
-            mut_map = MutationMap(
-                MutationStage(
-                    tg_in=tg,
-                    tg_out=tg_out,
-                    algorithm=algorithm,
-                    iteration=iteration,
-                    print_ctx=print_context,
-                    transformations=Transformations(
-                        print_ctx=print_context,
-                        mutated=mapping,
-                    ),
-                    G_in=g,
-                    G_out=g_out,
-                )
-            )
-        else:
-            mut_map = MutationMap(
-                MutationStage.identity(
-                    tg,
-                    g,
-                    algorithm=algorithm,
-                    iteration=iteration,
-                    print_context=print_context or F.Parameters.ReprContext(),
-                )
-            )
+        )
 
         # canonicalize
         from faebryk.core.solver.symbolic.canonical import (
@@ -1226,6 +1312,39 @@ class MutationMap:
             )
             g_to_destroy.destroy()
         self._graphs_destroyed = True
+
+    def compressed(self) -> "MutationMap":
+        """
+        Returns a copy of the mutation map compressed to only input and output stages.
+        """
+        if len(self.mutation_stages) == 1:
+            return MutationMap(self.mutation_stages[0])
+
+        forwards_mapping = self.compressed_mapping_forwards_complete
+        removed = self.input_operables - set(forwards_mapping.keys())
+        created = {
+            out_op: in_ops
+            for out_op, in_ops in self.compressed_mapping_backwards.items()
+            if not any(op for op in in_ops if op in self.input_operables)
+        }
+
+        return MutationMap(
+            MutationStage(
+                tg_in=self.tg_in,
+                tg_out=self.tg_out,
+                G_in=self.G_in,
+                G_out=self.G_out,
+                algorithm="compressed",
+                iteration=0,
+                print_ctx=self.print_ctx,
+                transformations=Transformations(
+                    print_ctx=self.print_ctx,
+                    mutated=forwards_mapping,
+                    removed=OrderedSet(removed),
+                    created=created,
+                ),
+            )
+        )
 
 
 @dataclass
@@ -2059,9 +2178,8 @@ class Mutator:
                 mutation_stage=MutationStage.identity(
                     self.tg_in,
                     self.mutation_map.G_out,
-                    algorithm=self.algo,
-                    iteration=self.iteration,
-                    print_context=self.print_ctx,
+                    self.print_ctx,
+                    self.iteration,
                 ),
                 dirty=False,
             )
@@ -2261,6 +2379,509 @@ def test_mutate_copy_terminated_predicate():
     assert fabll.Node.graphs_match(tg3.get_self_node().g(), g3)
     assert pred3.get_sibling_trait(F.Expressions.is_assertable)
     assert pred3.try_get_sibling_trait(is_terminated)
+
+
+def test_mutation_map_compressed_single_stage():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    mut_map = MutationMap.bootstrap(tg=tg, g=g)
+    compressed = mut_map.compressed()
+
+    assert len(compressed.mutation_stages) == 1
+    assert (
+        compressed.G_in.get_self_node().node().get_uuid()
+        == mut_map.G_in.get_self_node().node().get_uuid()
+    )
+    assert (
+        compressed.G_out.get_self_node().node().get_uuid()
+        == mut_map.G_out.get_self_node().node().get_uuid()
+    )
+
+
+def test_mutation_map_compressed_with_creations():
+    from faebryk.core.solver.algorithm import algorithm
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _AppCreations(fabll.Node):
+        param_a = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+        param_b = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+
+    app = _AppCreations.bind_typegraph(tg=tg).create_instance(g=g)
+    param_a_op = app.param_a.get().can_be_operand.get()
+    param_b_op = app.param_b.get().can_be_operand.get()
+    param_a_po = app.param_a.get().is_parameter_operatable.get()
+
+    @algorithm("create_exprs", force_copy=True)
+    def algo_create(mutator: Mutator):
+        mutator.create_check_and_insert_expression(
+            F.Expressions.Add,
+            param_a_op,
+            param_b_op,
+            from_ops=[param_a_po],
+        )
+        mutator.create_check_and_insert_expression(
+            F.Expressions.Multiply,
+            param_a_op,
+            param_b_op,
+            from_ops=[param_a_po],
+        )
+
+    mut_map = MutationMap.bootstrap(tg=tg, g=g)
+    input_count = len(mut_map.input_operables)
+
+    result = Mutator(mut_map, algo_create, iteration=0, terminal=False).run()
+    mut_map = mut_map.extend(result.mutation_stage)
+
+    assert len(mut_map.output_operables) > input_count
+
+    compressed = mut_map.compressed()
+
+    assert len(compressed.mutation_stages) == 1
+    assert len(compressed.output_operables) == len(mut_map.output_operables)
+
+    for inp in mut_map.input_operables:
+        orig = mut_map.map_forward(inp)
+        comp = compressed.map_forward(inp)
+        assert (orig.maps_to is None) == (comp.maps_to is None)
+        if orig.maps_to and comp.maps_to:
+            assert orig.maps_to.is_same(comp.maps_to)
+
+
+def test_mutation_map_compressed_with_mutations():
+    from faebryk.core.solver.algorithm import algorithm
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _AppMutations(fabll.Node):
+        param_a = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+        param_b = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+
+    app = _AppMutations.bind_typegraph(tg=tg).create_instance(g=g)
+    param_a_op = app.param_a.get().can_be_operand.get()
+    param_b_op = app.param_b.get().can_be_operand.get()
+
+    add_expr = (
+        F.Expressions.Add.bind_typegraph(tg)
+        .create_instance(g)
+        .setup(param_a_op, param_b_op)
+    )
+    add_expr_po = add_expr.is_parameter_operatable.get()
+
+    @algorithm("mutate_expr", force_copy=True)
+    def algo_mutate(mutator: Mutator):
+        mutator.mutate_expression(
+            add_expr.is_expression.get(),
+            operands=[param_a_op, param_a_op],
+        )
+
+    mut_map = MutationMap.bootstrap(tg=tg, g=g)
+
+    result = Mutator(mut_map, algo_mutate, iteration=0, terminal=False).run()
+    mut_map = mut_map.extend(result.mutation_stage)
+
+    orig_forward = mut_map.map_forward(add_expr_po)
+    assert orig_forward.maps_to is not None
+    assert not orig_forward.removed
+
+    compressed = mut_map.compressed()
+
+    comp_forward = compressed.map_forward(add_expr_po)
+    assert comp_forward.maps_to is not None
+    assert orig_forward.maps_to.is_same(comp_forward.maps_to)
+
+    orig_back = mut_map.map_backward(orig_forward.maps_to)
+    comp_back = compressed.map_backward(comp_forward.maps_to)
+    orig_uuids = {op.instance.node().get_uuid() for op in orig_back}
+    comp_uuids = {op.instance.node().get_uuid() for op in comp_back}
+    assert orig_uuids == comp_uuids
+
+
+def test_mutation_map_compressed_with_removals():
+    from faebryk.core.solver.algorithm import algorithm
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _AppRemovals(fabll.Node):
+        param = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+
+    app = _AppRemovals.bind_typegraph(tg=tg).create_instance(g=g)
+    param_op = app.param.get().can_be_operand.get()
+
+    add_expr = (
+        F.Expressions.Add.bind_typegraph(tg)
+        .create_instance(g)
+        .setup(param_op, param_op)
+    )
+    add_expr_po = add_expr.is_parameter_operatable.get()
+
+    mut_map = MutationMap.bootstrap(tg=tg, g=g)
+
+    # Find the Add expression in the bootstrapped graph
+    add_expr_mapped = mut_map.map_forward(add_expr_po).maps_to
+    assert add_expr_mapped is not None
+
+    @algorithm("remove_expr", force_copy=True)
+    def algo_remove(mutator: Mutator):
+        mutator.remove(add_expr_mapped, no_check_roots=True)
+
+    result = Mutator(mut_map, algo_remove, iteration=0, terminal=False).run()
+    mut_map = mut_map.extend(result.mutation_stage)
+
+    # After removal, using the ORIGINAL operable should show removed=True
+    # (because the chain was broken after the first stage)
+    orig_forward = mut_map.map_forward(add_expr_po)
+    assert orig_forward.removed
+
+    compressed = mut_map.compressed()
+
+    # The original operable should also be removed in compressed
+    comp_forward = compressed.map_forward(add_expr_po)
+    assert comp_forward.removed
+
+
+def test_mutation_map_compressed_combined():
+    """
+    Comprehensive test: creations, mutations, AND removals across multiple stages.
+    """
+    from faebryk.core.solver.algorithm import algorithm
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _AppCombined(fabll.Node):
+        param_a = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+        param_b = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+
+    app = _AppCombined.bind_typegraph(tg=tg).create_instance(g=g)
+    param_a_op = app.param_a.get().can_be_operand.get()
+    param_b_op = app.param_b.get().can_be_operand.get()
+    param_a_po = app.param_a.get().is_parameter_operatable.get()
+    param_b_po = app.param_b.get().is_parameter_operatable.get()
+
+    add_expr = (
+        F.Expressions.Add.bind_typegraph(tg)
+        .create_instance(g)
+        .setup(param_a_op, param_b_op)
+    )
+    add_expr_po = add_expr.is_parameter_operatable.get()
+
+    mut_map = MutationMap.bootstrap(tg=tg, g=g)
+
+    # Get mapped references from bootstrapped graph
+    add_expr_mapped = mut_map.map_forward(add_expr_po).maps_to
+    assert add_expr_mapped is not None
+    add_expr_mapped_expr = add_expr_mapped.as_expression.force_get()
+
+    mutated_add_po: F.Parameters.is_parameter_operatable | None = None
+
+    @algorithm("stage1_create_and_mutate", force_copy=True)
+    def algo_stage1(mutator: Mutator):
+        nonlocal mutated_add_po
+        mutator.create_check_and_insert_expression(
+            F.Expressions.Multiply,
+            param_a_op,
+            param_b_op,
+            from_ops=[param_a_po],
+        )
+        mutated = mutator.mutate_expression(
+            add_expr_mapped_expr,
+            operands=[param_a_op, param_a_op],
+        )
+        mutated_add_po = mutated.as_parameter_operatable.force_get()
+
+    @algorithm("stage2_remove_and_create", force_copy=True)
+    def algo_stage2(mutator: Mutator):
+        assert mutated_add_po is not None
+        mutator.remove(mutated_add_po, no_check_roots=True)
+
+    result1 = Mutator(mut_map, algo_stage1, iteration=0, terminal=False).run()
+    mut_map = mut_map.extend(result1.mutation_stage)
+
+    result2 = Mutator(mut_map, algo_stage2, iteration=0, terminal=False).run()
+    mut_map = mut_map.extend(result2.mutation_stage)
+
+    assert len(mut_map.mutation_stages) >= 3
+
+    compressed = mut_map.compressed()
+
+    assert len(compressed.mutation_stages) == 1
+
+    assert (
+        compressed.G_in.get_self_node().node().get_uuid()
+        == mut_map.G_in.get_self_node().node().get_uuid()
+    )
+    assert (
+        compressed.G_out.get_self_node().node().get_uuid()
+        == mut_map.G_out.get_self_node().node().get_uuid()
+    )
+
+    # Use ORIGINAL operables for map_forward (from first stage's input)
+    for param_po in [param_a_po, param_b_po]:
+        orig_result = mut_map.map_forward(param_po)
+        comp_result = compressed.map_forward(param_po)
+        assert orig_result.maps_to is not None
+        assert comp_result.maps_to is not None
+        assert orig_result.maps_to.is_same(comp_result.maps_to)
+
+    # The original Add was mutated then removed
+    orig_add_result = mut_map.map_forward(add_expr_po)
+    comp_add_result = compressed.map_forward(add_expr_po)
+    assert orig_add_result.removed == comp_add_result.removed
+
+    assert len(compressed.output_operables) == len(mut_map.output_operables)
+
+    for out_op in mut_map.output_operables:
+        orig_back = mut_map.map_backward(out_op)
+        comp_back = compressed.map_backward(out_op)
+        orig_back_uuids = {op.instance.node().get_uuid() for op in orig_back}
+        comp_back_uuids = {op.instance.node().get_uuid() for op in comp_back}
+        assert orig_back_uuids == comp_back_uuids
+
+
+def test_bootstrap_with_initial_state_no_new_operables():
+    """
+    Bootstrap with initial_state when no new operables exist.
+    Should reuse the initial_state directly (no new stages).
+    """
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _AppNoNew(fabll.Node):
+        param_a = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+        param_b = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+
+    app = _AppNoNew.bind_typegraph(tg=tg).create_instance(g=g)
+    param_a_op = app.param_a.get().can_be_operand.get()
+    param_b_op = app.param_b.get().can_be_operand.get()
+    param_a_po = app.param_a.get().is_parameter_operatable.get()
+    param_b_po = app.param_b.get().is_parameter_operatable.get()
+
+    initial = MutationMap.bootstrap(tg=tg, g=g, relevant=[param_a_op, param_b_op])
+    compressed_initial = initial.compressed()
+
+    resumed = MutationMap.bootstrap(
+        tg=tg, g=g, relevant=[param_a_op, param_b_op], initial_state=compressed_initial
+    )
+
+    # When no new operables exist, we should reuse initial_state directly
+    # Check that the mappings point to the same nodes
+    result_a_init = compressed_initial.map_forward(param_a_po)
+    result_a_resumed = resumed.map_forward(param_a_po)
+    assert result_a_init.maps_to is not None
+    assert result_a_resumed.maps_to is not None
+    assert result_a_init.maps_to.is_same(
+        result_a_resumed.maps_to, allow_different_graph=True
+    )
+
+    result_b_init = compressed_initial.map_forward(param_b_po)
+    result_b_resumed = resumed.map_forward(param_b_po)
+    assert result_b_init.maps_to is not None
+    assert result_b_resumed.maps_to is not None
+    assert result_b_init.maps_to.is_same(
+        result_b_resumed.maps_to, allow_different_graph=True
+    )
+
+
+def test_bootstrap_with_initial_state_new_operables():
+    """
+    Bootstrap with initial_state when new operables have been added.
+    Should include the new operables in the output.
+    """
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _AppNewOps(fabll.Node):
+        param_a = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+
+    app = _AppNewOps.bind_typegraph(tg=tg).create_instance(g=g)
+    param_a_op = app.param_a.get().can_be_operand.get()
+    param_a_po = app.param_a.get().is_parameter_operatable.get()
+
+    initial = MutationMap.bootstrap(tg=tg, g=g, relevant=[param_a_op])
+    compressed_initial = initial.compressed()
+
+    # Add a new parameter to the graph
+    class _ParamB(fabll.Node):
+        param_b = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+
+    new_node = _ParamB.bind_typegraph(tg=tg).create_instance(g=g)
+    param_b_op = new_node.param_b.get().can_be_operand.get()
+    param_b_po = new_node.param_b.get().is_parameter_operatable.get()
+
+    resumed = MutationMap.bootstrap(
+        tg=tg, g=g, relevant=[param_a_op, param_b_op], initial_state=compressed_initial
+    )
+
+    # Should have the new stage with the new mapping
+    assert resumed is not compressed_initial
+
+    # param_a should map forward from original
+    result_a = resumed.map_forward(param_a_po)
+    assert result_a.maps_to is not None
+
+    # param_b should also map forward (newly added)
+    result_b = resumed.map_forward(param_b_po)
+    assert result_b.maps_to is not None
+
+
+def test_bootstrap_with_initial_state_relevance_change():
+    """
+    Bootstrap with initial_state when a new parameter is added to the graph.
+    Initial solve only includes param_a, then param_b is created and added.
+    Resume should detect and include the new param_b.
+    """
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _AppRelevanceA(fabll.Node):
+        param_a = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+
+    app = _AppRelevanceA.bind_typegraph(tg=tg).create_instance(g=g)
+    param_a_op = app.param_a.get().can_be_operand.get()
+    param_a_po = app.param_a.get().is_parameter_operatable.get()
+
+    # Initial solve only includes param_a
+    initial = MutationMap.bootstrap(tg=tg, g=g, relevant=[param_a_op])
+    compressed_initial = initial.compressed()
+
+    # Now add param_b to the graph (after initial solve)
+    class _AppRelevanceB(fabll.Node):
+        param_b = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+
+    app_b = _AppRelevanceB.bind_typegraph(tg=tg).create_instance(g=g)
+    param_b_op = app_b.param_b.get().can_be_operand.get()
+    param_b_po = app_b.param_b.get().is_parameter_operatable.get()
+
+    # Verify param_b is NOT in the initial state's input operables
+    assert param_b_po not in compressed_initial.input_operables
+
+    # Resume with param_a AND param_b relevant
+    resumed = MutationMap.bootstrap(
+        tg=tg, g=g, relevant=[param_a_op, param_b_op], initial_state=compressed_initial
+    )
+
+    # Should create a new map since param_b needs to be added
+    assert resumed is not compressed_initial
+
+    # param_a should still map forward correctly
+    result_a = resumed.map_forward(param_a_po)
+    assert result_a.maps_to is not None
+
+    # param_b should now map forward (newly added)
+    result_b = resumed.map_forward(param_b_po)
+    assert result_b.maps_to is not None
+
+
+def test_bootstrap_with_initial_state_reduced_relevance():
+    """
+    Bootstrap with initial_state when relevance is reduced.
+    Initial solve includes param_a and param_b, resume only includes param_a.
+    The output should only contain param_a (filtered).
+    """
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _AppReduced(fabll.Node):
+        param_a = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+        param_b = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+
+    app = _AppReduced.bind_typegraph(tg=tg).create_instance(g=g)
+    param_a_op = app.param_a.get().can_be_operand.get()
+    param_b_op = app.param_b.get().can_be_operand.get()
+    param_a_po = app.param_a.get().is_parameter_operatable.get()
+    param_b_po = app.param_b.get().is_parameter_operatable.get()
+
+    # Initial solve includes both param_a and param_b
+    initial = MutationMap.bootstrap(tg=tg, g=g, relevant=[param_a_op, param_b_op])
+    compressed_initial = initial.compressed()
+
+    # Verify both are in initial state
+    assert param_a_po in compressed_initial.input_operables
+    assert param_b_po in compressed_initial.input_operables
+
+    # Resume with ONLY param_a relevant (reduced relevance)
+    resumed = MutationMap.bootstrap(
+        tg=tg, g=g, relevant=[param_a_op], initial_state=compressed_initial
+    )
+
+    # Should NOT reuse initial_state (relevance changed)
+    assert resumed is not compressed_initial
+
+    # param_a should map forward
+    result_a = resumed.map_forward(param_a_po)
+    assert result_a.maps_to is not None
+
+    # param_b should NOT map forward (filtered out of output)
+    result_b = resumed.map_forward(param_b_po)
+    assert result_b.maps_to is None
+
+
+def test_bootstrap_with_initial_state_reuses_solved_versions():
+    """
+    Test that resuming from initial_state reuses solved operables.
+    When an operable was solved/simplified in the initial state,
+    the resumed state should use that solved version, not copy fresh.
+    """
+    from faebryk.core.solver.algorithm import algorithm
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _AppSolved(fabll.Node):
+        param_a = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+
+    app = _AppSolved.bind_typegraph(tg=tg).create_instance(g=g)
+    param_a_op = app.param_a.get().can_be_operand.get()
+    param_a_po = app.param_a.get().is_parameter_operatable.get()
+
+    # Create initial bootstrap
+    initial = MutationMap.bootstrap(tg=tg, g=g, relevant=[param_a_op])
+
+    # Simulate solving by running a mutation that creates a simplified version
+    @algorithm("simulate_solve", force_copy=True)
+    def simulate_solve(mutator: Mutator):
+        # Just copy param_a - this simulates that it was "processed"
+        mutator.get_copy(param_a_op)
+
+    result = Mutator(initial, simulate_solve, iteration=0, terminal=False).run()
+    solved_state = initial.extend(result.mutation_stage)
+    compressed = solved_state.compressed()
+
+    # Get the solved version of param_a
+    solved_a = compressed.map_forward(param_a_po).maps_to
+    assert solved_a is not None
+
+    # Now add param_b and resume
+    class _ParamBReuse(fabll.Node):
+        param_b = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+
+    new_node = _ParamBReuse.bind_typegraph(tg=tg).create_instance(g=g)
+    param_b_op = new_node.param_b.get().can_be_operand.get()
+    param_b_po = new_node.param_b.get().is_parameter_operatable.get()
+
+    # Resume with both param_a and param_b
+    resumed = MutationMap.bootstrap(
+        tg=tg, g=g, relevant=[param_a_op, param_b_op], initial_state=compressed
+    )
+
+    # param_a in resumed should be the SOLVED version (same UUID as solved_a)
+    resumed_a = resumed.map_forward(param_a_po).maps_to
+    assert resumed_a is not None
+
+    # The solved version should be in the resumed graph
+    # (copied from initial_state.G_out). Verify by checking the UUID matches
+    solved_uuid = solved_a.instance.node().get_uuid()
+    resumed_uuid = resumed_a.instance.node().get_uuid()
+    assert solved_uuid == resumed_uuid
+
+    # param_b should also be in the resumed state
+    resumed_b = resumed.map_forward(param_b_po).maps_to
+    assert resumed_b is not None
 
 
 if __name__ == "__main__":

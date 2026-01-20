@@ -10,8 +10,8 @@ import pytest
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.mutator import MutationMap
+from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.symbolic.pure_literal import exec_pure_literal_expression
 from faebryk.core.solver.utils import (
     Contradiction,
@@ -1810,15 +1810,13 @@ def test_simplify_non_terminal_manual_test_1():
     B = E.add(A, A)
 
     solver = Solver()
-    solver.simplify(E.g, E.tg)
+    solver.simplify(E.g, E.tg, terminal=False)
     _ = E.add(B, A)
     E.is_subset(A, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
 
-    solver.simplify(E.g, E.tg)
+    solver.simplify(E.g, E.tg, terminal=False)
 
     solver.simplify(E.tg, E.g, terminal=True)
-
-    solver.simplify(E.g, E.tg)
 
 
 @pytest.mark.skip(reason="to_fix")  # FIXME
