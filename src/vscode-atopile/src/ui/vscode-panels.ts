@@ -171,9 +171,9 @@ async function handleAction(message: any): Promise<void> {
             appStateManager.toggleTargetExpanded(message.name);
             break;
 
-        // Build selection
+        // Build selection - always resubscribe to get latest build_id and refresh logs
         case 'selectBuild':
-            await appStateManager.selectBuild(message.buildName);
+            appStateManager.selectBuild(message.buildName);
             break;
 
         // Log viewer UI
@@ -182,15 +182,11 @@ async function handleAction(message: any): Promise<void> {
             break;
 
         case 'toggleStage':
-            await appStateManager.toggleStage(message.stage);
+            appStateManager.toggleStage(message.stage);
             break;
 
-        case 'selectAllStages':
-            await appStateManager.selectAllStages();
-            break;
-
-        case 'clearAllStages':
-            await appStateManager.clearAllStages();
+        case 'clearStageFilters':
+            appStateManager.clearStageFilters();
             break;
 
         case 'setLogSearchQuery':

@@ -88,6 +88,7 @@ dev = [
     "pre-commit>=2.20,<4.0",
     "fastapi>=0.110.0",
     "uvicorn>=0.29.0",
+    "websockets>=12.0",
     "viztracer>=1.0.0,<2.0.0",
     "pytest-timeout>=2.3.1",
     "mkdocstrings[python]>=0.27.0",

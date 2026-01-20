@@ -88,6 +88,12 @@
   flex-shrink: 0;
 }
 
+.build-id {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  opacity: 0.6;
+}
+
 .build-indicators {
   display: flex;
   align-items: center;

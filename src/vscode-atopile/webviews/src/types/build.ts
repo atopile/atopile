@@ -34,6 +34,7 @@ export interface Build {
   warnings: number;
   errors: number;
   stages?: BuildStage[];
+  timestamp?: string;  // ISO timestamp when the build completed
 }
 
 export interface BuildTarget {
@@ -61,6 +62,9 @@ export interface CurrentBuildInfo {
  * Extension owns this, webviews receive it read-only.
  */
 export interface AppState {
+  // Backend server status
+  isBackendRunning: boolean;
+
   // Connection
   isConnected: boolean;
 

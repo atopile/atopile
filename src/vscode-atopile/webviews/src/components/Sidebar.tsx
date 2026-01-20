@@ -16,10 +16,12 @@ const action = (name: string, data?: object) => {
   vscode.postMessage({ type: 'action', action: name, ...data });
 };
 
-// Static action buttons
+// Static action buttons (server button added dynamically based on state)
 const ACTION_BUTTONS = [
-  { id: 'atopile.build', label: 'Build All', icon: 'play', tooltip: 'Build all selected targets' },
+  { id: 'atopile.build', label: 'Build Selected', icon: 'play', tooltip: 'Build selected targets' },
 ];
+
+const SERVER_BUTTON = { id: 'atopile.serve', label: 'Start Server', icon: 'server', tooltip: 'Start the ato server' };
 
 export function Sidebar() {
   // Single piece of state: AppState from extension
@@ -52,6 +54,14 @@ export function Sidebar() {
           <span className="sidebar-title">atopile</span>
           {state.version && <span className="sidebar-version">v{state.version}</span>}
         </div>
+        <button
+          className={`server-status ${state.isBackendRunning ? 'connected' : 'disconnected'}`}
+          title={state.isBackendRunning ? 'Server running' : 'Click to start server'}
+          onClick={() => action('executeCommand', { command: 'atopile.serve' })}
+        >
+          <span className="status-dot" />
+          <span className="status-text">{state.isBackendRunning ? 'Server' : 'Start'}</span>
+        </button>
       </div>
 
       {/* Actions Card */}
@@ -60,6 +70,16 @@ export function Sidebar() {
           <span className="card-title">Actions</span>
         </div>
         <div className="card-content actions-grid">
+          {/* Show Start Server button when server is not running */}
+          {!state.isBackendRunning && (
+            <ActionButton
+              key={SERVER_BUTTON.id}
+              icon={SERVER_BUTTON.icon}
+              label={SERVER_BUTTON.label}
+              tooltip={SERVER_BUTTON.tooltip}
+              onClick={() => action('executeCommand', { command: SERVER_BUTTON.id })}
+            />
+          )}
           {ACTION_BUTTONS.map((btn) => (
             <ActionButton
               key={btn.id}
@@ -151,7 +171,6 @@ export function Sidebar() {
                             action('selectBuild', { buildName: build.display_name });
                           }
                         }}
-                        onBuild={() => action('buildTarget', { name: target.name })}
                         onOpenPcb={() => action('openPcbForTarget', { name: target.name })}
                       />
                     );

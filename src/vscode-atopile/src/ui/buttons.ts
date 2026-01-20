@@ -9,7 +9,7 @@ import * as vscode from 'vscode';
 import { window } from 'vscode';
 import { Build, getBuilds, loadBuilds } from '../common/manifest';
 import { getAtoBin, onDidChangeAtoBinInfo, runAtoCommandInTerminal } from '../common/findbin';
-import { traceError } from '../common/log/logging';
+import { traceError, traceInfo } from '../common/log/logging';
 import { openPcb } from '../common/kicad';
 import { glob } from 'glob';
 import * as path from 'path';
@@ -27,6 +27,7 @@ import {
     setProjectRoot,
 } from '../common/target';
 import { disambiguatePaths } from '../common/utilities';
+import { backendServer } from '../common/backendServer';
 
 /**
  * Button metadata for the sidebar UI.
@@ -73,8 +74,10 @@ const cmdLaunchKicad = registerCommand('atopile.launch_kicad', atoLaunchKicad);
 const cmdKicanvasPreview = registerCommand('atopile.kicanvas_preview', atoKicanvasPreview);
 const cmdModelViewerPreview = registerCommand('atopile.model_viewer_preview', atoModelViewerPreview);
 const cmdExport = registerCommand('atopile.export', atoExport);
+const cmdServe = registerCommand('atopile.serve', atoServe);
 
 // Register buttons for sidebar display
+registerButton('server-process', cmdServe, 'Start/show ato server', 'ato serve');
 registerButton('terminal', cmdShell, 'Open ato shell', 'Open ato shell');
 registerButton('new-file', cmdCreateProject, 'Create new project', 'Create new project');
 registerButton('file-binary', cmdAddPart, 'Add part to project', 'Add part to project');
@@ -225,15 +228,24 @@ async function atoBuild(buildsArg?: Build[]) {
 
     vscode.commands.executeCommand('atopile.logViewer.focus');
 
-    const buildArgs = ['build'];
-    for (const build of builds) {
-        buildArgs.push('--build', build.name);
+    const targetNames = builds.map(b => b.name);
+
+    // Use the backend server API
+    if (backendServer.isConnected) {
+        try {
+            traceInfo(`Building via API: ${targetNames.join(', ')} in ${root}`);
+            await backendServer.build(root, targetNames);
+            captureEvent('vsce:build_start', { targets: targetNames });
+            return;
+        } catch (error) {
+            vscode.window.showErrorMessage(`Build failed: ${error}`);
+            traceError(`Build failed: ${error}`);
+            return;
+        }
     }
 
-    const targetNames = builds.map(b => b.name).join(', ');
-    await _runInTerminal(`build ${targetNames}`, root, buildArgs, false);
-
-    captureEvent('vsce:build_start', { targets: builds.map(b => b.name) });
+    // Server not connected - show error
+    vscode.window.showErrorMessage('Backend server not connected. Run "ato serve" to start it.');
 }
 
 async function atoExport() {
@@ -464,4 +476,8 @@ async function atoKicanvasPreview() {
 
 async function atoModelViewerPreview() {
     await modelviewer.openModelViewerPreview();
+}
+
+async function atoServe() {
+    await backendServer.startOrShowTerminal();
 }

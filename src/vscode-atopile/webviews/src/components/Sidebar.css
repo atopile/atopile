@@ -39,6 +39,50 @@
   color: var(--text-muted);
 }
 
+/* Server Status Indicator / Button */
+.server-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.server-status.connected {
+  background: rgba(46, 160, 67, 0.15);
+  color: var(--color-success, #2ea043);
+}
+
+.server-status.connected:hover {
+  background: rgba(46, 160, 67, 0.25);
+}
+
+.server-status.disconnected {
+  background: rgba(248, 81, 73, 0.15);
+  color: var(--color-error, #f85149);
+}
+
+.server-status.disconnected:hover {
+  background: rgba(248, 81, 73, 0.3);
+  color: #ff6b6b;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-text {
+  font-weight: 500;
+}
+
 /* Card Component */
 .card {
   background: var(--bg-card);

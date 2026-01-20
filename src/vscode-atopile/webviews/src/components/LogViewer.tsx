@@ -44,17 +44,15 @@ function FilterButton({
   isEnabled: boolean;
   onToggle: () => void;
 }) {
-  const isDisabled = count === 0;
   const levelClass = level.toLowerCase();
 
   return (
     <button
-      className={`filter-btn ${levelClass} ${isEnabled && !isDisabled ? 'active' : ''}`}
-      onClick={() => !isDisabled && onToggle()}
-      disabled={isDisabled}
+      className={`filter-btn ${levelClass} ${isEnabled ? 'active' : ''}`}
+      onClick={onToggle}
     >
       {level}
-      <span className="count">{count}</span>
+      {count > 0 && <span className="count">{count}</span>}
     </button>
   );
 }
@@ -82,23 +80,13 @@ function StageFilterDropdown({
     }
   }, [isOpen]);
 
-  // Determine if a stage is checked
-  // Empty enabledStages = all stages are shown
-  const isAllSelected = enabledStages.length === 0;
-  const isStageEnabled = (stage: string) => {
-    if (enabledStages.length === 0) return true;  // All selected
-    if (enabledStages.includes('__NONE__')) return false;  // None selected
-    return enabledStages.includes(stage);
-  };
-
-  const selectedCount = isAllSelected
-    ? availableStages.length
-    : enabledStages.includes('__NONE__')
-      ? 0
-      : enabledStages.filter(s => availableStages.includes(s)).length;
+  // Simple logic:
+  // - enabledStages empty = show all (no filter active, all checkboxes unchecked)
+  // - enabledStages has items = filter to only those stages (those checkboxes checked)
+  const isFiltered = enabledStages.length > 0;
+  const isStageChecked = (stage: string) => enabledStages.includes(stage);
 
   const hasStages = availableStages.length > 0;
-  const isFiltered = !isAllSelected && selectedCount !== availableStages.length;
 
   return (
     <div className="stage-filter-dropdown" ref={dropdownRef}>
@@ -112,9 +100,9 @@ function StageFilterDropdown({
           <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
         </svg>
         Stages
-        {hasStages && (
+        {hasStages && isFiltered && (
           <span className="stage-count">
-            {selectedCount}/{availableStages.length}
+            {enabledStages.length}/{availableStages.length}
           </span>
         )}
         <svg className={`chevron ${isOpen ? 'open' : ''}`} width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -124,31 +112,24 @@ function StageFilterDropdown({
 
       {isOpen && (
         <div className="stage-dropdown-panel">
-          <div className="stage-dropdown-actions">
-            <button
-              className="stage-action-btn"
-              onClick={() => {
-                action('selectAllStages');
-                // Don't close - let user see the change
-              }}
-            >
-              Select All
-            </button>
-            <button
-              className="stage-action-btn"
-              onClick={() => {
-                action('clearAllStages');
-              }}
-            >
-              Clear
-            </button>
-          </div>
+          {isFiltered && (
+            <div className="stage-dropdown-actions">
+              <button
+                className="stage-action-btn clear-btn"
+                onClick={() => {
+                  action('clearStageFilters');
+                }}
+              >
+                Clear Filters
+              </button>
+            </div>
+          )}
           <div className="stage-dropdown-list">
             {availableStages.map((stage) => (
               <label key={stage} className="stage-checkbox-item">
                 <input
                   type="checkbox"
-                  checked={isStageEnabled(stage)}
+                  checked={isStageChecked(stage)}
                   onChange={() => action('toggleStage', { stage })}
                 />
                 <span className="stage-name" title={stage}>{stage}</span>
@@ -313,17 +294,38 @@ export function LogViewer() {
     }
   }, [state?.logAutoScroll]);
 
-  // Text search filter only - level/stage filtering is done by backend
+  // Client-side filtering by level, stage, and search query
   const filteredEntries = useMemo(() => {
     if (!state) return [];
-    const query = state.logSearchQuery.toLowerCase().trim();
-    if (!query) return state.logEntries;
-    return state.logEntries.filter(entry =>
-      entry.message.toLowerCase().includes(query) ||
-      entry.logger.toLowerCase().includes(query) ||
-      entry.stage?.toLowerCase().includes(query)
-    );
-  }, [state?.logEntries, state?.logSearchQuery]);
+
+    return state.logEntries.filter(entry => {
+      // Level filter
+      if (!state.enabledLogLevels.includes(entry.level)) {
+        return false;
+      }
+
+      // Stage filter: empty = show all, non-empty = filter to selected stages
+      if (state.enabledStages.length > 0) {
+        if (!entry.stage || !state.enabledStages.includes(entry.stage)) {
+          return false;
+        }
+      }
+
+      // Search query filter
+      const query = state.logSearchQuery.toLowerCase().trim();
+      if (query) {
+        const matchesQuery =
+          entry.message.toLowerCase().includes(query) ||
+          entry.logger.toLowerCase().includes(query) ||
+          entry.stage?.toLowerCase().includes(query);
+        if (!matchesQuery) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [state?.logEntries, state?.enabledLogLevels, state?.enabledStages, state?.logSearchQuery]);
 
   // Search matches for highlighting (all filtered entries match when search is active)
   const searchMatches = useMemo(() => {
@@ -333,8 +335,8 @@ export function LogViewer() {
     return matches;
   }, [filteredEntries, state?.logSearchQuery]);
 
-  // Level counts from backend-filtered results
-  // Shows how many logs of each type are in the current result set
+  // Level counts from all logs (unfiltered)
+  // Shows total logs of each type for the filter button badges
   const levelCounts = useMemo(() => {
     if (!state) return { DEBUG: 0, INFO: 0, WARNING: 0, ERROR: 0, ALERT: 0 };
     return {
@@ -441,6 +443,15 @@ export function LogViewer() {
       {/* Build info bar */}
       {state.currentBuildInfo && (
         <div className="log-build-info">
+          <span className="build-info-item build-target" title={`Target: ${state.currentBuildInfo.target}`}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+              <circle cx="12" cy="12" r="6" />
+              <circle cx="12" cy="12" r="2" />
+            </svg>
+            {state.currentBuildInfo.target}
+          </span>
+          <span className="build-info-sep">·</span>
           <span className="build-info-item" title={state.currentBuildInfo.projectPath}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />

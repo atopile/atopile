@@ -89,6 +89,56 @@ def discover_projects(root: Path) -> list[Path]:
     return sorted(projects)
 
 
+def _write_early_build_summaries(
+    build_tasks: list[tuple[str, Path, str | None]],
+) -> None:
+    """
+    Write minimal "queued" build summaries before ParallelBuildManager is created.
+
+    This reduces the delay between when a build is requested via the dashboard
+    and when the UI can show the build status. The summaries will be overwritten
+    with more complete data once the ParallelBuildManager starts.
+    """
+    import json
+
+    from atopile.logging import generate_build_id
+
+    now = NOW
+
+    for build_name, project_root, _project_name in build_tasks:
+        # Structure: {project_root}/build/builds/{target_name}/build_summary.json
+        build_output_dir = project_root / "build" / "builds" / build_name
+        summary_file = build_output_dir / "build_summary.json"
+
+        # Create directory if needed
+        try:
+            build_output_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            continue
+
+        # Generate build_id to match what ParallelBuildManager will use
+        project_path = str(project_root.resolve())
+        build_id = generate_build_id(project_path, build_name, now)
+
+        # Write minimal summary with "queued" status
+        summary = {
+            "name": build_name,
+            "display_name": build_name,
+            "build_id": build_id,
+            "status": "queued",
+            "elapsed_seconds": 0,
+            "warnings": 0,
+            "errors": 0,
+            "timestamp": now,
+        }
+
+        try:
+            summary_file.write_text(json.dumps(summary, indent=2))
+            logger.debug(f"Wrote early build summary for {build_name}")
+        except Exception:
+            pass  # Don't fail the build if we can't write summary
+
+
 # Semantic status -> (icon, color)
 _STATUS_STYLE = {
     "success": ("✓", "green"),
@@ -488,6 +538,10 @@ class ParallelBuildManager:
         self._console = Console()
         self._Table = Table
         self._live: Live | None = None
+
+        # Write initial summary immediately so the UI shows builds as "queued" right away
+        # This reduces the delay between when a build is requested and when the UI updates
+        self._write_live_summary()
 
     def _start_next_build(self) -> bool:
         """Start the next build from the queue. Returns True if a build was started."""
@@ -1199,6 +1253,10 @@ def _build_all_projects(
         jobs,
     )
 
+    # Write initial "queued" summaries immediately so UI shows builds right away
+    # This happens before ParallelBuildManager is created to minimize delay
+    _write_early_build_summaries(build_tasks)
+
     # Create and run parallel build manager
     manager = ParallelBuildManager(
         build_tasks,
@@ -1419,8 +1477,8 @@ def build(
             from atopile.dashboard.server import start_dashboard_server
 
             dashboard_server, dashboard_url = start_dashboard_server(
-                project_root,
                 port=DASHBOARD_PORT,
+                project_root=project_root,
             )
             logger.info("Dashboard API available at: %s", dashboard_url)
         except Exception as e:

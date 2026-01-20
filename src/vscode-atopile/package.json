@@ -215,6 +215,11 @@
                 "category": "atopile"
             },
             {
+                "command": "atopile.serve",
+                "title": "Start/Show ato server",
+                "category": "atopile"
+            },
+            {
                 "command": "atopile.package_explorer",
                 "title": "Open package explorer",
                 "category": "atopile"
@@ -271,6 +276,7 @@
         "vscode-languageclient": "^9.0.1",
         "vscode-variables": "^1.0.1",
         "which": "^5.0.0",
+        "ws": "^8.18.0",
         "yaml": "^2.8.0"
     },
     "devDependencies": {
@@ -280,6 +286,7 @@
         "@types/node": "^16.18.126",
         "@types/vscode": "1.78.0",
         "@types/which": "^3.0.4",
+        "@types/ws": "^8.5.13",
         "@typescript-eslint/eslint-plugin": "^8.16.0",
         "@typescript-eslint/parser": "^8.19.0",
         "@vscode/test-electron": "^2.4.0",
