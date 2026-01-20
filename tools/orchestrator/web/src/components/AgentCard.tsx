@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, memo } from 'react';
 import { Clock, Cpu, Trash2, Square } from 'lucide-react';
 import type { AgentViewModel } from '@/logic/viewmodels';
 import { StatusBadge } from './StatusBadge';
@@ -11,7 +11,7 @@ interface AgentCardProps {
   onDelete?: () => void;
 }
 
-export function AgentCard({ agent, selected, onClick, onTerminate, onDelete }: AgentCardProps) {
+export const AgentCard = memo(function AgentCard({ agent, selected, onClick, onTerminate, onDelete }: AgentCardProps) {
   const [duration, setDuration] = useState<string>('');
 
   const isActivelyRunning = agent.status === 'running' || agent.status === 'starting';
@@ -137,6 +137,6 @@ export function AgentCard({ agent, selected, onClick, onTerminate, onDelete }: A
       </div>
     </div>
   );
-}
+});
 
 export default AgentCard;

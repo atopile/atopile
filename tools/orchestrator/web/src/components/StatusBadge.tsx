@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { AgentStatus, PipelineStatus, PipelineSessionStatus } from '@/logic/api/types';
 
 interface StatusBadgeProps {
@@ -7,7 +8,7 @@ interface StatusBadgeProps {
   isAgent?: boolean;
 }
 
-export function StatusBadge({ status, size = 'md', isAgent = false }: StatusBadgeProps) {
+export const StatusBadge = memo(function StatusBadge({ status, size = 'md', isAgent = false }: StatusBadgeProps) {
   const sizeClasses = size === 'sm' ? 'px-1.5 py-0.5 text-xs' : 'px-2 py-0.5 text-xs';
 
   const statusConfig: Record<string, { bg: string; text: string; dot: string; label?: string }> = {
@@ -38,6 +39,6 @@ export function StatusBadge({ status, size = 'md', isAgent = false }: StatusBadg
       {displayStatus}
     </span>
   );
-}
+});
 
 export default StatusBadge;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, memo, useCallback } from 'react';
 import { RefreshCw, Plus } from 'lucide-react';
 import { useAgents, useUIState, useDispatch, useLoading } from '@/hooks';
 import { AgentCard } from './AgentCard';
@@ -7,7 +7,7 @@ interface AgentListProps {
   onSpawnClick?: () => void;
 }
 
-export function AgentList({ onSpawnClick }: AgentListProps) {
+export const AgentList = memo(function AgentList({ onSpawnClick }: AgentListProps) {
   const dispatch = useDispatch();
   const agents = useAgents();
   const state = useUIState();
@@ -29,21 +29,21 @@ export function AgentList({ onSpawnClick }: AgentListProps) {
     });
   }, [agents]);
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     dispatch({ type: 'agents.refresh' });
-  };
+  }, [dispatch]);
 
-  const handleSelect = (agentId: string) => {
+  const handleSelect = useCallback((agentId: string) => {
     dispatch({ type: 'agents.select', payload: { agentId } });
-  };
+  }, [dispatch]);
 
-  const handleTerminate = (agentId: string) => {
+  const handleTerminate = useCallback((agentId: string) => {
     dispatch({ type: 'agents.terminate', payload: { agentId } });
-  };
+  }, [dispatch]);
 
-  const handleDelete = (agentId: string) => {
+  const handleDelete = useCallback((agentId: string) => {
     dispatch({ type: 'agents.delete', payload: { agentId } });
-  };
+  }, [dispatch]);
 
   return (
     <div className="flex flex-col h-full">
@@ -101,6 +101,6 @@ export function AgentList({ onSpawnClick }: AgentListProps) {
       </div>
     </div>
   );
-}
+});
 
 export default AgentList;
