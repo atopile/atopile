@@ -614,6 +614,31 @@ class PackagesAPIClient:
             raise
         return response
 
+    def get_package_releases(
+        self, identifier: str
+    ) -> list[_Schemas.PackageReleaseInfo]:
+        """
+        Get all releases for a package from the registry.
+        """
+        try:
+            r = self._get(
+                _Endpoints.PackageReleases.url(
+                    _Endpoints.PackageReleases.Request(identifier)
+                )
+            )
+        except Errors.PackagesApiHTTPError as e:
+            if e.code == 404:
+                raise Errors.PackageNotFoundError.from_http(e, identifier) from e
+            if e.code == 422:
+                raise Errors.InvalidPackageIdentifierError.from_http(
+                    e, identifier
+                ) from e
+            raise
+
+        response = _Endpoints.PackageReleases.Response.from_dict(r.json())  # type: ignore
+        assert isinstance(response, _Endpoints.PackageReleases.Response)
+        return response.releases
+
     def get_release_dist(
         self, identifier: str, output_path: Path, version: str | None = None
     ) -> Dist:

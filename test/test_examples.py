@@ -12,9 +12,19 @@ from faebryk.libs.util import run_live
 EXAMPLES_DIR = _repo_root() / "examples"
 
 
+# Examples that require a lot of part picking and are slow
+SLOW_EXAMPLES = {"esp32_minimal", "led_badge"}
+
+
 @pytest.mark.parametrize(
     "example",
-    [pytest.param(manifest.parent) for manifest in EXAMPLES_DIR.glob("*/ato.yaml")],
+    [
+        pytest.param(
+            manifest.parent,
+            marks=pytest.mark.slow if manifest.parent.stem in SLOW_EXAMPLES else [],
+        )
+        for manifest in EXAMPLES_DIR.glob("*/ato.yaml")
+    ],
     ids=lambda p: p.stem,
 )
 def test_examples_build(

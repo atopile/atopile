@@ -596,7 +596,7 @@ class C_footprint:
         layer: C_text_layer
         hide: bool = False
         uuid: UUID = field(default_factory=gen_uuid)
-        effects: C_footprint_property_effects
+        effects: Optional[C_footprint_property_effects] = None
 
     @dataclass
     class C_footprint_polygon(C_polygon):

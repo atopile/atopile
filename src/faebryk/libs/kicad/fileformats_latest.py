@@ -61,8 +61,10 @@ class _SingleOrMultiLayer:
             self.layers = [func(layer) for layer in self.layers]
 
     def __post_init__(self):
+        # If both layer and layers are provided, prefer layer and clear layers
+        # This can happen in some KiCad file versions where the field is duplicated
         if self.layer is not None and self.layers is not None:
-            raise ValueError("layer and layers cannot both be provided")
+            self.layers = None
 
 
 @dataclass
@@ -1016,7 +1018,7 @@ class C_footprint(HasPropertiesMixin):
         layer: C_text_layer
         hide: bool = False
         uuid: UUID = field(default_factory=gen_uuid)
-        effects: C_fp_text.C_fp_text_effects
+        effects: Optional[C_fp_text.C_fp_text_effects] = None
 
     @dataclass
     class C_footprint_polygon(C_polygon):

@@ -29,6 +29,17 @@ def check_for_recompile():
         logger.warning("antlr-tools not found, did you run `uv sync --dev`?")
         return
 
+    # Check if Java is actually available (macOS has a stub that prompts install)
+    try:
+        subprocess.run(
+            ["java", "-version"],
+            capture_output=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        logger.warning("Java runtime not found, skipping ato grammar recompilation")
+        return
+
     logger.warning("Recompiling ato grammar")
 
     # compile using antlr4 python package

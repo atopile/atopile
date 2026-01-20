@@ -2,7 +2,9 @@ name: regression
 
 on:
   push:
-    branches: [main]  # Adjust this if your default branch has a different name
+    branches:
+      - main
+      - 'release/**'
   pull_request:
     types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:  # Add manual trigger capability
