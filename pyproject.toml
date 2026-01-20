@@ -34,6 +34,7 @@ dependencies = [
     "cookiecutter>=2.6.0",
     "dataclasses-json>=0.6.7",
     "deprecated~=1.2.14",
+    "fastapi>=0.110.0",
     "fastapi-github-oidc>=0.2.1",
     "freetype-py>=2.4",
     "gitpython>=3.1.41",
@@ -67,6 +68,8 @@ dependencies = [
     "typer>=0.12",
     "typing-extensions>=4.6.3",
     "urllib3>=2.2.1",
+    "uvicorn>=0.29.0",
+    "websockets>=12.0",
     "zstd>=1.5.6.7",
 ]
 
@@ -86,9 +89,6 @@ dev = [
     "mkdocs>=1.6.1",
     "nanobind>=2.2,<3.0",
     "pre-commit>=2.20,<4.0",
-    "fastapi>=0.110.0",
-    "uvicorn>=0.29.0",
-    "websockets>=12.0",
     "viztracer>=1.0.0,<2.0.0",
     "pytest-timeout>=2.3.1",
     "mkdocstrings[python]>=0.27.0",
