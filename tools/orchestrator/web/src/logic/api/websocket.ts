@@ -212,13 +212,9 @@ export class WebSocketClient {
     ws.onmessage = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data) as GlobalEvent;
-        console.log('[WebSocket] Received global event:', data.type, data);
         // CRITICAL: handler must be invoked for UI to update
         if (this.globalConnection) {
-          console.log('[WebSocket] Calling handler...');
           this.globalConnection.handler(data);
-        } else {
-          console.error('[WebSocket] ERROR: globalConnection is null, handler not called!');
         }
       } catch (e) {
         console.error('Failed to parse global WebSocket message:', e);
