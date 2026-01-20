@@ -1,35 +1,42 @@
-/* Build Target Item - Combined checkbox and status */
-.build-target-item {
-  border-radius: var(--radius-md);
-  transition: background 0.15s ease;
+/* Build Target Card - Material UI style */
+.build-target-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
 }
 
-.build-target-item.selected {
-  background: var(--bg-hover);
+.build-target-card:hover {
+  border-color: var(--border-default);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08);
 }
 
-.build-target-header {
+.build-target-card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2), 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* Card Header */
+.build-target-card-header {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2);
-  border-radius: var(--radius-md);
+  padding: var(--space-3);
 }
 
-.build-target-header:hover {
-  background: var(--bg-hover);
-}
-
-.build-target-header input[type="checkbox"] {
-  width: 14px;
-  height: 14px;
+.build-target-card-header input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
   margin: 0;
   cursor: pointer;
   accent-color: var(--color-primary);
   flex-shrink: 0;
 }
 
-.build-target-item .build-status {
+.build-target-card .build-status {
   flex-shrink: 0;
 }
 
@@ -39,19 +46,18 @@
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  cursor: pointer;
 }
 
-.build-target-item .target-name {
+.build-target-card .target-name {
   font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.build-target-item .target-entry {
+.build-target-card .target-entry {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
   overflow: hidden;
@@ -92,8 +98,8 @@
 .indicator {
   font-size: var(--font-size-xs);
   font-weight: 500;
-  padding: 1px 5px;
-  border-radius: 8px;
+  padding: 2px 6px;
+  border-radius: 10px;
 }
 
 .indicator.warning {
@@ -106,30 +112,20 @@
   color: var(--color-error);
 }
 
-.expand-button {
+/* Expand Chevron - In header */
+.build-target-card-header .build-chevron {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
+  width: 24px;
+  height: 24px;
   color: var(--text-muted);
   flex-shrink: 0;
+  transition: transform 0.2s ease, color 0.15s ease;
 }
 
-.expand-button:hover {
-  background: var(--bg-hover);
+.build-target-card:hover .build-chevron {
   color: var(--text-secondary);
-}
-
-.build-chevron {
-  width: 12px;
-  height: 12px;
-  transition: transform 0.15s ease;
 }
 
 .build-chevron.rotated {
@@ -141,13 +137,82 @@
   height: 100%;
 }
 
-/* Stages */
+/* Card Actions */
+.build-target-card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+}
+
+.target-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: white;
+  background: var(--text-secondary);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+.target-action-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.target-action-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.target-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.target-action-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Build button - Orange */
+.target-action-btn.build-btn {
+  background: var(--color-warning, #f59e0b);
+}
+
+.target-action-btn.build-btn:hover:not(:disabled) {
+  background: #d97706;
+}
+
+/* PCB button - Blue */
+.target-action-btn.pcb-btn {
+  background: var(--accent, #3b82f6);
+}
+
+.target-action-btn.pcb-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+/* Stages Section */
+.build-stages-section {
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+}
+
 .build-stages {
   display: flex;
   flex-direction: column;
-  margin-left: calc(14px + var(--space-2) + var(--space-2));
-  padding-left: var(--space-2);
-  border-left: 1px solid var(--border-subtle);
+  padding: var(--space-2) var(--space-3);
+  padding-left: calc(var(--space-3) + 16px + var(--space-2));
 }
 
 .stage-item {
@@ -158,7 +223,6 @@
   background: transparent;
   border: none;
   border-radius: var(--radius-sm);
-  cursor: pointer;
   color: var(--text-secondary);
   font-size: var(--font-size-xs);
   text-align: left;
@@ -167,19 +231,6 @@
 
 .stage-item:hover {
   background: var(--bg-hover);
-}
-
-.stage-item.selected {
-  background: var(--accent);
-  color: white;
-}
-
-.stage-item.selected .stage-name {
-  color: white;
-}
-
-.stage-item.selected .stage-time {
-  color: rgba(255, 255, 255, 0.7);
 }
 
 .stage-name {

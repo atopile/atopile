@@ -18,10 +18,7 @@ const action = (name: string, data?: object) => {
 
 // Static action buttons
 const ACTION_BUTTONS = [
-  { id: 'atopile.build', label: 'Build', icon: 'play', tooltip: 'Build selected targets' },
-  { id: 'atopile.openViewer', label: 'Viewer', icon: 'eye', tooltip: 'Open 3D viewer' },
-  { id: 'atopile.openPcb', label: 'PCB', icon: 'circuit-board', tooltip: 'Open PCB in KiCad' },
-  { id: 'atopile.openSchematic', label: 'Schematic', icon: 'file-code', tooltip: 'Open schematic in KiCad' },
+  { id: 'atopile.build', label: 'Build All', icon: 'play', tooltip: 'Build all selected targets' },
 ];
 
 export function Sidebar() {
@@ -154,6 +151,8 @@ export function Sidebar() {
                             action('selectBuild', { buildName: build.display_name });
                           }
                         }}
+                        onBuild={() => action('buildTarget', { name: target.name })}
+                        onOpenPcb={() => action('openPcbForTarget', { name: target.name })}
                       />
                     );
                   })

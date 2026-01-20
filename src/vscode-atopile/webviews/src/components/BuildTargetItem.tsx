@@ -17,6 +17,8 @@ interface BuildTargetItemProps {
   onToggle: () => void;
   onToggleExpand: () => void;
   onSelect: () => void;
+  onBuild: () => void;
+  onOpenPcb: () => void;
 }
 
 function stripRichText(text: string): string {
@@ -62,26 +64,50 @@ export function BuildTargetItem({
   onToggle,
   onToggleExpand,
   onSelect,
+  onBuild,
+  onOpenPcb,
 }: BuildTargetItemProps) {
   const hasStages = build?.stages && build.stages.length > 0;
   const currentStage = build ? getCurrentStage(build) : null;
   const timeStr = build ? formatTime(build.elapsed_seconds) : '';
+  const isBuilding = build?.status === 'building';
 
-  const handleExpandClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  // Clicking on the card header expands/collapses stages (if available) and selects the build
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Don't expand if clicking on interactive elements
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('input')) {
+      return;
+    }
+
+    // Select this build for log viewing
+    onSelect();
+
+    // Toggle expand if there are stages
     if (hasStages) {
       onToggleExpand();
     }
   };
 
+  const handleBuildClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onBuild();
+  };
+
+  const handlePcbClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onOpenPcb();
+  };
+
   return (
     <div
-      className={`build-target-item ${isExpanded ? 'expanded' : ''} ${isSelected ? 'selected' : ''}`}
-      onClick={onSelect}
+      className={`build-target-card ${isSelected ? 'selected' : ''} ${isExpanded ? 'expanded' : ''}`}
+      onClick={handleCardClick}
     >
-      <div className="build-target-header">
-        {/* Checkbox for build selection */}
+      {/* Card Header */}
+      <div className="build-target-card-header">
         <input
           type="checkbox"
           checked={isChecked}
@@ -89,14 +115,12 @@ export function BuildTargetItem({
           onClick={(e) => e.stopPropagation()}
         />
 
-        {/* Status icon (if build exists) */}
         {build && (
           <div className="build-status">
             <StatusIcon status={build.status} size={16} />
           </div>
         )}
 
-        {/* Target info */}
         <div className="build-target-info">
           <span className="target-name">{target.name}</span>
           {build ? (
@@ -110,7 +134,6 @@ export function BuildTargetItem({
           )}
         </div>
 
-        {/* Indicators */}
         {build && (
           <div className="build-indicators">
             {build.warnings > 0 && (
@@ -126,24 +149,49 @@ export function BuildTargetItem({
           </div>
         )}
 
-        {/* Expand chevron */}
+        {/* Expand chevron in header */}
         {hasStages && (
-          <button className="expand-button" onClick={handleExpandClick}>
-            <div className={`build-chevron ${isExpanded ? 'rotated' : ''}`}>
-              <svg viewBox="0 0 16 16" fill="currentColor">
-                <path d="M6 4l4 4-4 4" />
-              </svg>
-            </div>
-          </button>
+          <div className={`build-chevron ${isExpanded ? 'rotated' : ''}`}>
+            <svg viewBox="0 0 16 16" fill="currentColor">
+              <path d="M6 4l4 4-4 4" />
+            </svg>
+          </div>
         )}
       </div>
 
-      {/* Stages list (display only, no filtering) */}
+      {/* Card Actions */}
+      <div className="build-target-card-actions">
+        <button
+          className="target-action-btn build-btn"
+          onClick={handleBuildClick}
+          disabled={isBuilding}
+          title="Build this target"
+        >
+          <svg viewBox="0 0 16 16" fill="currentColor">
+            <path d="M4 2l10 6-10 6V2z" />
+          </svg>
+          <span>Build</span>
+        </button>
+        <button
+          className="target-action-btn pcb-btn"
+          onClick={handlePcbClick}
+          title="Open PCB in KiCad"
+        >
+          <svg viewBox="0 0 16 16" fill="currentColor">
+            <path d="M2 2h12v12H2V2zm1 1v10h10V3H3zm2 2h2v2H5V5zm4 0h2v2H9V5zm-4 4h2v2H5V9zm4 0h2v2H9V9z" />
+          </svg>
+          <span>PCB</span>
+        </button>
+      </div>
+
+      {/* Collapsible Stages Section */}
       {isExpanded && hasStages && (
-        <div className="build-stages">
-          {build!.stages!.map((stage) => (
-            <StageItem key={stage.stage_id} stage={stage} />
-          ))}
+        <div className="build-stages-section">
+          <div className="build-stages">
+            {build!.stages!.map((stage) => (
+              <StageItem key={stage.stage_id} stage={stage} />
+            ))}
+          </div>
         </div>
       )}
     </div>

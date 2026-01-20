@@ -45,6 +45,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 .card-flex {
@@ -91,9 +92,8 @@
 
 /* Actions Grid */
 .actions-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-1);
+  display: flex;
+  gap: var(--space-2);
 }
 
 /* Builds List */
@@ -262,4 +262,5 @@
 .build-targets-list {
   display: flex;
   flex-direction: column;
+  gap: var(--space-2);
 }

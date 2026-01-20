@@ -210,8 +210,32 @@ async function handleAction(message: any): Promise<void> {
             await vscode.commands.executeCommand('atopile.build');
             break;
 
+        case 'buildTarget': {
+            // Build a single target by name
+            const builds = getBuilds();
+            const target = builds.find(b => b.name === message.name);
+            if (target) {
+                await vscode.commands.executeCommand('atopile.build', [target]);
+            }
+            break;
+        }
+
+        case 'openPcbForTarget': {
+            // Open PCB for a specific target by name
+            const builds = getBuilds();
+            const target = builds.find(b => b.name === message.name);
+            if (target) {
+                await vscode.commands.executeCommand('atopile.launch_kicad', target);
+            }
+            break;
+        }
+
         case 'executeCommand':
-            await vscode.commands.executeCommand(message.command);
+            if (message.args) {
+                await vscode.commands.executeCommand(message.command, message.args);
+            } else {
+                await vscode.commands.executeCommand(message.command);
+            }
             break;
 
         case 'copyLogPath': {

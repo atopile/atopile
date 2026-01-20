@@ -1,40 +1,38 @@
 /* Action Button */
 .action-button {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-1);
-  background: transparent;
-  border: 1px solid transparent;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-warning, #f59e0b);
+  border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.15s ease;
-  min-height: 52px;
+  color: white;
+  flex: 1;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .action-button:hover {
-  background: var(--hover);
-  border-color: var(--border-subtle);
+  background: #d97706;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
 }
 
 .action-button:active {
   transform: scale(0.97);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .action-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
-  color: var(--text-secondary);
-  transition: color 0.15s ease;
-}
-
-.action-button:hover .action-icon {
-  color: var(--accent);
+  width: 14px;
+  height: 14px;
+  color: white;
 }
 
 .action-icon svg {
@@ -43,14 +41,7 @@
 }
 
 .action-label {
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  transition: color 0.15s ease;
-}
-
-.action-button:hover .action-label {
-  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: white;
 }
