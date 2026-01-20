@@ -16,7 +16,7 @@ import { PackageDetailPanel } from './PackageDetailPanel';
 import { BuildQueuePanel, type QueuedBuild } from './BuildQueuePanel';
 import { logPerf, logDataSize, startMark } from '../perf';
 import './Sidebar.css';
-import '../mockup.css';
+import '../styles.css';
 
 /**
  * Find a build for a specific target in a project.
@@ -547,11 +547,15 @@ export function Sidebar() {
     action('createProject', { parentDirectory, name });
   };
 
-  // Fetch modules when a project is expanded (for entry point picker)
+  // Fetch modules and files when a project is expanded
   const handleProjectExpand = (projectRoot: string) => {
     // Fetch modules if not already loaded
     if (projectRoot && (!state?.projectModules || !state.projectModules[projectRoot])) {
       action('fetchModules', { projectRoot });
+    }
+    // Fetch files if not already loaded
+    if (projectRoot && (!state?.projectFiles || !state.projectFiles[projectRoot])) {
+      action('fetchFiles', { projectRoot });
     }
   };
 
@@ -1042,9 +1046,19 @@ export function Sidebar() {
             onOpenKiCad={handleOpenKiCad}
             onOpenLayout={handleOpenLayout}
             onOpen3D={handleOpen3D}
+            onFileClick={(projectId, filePath) => {
+              // Open the file in the editor
+              // Get full path from project root
+              const project = projects.find(p => p.id === projectId);
+              if (project) {
+                const fullPath = `${project.path}/${filePath}`;
+                action('openFile', { file: fullPath });
+              }
+            }}
             filterType="projects"
             projects={projects}
             projectModules={state?.projectModules || {}}
+            projectFiles={state?.projectFiles || {}}
           />
         </CollapsibleSection>
 

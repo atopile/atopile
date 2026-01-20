@@ -90,6 +90,21 @@ interface AppState {
   // Problems (errors/warnings)
   problems: Problem[];
   isLoadingProblems: boolean;
+  problemFilter: {
+    levels: ('error' | 'warning')[];
+    buildNames: string[];
+    stageIds: string[];
+  };
+  // Project modules (entry points)
+  projectModules: Record<string, ModuleDefinition[]>;
+  isLoadingModules: boolean;
+  // Project files (.ato and .py)
+  projectFiles: Record<string, FileTreeNode[]>;
+  isLoadingFiles: boolean;
+  // Variables
+  currentVariablesData: VariablesData | null;
+  isLoadingVariables: boolean;
+  variablesError: string | null;
 }
 
 interface Project {
@@ -343,6 +358,55 @@ interface BOMComponent {
 interface BOMData {
   version: string;
   components: BOMComponent[];
+}
+
+// Module definition types (from /api/modules endpoint)
+interface ModuleDefinition {
+  name: string;
+  type: 'module' | 'interface' | 'component';
+  file: string;
+  entry: string;
+  line?: number;
+  super_type?: string;
+}
+
+// File tree types (from /api/files endpoint)
+interface FileTreeNode {
+  name: string;
+  path: string;
+  type: 'file' | 'folder';
+  extension?: string;  // 'ato' | 'py'
+  children?: FileTreeNode[];
+}
+
+// Variables types (from /api/variables endpoint)
+type VariableType = 'voltage' | 'current' | 'resistance' | 'capacitance' | 'ratio' | 'frequency' | 'power' | 'percentage' | 'dimensionless';
+type VariableSource = 'user' | 'derived' | 'picked' | 'datasheet';
+
+interface Variable {
+  name: string;
+  spec?: string;
+  specTolerance?: string;
+  actual?: string;
+  actualTolerance?: string;
+  unit?: string;
+  type: VariableType;
+  meetsSpec?: boolean;
+  source?: VariableSource;
+}
+
+interface VariableNode {
+  name: string;
+  type: 'module' | 'interface' | 'component';
+  path: string;
+  typeName?: string;
+  variables?: Variable[];
+  children?: VariableNode[];
+}
+
+interface VariablesData {
+  version: string;
+  nodes: VariableNode[];
 }
 
 /**
@@ -1033,6 +1097,16 @@ class DevServer {
       case 'refreshAtopileVersions':
         console.log('Refreshing atopile versions from PyPI...');
         await this.fetchAtopileVersions();
+        break;
+
+      case 'fetchModules':
+        console.log('Fetching modules for:', message.projectRoot);
+        await this.fetchModules(message.projectRoot);
+        break;
+
+      case 'fetchFiles':
+        console.log('Fetching files for:', message.projectRoot);
+        await this.fetchFiles(message.projectRoot);
         break;
 
       default:
@@ -1807,6 +1881,62 @@ class DevServer {
       this.state.problems = [];
       this.state.isLoadingProblems = false;
       this.queueUpdate('problems', 'isLoadingProblems');
+    }
+  }
+
+  /**
+   * Fetch modules (entry points) for a project from the API.
+   */
+  private async fetchModules(projectRoot: string): Promise<void> {
+    this.state.isLoadingModules = true;
+    this.queueUpdate('isLoadingModules');
+
+    try {
+      const response = await this.httpGet(
+        `${DASHBOARD_URL}/api/modules?project_root=${encodeURIComponent(projectRoot)}`
+      );
+      const data = JSON.parse(response);
+
+      // Cache the modules for this project
+      this.state.projectModules = {
+        ...this.state.projectModules,
+        [projectRoot]: data.modules || [],
+      };
+      this.state.isLoadingModules = false;
+      console.log(`Fetched ${data.modules?.length || 0} modules for ${projectRoot}`);
+      this.queueUpdate('projectModules', 'isLoadingModules');
+    } catch (e: any) {
+      console.log('Failed to fetch modules:', e.message || e);
+      this.state.isLoadingModules = false;
+      this.queueUpdate('isLoadingModules');
+    }
+  }
+
+  /**
+   * Fetch file tree (.ato and .py files) for a project from the API.
+   */
+  private async fetchFiles(projectRoot: string): Promise<void> {
+    this.state.isLoadingFiles = true;
+    this.queueUpdate('isLoadingFiles');
+
+    try {
+      const response = await this.httpGet(
+        `${DASHBOARD_URL}/api/files?project_root=${encodeURIComponent(projectRoot)}`
+      );
+      const data = JSON.parse(response);
+
+      // Cache the files for this project
+      this.state.projectFiles = {
+        ...this.state.projectFiles,
+        [projectRoot]: data.files || [],
+      };
+      this.state.isLoadingFiles = false;
+      console.log(`Fetched ${data.total || 0} files for ${projectRoot}`);
+      this.queueUpdate('projectFiles', 'isLoadingFiles');
+    } catch (e: any) {
+      console.log('Failed to fetch files:', e.message || e);
+      this.state.isLoadingFiles = false;
+      this.queueUpdate('isLoadingFiles');
     }
   }
 
@@ -2776,6 +2906,21 @@ input ~> capacitor ~> output`,
       // Problems
       problems: [],
       isLoadingProblems: false,
+      problemFilter: {
+        levels: ['error', 'warning'],
+        buildNames: [],
+        stageIds: [],
+      },
+      // Project modules
+      projectModules: {},
+      isLoadingModules: false,
+      // Project files
+      projectFiles: {},
+      isLoadingFiles: false,
+      // Variables
+      currentVariablesData: null,
+      isLoadingVariables: false,
+      variablesError: null,
     };
   }
 

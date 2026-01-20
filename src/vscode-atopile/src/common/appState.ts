@@ -309,6 +309,15 @@ export interface VariablesData {
     nodes: VariableNode[];
 }
 
+// File Tree Types (from /api/files endpoint)
+export interface FileTreeNode {
+    name: string;
+    path: string;
+    type: 'file' | 'folder';
+    extension?: string;  // 'ato' | 'py'
+    children?: FileTreeNode[];
+}
+
 /**
  * THE SINGLE APP STATE - All state lives here.
  */
@@ -406,6 +415,11 @@ export interface AppState {
     // Map of project root to available modules
     projectModules: Record<string, ModuleDefinition[]>;
     isLoadingModules: boolean;
+
+    // Project files (from /api/files endpoint)
+    // Map of project root to file tree (.ato and .py files)
+    projectFiles: Record<string, FileTreeNode[]>;
+    isLoadingFiles: boolean;
 
     // Variables (from /api/variables endpoint)
     // Current variables for selected project/target - frontend just displays this
@@ -506,6 +520,10 @@ class AppStateManager {
         // Project modules
         projectModules: {},
         isLoadingModules: false,
+
+        // Project files
+        projectFiles: {},
+        isLoadingFiles: false,
 
         // Variables
         currentVariablesData: null,
@@ -1167,6 +1185,56 @@ class AppStateManager {
 
     clearModulesCache(): void {
         this._state.projectModules = {};
+        this._emit();
+    }
+
+    // --- Project Files ---
+
+    async fetchFiles(projectRoot: string, forceRefresh: boolean = false): Promise<FileTreeNode[]> {
+        const apiUrl = getDashboardApiUrl();
+
+        // Check cache first (unless forcing refresh)
+        if (!forceRefresh && this._state.projectFiles[projectRoot]) {
+            return this._state.projectFiles[projectRoot];
+        }
+
+        this._state.isLoadingFiles = true;
+        this._emit();
+
+        try {
+            const response = await axios.get<{ files: FileTreeNode[]; total: number }>(
+                `${apiUrl}/api/files`,
+                {
+                    params: { project_root: projectRoot },
+                    timeout: 15000,
+                }
+            );
+
+            const files = response.data.files || [];
+
+            // Cache the files for this project
+            this._state.projectFiles = {
+                ...this._state.projectFiles,
+                [projectRoot]: files,
+            };
+            this._state.isLoadingFiles = false;
+            this._emit();
+            traceInfo(`AppState: loaded ${files.length} file tree nodes for project ${projectRoot}`);
+            return files;
+        } catch (error) {
+            traceError(`AppState: failed to fetch files: ${error}`);
+            this._state.isLoadingFiles = false;
+            this._emit();
+            return [];
+        }
+    }
+
+    getFilesForProject(projectRoot: string): FileTreeNode[] {
+        return this._state.projectFiles[projectRoot] || [];
+    }
+
+    clearFilesCache(): void {
+        this._state.projectFiles = {};
         this._emit();
     }
 

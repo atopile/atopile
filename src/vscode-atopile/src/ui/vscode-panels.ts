@@ -572,6 +572,15 @@ async function handleAction(message: any): Promise<void> {
             break;
         }
 
+        // Project Files (for file explorer)
+        case 'fetchFiles': {
+            const { projectRoot, forceRefresh } = message;
+            if (projectRoot) {
+                await appStateManager.fetchFiles(projectRoot, forceRefresh || false);
+            }
+            break;
+        }
+
         // Variables (for VariablesPanel)
         case 'fetchVariables': {
             const { projectRoot, target } = message;

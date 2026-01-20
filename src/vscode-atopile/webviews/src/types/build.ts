@@ -307,6 +307,11 @@ export interface AppState {
   projectModules: Record<string, ModuleDefinition[]>;
   isLoadingModules: boolean;
 
+  // Project files (from /api/files endpoint)
+  // Map of project root to file tree (.ato and .py files)
+  projectFiles: Record<string, FileTreeNode[]>;
+  isLoadingFiles: boolean;
+
   // Variables (from /api/variables endpoint)
   // Current variables for selected project/target - frontend just displays this
   currentVariablesData: VariablesData | null;
@@ -340,6 +345,15 @@ export interface ModuleDefinition {
   entry: string;
   line?: number;
   super_type?: string;
+}
+
+// File Tree Types (from /api/files endpoint)
+export interface FileTreeNode {
+  name: string;
+  path: string;
+  type: 'file' | 'folder';
+  extension?: string;  // 'ato' | 'py'
+  children?: FileTreeNode[];
 }
 
 // --- Variable Types (from /api/variables endpoint) ---

@@ -740,7 +740,8 @@ const FileTreeNodeComponent = memo(function FileTreeNodeComponent({
       <div
         className={`file-tree-row ${isFolder ? 'folder' : 'file'} ${node.extension || ''}`}
         style={{ paddingLeft: `${depth * 12 + 4}px` }}
-        onClick={() => {
+        onClick={(e) => {
+          e.stopPropagation()  // Prevent bubbling to parent card
           if (isFolder) {
             setExpanded(!expanded)
           } else if (onFileClick) {
@@ -769,15 +770,23 @@ const FileTreeNodeComponent = memo(function FileTreeNodeComponent({
       </div>
       {expanded && hasChildren && (
         <div className="file-tree-children">
-          {node.children!.map((child) => (
-            <FileTreeNodeComponent
-              key={child.path}
-              node={child}
-              depth={depth + 1}
-              onFileClick={onFileClick}
-              defaultExpanded={false}
-            />
-          ))}
+          {[...node.children!]
+            .sort((a, b) => {
+              // Files come before folders
+              if (a.type === 'file' && b.type === 'folder') return -1
+              if (a.type === 'folder' && b.type === 'file') return 1
+              // Then alphabetically by name
+              return a.name.localeCompare(b.name)
+            })
+            .map((child) => (
+              <FileTreeNodeComponent
+                key={child.path}
+                node={child}
+                depth={depth + 1}
+                onFileClick={onFileClick}
+                defaultExpanded={false}
+              />
+            ))}
         </div>
       )}
     </div>
@@ -792,6 +801,8 @@ const FileExplorer = memo(function FileExplorer({
   files: FileTreeNode[]
   onFileClick?: (path: string) => void
 }) {
+  const [expanded, setExpanded] = useState(false)
+
   if (!files || files.length === 0) {
     return (
       <div className="file-explorer-empty">
@@ -800,23 +811,43 @@ const FileExplorer = memo(function FileExplorer({
     )
   }
 
+  // Sort files before folders, then alphabetically
+  const sortedFiles = [...files].sort((a, b) => {
+    // Files come before folders
+    if (a.type === 'file' && b.type === 'folder') return -1
+    if (a.type === 'folder' && b.type === 'file') return 1
+    // Then alphabetically by name
+    return a.name.localeCompare(b.name)
+  })
+
   return (
     <div className="file-explorer">
-      <div className="file-explorer-header">
+      <div
+        className="file-explorer-header"
+        onClick={(e) => {
+          e.stopPropagation()
+          setExpanded(!expanded)
+        }}
+      >
+        <span className="file-explorer-chevron">
+          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        </span>
         <Folder size={12} />
         <span>Files</span>
       </div>
-      <div className="file-explorer-tree">
-        {files.map((node) => (
-          <FileTreeNodeComponent
-            key={node.path}
-            node={node}
-            depth={0}
-            onFileClick={onFileClick}
-            defaultExpanded={node.type === 'folder'}
-          />
-        ))}
-      </div>
+      {expanded && (
+        <div className="file-explorer-tree">
+          {sortedFiles.map((node) => (
+            <FileTreeNodeComponent
+              key={node.path}
+              node={node}
+              depth={0}
+              onFileClick={onFileClick}
+              defaultExpanded={false}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 })
@@ -1931,10 +1962,8 @@ const ProjectNode = memo(function ProjectNode({
         <div className="project-card-actions-row">
           {/* Indicators wrapper - slides left on hover to make room for play button */}
           <div className="project-indicators">
-            {/* During build: only show building indicator. Otherwise show errors/warnings/last build */}
-            {isBuilding ? (
-              <Circle size={14} className="building-indicator" />
-            ) : (
+            {/* Show errors/warnings/last build when not building (stop button handles building state) */}
+            {!isBuilding && (
               <>
                 {totalErrors > 0 && (
                   <span className="error-indicator">

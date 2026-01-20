@@ -7973,10 +7973,28 @@ body {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.file-explorer-header:hover {
+  color: var(--text-primary);
 }
 
 .file-explorer-header svg {
   color: var(--ctp-overlay1);
+}
+
+.file-explorer-header:hover svg {
+  color: var(--text-muted);
+}
+
+.file-explorer-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
 }
 
 .file-explorer-tree {

@@ -20,7 +20,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 import uvicorn
 import yaml
@@ -258,6 +258,23 @@ class ModulesResponse(BaseModel):
     total: int
 
 
+class FileTreeNode(BaseModel):
+    """A node in the file tree (either a file or folder)"""
+
+    name: str
+    path: str
+    type: Literal["file", "folder"]
+    extension: str | None = None  # 'ato' or 'py' for files
+    children: list["FileTreeNode"] | None = None
+
+
+class FilesResponse(BaseModel):
+    """Response for /api/files endpoint"""
+
+    files: list[FileTreeNode]
+    total: int
+
+
 # --- WebSocket Connection Manager ---
 
 
@@ -459,7 +476,7 @@ class ConnectionManager:
         This schedules the broadcast on the stored event loop.
         """
         # Use stored event loop (set during app startup)
-        loop = getattr(self, '_main_loop', None)
+        loop = getattr(self, "_main_loop", None)
         if loop is not None and loop.is_running():
             asyncio.run_coroutine_threadsafe(
                 self.broadcast_to_channel(channel, event, data), loop
@@ -486,7 +503,7 @@ class ConnectionManager:
         This schedules the log push on the stored event loop.
         """
         # Use stored event loop (set during app startup)
-        loop = getattr(self, '_main_loop', None)
+        loop = getattr(self, "_main_loop", None)
         if loop is not None and loop.is_running():
             asyncio.run_coroutine_threadsafe(self.on_new_log(log_entry), loop)
             return
@@ -1138,6 +1155,7 @@ def load_recent_builds_from_history(limit: int = 50) -> list[dict]:
         log.error(f"Failed to load build history: {e}")
         return []
 
+
 # Track active package operations
 _active_package_ops: dict[str, dict[str, Any]] = {}
 _package_op_counter = 0
@@ -1161,9 +1179,9 @@ def _is_duplicate_build(build_key: str) -> str | None:
     """
     with _build_lock:
         for build_id, build in _active_builds.items():
-            if (
-                build.get("build_key") == build_key
-                and build["status"] in ("queued", "building")
+            if build.get("build_key") == build_key and build["status"] in (
+                "queued",
+                "building",
             ):
                 return build_id
     return None
@@ -1186,12 +1204,14 @@ def _run_build_subprocess(
     and monitors it for completion while polling summary.json for stage updates.
     """
     # Send "started" message
-    result_q.put({
-        "type": "started",
-        "build_id": build_id,
-        "project_root": project_root,
-        "targets": targets,
-    })
+    result_q.put(
+        {
+            "type": "started",
+            "build_id": build_id,
+            "project_root": project_root,
+            "targets": targets,
+        }
+    )
 
     process = None
     final_stages: list[dict] = []
@@ -1253,10 +1273,12 @@ def _run_build_subprocess(
                     process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     process.kill()
-                result_q.put({
-                    "type": "cancelled",
-                    "build_id": build_id,
-                })
+                result_q.put(
+                    {
+                        "type": "cancelled",
+                        "build_id": build_id,
+                    }
+                )
                 return  # Exit the function after cancellation
 
             # Read summary.json for stage updates
@@ -1273,11 +1295,13 @@ def _run_build_subprocess(
                                 f"Build {build_id}: stage update - "
                                 f"{len(current_stages)} stages"
                             )
-                            result_q.put({
-                                "type": "stage",
-                                "build_id": build_id,
-                                "stages": current_stages,
-                            })
+                            result_q.put(
+                                {
+                                    "type": "stage",
+                                    "build_id": build_id,
+                                    "stages": current_stages,
+                                }
+                            )
                             last_stages = current_stages
                 except (json.JSONDecodeError, IOError) as e:
                     log.debug(f"Build {build_id}: error reading summary.json: {e}")
@@ -1300,20 +1324,26 @@ def _run_build_subprocess(
                 pass
 
         if return_code != 0:
-            error_msg = stderr_output[:500] if stderr_output else f"Build failed with code {return_code}"
+            error_msg = (
+                stderr_output[:500]
+                if stderr_output
+                else f"Build failed with code {return_code}"
+            )
 
     except Exception as e:
         error_msg = str(e)
         return_code = -1
 
     # Send completion message
-    result_q.put({
-        "type": "completed",
-        "build_id": build_id,
-        "return_code": return_code,
-        "error": error_msg,
-        "stages": final_stages,
-    })
+    result_q.put(
+        {
+            "type": "completed",
+            "build_id": build_id,
+            "return_code": return_code,
+            "error": error_msg,
+            "stages": final_stages,
+        }
+    )
 
 
 class BuildQueue:
@@ -1359,8 +1389,7 @@ class BuildQueue:
 
         # Create thread pool executor
         self._executor = ThreadPoolExecutor(
-            max_workers=self._max_concurrent,
-            thread_name_prefix="build-worker"
+            max_workers=self._max_concurrent, thread_name_prefix="build-worker"
         )
 
         # Start orchestrator thread
@@ -1572,7 +1601,9 @@ class BuildQueue:
                 with _build_lock:
                     if build_id in _active_builds:
                         _active_builds[build_id]["status"] = "building"
-                        _active_builds[build_id]["building_started_at"] = building_started_at
+                        _active_builds[build_id]["building_started_at"] = (
+                            building_started_at
+                        )
 
                 ws_manager.broadcast_sync(
                     "builds",
@@ -1607,7 +1638,9 @@ class BuildQueue:
 
                 with _build_lock:
                     if build_id in _active_builds:
-                        started_at = _active_builds[build_id].get("building_started_at") or _active_builds[build_id].get("started_at")
+                        started_at = _active_builds[build_id].get(
+                            "building_started_at"
+                        ) or _active_builds[build_id].get("started_at")
                         if started_at:
                             duration = time.time() - started_at
                         _active_builds[build_id]["status"] = status
@@ -1617,7 +1650,9 @@ class BuildQueue:
                         _active_builds[build_id]["duration"] = duration
 
                         # Count warnings/errors from stages
-                        warnings = sum(1 for s in stages if s.get("status") == "warning")
+                        warnings = sum(
+                            1 for s in stages if s.get("status") == "warning"
+                        )
                         errors = sum(1 for s in stages if s.get("status") == "error")
                         _active_builds[build_id]["warnings"] = warnings
                         _active_builds[build_id]["errors"] = errors
@@ -1816,8 +1851,7 @@ class BuildQueue:
             # Don't shutdown existing executor - let running tasks complete
             # Create new executor for future tasks
             self._executor = ThreadPoolExecutor(
-                max_workers=new_max,
-                thread_name_prefix="build-worker"
+                max_workers=new_max, thread_name_prefix="build-worker"
             )
 
 
@@ -2124,6 +2158,116 @@ def create_app(
 
         return ModulesResponse(modules=modules, total=len(modules))
 
+    @app.get("/api/files", response_model=FilesResponse)
+    async def get_files(
+        project_root: str = Query(
+            ...,
+            description="Path to the project root to scan for files",
+        ),
+    ):
+        """
+        Return a tree of .ato and .py files in the project.
+
+        Scans all files in the project (excluding build/, .ato/, __pycache__,
+        .git, etc.) and returns a hierarchical structure.
+        """
+        project_path = Path(project_root)
+
+        if not project_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Project not found: {project_root}",
+            )
+
+        def build_file_tree(directory: Path, base_path: Path) -> list[FileTreeNode]:
+            """Recursively build file tree for a directory."""
+            nodes: list[FileTreeNode] = []
+
+            # Skip excluded directories
+            excluded_dirs = {
+                "build",
+                ".ato",
+                "__pycache__",
+                ".git",
+                ".venv",
+                "venv",
+                "node_modules",
+                ".pytest_cache",
+                ".mypy_cache",
+                "dist",
+                "egg-info",
+            }
+
+            try:
+                items = sorted(
+                    directory.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())
+                )
+            except PermissionError:
+                return nodes
+
+            for item in items:
+                # Skip hidden files and excluded directories
+                if item.name.startswith(".") and item.name not in {".ato"}:
+                    continue
+                if item.name in excluded_dirs:
+                    continue
+                if item.name.endswith(".egg-info"):
+                    continue
+
+                rel_path = str(item.relative_to(base_path))
+
+                if item.is_dir():
+                    # Recursively process directory
+                    children = build_file_tree(item, base_path)
+                    # Only include directories that have .ato or .py files (or subdirs with them)
+                    if children:
+                        nodes.append(
+                            FileTreeNode(
+                                name=item.name,
+                                path=rel_path,
+                                type="folder",
+                                children=children,
+                            )
+                        )
+                elif item.is_file():
+                    # Only include .ato and .py files
+                    if item.suffix == ".ato":
+                        nodes.append(
+                            FileTreeNode(
+                                name=item.name,
+                                path=rel_path,
+                                type="file",
+                                extension="ato",
+                            )
+                        )
+                    elif item.suffix == ".py":
+                        nodes.append(
+                            FileTreeNode(
+                                name=item.name,
+                                path=rel_path,
+                                type="file",
+                                extension="py",
+                            )
+                        )
+
+            return nodes
+
+        file_tree = build_file_tree(project_path, project_path)
+
+        # Count total files (not folders)
+        def count_files(nodes: list[FileTreeNode]) -> int:
+            count = 0
+            for node in nodes:
+                if node.type == "file":
+                    count += 1
+                elif node.children:
+                    count += count_files(node.children)
+            return count
+
+        total = count_files(file_tree)
+
+        return FilesResponse(files=file_tree, total=total)
+
     @app.get("/api/summary")
     async def get_summary():
         """
@@ -2219,7 +2363,9 @@ def create_app(
                 target_name = (
                     targets[0]
                     if len(targets) == 1
-                    else ", ".join(targets) if targets else "default"
+                    else ", ".join(targets)
+                    if targets
+                    else "default"
                 )
 
                 # Create a build entry compatible with the UI
@@ -2417,29 +2563,34 @@ def create_app(
                 target_name = (
                     targets[0]
                     if len(targets) == 1
-                    else ", ".join(targets) if targets else "default"
+                    else ", ".join(targets)
+                    if targets
+                    else "default"
                 )
 
-                builds.append({
-                    # Core fields for the queue panel
-                    "build_id": bid,
-                    "status": status,
-                    "project_root": b["project_root"],
-                    "targets": targets,
-                    "entry": b.get("entry"),
-                    # Display-ready fields
-                    "project_name": project_name,
-                    "display_name": f"{project_name}:{target_name}",
-                    # Timing - use building_started_at for builds, started_at for queued
-                    "started_at": b.get("building_started_at") or b.get("started_at"),
-                    "elapsed_seconds": elapsed,
-                    # Stage data for progress display
-                    "stages": b.get("stages", []),
-                    # Queue position (1-indexed)
-                    "queue_position": b.get("queue_position"),
-                    # Error info if any
-                    "error": b.get("error"),
-                })
+                builds.append(
+                    {
+                        # Core fields for the queue panel
+                        "build_id": bid,
+                        "status": status,
+                        "project_root": b["project_root"],
+                        "targets": targets,
+                        "entry": b.get("entry"),
+                        # Display-ready fields
+                        "project_name": project_name,
+                        "display_name": f"{project_name}:{target_name}",
+                        # Timing - use building_started_at for builds, started_at for queued
+                        "started_at": b.get("building_started_at")
+                        or b.get("started_at"),
+                        "elapsed_seconds": elapsed,
+                        # Stage data for progress display
+                        "stages": b.get("stages", []),
+                        # Queue position (1-indexed)
+                        "queue_position": b.get("queue_position"),
+                        # Error info if any
+                        "error": b.get("error"),
+                    }
+                )
 
         # Sort: building first, then queued by queue_position
         builds.sort(
@@ -2494,9 +2645,7 @@ def create_app(
 
     @app.get("/api/builds/history")
     async def get_build_history(
-        project_root: Optional[str] = Query(
-            None, description="Filter by project root"
-        ),
+        project_root: Optional[str] = Query(None, description="Filter by project root"),
         status: Optional[str] = Query(
             None, description="Filter by status (success, failed, cancelled)"
         ),
