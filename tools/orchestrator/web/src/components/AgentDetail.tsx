@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Square, Send, X, Clock, Cpu, Hash, Code, RotateCcw, Pencil, Check, History, Sparkles, Settings, ChevronDown, ChevronUp, ArrowLeft } from 'lucide-react';
 import type { AgentViewModel } from '@/logic/viewmodels';
-import { useDispatch, useAgentOutput, useLoading, useMobile, useMobileGestures } from '@/hooks';
+import { useDispatch, useAgentOutput, useLoading, useMobile } from '@/hooks';
 import { StatusBadge } from './StatusBadge';
 import { OutputStream } from './OutputStream';
 import { VimTextarea } from './VimTextarea';
@@ -74,20 +74,6 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
   const resumePromptRef = useRef(resumePrompt);
   inputValueRef.current = inputValue;
   resumePromptRef.current = resumePrompt;
-
-  // Mobile gestures hook
-  const {
-    showMobileHeader,
-    handleScroll,
-    swipeOffset,
-    swipeOpacity,
-    handleTouchStart,
-    handleTouchMove,
-    handleTouchEnd,
-  } = useMobileGestures({
-    enabled: isMobile,
-    onSwipeClose: onClose,
-  });
 
   // Close settings popover when clicking outside
   useEffect(() => {
@@ -260,121 +246,101 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
     <div
       ref={containerRef}
       className="flex flex-col h-full relative"
-      style={{
-        transform: isMobile && swipeOffset > 0 ? `translateX(${swipeOffset}px)` : undefined,
-        opacity: swipeOpacity,
-        transition: swipeOffset === 0 ? 'transform 0.2s ease-out, opacity 0.2s ease-out' : undefined,
-      }}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
     >
-      {/* Mobile swipe indicator */}
-      {isMobile && (
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-16 bg-gray-600 rounded-r opacity-30" />
-      )}
-
-      {/* Header - hidden by default on mobile, shown on scroll up */}
-      {(!isMobile || showMobileHeader) && (
-        <div
-          className={`flex items-center justify-between border-b border-gray-700 ${
-            isMobile
-              ? 'px-3 py-2 absolute top-0 left-0 right-0 bg-gray-900/95 backdrop-blur z-10 transition-transform duration-200'
-              : 'p-4'
-          }`}
-          style={{
-            transform: isMobile && !showMobileHeader ? 'translateY(-100%)' : 'translateY(0)',
-          }}
-        >
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            {/* Back button for mobile */}
-            {isMobile && onClose && (
-              <button
-                className="btn btn-icon btn-secondary btn-sm mr-1"
-                onClick={onClose}
-                title="Back to list"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-            )}
-            <div className="min-w-0 flex-1">
-              {/* Editable name */}
-              <div className="flex items-center gap-2">
-                {isEditingName ? (
-                  <>
-                    <input
-                      type="text"
-                      className={`input py-0.5 px-2 ${isMobile ? 'text-xs w-32' : 'text-sm w-48'}`}
-                      value={editedName}
-                      onChange={(e) => setEditedName(e.target.value)}
-                      onKeyDown={handleNameKeyDown}
-                      onBlur={handleSaveName}
-                      autoFocus
-                      placeholder="Enter name..."
-                    />
-                    <button
-                      className="btn btn-icon btn-sm btn-primary"
-                      onClick={handleSaveName}
-                      title="Save"
-                    >
-                      <Check className="w-3 h-3" />
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <span className={`font-medium text-gray-200 truncate ${isMobile ? 'text-xs max-w-[120px]' : 'text-sm'}`}>
-                      {agent.name || <span className="text-gray-500 italic">Unnamed</span>}
-                    </span>
-                    {!isMobile && (
-                      <button
-                        className="btn btn-icon btn-sm btn-secondary opacity-50 hover:opacity-100"
-                        onClick={() => {
-                          setEditedName(agent.name || '');
-                          setIsEditingName(true);
-                        }}
-                        title="Rename"
-                      >
-                        <Pencil className="w-3 h-3" />
-                      </button>
-                    )}
-                  </>
-                )}
-                <StatusBadge status={agent.status} isAgent />
-                {output.isConnected && (
-                  <span className="flex items-center gap-1 text-xs text-green-400">
-                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-                    {!isMobile && 'Live'}
+      {/* Header */}
+      <div
+        className={`flex items-center justify-between border-b border-gray-700 ${
+          isMobile ? 'px-3 py-2' : 'p-4'
+        }`}
+      >
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {/* Back button for narrow screens */}
+          {isMobile && onClose && (
+            <button
+              className="btn btn-icon btn-secondary btn-sm mr-1"
+              onClick={onClose}
+              title="Back to list"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+          )}
+          <div className="min-w-0 flex-1">
+            {/* Editable name */}
+            <div className="flex items-center gap-2">
+              {isEditingName ? (
+                <>
+                  <input
+                    type="text"
+                    className={`input py-0.5 px-2 ${isMobile ? 'text-xs w-32' : 'text-sm w-48'}`}
+                    value={editedName}
+                    onChange={(e) => setEditedName(e.target.value)}
+                    onKeyDown={handleNameKeyDown}
+                    onBlur={handleSaveName}
+                    autoFocus
+                    placeholder="Enter name..."
+                  />
+                  <button
+                    className="btn btn-icon btn-sm btn-primary"
+                    onClick={handleSaveName}
+                    title="Save"
+                  >
+                    <Check className="w-3 h-3" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className={`font-medium text-gray-200 truncate ${isMobile ? 'text-xs max-w-[120px]' : 'text-sm'}`}>
+                    {agent.name || <span className="text-gray-500 italic">Unnamed</span>}
                   </span>
-                )}
-              </div>
-              {!isMobile && (
-                <code className="text-xs font-mono text-gray-500">{agent.id.slice(0, 8)}</code>
+                  {!isMobile && (
+                    <button
+                      className="btn btn-icon btn-sm btn-secondary opacity-50 hover:opacity-100"
+                      onClick={() => {
+                        setEditedName(agent.name || '');
+                        setIsEditingName(true);
+                      }}
+                      title="Rename"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  )}
+                </>
+              )}
+              <StatusBadge status={agent.status} isAgent />
+              {output.isConnected && (
+                <span className="flex items-center gap-1 text-xs text-green-400">
+                  <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                  {!isMobile && 'Live'}
+                </span>
               )}
             </div>
-          </div>
-
-          <div className="flex items-center gap-1">
-            {agent.canTerminate && (
-              <button
-                className={`btn btn-danger ${isMobile ? 'btn-icon' : 'btn-sm'}`}
-                onClick={handleTerminate}
-                title="Terminate"
-              >
-                <Square className="w-4 h-4" />
-                {!isMobile && <span className="ml-1">Terminate</span>}
-              </button>
-            )}
-            {onClose && !isMobile && (
-              <button
-                className="btn btn-icon btn-secondary btn-sm"
-                onClick={onClose}
-              >
-                <X className="w-4 h-4" />
-              </button>
+            {!isMobile && (
+              <code className="text-xs font-mono text-gray-500">{agent.id.slice(0, 8)}</code>
             )}
           </div>
         </div>
-      )}
+
+        <div className="flex items-center gap-1">
+          {agent.canTerminate && (
+            <button
+              className={`btn btn-danger ${isMobile ? 'btn-icon' : 'btn-sm'}`}
+              onClick={handleTerminate}
+              title="Terminate"
+            >
+              <Square className="w-4 h-4" />
+              {!isMobile && <span className="ml-1">Terminate</span>}
+            </button>
+          )}
+          {onClose && !isMobile && (
+            <button
+              className="btn btn-icon btn-secondary btn-sm"
+              onClick={onClose}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Stats bar - collapsible on mobile */}
       <div className={`bg-gray-800/50 border-b border-gray-700 ${isMobile ? 'text-xs' : 'text-sm'}`}>
@@ -615,7 +581,6 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
               payload: { agentId: agent.id, input },
             });
           }}
-          onScroll={handleScroll}
         />
       </div>
 

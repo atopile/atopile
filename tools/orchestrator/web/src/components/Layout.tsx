@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Activity, GitBranch, ChevronLeft, ChevronRight, Plus, Terminal, RotateCcw } from 'lucide-react';
-import { useMobile, useAgents, usePipelines, useSelectedAgent, useUIState, useDispatch, useLogic } from '@/hooks';
+import { useAgents, usePipelines, useSelectedAgent, useUIState, useDispatch, useLogic } from '@/hooks';
 import { AgentList } from './AgentList';
 import { AgentDetail } from './AgentDetail';
 import { SpawnAgentDialog } from './SpawnAgentDialog';
@@ -9,13 +9,12 @@ import { PipelineSessionsPanel } from './PipelineSessionsPanel';
 
 type ViewMode = 'agents' | 'pipelines';
 
-// Narrow viewport threshold (between mobile and full desktop)
+// Breakpoint for auto-collapsing sidebar
 const NARROW_BREAKPOINT = 1024;
 
 export function Layout() {
   const dispatch = useDispatch();
   const logic = useLogic();
-  const isMobile = useMobile();
   const agents = useAgents();
   const pipelines = usePipelines();
   const selectedAgent = useSelectedAgent();
@@ -23,9 +22,9 @@ export function Layout() {
 
   const [viewMode, setViewMode] = useState<ViewMode>('agents');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    // Start collapsed on narrow viewports
+    // Start collapsed on narrow/mobile viewports
     if (typeof window !== 'undefined') {
-      return window.innerWidth < NARROW_BREAKPOINT && window.innerWidth >= 768;
+      return window.innerWidth < NARROW_BREAKPOINT;
     }
     return false;
   });
@@ -42,7 +41,7 @@ export function Layout() {
     const checkWidth = () => {
       const currentWidth = window.innerWidth;
       const wasWide = prevWidthRef.current >= NARROW_BREAKPOINT;
-      const isNowNarrow = currentWidth < NARROW_BREAKPOINT && currentWidth >= 768;
+      const isNowNarrow = currentWidth < NARROW_BREAKPOINT;
 
       // Only auto-collapse when transitioning from wide to narrow, and user hasn't manually toggled
       if (wasWide && isNowNarrow && !userToggledRef.current) {
@@ -99,71 +98,6 @@ export function Layout() {
   const runningAgentsCount = agents.filter(a => a.isRunning).length;
   const runningPipelinesCount = pipelines.filter(p => p.isRunning).length;
 
-  // Mobile layout
-  if (isMobile) {
-    // When viewing an agent detail, hide the header/tabs for more space
-    const showMobileNav = !(viewMode === 'agents' && selectedAgent);
-
-    return (
-      <div className="flex flex-col h-screen bg-gray-900">
-        {/* Mobile header + tabs - hidden when viewing agent detail */}
-        {showMobileNav && (
-          <header className="flex items-center justify-between px-3 py-1.5 bg-gray-800 border-b border-gray-700">
-            <div className="flex items-center gap-1.5">
-              <img src="/atopile-logo.svg" alt="atopile" className="w-4 h-4" />
-              <span className="text-sm font-medium">Orchestrator</span>
-            </div>
-            {/* Compact tabs inline */}
-            <div className="flex items-center gap-1">
-              <button
-                className={`px-2 py-1 text-xs font-medium rounded flex items-center gap-1 ${viewMode === 'agents' ? 'bg-blue-600 text-white' : 'text-gray-400'}`}
-                onClick={() => setViewMode('agents')}
-              >
-                <Activity className="w-3 h-3" />
-                {runningAgentsCount > 0 && (
-                  <span className="text-[10px] text-green-300">{runningAgentsCount}</span>
-                )}
-              </button>
-              <button
-                className={`px-2 py-1 text-xs font-medium rounded flex items-center gap-1 ${viewMode === 'pipelines' ? 'bg-blue-600 text-white' : 'text-gray-400'}`}
-                onClick={() => setViewMode('pipelines')}
-              >
-                <GitBranch className="w-3 h-3" />
-                {runningPipelinesCount > 0 && (
-                  <span className="text-[10px] text-green-300">{runningPipelinesCount}</span>
-                )}
-              </button>
-            </div>
-          </header>
-        )}
-
-        {/* Main content */}
-        <main className="flex-1 overflow-hidden">
-          {viewMode === 'agents' ? (
-            selectedAgent ? (
-              <AgentDetail agent={selectedAgent} onClose={handleClose} />
-            ) : (
-              <AgentList onSpawnClick={() => setSpawnDialogOpen(true)} />
-            )
-          ) : (
-            <div className="flex flex-col h-full">
-              <PipelineToolbar
-                onOpenPipelineList={() => {}}
-                onToggleSessions={() => setShowSessions(!showSessions)}
-                showSessions={showSessions}
-                isMobile={true}
-              />
-              <PipelineEditor />
-            </div>
-          )}
-        </main>
-
-        <SpawnAgentDialog open={spawnDialogOpen} onClose={() => setSpawnDialogOpen(false)} />
-      </div>
-    );
-  }
-
-  // Desktop layout
   return (
     <div className="flex h-screen bg-gray-900">
       {/* Sidebar */}
