@@ -393,24 +393,19 @@ def _create_alias_parameter_for_expression(
     Selects or creates a parameter to serve as an representative for an expression.
     """
 
+    if S_LOG:
+        expr_repr = expr.compact_repr(mutator.print_ctx)
+    expr_po = expr.as_parameter_operatable.get()
+
     mutated = {
         k: mutator.get_mutated(k_po)
         for k in existing_params
         if mutator.has_been_mutated((k_po := k.as_parameter_operatable.get()))
     }
 
-    expr_repr = expr.compact_repr(mutator.print_ctx)
-    assert len(mutated) <= 1
     if mutated:
+        assert len(mutated) == 1
         p = next(iter(mutated.values())).as_parameter.force_get()
-        mutator._create_and_insert_expression(
-            ExpressionBuilder(
-                F.Expressions.Is,
-                [expr_copy.as_operand.get(), p.as_operand.get()],
-                assert_=True,
-                terminate=True,
-            )
-        )
         if S_LOG:
             logger.debug(
                 f"Using mutated {p.compact_repr(mutator.print_ctx)} for {expr_repr}"
@@ -418,27 +413,28 @@ def _create_alias_parameter_for_expression(
     elif existing_params:
         p_old = next(iter(existing_params))
         p = mutator.mutate_parameter(p_old)
-        mutator._create_and_insert_expression(
-            ExpressionBuilder(
-                F.Expressions.Is,
-                [expr_copy.as_operand.get(), p.as_operand.get()],
-                assert_=True,
-                terminate=True,
-            )
-        )
         if S_LOG:
             logger.debug(
                 f"Using and mutating {p.compact_repr(mutator.print_ctx)} for {expr_repr}"
             )
     else:
         p = mutator.register_created_parameter(
-            expr_copy.create_representative(),
-            from_ops=[expr.as_parameter_operatable.get()],
+            expr_copy.create_representative(alias=False),
+            from_ops=[expr_po],
         )
         if S_LOG:
             logger.debug(
                 f"Using created {p.compact_repr(mutator.print_ctx)} for {expr_repr}"
             )
+    is_expr = mutator._create_and_insert_expression(
+        ExpressionBuilder(
+            F.Expressions.Is,
+            [expr_copy.as_operand.get(), p.as_operand.get()],
+            assert_=True,
+            terminate=True,
+        )
+    )
+    mutator.transformations.created[is_expr.is_parameter_operatable.get()] = [expr_po]
 
     for p_old in existing_params:
         p_old_po = p_old.as_parameter_operatable.get()
