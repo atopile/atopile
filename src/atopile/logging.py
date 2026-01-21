@@ -30,9 +30,8 @@ from datetime import datetime
 from enum import Enum, StrEnum
 from pathlib import Path
 from types import ModuleType, TracebackType
-from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any
 
-import pathvalidate
 import rich
 from rich._null_file import NullFile
 from rich.console import Console, ConsoleRenderable
@@ -45,6 +44,8 @@ from rich.tree import Tree
 from rich.text import Text
 from rich.traceback import Traceback
 
+import pathvalidate
+
 import atopile
 import faebryk
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
@@ -52,14 +53,69 @@ from atopile.logging_utils import (
     PLOG,
     CompletableSpinnerColumn,
     IndentedProgress,
-    NestedConsole,
     ShortTimeElapsedColumn,
     SpacerColumn,
     StyledMofNCompleteColumn,
     error_console,
-    format_line,
 )
 from faebryk.libs.util import Advancable
+
+# =============================================================================
+# Context Variables
+# =============================================================================
+
+_log_sink_var = ContextVar[io.StringIO | None]("log_sink", default=None)
+
+# =============================================================================
+# Build Status and Events
+# =============================================================================
+
+
+class Status(str, Enum):
+    """Build status states."""
+
+    QUEUED = "queued"
+    BUILDING = "building"
+    SUCCESS = "success"
+    WARNING = "warning"
+    FAILED = "failed"
+
+
+@dataclass
+class ProjectState:
+    """Aggregate state for a project containing multiple builds."""
+
+    builds: list = field(default_factory=list)
+    status: Status = Status.QUEUED
+    completed: int = 0
+    failed: int = 0
+    warnings: int = 0
+    building: int = 0
+    queued: int = 0
+    total: int = 0
+    current_build: str | None = None
+    current_stage: str | None = None
+    elapsed: float = 0.0
+
+
+@dataclass(frozen=True)
+class StageStatusEvent:
+    name: str
+    description: str
+    progress: int
+    total: int | None
+
+
+@dataclass(frozen=True)
+class StageCompleteEvent:
+    duration: float
+    status: str
+    infos: int
+    warnings: int
+    errors: int
+    alerts: int
+    log_name: str
+    description: str
 
 # =============================================================================
 # Rich Console Configuration (formerly cli/console.py)
@@ -110,6 +166,7 @@ CREATE TABLE IF NOT EXISTS logs (
     timestamp TEXT NOT NULL,
     stage TEXT NOT NULL,
     level TEXT NOT NULL,
+    logger_name TEXT NOT NULL DEFAULT '',
     audience TEXT NOT NULL DEFAULT 'developer',
     message TEXT NOT NULL,
     ato_traceback TEXT,
@@ -143,6 +200,7 @@ CREATE TABLE IF NOT EXISTS test_logs (
     timestamp TEXT NOT NULL,
     test TEXT NOT NULL,
     level TEXT NOT NULL,
+    logger_name TEXT NOT NULL DEFAULT '',
     audience TEXT NOT NULL DEFAULT 'developer',
     message TEXT NOT NULL,
     ato_traceback TEXT,
@@ -175,27 +233,26 @@ class Level(StrEnum):
     ERROR = "ERROR"
 
 
-EntryT = TypeVar("EntryT")
-
-
-class LogWriter(Protocol[EntryT]):
-    def write(self, entry: EntryT) -> None: ...
-
-    def flush(self) -> None: ...
-
-
-class BaseLogger(Generic[EntryT]):
+class BaseLogger:
     """Common structured logger base for build/test loggers."""
 
     def __init__(self, identifier: str, context: str = ""):
         self._identifier = identifier
         self._context = context
-        self._writer: LogWriter[EntryT] | None = None
+        self._writer: Any | None = None
 
     @staticmethod
     def _atopile_log_filter(record: logging.LogRecord) -> bool:
-        """Filter to only include atopile and faebryk logs."""
-        return record.name.startswith("atopile") or record.name.startswith("faebryk")
+        """Filter to only include atopile and faebryk logs, excluding server/http logs unless running 'ato serve'."""
+        # Filter out httpcore logs unless running 'ato serve'
+        if record.name.startswith("httpcore") and "serve" not in sys.argv:
+            return False
+        if not (record.name.startswith("atopile") or record.name.startswith("faebryk")):
+            return False
+        # Filter server logs from console unless running 'ato serve'
+        if record.name.startswith("atopile.server") and "serve" not in sys.argv:
+            return False
+        return True
 
     @staticmethod
     def get_exception_display_message(exc: BaseException) -> str:
@@ -242,7 +299,7 @@ class BaseLogger(Generic[EntryT]):
         """Update the current context label (stage/test name)."""
         self._context = context
 
-    def set_writer(self, writer: LogWriter[EntryT]) -> None:
+    def set_writer(self, writer: Any) -> None:
         """Set the SQLite writer for this logger."""
         self._writer = writer
 
@@ -353,46 +410,6 @@ class BaseLogger(Generic[EntryT]):
         if self._writer is not None:
             self._writer.flush()
 
-    @staticmethod
-    def rich_print_robust(message: str, markdown: bool = False) -> None:
-        """
-        Print a message with Rich, falling back to ASCII and plain text on errors.
-        """
-        try:
-            rich.print(Markdown(message) if markdown else message)
-        except UnicodeEncodeError:
-            message = message.encode("ascii", errors="ignore").decode("ascii")
-            rich.print(Markdown(message) if markdown else message)
-        except Exception:
-            if markdown:
-                plain_message = re.sub(r"```\w*\n", "", message)
-                plain_message = re.sub(r"```$", "", plain_message, flags=re.MULTILINE)
-                rich.print(plain_message)
-            else:
-                rich.print(message)
-
-    @staticmethod
-    def is_piped_to_file() -> bool:
-        return not sys.stdout.isatty()
-
-    @staticmethod
-    def get_terminal_width() -> int:
-        if BaseLogger.is_piped_to_file():
-            if "COLUMNS" in os.environ:
-                return int(os.environ["COLUMNS"])
-            return 240
-        return Console().size.width
-
-    @staticmethod
-    def rich_to_string(rich_obj: "Table | Tree") -> str:
-        nested_console = NestedConsole()
-        nested_console.print(rich_obj)
-        return str(nested_console)
-
-    @staticmethod
-    def format_line(line: str) -> str:
-        """Format a line with proper wrapping. Delegates to logging_utils.format_line."""
-        return format_line(line)
 
     def _build_entry(
         self,
@@ -404,7 +421,7 @@ class BaseLogger(Generic[EntryT]):
         ato_traceback: str | None,
         python_traceback: str | None,
         objects: dict | None,
-    ) -> EntryT:
+    ) -> Any:
         raise NotImplementedError
 
 
@@ -416,6 +433,7 @@ class LogEntry:
     timestamp: str
     stage: str
     level: Level
+    logger_name: str
     message: str
     audience: Audience = Audience.DEVELOPER
     ato_traceback: str | None = None
@@ -431,6 +449,7 @@ class TestLogEntry:
     timestamp: str
     test: str  # Name of the Python test being run
     level: Level
+    logger_name: str
     message: str
     audience: Audience = Audience.DEVELOPER
     ato_traceback: str | None = None
@@ -444,30 +463,96 @@ class SQLiteLogWriter:
     BATCH_SIZE = 50
     FLUSH_INTERVAL = 1.0  # seconds
 
-    # Singleton instance for central database
-    _instance: SQLiteLogWriter | None = None
+    # Singleton instances for different databases
+    _build_instance: "SQLiteLogWriter | None" = None
+    _test_instance: "SQLiteLogWriter | None" = None
     _instance_lock = threading.Lock()
 
     @classmethod
-    def get_instance(cls) -> SQLiteLogWriter:
-        """Get the singleton instance of the central log writer."""
+    def get_build_instance(cls) -> "SQLiteLogWriter":
+        """Get the singleton instance for build logs."""
         with cls._instance_lock:
-            if cls._instance is None:
-                cls._instance = cls(BuildLogger.get_log_db())
-            return cls._instance
+            if cls._build_instance is None:
+                cls._build_instance = cls(
+                    BuildLogger.get_log_db(),
+                    SCHEMA_SQL,
+                    """
+                    INSERT INTO logs (
+                        build_id, timestamp, stage, level, logger_name, audience,
+                        message, ato_traceback, python_traceback, objects
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    lambda e: (
+                        e.build_id,
+                        e.timestamp,
+                        e.stage,
+                        e.level,
+                        e.logger_name,
+                        e.audience,
+                        e.message,
+                        e.ato_traceback,
+                        e.python_traceback,
+                    ),
+                )
+            return cls._build_instance
 
     @classmethod
-    def close_instance(cls) -> None:
-        """Close the singleton instance."""
+    def get_test_instance(cls) -> "SQLiteLogWriter":
+        """Get the singleton instance for test logs."""
         with cls._instance_lock:
-            if cls._instance is not None:
-                cls._instance.close()
-                cls._instance = None
+            if cls._test_instance is None:
+                cls._test_instance = cls(
+                    TestLogger.get_log_db(),
+                    TEST_SCHEMA_SQL,
+                    """
+                    INSERT INTO test_logs (
+                        test_run_id, timestamp, test, level, logger_name, audience,
+                        message, ato_traceback, python_traceback, objects
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    lambda e: (
+                        e.test_run_id,
+                        e.timestamp,
+                        e.test,
+                        e.level,
+                        e.logger_name,
+                        e.audience,
+                        e.message,
+                        e.ato_traceback,
+                        e.python_traceback,
+                    ),
+                )
+            return cls._test_instance
 
-    def __init__(self, db_path: Path):
+    @classmethod
+    def close_build_instance(cls) -> None:
+        """Close the build log writer instance."""
+        with cls._instance_lock:
+            if cls._build_instance is not None:
+                cls._build_instance.close()
+                cls._build_instance = None
+
+    @classmethod
+    def close_test_instance(cls) -> None:
+        """Close the test log writer instance."""
+        with cls._instance_lock:
+            if cls._test_instance is not None:
+                cls._test_instance.close()
+                cls._test_instance = None
+
+    def __init__(
+        self,
+        db_path: Path,
+        schema_sql: str,
+        insert_sql: str,
+        entry_to_tuple: Any,
+    ):
         self._db_path = db_path
+        self._schema_sql = schema_sql
+        self._insert_sql = insert_sql
+        self._entry_to_tuple = entry_to_tuple
         self._local = threading.local()
-        self._buffer: list[LogEntry] = []
+        self._buffer: list[Any] = []
         self._buffer_lock = threading.Lock()
         self._last_flush = datetime.now()
         self._closed = False
@@ -492,7 +577,7 @@ class SQLiteLogWriter:
         """Initialize the database schema."""
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = self._get_connection()
-        conn.executescript(SCHEMA_SQL)
+        conn.executescript(self._schema_sql)
         conn.commit()
 
     def register_build(self, project_path: str, target: str, timestamp: str) -> str:
@@ -517,7 +602,29 @@ class SQLiteLogWriter:
             pass  # Best effort
         return build_id
 
-    def write(self, entry: LogEntry) -> None:
+    def register_test_run(self, run_name: str, timestamp: str) -> str:
+        """
+        Register a new test run and return its test_run_id.
+
+        If a test run with the same name/timestamp already exists,
+        returns the existing test_run_id.
+        """
+        test_run_id = TestLogger.generate_test_run_id(run_name, timestamp)
+        conn = self._get_connection()
+        try:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO test_runs (test_run_id, run_name, timestamp)
+                VALUES (?, ?, ?)
+                """,
+                (test_run_id, run_name, timestamp),
+            )
+            conn.commit()
+        except sqlite3.Error:
+            pass  # Best effort
+        return test_run_id
+
+    def write(self, entry: Any) -> None:
         """Write a log entry (batched for performance)."""
         if self._closed:
             return
@@ -557,24 +664,9 @@ class SQLiteLogWriter:
         conn = self._get_connection()
         try:
             conn.executemany(
-                """
-                INSERT INTO logs (
-                    build_id, timestamp, stage, level, audience,
-                    message, ato_traceback, python_traceback, objects
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
+                self._insert_sql,
                 [
-                    (
-                        e.build_id,
-                        e.timestamp,
-                        e.stage,
-                        e.level,
-                        e.audience,
-                        e.message,
-                        e.ato_traceback,
-                        e.python_traceback,
-                        self._serialize_objects(e.objects),
-                    )
+                    (*self._entry_to_tuple(e), self._serialize_objects(e.objects))
                     for e in entries
                 ],
             )
@@ -585,30 +677,15 @@ class SQLiteLogWriter:
             try:
                 conn = self._get_connection()
                 conn.executemany(
-                    """
-                    INSERT INTO logs (
-                        build_id, timestamp, stage, level, audience,
-                        message, ato_traceback, python_traceback, objects
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
+                    self._insert_sql,
                     [
-                        (
-                            e.build_id,
-                            e.timestamp,
-                            e.stage,
-                            e.level,
-                            e.audience,
-                            e.message,
-                            e.ato_traceback,
-                            e.python_traceback,
-                            self._serialize_objects(e.objects),
-                        )
+                        (*self._entry_to_tuple(e), self._serialize_objects(e.objects))
                         for e in entries
                     ],
                 )
                 conn.commit()
             except sqlite3.Error:
-                pass  # Best effort - don't crash the build for logging failures
+                pass  # Best effort - don't crash for logging failures
 
     def close(self) -> None:
         """Close the writer and flush pending entries."""
@@ -622,191 +699,7 @@ class SQLiteLogWriter:
             self._local.connection = None
 
 
-class SQLiteTestLogWriter:
-    """Thread-safe SQLite test log writer with WAL mode and batching."""
-
-    BATCH_SIZE = 50
-    FLUSH_INTERVAL = 1.0  # seconds
-
-    # Singleton instance for test database
-    _instance: SQLiteTestLogWriter | None = None
-    _instance_lock = threading.Lock()
-
-    @classmethod
-    def get_instance(cls) -> SQLiteTestLogWriter:
-        """Get the singleton instance of the test log writer."""
-        with cls._instance_lock:
-            if cls._instance is None:
-                cls._instance = cls(TestLogger.get_log_db())
-            return cls._instance
-
-    @classmethod
-    def close_instance(cls) -> None:
-        """Close the singleton instance."""
-        with cls._instance_lock:
-            if cls._instance is not None:
-                cls._instance.close()
-                cls._instance = None
-
-    def __init__(self, db_path: Path):
-        self._db_path = db_path
-        self._local = threading.local()
-        self._buffer: list[TestLogEntry] = []
-        self._buffer_lock = threading.Lock()
-        self._last_flush = datetime.now()
-        self._closed = False
-        self._init_database()
-
-    def _get_connection(self) -> sqlite3.Connection:
-        """Get thread-local database connection."""
-        if not hasattr(self._local, "connection") or self._local.connection is None:
-            self._local.connection = sqlite3.connect(
-                str(self._db_path),
-                check_same_thread=False,
-                timeout=30.0,
-            )
-            # Configure for concurrent access
-            self._local.connection.execute("PRAGMA journal_mode=WAL")
-            self._local.connection.execute("PRAGMA synchronous=NORMAL")
-            self._local.connection.execute("PRAGMA temp_store=MEMORY")
-            self._local.connection.execute("PRAGMA busy_timeout=30000")
-        return self._local.connection
-
-    def _init_database(self) -> None:
-        """Initialize the database schema."""
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = self._get_connection()
-        conn.executescript(TEST_SCHEMA_SQL)
-        conn.commit()
-
-    def register_test_run(self, run_name: str, timestamp: str) -> str:
-        """
-        Register a new test run and return its test_run_id.
-
-        If a test run with the same name/timestamp already exists,
-        returns the existing test_run_id.
-        """
-        test_run_id = TestLogger.generate_test_run_id(run_name, timestamp)
-        conn = self._get_connection()
-        try:
-            conn.execute(
-                """
-                INSERT OR IGNORE INTO test_runs (test_run_id, run_name, timestamp)
-                VALUES (?, ?, ?)
-                """,
-                (test_run_id, run_name, timestamp),
-            )
-            conn.commit()
-        except sqlite3.Error:
-            pass  # Best effort
-        return test_run_id
-
-    def write(self, entry: TestLogEntry) -> None:
-        """Write a test log entry (batched for performance)."""
-        if self._closed:
-            return
-
-        with self._buffer_lock:
-            self._buffer.append(entry)
-            should_flush = (
-                len(self._buffer) >= self.BATCH_SIZE
-                or (datetime.now() - self._last_flush).total_seconds()
-                > self.FLUSH_INTERVAL
-            )
-
-        if should_flush:
-            self.flush()
-
-    def _serialize_objects(self, objects: dict | None) -> str | None:
-        """Serialize objects dict to JSON string."""
-        if objects is None:
-            return None
-        try:
-            return json.dumps(objects)
-        except (TypeError, ValueError):
-            return None
-
-    def flush(self) -> None:
-        """Force write all buffered entries."""
-        with self._buffer_lock:
-            if not self._buffer:
-                return
-            entries = self._buffer.copy()
-            self._buffer.clear()
-            self._last_flush = datetime.now()
-
-        if not entries:
-            return
-
-        conn = self._get_connection()
-        try:
-            conn.executemany(
-                """
-                INSERT INTO test_logs (
-                    test_run_id, timestamp, test, level, audience,
-                    message, ato_traceback, python_traceback, objects
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    (
-                        e.test_run_id,
-                        e.timestamp,
-                        e.test,
-                        e.level,
-                        e.audience,
-                        e.message,
-                        e.ato_traceback,
-                        e.python_traceback,
-                        self._serialize_objects(e.objects),
-                    )
-                    for e in entries
-                ],
-            )
-            conn.commit()
-        except sqlite3.Error:
-            # On error, try to reconnect and retry once
-            self._local.connection = None
-            try:
-                conn = self._get_connection()
-                conn.executemany(
-                    """
-                    INSERT INTO test_logs (
-                        test_run_id, timestamp, test, level, audience,
-                        message, ato_traceback, python_traceback, objects
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    [
-                        (
-                            e.test_run_id,
-                            e.timestamp,
-                            e.test,
-                            e.level,
-                            e.audience,
-                            e.message,
-                            e.ato_traceback,
-                            e.python_traceback,
-                            self._serialize_objects(e.objects),
-                        )
-                        for e in entries
-                    ],
-                )
-                conn.commit()
-            except sqlite3.Error:
-                pass  # Best effort - don't crash tests for logging failures
-
-    def close(self) -> None:
-        """Close the writer and flush pending entries."""
-        self._closed = True
-        self.flush()
-        if hasattr(self._local, "connection") and self._local.connection is not None:
-            try:
-                self._local.connection.close()
-            except sqlite3.Error:
-                pass
-            self._local.connection = None
-
-
-class TestLogger(BaseLogger[TestLogEntry]):
+class TestLogger(BaseLogger):
     """Typed logging interface for structured test logs."""
 
     _loggers: dict[str, "TestLogger"] = {}
@@ -845,7 +738,7 @@ class TestLogger(BaseLogger[TestLogEntry]):
         if timestamp is None:
             timestamp = NOW
 
-        writer = SQLiteTestLogWriter.get_instance()
+        writer = SQLiteLogWriter.get_test_instance()
         test_run_id = writer.register_test_run(run_name, timestamp)
 
         if test_run_id not in cls._loggers:
@@ -875,7 +768,7 @@ class TestLogger(BaseLogger[TestLogEntry]):
         """
         for test_run_id in list(cls._loggers.keys()):
             cls.close(test_run_id)
-        SQLiteTestLogWriter.close_instance()
+        SQLiteLogWriter.close_test_instance()
 
     @classmethod
     def setup_logging(
@@ -944,6 +837,7 @@ class TestLogger(BaseLogger[TestLogEntry]):
             timestamp=datetime.now().isoformat(),
             test=self._context,
             level=level,
+            logger_name=logger_name,
             message=message,
             audience=audience,
             ato_traceback=ato_traceback,
@@ -952,7 +846,7 @@ class TestLogger(BaseLogger[TestLogEntry]):
         )
 
 
-class BuildLogger(BaseLogger[LogEntry]):
+class BuildLogger(BaseLogger):
     """Typed logging interface for structured build logs."""
 
     _loggers: dict[str, "BuildLogger"] = {}
@@ -1003,7 +897,7 @@ class BuildLogger(BaseLogger[LogEntry]):
         if timestamp is None:
             timestamp = NOW
 
-        writer = SQLiteLogWriter.get_instance()
+        writer = SQLiteLogWriter.get_build_instance()
         build_id = writer.register_build(project_path, target, timestamp)
 
         if build_id not in cls._loggers:
@@ -1038,7 +932,7 @@ class BuildLogger(BaseLogger[LogEntry]):
         """
         for build_id in list(cls._loggers.keys()):
             cls.close(build_id)
-        SQLiteLogWriter.close_instance()
+        SQLiteLogWriter.close_build_instance()
 
     @classmethod
     def setup_logging(
@@ -1055,6 +949,12 @@ class BuildLogger(BaseLogger[LogEntry]):
         - CLI commands (enable_database=True, stage="cli")
         - Build stages (enable_database=True, stage="stage-name", use_live_handler=True)
         - Basic Rich-formatted logging (enable_database=False)
+
+        Args:
+            enable_database: Whether to set up database logging
+            stage: Stage name for database logging (defaults to "cli")
+            use_live_handler: Whether to use LiveLogHandler (for LoggingStage)
+            status: LoggingStage instance (required if use_live_handler=True)
         """
         root_logger = logging.getLogger()
 
@@ -1073,28 +973,33 @@ class BuildLogger(BaseLogger[LogEntry]):
                 stage_name = stage if stage is not None else "cli"
                 build_logger = cls.get(project_path, target, stage=stage_name)
 
-                for handler in root_logger.handlers:
-                    if isinstance(handler, LogHandler):
-                        handler._build_logger = build_logger
-                        break
+                # Set up LiveLogHandler if requested (for LoggingStage)
+                if use_live_handler and status is not None:
+                    # Remove existing handlers
+                    for handler in root_logger.handlers.copy():
+                        root_logger.removeHandler(handler)
+
+                    # Create LiveLogHandler
+                    live_handler = LiveLogHandler(status, build_logger=build_logger)
+                    live_handler.setFormatter(_DEFAULT_FORMATTER)
+                    live_handler.setLevel(root_logger.level)
+                    root_logger.addHandler(live_handler)
+
+                    # Handle capture log handler if needed
+                    if _log_sink_var.get() is not None:
+                        capture_console = Console(file=_log_sink_var.get())
+                        capture_handler = CaptureLogHandler(status, console=capture_console)
+                        capture_handler.setFormatter(_DEFAULT_FORMATTER)
+                        capture_handler.setLevel(logging.INFO)
+                        root_logger.addHandler(capture_handler)
+                else:
+                    # Just attach build_logger to existing handler
+                    for handler in root_logger.handlers:
+                        if isinstance(handler, LogHandler):
+                            handler._build_logger = build_logger
+                            break
             except Exception:
                 pass
-
-        if use_live_handler and status is not None and build_logger is not None:
-            for handler in root_logger.handlers.copy():
-                root_logger.removeHandler(handler)
-
-            live_handler = LiveLogHandler(status, build_logger=build_logger)
-            live_handler.setFormatter(_DEFAULT_FORMATTER)
-            live_handler.setLevel(root_logger.level)
-            root_logger.addHandler(live_handler)
-
-            if _log_sink_var.get() is not None:
-                capture_console = Console(file=_log_sink_var.get())
-                capture_handler = CaptureLogHandler(status, console=capture_console)
-                capture_handler.setFormatter(_DEFAULT_FORMATTER)
-                capture_handler.setLevel(logging.INFO)
-                root_logger.addHandler(capture_handler)
 
         return build_logger
 
@@ -1140,6 +1045,7 @@ class BuildLogger(BaseLogger[LogEntry]):
             timestamp=datetime.now().isoformat(),
             stage=self._context,
             level=level,
+            logger_name=logger_name,
             message=message,
             audience=audience,
             ato_traceback=ato_traceback,
@@ -1215,58 +1121,6 @@ class BuildLogger(BaseLogger[LogEntry]):
 
 
 # =============================================================================
-# Build Status and Events
-# =============================================================================
-
-
-class Status(str, Enum):
-    """Build status states."""
-
-    QUEUED = "queued"
-    BUILDING = "building"
-    SUCCESS = "success"
-    WARNING = "warning"
-    FAILED = "failed"
-
-
-@dataclass
-class ProjectState:
-    """Aggregate state for a project containing multiple builds."""
-
-    builds: list = field(default_factory=list)
-    status: Status = Status.QUEUED
-    completed: int = 0
-    failed: int = 0
-    warnings: int = 0
-    building: int = 0
-    queued: int = 0
-    total: int = 0
-    current_build: str | None = None
-    current_stage: str | None = None
-    elapsed: float = 0.0
-
-
-@dataclass(frozen=True)
-class StageStatusEvent:
-    name: str
-    description: str
-    progress: int
-    total: int | None
-
-
-@dataclass(frozen=True)
-class StageCompleteEvent:
-    duration: float
-    status: str
-    infos: int
-    warnings: int
-    errors: int
-    alerts: int
-    log_name: str
-    description: str
-
-
-# =============================================================================
 # Rich Console Logging Handlers
 # =============================================================================
 
@@ -1319,9 +1173,8 @@ class LogHandler(RichHandler):
         self._is_terminal = force_terminal or console.is_terminal
         self._build_logger = build_logger
         self._test_logger: TestLogger | None = None
-        # Note: We don't add _atopile_log_filter here because we want all logs
-        # to go to the database. The filter is applied manually in emit() for
-        # console output only.
+        # Note: _atopile_log_filter is applied in both _write_to_sqlite() and
+        # emit() to filter logs for database and console output respectively.
 
     def _get_suppress(
         self, exc_type: type[BaseException] | None
@@ -1380,17 +1233,22 @@ class LogHandler(RichHandler):
         if hide_traceback or exc_type is None or exc_value is None:
             return None
 
+        # Use console width or None (unlimited) for traceback width to prevent truncation
+        width = getattr(self, 'tracebacks_width', None) or getattr(self.console, 'width', None)
+        # If width is None, Rich will use full available width
+        
         return Traceback.from_exception(
             exc_type,
             exc_value,
             exc_traceback,
-            width=self.tracebacks_width,
-            extra_lines=self.tracebacks_extra_lines,
-            theme=self.tracebacks_theme,
-            word_wrap=self.tracebacks_word_wrap,
-            show_locals=self.tracebacks_show_locals,
-            locals_max_length=self.locals_max_length,
-            locals_max_string=self.locals_max_string,
+            width=width,
+            extra_lines=getattr(self, 'tracebacks_extra_lines', 3),
+            theme=getattr(self, 'tracebacks_theme', None),
+            word_wrap=getattr(self, 'tracebacks_word_wrap', True),
+            show_locals=getattr(self, 'tracebacks_show_locals', False),
+            locals_max_length=getattr(self, 'locals_max_length', 10),
+            locals_max_string=getattr(self, 'locals_max_string', 80),
+            max_frames=getattr(self, 'tracebacks_max_frames', 1000),  # Increased from default 100 to show full tracebacks
             suppress=suppress,
         )
 
@@ -1518,6 +1376,7 @@ class LogHandler(RichHandler):
                 self._build_logger.log(
                     level,
                     message,
+                    logger_name=record.name,
                     audience=Audience.USER,
                     ato_traceback=ato_tb,
                     python_traceback=python_tb,
@@ -1537,6 +1396,7 @@ class LogHandler(RichHandler):
                 self._build_logger.log(
                     level,
                     message,
+                    logger_name=record.name,
                     python_traceback=python_tb,
                 )
         except Exception:
@@ -1568,6 +1428,7 @@ class LogHandler(RichHandler):
                 self._test_logger.log(
                     level,
                     message,
+                    logger_name=record.name,
                     audience=Audience.USER,
                     python_traceback=python_tb,
                 )
@@ -1586,6 +1447,7 @@ class LogHandler(RichHandler):
                 self._test_logger.log(
                     level,
                     message,
+                    logger_name=record.name,
                     python_traceback=python_tb,
                 )
         except Exception:
@@ -1593,7 +1455,7 @@ class LogHandler(RichHandler):
 
     def emit(self, record: logging.LogRecord) -> None:
         """Invoked by logging."""
-        # Only process atopile/faebryk logs (applies to both database and console)
+        # Filter out non-atopile/faebryk logs and httpcore (unless serving)
         if not BaseLogger._atopile_log_filter(record):
             return
 
@@ -1619,7 +1481,16 @@ class LogHandler(RichHandler):
             self.handleError(record)
         else:
             try:
-                self.console.print(log_renderable)
+                # For errors/exceptions, also print to stderr to ensure visibility
+                # even if stdout is being overwritten by Live displays
+                if record.levelno >= logging.ERROR and record.exc_info:
+                    # Print to stderr as well to avoid being overwritten by Live displays
+                    stderr_console = Console(file=sys.stderr, width=self.console.width)
+                    stderr_console.print(log_renderable, crop=False, overflow="ignore")
+                
+                # Print without height limit to show full tracebacks
+                # Use crop=False to prevent truncation, and ensure full output
+                self.console.print(log_renderable, crop=False, overflow="ignore")
             except Exception:
                 self.handleError(record)
             finally:
@@ -1711,19 +1582,6 @@ class CaptureLogHandler(LogHandler):
         finally:
             if hashable:
                 self._logged_exceptions.add(hashable)
-
-
-# =============================================================================
-# Progress Bar Components
-# =============================================================================
-# (Imported from logging_utils at top of file)
-
-
-# =============================================================================
-# Context Variables
-# =============================================================================
-
-_log_sink_var = ContextVar[io.StringIO | None]("log_sink", default=None)
 
 
 # =============================================================================
@@ -2094,3 +1952,6 @@ if PLOG:
     plog.setLevel(logging.DEBUG)
 
 logger = logging.getLogger(__name__)
+
+# Module-level exports for convenience
+get_exception_display_message = BaseLogger.get_exception_display_message

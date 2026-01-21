@@ -34,7 +34,7 @@ from faebryk.core.solver.utils import (
     MutatorUtils,
     pretty_expr,
 )
-from atopile.logging import BaseLogger
+from atopile.logging_utils import rich_to_string
 from faebryk.libs.util import (
     OrderedSet,
     duplicates,
@@ -672,7 +672,7 @@ class MutationStage:
                 else:
                     table.add_row(*row)
 
-            log(BaseLogger.rich_to_string(table))
+            log(rich_to_string(table))
 
     def get_traceback_stage(
         self, param: F.Parameters.is_parameter_operatable
@@ -1139,7 +1139,7 @@ class MutationMap:
             )
 
         if table.rows:
-            log(BaseLogger.rich_to_string(table))
+            log(rich_to_string(table))
 
     def get_traceback(self, param: F.Parameters.is_parameter_operatable) -> Traceback:
         start = self.last_stage.get_traceback_stage(param)

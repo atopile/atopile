@@ -11,12 +11,16 @@ from __future__ import annotations
 
 import io
 import logging
+import os
+import re
+import sys
 import time
 from enum import StrEnum
 
 import rich
 from rich.console import Console, RenderableType
 from rich.highlighter import RegexHighlighter
+from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.progress import (
     MofNCompleteColumn,
@@ -26,9 +30,10 @@ from rich.progress import (
     Task,
     TimeElapsedColumn,
 )
-from rich.table import Column
+from rich.table import Column, Table
 from rich.text import Text
 from rich.theme import Theme
+from rich.tree import Tree
 
 from faebryk.libs.util import ConfigFlag, ConfigFlagInt
 
@@ -168,6 +173,45 @@ def format_line(line: str) -> str:
         lines.append(f"{prefix}{chunk}")
 
     return "\n".join(lines).removeprefix(" " * 2)
+
+
+def rich_print_robust(message: str, markdown: bool = False) -> None:
+    """
+    Print a message with Rich, falling back to ASCII and plain text on errors.
+    """
+    try:
+        rich.print(Markdown(message) if markdown else message)
+    except UnicodeEncodeError:
+        message = message.encode("ascii", errors="ignore").decode("ascii")
+        rich.print(Markdown(message) if markdown else message)
+    except Exception:
+        if markdown:
+            plain_message = re.sub(r"```\w*\n", "", message)
+            plain_message = re.sub(r"```$", "", plain_message, flags=re.MULTILINE)
+            rich.print(plain_message)
+        else:
+            rich.print(message)
+
+
+def is_piped_to_file() -> bool:
+    """Check if stdout is piped to a file."""
+    return not sys.stdout.isatty()
+
+
+def get_terminal_width() -> int:
+    """Get the terminal width, with fallback for piped output."""
+    if is_piped_to_file():
+        if "COLUMNS" in os.environ:
+            return int(os.environ["COLUMNS"])
+        return 240
+    return Console().size.width
+
+
+def rich_to_string(rich_obj: Table | Tree) -> str:
+    """Convert a Rich Table or Tree to a string."""
+    nested_console = NestedConsole()
+    nested_console.print(rich_obj)
+    return str(nested_console)
 
 
 class NestedConsole(Console):

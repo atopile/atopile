@@ -12,7 +12,7 @@ from typing import Callable, Iterator
 
 from rich.table import Table
 
-from atopile.logging import BaseLogger
+from atopile.logging_utils import rich_to_string
 
 
 class Times:
@@ -418,7 +418,7 @@ class Times:
         Returns:
             String representation of the table
         """
-        return BaseLogger.rich_to_string(self.to_table())
+        return rich_to_string(self.to_table())
 
     def __repr__(self) -> str:
         """String representation."""

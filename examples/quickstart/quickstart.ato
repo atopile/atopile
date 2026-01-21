@@ -3,4 +3,8 @@ import ElectricPower
 
 module App:
     r1 = new Resistor  # Create a new resistor
+<<<<<<< HEAD
     r1.resistance = 50 kohm +/- 10%  # Set the resistor value
+=======
+    r1.resistance = 50 kohm +/- 10%  # Set the resistor value
+>>>>>>> ced145e7 (logging cleanup wip)

@@ -406,7 +406,7 @@ class BuildProcess:
 
 
 class ParallelBuildManager:
-    """Manages multiple build processes with live display and job queue."""
+    """Manages multiple build processes with job queue."""
 
     _STAGE_WIDTH = 22  # "Building... [123.4s]" fits in ~22 chars
 
@@ -476,19 +476,14 @@ class ParallelBuildManager:
             self._task_queue.put(display_name)
 
         self._lock = threading.Lock()
-        self._display_lock = threading.Lock()  # Synchronize display updates
-        self._stop_display = threading.Event()
-        self._display_thread: threading.Thread | None = None
         self._active_workers: set[str] = set()
 
         # Import rich for display
         from rich.console import Console
-        from rich.live import Live
         from rich.table import Table
 
         self._console = Console()
         self._Table = Table
-        self._live: Live | None = None
 
     def _start_next_build(self) -> bool:
         """Start the next build from the queue. Returns True if a build was started."""
@@ -826,18 +821,6 @@ class ParallelBuildManager:
             f"{'':>{self._VERBOSE_INDENT}}{_format_stage_entry(entry)}{log_text}"
         )
 
-    def _display_loop(self) -> None:
-        """Background thread that updates display."""
-        from rich.console import Group
-
-        while not self._stop_display.is_set():
-            if self._live:
-                with self._display_lock:
-                    table = self._render_table()
-                    summary = self._render_summary()
-                    self._live.update(Group(table, "", summary))
-            self._write_live_summary()
-            time.sleep(0.5)
 
     def _write_live_summary(self) -> None:
         """Write per-target build summaries to each target's build output directory."""
@@ -866,7 +849,7 @@ class ParallelBuildManager:
 
     def run_until_complete(self) -> dict[str, int]:
         """
-        Run all builds until complete, showing live progress.
+        Run all builds until complete.
 
         Uses a queue to limit concurrent builds to max_workers.
         In verbose mode, runs sequentially with full output.
@@ -881,8 +864,6 @@ class ParallelBuildManager:
 
         results = self._run_parallel()
 
-        # Errors are now printed above the table during the live display,
-        # so we don't need to print them again here.
 
         return results
 
@@ -909,7 +890,6 @@ class ParallelBuildManager:
         """Run builds sequentially without live display."""
         console = self._get_full_width_console()
         return self._run_parallel(
-            live=False,
             max_workers=1,
             print_headers=True,
             print_results=True,
@@ -929,16 +909,13 @@ class ParallelBuildManager:
     def _run_parallel(
         self,
         *,
-        live: bool = True,
         max_workers: int | None = None,
         print_headers: bool = False,
         print_results: bool = False,
         stage_printer: Callable[[StageCompleteEvent, Path | None], None] | None = None,
         console: Console | None = None,
     ) -> dict[str, int]:
-        """Run builds with an optional live progress display."""
-        from rich.console import Group
-        from rich.live import Live
+        """Run builds."""
 
         results: dict[str, int] = {}
         console = console or self._console
@@ -1017,9 +994,8 @@ class ParallelBuildManager:
                     if all_done:
                         break
 
-                    # Update JSON summary (verbose mode; live mode uses _display_loop)
-                    if not live:
-                        self._write_live_summary()
+                    # Update JSON summary
+                    self._write_live_summary()
 
                     time.sleep(0.5)
 
@@ -1031,34 +1007,7 @@ class ParallelBuildManager:
 
             return results
 
-        if live:
-            with Live(
-                self._render_table(),
-                console=console,
-                refresh_per_second=2,
-            ) as live_display:
-                self._live = live_display
-                self._stop_display.clear()
-
-                # Start display update thread
-                self._display_thread = threading.Thread(
-                    target=self._display_loop, daemon=True
-                )
-                self._display_thread.start()
-
-                try:
-                    run_loop(live_display.console)
-                finally:
-                    self._stop_display.set()
-                    if self._display_thread:
-                        self._display_thread.join(timeout=1.0)
-
-                # Final update
-                table = self._render_table()
-                summary = self._render_summary()
-                live_display.update(Group(table, "", summary))
-        else:
-            run_loop(self._console)
+        run_loop(console)
 
         return results
 

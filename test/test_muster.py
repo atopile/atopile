@@ -9,7 +9,6 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.build_steps import Muster, MusterTarget
 from atopile.buildutil import BuildStepContext
-from atopile.logging import LoggingStage
 from faebryk.core.solver.solver import Solver
 
 
@@ -153,23 +152,17 @@ def test_muster_register_decorator():
     muster = Muster()
 
     @muster.register("target1")
-    def func1(
-        ctx: BuildStepContext, log_context: LoggingStage
-    ) -> None:
+    def func1(ctx: BuildStepContext) -> None:
         pass
 
     @muster.register("target2", dependencies=[muster.targets["target1"]])
-    def func2(
-        ctx: BuildStepContext, log_context: LoggingStage
-    ) -> None:
+    def func2(ctx: BuildStepContext) -> None:
         pass
 
     @muster.register(
         "target3", dependencies=[muster.targets["target1"], muster.targets["target2"]]
     )
-    def func3(
-        ctx: BuildStepContext, log_context: LoggingStage
-    ) -> None:
+    def func3(ctx: BuildStepContext) -> None:
         pass
 
     # Check targets are registered
