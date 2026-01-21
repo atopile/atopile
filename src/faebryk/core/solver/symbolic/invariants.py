@@ -352,7 +352,9 @@ class SubsumptionCheck:
             ):
                 return SubsumptionCheck.Result(most_constrained_expr=candidate_expr)
 
-        return SubsumptionCheck.Result()
+        return SubsumptionCheck.Result(
+            most_constrained_expr=builder.with_(operands=new_operands)
+        )
 
     @staticmethod
     def is_(mutator: Mutator, builder: "ExpressionBuilder") -> Result:
@@ -648,7 +650,29 @@ def _no_predicate_operands(
     return new_builder
 
 
-def _fold_pure_literal_operands(
+# TODO move to expression_wise.py
+class Folds:
+    @staticmethod
+    def _or(
+        mutator: Mutator, builder: ExpressionBuilder
+    ) -> F.Literals.is_literal | None:
+        if not (lits := builder.indexed_lits()):
+            return None
+        if any(lit.op_setic_equals_singleton(True) for lit in lits.values()):
+            return mutator.make_singleton(True).is_literal.get()
+        return None
+
+    def fold(
+        mutator: Mutator, builder: ExpressionBuilder
+    ) -> F.Literals.is_literal | None:
+        match builder.factory:
+            case F.Expressions.Or:
+                return Folds._or(mutator, builder)
+            case _:
+                return None
+
+
+def _fold(
     mutator: Mutator,
     builder: ExpressionBuilder,
     alias: F.Parameters.is_parameter | None = None,
@@ -668,7 +692,7 @@ def _fold_pure_literal_operands(
         lit_fold := exec_pure_literal_operands(
             mutator.G_transient, mutator.tg_out, builder.factory, builder.operands
         )
-    ):
+    ) and not (lit_fold := Folds.fold(mutator, builder)):
         return None
 
     if I_LOG:
@@ -1109,7 +1133,7 @@ def insert_expression(
     # * fold pure literal expressions
     # needs to run last since it creates new expressions
     # folding to literal will result in ss/sup in mutator.mutate_expression
-    if lit_fold := _fold_pure_literal_operands(
+    if lit_fold := _fold(
         mutator,
         builder,
         alias,

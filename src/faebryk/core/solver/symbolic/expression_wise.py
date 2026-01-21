@@ -490,24 +490,7 @@ def fold_or(expr: F.Expressions.Or, mutator: Mutator):
     # Or(A, B, A) -> Or(A, B) implicit (idempotent)
 
     e = expr.is_expression.get()
-    lits = e.get_operand_literals()
     operatables = e.get_operand_operatables()
-
-    # Or(A, B, C, True) -> True
-    if any(lit.op_setic_equals_singleton(True) for lit in lits.values()):
-        # if e.try_get_sibling_trait(F.Expressions.is_predicate):
-        #     return
-        mutator.create_check_and_insert_expression(
-            F.Expressions.IsSubset,
-            e.as_operand.get(),
-            mutator.make_singleton(True).can_be_operand.get(),
-            terminate=True,
-            assert_=True,
-        )
-        return
-
-    # Or(A, B, C, False/{True, False}) -> Or(A, B, C)
-    filtered_operands = [op.as_operand.get() for op in e.get_operand_operatables()]
 
     # ¬!(¬A v ¬B v C) -> ¬!(¬!A v ¬!B v C), ¬!C
     if (
@@ -524,9 +507,6 @@ def fold_or(expr: F.Expressions.Or, mutator: Mutator):
                 terminate=True,
                 assert_=True,
             )
-
-    # Rebuild without False literals
-    mutator.mutate_expression(e, operands=filtered_operands)
 
 
 @expression_wise_algorithm(F.Expressions.Not)
