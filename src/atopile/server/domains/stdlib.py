@@ -1,8 +1,6 @@
-"""Standard library endpoints."""
+"""Stdlib domain logic - business logic for standard library operations."""
 
 from __future__ import annotations
-
-from fastapi import APIRouter, HTTPException, Query
 
 from atopile.server.stdlib import (
     StdLibItem,
@@ -11,26 +9,25 @@ from atopile.server.stdlib import (
     get_standard_library,
 )
 
-router = APIRouter(tags=["stdlib"])
 
+def handle_get_stdlib(
+    type_filter: str | None = None,
+    search: str | None = None,
+    refresh: bool = False,
+    max_depth: int | None = None,
+) -> StdLibResponse:
+    """
+    Get the atopile standard library.
 
-@router.get("/api/stdlib", response_model=StdLibResponse)
-async def get_stdlib(
-    type_filter: str | None = Query(
-        None,
-        description="Filter by item type: interface, module, trait, component",
-    ),
-    search: str | None = Query(
-        None, description="Search query to filter items by name or description"
-    ),
-    refresh: bool = Query(False, description="Force refresh the library cache"),
-    max_depth: int | None = Query(
-        None,
-        description="Maximum depth for nested children. 0=none, 1=one level, 2=default.",
-        ge=0,
-        le=5,
-    ),
-):
+    Args:
+        type_filter: Filter by item type (interface, module, trait, component)
+        search: Search query to filter items by name or description
+        refresh: Force refresh the library cache
+        max_depth: Maximum depth for nested children
+
+    Returns:
+        StdLibResponse with items and total count
+    """
     items = get_standard_library(force_refresh=refresh, max_depth=max_depth)
 
     if type_filter:
@@ -52,11 +49,24 @@ async def get_stdlib(
     return StdLibResponse(items=items, total=len(items))
 
 
-@router.get("/api/stdlib/{item_id}", response_model=StdLibItem)
-async def get_stdlib_item(item_id: str):
+def handle_get_stdlib_item(item_id: str) -> StdLibItem | None:
+    """
+    Get details for a specific stdlib item.
+
+    Args:
+        item_id: The ID of the item to retrieve
+
+    Returns:
+        StdLibItem if found, None otherwise
+    """
     items = get_standard_library()
     for item in items:
         if item.id == item_id:
             return item
+    return None
 
-    raise HTTPException(status_code=404, detail=f"Item not found: {item_id}")
+
+__all__ = [
+    "handle_get_stdlib",
+    "handle_get_stdlib_item",
+]

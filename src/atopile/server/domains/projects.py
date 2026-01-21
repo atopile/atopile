@@ -1,17 +1,17 @@
-"""Project-related API routes."""
+"""Projects domain logic - business logic for project operations."""
 
 from __future__ import annotations
 
 import logging
+import shutil
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from atopile.server.app_context import AppContext
 from atopile.server.core import projects as core_projects
 from atopile.server.domains import packages as packages_domain
-from atopile.server.domains.deps import get_ctx
 from atopile.server.state import server_state
 from atopile.server.schemas.project import (
     ProjectsResponse,
@@ -21,15 +21,36 @@ from atopile.server.schemas.project import (
     DependenciesResponse,
     DependencyInfo,
 )
-from pydantic import BaseModel
 
 log = logging.getLogger(__name__)
 
-router = APIRouter(tags=["projects"])
+
+class CreateProjectRequest(BaseModel):
+    parent_directory: str
+    name: str | None = None
 
 
-@router.get("/api/projects", response_model=ProjectsResponse)
-async def get_projects(ctx: AppContext = Depends(get_ctx)):
+class CreateProjectResponse(BaseModel):
+    success: bool
+    message: str
+    project_root: str | None = None
+    project_name: str | None = None
+
+
+class RenameProjectRequest(BaseModel):
+    project_root: str
+    new_name: str
+
+
+class RenameProjectResponse(BaseModel):
+    success: bool
+    message: str
+    old_root: str
+    new_root: str | None = None
+
+
+def handle_get_projects(ctx: AppContext) -> ProjectsResponse:
+    """Get all discovered projects in workspace paths."""
     if not ctx.workspace_paths:
         return ProjectsResponse(projects=[], total=0)
 
@@ -37,22 +58,18 @@ async def get_projects(ctx: AppContext = Depends(get_ctx)):
     return ProjectsResponse(projects=projects, total=len(projects))
 
 
-@router.get("/api/modules", response_model=ModulesResponse)
-async def get_modules(
-    project_root: str = Query(
-        ..., description="Path to the project root to scan for modules"
-    ),
-    type_filter: Optional[str] = Query(
-        None,
-        description="Filter by type: 'module', 'interface', or 'component'",
-    ),
-):
+def handle_get_modules(
+    project_root: str,
+    type_filter: Optional[str] = None,
+) -> ModulesResponse | None:
+    """
+    Get all module/interface/component definitions in a project.
+
+    Returns None if project not found.
+    """
     project_path = Path(project_root)
     if not project_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Project not found: {project_root}",
-        )
+        return None
 
     modules = core_projects.discover_modules_in_project(project_path)
     if type_filter:
@@ -62,18 +79,15 @@ async def get_modules(
     return ModulesResponse(modules=modules, total=len(modules))
 
 
-@router.get("/api/files", response_model=FilesResponse)
-async def get_files(
-    project_root: str = Query(
-        ..., description="Path to the project root to scan for files"
-    )
-):
+def handle_get_files(project_root: str) -> FilesResponse | None:
+    """
+    Get file tree for a project.
+
+    Returns None if project not found.
+    """
     project_path = Path(project_root)
     if not project_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Project not found: {project_root}",
-        )
+        return None
 
     file_tree = core_projects.build_file_tree(project_path, project_path)
 
@@ -90,18 +104,15 @@ async def get_files(
     return FilesResponse(files=file_tree, total=total)
 
 
-@router.get("/api/dependencies", response_model=DependenciesResponse)
-async def get_dependencies(
-    project_root: str = Query(
-        ..., description="Path to the project root to get dependencies for"
-    )
-):
+def handle_get_dependencies(project_root: str) -> DependenciesResponse | None:
+    """
+    Get dependencies for a project from ato.yaml.
+
+    Returns None if project not found.
+    """
     project_path = Path(project_root)
     if not project_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Project not found: {project_root}",
-        )
+        return None
 
     installed = packages_domain.get_installed_packages_for_project(project_path)
 
@@ -136,20 +147,14 @@ async def get_dependencies(
     return DependenciesResponse(dependencies=dependencies, total=len(dependencies))
 
 
-class CreateProjectRequest(BaseModel):
-    parent_directory: str
-    name: str | None = None
+def handle_create_project(
+    request: CreateProjectRequest,
+) -> CreateProjectResponse:
+    """
+    Create a new project.
 
-
-class CreateProjectResponse(BaseModel):
-    success: bool
-    message: str
-    project_root: str | None = None
-    project_name: str | None = None
-
-
-@router.post("/api/project/create", response_model=CreateProjectResponse)
-async def create_project(request: CreateProjectRequest):
+    Raises ValueError for invalid inputs.
+    """
     parent_dir = Path(request.parent_directory)
     project_dir: Path | None = None
     try:
@@ -163,51 +168,32 @@ async def create_project(request: CreateProjectRequest):
             project_name=project_name,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise exc
     except Exception as exc:
         if project_dir and project_dir.exists():
-            import shutil
-
             shutil.rmtree(project_dir, ignore_errors=True)
         log.error(f"Failed to create project: {exc}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to create project: {exc}",
-        )
+        raise ValueError(f"Failed to create project: {exc}")
 
 
-class RenameProjectRequest(BaseModel):
-    project_root: str
-    new_name: str
+def handle_rename_project(
+    request: RenameProjectRequest,
+) -> RenameProjectResponse:
+    """
+    Rename a project.
 
-
-class RenameProjectResponse(BaseModel):
-    success: bool
-    message: str
-    old_root: str
-    new_root: str | None = None
-
-
-@router.post("/api/project/rename", response_model=RenameProjectResponse)
-async def rename_project(request: RenameProjectRequest):
-    import shutil
-
+    Raises ValueError for invalid inputs.
+    """
     project_path = Path(request.project_root)
     if not project_path.exists():
-        raise HTTPException(
-            status_code=400,
-            detail=f"Project does not exist: {request.project_root}",
-        )
+        raise ValueError(f"Project does not exist: {request.project_root}")
 
     if not request.new_name or "/" in request.new_name or "\\" in request.new_name:
-        raise HTTPException(status_code=400, detail="Invalid project name")
+        raise ValueError("Invalid project name")
 
     new_path = project_path.parent / request.new_name
     if new_path.exists():
-        raise HTTPException(
-            status_code=400,
-            detail=f"Directory already exists: {new_path}",
-        )
+        raise ValueError(f"Directory already exists: {new_path}")
 
     try:
         shutil.move(str(project_path), str(new_path))
@@ -228,7 +214,18 @@ async def rename_project(request: RenameProjectRequest):
         )
     except Exception as exc:
         log.error(f"Failed to rename project: {exc}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to rename project: {exc}",
-        )
+        raise ValueError(f"Failed to rename project: {exc}")
+
+
+__all__ = [
+    "CreateProjectRequest",
+    "CreateProjectResponse",
+    "RenameProjectRequest",
+    "RenameProjectResponse",
+    "handle_get_projects",
+    "handle_get_modules",
+    "handle_get_files",
+    "handle_get_dependencies",
+    "handle_create_project",
+    "handle_rename_project",
+]

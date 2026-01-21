@@ -1,31 +1,20 @@
-"""
-Project-related API routes.
+"""Project-related API routes."""
 
-Endpoints:
-- GET /api/projects - List discovered projects
-- GET /api/modules - List modules in a project
-- GET /api/files - List files in a project
-- GET /api/dependencies - List project dependencies
-- POST /api/project/create - Create a new project
-- POST /api/project/rename - Rename a project
-"""
+from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from ..core import packages as core_packages
-from ..core import projects as core_projects
-from ..domains import packages as packages_domain
-from ..schemas.project import (
-    Project,
+from atopile.server.app_context import AppContext
+from atopile.server.domains import projects as projects_domain
+from atopile.server.domains.deps import get_ctx
+from atopile.server.schemas.project import (
     ProjectsResponse,
     ModulesResponse,
     FilesResponse,
     DependenciesResponse,
-    DependencyInfo,
 )
 
 log = logging.getLogger(__name__)
@@ -33,125 +22,95 @@ log = logging.getLogger(__name__)
 router = APIRouter(tags=["projects"])
 
 
-def _get_workspace_paths():
-    """Get workspace paths from server state."""
-    from ..server import state
-
-    return state.get("workspace_paths", [])
-
-
 @router.get("/api/projects", response_model=ProjectsResponse)
-async def list_projects():
-    """
-    List all discovered projects in workspace paths.
-
-    Scans ato.yaml files in configured workspace paths and returns
-    project information including build targets.
-    """
-    workspace_paths = _get_workspace_paths()
-
-    if not workspace_paths:
-        return ProjectsResponse(projects=[], total=0)
-
-    projects = core_projects.discover_projects_in_paths(workspace_paths)
-    return ProjectsResponse(projects=projects, total=len(projects))
+async def get_projects(ctx: AppContext = Depends(get_ctx)):
+    """List all discovered projects in workspace paths."""
+    return projects_domain.handle_get_projects(ctx)
 
 
 @router.get("/api/modules", response_model=ModulesResponse)
-async def list_modules(
-    project_root: str = Query(..., description="Project root directory"),
+async def get_modules(
+    project_root: str = Query(
+        ..., description="Path to the project root to scan for modules"
+    ),
+    type_filter: Optional[str] = Query(
+        None,
+        description="Filter by type: 'module', 'interface', or 'component'",
+    ),
 ):
-    """
-    List all module/interface/component definitions in a project.
-
-    Parses .ato files in the project to find all block definitions.
-    """
-    project_path = Path(project_root)
-    if not project_path.exists():
+    """List all module/interface/component definitions in a project."""
+    result = projects_domain.handle_get_modules(project_root, type_filter)
+    if result is None:
         raise HTTPException(
-            status_code=404, detail=f"Project not found: {project_root}"
+            status_code=404,
+            detail=f"Project not found: {project_root}",
         )
-
-    modules = core_projects.discover_modules_in_project(project_path)
-    return ModulesResponse(modules=modules, total=len(modules))
+    return result
 
 
 @router.get("/api/files", response_model=FilesResponse)
-async def list_files(
-    project_root: str = Query(..., description="Project root directory"),
+async def get_files(
+    project_root: str = Query(
+        ..., description="Path to the project root to scan for files"
+    )
 ):
-    """
-    List all .ato and .py files in a project.
-
-    Returns a tree structure for file explorer display.
-    """
-    project_path = Path(project_root)
-    if not project_path.exists():
+    """List all .ato and .py files in a project."""
+    result = projects_domain.handle_get_files(project_root)
+    if result is None:
         raise HTTPException(
-            status_code=404, detail=f"Project not found: {project_root}"
+            status_code=404,
+            detail=f"Project not found: {project_root}",
         )
-
-    files = core_projects.build_file_tree(project_path, project_path)
-
-    # Count total files (not folders)
-    def count_files(nodes):
-        total = 0
-        for node in nodes:
-            if node.type == "file":
-                total += 1
-            elif node.children:
-                total += count_files(node.children)
-        return total
-
-    return FilesResponse(files=files, total=count_files(files))
+    return result
 
 
 @router.get("/api/dependencies", response_model=DependenciesResponse)
-async def list_dependencies(
-    project_root: str = Query(..., description="Project root directory"),
+async def get_dependencies(
+    project_root: str = Query(
+        ..., description="Path to the project root to get dependencies for"
+    )
 ):
-    """
-    List dependencies for a project from ato.yaml.
-    """
-    project_path = Path(project_root)
-    if not project_path.exists():
+    """List dependencies for a project from ato.yaml."""
+    result = projects_domain.handle_get_dependencies(project_root)
+    if result is None:
         raise HTTPException(
-            status_code=404, detail=f"Project not found: {project_root}"
+            status_code=404,
+            detail=f"Project not found: {project_root}",
+        )
+    return result
+
+
+@router.post(
+    "/api/project/create",
+    response_model=projects_domain.CreateProjectResponse,
+)
+async def create_project(request: projects_domain.CreateProjectRequest):
+    """Create a new project."""
+    try:
+        return projects_domain.handle_create_project(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        log.error(f"Failed to create project: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create project: {exc}",
         )
 
-    # Build registry lookup for latest versions
-    registry_packages = packages_domain.get_all_registry_packages()
-    registry_map = {pkg.identifier: pkg for pkg in registry_packages}
 
-    dependencies = []
-    installed = core_packages.get_installed_packages_for_project(project_path)
-    for pkg in installed:
-        parts = pkg.identifier.split("/")
-        publisher = parts[0] if len(parts) > 1 else "unknown"
-        name = parts[-1]
-
-        latest_version = None
-        has_update = False
-        repository = None
-        if pkg.identifier in registry_map:
-            reg = registry_map[pkg.identifier]
-            latest_version = reg.latest_version
-            repository = reg.repository
-            has_update = packages_domain.version_is_newer(pkg.version, latest_version)
-
-        dependencies.append(
-            DependencyInfo(
-                identifier=pkg.identifier,
-                version=pkg.version,
-                latest_version=latest_version,
-                name=name,
-                publisher=publisher,
-                repository=repository,
-                has_update=has_update,
-            )
+@router.post(
+    "/api/project/rename",
+    response_model=projects_domain.RenameProjectResponse,
+)
+async def rename_project(request: projects_domain.RenameProjectRequest):
+    """Rename a project."""
+    try:
+        return projects_domain.handle_rename_project(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        log.error(f"Failed to rename project: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to rename project: {exc}",
         )
-    return DependenciesResponse(dependencies=dependencies, total=len(dependencies))
-
-
-# Project creation/renaming endpoints would go here
-# Currently implemented in server.py, will be migrated later

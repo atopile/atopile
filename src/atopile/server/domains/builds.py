@@ -1,4 +1,4 @@
-"""Build and summary API routes."""
+"""Build domain logic - business logic for build operations."""
 
 from __future__ import annotations
 
@@ -8,11 +8,9 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from atopile.server.app_context import AppContext
-from atopile.server.domains.deps import get_ctx
 from atopile.server.build_queue import (
     _active_builds,
     _build_lock,
@@ -31,11 +29,14 @@ from atopile.server.schemas.build import BuildRequest, BuildResponse, BuildStatu
 
 log = logging.getLogger(__name__)
 
-router = APIRouter(tags=["builds"])
+
+class MaxConcurrentRequest(BaseModel):
+    use_default: bool = True
+    custom_value: int | None = None
 
 
-@router.get("/api/summary")
-async def get_summary(ctx: AppContext = Depends(get_ctx)):
+def handle_get_summary(ctx: AppContext) -> dict:
+    """Get build summary including active builds and build history."""
     all_builds: list[dict] = []
     totals = {"builds": 0, "successful": 0, "failed": 0, "warnings": 0, "errors": 0}
 
@@ -134,36 +135,33 @@ async def get_summary(ctx: AppContext = Depends(get_ctx)):
     return {"builds": all_builds, "totals": totals}
 
 
-@router.post("/api/build", response_model=BuildResponse)
-async def start_build(request: BuildRequest):
+def validate_build_request(request: BuildRequest) -> str | None:
+    """Validate a build request. Returns error message or None if valid."""
     project_path = Path(request.project_root)
     if not project_path.exists():
-        raise HTTPException(
-            status_code=400,
-            detail=f"Project path does not exist: {request.project_root}",
-        )
+        return f"Project path does not exist: {request.project_root}"
 
     if request.standalone:
         if not request.entry:
-            raise HTTPException(
-                status_code=400,
-                detail="Standalone builds require an entry point",
-            )
+            return "Standalone builds require an entry point"
         entry_file = (
             request.entry.split(":")[0] if ":" in request.entry else request.entry
         )
         entry_path = project_path / entry_file
         if not entry_path.exists():
-            raise HTTPException(
-                status_code=400,
-                detail=f"Entry file not found: {entry_path}",
-            )
+            return f"Entry file not found: {entry_path}"
     else:
         if not (project_path / "ato.yaml").exists():
-            raise HTTPException(
-                status_code=400,
-                detail=f"No ato.yaml found in: {request.project_root}",
-            )
+            return f"No ato.yaml found in: {request.project_root}"
+
+    return None
+
+
+def handle_start_build(request: BuildRequest) -> BuildResponse:
+    """Start a new build."""
+    error = validate_build_request(request)
+    if error:
+        return BuildResponse(success=False, message=error, build_id=None)
 
     build_key = _make_build_key(
         request.project_root, request.targets, request.entry
@@ -203,10 +201,10 @@ async def start_build(request: BuildRequest):
     )
 
 
-@router.get("/api/build/{build_id}/status", response_model=BuildStatusResponse)
-async def get_build_status(build_id: str):
+def handle_get_build_status(build_id: str) -> BuildStatusResponse | None:
+    """Get status of a specific build. Returns None if not found."""
     if build_id not in _active_builds:
-        raise HTTPException(status_code=404, detail=f"Build not found: {build_id}")
+        return None
 
     build = _active_builds[build_id]
     return BuildStatusResponse(
@@ -219,10 +217,10 @@ async def get_build_status(build_id: str):
     )
 
 
-@router.post("/api/build/{build_id}/cancel")
-async def cancel_build_endpoint(build_id: str):
+def handle_cancel_build(build_id: str) -> dict:
+    """Cancel a build. Returns result dict with success flag."""
     if build_id not in _active_builds:
-        raise HTTPException(status_code=404, detail=f"Build not found: {build_id}")
+        return {"success": False, "message": f"Build not found: {build_id}"}
 
     success = cancel_build(build_id)
     if success:
@@ -233,8 +231,8 @@ async def cancel_build_endpoint(build_id: str):
     }
 
 
-@router.get("/api/builds/active")
-async def get_active_builds():
+def handle_get_active_builds() -> dict:
+    """Get all active (queued or building) builds."""
     builds = []
     with _build_lock:
         for bid, build in _active_builds.items():
@@ -288,13 +286,13 @@ async def get_active_builds():
     return {"builds": builds}
 
 
-@router.get("/api/builds/queue")
-async def get_build_queue_status():
+def handle_get_build_queue_status() -> dict:
+    """Get build queue status."""
     return _build_queue.get_status()
 
 
-@router.get("/api/settings/max-concurrent")
-async def get_max_concurrent_setting():
+def handle_get_max_concurrent_setting() -> dict:
+    """Get max concurrent builds setting."""
     return {
         "use_default": _build_settings["use_default_max_concurrent"],
         "custom_value": _build_settings["custom_max_concurrent"],
@@ -303,13 +301,8 @@ async def get_max_concurrent_setting():
     }
 
 
-class MaxConcurrentRequest(BaseModel):
-    use_default: bool = True
-    custom_value: int | None = None
-
-
-@router.post("/api/settings/max-concurrent")
-async def set_max_concurrent_setting(request: MaxConcurrentRequest):
+def handle_set_max_concurrent_setting(request: MaxConcurrentRequest) -> dict:
+    """Set max concurrent builds setting."""
     _build_settings["use_default_max_concurrent"] = request.use_default
 
     if request.use_default:
@@ -328,14 +321,12 @@ async def set_max_concurrent_setting(request: MaxConcurrentRequest):
     }
 
 
-@router.get("/api/builds/history")
-async def get_build_history(
-    project_root: Optional[str] = Query(None, description="Filter by project root"),
-    status: Optional[str] = Query(
-        None, description="Filter by status (success, failed, cancelled)"
-    ),
-    limit: int = Query(50, ge=1, le=500, description="Maximum results"),
-):
+def handle_get_build_history(
+    project_root: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 50,
+) -> dict:
+    """Get build history with optional filters."""
     builds = build_history.load_recent_builds_from_history(limit=limit)
 
     if project_root:
@@ -344,3 +335,18 @@ async def get_build_history(
         builds = [b for b in builds if b["status"] == status]
 
     return {"builds": builds, "total": len(builds)}
+
+
+__all__ = [
+    "MaxConcurrentRequest",
+    "handle_get_summary",
+    "handle_start_build",
+    "handle_get_build_status",
+    "handle_cancel_build",
+    "handle_get_active_builds",
+    "handle_get_build_queue_status",
+    "handle_get_max_concurrent_setting",
+    "handle_set_max_concurrent_setting",
+    "handle_get_build_history",
+    "validate_build_request",
+]

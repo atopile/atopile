@@ -1,30 +1,33 @@
-"""Problems endpoint."""
+"""Problems domain logic - business logic for problem reporting."""
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Optional
-
-from fastapi import APIRouter, Query
 
 from atopile.server import problem_parser
 from atopile.server.schemas.problem import ProblemsResponse
 
-router = APIRouter(tags=["problems"])
+log = logging.getLogger(__name__)
 
 
-@router.get("/api/problems", response_model=ProblemsResponse)
-async def get_problems(
-    project_root: Optional[str] = Query(
-        None, description="Filter to problems from a specific project"
-    ),
-    build_name: Optional[str] = Query(
-        None, description="Filter to problems from a specific build target"
-    ),
-    level: Optional[str] = Query(
-        None, description="Filter by level: 'error' or 'warning'"
-    ),
-):
+def handle_get_problems(
+    project_root: Optional[str] = None,
+    build_name: Optional[str] = None,
+    level: Optional[str] = None,
+) -> ProblemsResponse:
+    """
+    Get problems (errors and warnings) from builds.
+
+    Args:
+        project_root: Filter to problems from a specific project
+        build_name: Filter to problems from a specific build target
+        level: Filter by level ('error' or 'warning')
+
+    Returns:
+        ProblemsResponse with problems and counts
+    """
     all_problems = problem_parser._load_problems_from_db()
 
     if project_root:
@@ -54,3 +57,8 @@ async def get_problems(
         error_count=error_count,
         warning_count=warning_count,
     )
+
+
+__all__ = [
+    "handle_get_problems",
+]

@@ -1,4 +1,4 @@
-"""Log-related API routes."""
+"""Log domain logic - business logic for log operations."""
 
 from __future__ import annotations
 
@@ -8,88 +8,71 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import PlainTextResponse
-
 from atopile.logging import get_central_log_db
 from atopile.server.app_context import AppContext
-from atopile.server.domains.deps import get_ctx
 
 log = logging.getLogger(__name__)
 
-router = APIRouter(tags=["logs"])
 
-
-@router.get("/api/logs/{build_name}/{log_filename}")
-async def get_log_file(
+def handle_get_log_file(
     build_name: str,
     log_filename: str,
-    ctx: AppContext = Depends(get_ctx),
-):
-    try:
-        summary_path = ctx.summary_file
-        if summary_path is None or not summary_path.exists():
-            raise HTTPException(status_code=404, detail="No summary file found")
+    ctx: AppContext,
+) -> str | None:
+    """
+    Get raw log file contents.
 
+    Returns file contents as string, or None if not found.
+    """
+    summary_path = ctx.summary_file
+    if summary_path is None or not summary_path.exists():
+        return None
+
+    try:
         summary = json.loads(summary_path.read_text())
+    except Exception:
+        return None
 
-        log_dir = None
-        for build in summary.get("builds", []):
-            if build.get("name") == build_name or build.get("display_name") == build_name:
-                log_dir = build.get("log_dir")
-                break
+    log_dir = None
+    for build in summary.get("builds", []):
+        if (
+            build.get("name") == build_name
+            or build.get("display_name") == build_name
+        ):
+            log_dir = build.get("log_dir")
+            break
 
-        if not log_dir:
-            raise HTTPException(status_code=404, detail=f"Build not found: {build_name}")
+    if not log_dir:
+        return None
 
-        log_file = Path(log_dir) / log_filename
-        if not log_file.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Log file not found: {log_filename}"
-            )
+    log_file = Path(log_dir) / log_filename
+    if not log_file.exists():
+        return None
 
-        return PlainTextResponse(
-            content=log_file.read_text(),
-            media_type="text/plain",
-        )
-
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    return log_file.read_text()
 
 
-@router.get("/api/logs/query")
-async def query_logs(
-    build_name: Optional[str] = Query(
-        None, description="Filter by build/target name (e.g., 'project:target')"
-    ),
-    project_name: Optional[str] = Query(None, description="Filter by project name"),
-    levels: Optional[str] = Query(
-        None, description="Comma-separated log levels (DEBUG,INFO,WARNING,ERROR)"
-    ),
-    search: Optional[str] = Query(None, description="Search in log messages"),
-    after_id: Optional[int] = Query(
-        None, description="Return logs after this ID (for incremental fetch)"
-    ),
-    build_id: Optional[str] = Query(
-        None, description="Filter by build ID (from central database)"
-    ),
-    project_path: Optional[str] = Query(None, description="Filter by project path"),
-    target: Optional[str] = Query(None, description="Filter by target name"),
-    stage: Optional[str] = Query(None, description="Filter by build stage"),
-    level: Optional[str] = Query(None, description="Filter by single log level"),
-    audience: Optional[str] = Query(
-        None, description="Filter by audience (user, developer, agent)"
-    ),
-    limit: int = Query(500, ge=1, le=10000, description="Maximum results"),
-    offset: int = Query(0, ge=0, description="Result offset for pagination"),
-):
+def handle_query_logs(
+    build_name: Optional[str] = None,
+    project_name: Optional[str] = None,
+    levels: Optional[str] = None,
+    search: Optional[str] = None,
+    after_id: Optional[int] = None,
+    build_id: Optional[str] = None,
+    project_path: Optional[str] = None,
+    target: Optional[str] = None,
+    stage: Optional[str] = None,
+    level: Optional[str] = None,
+    audience: Optional[str] = None,
+    limit: int = 500,
+    offset: int = 0,
+) -> dict:
+    """Query logs from the central database with filters."""
+    central_db = get_central_log_db()
+    if not central_db.exists():
+        return {"logs": [], "total": 0, "max_id": 0, "has_more": False}
+
     try:
-        central_db = get_central_log_db()
-        if not central_db.exists():
-            return {"logs": [], "total": 0, "max_id": 0, "has_more": False}
-
         conn = sqlite3.connect(str(central_db), timeout=5.0)
         conn.row_factory = sqlite3.Row
 
@@ -207,31 +190,30 @@ async def query_logs(
         log.warning(f"Error reading logs from central database: {exc}")
         return {"logs": [], "total": 0, "max_id": 0, "has_more": False}
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        log.error(f"Error querying logs: {exc}")
+        raise
 
 
-@router.get("/api/logs/counts")
-async def get_log_counts(
-    build_name: Optional[str] = Query(
-        None, description="Filter by build/target name"
-    ),
-    project_name: Optional[str] = Query(None, description="Filter by project name"),
-    stage: Optional[str] = Query(None, description="Filter by build stage"),
-):
+def handle_get_log_counts(
+    build_name: Optional[str] = None,
+    project_name: Optional[str] = None,
+    stage: Optional[str] = None,
+) -> dict:
+    """Get log counts by level."""
+    central_db = get_central_log_db()
+    if not central_db.exists():
+        return {
+            "counts": {
+                "DEBUG": 0,
+                "INFO": 0,
+                "WARNING": 0,
+                "ERROR": 0,
+                "ALERT": 0,
+            },
+            "total": 0,
+        }
+
     try:
-        central_db = get_central_log_db()
-        if not central_db.exists():
-            return {
-                "counts": {
-                    "DEBUG": 0,
-                    "INFO": 0,
-                    "WARNING": 0,
-                    "ERROR": 0,
-                    "ALERT": 0,
-                },
-                "total": 0,
-            }
-
         conn = sqlite3.connect(str(central_db), timeout=5.0)
         conn.row_factory = sqlite3.Row
 
@@ -294,4 +276,12 @@ async def get_log_counts(
             "total": 0,
         }
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        log.error(f"Error getting log counts: {exc}")
+        raise
+
+
+__all__ = [
+    "handle_get_log_file",
+    "handle_query_logs",
+    "handle_get_log_counts",
+]

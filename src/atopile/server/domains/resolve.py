@@ -1,4 +1,4 @@
-"""Resolve-location endpoint."""
+"""Resolve domain logic - business logic for address resolution."""
 
 from __future__ import annotations
 
@@ -6,35 +6,39 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-
 from atopile.server.app_context import AppContext
-from atopile.server.domains.deps import get_ctx
-
-router = APIRouter(tags=["resolve"])
 
 
-@router.get("/api/resolve-location")
-async def resolve_location(
-    address: str = Query(
-        ..., description="Atopile address to resolve (e.g., 'file.ato::Module.field')"
-    ),
-    project_root: Optional[str] = Query(
-        None, description="Path to project root (optional for resolution)"
-    ),
-    ctx: AppContext = Depends(get_ctx),
-):
+def handle_resolve_location(
+    address: str,
+    project_root: Optional[str],
+    ctx: AppContext,
+) -> dict:
+    """
+    Resolve an atopile address to a source file location.
+
+    Args:
+        address: Atopile address (e.g., 'file.ato::Module.field')
+        project_root: Optional project root path
+        ctx: Application context with workspace paths
+
+    Returns:
+        Dict with file, line, column, address, and resolved status
+
+    Raises:
+        ValueError: If address format is invalid
+        FileNotFoundError: If source file cannot be found
+    """
     if not address:
-        raise HTTPException(status_code=400, detail="Missing address")
+        raise ValueError("Missing address")
 
     address = address.strip()
     if "|" in address:
         address = address.split("|")[0]
 
     if "::" not in address:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid address format: {address}. Expected 'file.ato::path'",
+        raise ValueError(
+            f"Invalid address format: {address}. Expected 'file.ato::path'"
         )
 
     file_part, path_part = address.split("::", 1)
@@ -72,7 +76,7 @@ async def resolve_location(
                 break
 
     if not source_file or not source_file.exists():
-        raise HTTPException(status_code=404, detail=f"Source file not found: {file_part}")
+        raise FileNotFoundError(f"Source file not found: {file_part}")
 
     path_segments = []
     current = ""
@@ -94,57 +98,55 @@ async def resolve_location(
     if current:
         path_segments.append(current)
 
-    try:
-        content = source_file.read_text()
-        line_number = 1
-        found = False
+    content = source_file.read_text()
+    line_number = 1
+    found = False
 
-        if path_segments:
-            first_segment = path_segments[0]
-            block_pattern = re.compile(
-                rf"^\s*(module|interface|component)\s+{re.escape(first_segment)}\s*[:(]",
-                re.MULTILINE,
-            )
-            match = block_pattern.search(content)
-            if match:
-                line_number = content[: match.start()].count("\n") + 1
-                found = True
-
-                if len(path_segments) > 1:
-                    last_field = path_segments[-1]
-                    field_name = re.sub(r"\[\d+\]$", "", last_field)
-
-                    block_content = content[match.start() :]
-                    field_patterns = [
-                        rf"^\s*{re.escape(field_name)}\s*=",
-                        rf"^\s*{re.escape(field_name)}\s*:",
-                        rf"^\s*{re.escape(field_name)}\s*=\s*new\s+",
-                    ]
-
-                    for pattern in field_patterns:
-                        field_match = re.search(pattern, block_content, re.MULTILINE)
-                        if field_match:
-                            line_number = (
-                                content[: match.start()].count("\n")
-                                + block_content[: field_match.start()].count("\n")
-                                + 1
-                            )
-                            found = True
-                            break
-
-        if not found:
-            line_number = 1
-
-        return {
-            "file": str(source_file.absolute()),
-            "line": line_number,
-            "column": 1,
-            "address": address,
-            "resolved": found,
-        }
-
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error reading source file: {exc}",
+    if path_segments:
+        first_segment = path_segments[0]
+        block_pattern = re.compile(
+            rf"^\s*(module|interface|component)\s+{re.escape(first_segment)}\s*[:(]",
+            re.MULTILINE,
         )
+        match = block_pattern.search(content)
+        if match:
+            line_number = content[: match.start()].count("\n") + 1
+            found = True
+
+            if len(path_segments) > 1:
+                last_field = path_segments[-1]
+                field_name = re.sub(r"\[\d+\]$", "", last_field)
+
+                block_content = content[match.start() :]
+                field_patterns = [
+                    rf"^\s*{re.escape(field_name)}\s*=",
+                    rf"^\s*{re.escape(field_name)}\s*:",
+                    rf"^\s*{re.escape(field_name)}\s*=\s*new\s+",
+                ]
+
+                for pattern in field_patterns:
+                    field_match = re.search(pattern, block_content, re.MULTILINE)
+                    if field_match:
+                        line_number = (
+                            content[: match.start()].count("\n")
+                            + block_content[: field_match.start()].count("\n")
+                            + 1
+                        )
+                        found = True
+                        break
+
+    if not found:
+        line_number = 1
+
+    return {
+        "file": str(source_file.absolute()),
+        "line": line_number,
+        "column": 1,
+        "address": address,
+        "resolved": found,
+    }
+
+
+__all__ = [
+    "handle_resolve_location",
+]

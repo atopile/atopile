@@ -470,18 +470,22 @@ def create_app(
         server_state.set_workspace_paths(ctx.workspace_paths)
         await _populate_initial_state(ctx)
 
-    from atopile.server.domains import builds, logs, problems, projects, resolve, stdlib, artifacts
-    from atopile.server.routes import packages as packages_routes
-    from atopile.server.routes import websocket as ws_routes
+    from atopile.server.routes import (
+        artifacts as artifacts_routes,
+        builds as builds_routes,
+        logs as logs_routes,
+        packages as packages_routes,
+        problems as problems_routes,
+        projects as projects_routes,
+        websocket as ws_routes,
+    )
 
     app.include_router(ws_routes.router)
-    app.include_router(projects.router)
-    app.include_router(builds.router)
-    app.include_router(logs.router)
-    app.include_router(artifacts.router)
-    app.include_router(resolve.router)
-    app.include_router(problems.router)
-    app.include_router(stdlib.router)
+    app.include_router(projects_routes.router)
+    app.include_router(builds_routes.router)
+    app.include_router(logs_routes.router)
+    app.include_router(artifacts_routes.router)
+    app.include_router(problems_routes.router)
     app.include_router(packages_routes.router)
 
     return app

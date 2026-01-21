@@ -1,63 +1,44 @@
-"""Artifact (BOM/variables) endpoints."""
+"""Artifact domain logic - business logic for BOM and variables."""
 
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
-
-router = APIRouter(tags=["artifacts"])
+log = logging.getLogger(__name__)
 
 
-@router.get("/api/bom")
-async def get_bom(
-    project_root: str = Query(
-        ..., description="Path to the project root (containing ato.yaml)"
-    ),
-    target: str = Query("default", description="Build target name"),
-):
+def handle_get_bom(project_root: str, target: str = "default") -> dict | None:
+    """
+    Get the bill of materials for a build target.
+
+    Returns BOM data or None if not found.
+    Raises ValueError for invalid project path.
+    """
     project_path = Path(project_root)
     if not project_path.exists():
-        raise HTTPException(
-            status_code=400,
-            detail=f"Project path does not exist: {project_root}",
-        )
+        raise ValueError(f"Project path does not exist: {project_root}")
 
     if not (project_path / "ato.yaml").exists():
-        raise HTTPException(
-            status_code=400,
-            detail=f"No ato.yaml found in: {project_root}",
-        )
+        raise ValueError(f"No ato.yaml found in: {project_root}")
 
     bom_path = project_path / "build" / "builds" / target / f"{target}.bom.json"
 
     if not bom_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"BOM file not found: {bom_path}. Run 'ato build' first.",
-        )
+        return None
 
     try:
         return json.loads(bom_path.read_text())
     except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=500, detail=f"Invalid JSON in BOM: {exc}")
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise ValueError(f"Invalid JSON in BOM: {exc}")
 
 
-@router.get("/api/bom/targets")
-async def get_bom_targets(
-    project_root: str = Query(
-        ..., description="Path to the project root (containing ato.yaml)"
-    )
-):
+def handle_get_bom_targets(project_root: str) -> dict:
+    """Get available targets that have BOM data."""
     project_path = Path(project_root)
     if not project_path.exists():
-        raise HTTPException(
-            status_code=400,
-            detail=f"Project path does not exist: {project_root}",
-        )
+        raise ValueError(f"Project path does not exist: {project_root}")
 
     builds_dir = project_path / "build" / "builds"
     if not builds_dir.exists():
@@ -74,56 +55,38 @@ async def get_bom_targets(
     return {"targets": targets, "project_root": project_root}
 
 
-@router.get("/api/variables")
-async def get_variables(
-    project_root: str = Query(
-        ..., description="Path to the project root (containing ato.yaml)"
-    ),
-    target: str = Query("default", description="Build target name"),
-):
+def handle_get_variables(project_root: str, target: str = "default") -> dict | None:
+    """
+    Get design variables for a build target.
+
+    Returns variables data or None if not found.
+    Raises ValueError for invalid project path.
+    """
     project_path = Path(project_root)
     if not project_path.exists():
-        raise HTTPException(
-            status_code=400,
-            detail=f"Project path does not exist: {project_root}",
-        )
+        raise ValueError(f"Project path does not exist: {project_root}")
 
     if not (project_path / "ato.yaml").exists():
-        raise HTTPException(
-            status_code=400,
-            detail=f"No ato.yaml found in: {project_root}",
-        )
+        raise ValueError(f"No ato.yaml found in: {project_root}")
 
     variables_path = (
         project_path / "build" / "builds" / target / f"{target}.variables.json"
     )
 
     if not variables_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Variables file not found: {variables_path}. Run build first.",
-        )
+        return None
 
     try:
         return json.loads(variables_path.read_text())
     except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=500, detail=f"Invalid JSON: {exc}")
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise ValueError(f"Invalid JSON in variables: {exc}")
 
 
-@router.get("/api/variables/targets")
-async def get_variables_targets(
-    project_root: str = Query(
-        ..., description="Path to the project root (containing ato.yaml)"
-    )
-):
+def handle_get_variables_targets(project_root: str) -> dict:
+    """Get available targets that have variables data."""
     project_path = Path(project_root)
     if not project_path.exists():
-        raise HTTPException(
-            status_code=400,
-            detail=f"Project path does not exist: {project_root}",
-        )
+        raise ValueError(f"Project path does not exist: {project_root}")
 
     builds_dir = project_path / "build" / "builds"
     if not builds_dir.exists():
@@ -138,3 +101,11 @@ async def get_variables_targets(
             targets.append(target_dir.name)
 
     return {"targets": targets, "project_root": project_root}
+
+
+__all__ = [
+    "handle_get_bom",
+    "handle_get_bom_targets",
+    "handle_get_variables",
+    "handle_get_variables_targets",
+]
