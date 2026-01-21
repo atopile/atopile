@@ -748,6 +748,7 @@ class is_expression(fabll.Node):
 
     def create_representative(
         self,
+        alias: bool = True,
     ) -> F.Parameters.is_parameter:
         """
         Warning: Strips unit!
@@ -766,7 +767,8 @@ class is_expression(fabll.Node):
             assert False
 
         p = p_instance.is_parameter.get()
-        F.Expressions.Is.c(self.as_operand.get(), p.as_operand.get(), assert_=True)
+        if alias:
+            F.Expressions.Is.c(self.as_operand.get(), p.as_operand.get(), assert_=True)
         return p
 
     def __rich_repr__(self):
