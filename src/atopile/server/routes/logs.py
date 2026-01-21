@@ -6,34 +6,13 @@ import asyncio
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import PlainTextResponse
+from fastapi import APIRouter, HTTPException, Query
 
-from atopile.server.app_context import AppContext
 from atopile.server.domains import logs as logs_domain
-from atopile.server.domains.deps import get_ctx
 
 log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["logs"])
-
-
-@router.get("/api/logs/{build_name}/{log_filename}")
-async def get_log_file(
-    build_name: str,
-    log_filename: str,
-    ctx: AppContext = Depends(get_ctx),
-):
-    """Get raw log file contents."""
-    content = await asyncio.to_thread(
-        logs_domain.handle_get_log_file, build_name, log_filename, ctx
-    )
-    if content is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Log file not found: {build_name}/{log_filename}",
-        )
-    return PlainTextResponse(content=content, media_type="text/plain")
 
 
 @router.get("/api/logs/query")

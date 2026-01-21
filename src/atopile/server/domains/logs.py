@@ -2,54 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import sqlite3
-from pathlib import Path
 from typing import Optional
 
 from atopile.logging import BuildLogger
-from atopile.server.app_context import AppContext
 
 log = logging.getLogger(__name__)
-
-
-def handle_get_log_file(
-    build_name: str,
-    log_filename: str,
-    ctx: AppContext,
-) -> str | None:
-    """
-    Get raw log file contents.
-
-    Returns file contents as string, or None if not found.
-    """
-    summary_path = ctx.summary_file
-    if summary_path is None or not summary_path.exists():
-        return None
-
-    try:
-        summary = json.loads(summary_path.read_text())
-    except Exception:
-        return None
-
-    log_dir = None
-    for build in summary.get("builds", []):
-        if (
-            build.get("name") == build_name
-            or build.get("display_name") == build_name
-        ):
-            log_dir = build.get("log_dir")
-            break
-
-    if not log_dir:
-        return None
-
-    log_file = Path(log_dir) / log_filename
-    if not log_file.exists():
-        return None
-
-    return log_file.read_text()
 
 
 def handle_query_logs(
@@ -281,7 +240,6 @@ def handle_get_log_counts(
 
 
 __all__ = [
-    "handle_get_log_file",
     "handle_query_logs",
     "handle_get_log_counts",
 ]
