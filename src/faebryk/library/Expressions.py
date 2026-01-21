@@ -362,9 +362,24 @@ class is_expression(fabll.Node):
         context: "F.Parameters.ReprContext | None" = None,
         use_name: bool = False,
         no_lit_suffix: bool = False,
+        no_alias_suffix: bool = False,
     ) -> str:
         """Return compact math repr with symbols (+, *, ≥, ¬, ∧) and precedence."""
         from faebryk.core.solver.mutator import is_terminated
+
+        aliases = self.as_operand.get().get_operations(
+            F.Expressions.Is, predicates_only=True
+        )
+        ps = [
+            p
+            for alias in aliases
+            for p in alias.is_expression.get().get_operands_with_trait(
+                F.Parameters.is_parameter
+            )
+        ]
+        alias_suffix = ",".join([p.compact_repr(context) for p in ps])
+        if alias_suffix:
+            alias_suffix = f"[{alias_suffix}]"
 
         style = self.get_repr_style()
         return self._compact_repr(
@@ -374,9 +389,12 @@ class is_expression(fabll.Node):
             bool(self.try_get_sibling_trait(is_predicate)),
             bool(self.try_get_sibling_trait(is_terminated)),
             lit_suffix=(
-                self.as_parameter_operatable.get()._get_lit_suffix()
-                if not no_lit_suffix
-                else ""
+                (alias_suffix if not no_alias_suffix else "")
+                + (
+                    self.as_parameter_operatable.get()._get_lit_suffix()
+                    if not no_lit_suffix
+                    else ""
+                )
             ),
             use_name=use_name,
             expr_name=not_none(fabll.Traits(self).get_obj_raw().get_type_name()),
@@ -2062,7 +2080,7 @@ class Xor(fabll.Node):
 
 
 class Implies(fabll.Node):
-    as_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
+    can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
     is_parameter_operatable = fabll.Traits.MakeEdge(
         F.Parameters.is_parameter_operatable.MakeChild()
     )
@@ -2134,6 +2152,10 @@ class Implies(fabll.Node):
 
 
 class IfThenElse(fabll.Node):
+    can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
+        F.Parameters.is_parameter_operatable.MakeChild()
+    )
     has_side_effects = fabll.Traits.MakeEdge(has_side_effects.MakeChild())
     is_expression_type = fabll.Traits.MakeEdge(
         is_expression_type.MakeChild(

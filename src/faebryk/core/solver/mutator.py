@@ -488,8 +488,24 @@ class MutationStage:
         trait_filter: type[fabll.Node] = F.Parameters.is_parameter_operatable,
         log: Callable[[str], None] = logger.debug,
     ):
+        MutationStage.print_graph_contents_static(
+            self.tg_out,
+            self.G_out,
+            self.print_ctx,
+            trait_filter=trait_filter,
+            log=log,
+        )
+
+    @staticmethod
+    def print_graph_contents_static(
+        tg: fbrk.TypeGraph,
+        g: graph.GraphView,
+        ctx: F.Parameters.ReprContext,
+        trait_filter: type[fabll.Node] = F.Parameters.is_parameter_operatable,
+        log: Callable[[str], None] = logger.debug,
+    ):
         pre_nodes = fabll.Traits.get_implementor_objects(
-            trait=trait_filter.bind_typegraph(tg=self.tg_in), g=self.G_out
+            trait=trait_filter.bind_typegraph(tg=tg), g=g
         )
         if SHOW_SS_IS:
             nodes = pre_nodes
@@ -497,10 +513,19 @@ class MutationStage:
             nodes = [
                 n
                 for n in pre_nodes
+                # subset/superset expressions A ss! X or X ss! A
                 if not (
                     MutatorUtils.is_set_literal_expression(
                         n.get_trait(F.Parameters.is_parameter_operatable)
                     )
+                )
+                # parameter assignments
+                and not (
+                    n.try_cast(F.Expressions.Is)
+                    and n.try_get_trait(F.Expressions.is_predicate)
+                    and n.get_trait(
+                        F.Expressions.is_expression
+                    ).get_operands_with_trait(F.Parameters.is_parameter)
                 )
             ]
 
@@ -517,14 +542,14 @@ class MutationStage:
             for n in dnodes:
                 compact_repr = n.get_trait(
                     F.Parameters.is_parameter_operatable
-                ).compact_repr(self.print_ctx)
+                ).compact_repr(ctx)
                 out += f"\n      {compact_repr}"
                 if VERBOSE_TABLE:
                     out += f" {repr(n)}"
 
         if not nodes:
             return
-        log(f"{self.G_out} {len(nodes)}/{len(pre_nodes)} [{out}\n]")
+        log(f"{g} {len(nodes)}/{len(pre_nodes)} [{out}\n]")
 
     def map_forward(
         self, param: F.Parameters.is_parameter_operatable
@@ -1021,6 +1046,7 @@ class MutationMap:
                 terminal=False,
             ).run()
 
+            logger.debug("Done bootstrap ------")
             mut_map = mut_map.extend(algo_result.mutation_stage)
 
         return mut_map
@@ -1348,6 +1374,13 @@ class Mutator:
             ce = new_expr.get_trait(F.Expressions.is_assertable)
             self.assert_(ce, terminate=terminate, track=False)
 
+        from faebryk.core.solver.symbolic.invariants import I_LOG
+
+        if I_LOG:
+            logger.debug(
+                f"Inserted expression: {new_expr.is_expression.get().compact_repr(self.print_ctx)}"
+            )
+
         op_graphs = {
             op.g.get_self_node().node().get_uuid(): op.g for op in new_operands
         }
@@ -1394,7 +1427,8 @@ class Mutator:
         if res.is_new and (
             out_po := not_none(res.out_operand).as_parameter_operatable.try_get()
         ):
-            logger.error(f"Mark new expr: {out_po.compact_repr(self.print_ctx)}")
+            if S_LOG:
+                logger.error(f"Mark new expr: {out_po.compact_repr(self.print_ctx)}")
             self.transformations.created[out_po] = from_ops
 
         return res
@@ -1434,18 +1468,22 @@ class Mutator:
             expr_obj.isinstance(expression_factory) and operands == expr.get_operands()
         )
 
-        alias = (
-            self.copy_operand(
+        # predicates don't get aliases
+        if assert_:
+            pre_alias_p = None
+            alias_p = None
+        else:
+            pre_alias_po = (
                 invariants.AliasClass.of(expr.as_operand.get())
                 .representative()
                 .as_parameter_operatable.force_get()
             )
-            .as_parameter_operatable.force_get()
-            .as_parameter.force_get()
-            # predicates don't get aliases
-            if not assert_
-            else None
-        )
+            pre_alias_p = pre_alias_po.as_parameter.force_get()
+            alias_p = (
+                self.copy_operand(pre_alias_po)
+                .as_parameter_operatable.force_get()
+                .as_parameter.force_get()
+            )
         c_operands = [self.get_copy(op) for op in operands]
 
         builder = invariants.ExpressionBuilder(
@@ -1457,7 +1495,7 @@ class Mutator:
         res = invariants.wrap_insert_expression(
             self,
             builder,
-            alias,
+            alias_p,
             expr_already_exists_in_old_graph=copy_only,
         )
         if res.out_operand.as_literal.try_get():
@@ -1465,6 +1503,7 @@ class Mutator:
 
         new_expr_po = res.out_operand.as_parameter_operatable.force_get()
         out = self._mutate(expr_po, new_expr_po)
+
         # copy detection
         if (
             operands == e_operands
@@ -1476,6 +1515,26 @@ class Mutator:
         #     logger.error(
         #         f"Not a copy: {expr.compact_repr(self.print_ctx)}: op_eq: {operands == e_operands}, is_new: {res.is_new}, matches: {builder.matches(new_expr_e) if new_expr_e else None}"
         # )
+
+        # copy over alias
+        if pre_alias_p:
+            alias_is = pre_alias_p.as_operand.get().get_operations(
+                F.Expressions.Is, predicates_only=True
+            )
+            assert len(alias_is) == 1, "Expected 1 alias"
+            alias_is_po = next(iter(alias_is)).is_parameter_operatable.get()
+            logger.debug(f"Copied alias: {alias_is_po.compact_repr(self.print_ctx)}")
+            if not self.has_been_mutated(alias_is_po):
+                copied_alias = self._create_and_insert_expression(
+                    ExpressionBuilder(
+                        F.Expressions.Is,
+                        [new_expr_po.as_operand.get(), alias_p.as_operand.get()],
+                        assert_=True,
+                        terminate=True,
+                    )
+                )
+                self._mutate(alias_is_po, copied_alias.is_parameter_operatable.get())
+                self.transformations.copied.add(alias_is_po)
 
         return out.as_operand.get()
 
@@ -1662,6 +1721,8 @@ class Mutator:
         new_only: bool = False,
         include_terminated: bool = False,
         required_traits: tuple[type[fabll.NodeT], ...] = (),
+        require_literals: bool = False,
+        require_non_literals: bool = False,
         include_removed: bool = False,
         include_mutated: bool = False,
     ) -> list[T] | OrderedSet[T]:
@@ -1713,6 +1774,31 @@ class Mutator:
         if required_traits and not (t is fabll.Node and len(required_traits) == 1):
             out = OrderedSet(
                 o for o in out if all(o.has_trait(t) for t in required_traits)
+            )
+
+        # TODO use this more often in algos
+        if require_literals or require_non_literals:
+            out = OrderedSet(
+                e
+                for e in out
+                if (ops := (e.get_trait(F.Expressions.is_expression)).get_operands())
+                and (
+                    (
+                        lits := (
+                            [
+                                lit
+                                for op in ops
+                                if (
+                                    lit := op.try_get_sibling_trait(
+                                        F.Literals.is_literal
+                                    )
+                                )
+                            ]
+                        )
+                    )
+                    or not require_literals
+                )
+                and (not require_non_literals or len(lits) < len(ops))
             )
 
         if not include_removed:
@@ -1925,16 +2011,16 @@ class Mutator:
             print_ctx=self.print_ctx,
         )
 
+        if S_LOG:
+            logger.debug(f"Dirty after {self.algo.name}")
+            stage.print_mutation_table()
+            stage.print_graph_contents()
+
         return AlgoResult(mutation_stage=stage, dirty=dirty)
 
     def run(self):
         self._run()
-        out = self.close()
-        if S_LOG and out.dirty:
-            logger.debug(f"Dirty after {self.algo.name}")
-            out.mutation_stage.print_mutation_table()
-            out.mutation_stage.print_graph_contents()
-        return out
+        return self.close()
 
     # Debug Interface ------------------------------------------------------------------
     def __repr__(self, exclude_transformations: bool = False) -> str:

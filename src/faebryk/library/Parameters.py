@@ -191,6 +191,14 @@ class can_be_operand(fabll.Node):
 
         return root_expressions
 
+    def __rich_repr__(self):
+        """Yield values for rich text display (compact repr and full type name)."""
+        try:
+            yield self.pretty()
+        except Exception as e:
+            yield f"Error in repr: {e}"
+        yield "on " + fabll.Traits(self).get_obj_raw().get_full_name(types=True)
+
 
 class is_parameter_operatable(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())

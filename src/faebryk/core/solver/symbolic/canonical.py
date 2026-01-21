@@ -498,12 +498,4 @@ def flatten_expressions(mutator: Mutator):
         representative_op = representative.as_operand.get()
 
         mutator.soft_replace(e_po, representative_op)
-        # TODO used checked version?
-        mutator._create_and_insert_expression(
-            ExpressionBuilder(
-                F.Expressions.Is,
-                [e_op, representative_op],
-                assert_=True,
-                terminate=True,
-            )
-        )
+        # alias is added by mutate_expression / invariant

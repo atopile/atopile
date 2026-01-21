@@ -24,9 +24,9 @@ from faebryk.core.solver.utils import (
 from faebryk.libs.test.boundexpressions import BoundExpressions
 from faebryk.libs.util import ConfigFlag, OrderedSet, indented_container, not_none
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 if S_LOG:
-    logger.setLevel(logging.DEBUG)
+    _logger.setLevel(logging.DEBUG)
 
 IsSubset = F.Expressions.IsSubset
 
@@ -40,15 +40,15 @@ DEPTH = 0
 
 
 def debug(msg: str):
-    logger.debug(f"{' ' * DEPTH}{msg}")
+    _logger.debug(f"{'·' * DEPTH}{msg}")
 
 
 def info(msg: str):
-    logger.info(f"{' ' * DEPTH}{msg}")
+    _logger.info(f"{'·' * DEPTH}{msg}")
 
 
 def warning(msg: str):
-    logger.warning(f"{' ' * DEPTH}{msg}")
+    _logger.warning(f"{'·' * DEPTH}{msg}")
 
 
 class AliasClass:
@@ -171,7 +171,7 @@ class SubsumptionCheck:
             def __repr__(self) -> str:
                 return "<DISCARD>"
 
-        most_constrained_expr: "F.Expressions.is_expression | ExpressionBuilder | _DISCARD | None" = None  # noqa: E501
+        most_constrained_expr: "F.Expressions.is_expression | ExpressionBuilder | F.Literals.is_literal | _DISCARD | None" = None  # noqa: E501
         subsumed: list[F.Expressions.is_expression] | None = None
 
     @staticmethod
@@ -358,6 +358,8 @@ class SubsumptionCheck:
         Single alias per class: A is! B, B is C! => Is!(A, B, C)
         #TODO Single param per class  C param, Is!(A, B, C) => Is!(A, B)
         """
+        # I think this invariant only gets triggered if algos make aliases
+
         if not builder.assert_:
             return SubsumptionCheck.Result()
 
@@ -393,13 +395,15 @@ class SubsumptionCheck:
 
         # case 2: Is!(A,B), Is!(A,B,C) => Is!(A,B,C)
         # case 3: Is!(A,B,C), Is!(D,E), Is!(C,D) => Is!(A,B,C,D,E)
+        builder = ExpressionBuilder(
+            F.Expressions.Is,
+            list(ops),
+            assert_=True,
+            terminate=False,
+        )
+        debug(f"New alias: {builder}")
         return SubsumptionCheck.Result(
-            ExpressionBuilder(
-                F.Expressions.Is,
-                list(ops),
-                assert_=True,
-                terminate=False,
-            ),
+            builder,
             subsumed=[alias.is_expression.get() for alias in existing_aliases],
         )
 
@@ -549,9 +553,8 @@ def _no_predicate_literals(
                 debug(f"Remove predicate literal {pretty_expr(builder, mutator)}")
             return None
         # P {⊆|True} -> P!
-        for pred in AliasClass.of(operands[0]).get_with_trait(
-            F.Expressions.is_assertable
-        ):
+        a_class = AliasClass.of(operands[0])
+        for pred in a_class.get_with_trait(F.Expressions.is_assertable):
             if I_LOG:
                 before = pred.as_expression.get().compact_repr(mutator.print_ctx)
                 mutator.assert_(pred)
@@ -559,7 +562,6 @@ def _no_predicate_literals(
                 debug(f"Assert implicit predicate `{before}` -> `{after}`")
             else:
                 mutator.assert_(pred)
-            return None
 
     return builder
 
@@ -911,6 +913,26 @@ def _flat_expressions(
     return out
 
 
+def _ss_lits_available(mutator: Mutator):
+    if getattr(mutator, "_ss_lits_available", False):
+        return
+    setattr(mutator, "_ss_lits_available", True)
+
+    ss_ts = mutator.get_typed_expressions(
+        F.Expressions.IsSubset,
+        required_traits=(F.Expressions.is_predicate,),
+        require_literals=True,
+        require_non_literals=True,
+    )
+    for ss_t in ss_ts:
+        ss_t_e = ss_t.is_expression.get()
+        if ss_t_e.get_operands_with_trait(F.Expressions.is_expression):
+            continue
+        if S_LOG:
+            debug(f"Copying ss lit: {pretty_expr(ss_t_e, mutator)}")
+        mutator.copy_operand(ss_t.is_parameter_operatable.get())
+
+
 def insert_expression(
     mutator: Mutator,
     builder: ExpressionBuilder,
@@ -921,7 +943,7 @@ def insert_expression(
     """
     Invariants
     Sequencing sensitive!
-    * ✓ terminated expressions are already copied
+    * ✓ ss lits (A ⊆! X, X ⊆! A) already copied
     * TODO: don't mutate terminated expressions?
     * ✓ don't use predicates as operands: Op(P!, ...) -> Op(True, ...)
     * ✓ P{⊆|True} -> P!, P!{S/P|False} -> Contradiction, P!{⊆|True} -> P!
@@ -956,6 +978,8 @@ def insert_expression(
 
     # * terminated expressions are already copied
     # mutator._copy_terminated()
+    # * ss lits (A ⊆! X, X ⊆! A) already copied
+    _ss_lits_available(mutator)
 
     builder = _flat_expressions(mutator, builder)
 
@@ -1063,6 +1087,17 @@ def insert_expression(
                     return InsertExpressionResult(
                         mutator.make_singleton(True).can_be_operand.get(), False
                     )
+                # TODO Not sure we want this, makes aliases very complicated
+                case F.Literals.is_literal():
+                    assert False
+                #     if I_LOG:
+                #         debug(
+                #             f"Subsume literal: {pretty_expr(builder, mutator)} "
+                #             f"-> {most_constrained_expr.pretty_str()}"
+                #         )
+                #     return InsertExpressionResult(
+                #         most_constrained_expr.as_operand.get(), False
+                #     )
     # * no empty supersets
     _no_empty_superset(mutator, builder)
 
@@ -1117,7 +1152,10 @@ def wrap_insert_expression(
 ) -> InsertExpressionResult:
     global DEPTH
     if I_LOG:
-        warning(f"Processing: {pretty_expr(builder, mutator)}")
+        warning(
+            f"Processing: {pretty_expr(builder, mutator)},"
+            f" alias: {alias.compact_repr(mutator.print_ctx) if alias else None}"
+        )
     DEPTH += 1
     res = insert_expression(
         mutator,

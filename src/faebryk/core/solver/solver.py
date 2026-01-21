@@ -116,10 +116,22 @@ class Solver:
 
             timings.add("setup")
             now = time.perf_counter()
-            mutator._run()
-            run_time = time.perf_counter() - now
-            timings.add("_")
-            algo_result = mutator.close()
+            try:
+                mutator._run()
+                run_time = time.perf_counter() - now
+                timings.add("_")
+                algo_result = mutator.close()
+            except:
+                logger.error(f"Error running algorithm {algo.name}")
+                logger.error("G_in")
+                MutationStage.print_graph_contents_static(
+                    mutator.tg_in, mutator.G_in, mutator.print_ctx, log=logger.error
+                )
+                logger.error("G_out")
+                MutationStage.print_graph_contents_static(
+                    mutator.tg_in, mutator.G_out, mutator.print_ctx, log=logger.error
+                )
+                raise
 
             iteration_state.dirty |= algo_result.dirty
             data.mutation_map = data.mutation_map.extend(algo_result.mutation_stage)
