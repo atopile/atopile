@@ -329,7 +329,7 @@ export interface AppState {
   packages: PackageInfo[];
   isLoadingPackages: boolean;
   packagesError: string | null;  // Registry error visibility
-  installingPackageId: string | null;  // Package currently being installed
+  installingPackageIds: string[];  // Packages currently being installed
   installError: string | null;  // Error from last install attempt
 
   // Standard Library (from dashboard API)

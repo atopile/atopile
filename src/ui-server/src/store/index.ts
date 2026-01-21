@@ -42,7 +42,7 @@ const initialState: AppState = {
   packages: [],
   isLoadingPackages: false,
   packagesError: null,
-  installingPackageId: null,
+  installingPackageIds: [],
   installError: null,
 
   // Standard Library
@@ -142,8 +142,9 @@ interface StoreActions {
   setPackagesError: (error: string | null) => void;
   setPackageDetails: (details: PackageDetails | null) => void;
   setLoadingPackageDetails: (loading: boolean) => void;
-  setInstallingPackage: (packageId: string | null) => void;
-  setInstallError: (error: string | null) => void;
+  addInstallingPackage: (packageId: string) => void;
+  removeInstallingPackage: (packageId: string) => void;
+  setInstallError: (packageId: string, error: string | null) => void;
 
   // Problems
   setProblems: (problems: Problem[]) => void;
@@ -251,11 +252,24 @@ export const useStore = create<Store>()(
       setLoadingPackageDetails: (loading) =>
         set({ isLoadingPackageDetails: loading }),
 
-      setInstallingPackage: (packageId) =>
-        set({ installingPackageId: packageId, installError: null }),
+      addInstallingPackage: (packageId) =>
+        set((state) => ({
+          installingPackageIds: state.installingPackageIds.includes(packageId)
+            ? state.installingPackageIds
+            : [...state.installingPackageIds, packageId],
+          installError: null,
+        })),
 
-      setInstallError: (error) =>
-        set({ installError: error, installingPackageId: null }),
+      removeInstallingPackage: (packageId) =>
+        set((state) => ({
+          installingPackageIds: state.installingPackageIds.filter((id) => id !== packageId),
+        })),
+
+      setInstallError: (packageId, error) =>
+        set((state) => ({
+          installError: error,
+          installingPackageIds: state.installingPackageIds.filter((id) => id !== packageId),
+        })),
 
       // Problems
       setProblems: (problems) => set({ problems, isLoadingProblems: false }),

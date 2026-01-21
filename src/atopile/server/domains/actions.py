@@ -975,6 +975,12 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             await server_state.set_atopile_local_path(payload.get("path"))
             return {"success": True}
 
+        elif action == "setAtopileInstalling":
+            installing = payload.get("installing", False)
+            error = payload.get("error")
+            await server_state.set_atopile_installing(installing, error)
+            return {"success": True}
+
         elif action == "browseAtopilePath":
             return {
                 "success": False,

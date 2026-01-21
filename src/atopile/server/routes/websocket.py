@@ -68,9 +68,14 @@ async def websocket_state(websocket: WebSocket):
                         f"handle_data_action returned for {action}: success={result.get('success')}"  # noqa: E501
                     )
 
-                    # Send result back to client
+                    # Send result back to client (include payload for tracking)
                     await websocket.send_json(
-                        {"type": "action_result", "action": action, "result": result}
+                        {
+                            "type": "action_result",
+                            "action": action,
+                            "payload": payload,
+                            "result": result,
+                        }
                     )
                 except Exception as action_exc:
                     log.exception(f"Exception handling action {action}: {action_exc}")
@@ -78,6 +83,7 @@ async def websocket_state(websocket: WebSocket):
                         {
                             "type": "action_result",
                             "action": action,
+                            "payload": payload,
                             "result": {"success": False, "error": str(action_exc)},
                         }
                     )

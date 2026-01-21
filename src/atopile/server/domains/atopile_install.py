@@ -20,11 +20,34 @@ log = logging.getLogger(__name__)
 PYPI_URL = "https://pypi.org/pypi/atopile/json"
 GITHUB_API_BRANCHES = "https://api.github.com/repos/atopile/atopile/branches"
 
+# Minimum supported version for this extension
+# Versions older than this won't be shown in the release dropdown
+# Note: This only applies to releases - branches and local paths allow any version
+MINIMUM_SUPPORTED_VERSION = (0, 14, 0)
+
+
+def _parse_version(version_str: str) -> tuple[int, ...]:
+    """Parse a version string into a tuple of integers for comparison."""
+    parts = re.findall(r"\d+", version_str)
+    return tuple(int(x) for x in parts) if parts else (0,)
+
+
+def _version_meets_minimum(version_str: str) -> bool:
+    """Check if a version string meets the minimum supported version."""
+    version_tuple = _parse_version(version_str)
+    # Pad with zeros if needed for comparison
+    padded_version = version_tuple + (0,) * (3 - len(version_tuple))
+    padded_minimum = MINIMUM_SUPPORTED_VERSION + (0,) * (
+        3 - len(MINIMUM_SUPPORTED_VERSION)
+    )
+    return padded_version[:3] >= padded_minimum[:3]
+
 
 async def fetch_available_versions() -> list[str]:
     """
     Fetch available atopile versions from PyPI.
     Returns a list of version strings, sorted newest first.
+    Only includes versions >= MINIMUM_SUPPORTED_VERSION.
     """
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -33,18 +56,19 @@ async def fetch_available_versions() -> list[str]:
             data = response.json()
 
             releases = data.get("releases", {})
-            # Filter out pre-release versions and sort by version
+            # Filter out pre-release versions and versions below minimum
             versions = []
             for version in releases.keys():
                 # Skip dev, alpha, beta, rc versions
                 if re.search(r"(dev|alpha|beta|rc|a\d|b\d)", version, re.IGNORECASE):
                     continue
+                # Skip versions below minimum supported
+                if not _version_meets_minimum(version):
+                    continue
                 versions.append(version)
 
             # Sort versions (newest first)
-            versions.sort(
-                key=lambda v: tuple(int(x) for x in re.findall(r"\d+", v)), reverse=True
-            )
+            versions.sort(key=_parse_version, reverse=True)
 
             # Limit to most recent versions (UI shows top 20)
             return versions[:25]

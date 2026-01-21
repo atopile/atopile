@@ -133,13 +133,14 @@ export function useSidebarEffects({
   }, [selectedProjectRoot, selectedTargetName]);
 
   // Handle package install action results (only errors - success comes when packages refresh)
-  // Also add a timeout fallback to clear stuck installing state
+  // Also add timeout fallbacks to clear stuck installing states
   useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const timeoutIds = new Map<string, ReturnType<typeof setTimeout>>();
 
     const handleActionResult = (event: Event) => {
       const detail = (event as CustomEvent).detail as {
         action?: string;
+        payload?: { packageId?: string };
         result?: {
           success?: boolean;
           error?: string;
@@ -147,49 +148,61 @@ export function useSidebarEffects({
       };
 
       if (detail?.action === 'installPackage') {
+        const packageId = detail.payload?.packageId;
+
         // Only handle errors - the install runs async in background
         // Success is detected when packages refresh and show as installed
         if (detail.result && !detail.result.success && detail.result.error) {
-          // setInstallError already clears installingPackageId
-          useStore.getState().setInstallError(detail.result.error);
-          if (timeoutId) {
-            clearTimeout(timeoutId);
-            timeoutId = null;
-          }
-        } else if (detail.result?.success) {
-          // Start a 60-second timeout as a fallback in case package refresh doesn't clear the state
-          if (timeoutId) clearTimeout(timeoutId);
-          timeoutId = setTimeout(() => {
-            const currentInstalling = useStore.getState().installingPackageId;
-            if (currentInstalling) {
-              console.log('[install-debug] Timeout fallback: clearing stuck installingPackageId');
-              useStore.getState().setInstallingPackage(null);
+          if (packageId) {
+            // setInstallError removes the package from installingPackageIds
+            useStore.getState().setInstallError(packageId, detail.result.error);
+            const existingTimeout = timeoutIds.get(packageId);
+            if (existingTimeout) {
+              clearTimeout(existingTimeout);
+              timeoutIds.delete(packageId);
             }
+          }
+        } else if (detail.result?.success && packageId) {
+          // Start a 60-second timeout as a fallback in case package refresh doesn't clear the state
+          const existingTimeout = timeoutIds.get(packageId);
+          if (existingTimeout) clearTimeout(existingTimeout);
+
+          const timeoutId = setTimeout(() => {
+            const currentInstalling = useStore.getState().installingPackageIds;
+            if (currentInstalling.includes(packageId)) {
+              console.log('[install-debug] Timeout fallback: clearing stuck package:', packageId);
+              useStore.getState().removeInstallingPackage(packageId);
+            }
+            timeoutIds.delete(packageId);
           }, 60000);
+          timeoutIds.set(packageId, timeoutId);
         }
       }
     };
     window.addEventListener('atopile:action_result', handleActionResult);
     return () => {
       window.removeEventListener('atopile:action_result', handleActionResult);
-      if (timeoutId) clearTimeout(timeoutId);
+      timeoutIds.forEach((id) => clearTimeout(id));
+      timeoutIds.clear();
     };
   }, []);
 
   // Subscribe to store changes to clear installing state when packages refresh
-  // The backend only refreshes packages AFTER install completes, so any refresh
-  // while we have installingPackageId means the install is done
+  // Only clear packages that are now showing as installed (supports concurrent installs)
   useEffect(() => {
     const unsubscribe = useStore.subscribe((state, prevState) => {
-      const installingId = state.installingPackageId;
-      if (!installingId) return;
+      const installingIds = state.installingPackageIds;
+      if (installingIds.length === 0) return;
 
-      // If packages were updated while we have an installingPackageId, the install is complete
-      // (The backend only calls refresh_packages_state after install finishes)
+      // If packages were updated while we have installingPackageIds, check which are now installed
       if (state.packages !== prevState.packages && state.packages) {
-        console.log('[install-debug] Packages refreshed while installing:', installingId);
-        console.log('[install-debug] Clearing installingPackageId');
-        useStore.getState().setInstallingPackage(null);
+        // Only clear packages that are now installed (not all of them)
+        installingIds.forEach((packageId) => {
+          const pkg = state.packages.find((p) => p.identifier === packageId);
+          if (pkg?.installed) {
+            useStore.getState().removeInstallingPackage(packageId);
+          }
+        });
       }
     });
     return () => unsubscribe();

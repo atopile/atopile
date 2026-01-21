@@ -229,24 +229,6 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
           </button>
           {showSettings && (
             <div className="settings-dropdown">
-              {/* Installation Progress */}
-              {atopile?.isInstalling && (
-                <div className="install-progress">
-                  <div className="install-progress-header">
-                    <Loader2 size={12} className="spinner" />
-                    <span>{atopile.installProgress?.message || 'Installing...'}</span>
-                  </div>
-                  {atopile.installProgress?.percent !== undefined && (
-                    <div className="install-progress-bar">
-                      <div
-                        className="install-progress-fill"
-                        style={{ width: `${atopile.installProgress.percent}%` }}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-
               {/* Error Display */}
               {atopile?.error && (
                 <div className="settings-error">
@@ -263,8 +245,10 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                 <div className="settings-source-buttons">
                   <button
                     className={`source-btn${atopile?.source === 'release' ? ' active' : ''}`}
-                    onClick={() => action('setAtopileSource', { source: 'release' })}
-                    disabled={isInstalling}
+                    onClick={() => {
+                      setPendingInstall({ type: null, value: null });
+                      action('setAtopileSource', { source: 'release' });
+                    }}
                     title="Use a released version from PyPI"
                   >
                     <Package size={12} />
@@ -272,8 +256,10 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                   </button>
                   <button
                     className={`source-btn${atopile?.source === 'branch' ? ' active' : ''}`}
-                    onClick={() => action('setAtopileSource', { source: 'branch' })}
-                    disabled={isInstalling}
+                    onClick={() => {
+                      setPendingInstall({ type: null, value: null });
+                      action('setAtopileSource', { source: 'branch' });
+                    }}
                     title="Use a git branch from GitHub"
                   >
                     <GitBranch size={12} />
@@ -281,8 +267,10 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                   </button>
                   <button
                     className={`source-btn${atopile?.source === 'local' ? ' active' : ''}`}
-                    onClick={() => action('setAtopileSource', { source: 'local' })}
-                    disabled={isInstalling}
+                    onClick={() => {
+                      setPendingInstall({ type: null, value: null });
+                      action('setAtopileSource', { source: 'local' });
+                    }}
                     title="Use a local installation"
                   >
                     <FolderOpen size={12} />
@@ -308,7 +296,6 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                         }
                         action('setAtopileVersion', { version: newVersion });
                       }}
-                      disabled={isInstalling}
                     >
                       {(atopile?.availableVersions || []).slice(0, 20).map((v) => (
                         <option key={v} value={v}>
@@ -326,6 +313,16 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                         {atopile?.installProgress?.message ||
                          (pendingInstall.type === 'version' ? `Installing v${pendingInstall.value}...` : 'Installing...')}
                       </span>
+                      <button
+                        className="install-cancel-btn"
+                        onClick={() => {
+                          setPendingInstall({ type: null, value: null });
+                          action('setAtopileInstalling', { installing: false });
+                        }}
+                        title="Cancel installation"
+                      >
+                        <X size={10} />
+                      </button>
                     </div>
                   )}
                 </div>
@@ -350,13 +347,12 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                           setShowBranchDropdown(true);
                         }}
                         onFocus={() => setShowBranchDropdown(true)}
-                        disabled={isInstalling}
                       />
                       {atopile?.branch && !branchSearchQuery && (
                         <span className="branch-current-value">{atopile.branch}</span>
                       )}
                     </div>
-                    {showBranchDropdown && !isInstalling && (
+                    {showBranchDropdown && (
                       <div className="branch-dropdown">
                         {(atopile?.availableBranches || ['main', 'develop'])
                           .filter(b => !branchSearchQuery || b.toLowerCase().includes(branchSearchQuery.toLowerCase()))
@@ -399,6 +395,16 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                         {atopile?.installProgress?.message ||
                          (pendingInstall.type === 'branch' ? `Installing ${pendingInstall.value}...` : 'Installing...')}
                       </span>
+                      <button
+                        className="install-cancel-btn"
+                        onClick={() => {
+                          setPendingInstall({ type: null, value: null });
+                          action('setAtopileInstalling', { installing: false });
+                        }}
+                        title="Cancel installation"
+                      >
+                        <X size={10} />
+                      </button>
                     </div>
                   )}
                 </div>

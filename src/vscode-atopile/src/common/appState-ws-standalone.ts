@@ -498,23 +498,35 @@ export function initAtopileSettingsSync(_context: vscode.ExtensionContext): vsco
 
         // Only update if settings actually changed
         if (previousAtopileSettings !== null && previousAtopileSettings !== newSettings) {
-            traceInfo(`Atopile settings changed in UI, updating extension settings`);
+            traceInfo(`Atopile settings changed in UI: ${newSettings}`);
 
             const config = vscode.workspace.getConfiguration('atopile');
             const atopile = state.atopile;
 
-            if (atopile?.source === 'local' && atopile.localPath) {
-                // For local mode, set the 'ato' setting directly
-                await config.update('ato', atopile.localPath, vscode.ConfigurationTarget.Workspace);
-                await config.update('from', undefined, vscode.ConfigurationTarget.Workspace);
-            } else {
-                // For release/branch mode, set the 'from' setting
-                const fromValue = atopileSettingsToFrom(atopile);
-                await config.update('from', fromValue, vscode.ConfigurationTarget.Workspace);
-                await config.update('ato', undefined, vscode.ConfigurationTarget.Workspace);
+            // Determine config target - use workspace if available, otherwise global
+            const hasWorkspace = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0;
+            const target = hasWorkspace ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+            traceInfo(`Updating atopile settings (target: ${hasWorkspace ? 'workspace' : 'global'})`);
+
+            try {
+                if (atopile?.source === 'local' && atopile.localPath) {
+                    // For local mode, set the 'ato' setting directly
+                    traceInfo(`Setting atopile.ato = ${atopile.localPath}`);
+                    await config.update('ato', atopile.localPath, target);
+                    await config.update('from', undefined, target);
+                } else {
+                    // For release/branch mode, set the 'from' setting
+                    const fromValue = atopileSettingsToFrom(atopile);
+                    traceInfo(`Setting atopile.from = ${fromValue}`);
+                    await config.update('from', fromValue, target);
+                    await config.update('ato', undefined, target);
+                }
+                traceInfo('Atopile settings updated successfully');
+                // The configuration change will trigger findbin's onDidChangeConfiguration listener
+                // which will fire onDidChangeAtoBinInfoEvent and trigger a server restart
+            } catch (error) {
+                traceError(`Failed to update atopile settings: ${error}`);
             }
-            // The configuration change will trigger findbin's onDidChangeConfiguration listener
-            // which will fire onDidChangeAtoBinInfoEvent and trigger a server restart
         }
 
         previousAtopileSettings = newSettings;

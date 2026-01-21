@@ -67,6 +67,7 @@ interface StateMessage {
 interface ActionResultMessage {
   type: 'action_result';
   action: string;
+  payload?: Record<string, unknown>;  // Original request payload for tracking
   result?: {
     success: boolean;
     error?: string;

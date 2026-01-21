@@ -231,7 +231,14 @@ Once running, open http://localhost:5173 in your browser to see the development 
 src/vscode-atopile/
 ├── src/                    # Extension TypeScript source
 │   ├── extension.ts        # Main extension entry point
+│   ├── common/             # Shared utilities
+│   │   ├── findbin.ts      # Binary detection & UV management
+│   │   ├── server.ts       # LSP client lifecycle
+│   │   ├── appState-ws-standalone.ts  # WebSocket state sync
+│   │   └── settings.ts     # VS Code settings
 │   └── ui/                 # VS Code webview integration
+├── docs/
+│   └── ARCHITECTURE.md     # Developer architecture docs
 └── README.md
 
 src/ui-server/
@@ -241,6 +248,11 @@ src/ui-server/
 ├── log-viewer.html         # Log viewer entry
 └── dev.sh                  # Dev environment startup script
 ```
+
+### Architecture Documentation
+
+For detailed information about how the extension works internally, see:
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Component architecture, event flows, and state management
 
 ## 🤝 Contributing
 

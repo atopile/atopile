@@ -205,7 +205,7 @@ export function Sidebar() {
             onOpen3D={handlers.handleOpen3D}
             filterType="packages"
             projects={projects}
-            installingPackageId={state?.installingPackageId}
+            installingPackageIds={state?.installingPackageIds}
           />
         </CollapsibleSection>
 
@@ -323,7 +323,7 @@ export function Sidebar() {
             package={selectedPackage}
             packageDetails={state?.selectedPackageDetails || null}
             isLoading={state?.isLoadingPackageDetails || false}
-            isInstalling={state?.installingPackageId === selectedPackage.fullName}
+            isInstalling={state?.installingPackageIds?.includes(selectedPackage.fullName) || false}
             installError={state?.installError || null}
             error={state?.packageDetailsError || null}
             onClose={() => {
@@ -333,7 +333,7 @@ export function Sidebar() {
             onInstall={(version) => {
               const projectRoot = state?.selectedProjectRoot || (state?.projects?.[0]?.root);
               if (projectRoot) {
-                useStore.getState().setInstallingPackage(selectedPackage.fullName);
+                useStore.getState().addInstallingPackage(selectedPackage.fullName);
                 action('installPackage', {
                   packageId: selectedPackage.fullName,
                   projectRoot,

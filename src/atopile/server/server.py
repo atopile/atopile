@@ -279,6 +279,12 @@ def create_app(
         asyncio.create_task(_load_packages_background(ctx))
         log.info("Server started - background loaders running")
 
+    # Health check endpoint for extension to verify server is running
+    @app.get("/health")
+    async def health_check():
+        """Simple health check endpoint."""
+        return {"status": "ok"}
+
     from atopile.server.routes import (
         artifacts as artifacts_routes,
     )
