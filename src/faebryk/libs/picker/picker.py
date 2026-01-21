@@ -1,8 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
-
 import logging
 from abc import ABC, abstractmethod
+from collections import deque
 from dataclasses import dataclass
 from textwrap import indent
 from typing import Iterable
@@ -447,72 +447,107 @@ class PickNodeData:
         return f"{self.module_name} (d={self.depth} b={self.branching_factor})"
 
 
-def _pick_group_recursive(
-    modules: set["F.Pickable.is_pickable"],
+@dataclass
+class PickWorkItem:
+    modules: set["F.Pickable.is_pickable"]
+    solver: Solver
+    depth: int
+    parent_key: PickNodeData | None = None
+
+
+def _pick_tree(
+    initial_modules: set["F.Pickable.is_pickable"],
     solver: Solver,
-    progress: Advancable | None,
     picker_lib,
-    _depth: int = 0,
+    progress: Advancable | None,
 ) -> Tree[PickNodeData]:
     """
-    Recursively pick all modules.
+    Pick all modules using breadth-first iteration with batched API calls.
 
-    1. Simplify with relevant params to get current constraint state
-    2. Find independent groups (modules that share no constraints)
-    3. For each group, fork solver and recursively:
-       a. Pick the most-constrained module
-       b. Simplify to propagate new constraints from that pick
-       c. Find new sub-groups (modules in group may no longer all be inter-dependent)
-       d. Recurse for remaining modules
-
-    Returns:
-        Tree of PickNodeData for each group processed at this level
+    Algorithm:
+    1. Expand: Find independent groups for all work items at current level
+    2. Batch fetch: Collect candidates for all modules at this level
+    3. Pick and advance: Select parts, prepare work items for next level
     """
-    if not (relevant := _collect_relevant_params(modules)):
-        return Tree()
-
-    g, tg = next(iter(relevant)).g, next(iter(relevant)).tg
+    work_queue = deque([PickWorkItem(initial_modules, solver, depth=0)])
     pick_tree: Tree[PickNodeData] = Tree()
+    subtrees: dict[PickNodeData | None, Tree[PickNodeData]] = {None: pick_tree}
 
-    indent_ = "  " * _depth
-    logger.info(
-        f"{indent_}[depth={_depth}] Picking {len(modules)} modules, "
-        f"{len(relevant)} relevant params"
-    )
+    while work_queue:
+        expanded: deque[PickWorkItem] = deque()
 
-    solver.simplify(g, tg, terminal=False, relevant=relevant)
+        for item in work_queue:
+            if not (relevant := _collect_relevant_params(item.modules)):
+                continue
 
-    groups = find_independent_groups(modules)
-    group_solvers = [next(solver.fork()) for _ in range(len(groups))]
-    for group, group_solver in zip(groups, group_solvers):
-        candidates = picker_lib.get_candidates(_list_to_hack_tree(group), group_solver)
+            g, tg = next(iter(relevant)).g, next(iter(relevant)).tg
+            item.solver.simplify(g, tg, terminal=False, relevant=relevant)
 
-        if no_candidates := [m for m, cs in candidates.items() if not cs]:
-            raise PickError(f"No candidates found for {no_candidates}", *no_candidates)
+            groups = find_independent_groups(item.modules)
+            group_solvers = [next(item.solver.fork()) for _ in range(len(groups))]
 
-        # Pick most-constrained module (heuristic: fewest candidates)
-        module = min(group, key=lambda m: len(candidates[m]))
-        part = next(iter(candidates[module]))
+            for group, group_solver in zip(groups, group_solvers):
+                expanded.append(
+                    PickWorkItem(
+                        modules=group,
+                        solver=group_solver,
+                        depth=item.depth,
+                        parent_key=item.parent_key,
+                    )
+                )
 
-        module_name = module.get_pickable_node().get_full_name()
-        logger.info(f"{indent_}  Picking {module_name}")
-        picker_lib.attach_single_no_check(module, part, group_solver)
+        if not expanded:
+            break
 
-        if progress:
-            progress.advance()
-
-        children = _pick_group_recursive(
-            group - {module}, group_solver, progress, picker_lib, _depth + 1
+        depth = expanded[0].depth
+        logger.info(
+            f"[depth={depth}] Processing {len(expanded)} groups, "
+            f"{sum(len(item.modules) for item in expanded)} total modules"
         )
 
-        node_data = PickNodeData(
-            depth=_depth,
-            module_count=len(group),
-            branching_factor=len(groups),
-            module_name=module_name,
-        )
+        all_modules = _list_to_hack_tree(m for item in expanded for m in item.modules)
+        all_candidates = picker_lib.get_candidates(all_modules, solver)
+        next_queue: deque[PickWorkItem] = deque()
 
-        pick_tree[node_data] = children
+        for item in expanded:
+            group_candidates = {m: all_candidates[m] for m in item.modules}
+            if no_candidates := [m for m, cs in group_candidates.items() if not cs]:
+                raise PickError(
+                    f"No candidates found for {no_candidates}", *no_candidates
+                )
+
+            # Heuristic: pick most-constrained module (fewest candidates)
+            module = min(item.modules, key=lambda m: len(group_candidates[m]))
+            part = next(iter(group_candidates[module]))
+
+            module_name = module.get_pickable_node().get_full_name()
+            logger.info(f"  Picking {module_name}")
+            picker_lib.attach_single_no_check(module, part, item.solver)
+
+            if progress:
+                progress.advance()
+
+            node_data = PickNodeData(
+                depth=item.depth,
+                module_count=len(item.modules),
+                branching_factor=len(expanded),
+                module_name=module_name,
+            )
+            parent_tree = subtrees[item.parent_key]
+            child_tree: Tree[PickNodeData] = Tree()
+            parent_tree[node_data] = child_tree
+            subtrees[node_data] = child_tree
+            if remaining := item.modules - {module}:
+                next_queue.append(
+                    PickWorkItem(
+                        modules=remaining,
+                        solver=item.solver,
+                        depth=item.depth + 1,
+                        parent_key=node_data,
+                    )
+                )
+
+        work_queue = next_queue
 
     return pick_tree
 
@@ -553,10 +588,10 @@ def pick_topologically(
 
     timings.add("setup")
 
-    with timings.measure("recursive pick"):
+    with timings.measure("pick tree"):
         if all_modules := set(tree.keys()):
-            pick_tree: Tree[PickNodeData] = _pick_group_recursive(
-                all_modules, solver, progress, picker_lib, _depth=0
+            pick_tree: Tree[PickNodeData] = _pick_tree(
+                all_modules, solver, picker_lib, progress
             )
             logger.info(
                 "Picking tree (d=depth, b=branching_factor):\n" + pick_tree.pretty()
@@ -565,7 +600,7 @@ def pick_topologically(
             pick_tree = Tree()
 
     if _pick_count:
-        logger.info(f"Picked parts in {timings.get_formatted('recursive pick')}")
+        logger.info(f"Picked parts in {timings.get_formatted('pick tree')}")
 
     if relevant := _collect_relevant_params(tree_backup):
         g, tg = next(iter(relevant)).g, next(iter(relevant)).tg
@@ -582,7 +617,7 @@ def pick_topologically(
 
 # TODO should be a Picker
 @debug_perf
-def pick_part_recursively(
+def pick_parts_recursively(
     module: fabll.Node, solver: Solver, progress: Advancable | None = None
 ):
     pick_tree = get_pick_tree(module)

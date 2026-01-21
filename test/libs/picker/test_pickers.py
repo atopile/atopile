@@ -13,7 +13,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core import graph
 from faebryk.core.solver.solver import Solver
-from faebryk.libs.picker.picker import PickedPart, PickError, pick_part_recursively
+from faebryk.libs.picker.picker import PickedPart, PickError, pick_parts_recursively
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.test.boundexpressions import BoundExpressions
 from faebryk.libs.util import cast_assert, groupby, indented_container
@@ -63,7 +63,7 @@ def test_pick_module(case: "ComponentTestCase"):
 
     # pick
     solver = Solver()
-    pick_part_recursively(module, solver)
+    pick_parts_recursively(module, solver)
 
     assert module.has_trait(F.Pickable.has_part_picked)
     part = module.get_trait(F.Pickable.has_part_picked).get_part()
@@ -112,7 +112,7 @@ def test_type_pick():
         # assert_=True,
     )
 
-    pick_part_recursively(module, Solver())
+    pick_parts_recursively(module, Solver())
 
     assert module.has_trait(F.Pickable.has_part_picked)
 
@@ -126,7 +126,7 @@ def test_no_pick():
     fabll.Traits.create_and_add_instance_to(module, fabll.is_module)
     fabll.Traits.create_and_add_instance_to(module, F.has_part_removed)
 
-    pick_part_recursively(module, Solver())
+    pick_parts_recursively(module, Solver())
 
     assert module.has_trait(F.Pickable.has_part_picked)
     assert module.get_trait(F.Pickable.has_part_picked).is_removed()
@@ -332,7 +332,7 @@ def test_skip_self_pick():
 
     module = _CapInherit.bind_typegraph(tg=tg).create_instance(g=g)
 
-    pick_part_recursively(module, Solver())
+    pick_parts_recursively(module, Solver())
 
     assert not module.has_trait(F.Pickable.has_part_picked)
     assert module.inner.get().has_trait(F.Pickable.has_part_picked)
@@ -360,7 +360,7 @@ def test_pick_led_by_colour():
     )
 
     solver = Solver()
-    pick_part_recursively(led, solver)
+    pick_parts_recursively(led, solver)
 
     assert led.has_trait(F.Pickable.has_part_picked)
     assert solver.simplify_and_extract_superset(
@@ -396,7 +396,7 @@ def test_pick_error_group():
     solver = Solver()
 
     with pytest.raises(ExceptionGroup) as ex:
-        pick_part_recursively(app, solver)
+        pick_parts_recursively(app, solver)
 
     assert len(ex.value.exceptions) == 1
     assert isinstance(ex.value.exceptions[0], PickError)
@@ -423,7 +423,7 @@ def test_pick_dependency_simple():
     E.is_subset(r1r, E.subtract(sum_lit, r2r), assert_=True)
     E.is_subset(r2r, E.subtract(sum_lit, r1r), assert_=True)
 
-    pick_part_recursively(app, solver)
+    pick_parts_recursively(app, solver)
 
     # assert app.r1.has_trait(F.Pickable.has_part_picked)
     # assert app.r2.has_trait(F.Pickable.has_part_picked)
@@ -441,39 +441,16 @@ def test_pick_capacitor_temperature_coefficient():
     )
 
     solver = Solver()
-    pick_part_recursively(cap, solver)
+    pick_parts_recursively(cap, solver)
 
     assert cap.has_trait(F.Pickable.has_part_picked)
 
 
-def test_get_anticorrelated_pairs_basic():
+def test_get_anticorrelated_pairs():
     """
-    Not(Correlated(p1, p2)) should create an anticorrelated pair.
+    Not(Correlated(...)) should create pairwise anticorrelated pairs.
     """
-    from faebryk.libs.picker.picker import _get_anticorrelated_pairs
-
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-    E = BoundExpressions(g=g, tg=tg)
-
-    p1 = E.parameter_op(units=E.U.Ohm)
-    p2 = E.parameter_op(units=E.U.Ohm)
-
-    E.not_(E.correlated(p1, p2))
-
-    pairs = _get_anticorrelated_pairs(tg)
-
-    assert len(pairs) == 1
-    p1_param = p1.as_parameter_operatable.force_get().as_parameter.force_get()
-    p2_param = p2.as_parameter_operatable.force_get().as_parameter.force_get()
-    assert frozenset({p1_param, p2_param}) in pairs
-
-
-def test_get_anticorrelated_pairs_multi():
-    """
-    Not(Correlated(p1, p2, p3)) should create all pairwise anticorrelated pairs.
-    """
-    from faebryk.libs.picker.picker import _get_anticorrelated_pairs
+    from faebryk.core.solver.utils import MutatorUtils
 
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -483,9 +460,10 @@ def test_get_anticorrelated_pairs_multi():
     p2 = E.parameter_op(units=E.U.Ohm)
     p3 = E.parameter_op(units=E.U.Ohm)
 
-    E.not_(E.correlated(p1, p2, p3))
-    pairs = _get_anticorrelated_pairs(tg)
+    E.not_(E.correlated(p1, p2, p3), assert_=True)
+    pairs = MutatorUtils.get_anticorrelated_pairs(tg)
 
+    # 3 params -> 3 pairwise combinations
     assert len(pairs) == 3
 
     p1_param = p1.as_parameter_operatable.force_get().as_parameter.force_get()
@@ -497,10 +475,38 @@ def test_get_anticorrelated_pairs_multi():
     assert frozenset({p2_param, p3_param}) in pairs
 
 
-def test_not_correlated_doesnt_group():
+@pytest.mark.usefixtures("setup_project_config")
+def test_infer_uncorrelated_params():
     """
-    Not(Correlated(p1, p2)) should not itself cause parameters to be grouped.
-    Two independent parameters with Not(Correlated) should remain separate.
+    _infer_uncorrelated_params should create Not(Correlated) for all picking params.
+    """
+    from faebryk.core.solver.utils import MutatorUtils
+    from faebryk.libs.picker.picker import _infer_uncorrelated_params, get_pick_tree
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class _App(fabll.Node):
+        r1 = F.Resistor.MakeChild()
+        r2 = F.Resistor.MakeChild()
+        r3 = F.Resistor.MakeChild()
+
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
+
+    tree = get_pick_tree(app)
+
+    pairs_before = MutatorUtils.get_anticorrelated_pairs(tg)
+    assert len(pairs_before) == 0
+    _infer_uncorrelated_params(tree)
+
+    # After inference, should have pairs for all picking params
+    pairs_after = MutatorUtils.get_anticorrelated_pairs(tg)
+    assert len(pairs_after) > 0
+
+
+def test_find_groups_two_independent_modules():
+    """
+    Two modules with no constraints between them should be in separate groups.
     """
     from faebryk.libs.picker.picker import find_independent_groups, get_pick_tree
 
@@ -514,10 +520,26 @@ def test_not_correlated_doesnt_group():
 
     app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
-    r1_resistance = app.r1.get().resistance.get().can_be_operand.get()
-    r2_resistance = app.r2.get().resistance.get().can_be_operand.get()
+    # Constrain each independently with separate literals
+    E.is_subset(
+        app.r1.get().resistance.get().can_be_operand.get(),
+        E.lit_op_range(((100, E.U.Ohm), (110, E.U.Ohm))),
+        assert_=True,
+    )
+    E.is_subset(
+        app.r2.get().resistance.get().can_be_operand.get(),
+        E.lit_op_range(((200, E.U.Ohm), (220, E.U.Ohm))),
+        assert_=True,
+    )
 
-    E.not_(E.correlated(r1_resistance, r2_resistance))
+    # Mark as uncorrelated
+    E.not_(
+        E.correlated(
+            app.r1.get().resistance.get().can_be_operand.get(),
+            app.r2.get().resistance.get().can_be_operand.get(),
+        ),
+        assert_=True,
+    )
 
     tree = get_pick_tree(app)
     groups = find_independent_groups(tree.keys())
@@ -525,10 +547,41 @@ def test_not_correlated_doesnt_group():
     assert len(groups) == 2
 
 
-def test_find_groups_transitive_override():
+def test_find_groups_two_connected_modules():
     """
-    Not(Correlated(p1, p3)) should break transitive chain even when
-    p1-p2 and p2-p3 are expression-related.
+    Two modules connected by a constraint should be in the same group.
+    """
+    from faebryk.libs.picker.picker import find_independent_groups, get_pick_tree
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions(g=g, tg=tg)
+
+    class _App(fabll.Node):
+        r1 = F.Resistor.MakeChild()
+        r2 = F.Resistor.MakeChild()
+
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
+
+    r1_r = app.r1.get().resistance.get().can_be_operand.get()
+    r2_r = app.r2.get().resistance.get().can_be_operand.get()
+
+    # Connect  via a shared constraint
+    E.is_subset(
+        E.add(r1_r, r2_r),
+        E.lit_op_range(((300, E.U.Ohm), (330, E.U.Ohm))),
+        assert_=True,
+    )
+
+    tree = get_pick_tree(app)
+    groups = find_independent_groups(tree.keys())
+
+    assert len(groups) == 1
+
+
+def test_find_groups_transitive_connectivity():
+    """
+    A-B connected and B-C connected means A,B,C should all be in same group.
     """
     from faebryk.libs.picker.picker import find_independent_groups, get_pick_tree
 
@@ -547,47 +600,36 @@ def test_find_groups_transitive_override():
     r2_r = app.r2.get().resistance.get().can_be_operand.get()
     r3_r = app.r3.get().resistance.get().can_be_operand.get()
 
-    # Relate r1 and r2
+    # Connect r1-r2
     E.is_subset(
         E.add(r1_r, r2_r),
-        E.lit_op_range(((1000, E.U.Ohm), (2000, E.U.Ohm))),
+        E.lit_op_range(((200, E.U.Ohm), (220, E.U.Ohm))),
         assert_=True,
     )
 
-    # Relate r2 and r3
+    # Connect r2-r3
     E.is_subset(
         E.add(r2_r, r3_r),
-        E.lit_op_range(((1000, E.U.Ohm), (2000, E.U.Ohm))),
+        E.lit_op_range(((300, E.U.Ohm), (330, E.U.Ohm))),
         assert_=True,
     )
-
-    # Break transitive relationship
-    E.not_(E.correlated(r1_r, r3_r))
 
     tree = get_pick_tree(app)
     groups = find_independent_groups(tree.keys())
 
-    pickables = list(tree.keys())
-    r1_pickable = next(p for p in pickables if p.get_pickable_node() == app.r1.get())
-    r3_pickable = next(p for p in pickables if p.get_pickable_node() == app.r3.get())
-
-    for group in groups:
-        assert {r1_pickable, r3_pickable} not in group
+    # All three should be in one group due to transitive connectivity
+    assert len(groups) == 1
 
 
-@pytest.mark.usefixtures("setup_project_config")
-def test_infer_uncorrelated_params():
+def test_find_groups_mixed_connected_and_independent():
     """
-    _infer_uncorrelated_params should create Not(Correlated) for all picking params.
+    Three modules where r1-r2 are connected and r3 is independent.
     """
-    from faebryk.libs.picker.picker import (
-        _get_anticorrelated_pairs,
-        _infer_uncorrelated_params,
-        get_pick_tree,
-    )
+    from faebryk.libs.picker.picker import find_independent_groups, get_pick_tree
 
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions(g=g, tg=tg)
 
     class _App(fabll.Node):
         r1 = F.Resistor.MakeChild()
@@ -596,12 +638,44 @@ def test_infer_uncorrelated_params():
 
     app = _App.bind_typegraph(tg=tg).create_instance(g=g)
 
+    r1_r = app.r1.get().resistance.get().can_be_operand.get()
+    r2_r = app.r2.get().resistance.get().can_be_operand.get()
+    r3_r = app.r3.get().resistance.get().can_be_operand.get()
+
+    # Connect r1-r2
+    E.is_subset(
+        E.add(r1_r, r2_r),
+        E.lit_op_range(((200, E.U.Ohm), (220, E.U.Ohm))),
+        assert_=True,
+    )
+
+    # r3 is independent
+    E.is_subset(
+        r3_r,
+        E.lit_op_range(((100, E.U.Ohm), (110, E.U.Ohm))),
+        assert_=True,
+    )
+
+    # Mark all as uncorrelated
+    E.not_(E.correlated(r1_r, r2_r, r3_r), assert_=True)
+
     tree = get_pick_tree(app)
+    groups = find_independent_groups(tree.keys())
 
-    pairs_before = _get_anticorrelated_pairs(tg)
-    assert len(pairs_before) == 0
-    _infer_uncorrelated_params(tree)
+    # Should be 2 groups: {r1, r2} and {r3}
+    assert len(groups) == 2
 
-    # After inference, should have pairs for all picking params
-    pairs_after = _get_anticorrelated_pairs(tg)
-    assert len(pairs_after) > 0
+    # Find which group has which pickables
+    pickables = list(tree.keys())
+    r1_pickable = next(p for p in pickables if p.get_pickable_node() == app.r1.get())
+    r2_pickable = next(p for p in pickables if p.get_pickable_node() == app.r2.get())
+    r3_pickable = next(p for p in pickables if p.get_pickable_node() == app.r3.get())
+
+    # r1 and r2 should be in the same group
+    r1_group = next(g for g in groups if r1_pickable in g)
+    assert r2_pickable in r1_group
+
+    # r3 should be in a different group
+    r3_group = next(g for g in groups if r3_pickable in g)
+    assert r3_group != r1_group
+

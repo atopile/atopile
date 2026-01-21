@@ -65,10 +65,7 @@ from faebryk.libs.app.picking import save_part_info_to_pcb
 from faebryk.libs.kicad.fileformats import Property, kicad
 from faebryk.libs.net_naming import attach_net_names
 from faebryk.libs.nets import bind_electricals_to_fbrk_nets
-from faebryk.libs.picker.picker import (
-    PickError,
-    pick_part_recursively,
-)
+from faebryk.libs.picker.picker import PickError, pick_parts_recursively
 from faebryk.libs.util import DAG, md_table
 
 logger = logging.getLogger(__name__)
@@ -443,7 +440,7 @@ def pick_parts(ctx: BuildStepContext, log_context: LoggingStage) -> None:
         pcb = ctx.require_pcb()
         load_part_info_from_pcb(pcb.transformer.pcb, app.tg)
     try:
-        pick_part_recursively(app, solver, progress=log_context)
+        pick_parts_recursively(app, solver, progress=log_context)
     except* PickError as ex:
         raise ExceptionGroup(
             "Failed to pick parts for some modules",

@@ -17,7 +17,7 @@ from faebryk.core.solver.utils import (
     Contradiction,
     ContradictionByLiteral,
 )
-from faebryk.libs.picker.picker import pick_part_recursively
+from faebryk.libs.picker.picker import pick_parts_recursively
 from faebryk.libs.test.boundexpressions import BoundExpressions
 from faebryk.libs.util import not_none
 
@@ -1091,7 +1091,7 @@ def test_jlcpcb_pick_resistor():
     )
 
     solver = Solver()
-    pick_part_recursively(resistor, solver)
+    pick_parts_recursively(resistor, solver)
 
     assert resistor.has_trait(F.Pickable.has_part_picked)
     print(resistor.get_trait(F.Pickable.has_part_picked).get_part())
@@ -1113,7 +1113,7 @@ def test_jlcpcb_pick_capacitor():
     )
 
     solver = Solver()
-    pick_part_recursively(capacitor, solver)
+    pick_parts_recursively(capacitor, solver)
 
     assert capacitor.has_trait(F.Pickable.has_part_picked)
     print(capacitor.get_trait(F.Pickable.has_part_picked).get_part())
@@ -1135,7 +1135,7 @@ def test_jlcpcb_pick_led():
     )
 
     solver = Solver()
-    pick_part_recursively(led, solver)
+    pick_parts_recursively(led, solver)
 
     assert led.has_trait(F.Pickable.has_part_picked)
     print(led.get_trait(F.Pickable.has_part_picked).get_part())
