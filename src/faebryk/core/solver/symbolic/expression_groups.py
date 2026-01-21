@@ -6,6 +6,7 @@ import logging
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
+from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.symbolic.invariants import AliasClass
 
 logger = logging.getLogger(__name__)

@@ -367,9 +367,7 @@ class is_expression(fabll.Node):
         """Return compact math repr with symbols (+, *, ≥, ¬, ∧) and precedence."""
         from faebryk.core.solver.mutator import is_terminated
 
-        aliases = self.as_operand.get().get_operations(
-            F.Expressions.Is, predicates_only=True
-        )
+        aliases = self.as_operand.get().get_operations(Is, predicates_only=True)
         ps = [
             p
             for alias in aliases
@@ -768,7 +766,7 @@ class is_expression(fabll.Node):
 
         p = p_instance.is_parameter.get()
         if alias:
-            F.Expressions.Is.c(self.as_operand.get(), p.as_operand.get(), assert_=True)
+            Is.c(self.as_operand.get(), p.as_operand.get(), assert_=True)
         return p
 
     def __rich_repr__(self):
@@ -1987,7 +1985,7 @@ class Not(fabll.Node):
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     is_involutory = fabll.Traits.MakeEdge(is_involutory.MakeChild())
 
-    operand: _ChildField[Unknown] = OperandPointer.MakeChild()
+    operand = OperandPointer.MakeChild()
 
     def setup(
         self, operand: "F.Parameters.can_be_operand", assert_: bool = False

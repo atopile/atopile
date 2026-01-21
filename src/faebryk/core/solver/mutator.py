@@ -448,13 +448,14 @@ class MutationStage:
         g: graph.GraphView,
         print_context: F.Parameters.ReprContext,
         iteration: int = 0,
+        algorithm: str = "identity",
     ) -> "MutationStage":
         return MutationStage(
             tg_in=tg,
             tg_out=tg,
             G_in=g,
             G_out=g,
-            algorithm="identity",
+            algorithm=algorithm,
             iteration=iteration,
             print_ctx=print_context,
             transformations=Transformations.identity(
@@ -2237,7 +2238,7 @@ class Mutator:
                 mutation_stage=MutationStage.identity(
                     self.tg_in,
                     self.mutation_map.G_out,
-                    algorithm=self.algo,
+                    algorithm=self.algo.name,
                     iteration=self.iteration,
                     print_context=self.print_ctx,
                 ),
