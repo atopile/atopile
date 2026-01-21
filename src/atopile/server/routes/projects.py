@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..core import packages as core_packages
 from ..core import projects as core_projects
-from ..models import registry as registry_model
+from ..domains import packages as packages_domain
 from ..schemas.project import (
     Project,
     ProjectsResponse,
@@ -120,7 +120,7 @@ async def list_dependencies(
         )
 
     # Build registry lookup for latest versions
-    registry_packages = registry_model.get_all_registry_packages()
+    registry_packages = packages_domain.get_all_registry_packages()
     registry_map = {pkg.identifier: pkg for pkg in registry_packages}
 
     dependencies = []
@@ -137,7 +137,7 @@ async def list_dependencies(
             reg = registry_map[pkg.identifier]
             latest_version = reg.latest_version
             repository = reg.repository
-            has_update = registry_model.version_is_newer(pkg.version, latest_version)
+            has_update = packages_domain.version_is_newer(pkg.version, latest_version)
 
         dependencies.append(
             DependencyInfo(

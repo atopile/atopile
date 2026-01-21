@@ -1,51 +1,408 @@
-"""Package-related endpoints."""
+"""Package-related endpoints helpers and logic."""
 
 from __future__ import annotations
 
 import logging
+import os
+import string
 import subprocess
+import threading
+import time
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import BackgroundTasks, HTTPException
 
-from atopile.server.app_context import AppContext
-from atopile.server.domains.deps import get_ctx
 from atopile.server import package_manager
+from atopile.server.app_context import AppContext
+from atopile.server.core import packages as core_packages
 from atopile.server.schemas.package import (
-    PackageInfo,
-    PackagesResponse,
-    PackageDetails,
     PackageActionRequest,
     PackageActionResponse,
-    RegistrySearchResponse,
+    PackageDetails,
+    PackageInfo,
     PackageSummaryItem,
+    PackageVersion,
+    PackagesResponse,
     PackagesSummaryResponse,
+    RegistrySearchResponse,
     RegistryStatus,
 )
+from atopile.server.state import server_state
 
 log = logging.getLogger(__name__)
 
-router = APIRouter(tags=["packages"])
+# Registry cache
+_registry_cache: dict[str, list[PackageInfo]] = {}
+_registry_cache_time: float = 0.0
+_REGISTRY_CACHE_TTL = int(os.getenv("ATOPILE_REGISTRY_CACHE_TTL", "0"))
+
+# TODO: HACK - Registry API doesn't support listing all packages (empty query returns 0).
+# Workaround: query multiple search terms and merge results to approximate "get all".
+# These terms were empirically chosen for maximum coverage (~149 packages as of 2025-01).
+# Proper fix: add a /v1/packages/list endpoint to the registry API.
+_REGISTRY_SEARCH_TERMS = list(string.ascii_lowercase + string.digits)
+
+# Track active package operations
+_active_package_ops: dict[str, dict[str, object]] = {}
+_package_op_counter = 0
+_package_op_lock = threading.Lock()
 
 
-@router.get("/api/registry/search", response_model=RegistrySearchResponse)
-async def search_registry(
-    query: str = Query("", description="Search query. Empty returns popular packages."),
-    paths: Optional[str] = Query(
-        None, description="Comma-separated list of paths to check installed packages."
-    ),
-    ctx: AppContext = Depends(get_ctx),
-):
-    registry_packages = package_manager.search_registry_packages(query)
+def _cache_get(key: str) -> list[PackageInfo] | None:
+    if _REGISTRY_CACHE_TTL <= 0:
+        return None
+    now = time.time()
+    if key in _registry_cache and (now - _registry_cache_time) < _REGISTRY_CACHE_TTL:
+        return _registry_cache[key]
+    return None
 
-    if paths:
-        scan_paths = [Path(p.strip()) for p in paths.split(",")]
-    else:
-        scan_paths = ctx.workspace_paths
+
+def _cache_set(key: str, packages: list[PackageInfo]) -> None:
+    if _REGISTRY_CACHE_TTL <= 0:
+        return
+    global _registry_cache_time
+    _registry_cache[key] = packages
+    _registry_cache_time = time.time()
+
+
+def version_is_newer(installed: str | None, latest: str | None) -> bool:
+    """
+    Check if latest version is newer than installed version.
+
+    Simple semver comparison - handles common version formats.
+    Returns False if either version is None or comparison fails.
+    """
+    if not installed or not latest:
+        return False
+
+    try:
+        installed = installed.lstrip("v")
+        latest = latest.lstrip("v")
+
+        def parse_version(v: str) -> tuple[int, ...]:
+            base = v.split("-")[0].split("+")[0]
+            return tuple(int(x) for x in base.split(".") if x.isdigit())
+
+        installed_parts = parse_version(installed)
+        latest_parts = parse_version(latest)
+
+        max_len = max(len(installed_parts), len(latest_parts))
+        installed_padded = installed_parts + (0,) * (max_len - len(installed_parts))
+        latest_padded = latest_parts + (0,) * (max_len - len(latest_parts))
+
+        return latest_padded > installed_padded
+
+    except (ValueError, AttributeError):
+        return False
+
+
+def next_package_op_id(prefix: str) -> str:
+    """Reserve and return a new package operation id."""
+    global _package_op_counter
+    with _package_op_lock:
+        _package_op_counter += 1
+        op_id = f"{prefix}-{_package_op_counter}-{int(time.time())}"
+    return op_id
+
+
+def get_installed_packages_for_project(project_root: Path):
+    """
+    Read installed packages from a project's ato.yaml dependencies section.
+    """
+    return core_packages.get_installed_packages_for_project(project_root)
+
+
+def get_all_installed_packages(paths: list[Path]):
+    """
+    Get all installed packages across all projects in the given paths.
+
+    Returns a dict of package_identifier -> PackageInfo, with installed_in
+    tracking which projects have each package.
+    """
+    return core_packages.get_all_installed_packages(paths)
+
+
+def search_registry_packages(query: str) -> list[PackageInfo]:
+    """
+    Search the package registry for packages matching the query.
+
+    Uses the PackagesAPIClient to query the registry API.
+    Results are cached for 5 minutes.
+    """
+    cache_key = f"search:{query}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        log.debug(f"[registry] Cache HIT for '{query}': {len(cached)} packages")
+        return cached
+
+    try:
+        result = package_manager.query_packages(query)
+        log.debug(f"[registry] Fetched {len(result.packages)} packages for '{query}'")
+
+        packages: list[PackageInfo] = []
+        for pkg in result.packages:
+            parts = pkg.identifier.split("/")
+            if len(parts) == 2:
+                publisher, name = parts
+            else:
+                publisher = "unknown"
+                name = pkg.identifier
+
+            packages.append(
+                PackageInfo(
+                    identifier=pkg.identifier,
+                    name=name,
+                    publisher=publisher,
+                    latest_version=pkg.version,
+                    summary=pkg.summary,
+                    description=pkg.summary,
+                    homepage=pkg.homepage,
+                    repository=pkg.repository,
+                    installed=False,
+                    installed_in=[],
+                )
+            )
+
+        _cache_set(cache_key, packages)
+        return packages
+
+    except Exception as exc:
+        log.warning(f"Failed to search registry: {exc}")
+        return []
+
+
+def get_all_registry_packages() -> list[PackageInfo]:
+    """
+    Get all packages from the registry by querying multiple search terms.
+
+    The registry API requires a search term (empty/wildcard returns 0 results).
+    This function queries multiple terms and merges results to get all packages.
+    Results are cached for 5 minutes.
+    """
+    cache_key = "all_packages"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        log.debug(f"[registry] Cache HIT for all packages: {len(cached)} packages")
+        return cached
+
+    packages_map: dict[str, PackageInfo] = {}
+    for term in _REGISTRY_SEARCH_TERMS:
+        try:
+            results = search_registry_packages(term)
+            for pkg in results:
+                if pkg.identifier not in packages_map:
+                    packages_map[pkg.identifier] = pkg
+        except Exception as exc:
+            log.warning(f"Failed to search registry for '{term}': {exc}")
+
+    packages = list(packages_map.values())
+    log.info(f"[registry] Merged {len(packages)} unique packages from registry")
+    _cache_set(cache_key, packages)
+    return packages
+
+
+def get_package_details_from_registry(identifier: str) -> PackageDetails | None:
+    """
+    Get detailed package information from the registry.
+
+    Fetches:
+    - Full package info with stats (downloads)
+    - List of releases (versions)
+    """
+    try:
+        pkg_response = package_manager.get_package(identifier)
+        pkg_info = pkg_response.info
+
+        releases_response = package_manager.get_package_releases(identifier)
+        releases = releases_response.get("releases", [])
+
+        parts = identifier.split("/")
+        if len(parts) == 2:
+            publisher, name = parts
+        else:
+            publisher = "unknown"
+            name = identifier
+
+        versions = []
+        for rel in releases:
+            released_at = rel.get("released_at")
+            if isinstance(released_at, str):
+                pass
+            elif hasattr(released_at, "isoformat"):
+                released_at = released_at.isoformat()
+            else:
+                released_at = None
+
+            versions.append(
+                PackageVersion(
+                    version=rel.get("version", "unknown"),
+                    released_at=released_at,
+                    requires_atopile=rel.get("requires_atopile"),
+                    size=rel.get("size"),
+                )
+            )
+
+        versions.sort(key=lambda v: v.released_at or "", reverse=True)
+
+        stats = pkg_info.stats if hasattr(pkg_info, "stats") else None
+
+        return PackageDetails(
+            identifier=identifier,
+            name=name,
+            publisher=publisher,
+            version=pkg_info.version,
+            summary=pkg_info.summary,
+            description=pkg_info.summary,
+            homepage=pkg_info.homepage,
+            repository=pkg_info.repository,
+            license=pkg_info.license if hasattr(pkg_info, "license") else None,
+            downloads=stats.total_downloads if stats else None,
+            downloads_this_week=stats.this_week_downloads if stats else None,
+            downloads_this_month=stats.this_month_downloads if stats else None,
+            versions=versions,
+            version_count=len(versions),
+        )
+
+    except Exception as exc:
+        log.warning(f"Failed to get package details for {identifier}: {exc}")
+        return None
+
+
+def enrich_packages_with_registry(
+    packages: dict[str, PackageInfo],
+) -> dict[str, PackageInfo]:
+    """
+    Enrich installed packages with metadata from the registry.
+
+    Fetches latest_version, summary, homepage, etc. from the registry
+    for each installed package.
+    """
+    if not packages:
+        return packages
+
+    registry_data = get_all_registry_packages()
+    registry_map: dict[str, PackageInfo] = {pkg.identifier: pkg for pkg in registry_data}
+
+    enriched: dict[str, PackageInfo] = {}
+    for identifier, pkg in packages.items():
+        if identifier in registry_map:
+            reg = registry_map[identifier]
+            enriched[identifier] = PackageInfo(
+                identifier=pkg.identifier,
+                name=pkg.name,
+                publisher=pkg.publisher,
+                version=pkg.version,
+                latest_version=reg.latest_version,
+                description=reg.description,
+                summary=reg.summary,
+                homepage=reg.homepage,
+                repository=reg.repository,
+                license=reg.license,
+                installed=True,
+                installed_in=pkg.installed_in,
+            )
+        else:
+            enriched[identifier] = pkg
+
+    return enriched
+
+
+async def refresh_packages_state(
+    scan_paths: list[Path] | None = None,
+) -> None:
+    """Refresh packages and update server_state. Called after install/remove."""
+    from atopile.server.state import PackageInfo as StatePackageInfo
+
+    if scan_paths is None:
+        scan_paths = server_state._workspace_paths
+
+    packages_map: dict[str, StatePackageInfo] = {}
+    registry_error: str | None = None
 
     if scan_paths:
-        installed_map = package_manager.get_all_installed_packages(scan_paths)
+        installed = get_all_installed_packages(scan_paths)
+        for pkg in installed.values():
+            packages_map[pkg.identifier] = StatePackageInfo(
+                identifier=pkg.identifier,
+                name=pkg.name,
+                publisher=pkg.publisher,
+                version=pkg.version,
+                installed=True,
+                installed_in=pkg.installed_in,
+            )
+
+    try:
+        registry_packages = get_all_registry_packages()
+        log.info(
+            f"[refresh_packages_state] Registry returned {len(registry_packages)} packages"
+        )
+
+        for reg_pkg in registry_packages:
+            if reg_pkg.identifier in packages_map:
+                existing = packages_map[reg_pkg.identifier]
+                packages_map[reg_pkg.identifier] = StatePackageInfo(
+                    identifier=existing.identifier,
+                    name=existing.name,
+                    publisher=existing.publisher,
+                    version=existing.version,
+                    latest_version=reg_pkg.latest_version,
+                    description=reg_pkg.description or reg_pkg.summary,
+                    summary=reg_pkg.summary,
+                    homepage=reg_pkg.homepage,
+                    repository=reg_pkg.repository,
+                    license=reg_pkg.license,
+                    installed=True,
+                    installed_in=existing.installed_in,
+                    has_update=version_is_newer(
+                        existing.version, reg_pkg.latest_version
+                    ),
+                    downloads=reg_pkg.downloads,
+                    version_count=reg_pkg.version_count,
+                    keywords=reg_pkg.keywords or [],
+                )
+            else:
+                packages_map[reg_pkg.identifier] = StatePackageInfo(
+                    identifier=reg_pkg.identifier,
+                    name=reg_pkg.name,
+                    publisher=reg_pkg.publisher,
+                    latest_version=reg_pkg.latest_version,
+                    description=reg_pkg.description or reg_pkg.summary,
+                    summary=reg_pkg.summary,
+                    homepage=reg_pkg.homepage,
+                    repository=reg_pkg.repository,
+                    license=reg_pkg.license,
+                    installed=False,
+                    installed_in=[],
+                    has_update=False,
+                    downloads=reg_pkg.downloads,
+                    version_count=reg_pkg.version_count,
+                    keywords=reg_pkg.keywords or [],
+                )
+
+    except Exception as exc:
+        registry_error = str(exc)
+        log.warning(f"[refresh_packages_state] Registry fetch failed: {exc}")
+
+    state_packages = sorted(
+        packages_map.values(),
+        key=lambda p: (not p.installed, p.identifier.lower()),
+    )
+
+    await server_state.set_packages(list(state_packages), registry_error)
+    log.info(
+        f"Refreshed packages after install/remove: {len(state_packages)} packages"
+    )
+
+
+def handle_search_registry(
+    query: str,
+    scan_paths: list[Path] | None,
+) -> RegistrySearchResponse:
+    registry_packages = search_registry_packages(query)
+
+    if scan_paths:
+        installed_map = get_all_installed_packages(scan_paths)
         for pkg in registry_packages:
             if pkg.identifier in installed_map:
                 installed = installed_map[pkg.identifier]
@@ -60,24 +417,14 @@ async def search_registry(
     )
 
 
-@router.get("/api/packages/summary", response_model=PackagesSummaryResponse)
-async def get_packages_summary(
-    paths: Optional[str] = Query(
-        None,
-        description="Comma-separated list of paths to scan for projects. If not provided, uses configured workspace paths.",
-    ),
-    ctx: AppContext = Depends(get_ctx),
-):
-    if paths:
-        scan_paths = [Path(p.strip()) for p in paths.split(",")]
-    else:
-        scan_paths = ctx.workspace_paths
-
+def handle_packages_summary(
+    scan_paths: list[Path] | None,
+) -> PackagesSummaryResponse:
     packages_map: dict[str, PackageSummaryItem] = {}
     installed_count = 0
 
     if scan_paths:
-        installed = package_manager.get_all_installed_packages(scan_paths)
+        installed = get_all_installed_packages(scan_paths)
         installed_count = len(installed)
         for identifier, pkg in installed.items():
             packages_map[identifier] = PackageSummaryItem(
@@ -90,10 +437,9 @@ async def get_packages_summary(
             )
 
     registry_status = RegistryStatus(available=True, error=None)
-    registry_error: str | None = None
 
     try:
-        registry_packages = package_manager.get_all_registry_packages()
+        registry_packages = get_all_registry_packages()
         for reg_pkg in registry_packages:
             if reg_pkg.identifier in packages_map:
                 existing = packages_map[reg_pkg.identifier]
@@ -105,7 +451,7 @@ async def get_packages_summary(
                     version=existing.version,
                     installed_in=existing.installed_in,
                     latest_version=reg_pkg.latest_version,
-                    has_update=package_manager._version_is_newer(
+                    has_update=version_is_newer(
                         existing.version, reg_pkg.latest_version
                     ),
                     summary=reg_pkg.summary,
@@ -136,10 +482,9 @@ async def get_packages_summary(
                 )
 
     except Exception as exc:
-        registry_error = str(exc)
         registry_status = RegistryStatus(
             available=False,
-            error=f"Registry unavailable: {registry_error}",
+            error=f"Registry unavailable: {exc}",
         )
         log.warning(f"Registry fetch failed for packages summary: {exc}")
 
@@ -156,31 +501,17 @@ async def get_packages_summary(
     )
 
 
-@router.get("/api/packages", response_model=PackagesResponse)
-async def get_packages(
-    paths: Optional[str] = Query(
-        None,
-        description="Comma-separated list of paths to scan for projects. If not provided, uses configured workspace paths.",
-    ),
-    project_root: Optional[str] = Query(
-        None, description="Filter to packages installed in a specific project."
-    ),
-    include_registry: bool = Query(
-        True, description="Include latest_version and metadata from registry."
-    ),
-    ctx: AppContext = Depends(get_ctx),
-):
-    if paths:
-        scan_paths = [Path(p.strip()) for p in paths.split(",")]
-    else:
-        scan_paths = ctx.workspace_paths
-
+def handle_get_packages(
+    scan_paths: list[Path] | None,
+    project_root: str | None,
+    include_registry: bool,
+) -> PackagesResponse:
     if not scan_paths:
         return PackagesResponse(packages=[], total=0)
 
-    packages_map = package_manager.get_all_installed_packages(scan_paths)
+    packages_map = get_all_installed_packages(scan_paths)
     if include_registry:
-        packages_map = package_manager.enrich_packages_with_registry(packages_map)
+        packages_map = enrich_packages_with_registry(packages_map)
 
     if project_root:
         packages_list = [
@@ -194,13 +525,12 @@ async def get_packages(
     return PackagesResponse(packages=packages_list, total=len(packages_list))
 
 
-@router.get("/api/packages/{package_id:path}/details", response_model=PackageDetails)
-async def get_package_details(
+def handle_get_package_details(
     package_id: str,
-    paths: Optional[str] = Query(None),
-    ctx: AppContext = Depends(get_ctx),
-):
-    details = package_manager.get_package_details_from_registry(package_id)
+    scan_paths: list[Path] | None,
+    ctx: AppContext,
+) -> PackageDetails:
+    details = get_package_details_from_registry(package_id)
 
     if not details:
         raise HTTPException(
@@ -208,13 +538,11 @@ async def get_package_details(
             detail=f"Package not found in registry: {package_id}",
         )
 
-    if paths:
-        scan_paths = [Path(p.strip()) for p in paths.split(",")]
-    else:
+    if scan_paths is None:
         scan_paths = ctx.workspace_paths
 
     if scan_paths:
-        packages_map = package_manager.get_all_installed_packages(scan_paths)
+        packages_map = get_all_installed_packages(scan_paths)
         if package_id in packages_map:
             installed = packages_map[package_id]
             details.installed = True
@@ -224,18 +552,15 @@ async def get_package_details(
     return details
 
 
-@router.get("/api/packages/{package_id:path}", response_model=PackageInfo)
-async def get_package(
+def handle_get_package_info(
     package_id: str,
-    paths: Optional[str] = Query(None),
-    ctx: AppContext = Depends(get_ctx),
-):
-    if paths:
-        scan_paths = [Path(p.strip()) for p in paths.split(",")]
-    else:
+    scan_paths: list[Path] | None,
+    ctx: AppContext,
+) -> PackageInfo:
+    if scan_paths is None:
         scan_paths = ctx.workspace_paths
 
-    packages_map = package_manager.get_all_installed_packages(scan_paths)
+    packages_map = get_all_installed_packages(scan_paths)
     if package_id in packages_map:
         return packages_map[package_id]
 
@@ -254,11 +579,10 @@ async def get_package(
     )
 
 
-@router.post("/api/packages/install", response_model=PackageActionResponse)
-async def install_package(
+def handle_install_package(
     request: PackageActionRequest,
     background_tasks: BackgroundTasks,
-):
+) -> PackageActionResponse:
     project_path = Path(request.project_root)
     if not project_path.exists():
         raise HTTPException(
@@ -272,9 +596,9 @@ async def install_package(
             detail=f"No ato.yaml found in: {request.project_root}",
         )
 
-    with package_manager._package_op_lock:
-        op_id = package_manager.next_package_op_id("pkg-install")
-        package_manager._active_package_ops[op_id] = {
+    with _package_op_lock:
+        op_id = next_package_op_id("pkg-install")
+        _active_package_ops[op_id] = {
             "action": "install",
             "status": "running",
             "package": request.package_identifier,
@@ -295,16 +619,16 @@ async def install_package(
                 text=True,
                 timeout=120,
             )
-            with package_manager._package_op_lock:
+            with _package_op_lock:
                 if result.returncode == 0:
-                    package_manager._active_package_ops[op_id]["status"] = "success"
+                    _active_package_ops[op_id]["status"] = "success"
                 else:
-                    package_manager._active_package_ops[op_id]["status"] = "failed"
-                    package_manager._active_package_ops[op_id]["error"] = result.stderr[:500]
+                    _active_package_ops[op_id]["status"] = "failed"
+                    _active_package_ops[op_id]["error"] = result.stderr[:500]
         except Exception as exc:
-            with package_manager._package_op_lock:
-                package_manager._active_package_ops[op_id]["status"] = "failed"
-                package_manager._active_package_ops[op_id]["error"] = str(exc)
+            with _package_op_lock:
+                _active_package_ops[op_id]["status"] = "failed"
+                _active_package_ops[op_id]["error"] = str(exc)
 
     background_tasks.add_task(run_install)
 
@@ -315,11 +639,10 @@ async def install_package(
     )
 
 
-@router.post("/api/packages/remove", response_model=PackageActionResponse)
-async def remove_package(
+def handle_remove_package(
     request: PackageActionRequest,
     background_tasks: BackgroundTasks,
-):
+) -> PackageActionResponse:
     project_path = Path(request.project_root)
     if not project_path.exists():
         raise HTTPException(
@@ -327,9 +650,9 @@ async def remove_package(
             detail=f"Project path does not exist: {request.project_root}",
         )
 
-    with package_manager._package_op_lock:
-        op_id = package_manager.next_package_op_id("pkg-remove")
-        package_manager._active_package_ops[op_id] = {
+    with _package_op_lock:
+        op_id = next_package_op_id("pkg-remove")
+        _active_package_ops[op_id] = {
             "action": "remove",
             "status": "running",
             "package": request.package_identifier,
@@ -348,16 +671,16 @@ async def remove_package(
                 text=True,
                 timeout=60,
             )
-            with package_manager._package_op_lock:
+            with _package_op_lock:
                 if result.returncode == 0:
-                    package_manager._active_package_ops[op_id]["status"] = "success"
+                    _active_package_ops[op_id]["status"] = "success"
                 else:
-                    package_manager._active_package_ops[op_id]["status"] = "failed"
-                    package_manager._active_package_ops[op_id]["error"] = result.stderr[:500]
+                    _active_package_ops[op_id]["status"] = "failed"
+                    _active_package_ops[op_id]["error"] = result.stderr[:500]
         except Exception as exc:
-            with package_manager._package_op_lock:
-                package_manager._active_package_ops[op_id]["status"] = "failed"
-                package_manager._active_package_ops[op_id]["error"] = str(exc)
+            with _package_op_lock:
+                _active_package_ops[op_id]["status"] = "failed"
+                _active_package_ops[op_id]["error"] = str(exc)
 
     background_tasks.add_task(run_remove)
 
@@ -366,3 +689,35 @@ async def remove_package(
         message=f"Removing {request.package_identifier}...",
         action="remove",
     )
+
+
+def resolve_scan_paths(
+    ctx: AppContext,
+    paths: Optional[str],
+) -> list[Path] | None:
+    if paths:
+        return [Path(p.strip()) for p in paths.split(",")]
+    return ctx.workspace_paths
+
+
+__all__ = [
+    "_active_package_ops",
+    "_package_op_lock",
+    "enrich_packages_with_registry",
+    "get_all_installed_packages",
+    "get_all_registry_packages",
+    "get_installed_packages_for_project",
+    "get_package_details_from_registry",
+    "handle_get_package_details",
+    "handle_get_package_info",
+    "handle_get_packages",
+    "handle_install_package",
+    "handle_packages_summary",
+    "handle_remove_package",
+    "handle_search_registry",
+    "next_package_op_id",
+    "refresh_packages_state",
+    "resolve_scan_paths",
+    "search_registry_packages",
+    "version_is_newer",
+]

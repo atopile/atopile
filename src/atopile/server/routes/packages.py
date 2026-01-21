@@ -1,259 +1,109 @@
-"""
-Package-related API routes.
+"""Package-related API routes."""
 
-Endpoints:
-- GET /api/packages - List installed packages
-- GET /api/packages/summary - Get packages with registry info merged
-- GET /api/packages/{package_id} - Get package info
-- GET /api/packages/{package_id}/details - Get detailed package info
-- POST /api/packages/install - Install a package
-- POST /api/packages/remove - Remove a package
-- GET /api/registry/search - Search the package registry
-"""
+from __future__ import annotations
 
-import logging
-from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 
-from ..core import packages as core_packages
-from ..models import registry as registry_model
+from ..app_context import AppContext
+from ..domains import packages as packages_domain
+from ..domains.deps import get_ctx
 from ..schemas.package import (
-    PackageInfo,
+    PackageActionRequest,
+    PackageActionResponse,
     PackageDetails,
+    PackageInfo,
     PackagesResponse,
     PackagesSummaryResponse,
     RegistrySearchResponse,
-    PackageActionRequest,
-    PackageActionResponse,
-    RegistryStatus,
 )
-
-log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["packages"])
 
 
-def _get_workspace_paths():
-    """Get workspace paths from server state."""
-    from ..server import state
-
-    return state.get("workspace_paths", [])
-
-
-@router.get("/api/packages", response_model=PackagesResponse)
-async def list_packages(
+@router.get("/api/registry/search", response_model=RegistrySearchResponse)
+async def search_registry(
+    query: str = Query("", description="Search query. Empty returns popular packages."),
     paths: Optional[str] = Query(
-        None, description="Comma-separated list of paths to scan"
+        None, description="Comma-separated list of paths to check installed packages."
     ),
+    ctx: AppContext = Depends(get_ctx),
 ):
-    """
-    List installed packages across workspace projects.
-    """
-    if paths:
-        scan_paths = [Path(p.strip()) for p in paths.split(",")]
-    else:
-        scan_paths = _get_workspace_paths()
-
-    packages_map = core_packages.get_all_installed_packages(scan_paths)
-    packages = list(packages_map.values())
-
-    return PackagesResponse(packages=packages, total=len(packages))
+    scan_paths = packages_domain.resolve_scan_paths(ctx, paths)
+    return packages_domain.handle_search_registry(query, scan_paths)
 
 
 @router.get("/api/packages/summary", response_model=PackagesSummaryResponse)
 async def get_packages_summary(
     paths: Optional[str] = Query(
-        None, description="Comma-separated list of paths to scan"
-    ),
-):
-    """
-    Get packages with registry metadata merged.
-
-    This is the main endpoint for the packages panel. It:
-    1. Gets installed packages from workspace projects
-    2. Fetches registry metadata
-    3. Merges the data for display
-    """
-    from ..schemas.package import PackageSummaryItem
-
-    if paths:
-        scan_paths = [Path(p.strip()) for p in paths.split(",")]
-    else:
-        scan_paths = _get_workspace_paths()
-
-    # Get installed packages
-    installed_map = core_packages.get_all_installed_packages(scan_paths) if scan_paths else {}
-
-    # Get registry packages
-    registry_error = None
-    registry_packages = []
-    try:
-        registry_packages = registry_model.get_all_registry_packages()
-    except Exception as e:
-        registry_error = str(e)
-        log.warning(f"Failed to fetch registry packages: {e}")
-
-    # Merge into summary items
-    packages_map: dict[str, PackageSummaryItem] = {}
-
-    # Add installed packages first
-    for pkg in installed_map.values():
-        packages_map[pkg.identifier] = PackageSummaryItem(
-            identifier=pkg.identifier,
-            name=pkg.name,
-            publisher=pkg.publisher,
-            installed=True,
-            version=pkg.version,
-            installed_in=pkg.installed_in,
-        )
-
-    # Merge registry data
-    for reg_pkg in registry_packages:
-        if reg_pkg.identifier in packages_map:
-            # Update existing with registry info
-            existing = packages_map[reg_pkg.identifier]
-            packages_map[reg_pkg.identifier] = PackageSummaryItem(
-                identifier=existing.identifier,
-                name=existing.name,
-                publisher=existing.publisher,
-                installed=True,
-                version=existing.version,
-                installed_in=existing.installed_in,
-                latest_version=reg_pkg.latest_version,
-                has_update=registry_model.version_is_newer(
-                    existing.version, reg_pkg.latest_version
-                ),
-                summary=reg_pkg.summary,
-                description=reg_pkg.description,
-                homepage=reg_pkg.homepage,
-                repository=reg_pkg.repository,
-                license=reg_pkg.license,
-                downloads=reg_pkg.downloads,
-                version_count=reg_pkg.version_count,
-                keywords=reg_pkg.keywords or [],
-            )
-        else:
-            # Add uninstalled registry package
-            packages_map[reg_pkg.identifier] = PackageSummaryItem(
-                identifier=reg_pkg.identifier,
-                name=reg_pkg.name,
-                publisher=reg_pkg.publisher,
-                installed=False,
-                latest_version=reg_pkg.latest_version,
-                summary=reg_pkg.summary,
-                description=reg_pkg.description,
-                homepage=reg_pkg.homepage,
-                repository=reg_pkg.repository,
-                license=reg_pkg.license,
-                downloads=reg_pkg.downloads,
-                version_count=reg_pkg.version_count,
-                keywords=reg_pkg.keywords or [],
-            )
-
-    # Sort: installed first, then alphabetically
-    packages = sorted(
-        packages_map.values(), key=lambda p: (not p.installed, p.identifier.lower())
-    )
-
-    installed_count = sum(1 for p in packages if p.installed)
-
-    return PackagesSummaryResponse(
-        packages=packages,
-        total=len(packages),
-        installed_count=installed_count,
-        registry_status=RegistryStatus(
-            available=registry_error is None, error=registry_error
+        None,
+        description=(
+            "Comma-separated list of paths to scan for projects. "
+            "If not provided, uses configured workspace paths."
         ),
+    ),
+    ctx: AppContext = Depends(get_ctx),
+):
+    scan_paths = packages_domain.resolve_scan_paths(ctx, paths)
+    return packages_domain.handle_packages_summary(scan_paths)
+
+
+@router.get("/api/packages", response_model=PackagesResponse)
+async def get_packages(
+    paths: Optional[str] = Query(
+        None,
+        description=(
+            "Comma-separated list of paths to scan for projects. "
+            "If not provided, uses configured workspace paths."
+        ),
+    ),
+    project_root: Optional[str] = Query(
+        None, description="Filter to packages installed in a specific project."
+    ),
+    include_registry: bool = Query(
+        True, description="Include latest_version and metadata from registry."
+    ),
+    ctx: AppContext = Depends(get_ctx),
+):
+    scan_paths = packages_domain.resolve_scan_paths(ctx, paths)
+    return packages_domain.handle_get_packages(
+        scan_paths, project_root, include_registry
     )
 
 
 @router.get("/api/packages/{package_id:path}/details", response_model=PackageDetails)
 async def get_package_details(
     package_id: str,
-    paths: Optional[str] = Query(
-        None, description="Comma-separated list of paths to check installation"
-    ),
+    paths: Optional[str] = Query(None),
+    ctx: AppContext = Depends(get_ctx),
 ):
-    """
-    Get detailed information about a package from the registry.
-    """
-    details = registry_model.get_package_details_from_registry(package_id)
-    if not details:
-        raise HTTPException(status_code=404, detail=f"Package not found: {package_id}")
-
-    # Check installation status
-    if paths:
-        scan_paths = [Path(p.strip()) for p in paths.split(",")]
-        installed_map = core_packages.get_all_installed_packages(scan_paths)
-        if package_id in installed_map:
-            details.installed = True
-            details.installed_version = installed_map[package_id].version
-            details.installed_in = installed_map[package_id].installed_in
-
-    return details
+    scan_paths = packages_domain.resolve_scan_paths(ctx, paths)
+    return packages_domain.handle_get_package_details(package_id, scan_paths, ctx)
 
 
 @router.get("/api/packages/{package_id:path}", response_model=PackageInfo)
-async def get_package_info(package_id: str):
-    """
-    Get basic information about a package.
-    """
-    # Search for the specific package
-    results = registry_model.search_registry_packages(package_id)
-    for pkg in results:
-        if pkg.identifier == package_id:
-            return pkg
-
-    raise HTTPException(status_code=404, detail=f"Package not found: {package_id}")
-
-
-@router.get("/api/registry/search", response_model=RegistrySearchResponse)
-async def search_registry(q: str = Query(..., description="Search query")):
-    """
-    Search for packages in the registry.
-    """
-    packages = registry_model.search_registry_packages(q)
-    return RegistrySearchResponse(packages=packages, total=len(packages), query=q)
+async def get_package(
+    package_id: str,
+    paths: Optional[str] = Query(None),
+    ctx: AppContext = Depends(get_ctx),
+):
+    scan_paths = packages_domain.resolve_scan_paths(ctx, paths)
+    return packages_domain.handle_get_package_info(package_id, scan_paths, ctx)
 
 
 @router.post("/api/packages/install", response_model=PackageActionResponse)
-async def install_package(request: PackageActionRequest):
-    """
-    Install a package into a project.
-    """
-    try:
-        core_packages.install_package_to_project(
-            project_root=Path(request.project_root),
-            package_identifier=request.package_identifier,
-            version=request.version,
-        )
-        return PackageActionResponse(
-            success=True,
-            message=f"Installed {request.package_identifier}",
-            action="install",
-        )
-    except Exception as e:
-        log.error(f"Failed to install package: {e}")
-        return PackageActionResponse(success=False, message=str(e), action="install")
+async def install_package(
+    request: PackageActionRequest,
+    background_tasks: BackgroundTasks,
+):
+    return packages_domain.handle_install_package(request, background_tasks)
 
 
 @router.post("/api/packages/remove", response_model=PackageActionResponse)
-async def remove_package(request: PackageActionRequest):
-    """
-    Remove a package from a project.
-    """
-    try:
-        core_packages.remove_package_from_project(
-            project_root=Path(request.project_root),
-            package_identifier=request.package_identifier,
-        )
-        return PackageActionResponse(
-            success=True,
-            message=f"Removed {request.package_identifier}",
-            action="remove",
-        )
-    except Exception as e:
-        log.error(f"Failed to remove package: {e}")
-        return PackageActionResponse(success=False, message=str(e), action="remove")
+async def remove_package(
+    request: PackageActionRequest,
+    background_tasks: BackgroundTasks,
+):
+    return packages_domain.handle_remove_package(request, background_tasks)
+

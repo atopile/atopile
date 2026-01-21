@@ -10,8 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from atopile.server.app_context import AppContext
 from atopile.server.core import projects as core_projects
-from atopile.server.models import registry as registry_model
-from atopile.server import package_manager
+from atopile.server.domains import packages as packages_domain
 from atopile.server.domains.deps import get_ctx
 from atopile.server.state import server_state
 from atopile.server.schemas.project import (
@@ -104,7 +103,7 @@ async def get_dependencies(
             detail=f"Project not found: {project_root}",
         )
 
-    installed = package_manager.get_installed_packages_for_project(project_path)
+    installed = packages_domain.get_installed_packages_for_project(project_path)
 
     dependencies: list[DependencyInfo] = []
     for pkg in installed:
@@ -119,7 +118,7 @@ async def get_dependencies(
         cached_pkg = server_state.packages_by_id.get(pkg.identifier)
         if cached_pkg:
             latest_version = cached_pkg.latest_version
-            has_update = registry_model.version_is_newer(pkg.version, latest_version)
+            has_update = packages_domain.version_is_newer(pkg.version, latest_version)
             repository = cached_pkg.repository
 
         dependencies.append(

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from atopile.config import ProjectConfig
-from atopile.server import package_manager
+from atopile.server.domains import packages as packages_domain
 from atopile.server import problem_parser
 from atopile.server import project_discovery
 from atopile.server import module_discovery
@@ -22,7 +22,6 @@ from atopile.server.stdlib import get_standard_library
 from atopile.server import path_utils
 from atopile.server.app_context import AppContext
 from atopile.server.core import projects as core_projects
-from atopile.server.models import registry as registry_model
 from atopile.server.state import server_state
 from atopile.server.build_queue import (
     _active_builds,
@@ -89,82 +88,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             }
 
         if action == "refreshPackages":
-            from atopile.server.state import PackageInfo as StatePackageInfo
-
-            packages_map: dict[str, StatePackageInfo] = {}
-            scan_paths = ctx.workspace_paths
-            registry_error: str | None = None
-
-            if scan_paths:
-                installed = package_manager.get_all_installed_packages(scan_paths)
-                for pkg in installed.values():
-                    packages_map[pkg.identifier] = StatePackageInfo(
-                        identifier=pkg.identifier,
-                        name=pkg.name,
-                        publisher=pkg.publisher,
-                        version=pkg.version,
-                        installed=True,
-                        installed_in=pkg.installed_in,
-                    )
-
-            try:
-                registry_packages = package_manager.get_all_registry_packages()
-                log.info(
-                    f"[refreshPackages] Registry returned {len(registry_packages)} packages"
-                )
-
-                for reg_pkg in registry_packages:
-                    if reg_pkg.identifier in packages_map:
-                        existing = packages_map[reg_pkg.identifier]
-                        packages_map[reg_pkg.identifier] = StatePackageInfo(
-                            identifier=existing.identifier,
-                            name=existing.name,
-                            publisher=existing.publisher,
-                            version=existing.version,
-                            latest_version=reg_pkg.latest_version,
-                            description=reg_pkg.description or reg_pkg.summary,
-                            summary=reg_pkg.summary,
-                            homepage=reg_pkg.homepage,
-                            repository=reg_pkg.repository,
-                            license=reg_pkg.license,
-                            installed=True,
-                            installed_in=existing.installed_in,
-                            has_update=package_manager._version_is_newer(
-                                existing.version, reg_pkg.latest_version
-                            ),
-                            downloads=reg_pkg.downloads,
-                            version_count=reg_pkg.version_count,
-                            keywords=reg_pkg.keywords or [],
-                        )
-                    else:
-                        packages_map[reg_pkg.identifier] = StatePackageInfo(
-                            identifier=reg_pkg.identifier,
-                            name=reg_pkg.name,
-                            publisher=reg_pkg.publisher,
-                            latest_version=reg_pkg.latest_version,
-                            description=reg_pkg.description or reg_pkg.summary,
-                            summary=reg_pkg.summary,
-                            homepage=reg_pkg.homepage,
-                            repository=reg_pkg.repository,
-                            license=reg_pkg.license,
-                            installed=False,
-                            installed_in=[],
-                            has_update=False,
-                            downloads=reg_pkg.downloads,
-                            version_count=reg_pkg.version_count,
-                            keywords=reg_pkg.keywords or [],
-                        )
-
-            except Exception as exc:
-                registry_error = str(exc)
-                log.warning(f"[refreshPackages] Registry fetch failed: {exc}")
-
-            state_packages = sorted(
-                packages_map.values(),
-                key=lambda p: (not p.installed, p.identifier.lower()),
-            )
-
-            await server_state.set_packages(list(state_packages), registry_error)
+            await packages_domain.refresh_packages_state(scan_paths=ctx.workspace_paths)
             return {"success": True}
 
         if action == "refreshStdlib":
@@ -419,7 +343,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             if package_id:
                 from atopile.server.state import PackageDetails as StatePackageDetails
 
-                details = package_manager.get_package_details_from_registry(package_id)
+                details = packages_domain.get_package_details_from_registry(package_id)
                 if details:
                     state_details = StatePackageDetails(
                         identifier=details.identifier,
@@ -565,10 +489,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": f"No ato.yaml in: {project_root}",
                 }
 
-            with package_manager._package_op_lock:
-                op_id = package_manager.next_package_op_id("pkg-install")
+            with packages_domain._package_op_lock:
+                op_id = packages_domain.next_package_op_id("pkg-install")
 
-                package_manager._active_package_ops[op_id] = {
+                packages_domain._active_package_ops[op_id] = {
                     "action": "install",
                     "status": "running",
                     "package": package_id,
@@ -589,29 +513,29 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                         text=True,
                         timeout=120,
                     )
-                    with package_manager._package_op_lock:
+                    with packages_domain._package_op_lock:
                         if result.returncode == 0:
-                            package_manager._active_package_ops[op_id][
+                            packages_domain._active_package_ops[op_id][
                                 "status"
                             ] = "success"
                             loop = server_state._event_loop
                             if loop and loop.is_running():
                                 asyncio.run_coroutine_threadsafe(
-                                    package_manager.refresh_packages_async(), loop
+                                    packages_domain.refresh_packages_state(), loop
                                 )
                         else:
-                            package_manager._active_package_ops[op_id][
+                            packages_domain._active_package_ops[op_id][
                                 "status"
                             ] = "failed"
-                            package_manager._active_package_ops[op_id][
+                            packages_domain._active_package_ops[op_id][
                                 "error"
                             ] = result.stderr[:500]
                 except Exception as exc:
-                    with package_manager._package_op_lock:
-                        package_manager._active_package_ops[op_id][
+                    with packages_domain._package_op_lock:
+                        packages_domain._active_package_ops[op_id][
                             "status"
                         ] = "failed"
-                        package_manager._active_package_ops[op_id]["error"] = str(exc)
+                        packages_domain._active_package_ops[op_id]["error"] = str(exc)
 
             threading.Thread(target=run_install, daemon=True).start()
 
@@ -659,10 +583,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": f"Project not found: {project_root}",
                 }
 
-            with package_manager._package_op_lock:
-                op_id = package_manager.next_package_op_id("pkg-remove")
+            with packages_domain._package_op_lock:
+                op_id = packages_domain.next_package_op_id("pkg-remove")
 
-                package_manager._active_package_ops[op_id] = {
+                packages_domain._active_package_ops[op_id] = {
                     "action": "remove",
                     "status": "running",
                     "package": package_id,
@@ -681,29 +605,29 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                         text=True,
                         timeout=120,
                     )
-                    with package_manager._package_op_lock:
+                    with packages_domain._package_op_lock:
                         if result.returncode == 0:
-                            package_manager._active_package_ops[op_id][
+                            packages_domain._active_package_ops[op_id][
                                 "status"
                             ] = "success"
                             loop = server_state._event_loop
                             if loop and loop.is_running():
                                 asyncio.run_coroutine_threadsafe(
-                                    package_manager.refresh_packages_async(), loop
+                                    packages_domain.refresh_packages_state(), loop
                                 )
                         else:
-                            package_manager._active_package_ops[op_id][
+                            packages_domain._active_package_ops[op_id][
                                 "status"
                             ] = "failed"
-                            package_manager._active_package_ops[op_id][
+                            packages_domain._active_package_ops[op_id][
                                 "error"
                             ] = result.stderr[:500]
                 except Exception as exc:
-                    with package_manager._package_op_lock:
-                        package_manager._active_package_ops[op_id][
+                    with packages_domain._package_op_lock:
+                        packages_domain._active_package_ops[op_id][
                             "status"
                         ] = "failed"
-                        package_manager._active_package_ops[op_id]["error"] = str(exc)
+                        packages_domain._active_package_ops[op_id]["error"] = str(exc)
 
             threading.Thread(target=run_remove, daemon=True).start()
 
@@ -743,7 +667,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             from atopile.server.state import DependencyInfo
 
-            installed = package_manager.get_installed_packages_for_project(project_path)
+            installed = packages_domain.get_installed_packages_for_project(project_path)
 
             dependencies: list[DependencyInfo] = []
             for pkg in installed:
@@ -758,7 +682,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 cached_pkg = server_state.packages_by_id.get(pkg.identifier)
                 if cached_pkg:
                     latest_version = cached_pkg.latest_version
-                    has_update = registry_model.version_is_newer(
+                    has_update = packages_domain.version_is_newer(
                         pkg.version, latest_version
                     )
                     repository = cached_pkg.repository

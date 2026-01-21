@@ -25,7 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from atopile.server import build_history
 from atopile.server import build_queue
-from atopile.server import package_manager
+from atopile.server.domains import packages as packages_domain
 from atopile.server import project_discovery
 from atopile.server.app_context import AppContext
 from atopile.server.state import server_state
@@ -390,8 +390,8 @@ async def _populate_initial_state(ctx: AppContext) -> None:
         log.error(f"Failed to load projects: {exc}")
 
     try:
-        installed = package_manager.get_all_installed_packages(ctx.workspace_paths)
-        enriched = package_manager.enrich_packages_with_registry(installed)
+        installed = packages_domain.get_all_installed_packages(ctx.workspace_paths)
+        enriched = packages_domain.enrich_packages_with_registry(installed)
 
         state_packages = [
             StatePackageInfo(
@@ -407,7 +407,7 @@ async def _populate_initial_state(ctx: AppContext) -> None:
                 license=p.license,
                 installed=p.installed,
                 installed_in=p.installed_in,
-                has_update=package_manager._version_is_newer(
+                has_update=packages_domain.version_is_newer(
                     p.version, p.latest_version
                 ),
                 downloads=p.downloads,
@@ -470,7 +470,8 @@ def create_app(
         server_state.set_workspace_paths(ctx.workspace_paths)
         await _populate_initial_state(ctx)
 
-    from atopile.server.domains import builds, logs, packages, problems, projects, resolve, stdlib, artifacts
+    from atopile.server.domains import builds, logs, problems, projects, resolve, stdlib, artifacts
+    from atopile.server.routes import packages as packages_routes
     from atopile.server.routes import websocket as ws_routes
 
     app.include_router(ws_routes.router)
@@ -481,7 +482,7 @@ def create_app(
     app.include_router(resolve.router)
     app.include_router(problems.router)
     app.include_router(stdlib.router)
-    app.include_router(packages.router)
+    app.include_router(packages_routes.router)
 
     return app
 
