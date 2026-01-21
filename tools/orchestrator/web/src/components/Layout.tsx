@@ -35,6 +35,21 @@ export function Layout() {
   // Track if user manually toggled sidebar (to prevent auto-collapse from overriding)
   const userToggledRef = useRef(false);
   const prevWidthRef = useRef(typeof window !== 'undefined' ? window.innerWidth : 1200);
+  const prevSelectionRef = useRef<string | null>(null);
+
+  // Auto-collapse when selecting an agent/pipeline on narrow viewports (only on new selection)
+  useEffect(() => {
+    const currentSelection = viewMode === 'agents' ? selectedAgent?.id : state.selectedPipelineId;
+    const hadSelection = prevSelectionRef.current !== null;
+    const hasSelection = currentSelection !== null && currentSelection !== undefined;
+
+    // Only collapse when going from no selection to a selection
+    if (!hadSelection && hasSelection && window.innerWidth < NARROW_BREAKPOINT) {
+      setSidebarCollapsed(true);
+    }
+
+    prevSelectionRef.current = currentSelection ?? null;
+  }, [selectedAgent?.id, state.selectedPipelineId, viewMode]);
 
   // Auto-collapse sidebar only when resizing from wide to narrow (not on user toggle)
   useEffect(() => {
