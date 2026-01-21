@@ -36,6 +36,10 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from atopile.config import ProjectConfig
+from atopile.server.core import launcher as core_launcher
+from atopile.server.core import packages as core_packages
+from atopile.server.core import projects as core_projects
+from atopile.server.models import registry as registry_model
 from atopile.server.stdlib import (
     StdLibItem,
     StdLibItemType,
@@ -44,11 +48,6 @@ from atopile.server.stdlib import (
 )
 from atopile.server.state import server_state
 from atopile.logging import get_central_log_db
-
-# Registry cache
-_registry_cache: dict[str, "PackageInfo"] = {}
-_registry_cache_time: float = 0
-_REGISTRY_CACHE_TTL = 300  # 5 minutes
 
 log = logging.getLogger(__name__)
 
@@ -681,114 +680,14 @@ def extract_modules_from_file(
 
     Uses the ANTLR parser to parse the file and extract BlockDefinitions.
     """
-    from atopile.compiler.parse import parse_file
-    from atopile.compiler.parser.AtoParser import AtoParser
-
-    modules: list[ModuleDefinition] = []
-
-    try:
-        tree = parse_file(ato_file)
-    except Exception as e:
-        log.warning(f"Failed to parse {ato_file}: {e}")
-        return modules
-
-    # Get relative path from project root
-    try:
-        rel_path = ato_file.relative_to(project_root)
-    except ValueError:
-        rel_path = ato_file.name
-
-    def extract_blockdefs(ctx) -> None:
-        """Recursively extract block definitions from parse tree."""
-        if ctx is None:
-            return
-
-        # Check if this is a blockdef context
-        if isinstance(ctx, AtoParser.BlockdefContext):
-            try:
-                # Get block type (module/interface/component)
-                blocktype_ctx = ctx.blocktype()
-                if blocktype_ctx:
-                    if blocktype_ctx.MODULE():
-                        block_type = "module"
-                    elif blocktype_ctx.INTERFACE():
-                        block_type = "interface"
-                    elif blocktype_ctx.COMPONENT():
-                        block_type = "component"
-                    else:
-                        block_type = "unknown"
-                else:
-                    block_type = "unknown"
-
-                # Get the name from type_reference
-                type_ref_ctx = ctx.type_reference()
-                if type_ref_ctx:
-                    # type_reference returns a name context directly
-                    name_ctx = type_ref_ctx.name()
-                    if name_ctx:
-                        name = name_ctx.getText()
-                    else:
-                        name = type_ref_ctx.getText()
-                else:
-                    name = "Unknown"
-
-                # Get super type if present (from blockdef_super)
-                super_type = None
-                super_ctx = ctx.blockdef_super()
-                if super_ctx:
-                    super_type_ref = super_ctx.type_reference()
-                    if super_type_ref:
-                        super_type = super_type_ref.getText()
-
-                # Get line number
-                line = ctx.start.line if ctx.start else None
-
-                # Create entry point string
-                entry = f"{rel_path}:{name}"
-
-                modules.append(
-                    ModuleDefinition(
-                        name=name,
-                        type=block_type,
-                        file=str(rel_path),
-                        entry=entry,
-                        line=line,
-                        super_type=super_type,
-                    )
-                )
-            except Exception as e:
-                log.debug(f"Failed to extract blockdef: {e}")
-
-        # Recurse into children
-        if hasattr(ctx, "children") and ctx.children:
-            for child in ctx.children:
-                extract_blockdefs(child)
-
-    # Start extraction from the root
-    extract_blockdefs(tree)
-
-    return modules
+    return core_projects.extract_modules_from_file(ato_file, project_root)
 
 
 def discover_modules_in_project(project_root: Path) -> list[ModuleDefinition]:
     """
     Discover all module definitions in a project by scanning .ato files.
     """
-    all_modules: list[ModuleDefinition] = []
-
-    # Find all .ato files in the project (excluding build directory)
-    for ato_file in project_root.rglob("*.ato"):
-        # Skip files in build directories
-        if "build" in ato_file.parts:
-            continue
-        # Skip files in .ato directory (dependencies)
-        if ".ato" in ato_file.parts:
-            continue
-
-        modules = extract_modules_from_file(ato_file, project_root)
-        all_modules.extend(modules)
-
-    return all_modules
+    return core_projects.discover_modules_in_project(project_root)
 
 
 def parse_problems_from_log_file(
@@ -874,32 +773,7 @@ def _version_is_newer(installed: str | None, latest: str | None) -> bool:
     Simple semver comparison - handles common version formats.
     Returns False if either version is None or comparison fails.
     """
-    if not installed or not latest:
-        return False
-
-    try:
-        # Strip 'v' prefix if present
-        installed = installed.lstrip("v")
-        latest = latest.lstrip("v")
-
-        # Parse version parts
-        def parse_version(v: str) -> tuple[int, ...]:
-            # Handle versions like "1.0.0-beta.1" by taking only the numeric part
-            base = v.split("-")[0].split("+")[0]
-            return tuple(int(x) for x in base.split(".") if x.isdigit())
-
-        installed_parts = parse_version(installed)
-        latest_parts = parse_version(latest)
-
-        # Pad to same length
-        max_len = max(len(installed_parts), len(latest_parts))
-        installed_padded = installed_parts + (0,) * (max_len - len(installed_parts))
-        latest_padded = latest_parts + (0,) * (max_len - len(latest_parts))
-
-        return latest_padded > installed_padded
-
-    except (ValueError, AttributeError):
-        return False
+    return registry_model.version_is_newer(installed, latest)
 
 
 def search_registry_packages(query: str) -> list[PackageInfo]:
@@ -909,68 +783,7 @@ def search_registry_packages(query: str) -> list[PackageInfo]:
     Uses the PackagesAPIClient to query the registry API.
     Results are cached for 5 minutes.
     """
-    global _registry_cache, _registry_cache_time
-
-    cache_key = f"search:{query}"
-    now = time.time()
-
-    # Check cache
-    if (
-        cache_key in _registry_cache
-        and (now - _registry_cache_time) < _REGISTRY_CACHE_TTL
-    ):
-        cached = _registry_cache[cache_key]
-        log.debug(f"[registry] Cache HIT for '{query}': {len(cached)} packages")
-        return cached
-
-    try:
-        from faebryk.libs.backend.packages.api import PackagesAPIClient
-
-        api = PackagesAPIClient()
-        result = api.query_packages(query)
-        log.debug(f"[registry] Fetched {len(result.packages)} packages for '{query}'")
-
-        packages: list[PackageInfo] = []
-        for pkg in result.packages:
-            # Parse identifier to get publisher and name
-            parts = pkg.identifier.split("/")
-            if len(parts) == 2:
-                publisher, name = parts
-            else:
-                publisher = "unknown"
-                name = pkg.identifier
-
-            packages.append(
-                PackageInfo(
-                    identifier=pkg.identifier,
-                    name=name,
-                    publisher=publisher,
-                    latest_version=pkg.version,
-                    summary=pkg.summary,
-                    description=pkg.summary,  # Registry only has summary
-                    homepage=pkg.homepage,
-                    repository=pkg.repository,
-                    installed=False,
-                    installed_in=[],
-                )
-            )
-
-        # Update cache
-        _registry_cache[cache_key] = packages
-        _registry_cache_time = now
-
-        return packages
-
-    except Exception as e:
-        log.warning(f"Failed to search registry: {e}")
-        return []
-
-
-# TODO: HACK - Registry API doesn't support listing all packages (empty query returns 0).
-# Workaround: query multiple search terms and merge results to approximate "get all".
-# These terms were empirically chosen for maximum coverage (~149 packages as of 2025-01).
-# Proper fix: add a /v1/packages/list endpoint to the registry API.
-_REGISTRY_SEARCH_TERMS = ["atopile", "i2c", "st", "ti", "ic", "mcu", "esp", "microchip"]
+    return registry_model.search_registry_packages(query)
 
 
 def get_all_registry_packages() -> list[PackageInfo]:
@@ -981,40 +794,7 @@ def get_all_registry_packages() -> list[PackageInfo]:
     This function queries multiple terms and merges results to get all packages.
     Results are cached for 5 minutes.
     """
-    global _registry_cache, _registry_cache_time
-
-    cache_key = "all_packages"
-    now = time.time()
-
-    # Check cache
-    if (
-        cache_key in _registry_cache
-        and (now - _registry_cache_time) < _REGISTRY_CACHE_TTL
-    ):
-        cached = _registry_cache[cache_key]
-        log.debug(f"[registry] Cache HIT for all packages: {len(cached)} packages")
-        return cached
-
-    # Query multiple terms and merge results
-    packages_map: dict[str, PackageInfo] = {}
-
-    for term in _REGISTRY_SEARCH_TERMS:
-        try:
-            results = search_registry_packages(term)
-            for pkg in results:
-                if pkg.identifier not in packages_map:
-                    packages_map[pkg.identifier] = pkg
-        except Exception as e:
-            log.warning(f"Failed to search registry for '{term}': {e}")
-
-    packages = list(packages_map.values())
-    log.info(f"[registry] Merged {len(packages)} unique packages from registry")
-
-    # Update cache
-    _registry_cache[cache_key] = packages
-    _registry_cache_time = now
-
-    return packages
+    return registry_model.get_all_registry_packages()
 
 
 def get_package_details_from_registry(identifier: str) -> PackageDetails | None:
@@ -1025,75 +805,7 @@ def get_package_details_from_registry(identifier: str) -> PackageDetails | None:
     - Full package info with stats (downloads)
     - List of releases (versions)
     """
-    try:
-        from faebryk.libs.backend.packages.api import PackagesAPIClient
-
-        api = PackagesAPIClient()
-
-        # Get full package info (includes stats)
-        pkg_response = api.get_package(identifier)
-        pkg_info = pkg_response.info
-
-        # Get all releases
-        releases_response = api._get(f"/v1/package/{identifier}/releases")
-        releases_data = releases_response.json()
-        releases = releases_data.get("releases", [])
-
-        # Parse identifier
-        parts = identifier.split("/")
-        if len(parts) == 2:
-            publisher, name = parts
-        else:
-            publisher = "unknown"
-            name = identifier
-
-        # Build version list
-        versions = []
-        for rel in releases:
-            released_at = rel.get("released_at")
-            if isinstance(released_at, str):
-                # Keep as is
-                pass
-            elif hasattr(released_at, "isoformat"):
-                released_at = released_at.isoformat()
-            else:
-                released_at = None
-
-            versions.append(
-                PackageVersion(
-                    version=rel.get("version", "unknown"),
-                    released_at=released_at,
-                    requires_atopile=rel.get("requires_atopile"),
-                    size=rel.get("size"),
-                )
-            )
-
-        # Sort versions by release date (newest first)
-        versions.sort(key=lambda v: v.released_at or "", reverse=True)
-
-        # Extract stats
-        stats = pkg_info.stats if hasattr(pkg_info, "stats") else None
-
-        return PackageDetails(
-            identifier=identifier,
-            name=name,
-            publisher=publisher,
-            version=pkg_info.version,
-            summary=pkg_info.summary,
-            description=pkg_info.summary,  # API only has summary
-            homepage=pkg_info.homepage,
-            repository=pkg_info.repository,
-            license=pkg_info.license if hasattr(pkg_info, "license") else None,
-            downloads=stats.total_downloads if stats else None,
-            downloads_this_week=stats.this_week_downloads if stats else None,
-            downloads_this_month=stats.this_month_downloads if stats else None,
-            versions=versions,
-            version_count=len(versions),
-        )
-
-    except Exception as e:
-        log.warning(f"Failed to get package details for {identifier}: {e}")
-        return None
+    return registry_model.get_package_details_from_registry(identifier)
 
 
 def get_installed_packages_for_project(project_root: Path) -> list[InstalledPackage]:
@@ -1111,60 +823,7 @@ def get_installed_packages_for_project(project_root: Path) -> list[InstalledPack
        dependencies:
          "atopile/buttons": "0.3.1"
     """
-    ato_yaml = project_root / "ato.yaml"
-    if not ato_yaml.exists():
-        return []
-
-    try:
-        with open(ato_yaml, "r") as f:
-            data = yaml.safe_load(f)
-
-        if not data:
-            return []
-
-        packages: list[InstalledPackage] = []
-        dependencies = data.get("dependencies", [])
-
-        # Handle list format (current format)
-        if isinstance(dependencies, list):
-            for dep in dependencies:
-                if isinstance(dep, dict):
-                    identifier = dep.get("identifier", "")
-                    version = dep.get("release", dep.get("version", "unknown"))
-                    if identifier:
-                        packages.append(
-                            InstalledPackage(
-                                identifier=identifier,
-                                version=version,
-                                project_root=str(project_root),
-                            )
-                        )
-
-        # Handle dict format (legacy format)
-        elif isinstance(dependencies, dict):
-            for dep_id, dep_info in dependencies.items():
-                if isinstance(dep_info, str):
-                    # Simple format: "package-id": "version"
-                    version = dep_info
-                elif isinstance(dep_info, dict):
-                    # Dict format: "package-id": {"version": "x.y.z", ...}
-                    version = dep_info.get("version", "unknown")
-                else:
-                    continue
-
-                packages.append(
-                    InstalledPackage(
-                        identifier=dep_id,
-                        version=version,
-                        project_root=str(project_root),
-                    )
-                )
-
-        return packages
-
-    except Exception as e:
-        log.warning(f"Failed to read packages from {ato_yaml}: {e}")
-        return []
+    return core_packages.get_installed_packages_for_project(project_root)
 
 
 def get_all_installed_packages(paths: list[Path]) -> dict[str, PackageInfo]:
@@ -1174,39 +833,7 @@ def get_all_installed_packages(paths: list[Path]) -> dict[str, PackageInfo]:
     Returns a dict of package_identifier -> PackageInfo, with installed_in
     tracking which projects have each package.
     """
-    packages_map: dict[str, PackageInfo] = {}
-
-    # Discover all projects
-    projects = discover_projects_in_paths(paths)
-
-    for project in projects:
-        project_root = Path(project.root)
-        installed = get_installed_packages_for_project(project_root)
-
-        for pkg in installed:
-            if pkg.identifier not in packages_map:
-                # Parse identifier to get publisher and name
-                parts = pkg.identifier.split("/")
-                if len(parts) == 2:
-                    publisher, name = parts
-                else:
-                    publisher = "unknown"
-                    name = pkg.identifier
-
-                packages_map[pkg.identifier] = PackageInfo(
-                    identifier=pkg.identifier,
-                    name=name,
-                    publisher=publisher,
-                    version=pkg.version,
-                    installed=True,
-                    installed_in=[project.root],
-                )
-            else:
-                # Package already seen, add this project to installed_in
-                if project.root not in packages_map[pkg.identifier].installed_in:
-                    packages_map[pkg.identifier].installed_in.append(project.root)
-
-    return packages_map
+    return core_packages.get_all_installed_packages(paths)
 
 
 def enrich_packages_with_registry(
@@ -1218,42 +845,63 @@ def enrich_packages_with_registry(
     Fetches latest_version, summary, homepage, etc. from the registry
     for each installed package.
     """
-    if not packages:
-        return packages
+    return registry_model.enrich_packages_with_registry(packages)
 
-    # Try to get registry data for all identifiers
-    # First try batch via search, then individual lookups for missing
-    registry_data = search_registry_packages("")
 
-    # Build lookup map
-    registry_map: dict[str, PackageInfo] = {
-        pkg.identifier: pkg for pkg in registry_data
-    }
+def _resolve_workspace_file(path_str: str, workspace_paths: list[Path]) -> Path | None:
+    candidate = Path(path_str)
+    if candidate.exists():
+        return candidate
 
-    # Enrich each installed package
-    enriched: dict[str, PackageInfo] = {}
-    for identifier, pkg in packages.items():
-        if identifier in registry_map:
-            reg = registry_map[identifier]
-            enriched[identifier] = PackageInfo(
-                identifier=pkg.identifier,
-                name=pkg.name,
-                publisher=pkg.publisher,
-                version=pkg.version,
-                latest_version=reg.latest_version,
-                description=reg.description,
-                summary=reg.summary,
-                homepage=reg.homepage,
-                repository=reg.repository,
-                license=reg.license,
-                installed=True,
-                installed_in=pkg.installed_in,
-            )
-        else:
-            # Not found in registry, keep original
-            enriched[identifier] = pkg
+    if candidate.is_absolute():
+        return None
 
-    return enriched
+    for root in workspace_paths:
+        root_path = Path(root)
+        try_path = root_path / candidate
+        if try_path.exists():
+            return try_path
+
+    return None
+
+
+def _resolve_entry_path(project_root: Path, entry: str | None) -> Path | None:
+    if not entry:
+        return None
+
+    entry_file = entry.split(":")[0] if ":" in entry else entry
+    entry_path = Path(entry_file)
+    if not entry_path.is_absolute():
+        entry_path = project_root / entry_file
+    return entry_path
+
+
+def _resolve_layout_path(project_root: Path, build_id: str) -> Path | None:
+    candidates = [
+        project_root / "layouts" / build_id / f"{build_id}.kicad_pcb",
+        project_root / "layouts" / build_id,
+        project_root / "layouts",
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    return None
+
+
+def _resolve_3d_path(project_root: Path, build_id: str) -> Path | None:
+    build_dir = project_root / "build" / "builds" / build_id
+    if not build_dir.exists():
+        return None
+
+    candidate = build_dir / f"{build_id}.pcba.glb"
+    if candidate.exists():
+        return candidate
+
+    glb_files = sorted(build_dir.glob("*.glb"))
+    if glb_files:
+        return glb_files[0]
+
+    return build_dir
 
 
 # Track active builds
@@ -2502,68 +2150,7 @@ def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
 
     Returns list of Project objects with their build targets.
     """
-    projects: list[Project] = []
-    seen_roots: set[str] = set()
-
-    for root_path in paths:
-        if not root_path.exists():
-            log.warning(f"Path does not exist: {root_path}")
-            continue
-
-        # Find all ato.yaml files
-        if (root_path / "ato.yaml").exists():
-            ato_files = [root_path / "ato.yaml"]
-        else:
-            ato_files = list(root_path.rglob("ato.yaml"))
-
-        for ato_file in ato_files:
-            # Skip .ato/modules (dependencies)
-            if ".ato" in ato_file.parts:
-                continue
-
-            project_root = ato_file.parent
-            root_str = str(project_root)
-
-            # Skip duplicates
-            if root_str in seen_roots:
-                continue
-            seen_roots.add(root_str)
-
-            # Parse ato.yaml to get build targets
-            try:
-                with open(ato_file, "r") as f:
-                    data = yaml.safe_load(f)
-
-                if not data or "builds" not in data:
-                    continue
-
-                targets: list[BuildTarget] = []
-                for name, config in data.get("builds", {}).items():
-                    if isinstance(config, dict):
-                        targets.append(
-                            BuildTarget(
-                                name=name,
-                                entry=config.get("entry", ""),
-                                root=root_str,
-                            )
-                        )
-
-                if targets:
-                    projects.append(
-                        Project(
-                            root=root_str,
-                            name=project_root.name,
-                            targets=targets,
-                        )
-                    )
-
-            except Exception as e:
-                log.warning(f"Failed to parse {ato_file}: {e}")
-                continue
-
-    # Sort by name
-    projects.sort(key=lambda p: p.name.lower())
-    return projects
+    return core_projects.discover_projects_in_paths(paths)
 
 
 def create_app(
@@ -2737,6 +2324,31 @@ def create_app(
                     await server_state.set_projects(state_projects)
                 return {"success": True}
 
+            elif action == "createProject":
+                parent_directory = payload.get("parentDirectory")
+                name = payload.get("name")
+
+                if not parent_directory:
+                    workspace_paths = state.get("workspace_paths", [])
+                    if workspace_paths:
+                        parent_directory = str(workspace_paths[0])
+                    else:
+                        return {"success": False, "error": "Missing parentDirectory"}
+
+                try:
+                    project_dir, project_name = core_projects.create_project(
+                        Path(parent_directory), name
+                    )
+                except ValueError as e:
+                    return {"success": False, "error": str(e)}
+
+                await handle_data_action("refreshProjects", {})
+                return {
+                    "success": True,
+                    "project_root": str(project_dir),
+                    "project_name": project_name,
+                }
+
             elif action == "refreshPackages":
                 # Fetch ALL packages: installed + registry
                 # This mirrors the logic from /api/packages/summary endpoint
@@ -2848,6 +2460,22 @@ def create_app(
                 ]
                 await server_state.set_stdlib_items(state_items)
                 return {"success": True}
+
+            elif action == "buildPackage":
+                package_id = payload.get("packageId", "")
+                entry = payload.get("entry")
+
+                if not package_id:
+                    return {"success": False, "error": "Missing packageId"}
+
+                return await handle_data_action(
+                    "build",
+                    {
+                        "projectRoot": package_id,
+                        "entry": entry,
+                        "standalone": entry is not None,
+                    },
+                )
 
             elif action == "build":
                 # Support multiple payload formats:
@@ -3428,6 +3056,26 @@ def create_app(
                     "op_id": op_id,
                 }
 
+            elif action == "changeDependencyVersion":
+                package_id = payload.get("identifier") or payload.get("packageId", "")
+                project_root = payload.get("projectRoot") or payload.get("projectId", "")
+                version = payload.get("version")
+
+                if not package_id or not project_root or not version:
+                    return {
+                        "success": False,
+                        "error": "Missing identifier, projectRoot, or version",
+                    }
+
+                return await handle_data_action(
+                    "installPackage",
+                    {
+                        "packageId": package_id,
+                        "projectRoot": project_root,
+                        "version": version,
+                    },
+                )
+
             elif action == "removePackage":
                 # Remove a package from a project
                 package_id = payload.get("packageId", "")
@@ -3515,66 +3163,7 @@ def create_app(
                         "error": f"Project not found: {project_root}",
                     }
 
-                from atopile.server.state import FileTreeNode
-
-                def build_file_tree(
-                    path: Path, relative_to: Path
-                ) -> list[FileTreeNode]:
-                    """Build file tree for a directory, only including .ato and .py files."""
-                    nodes = []
-                    excluded = {
-                        "build",
-                        ".ato",
-                        "__pycache__",
-                        ".git",
-                        "node_modules",
-                        ".venv",
-                        ".pytest_cache",
-                        ".mypy_cache",
-                        "dist",
-                    }
-
-                    try:
-                        for item in sorted(path.iterdir()):
-                            if item.name.startswith("."):
-                                continue
-                            if item.name in excluded:
-                                continue
-
-                            rel_path = str(item.relative_to(relative_to))
-
-                            if item.is_dir():
-                                children = build_file_tree(item, relative_to)
-                                # Only include directories that have .ato or .py files
-                                if children:
-                                    nodes.append(
-                                        FileTreeNode(
-                                            name=item.name,
-                                            path=rel_path,
-                                            type="folder",
-                                            children=children,
-                                        )
-                                    )
-                            elif item.is_file():
-                                # Only include .ato and .py files
-                                ext = item.suffix.lower()
-                                if ext in {".ato", ".py"}:
-                                    nodes.append(
-                                        FileTreeNode(
-                                            name=item.name,
-                                            path=rel_path,
-                                            type="file",
-                                            extension=ext[1:]
-                                            if ext
-                                            else None,  # Remove leading dot
-                                        )
-                                    )
-                    except PermissionError:
-                        pass
-
-                    return nodes
-
-                file_tree = build_file_tree(project_path, project_path)
+                file_tree = core_projects.build_file_tree(project_path, project_path)
                 await server_state.set_project_files(project_root, file_tree)
                 return {"success": True}
 
@@ -3612,12 +3201,9 @@ def create_app(
                     cached_pkg = server_state.packages_by_id.get(pkg.identifier)
                     if cached_pkg:
                         latest_version = cached_pkg.latest_version
-                        if (
-                            latest_version
-                            and pkg.version
-                            and latest_version != pkg.version
-                        ):
-                            has_update = True
+                        has_update = registry_model.version_is_newer(
+                            pkg.version, latest_version
+                        )
                         repository = cached_pkg.repository
 
                     dependencies.append(
@@ -3633,6 +3219,95 @@ def create_app(
                     )
 
                 await server_state.set_project_dependencies(project_root, dependencies)
+                return {"success": True}
+
+            elif action == "openFile":
+                file_path = payload.get("file")
+                line = payload.get("line")
+                column = payload.get("column")
+
+                if not file_path:
+                    return {"success": False, "error": "Missing file path"}
+
+                workspace_paths = state.get("workspace_paths", [])
+                resolved = _resolve_workspace_file(file_path, workspace_paths)
+                if not resolved:
+                    return {
+                        "success": False,
+                        "error": f"File not found: {file_path}",
+                    }
+
+                line_num = None
+                column_num = None
+                try:
+                    if line is not None:
+                        line_num = int(line)
+                    if column is not None:
+                        column_num = int(column)
+                except (TypeError, ValueError):
+                    pass
+
+                core_launcher.open_in_editor(
+                    resolved,
+                    line=line_num,
+                    column=column_num,
+                )
+                return {"success": True}
+
+            elif action == "openSource":
+                project_root = payload.get("projectId", "")
+                entry = payload.get("entry")
+                if not project_root or not entry:
+                    return {"success": False, "error": "Missing projectId or entry"}
+
+                project_path = Path(project_root)
+                entry_path = _resolve_entry_path(project_path, entry)
+                if not entry_path or not entry_path.exists():
+                    return {"success": False, "error": f"Entry not found: {entry}"}
+
+                core_launcher.open_in_editor(entry_path)
+                return {"success": True}
+
+            elif action == "openKiCad":
+                project_root = payload.get("projectId", "")
+                build_id = payload.get("buildId", "")
+                if not project_root or not build_id:
+                    return {"success": False, "error": "Missing projectId or buildId"}
+
+                project_path = Path(project_root)
+                target = _resolve_layout_path(project_path, build_id)
+                if not target:
+                    return {"success": False, "error": "Layout not found"}
+
+                core_launcher.open_with_system(target)
+                return {"success": True}
+
+            elif action == "openLayout":
+                project_root = payload.get("projectId", "")
+                build_id = payload.get("buildId", "")
+                if not project_root or not build_id:
+                    return {"success": False, "error": "Missing projectId or buildId"}
+
+                project_path = Path(project_root)
+                target = _resolve_layout_path(project_path, build_id)
+                if not target:
+                    return {"success": False, "error": "Layout not found"}
+
+                core_launcher.open_with_system(target)
+                return {"success": True}
+
+            elif action == "open3D":
+                project_root = payload.get("projectId", "")
+                build_id = payload.get("buildId", "")
+                if not project_root or not build_id:
+                    return {"success": False, "error": "Missing projectId or buildId"}
+
+                project_path = Path(project_root)
+                target = _resolve_3d_path(project_path, build_id)
+                if not target:
+                    return {"success": False, "error": "3D model not found"}
+
+                core_launcher.open_with_system(target)
                 return {"success": True}
 
             elif action == "getMaxConcurrentSetting":
@@ -3909,80 +3584,7 @@ def create_app(
                 detail=f"Project not found: {project_root}",
             )
 
-        def build_file_tree(directory: Path, base_path: Path) -> list[FileTreeNode]:
-            """Recursively build file tree for a directory."""
-            nodes: list[FileTreeNode] = []
-
-            # Skip excluded directories
-            excluded_dirs = {
-                "build",
-                ".ato",
-                "__pycache__",
-                ".git",
-                ".venv",
-                "venv",
-                "node_modules",
-                ".pytest_cache",
-                ".mypy_cache",
-                "dist",
-                "egg-info",
-            }
-
-            try:
-                items = sorted(
-                    directory.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())
-                )
-            except PermissionError:
-                return nodes
-
-            for item in items:
-                # Skip hidden files and excluded directories
-                if item.name.startswith(".") and item.name not in {".ato"}:
-                    continue
-                if item.name in excluded_dirs:
-                    continue
-                if item.name.endswith(".egg-info"):
-                    continue
-
-                rel_path = str(item.relative_to(base_path))
-
-                if item.is_dir():
-                    # Recursively process directory
-                    children = build_file_tree(item, base_path)
-                    # Only include dirs with .ato/.py files
-                    if children:
-                        nodes.append(
-                            FileTreeNode(
-                                name=item.name,
-                                path=rel_path,
-                                type="folder",
-                                children=children,
-                            )
-                        )
-                elif item.is_file():
-                    # Only include .ato and .py files
-                    if item.suffix == ".ato":
-                        nodes.append(
-                            FileTreeNode(
-                                name=item.name,
-                                path=rel_path,
-                                type="file",
-                                extension="ato",
-                            )
-                        )
-                    elif item.suffix == ".py":
-                        nodes.append(
-                            FileTreeNode(
-                                name=item.name,
-                                path=rel_path,
-                                type="file",
-                                extension="py",
-                            )
-                        )
-
-            return nodes
-
-        file_tree = build_file_tree(project_path, project_path)
+        file_tree = core_projects.build_file_tree(project_path, project_path)
 
         # Count total files (not folders)
         def count_files(nodes: list[FileTreeNode]) -> int:
@@ -4037,8 +3639,9 @@ def create_app(
             cached_pkg = server_state.packages_by_id.get(pkg.identifier)
             if cached_pkg:
                 latest_version = cached_pkg.latest_version
-                if latest_version and pkg.version and latest_version != pkg.version:
-                    has_update = True
+                has_update = registry_model.version_is_newer(
+                    pkg.version, latest_version
+                )
                 # Get repository from cached package info
                 repository = cached_pkg.repository
             else:
@@ -5765,92 +5368,12 @@ def create_app(
 
         The project can be renamed and customized after creation.
         """
-        from atopile import version
-
         parent_dir = Path(request.parent_directory)
-        if not parent_dir.exists():
-            raise HTTPException(
-                status_code=400,
-                detail=f"Parent directory does not exist: {request.parent_directory}",
-            )
-
-        if not parent_dir.is_dir():
-            raise HTTPException(
-                status_code=400,
-                detail=f"Path is not a directory: {request.parent_directory}",
-            )
-
-        # Generate project name if not provided
-        if request.name:
-            project_name = request.name
-        else:
-            # Find a unique name like "new-project", "new-project-2", etc.
-            base_name = "new-project"
-            project_name = base_name
-            counter = 2
-            while (parent_dir / project_name).exists():
-                project_name = f"{base_name}-{counter}"
-                counter += 1
-
-        project_dir = parent_dir / project_name
-
-        # Check if directory already exists
-        if project_dir.exists():
-            raise HTTPException(
-                status_code=400,
-                detail=f"Directory already exists: {project_dir}",
-            )
-
+        project_dir: Path | None = None
         try:
-            # Create project directory
-            project_dir.mkdir(parents=True)
-
-            # Create layouts directory
-            (project_dir / "layouts").mkdir()
-
-            # Get atopile version
-            try:
-                ato_version = version.get_installed_atopile_version()
-            except Exception:
-                ato_version = "^0.9.0"  # Fallback
-
-            # Create ato.yaml
-            ato_yaml_content = f'''requires-atopile: "{ato_version}"
-
-paths:
-  src: ./
-  layout: ./layouts
-
-builds:
-  default:
-    entry: main.ato:App
-'''
-            (project_dir / "ato.yaml").write_text(ato_yaml_content)
-
-            # Create main.ato
-            main_ato_content = f'''"""{project_name} - A new atopile project"""
-
-module App:
-    pass
-'''
-            (project_dir / "main.ato").write_text(main_ato_content)
-
-            # Create .gitignore
-            gitignore_content = """# Build outputs
-build/
-
-# Dependencies
-.ato/
-
-# IDE
-.vscode/
-.idea/
-
-# OS
-.DS_Store
-"""
-            (project_dir / ".gitignore").write_text(gitignore_content)
-
+            project_dir, project_name = core_projects.create_project(
+                parent_dir, request.name
+            )
             log.info(f"Created new project: {project_dir}")
 
             return CreateProjectResponse(
@@ -5860,9 +5383,12 @@ build/
                 project_name=project_name,
             )
 
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
         except Exception as e:
             # Clean up if creation failed
-            if project_dir.exists():
+            if project_dir and project_dir.exists():
                 import shutil
 
                 shutil.rmtree(project_dir, ignore_errors=True)

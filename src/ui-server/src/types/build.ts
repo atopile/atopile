@@ -102,7 +102,7 @@ export interface Project {
 
 /**
  * THE SINGLE APP STATE - All state lives here.
- * Extension owns this, webviews receive it read-only.
+ * UI server owns this; it is synced from the backend.
  */
 // --- Package Types ---
 
@@ -457,15 +457,4 @@ export interface VariableNode {
 export interface VariablesData {
   version: string;
   nodes: VariableNode[];
-}
-
-// VS Code API type
-export interface VSCodeAPI {
-  postMessage(message: unknown): void;
-  getState(): unknown;
-  setState(state: unknown): void;
-}
-
-declare global {
-  function acquireVsCodeApi(): VSCodeAPI;
 }

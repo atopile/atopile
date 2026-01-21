@@ -165,25 +165,23 @@ If you encounter problems with syntax highlighting or IntelliSense:
 
 ### Starting the Dev Server
 
-The extension UI is built with React and requires three servers running together:
+The extension UI is built with React and requires two servers running together:
 
-1. **Python Dashboard Backend** (port 8501) - FastAPI server for project/build data
-2. **TypeScript WebSocket Server** (port 3001) - Bridges backend to frontend
-3. **Vite Dev Server** (port 5173) - React hot-reload development server
+1. **Python Backend** (port 8501) - FastAPI server for project/build data
+2. **Vite Dev Server** (port 5173) - React hot-reload development server
 
 #### Quick Start (Recommended)
 
 Use the provided startup script that handles everything:
 
 ```bash
-cd src/vscode-atopile/webviews
+cd src/ui-server
 ./dev.sh
 ```
 
 This will:
 - Kill any existing processes on the required ports
 - Start the Python backend
-- Start the WebSocket dev server  
 - Start Vite with hot reloading
 - Show you URLs for all services
 
@@ -205,7 +203,7 @@ If you need to run servers individually:
 
 ```bash
 # Terminal 1: Python backend
-cd src/vscode-atopile/webviews
+cd src/ui-server
 python -c "
 from atopile.server.server import create_app
 import uvicorn
@@ -218,12 +216,8 @@ app = create_app(
 uvicorn.run(app, host='127.0.0.1', port=8501)
 "
 
-# Terminal 2: WebSocket dev server
-cd src/vscode-atopile/webviews
-npx tsx server/dev-server.ts
-
-# Terminal 3: Vite
-cd src/vscode-atopile/webviews
+# Terminal 2: Vite
+cd src/ui-server
 npm run dev
 ```
 
@@ -238,14 +232,14 @@ src/vscode-atopile/
 ├── src/                    # Extension TypeScript source
 │   ├── extension.ts        # Main extension entry point
 │   └── ui/                 # VS Code webview integration
-├── webviews/               # React UI
-│   ├── src/
-│   │   ├── components/     # React components
-│   │   └── types/          # TypeScript types
-│   ├── server/
-│   │   └── dev-server.ts   # WebSocket dev server
-│   └── dev.sh              # Dev environment startup script
 └── README.md
+
+src/ui-server/
+├── src/                    # React components + hooks
+├── index.html              # Dev entry (sidebar + log viewer)
+├── sidebar.html            # Sidebar entry
+├── log-viewer.html         # Log viewer entry
+└── dev.sh                  # Dev environment startup script
 ```
 
 ## 🤝 Contributing

@@ -16,33 +16,21 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from ..core import packages as core_packages
+from ..core import projects as core_projects
+from ..models import registry as registry_model
 from ..schemas.project import (
     Project,
     ProjectsResponse,
     ModulesResponse,
     FilesResponse,
     DependenciesResponse,
+    DependencyInfo,
 )
 
 log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["projects"])
-
-
-# These functions will be moved to core layer and injected via dependencies
-# For now, import from server.py to maintain compatibility
-def _get_discover_projects():
-    """Get the project discovery function from server module."""
-    from ..server import discover_projects_in_paths
-
-    return discover_projects_in_paths
-
-
-def _get_discover_modules():
-    """Get the module discovery function from server module."""
-    from ..server import discover_modules_in_project
-
-    return discover_modules_in_project
 
 
 def _get_workspace_paths():
@@ -60,13 +48,12 @@ async def list_projects():
     Scans ato.yaml files in configured workspace paths and returns
     project information including build targets.
     """
-    discover_projects = _get_discover_projects()
     workspace_paths = _get_workspace_paths()
 
     if not workspace_paths:
         return ProjectsResponse(projects=[], total=0)
 
-    projects = discover_projects(workspace_paths)
+    projects = core_projects.discover_projects_in_paths(workspace_paths)
     return ProjectsResponse(projects=projects, total=len(projects))
 
 
@@ -79,15 +66,13 @@ async def list_modules(
 
     Parses .ato files in the project to find all block definitions.
     """
-    discover_modules = _get_discover_modules()
-
     project_path = Path(project_root)
     if not project_path.exists():
         raise HTTPException(
             status_code=404, detail=f"Project not found: {project_root}"
         )
 
-    modules = discover_modules(project_path)
+    modules = core_projects.discover_modules_in_project(project_path)
     return ModulesResponse(modules=modules, total=len(modules))
 
 
@@ -100,15 +85,13 @@ async def list_files(
 
     Returns a tree structure for file explorer display.
     """
-    from ..server import build_file_tree  # Import from server for now
-
     project_path = Path(project_root)
     if not project_path.exists():
         raise HTTPException(
             status_code=404, detail=f"Project not found: {project_root}"
         )
 
-    files = build_file_tree(project_path)
+    files = core_projects.build_file_tree(project_path, project_path)
 
     # Count total files (not folders)
     def count_files(nodes):
@@ -130,15 +113,43 @@ async def list_dependencies(
     """
     List dependencies for a project from ato.yaml.
     """
-    from ..server import get_project_dependencies  # Import from server for now
-
     project_path = Path(project_root)
     if not project_path.exists():
         raise HTTPException(
             status_code=404, detail=f"Project not found: {project_root}"
         )
 
-    dependencies = get_project_dependencies(project_path)
+    # Build registry lookup for latest versions
+    registry_packages = registry_model.get_all_registry_packages()
+    registry_map = {pkg.identifier: pkg for pkg in registry_packages}
+
+    dependencies = []
+    installed = core_packages.get_installed_packages_for_project(project_path)
+    for pkg in installed:
+        parts = pkg.identifier.split("/")
+        publisher = parts[0] if len(parts) > 1 else "unknown"
+        name = parts[-1]
+
+        latest_version = None
+        has_update = False
+        repository = None
+        if pkg.identifier in registry_map:
+            reg = registry_map[pkg.identifier]
+            latest_version = reg.latest_version
+            repository = reg.repository
+            has_update = registry_model.version_is_newer(pkg.version, latest_version)
+
+        dependencies.append(
+            DependencyInfo(
+                identifier=pkg.identifier,
+                version=pkg.version,
+                latest_version=latest_version,
+                name=name,
+                publisher=publisher,
+                repository=repository,
+                has_update=has_update,
+            )
+        )
     return DependenciesResponse(dependencies=dependencies, total=len(dependencies))
 
 

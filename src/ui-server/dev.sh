@@ -1,14 +1,13 @@
 #!/bin/bash
 #
-# Development server startup script for atopile webviews.
+# Development server startup script for atopile UI server.
 #
 # Architecture (Python owns all state):
-#   Browser <--WS--> Dev Server <--WS--> Python Backend
+#   Browser <--WS--> Python Backend
 #
 # Starts all required servers in order:
-#   1. Python dashboard backend (http://localhost:8501) - owns ALL state
-#   2. TypeScript WebSocket proxy (ws://localhost:3001) - thin proxy, 88 lines
-#   3. Vite dev server (http://localhost:5173) - serves React UI
+#   1. Python backend (http://localhost:8501) - owns ALL state
+#   2. Vite dev server (http://localhost:5173) - serves React UI
 #
 # Usage:
 #   ./dev.sh [workspace_paths...]
@@ -30,12 +29,10 @@ NC='\033[0m' # No Color
 
 # Ports used by our services
 DASHBOARD_PORT=8501
-DEV_SERVER_PORT=3001
 VITE_PORT=5173
 
 # PIDs of processes we start (for cleanup)
 DASHBOARD_PID=""
-DEV_SERVER_PID=""
 VITE_PID=""
 
 # Get script directory
@@ -72,12 +69,10 @@ cleanup() {
     
     # Kill our started processes
     [ -n "$VITE_PID" ] && kill $VITE_PID 2>/dev/null && echo "  Stopped Vite (PID $VITE_PID)"
-    [ -n "$DEV_SERVER_PID" ] && kill $DEV_SERVER_PID 2>/dev/null && echo "  Stopped Dev Server (PID $DEV_SERVER_PID)"
     [ -n "$DASHBOARD_PID" ] && kill $DASHBOARD_PID 2>/dev/null && echo "  Stopped Dashboard (PID $DASHBOARD_PID)"
     
     # Also kill anything still on the ports (in case of orphans)
     kill_port $VITE_PORT 2>/dev/null || true
-    kill_port $DEV_SERVER_PORT 2>/dev/null || true
     kill_port $DASHBOARD_PORT 2>/dev/null || true
     
     echo -e "${GREEN}Done.${NC}"
@@ -108,13 +103,12 @@ wait_for_port() {
 # Step 1: Clean up any existing processes
 echo -e "${YELLOW}[1/4] Cleaning up existing processes...${NC}"
 kill_port $DASHBOARD_PORT
-kill_port $DEV_SERVER_PORT
 kill_port $VITE_PORT
 echo -e "${GREEN}  Done${NC}"
 echo ""
 
 # Step 2: Start Python dashboard backend
-echo -e "${YELLOW}[2/4] Starting Python dashboard backend...${NC}"
+echo -e "${YELLOW}[2/3] Starting Python backend...${NC}"
 echo -e "  Workspace paths:"
 for path in "${WORKSPACE_PATHS[@]}"; do
     echo -e "    - $path"
@@ -168,32 +162,8 @@ else
 fi
 echo ""
 
-# Step 3: Start TypeScript WebSocket proxy (thin - just proxies to Python)
-echo -e "${YELLOW}[3/4] Starting WebSocket proxy...${NC}"
-cd "$SCRIPT_DIR"
-
-# Install deps if needed
-if [ ! -d "node_modules" ]; then
-    echo -e "  Installing dependencies..."
-    npm install --silent
-fi
-
-# The thin dev-server is just a proxy to Python's /ws/state endpoint
-# No workspace paths needed - Python owns all state
-npx tsx server/dev-server.ts &
-DEV_SERVER_PID=$!
-
-if wait_for_port $DEV_SERVER_PORT "WebSocket Proxy"; then
-    echo -e "${GREEN}  WebSocket proxy ready at ws://localhost:$DEV_SERVER_PORT${NC}"
-    echo -e "  ${BLUE}(proxies to Python ws://localhost:$DASHBOARD_PORT/ws/state)${NC}"
-else
-    echo -e "${RED}  Failed to start WebSocket proxy${NC}"
-    exit 1
-fi
-echo ""
-
-# Step 4: Start Vite dev server
-echo -e "${YELLOW}[4/4] Starting Vite dev server...${NC}"
+# Step 3: Start Vite dev server
+echo -e "${YELLOW}[3/3] Starting Vite dev server...${NC}"
 npm run dev -- --port $VITE_PORT &
 VITE_PID=$!
 
@@ -210,11 +180,10 @@ echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━�
 echo -e "${GREEN}All servers started successfully!${NC}"
 echo ""
 echo -e "  ${BLUE}UI:${NC}           http://localhost:$VITE_PORT"
-echo -e "  ${BLUE}WS Proxy:${NC}     ws://localhost:$DEV_SERVER_PORT"
 echo -e "  ${BLUE}Python API:${NC}   http://localhost:$DASHBOARD_PORT"
 echo -e "  ${BLUE}Python WS:${NC}    ws://localhost:$DASHBOARD_PORT/ws/state"
 echo ""
-echo -e "  ${YELLOW}Architecture:${NC} Browser <-> WS Proxy <-> Python (owns state)"
+echo -e "  ${YELLOW}Architecture:${NC} Browser <-> Python (owns state)"
 echo ""
 echo -e "  Press ${YELLOW}Ctrl+C${NC} to stop all servers"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

@@ -77,7 +77,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private _getDevHtml(): string {
     const viteDevServer = 'http://localhost:5173';
     const backendUrl = 'http://localhost:8501';
-    const wsUrl = 'ws://localhost:8501/ws';
+    const wsUrl = 'ws://localhost:8501/ws/state';
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -155,7 +155,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     // Get backend URLs from configuration
     const config = vscode.workspace.getConfiguration('atopile');
     const backendUrl = config.get<string>('dashboardApiUrl', 'http://localhost:8501');
-    const wsUrl = backendUrl.replace('http', 'ws') + '/ws';
+    const wsUrl = backendUrl.replace('http', 'ws') + '/ws/state';
 
     return `<!DOCTYPE html>
 <html lang="en">

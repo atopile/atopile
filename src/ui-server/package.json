@@ -8,7 +8,6 @@
     "dev:all": "./dev.sh",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "server": "tsx server/dev-server.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

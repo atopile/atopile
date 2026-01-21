@@ -756,6 +756,26 @@ class ServerState:
         self._state.log_auto_scroll = enabled
         await self.broadcast_state()
 
+    async def set_atopile_source(self, source: str) -> None:
+        """Set atopile source (release/branch/local)."""
+        self._state.atopile.source = source
+        await self.broadcast_state()
+
+    async def set_atopile_version(self, version: str) -> None:
+        """Set current atopile version string."""
+        self._state.atopile.current_version = version
+        await self.broadcast_state()
+
+    async def set_atopile_branch(self, branch: Optional[str]) -> None:
+        """Set current atopile branch."""
+        self._state.atopile.branch = branch
+        await self.broadcast_state()
+
+    async def set_atopile_local_path(self, path: Optional[str]) -> None:
+        """Set local atopile path."""
+        self._state.atopile.local_path = path
+        await self.broadcast_state()
+
     async def toggle_target_expanded(self, target_name: str) -> None:
         """Toggle target expansion in sidebar."""
         if target_name in self._state.expanded_targets:
@@ -768,6 +788,18 @@ class ServerState:
         """Update problems list."""
         self._state.problems = problems
         self._state.is_loading_problems = False
+        await self.broadcast_state()
+
+    async def toggle_problem_level_filter(self, level: str) -> None:
+        """Toggle a problem level filter (error/warning)."""
+        levels = list(self._state.problem_filter.levels)
+        if level in levels:
+            if len(levels) > 1:
+                levels.remove(level)
+        else:
+            levels.append(level)
+
+        self._state.problem_filter.levels = levels
         await self.broadcast_state()
 
     async def set_stdlib_items(self, items: list[StdLibItem]) -> None:
@@ -886,6 +918,34 @@ class ServerState:
             elif action == "setLogAutoScroll":
                 await self.set_log_auto_scroll(payload.get("enabled", True))
                 return {"success": True}
+
+            elif action == "toggleProblemLevelFilter":
+                level = payload.get("level")
+                if level:
+                    await self.toggle_problem_level_filter(level)
+                return {"success": True}
+
+            elif action == "setAtopileSource":
+                await self.set_atopile_source(payload.get("source", "release"))
+                return {"success": True}
+
+            elif action == "setAtopileVersion":
+                await self.set_atopile_version(payload.get("version", ""))
+                return {"success": True}
+
+            elif action == "setAtopieBranch":
+                await self.set_atopile_branch(payload.get("branch"))
+                return {"success": True}
+
+            elif action == "setAtopileLocalPath":
+                await self.set_atopile_local_path(payload.get("path"))
+                return {"success": True}
+
+            elif action == "browseAtopilePath":
+                return {
+                    "success": False,
+                    "error": "browseAtopilePath is not supported in the UI server",
+                }
 
             else:
                 log.warning(f"Unknown action: {action}")

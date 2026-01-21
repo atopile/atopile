@@ -17,6 +17,8 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
+from ..core import packages as core_packages
+from ..models import registry as registry_model
 from ..schemas.package import (
     PackageInfo,
     PackageDetails,
@@ -49,14 +51,12 @@ async def list_packages(
     """
     List installed packages across workspace projects.
     """
-    from ..server import get_all_installed_packages
-
     if paths:
         scan_paths = [Path(p.strip()) for p in paths.split(",")]
     else:
         scan_paths = _get_workspace_paths()
 
-    packages_map = get_all_installed_packages(scan_paths)
+    packages_map = core_packages.get_all_installed_packages(scan_paths)
     packages = list(packages_map.values())
 
     return PackagesResponse(packages=packages, total=len(packages))
@@ -76,11 +76,6 @@ async def get_packages_summary(
     2. Fetches registry metadata
     3. Merges the data for display
     """
-    from ..server import (
-        get_all_installed_packages,
-        get_all_registry_packages,
-        _version_is_newer,
-    )
     from ..schemas.package import PackageSummaryItem
 
     if paths:
@@ -89,13 +84,13 @@ async def get_packages_summary(
         scan_paths = _get_workspace_paths()
 
     # Get installed packages
-    installed_map = get_all_installed_packages(scan_paths) if scan_paths else {}
+    installed_map = core_packages.get_all_installed_packages(scan_paths) if scan_paths else {}
 
     # Get registry packages
     registry_error = None
     registry_packages = []
     try:
-        registry_packages = get_all_registry_packages()
+        registry_packages = registry_model.get_all_registry_packages()
     except Exception as e:
         registry_error = str(e)
         log.warning(f"Failed to fetch registry packages: {e}")
@@ -127,7 +122,9 @@ async def get_packages_summary(
                 version=existing.version,
                 installed_in=existing.installed_in,
                 latest_version=reg_pkg.latest_version,
-                has_update=_version_is_newer(existing.version, reg_pkg.latest_version),
+                has_update=registry_model.version_is_newer(
+                    existing.version, reg_pkg.latest_version
+                ),
                 summary=reg_pkg.summary,
                 description=reg_pkg.description,
                 homepage=reg_pkg.homepage,
@@ -182,16 +179,14 @@ async def get_package_details(
     """
     Get detailed information about a package from the registry.
     """
-    from ..server import get_package_details_from_registry, get_all_installed_packages
-
-    details = get_package_details_from_registry(package_id)
+    details = registry_model.get_package_details_from_registry(package_id)
     if not details:
         raise HTTPException(status_code=404, detail=f"Package not found: {package_id}")
 
     # Check installation status
     if paths:
         scan_paths = [Path(p.strip()) for p in paths.split(",")]
-        installed_map = get_all_installed_packages(scan_paths)
+        installed_map = core_packages.get_all_installed_packages(scan_paths)
         if package_id in installed_map:
             details.installed = True
             details.installed_version = installed_map[package_id].version
@@ -205,10 +200,8 @@ async def get_package_info(package_id: str):
     """
     Get basic information about a package.
     """
-    from ..server import search_registry_packages
-
     # Search for the specific package
-    results = search_registry_packages(package_id)
+    results = registry_model.search_registry_packages(package_id)
     for pkg in results:
         if pkg.identifier == package_id:
             return pkg
@@ -221,9 +214,7 @@ async def search_registry(q: str = Query(..., description="Search query")):
     """
     Search for packages in the registry.
     """
-    from ..server import search_registry_packages
-
-    packages = search_registry_packages(q)
+    packages = registry_model.search_registry_packages(q)
     return RegistrySearchResponse(packages=packages, total=len(packages), query=q)
 
 
@@ -232,12 +223,10 @@ async def install_package(request: PackageActionRequest):
     """
     Install a package into a project.
     """
-    from ..server import install_package_to_project
-
     try:
-        install_package_to_project(
-            package_identifier=request.package_identifier,
+        core_packages.install_package_to_project(
             project_root=Path(request.project_root),
+            package_identifier=request.package_identifier,
             version=request.version,
         )
         return PackageActionResponse(
@@ -255,12 +244,10 @@ async def remove_package(request: PackageActionRequest):
     """
     Remove a package from a project.
     """
-    from ..server import remove_package_from_project
-
     try:
-        remove_package_from_project(
-            package_identifier=request.package_identifier,
+        core_packages.remove_package_from_project(
             project_root=Path(request.project_root),
+            package_identifier=request.package_identifier,
         )
         return PackageActionResponse(
             success=True,

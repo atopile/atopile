@@ -84,7 +84,7 @@ export function usePackages() {
   const uninstall = useCallback(
     async (identifier: string, projectRoot: string) => {
       try {
-        await api.packages.uninstall(identifier, projectRoot);
+        await api.packages.remove(identifier, projectRoot);
         // Backend will broadcast state update via WebSocket
       } catch (error) {
         console.error('Failed to uninstall package:', error);
@@ -97,7 +97,7 @@ export function usePackages() {
   const update = useCallback(
     async (identifier: string, projectRoot: string, version?: string) => {
       try {
-        await api.packages.update(identifier, projectRoot, version);
+        await api.packages.install(identifier, projectRoot, version);
         // Backend will broadcast state update via WebSocket
       } catch (error) {
         console.error('Failed to update package:', error);

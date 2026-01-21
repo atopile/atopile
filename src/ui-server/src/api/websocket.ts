@@ -12,7 +12,7 @@ import type { AppState } from '../types/build';
 const WS_URL =
   (typeof window !== 'undefined' && window.__ATOPILE_WS_URL__) ||
   import.meta.env.VITE_WS_URL ||
-  'ws://localhost:8501/ws';
+  'ws://localhost:8501/ws/state';
 
 // Reconnection settings
 const RECONNECT_DELAY_MS = 1000;
@@ -25,14 +25,14 @@ interface StateMessage {
   data: AppState;
 }
 
-interface ActionResponseMessage {
-  type: 'actionResponse';
+interface ActionResultMessage {
+  type: 'action_result';
   action: string;
   success: boolean;
   error?: string;
 }
 
-type BackendMessage = StateMessage | ActionResponseMessage;
+type BackendMessage = StateMessage | ActionResultMessage;
 
 // WebSocket connection state
 let ws: WebSocket | null = null;
@@ -134,10 +134,15 @@ function handleMessage(event: MessageEvent): void {
         useStore.getState().replaceState(message.data);
         break;
 
-      case 'actionResponse':
+      case 'action_result':
         // Action response (success/failure)
         if (!message.success) {
           console.error(`[WS] Action failed: ${message.action}`, message.error);
+        }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('atopile:action_result', { detail: message })
+          );
         }
         break;
 

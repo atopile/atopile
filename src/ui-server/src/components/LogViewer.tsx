@@ -1,21 +1,19 @@
 /**
- * Log viewer component - STATELESS.
- * Receives AppState from extension, sends actions back.
+ * Log viewer component - store driven.
+ * Uses UI store synced from the backend via WebSocket.
  */
 
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useCallback } from 'react';
 import AnsiToHtml from 'ansi-to-html';
 import { ArrowDownToLine, Clock, Timer } from 'lucide-react';
 import { BuildSelector, type Selection, type Project, type BuildTarget } from './BuildSelector';
-import type { AppState, LogLevel, LogEntry, Build } from '../types/build';
-import { logDataSize, startMark } from '../perf';
+import type { LogLevel, LogEntry, Build } from '../types/build';
+import { useBuilds, useLogs } from '../hooks';
 import './LogViewer.css';
-
-const vscode = acquireVsCodeApi();
 
 const ALL_LEVELS: LogLevel[] = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'ALERT'];
 
-// Convert AppState builds to BuildSelector Project format
+// Convert builds to BuildSelector Project format
 function buildsToProjects(builds: Build[] | undefined | null): Project[] {
   if (!builds || !Array.isArray(builds)) return [];
   const projectMap = new Map<string, Project>();
@@ -79,11 +77,6 @@ function buildNameToSelection(selectedBuildName: string | null, builds: Build[])
     label: build.displayName,
   };
 }
-
-// Send action to extension
-const action = (name: string, data?: object) => {
-  vscode.postMessage({ type: 'action', action: name, ...data });
-};
 
 // ANSI to HTML converter instance
 const ansiConverter = new AnsiToHtml({
@@ -247,66 +240,31 @@ function LogEntryRow({
 }
 
 export function LogViewer() {
-  // Single piece of state: AppState from extension
-  const [state, setState] = useState<AppState | null>(null);
+  const {
+    logEntries,
+    filteredLogs,
+    enabledLogLevels,
+    logSearchQuery,
+    logTimestampMode,
+    logAutoScroll,
+    isLoadingLogs,
+    logCounts,
+    logTotalCount,
+    toggleLogLevel,
+    setSearchQuery,
+    toggleTimestampMode,
+    setAutoScroll,
+  } = useLogs();
+  const { builds, selectedBuildName, selectBuild } = useBuilds();
   const logRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const msg = event.data;
-      if (msg.type === 'state') {
-        const endMark = startMark('logviewer:state-receive');
-        logDataSize('logviewer:state-payload', msg.data);
-
-        // Ensure arrays are arrays to prevent crashes
-        if (msg.data && typeof msg.data === 'object') {
-          const safeState = {
-            ...msg.data,
-            logEntries: Array.isArray(msg.data.logEntries) ? msg.data.logEntries : [],
-            builds: Array.isArray(msg.data.builds) ? msg.data.builds : [],
-            enabledLogLevels: Array.isArray(msg.data.enabledLogLevels)
-              ? msg.data.enabledLogLevels
-              : ['INFO', 'WARNING', 'ERROR', 'ALERT'],
-          };
-          setState(safeState);
-        } else {
-          console.error('[LogViewer] Invalid state received:', msg.data);
-        }
-
-        endMark({ logEntries: msg.data?.logEntries?.length ?? 0 });
-      } else if (msg.type === 'update') {
-        // Handle partial updates including incremental log appends
-        setState(prev => {
-          if (!prev) return msg.data;
-
-          // Handle incremental log append (optimization for large log files)
-          if (msg.data._appendLogEntries) {
-            const newEntries = msg.data._appendLogEntries;
-            const { _appendLogEntries, ...rest } = msg.data;
-            return {
-              ...prev,
-              ...rest,
-              logEntries: [...(prev.logEntries || []), ...newEntries],
-            };
-          }
-
-          // Shallow merge for other fields
-          return { ...prev, ...msg.data };
-        });
-      }
-    };
-    window.addEventListener('message', handleMessage);
-    vscode.postMessage({ type: 'ready' });
-    return () => window.removeEventListener('message', handleMessage);
-  }, []);
-
   // Auto-scroll when logAutoScroll is enabled
   useEffect(() => {
-    if (state?.logAutoScroll && logRef.current) {
+    if (logAutoScroll && logRef.current) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
-  }, [state?.logEntries, state?.logAutoScroll]);
+  }, [logEntries, logAutoScroll]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -315,45 +273,39 @@ export function LogViewer() {
         e.preventDefault();
         searchInputRef.current?.focus();
       }
-      if (e.key === 'Escape' && state?.logSearchQuery) {
-        action('setLogSearchQuery', { query: '' });
+      if (e.key === 'Escape' && logSearchQuery) {
+        setSearchQuery('');
         searchInputRef.current?.blur();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [state?.logSearchQuery]);
+  }, [logSearchQuery, setSearchQuery]);
 
   // Handle scroll - detect when user scrolls away from bottom
   const handleScroll = useCallback(() => {
-    if (!logRef.current || !state) return;
+    if (!logRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = logRef.current;
     const atBottom = scrollHeight - scrollTop - clientHeight < 100;
-    if (state.logAutoScroll !== atBottom) {
-      action('setLogAutoScroll', { enabled: atBottom });
+    if (logAutoScroll !== atBottom) {
+      setAutoScroll(atBottom);
     }
-  }, [state?.logAutoScroll]);
+  }, [logAutoScroll, setAutoScroll]);
 
   // Server-side filtered logs - no client-side filtering needed
   // The server already applies level, stage, and search filters
-  const displayedEntries = useMemo(() => {
-    if (!state) return [];
-    // logEntries are already filtered by the server
-    return state.logEntries;
-  }, [state?.logEntries]);
+  const displayedEntries = useMemo(
+    () => (filteredLogs.length > 0 ? filteredLogs : logEntries),
+    [filteredLogs, logEntries]
+  );
 
   // Level counts - use server-provided counts if available, otherwise calculate
   const levelCounts = useMemo(() => {
-    if (!state) return { DEBUG: 0, INFO: 0, WARNING: 0, ERROR: 0, ALERT: 0 };
-    
-    // Prefer server-provided counts (from /api/logs/counts)
-    if (state.logCounts) {
-      return state.logCounts;
+    if (logCounts) {
+      return logCounts;
     }
-    
-    // Fallback: calculate from current entries (for backward compatibility)
-    const entries = state.logEntries || [];
+    const entries = logEntries || [];
     return {
       DEBUG: entries.filter(e => e.level === 'DEBUG').length,
       INFO: entries.filter(e => e.level === 'INFO').length,
@@ -361,12 +313,12 @@ export function LogViewer() {
       ERROR: entries.filter(e => e.level === 'ERROR').length,
       ALERT: entries.filter(e => e.level === 'ALERT').length,
     };
-  }, [state?.logCounts, state?.logEntries]);
+  }, [logCounts, logEntries]);
 
   // Search matches for highlighting (still needed for UI highlighting)
   const searchMatches = useMemo(() => {
-    if (!state?.logSearchQuery.trim()) return new Set<number>();
-    const query = state.logSearchQuery.toLowerCase();
+    if (!logSearchQuery.trim()) return new Set<number>();
+    const query = logSearchQuery.toLowerCase();
     const matches = new Set<number>();
     displayedEntries.forEach((entry, idx) => {
       if (
@@ -378,35 +330,30 @@ export function LogViewer() {
       }
     });
     return matches;
-  }, [displayedEntries, state?.logSearchQuery]);
+  }, [displayedEntries, logSearchQuery]);
 
   // Convert state to BuildSelector format (must be before early return to maintain hook order)
   const projects = useMemo(
-    () => (state ? buildsToProjects(state.builds) : []),
-    [state?.builds]
+    () => buildsToProjects(builds),
+    [builds]
   );
   const selection = useMemo(
-    () => (state ? buildNameToSelection(state.selectedBuildName, state.builds) : { type: 'none' as const }),
-    [state?.selectedBuildName, state?.builds]
+    () => buildNameToSelection(selectedBuildName, builds),
+    [selectedBuildName, builds]
   );
 
   const handleSelectionChange = useCallback((newSelection: Selection) => {
-    if (!state) return;
     if (newSelection.type === 'none') {
       // "All" selected - pass null to show logs from all builds
-      action('selectBuild', { buildName: null, projectName: null });
+      selectBuild(null);
     } else if (newSelection.buildId) {
       // Specific build selected
-      action('selectBuild', { buildName: newSelection.buildId, projectName: null });
+      selectBuild(newSelection.buildId);
     } else if (newSelection.projectId) {
-      // Project selected (not a specific build) - filter by project
-      action('selectBuild', { buildName: null, projectName: newSelection.projectId });
+      // Project selected (not a specific build) - clear build selection
+      selectBuild(null);
     }
-  }, [state?.builds]);
-
-  if (!state) {
-    return <div className="log-viewer loading">Loading...</div>;
-  }
+  }, [selectBuild]);
 
   return (
     <div className="log-viewer">
@@ -418,8 +365,8 @@ export function LogViewer() {
               key={level}
               level={level}
               count={levelCounts[level]}
-              isEnabled={state.enabledLogLevels.includes(level)}
-              onToggle={() => action('toggleLogLevel', { level })}
+              isEnabled={enabledLogLevels.includes(level)}
+              onToggle={() => toggleLogLevel(level)}
             />
           ))}
         </div>
@@ -434,20 +381,20 @@ export function LogViewer() {
             ref={searchInputRef}
             type="text"
             placeholder="Search logs..."
-            value={state.logSearchQuery}
-            onChange={(e) => action('setLogSearchQuery', { query: e.target.value })}
+            value={logSearchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="search-input"
           />
-          {state.logSearchQuery && (
+          {logSearchQuery && (
             <>
               <span className="search-count">
-                {displayedEntries.length}/{state.logTotalCount ?? state.logEntries.length}
+                {displayedEntries.length}/{logTotalCount ?? logEntries.length}
               </span>
               <button
                 className="search-clear"
                 onClick={(e) => {
                   e.stopPropagation();
-                  action('setLogSearchQuery', { query: '' });
+                  setSearchQuery('');
                 }}
                 title="Clear search"
               >
@@ -462,11 +409,11 @@ export function LogViewer() {
         <div className="log-actions">
           {/* Timestamp mode toggle */}
           <button
-            className={`action-btn ${state.logTimestampMode === 'delta' ? 'active' : ''}`}
-            onClick={() => action('toggleLogTimestampMode')}
-            title={state.logTimestampMode === 'absolute' ? 'Show relative time (Δt)' : 'Show absolute time'}
+            className={`action-btn ${logTimestampMode === 'delta' ? 'active' : ''}`}
+            onClick={() => toggleTimestampMode()}
+            title={logTimestampMode === 'absolute' ? 'Show relative time (Δt)' : 'Show absolute time'}
           >
-            {state.logTimestampMode === 'absolute' ? (
+            {logTimestampMode === 'absolute' ? (
               <Clock size={14} />
             ) : (
               <Timer size={14} />
@@ -475,9 +422,9 @@ export function LogViewer() {
 
           {/* Auto-scroll / pin to bottom */}
           <button
-            className={`action-btn ${state.logAutoScroll ? 'active' : ''}`}
-            onClick={() => action('setLogAutoScroll', { enabled: !state.logAutoScroll })}
-            title={state.logAutoScroll ? 'Following new logs (click to unpin)' : 'Click to follow new logs'}
+            className={`action-btn ${logAutoScroll ? 'active' : ''}`}
+            onClick={() => setAutoScroll(!logAutoScroll)}
+            title={logAutoScroll ? 'Following new logs (click to unpin)' : 'Click to follow new logs'}
           >
             <ArrowDownToLine size={14} />
           </button>
@@ -494,7 +441,7 @@ export function LogViewer() {
       </div>
 
       <div className="log-content" ref={logRef} onScroll={handleScroll}>
-        {state.isLoadingLogs ? (
+        {isLoadingLogs ? (
           <div className="log-loading">
             <div className="spinner" />
             Loading logs...
@@ -511,9 +458,9 @@ export function LogViewer() {
               </svg>
             </div>
             <p className="log-empty-text">
-              {state.logEntries.length === 0
+              {logEntries.length === 0
                 ? 'Select a build to view logs'
-                : state.logSearchQuery
+                : logSearchQuery
                   ? 'No entries match your search'
                   : 'No entries match the current filters'}
             </p>
@@ -523,7 +470,7 @@ export function LogViewer() {
             <LogEntryRow
               key={idx}
               entry={entry}
-              timestampMode={state.logTimestampMode}
+              timestampMode={logTimestampMode}
               prevTimestamp={idx > 0 ? displayedEntries[idx - 1].timestamp : undefined}
               isSearchMatch={searchMatches.has(idx)}
             />

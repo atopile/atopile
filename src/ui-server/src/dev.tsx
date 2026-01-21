@@ -1,0 +1,38 @@
+/**
+ * Dev mode entry point.
+ * Renders Sidebar + LogViewer in a single page using the backend WS directly.
+ */
+
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { AppProvider } from './AppProvider';
+import { Sidebar } from './components/Sidebar';
+import { LogViewer } from './components/LogViewer';
+import './index.css';
+
+function DevLayout() {
+  return (
+    <>
+      <div className="dev-banner">Dev Mode - ws://localhost:8501/ws/state</div>
+      <div className="main-content">
+        <div className="panel sidebar-panel">
+          <Sidebar />
+        </div>
+        <div className="panel log-panel">
+          <LogViewer />
+        </div>
+      </div>
+    </>
+  );
+}
+
+const root = document.getElementById('root');
+if (root) {
+  ReactDOM.createRoot(root).render(
+    <React.StrictMode>
+      <AppProvider>
+        <DevLayout />
+      </AppProvider>
+    </React.StrictMode>
+  );
+}

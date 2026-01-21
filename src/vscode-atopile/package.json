@@ -49,7 +49,7 @@
     "main": "./dist/extension.js",
     "scripts": {
         "vscode:prepublish": "npm run build:webviews && npm run package",
-        "build:webviews": "cd webviews && npm install && npm run build",
+        "build:webviews": "cd ../ui-server && npm install && npm run build",
         "compile": "webpack",
         "watch": "webpack --watch",
         "package": "webpack --mode production --devtool source-map --config ./webpack.config.js",

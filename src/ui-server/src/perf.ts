@@ -108,24 +108,6 @@ function recordMetric(name: string, duration: number): void {
   }
 }
 
-// Get vscode API for sending perf data to dev server
-// Note: acquireVsCodeApi can only be called once, so we check if it's already on window
-function getVsCodeApi(): { postMessage: (msg: unknown) => void } | null {
-  if (typeof window !== 'undefined' && (window as any).__vscode) {
-    return (window as any).__vscode
-  }
-  try {
-    if (typeof acquireVsCodeApi !== 'undefined') {
-      const api = acquireVsCodeApi()
-      ;(window as any).__vscode = api
-      return api
-    }
-  } catch {
-    // Not in VS Code context
-  }
-  return null
-}
-
 /**
  * Log a performance measurement with visual formatting
  */
@@ -151,11 +133,7 @@ export function logPerf(
     metaStr
   )
 
-  // Send to dev server via postMessage
-  const api = getVsCodeApi()
-  if (api) {
-    api.postMessage({ type: 'perf', name, duration, metadata })
-  }
+  // UI server is VS Code-agnostic; no VS Code postMessage reporting.
 }
 
 /**

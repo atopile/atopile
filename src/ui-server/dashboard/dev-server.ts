@@ -1,6 +1,6 @@
 /**
  * Thin dev server: proxies WebSocket to Python backend, serves viewer pages.
- * All state lives in Python. Usage: npx tsx server/dev-server-thin.ts
+ * All state lives in Python. Usage: npx tsx dashboard/dev-server.ts
  */
 import { WebSocketServer, WebSocket } from 'ws';
 import * as http from 'http';

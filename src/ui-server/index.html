@@ -61,7 +61,7 @@
         min-width: 0;
       }
       
-      #sidebar-root, #log-root {
+      #root {
         flex: 1;
         overflow: hidden;
         display: flex;
@@ -101,17 +101,7 @@
     </style>
   </head>
   <body>
-    <div class="dev-banner">
-      Dev Mode - ws://localhost:3001
-    </div>
-    <div class="main-content">
-      <div class="panel sidebar-panel">
-        <div id="sidebar-root"></div>
-      </div>
-      <div class="panel log-panel">
-        <div id="log-root"></div>
-      </div>
-    </div>
+    <div id="root"></div>
     <script type="module" src="/src/dev.tsx"></script>
   </body>
 </html>

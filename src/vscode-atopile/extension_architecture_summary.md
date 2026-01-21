@@ -2,20 +2,13 @@
 
 ## Overview
 
-The dashboard is a VS Code extension webview that provides a UI for managing atopile builds, viewing logs, browsing packages, and exploring the standard library. It uses a three-tier architecture:
+The dashboard is a VS Code extension webview that provides a UI for managing atopile builds, viewing logs, browsing packages, and exploring the standard library. It uses a two-tier architecture:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         React UI (Vite)                             │
 │                    http://localhost:5173                            │
 │   Sidebar, BuildQueuePanel, LogViewer, ProblemsPanel, BOMPanel     │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │ WebSocket (state sync)
-                               ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    Dev Server (TypeScript)                          │
-│                    ws://localhost:3001                              │
-│    Aggregates state, bridges browser ↔ backend, serves viewers      │
 └──────────────────────────────┬──────────────────────────────────────┘
                                │ REST + WebSocket
                                ▼
@@ -31,12 +24,11 @@ The dashboard is a VS Code extension webview that provides a UI for managing ato
 ## Running the Dev Environment
 
 ```bash
-cd src/vscode-atopile/webviews
+cd src/ui-server
 ./dev.sh /path/to/workspace1 /path/to/workspace2
 
 # This starts:
 # - Python backend on :8501
-# - Dev server on :3001 (WS) + :3002 (HTTP)
 # - Vite on :5173
 ```
 
