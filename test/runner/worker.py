@@ -10,7 +10,7 @@ import typer
 # Ensure the current directory is in sys.path
 sys.path.insert(0, os.getcwd())
 
-from atopile.logging import setup_basic_logging
+from atopile.logging import setup_logging
 from test.runner.common import (
     ORCHESTRATOR_URL_ENV,
     ClaimRequest,
@@ -19,8 +19,8 @@ from test.runner.common import (
     EventType,
 )
 
-# Setup logging handlers so FBRK_LOG_FMT and other logging flags work in workers
-setup_basic_logging()
+# Set up database logging for worker subprocess
+setup_logging(enable_database=True, stage="test-worker")
 
 ORCHESTRATOR_URL = os.environ.get(ORCHESTRATOR_URL_ENV)
 

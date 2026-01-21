@@ -1,7 +1,5 @@
 import sys
 
-from atopile.logging import FLOG_FMT
-
 
 def _handle_exception(exc_type, exc_value, exc_traceback):
     # avoid exceptions raised during import
@@ -74,5 +72,5 @@ def install_worker_excepthook() -> None:
     sys.excepthook = handle_worker_exception
 
 
-if not FLOG_FMT:
-    sys.excepthook = handle_exception
+# Always install the custom exception hook for better error handling
+sys.excepthook = handle_exception

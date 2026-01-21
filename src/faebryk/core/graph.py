@@ -122,7 +122,7 @@ def test_graph_garbage_collection(
 if __name__ == "__main__":
     import typer
 
-    from atopile.logging import setup_basic_logging
+    from atopile.logging import setup_logging
 
-    setup_basic_logging()
+    setup_logging(enable_database=False)
     typer.run(test_graph_garbage_collection)

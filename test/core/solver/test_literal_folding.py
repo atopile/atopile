@@ -1291,8 +1291,6 @@ def main(target: str):
 if __name__ == "__main__":
     import typer
 
-    from atopile.logging import setup_basic_logging
-
     # Reset global graph to avoid solver processing unrelated nodes from strategy init
     # global_g = graph.GraphView.create()
     # global_tg = fbrk.TypeGraph.create(g=global_g)
@@ -1304,6 +1302,5 @@ if __name__ == "__main__":
     # expr = Add.c(lit(1.0), E.is_(E.parameter_op(E.U.dl), lit(1.0)))
     # expr = Add.c(lit(1.0), p(1.0))
     expr = Floor.c(Cos.c(lit(1e-12)))
-    setup_basic_logging()
     # typer.run(lambda: test_regression_literal_folding(lambda: expr))
     typer.run(lambda: test_regression_literal_folding(regression_examples[0]))

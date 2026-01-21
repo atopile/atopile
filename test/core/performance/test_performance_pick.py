@@ -209,7 +209,6 @@ if __name__ == "__main__":
     import typer
 
     from atopile.config import ProjectConfig, ProjectPaths, config
-    from atopile.logging import setup_basic_logging
 
     with tempfile.TemporaryDirectory() as tmp_path_:
         tmp_path = Path(tmp_path_)
@@ -217,5 +216,4 @@ if __name__ == "__main__":
             entry="", paths=ProjectPaths(build=tmp_path / "build", root=tmp_path)
         )
 
-        setup_basic_logging()
         typer.run(test_performance_pick_real_module)

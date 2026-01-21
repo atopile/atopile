@@ -37,6 +37,7 @@ class BuildStepContext:
     app: fabll.Node | None = None
     solver: Solver | None = None
     pcb: F.PCB | None = None
+    stage: str | None = None
 
     def require_build(self) -> BuildContext:
         if self.build is None:

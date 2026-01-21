@@ -474,9 +474,9 @@ def test_solver_basic():
 if __name__ == "__main__":
     import typer
 
-    from atopile.logging import setup_basic_logging
+    from atopile.logging import setup_logging
 
-    setup_basic_logging()
+    setup_logging(enable_database=False)
     logger.setLevel(logging.DEBUG)
     from faebryk.core.solver.mutator import logger as mutator_logger
 
