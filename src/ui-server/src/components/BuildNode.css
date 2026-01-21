@@ -91,3 +91,33 @@
   background: #e67a99;
   border-color: #e67a99;
 }
+
+/* Loading and error states for module tree */
+.build-card-symbols.loading,
+.build-card-symbols.error {
+  padding: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.build-card-symbols.loading .spinner {
+  animation: spin 1s linear infinite;
+  color: var(--ctp-blue);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.build-card-symbols.loading .loading-text {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.build-card-symbols.error .error-text {
+  color: var(--ctp-red);
+  opacity: 0.8;
+}

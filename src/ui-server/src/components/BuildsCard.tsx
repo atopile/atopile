@@ -12,6 +12,7 @@ import './BuildsCard.css';
 interface BuildsCardProps {
   builds: BuildTarget[];
   projectId: string;
+  projectRoot: string;  // Path to project root for module introspection
   selection: Selection;
   onSelect: (selection: Selection) => void;
   onBuild: (level: 'project' | 'build' | 'symbol', id: string, label: string) => void;
@@ -32,6 +33,7 @@ interface BuildsCardProps {
 export function BuildsCard({
   builds,
   projectId,
+  projectRoot,
   selection,
   onSelect,
   onBuild,
@@ -126,6 +128,7 @@ export function BuildsCard({
               key={`${build.id}-${idx}`}
               build={build}
               projectId={projectId}
+              projectRoot={projectRoot}
               selection={selection}
               onSelect={onSelect}
               onBuild={onBuild}

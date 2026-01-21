@@ -14,6 +14,7 @@ import type {
   BOMData,
   Problem,
   ModuleDefinition,
+  ModuleChild,
   FileTreeNode,
   VariablesData,
   ProjectDependency,
@@ -278,6 +279,10 @@ export const api = {
     list: (projectRoot: string) =>
       fetchJSON<ModulesResponse>(
         `/api/modules?project_root=${encodeURIComponent(projectRoot)}`
+      ),
+    getChildren: (projectRoot: string, entryPoint: string, maxDepth: number = 2) =>
+      fetchJSON<ModuleChild[]>(
+        `/api/module/children?project_root=${encodeURIComponent(projectRoot)}&entry_point=${encodeURIComponent(entryPoint)}&max_depth=${maxDepth}`
       ),
   },
 

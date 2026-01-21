@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from atopile.dataclasses import (
     DependenciesResponse,
     FilesResponse,
+    ModuleChild,
     ModulesResponse,
     ProjectsResponse,
 )
@@ -205,3 +206,44 @@ async def update_dependency_version(
             status_code=500,
             detail=f"Failed to update dependency version: {exc}",
         )
+
+
+# --- Module Introspection ---
+
+
+@router.get("/api/module/children", response_model=list[ModuleChild])
+async def get_module_children(
+    project_root: str = Query(..., description="Path to the project root"),
+    entry_point: str = Query(
+        ..., description="Module entry point (e.g., 'main.ato:MyModule')"
+    ),
+    max_depth: int = Query(2, description="Maximum depth for nested children (0-5)"),
+):
+    """
+    Get the hierarchical children of a module using TypeGraph introspection.
+
+    This builds a TypeGraph for the module and extracts its nested structure
+    including interfaces, parameters, and nested modules.
+    """
+    from pathlib import Path
+
+    from atopile.server.module_introspection import introspect_module
+
+    # Clamp max_depth to reasonable range
+    max_depth = max(0, min(5, max_depth))
+
+    result = await asyncio.to_thread(
+        introspect_module,
+        Path(project_root),
+        entry_point,
+        max_depth,
+    )
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Could not introspect module: {entry_point}",
+        )
+
+    # Serialize with camelCase aliases for frontend compatibility
+    return [child.model_dump(by_alias=True) for child in result]

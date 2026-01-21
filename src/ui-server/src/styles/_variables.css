@@ -1,0 +1,97 @@
+/* ============================================
+   _variables.css
+   CSS Custom Properties and Root Variables
+   - Atopile Brand Colors
+   - Catppuccin Mocha Theme
+   - Semantic Colors
+   - Spacing, Border Radius, Fonts, Transitions
+   ============================================ */
+
+:root {
+  /* Atopile Brand Colors */
+  --ato-orange: #f95015;
+  --ato-orange-light: #ff6b35;
+  --ato-orange-dark: #d94410;
+  --ato-orange-glow: rgba(249, 80, 21, 0.15);
+  --ato-orange-subtle: rgba(249, 80, 21, 0.08);
+  --ato-navy: #070a23;
+  --ato-navy-light: #0d1233;
+
+  /* Catppuccin Mocha - Dark theme base */
+  --ctp-rosewater: #f5e0dc;
+  --ctp-flamingo: #f2cdcd;
+  --ctp-pink: #f5c2e7;
+  --ctp-mauve: #cba6f7;
+  --ctp-red: #f38ba8;
+  --ctp-maroon: #eba0ac;
+  --ctp-peach: #fab387;
+  --ctp-yellow: #f9e2af;
+  --ctp-green: #a6e3a1;
+  --ctp-teal: #94e2d5;
+  --ctp-sky: #89dceb;
+  --ctp-sapphire: #74c7ec;
+  --ctp-blue: #89b4fa;
+  --ctp-lavender: #b4befe;
+  --ctp-text: #cdd6f4;
+  --ctp-subtext1: #bac2de;
+  --ctp-subtext0: #a6adc8;
+  --ctp-overlay2: #9399b2;
+  --ctp-overlay1: #7f849c;
+  --ctp-overlay0: #6c7086;
+  --ctp-surface2: #585b70;
+  --ctp-surface1: #45475a;
+  --ctp-surface0: #313244;
+  --ctp-base: #1e1e2e;
+  --ctp-mantle: #181825;
+  --ctp-crust: #11111b;
+
+  /* Semantic colors - with atopile orange as primary accent */
+  --bg-primary: var(--ctp-base);
+  --bg-secondary: var(--ctp-mantle);
+  --bg-tertiary: var(--ctp-surface0);
+  --bg-hover: var(--ctp-surface1);
+  --bg-active: var(--ctp-surface2);
+
+  --text-primary: var(--ctp-text);
+  --text-secondary: var(--ctp-subtext1);
+  --text-muted: var(--ctp-overlay1);
+
+  --border-color: var(--ctp-surface1);
+  --border-subtle: var(--ctp-surface0);
+
+  /* Primary accent is now atopile orange */
+  --accent: var(--ato-orange);
+  --accent-hover: var(--ato-orange-light);
+  --accent-glow: var(--ato-orange-glow);
+  --accent-subtle: var(--ato-orange-subtle);
+
+  /* Secondary accent remains mauve for variety */
+  --accent-secondary: var(--ctp-mauve);
+  --accent-secondary-hover: var(--ctp-lavender);
+
+  --success: var(--ctp-green);
+  --warning: var(--ctp-yellow);
+  --error: var(--ctp-red);
+  --info: var(--ctp-blue);
+  --debug: var(--ctp-overlay1);
+
+  /* Spacing - tighter for sleeker look */
+  --spacing-xs: 3px;
+  --spacing-sm: 6px;
+  --spacing-md: 10px;
+  --spacing-lg: 14px;
+  --spacing-xl: 20px;
+
+  /* Border radius - sharper for modern feel */
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 6px;
+
+  /* Font */
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Transitions */
+  --transition-fast: 0.1s ease;
+  --transition-normal: 0.15s ease;
+}

@@ -409,6 +409,14 @@ export interface Problem {
 }
 
 // Module Definition Types (from /api/modules endpoint)
+// Child field within a module (from TypeGraph introspection)
+export interface ModuleChild {
+  name: string;
+  typeName: string;  // The type name (e.g., "Electrical", "Resistor", "V")
+  itemType: 'interface' | 'module' | 'component' | 'parameter' | 'trait';
+  children: ModuleChild[];  // Nested children (recursive)
+}
+
 export interface ModuleDefinition {
   name: string;
   type: 'module' | 'interface' | 'component';
@@ -416,6 +424,7 @@ export interface ModuleDefinition {
   entry: string;
   line?: number;
   superType?: string;
+  children?: ModuleChild[];  // Nested children from TypeGraph introspection
 }
 
 // File Tree Types (from /api/files endpoint)

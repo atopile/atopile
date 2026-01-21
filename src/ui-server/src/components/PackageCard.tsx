@@ -8,6 +8,7 @@ import {
   Search, ArrowUpCircle, Github, Globe, Layers, Loader2
 } from 'lucide-react'
 import { BuildsCard } from './BuildsCard'
+import { getLastBuildStatusIcon, formatRelativeTime } from './BuildNode'
 import { DependencyCard, type ProjectDependency } from './DependencyCard'
 import { FileExplorer, type FileTreeNode } from './FileExplorer'
 import { api } from '../api/client'
@@ -368,6 +369,13 @@ export const PackageCard = memo(function PackageCard({
         </span>
         <Package size={16} className="package-icon" />
         <span className="package-name">{project.name}</span>
+        {/* Time since last built - same location as project build timer */}
+        {project.lastBuildTimestamp && (
+          <span className="last-build-info" title={`Last build: ${project.lastBuildStatus || 'unknown'}`}>
+            {project.lastBuildStatus && getLastBuildStatusIcon(project.lastBuildStatus, 10)}
+            <span className="last-build-time">{formatRelativeTime(project.lastBuildTimestamp)}</span>
+          </span>
+        )}
       </div>
 
       {/* Row 2: Description */}
@@ -482,6 +490,7 @@ export const PackageCard = memo(function PackageCard({
             <BuildsCard
               builds={project.builds}
               projectId={project.id}
+              projectRoot={project.root || ''}
               selection={selection}
               onSelect={onSelect}
               onBuild={onBuild}

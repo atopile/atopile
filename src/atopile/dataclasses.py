@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Literal, Optional
 
 from fastapi import WebSocket
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # =============================================================================
 # Enums and Type Aliases
@@ -122,7 +122,9 @@ class Log:
         level: Log.Level
         logger_name: str
         message: str
-        audience: Log.Audience = field(default=None)  # Set to Log.Audience.DEVELOPER after class definition
+        audience: Log.Audience | None = field(
+            default=None
+        )  # Set to Log.Audience.DEVELOPER after class definition
         ato_traceback: str | None = None
         python_traceback: str | None = None
         objects: dict | None = None
@@ -137,7 +139,9 @@ class Log:
         level: Log.Level
         logger_name: str
         message: str
-        audience: Log.Audience = field(default=None)  # Set to Log.Audience.DEVELOPER after class definition
+        audience: Log.Audience | None = field(
+            default=None
+        )  # Set to Log.Audience.DEVELOPER after class definition
         ato_traceback: str | None = None
         python_traceback: str | None = None
         objects: dict | None = None
@@ -180,8 +184,6 @@ class Log:
 # (Can't reference Log.Audience.DEVELOPER in field default during class definition)
 Log.Entry.__dataclass_fields__["audience"].default = Log.Audience.DEVELOPER
 Log.TestEntry.__dataclass_fields__["audience"].default = Log.Audience.DEVELOPER
-
-
 
 
 # =============================================================================
@@ -313,6 +315,26 @@ class ProjectsResponse(BaseModel):
     total: int
 
 
+def _to_camel(s: str) -> str:
+    """Convert snake_case to camelCase."""
+    components = s.split("_")
+    return components[0] + "".join(x.title() for x in components[1:])
+
+
+class ModuleChild(BaseModel):
+    """A child field within a module (interface, parameter, nested module, etc.)."""
+
+    model_config = ConfigDict(
+        alias_generator=_to_camel,
+        populate_by_name=True,
+    )
+
+    name: str
+    type_name: str  # The type name (e.g., "Electrical", "Resistor", "V")
+    item_type: Literal["interface", "module", "component", "parameter", "trait"]
+    children: list["ModuleChild"] = Field(default_factory=list)
+
+
 class ModuleDefinition(BaseModel):
     """A module/interface/component definition from an .ato file."""
 
@@ -322,6 +344,7 @@ class ModuleDefinition(BaseModel):
     entry: str  # Entry point format: "file.ato:ModuleName"
     line: Optional[int] = None  # Line number where defined
     super_type: Optional[str] = None  # Parent type if extends
+    children: list[ModuleChild] = Field(default_factory=list)  # Nested children
 
 
 class ModulesResponse(BaseModel):

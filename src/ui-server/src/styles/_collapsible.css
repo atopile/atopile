@@ -1,0 +1,336 @@
+/* ============================================
+   _collapsible.css
+   Collapsible Section, Section Title Bar, Section Body,
+   Bottom Panel (VS Code Terminal style)
+   ============================================ */
+
+/* ============================================
+   Collapsible Section
+   ============================================ */
+
+.collapsible-section {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border-color);
+  overflow: hidden;
+  /* Default: only take up content height, don't expand */
+  flex: 0 0 auto;
+}
+
+.collapsible-section.collapsed {
+  flex: 0 0 auto !important;
+}
+
+/* When manually resized, respect the height and make body scroll */
+.collapsible-section.has-height {
+  overflow: hidden;
+}
+
+.collapsible-section.has-height .section-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Auto-size with max-height constraint - section grows/shrinks with content */
+.collapsible-section.has-max-height {
+  overflow: hidden;
+}
+
+.collapsible-section.has-max-height .section-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* flexGrow sections expand to fill remaining space */
+.collapsible-section.flex-grow {
+  flex: 1 1 auto;
+  min-height: 100px;
+  overflow: hidden;
+}
+
+.section-title-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 5px var(--spacing-sm);
+  background: var(--bg-secondary);
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+  min-height: 26px;
+  border-left: 2px solid transparent;
+  transition: all var(--transition-fast);
+}
+
+.section-title-bar:hover {
+  background: var(--bg-tertiary);
+  border-left-color: var(--ato-orange);
+}
+
+.collapsible-section:not(.collapsed) .section-title-bar {
+  border-left-color: var(--ato-orange);
+}
+
+.section-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.collapsible-section:not(.collapsed) .section-chevron {
+  color: var(--ato-orange);
+}
+
+.section-title {
+  flex: 1;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  transition: color var(--transition-fast);
+}
+
+.collapsible-section:not(.collapsed) .section-title {
+  color: var(--text-primary);
+}
+
+.section-loading {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.section-loading svg {
+  animation: spin 1s linear infinite;
+}
+
+.section-badge {
+  font-size: 9px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 2px 5px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.section-badge.filter-badge {
+  background: var(--accent);
+  color: var(--ctp-crust);
+  font-weight: 500;
+}
+
+.section-badge .clear-filter-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 2px;
+  opacity: 0.7;
+}
+
+.section-badge .clear-filter-btn:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.section-error-count,
+.section-warning-count {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 6px;
+}
+
+.section-error-count {
+  color: var(--error);
+  background: rgba(243, 139, 168, 0.15);
+}
+
+.section-warning-count {
+  color: var(--warning);
+  background: rgba(249, 226, 175, 0.15);
+}
+
+.section-warning-message {
+  display: flex;
+  align-items: center;
+  color: var(--warning);
+  opacity: 0.8;
+  cursor: help;
+}
+
+.section-warning-message:hover {
+  opacity: 1;
+}
+
+.section-body {
+  /* Don't expand by default - only take content height */
+  flex: 0 0 auto;
+  overflow-x: visible;
+}
+
+/* For flex-grow sections, body should expand and scroll */
+.collapsible-section.flex-grow .section-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.section-resize-handle {
+  height: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-subtle);
+  cursor: ns-resize;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.collapsible-section:hover .section-resize-handle {
+  opacity: 1;
+}
+
+.section-resize-handle:hover {
+  background: var(--bg-tertiary);
+}
+
+/* ============================================
+   Bottom Panel (VS Code Terminal style)
+   ============================================ */
+
+.bottom-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+}
+
+.bottom-panel-resize {
+  height: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ns-resize;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.bottom-panel:hover .bottom-panel-resize {
+  opacity: 1;
+}
+
+.bottom-panel-resize:hover {
+  background: var(--accent);
+}
+
+.bottom-panel-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--spacing-sm);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.bottom-tabs-left {
+  display: flex;
+  gap: 2px;
+}
+
+.bottom-tab {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.bottom-tab:hover {
+  color: var(--text-secondary);
+}
+
+.bottom-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+}
+
+.bottom-tabs-right {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.bottom-panel-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.bottom-panel-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.bottom-panel-content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.bottom-panel-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: var(--spacing-sm);
+  color: var(--text-muted);
+}
+
+.bottom-panel-placeholder.terminal-style {
+  align-items: flex-start;
+  padding: var(--spacing-md);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.terminal-prompt {
+  color: var(--ctp-green);
+}
+
+.terminal-output {
+  color: var(--text-secondary);
+}

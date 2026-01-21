@@ -56,6 +56,12 @@
   text-overflow: ellipsis;
 }
 
+/* Last build info in package header */
+.package-card-header .last-build-info {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 /* Publisher badge */
 .package-publisher-badge {
   font-size: 10px;

@@ -328,6 +328,7 @@ export const ProjectNode = memo(function ProjectNode({
           <BuildsCard
             builds={project.builds}
             projectId={project.id}
+            projectRoot={project.root}
             selection={selection}
             onSelect={onSelect}
             onBuild={onBuild}

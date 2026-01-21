@@ -48,7 +48,12 @@ async def _load_projects_background(ctx: AppContext) -> None:
                 root=project.root,
                 name=project.name,
                 targets=[
-                    StateBuildTarget(name=t.name, entry=t.entry, root=t.root)
+                    StateBuildTarget(
+                        name=t.name,
+                        entry=t.entry,
+                        root=t.root,
+                        last_build=t.last_build,
+                    )
                     for t in project.targets
                 ],
             )

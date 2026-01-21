@@ -11,7 +11,6 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Any
 
 from atopile.buildutil import generate_build_id, generate_build_timestamp
 from atopile.config import ProjectConfig
@@ -56,7 +55,7 @@ def _handle_build_sync(payload: dict) -> dict:
     payload_id = payload.get("id")
     payload_label = payload.get("label")
     log.info(
-        f"Parsed: project_root={project_root}, targets={targets}, level={level}, id={payload_id}"
+        f"Parsed: project_root={project_root}, targets={targets}, level={level}, id={payload_id}"  # noqa: E501
     )
 
     build_all_targets = False
@@ -193,7 +192,7 @@ def _handle_build_sync(payload: dict) -> dict:
                 targets = ["default"]
             except Exception as exc:
                 log.warning(
-                    f"Failed to read targets from ato.yaml: {exc}, falling back to 'default'"
+                    f"Failed to read targets from ato.yaml: {exc}, falling back to 'default'"  # noqa: E501
                 )
                 targets = ["default"]
 
@@ -259,7 +258,12 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                         root=p.root,
                         name=p.name,
                         targets=[
-                            StateBuildTarget(name=t.name, entry=t.entry, root=t.root)
+                            StateBuildTarget(
+                                name=t.name,
+                                entry=t.entry,
+                                root=t.root,
+                                last_build=t.last_build,
+                            )
                             for t in p.targets
                         ],
                     )

@@ -558,6 +558,14 @@ export function BOMPanel({
     }
   }, [bomComponents])
 
+  // Extract short build ID for display (e.g., "build-42-1674520800" -> "#42")
+  // NOTE: This must be before early returns to maintain hook order
+  const buildIdShort = useMemo(() => {
+    if (!bomData?.build_id) return null
+    const match = bomData.build_id.match(/^build-(\d+)-/)
+    return match ? `#${match[1]}` : bomData.build_id.substring(0, 12)
+  }, [bomData?.build_id])
+
   // Loading state
   if (isLoading) {
     return (
@@ -610,13 +618,6 @@ export function BOMPanel({
       </div>
     )
   }
-  
-  // Extract short build ID for display (e.g., "build-42-1674520800" -> "42")
-  const buildIdShort = useMemo(() => {
-    if (!bomData?.build_id) return null
-    const match = bomData.build_id.match(/^build-(\d+)-/)
-    return match ? `#${match[1]}` : bomData.build_id.substring(0, 12)
-  }, [bomData?.build_id])
 
   return (
     <div className="bom-panel">

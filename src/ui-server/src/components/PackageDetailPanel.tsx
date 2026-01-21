@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import {
-  X, Package, Download, Home, ExternalLink,
+  X, Package, Download, ExternalLink,
   CheckCircle, Tag, Calendar, FileCode, Play,
-  Loader2, AlertCircle, TrendingUp, History, Scale, User
+  Loader2, AlertCircle, Globe
 } from 'lucide-react'
 import type { PackageDetails } from '../types/build'
 
@@ -149,48 +149,6 @@ export function PackageDetailPanel({
           </section>
         )}
 
-        {/* Package Stats (from registry) */}
-        {details && !isLoading && (
-          <section className="detail-section detail-stats">
-            <div className="detail-stats-row">
-              {details.publisher && (
-                <div className="detail-stat">
-                  <User size={14} />
-                  <span>{details.publisher}</span>
-                </div>
-              )}
-              <div className="detail-stat">
-                <Download size={14} />
-                <span>{formatDownloads(details.downloads)} downloads</span>
-              </div>
-              {details.downloadsThisWeek != null && (
-                <div className="detail-stat">
-                  <TrendingUp size={14} />
-                  <span>{formatDownloads(details.downloadsThisWeek)}/week</span>
-                </div>
-              )}
-              <div className="detail-stat">
-                <History size={14} />
-                <span>{details.versionCount || 0} releases</span>
-              </div>
-              {details.license && (
-                <div className="detail-stat">
-                  <Scale size={14} />
-                  <span>{details.license}</span>
-                </div>
-              )}
-            </div>
-          </section>
-        )}
-
-        {/* Stats placeholder while loading */}
-        {isLoading && (
-          <section className="detail-section detail-stats">
-            <div className="detail-stats-row">
-              <div className="detail-stat loading-placeholder">Loading stats...</div>
-            </div>
-          </section>
-        )}
 
         {/* Actions */}
         <section className="detail-section detail-actions">
@@ -263,17 +221,6 @@ export function PackageDetailPanel({
           )}
         </section>
 
-        {/* Links */}
-        {pkg.homepage && (
-          <section className="detail-section detail-links">
-            <a href={pkg.homepage} className="detail-link" target="_blank" rel="noopener">
-              <Home size={14} />
-              Homepage
-              <ExternalLink size={10} />
-            </a>
-          </section>
-        )}
-
         {/* Exports - placeholder until backend provides symbol introspection */}
         <section className="detail-section">
           <h3 className="detail-section-title">
@@ -294,12 +241,43 @@ export function PackageDetailPanel({
 
 module MyBoard:
     mcu = new RP2040
-    
+
     # Connect interfaces
     power ~ mcu.power
     i2c ~ mcu.i2c`}
           </pre>
         </section>
+      </div>
+
+      {/* Footer Bar - Package metadata and actions */}
+      <div className="detail-panel-footer">
+        <div className="detail-footer-stats">
+          {details?.publisher && (
+            <span className="footer-stat">{details.publisher}</span>
+          )}
+          {details && (
+            <span className="footer-stat">
+              <Download size={12} />
+              {formatDownloads(details.downloads)}
+            </span>
+          )}
+          {details?.license && (
+            <span className="footer-stat">{details.license}</span>
+          )}
+        </div>
+        {pkg.homepage && (
+          <a
+            href={pkg.homepage}
+            className="footer-browser-btn"
+            target="_blank"
+            rel="noopener"
+            title="Open in browser"
+          >
+            <Globe size={14} />
+            <span>Open</span>
+            <ExternalLink size={10} />
+          </a>
+        )}
       </div>
     </div>
   )
