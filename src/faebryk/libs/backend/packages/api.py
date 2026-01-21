@@ -276,6 +276,15 @@ class _Endpoints:
 
         Response = _Schemas.QueryResult
 
+    class AllPackages:
+        TYPE = _Type.GET
+
+        @staticmethod
+        def url() -> str:
+            return "/v1/packages/all"
+
+        Response = _Schemas.QueryResult
+
     class Publish:
         TYPE = _Type.POST
 
@@ -637,3 +646,13 @@ class PackagesAPIClient:
     def query_packages(self, query: str) -> _Endpoints.Packages.Response:
         r = self._get(_Endpoints.Packages.url(_Endpoints.Packages.Request(query)))
         return _Endpoints.Packages.Response.from_dict(r.json())  # type: ignore
+
+    def get_all_packages(self) -> _Endpoints.AllPackages.Response:
+        """
+        Get all packages from the registry.
+
+        Endpoint: /v1/packages/all
+        """
+        r = self._get(_Endpoints.AllPackages.url())
+        return _Endpoints.AllPackages.Response.from_dict(r.json())  # type: ignore
+

@@ -27,6 +27,7 @@ from atopile.dataclasses import (
     RegistryStatus,
 )
 from atopile.server import package_manager
+from faebryk.libs.backend.packages.api import PackagesAPIClient
 from atopile.server.app_context import AppContext
 from atopile.server.core import packages as core_packages
 from atopile.server.state import server_state
@@ -49,44 +50,6 @@ def _get_refresh_lock() -> asyncio.Lock:
         _refresh_lock = asyncio.Lock()
     return _refresh_lock
 
-
-# ##############################################################################
-# TODO: HACK - Registry API doesn't support listing all packages!
-# ##############################################################################
-# The registry API returns 0 results for empty/wildcard queries, so we can't
-# just fetch all packages. This workaround queries multiple search terms and
-# merges results to approximate "get all".
-#
-# These 17 terms were empirically chosen as the minimum set for full coverage
-# (~150 packages as of Jan 2025). If new packages aren't appearing, add more
-# search terms here.
-#
-# PROPER FIX (registry backend):
-#   1. Add a /v1/packages/list endpoint that returns all packages
-#   2. Add a /v1/packages/last-updated endpoint that returns a timestamp of
-#      when the package list was last modified. The UI can poll this cheaply
-#      (e.g. every 5 minutes) and only re-fetch the full list when it changes,
-#      instead of re-fetching 17 search queries every time.
-# ##############################################################################
-_REGISTRY_SEARCH_TERMS = [
-    "atopile",  # 96 packages (publisher prefix)
-    "i2c",  # +32 new
-    "led",  # +5 new
-    "spi",  # +2 new
-    "battery",  # +2 new
-    "ethernet",  # +2 new
-    "sensor",  # +1 new
-    "power",  # +1 new
-    "adc",  # +1 new
-    "dac",  # +1 new
-    "connector",  # +1 new
-    "audio",  # +1 new
-    "rp",  # +1 new
-    "mcu",  # +1 new
-    "esp",  # +1 new
-    "regulator",  # +1 new
-    "uart",  # +1 new
-]
 
 # Track active package operations
 _active_package_ops: dict[str, dict[str, object]] = {}
@@ -219,77 +182,52 @@ def search_registry_packages(query: str) -> list[PackageInfo]:
 
 def get_all_registry_packages() -> list[PackageInfo]:
     """
-    Get all packages from the registry by querying multiple search terms.
-
-    The registry API requires a search term (empty/wildcard returns 0 results).
-    This function queries multiple terms and merges results to get all packages.
-    Results are cached for 5 minutes.
+    Get all packages from the registry.
     """
-    cache_key = "all_packages"
-    cached = _cache_get(cache_key)
-    if cached is not None:
-        log.debug(f"[registry] Cache HIT for all packages: {len(cached)} packages")
-        return cached
+    try:
+        api = PackagesAPIClient()
+        result = api.get_all_packages()
+        log.debug(f"[registry] Fetched {len(result.packages)} packages from registry")
 
-    packages_map: dict[str, PackageInfo] = {}
-    for term in _REGISTRY_SEARCH_TERMS:
-        try:
-            results = search_registry_packages(term)
-            for pkg in results:
-                if pkg.identifier not in packages_map:
-                    packages_map[pkg.identifier] = pkg
-        except Exception as exc:
-            log.warning(f"Failed to search registry for '{term}': {exc}")
+        packages: list[PackageInfo] = []
+        for pkg in result.packages:
+            parts = pkg.identifier.split("/")
+            if len(parts) == 2:
+                publisher, name = parts
+            else:
+                publisher = "unknown"
+                name = pkg.identifier
 
-    packages = list(packages_map.values())
-    log.info(f"[registry] Merged {len(packages)} unique packages from registry")
-    _cache_set(cache_key, packages)
-    return packages
+            packages.append(
+                PackageInfo(
+                    identifier=pkg.identifier,
+                    name=name,
+                    publisher=publisher,
+                    latest_version=pkg.version,
+                    summary=pkg.summary,
+                    description=pkg.summary,
+                    homepage=pkg.homepage,
+                    repository=pkg.repository,
+                    installed=False,
+                    installed_in=[],
+                )
+            )
+
+        return packages
+
+    except Exception as exc:
+        log.warning(f"Failed to fetch all packages from registry: {exc}")
+        return []
 
 
 async def get_all_registry_packages_async() -> list[PackageInfo]:
     """
-    Async version of get_all_registry_packages with parallel fetching.
+    Async version of get_all_registry_packages.
 
-    Runs registry queries in parallel using a thread pool to avoid blocking
-    the event loop while still benefiting from concurrent HTTP requests.
+    Runs the API call in a thread pool to avoid blocking the event loop.
     """
-    import asyncio
-
-    cache_key = "all_packages"
-    cached = _cache_get(cache_key)
-    if cached is not None:
-        log.debug(f"[registry] Cache HIT for all packages: {len(cached)} packages")
-        return cached
-
-    async def fetch_term(term: str) -> list[PackageInfo]:
-        """Fetch packages for a single search term in a thread."""
-        try:
-            return await asyncio.to_thread(search_registry_packages, term)
-        except Exception as exc:
-            log.warning(f"Failed to search registry for '{term}': {exc}")
-            return []
-
-    log.info(
-        f"[registry] Fetching packages with {len(_REGISTRY_SEARCH_TERMS)} parallel queries"  # noqa: E501
-    )
-
-    # Run all queries in parallel
-    results = await asyncio.gather(
-        *[fetch_term(term) for term in _REGISTRY_SEARCH_TERMS]
-    )
-
-    # Merge results
-    packages_map: dict[str, PackageInfo] = {}
-    for result in results:
-        for pkg in result:
-            if pkg.identifier not in packages_map:
-                packages_map[pkg.identifier] = pkg
-
-    packages = list(packages_map.values())
-    log.info(f"[registry] Merged {len(packages)} unique packages from registry (async)")
-    _cache_set(cache_key, packages)
-    return packages
+    # Run the synchronous function in a thread to avoid blocking
+    return await asyncio.to_thread(get_all_registry_packages)
 
 
 async def enrich_packages_with_registry_async(
