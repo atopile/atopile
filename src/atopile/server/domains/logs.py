@@ -8,7 +8,7 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
-from atopile.logging import get_central_log_db
+from atopile.logging import BuildLogger
 from atopile.server.app_context import AppContext
 
 log = logging.getLogger(__name__)
@@ -68,7 +68,7 @@ def handle_query_logs(
     offset: int = 0,
 ) -> dict:
     """Query logs from the central database with filters."""
-    central_db = get_central_log_db()
+    central_db = BuildLogger.get_log_db()
     if not central_db.exists():
         return {"logs": [], "total": 0, "max_id": 0, "has_more": False}
 
@@ -200,7 +200,7 @@ def handle_get_log_counts(
     stage: Optional[str] = None,
 ) -> dict:
     """Get log counts by level."""
-    central_db = get_central_log_db()
+    central_db = BuildLogger.get_log_db()
     if not central_db.exists():
         return {
             "counts": {

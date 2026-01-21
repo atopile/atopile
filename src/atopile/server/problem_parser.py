@@ -10,7 +10,7 @@ import logging
 import sqlite3
 from pathlib import Path
 
-from atopile.logging import get_central_log_db
+from atopile.logging import BuildLogger
 from atopile.server.schemas.problem import Problem
 from atopile.server.state import server_state
 
@@ -48,7 +48,7 @@ def _load_problems_from_db(
         limit: Maximum number of problems to load
         developer_mode: If True, show all audiences. If False (default), only show 'user' audience.
     """
-    db_path = get_central_log_db()
+    db_path = BuildLogger.get_log_db()
     if not db_path.exists():
         return []
 

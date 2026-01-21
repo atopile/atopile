@@ -10,7 +10,7 @@ import typer
 # Ensure the current directory is in sys.path
 sys.path.insert(0, os.getcwd())
 
-from atopile.logging import setup_test_logging, update_test_name
+from atopile.logging import TestLogger
 from test.runner.common import (
     ORCHESTRATOR_URL_ENV,
     ClaimRequest,
@@ -21,7 +21,7 @@ from test.runner.common import (
 
 # Set up test database logging for worker subprocess
 # Use the orchestrator URL as part of the run name to distinguish different runs
-setup_test_logging(run_name="pytest-worker")
+TestLogger.setup_logging(run_name="pytest-worker")
 
 ORCHESTRATOR_URL = os.environ.get(ORCHESTRATOR_URL_ENV)
 
@@ -190,7 +190,7 @@ def main():
                 # Set terminal width for better debug output formatting
                 os.environ["COLUMNS"] = "120"
                 # Update the test name in the test logger for proper tracking
-                update_test_name(nodeid)
+                TestLogger.update_test_name(nodeid)
                 run_pytest_with_timeout(nodeid)
 
                 # always exit

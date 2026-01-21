@@ -31,7 +31,7 @@ from atopile.server import project_discovery
 from atopile.server.app_context import AppContext
 from atopile.server.file_watcher import PollingFileWatcher
 from atopile.server.state import server_state
-from atopile.logging import get_central_log_db
+from atopile.logging import BuildLogger
 
 log = logging.getLogger(__name__)
 
@@ -548,7 +548,7 @@ def create_app(
     )
     app.state.ctx = ctx
 
-    db_path = get_central_log_db()
+    db_path = BuildLogger.get_log_db()
     ws_manager.set_paths(db_path, logs_base)
 
     if logs_base:

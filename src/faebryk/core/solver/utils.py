@@ -16,7 +16,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core import graph
-from atopile.logging import rich_to_string
+from atopile.logging import BaseLogger
 from faebryk.libs.util import (
     ConfigFlag,
     ConfigFlagFloat,
@@ -88,7 +88,7 @@ class Contradiction(Exception):
         # TODO reenable
         if LOG_PICK_SOLVE:
             for p, tb in tracebacks.items():
-                tb_str = rich_to_string(tb.filtered().as_rich_tree())
+                tb_str = BaseLogger.rich_to_string(tb.filtered().as_rich_tree())
                 logger.warning(tb_str)
 
         origins = {p: _get_origins(p) for p in self.involved_exprs}

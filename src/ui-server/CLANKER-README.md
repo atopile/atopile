@@ -113,7 +113,7 @@ All build logs and server action logs are stored in a central SQLite database fo
 ~/.local/share/atopile/build_logs.db
 ```
 
-Access via: `from atopile.logging import get_central_log_db`
+Access via: `from atopile.logging import BuildLogger`
 
 ### Database Schema
 
@@ -141,14 +141,14 @@ Use `BuildLogger` for structured logging:
 
 ```python
 from atopile.logging import (
-    get_build_logger,
-    SQLiteLogWriter,
     Audience,
-    Level
+    BuildLogger,
+    Level,
+    SQLiteLogWriter,
 )
 
 # Get or create a logger for an action
-logger = get_build_logger(
+logger = BuildLogger.get(
     project_path=str(project_root),
     target="package-ops",  # or specific action ID
     timestamp=None,  # auto-generates
@@ -231,9 +231,9 @@ async def handle_some_action(payload: dict, ctx: AppContext) -> dict:
     project_root = payload.get("projectRoot", "")
 
     # Create logger for this action
-    from atopile.logging import get_build_logger, SQLiteLogWriter, Audience
+    from atopile.logging import Audience, BuildLogger, SQLiteLogWriter
 
-    logger = get_build_logger(
+    logger = BuildLogger.get(
         project_path=project_root,
         target="server-actions",
         stage="my-action"

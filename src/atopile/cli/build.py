@@ -316,9 +316,9 @@ class BuildProcess:
 
     def _stage_info_log_path(self, stage_name: str) -> Path | None:
         """Return the log path for a build (central SQLite database)."""
-        from atopile.logging import get_central_log_db
+        from atopile.logging import BuildLogger
 
-        return get_central_log_db()
+        return BuildLogger.get_log_db()
 
     def set_stage_printer(
         self, printer: Callable[[StageCompleteEvent, Path | None], None] | None
@@ -1064,12 +1064,12 @@ class ParallelBuildManager:
 
     def _get_build_data(self, bp: "BuildProcess") -> dict:
         """Collect minimal data for a single build as a dictionary."""
-        from atopile.logging import generate_build_id
+        from atopile.logging import BuildLogger
 
         # Generate build_id for this build
         # Use resolved absolute path to ensure consistency with subprocess
         project_path = str(bp.project_root.resolve()) if bp.project_root else "unknown"
-        build_id = generate_build_id(project_path, bp.name, self._now)
+        build_id = BuildLogger.generate_build_id(project_path, bp.name, self._now)
         logger.debug(
             f"Summary build_id: {build_id} (project={project_path}, target={bp.name}, ts={self._now})"
         )
@@ -1116,7 +1116,7 @@ def _run_single_build() -> None:
     from atopile import buildutil
     from atopile.buildutil import BuildStepContext
     from atopile.config import config
-    from atopile.logging import close_all_build_loggers
+    from atopile.logging import BuildLogger
 
     # Get the single build target from config
     build_names = list(config.selected_builds)
@@ -1143,7 +1143,7 @@ def _run_single_build() -> None:
         # Flush all buffered logs to SQLite before subprocess exits
         # This is critical because each subprocess has its own SQLiteLogWriter
         # instance, and buffered logs would be lost without explicit flush
-        close_all_build_loggers()
+        BuildLogger.close_all()
 
 
 def _emit_completed_stages(stages: list) -> None:
@@ -1495,9 +1495,9 @@ def build(
     manager.generate_summary()
 
     # Flush and close all build loggers to ensure logs are written to SQLite
-    from atopile.logging import close_all_build_loggers
+    from atopile.logging import BuildLogger
 
-    close_all_build_loggers()
+    BuildLogger.close_all()
 
     failed = [name for name, code in results.items() if code != 0]
 

@@ -4,7 +4,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from atopile import buildutil
-from atopile.logging import capture_logs, log_exceptions
+from atopile.logging import BaseLogger
 from atopile.mcp.util import MCPTools
 
 cli_tools = MCPTools()
@@ -48,11 +48,11 @@ def build_project(
 
     success = True
 
-    with config.select_build(target_name_from_yaml), capture_logs() as logs:
+    with config.select_build(target_name_from_yaml), BaseLogger.capture_logs() as logs:
         logger.info("Building target '%s'", config.build.name)
 
         try:
-            with log_exceptions(logs):
+            with BaseLogger.log_exceptions(logs):
                 buildutil.build()
         except Exception:
             success = False
@@ -170,10 +170,10 @@ def verify_package(absolute_project_dir: Path) -> PackageVerifyResult:
     config.apply_options(entry=str(absolute_project_dir))
 
     success = True
-    with capture_logs() as logs:
+    with BaseLogger.capture_logs() as logs:
         logger.info("Verifying package at '%s'", absolute_project_dir)
         try:
-            with log_exceptions(logs):
+            with BaseLogger.log_exceptions(logs):
                 _verify_package(config)
         except Exception:
             success = False

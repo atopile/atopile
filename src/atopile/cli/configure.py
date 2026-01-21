@@ -16,10 +16,10 @@ def configure() -> None:
     """
     from textwrap import dedent
 
-    from atopile.logging import rich_print_robust
+    from atopile.logging import BaseLogger
 
     # Just here for legacy support
-    rich_print_robust(
+    BaseLogger.rich_print_robust(
         dedent(
             """
             This command is deprecated and will be removed in a future version.

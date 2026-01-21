@@ -113,9 +113,9 @@ class MusterTarget:
                 # Set up logging for this build stage
                 ctx.stage = self.name
                 ctx._stage_start_time = time.time()
-                from atopile.logging import update_logger_stage
+                from atopile.logging import BuildLogger
 
-                update_logger_stage(self.name)
+                BuildLogger.update_stage(self.name)
 
                 self.func(ctx)
             except Exception:

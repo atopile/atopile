@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from atopile.config import ProjectConfig
-from atopile.logging import get_build_logger, Audience
+from atopile.logging import Audience, BuildLogger
 from atopile.server.domains import packages as packages_domain
 from atopile.server import problem_parser
 from atopile.server import project_discovery
@@ -544,7 +544,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             cmd = ["ato", "add", pkg_spec]
 
             # Create a logger for this action - logs to central SQLite DB
-            action_logger = get_build_logger(
+            action_logger = BuildLogger.get(
                 project_path=project_root,
                 target="package-install",
                 stage="install",

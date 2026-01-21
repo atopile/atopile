@@ -78,7 +78,7 @@ class UserException(Exception):
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> list[ConsoleRenderable]:
-        from atopile.logging import ReprHighlighter
+        from atopile.logging_utils import ReprHighlighter
 
         def _markdown(message: str) -> ConsoleRenderable:
             if console.is_terminal:
