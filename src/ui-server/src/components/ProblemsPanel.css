@@ -20,6 +20,7 @@
 
 .problems-panel .panel-toolbar-row {
   overflow: visible;
+  flex-wrap: nowrap;
 }
 
 .problems-panel.empty {

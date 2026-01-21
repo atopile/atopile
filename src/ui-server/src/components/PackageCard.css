@@ -18,8 +18,8 @@
 }
 
 .package-card.selected {
-  border-color: var(--ctp-blue);
-  background: rgba(137, 180, 250, 0.08);
+  border-color: var(--ato-orange);
+  background: rgba(255, 160, 60, 0.08);
 }
 
 .package-card.expanded {
@@ -94,18 +94,30 @@
 .package-links-bar {
   display: flex;
   align-items: center;
-  gap: var(--spacing-xs);
+  gap: 8px;
   margin-top: var(--spacing-sm);
   padding: var(--spacing-xs) 0;
   border-top: 1px solid var(--border-subtle);
+}
+
+.package-downloads {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.package-downloads svg {
+  opacity: 0.7;
 }
 
 .package-link-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   color: var(--text-muted);
   border-radius: var(--radius-sm);
   transition: all var(--transition-fast);
@@ -116,65 +128,51 @@
   background: var(--bg-hover);
 }
 
-.package-downloads {
-  display: flex;
-  align-items: center;
+.package-link-btn.has-label {
+  width: auto;
   gap: 4px;
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  padding: 0 var(--spacing-xs);
-}
-
-.package-downloads svg {
-  opacity: 0.7;
+  padding: 0 8px;
+  font-size: 11px;
 }
 
 .package-links-spacer {
   flex: 1;
 }
 
+
 /* Row 4: Install bar */
 .package-install-bar {
   display: flex;
-  align-items: stretch;
+  flex-direction: row;
+  align-items: center;
   gap: 6px;
   margin-top: var(--spacing-sm);
 }
 
-/* Shared styles for all install bar elements */
-.package-install-bar .project-selector-btn,
-.package-install-bar .version-select,
-.package-install-bar .install-btn {
-  height: 26px;
-  font-size: 11px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.package-install-bar .project-selector-btn:hover,
-.package-install-bar .version-select:hover,
-.package-install-bar .install-btn:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-default);
-}
-
-/* Project selector - takes available space */
+/* Project selector */
 .project-selector {
   position: relative;
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 0;
 }
 
 .project-selector-btn {
   display: flex;
   align-items: center;
   gap: 4px;
+  height: 28px;
   padding: 0 8px;
   width: 100%;
+  font-size: 11px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.project-selector-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-default);
 }
 
 .project-selector-name {
@@ -185,28 +183,118 @@
   text-align: left;
 }
 
-/* Version selector */
-.version-select {
-  padding: 0 6px;
-  min-width: 90px;
-  flex-shrink: 0;
+/* Version selector (custom dropdown) */
+.version-selector {
+  position: relative;
+  flex: 1 1 0;
 }
 
-.version-select:focus {
-  outline: none;
-  border-color: var(--ctp-blue);
+.version-selector-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  width: 100%;
+  font-size: 11px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.version-selector-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-default);
+}
+
+.version-selector-value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.version-selector-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 120px;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 1000;
+}
+
+.version-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-xs);
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.version-option:hover {
+  background: var(--bg-hover);
+}
+
+.version-option.selected {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.version-option .latest-tag {
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  background: rgba(166, 227, 161, 0.15);
+  color: var(--ctp-green);
+}
+
+.version-option .selected-check {
+  color: var(--ctp-green);
+  flex-shrink: 0;
 }
 
 /* Install button */
 .package-install-bar .install-btn {
-  display: flex;
+  flex: 1 1 0;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 0 10px;
+  gap: 6px;
+  height: 28px;
+  padding: 0 16px;
+  font-size: 11px;
   font-weight: 500;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
   white-space: nowrap;
+}
+
+.package-install-bar .install-btn svg {
   flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+}
+
+.package-install-bar .install-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-default);
 }
 
 .package-install-bar .install-btn.installed {
@@ -354,10 +442,12 @@
 }
 
 /* Z-index handling for dropdowns */
-.package-card:has(.project-selector-menu) {
+.package-card:has(.project-selector-menu),
+.package-card:has(.version-selector-menu) {
   z-index: 100;
 }
 
-.project-selector:has(.project-selector-menu) {
+.project-selector:has(.project-selector-menu),
+.version-selector:has(.version-selector-menu) {
   z-index: 1000;
 }

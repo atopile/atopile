@@ -1304,6 +1304,7 @@ body {
 
 .panel-toolbar-row {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: var(--spacing-xs);
 }
@@ -1369,6 +1370,7 @@ body {
 
 .log-toolbar > .panel-toolbar-row {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: var(--spacing-xs);
 }
@@ -5213,10 +5215,36 @@ body {
   overflow-y: auto;
 }
 
+/* Install dropdown container - used for button + toggle pairs */
+.install-dropdown {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  position: relative;
+}
+
 /* Ensure project dropdown doesn't get clipped by parent panels */
 .project-dropdown {
   position: relative;
   z-index: 100;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
+/* Ensure install-btn text in project dropdown doesn't wrap */
+.project-dropdown .install-btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.project-dropdown .install-btn span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
 }
 
 .project-dropdown:has(.install-dropdown-menu) {

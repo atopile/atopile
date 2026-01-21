@@ -452,7 +452,6 @@ interface ProjectsPanelProps {
 
 export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onStageFilter, onOpenPackageDetail, onPackageInstall, onCreateProject, onProjectExpand, onOpenSource, onOpenKiCad, onOpenLayout, onOpen3D, onFileClick, onDependencyVersionChange, onRemoveDependency, onDeleteBuild, filterType = 'all', projects: externalProjects, projectModules = {}, projectFiles = {}, projectDependencies = {} }: ProjectsPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
-  const [publisherFilter, setPublisherFilter] = useState<string | null>(null)
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
   const [localProjects, setLocalProjects] = useState<Project[]>(externalProjects || mockProjects)
   
@@ -592,13 +591,6 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
     }
   }
   
-  // Get unique publishers for filter
-  const publishers = [...new Set(
-    localProjects
-      .filter(p => p.type === 'package' && p.publisher)
-      .map(p => p.publisher!)
-  )].sort()
-
   // Create available projects list for install dropdown (only actual projects, not packages)
   const availableProjects: AvailableProject[] = localProjects
     .filter(p => p.type === 'project')
@@ -629,10 +621,6 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
     if (filterType === 'projects' && project.type !== 'project') return false
     if (filterType === 'packages' && project.type !== 'package') return false
     
-    // Filter by publisher (only for packages)
-    if (filterType === 'packages' && publisherFilter && project.publisher !== publisherFilter) {
-      return false
-    }
     
     // Filter by search - include name, description, summary, and keywords
     if (searchQuery) {
@@ -693,26 +681,6 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
           </button>
         )}
         
-        {/* Publisher filter (only for packages) */}
-        {filterType === 'packages' && publishers.length > 0 && (
-          <div className="publisher-filter">
-            <button 
-              className={`publisher-filter-btn ${publisherFilter === null ? 'active' : ''}`}
-              onClick={() => setPublisherFilter(null)}
-            >
-              All
-            </button>
-            {publishers.map(pub => (
-              <button 
-                key={pub}
-                className={`publisher-filter-btn ${publisherFilter === pub ? 'active' : ''} ${pub === 'atopile' ? 'official' : 'community'}`}
-                onClick={() => setPublisherFilter(pub)}
-              >
-                {pub}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
       
       {/* Project/Package list */}

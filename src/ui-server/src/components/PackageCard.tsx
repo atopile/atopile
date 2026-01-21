@@ -5,7 +5,7 @@
 import { useState, useRef, useEffect, memo } from 'react'
 import {
   ChevronDown, ChevronRight, Package, Download, Check,
-  Search, ArrowUpCircle, Github, Layers, Loader2, ExternalLink
+  Search, ArrowUpCircle, Github, Globe, Layers, Loader2
 } from 'lucide-react'
 import { BuildsCard } from './BuildsCard'
 import { DependencyCard, type ProjectDependency } from './DependencyCard'
@@ -63,8 +63,8 @@ function isInstalledInProject(
   }
 }
 
-// Version selector dropdown
-function VersionSelect({
+// Version selector dropdown (custom, not native select)
+function VersionSelector({
   versions,
   selectedVersion,
   onVersionChange,
@@ -75,23 +75,58 @@ function VersionSelect({
   onVersionChange: (version: string) => void
   latestVersion?: string
 }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Filter out invalid versions
+  const validVersions = versions.filter(v => v && v !== 'unknown')
+  if (validVersions.length === 0) return null
+
+  const displayVersion = selectedVersion || validVersions[0] || ''
+
   return (
-    <select
-      className="version-select"
-      value={selectedVersion}
-      onChange={(e) => {
-        e.stopPropagation()
-        onVersionChange(e.target.value)
-      }}
-      onClick={(e) => e.stopPropagation()}
-      title="Select version to install"
-    >
-      {versions.map((v) => (
-        <option key={v} value={v}>
-          {v}{v === latestVersion ? ' (latest)' : ''}
-        </option>
-      ))}
-    </select>
+    <div className="version-selector" ref={dropdownRef}>
+      <button
+        className="version-selector-btn"
+        onClick={(e) => {
+          e.stopPropagation()
+          setIsOpen(!isOpen)
+        }}
+        title="Select version"
+      >
+        <span className="version-selector-value">{displayVersion}</span>
+        <ChevronDown size={10} />
+      </button>
+      {isOpen && (
+        <div className="version-selector-menu">
+          {validVersions.map((v) => (
+            <button
+              key={v}
+              className={`version-option ${v === selectedVersion ? 'selected' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                onVersionChange(v)
+                setIsOpen(false)
+              }}
+            >
+              <span>{v}</span>
+              {v === latestVersion && <span className="latest-tag">latest</span>}
+              {v === selectedVersion && <Check size={12} className="selected-check" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -309,11 +344,6 @@ export const PackageCard = memo(function PackageCard({
         </span>
         <Package size={16} className="package-icon" />
         <span className="package-name">{project.name}</span>
-        {project.publisher && (
-          <span className={`package-publisher-badge ${project.publisher === 'atopile' ? 'official' : 'community'}`}>
-            {project.publisher.toLowerCase()}
-          </span>
-        )}
       </div>
 
       {/* Row 2: Description */}
@@ -331,8 +361,14 @@ export const PackageCard = memo(function PackageCard({
         </div>
       )}
 
-      {/* Row 3: Links bar (GitHub, homepage, downloads) */}
+      {/* Row 3: Links bar (downloads, github, website, publisher) */}
       <div className="package-links-bar" onClick={(e) => e.stopPropagation()}>
+        {project.downloads !== undefined && project.downloads > 0 && (
+          <span className="package-downloads">
+            <Download size={12} />
+            <span>{formatDownloads(project.downloads)}</span>
+          </span>
+        )}
         {project.repository && (
           <a
             href={project.repository}
@@ -347,21 +383,21 @@ export const PackageCard = memo(function PackageCard({
         {project.homepage && (
           <a
             href={project.homepage}
-            className="package-link-btn"
+            className="package-link-btn has-label"
             target="_blank"
             rel="noopener noreferrer"
             title="Open homepage"
           >
-            <ExternalLink size={14} />
+            <Globe size={14} />
+            <span>Website</span>
           </a>
         )}
-        {project.downloads !== undefined && project.downloads > 0 && (
-          <span className="package-downloads">
-            <Download size={12} />
-            <span>{formatDownloads(project.downloads)}</span>
+        <div className="package-links-spacer" />
+        {project.publisher && (
+          <span className={`package-publisher-badge ${project.publisher === 'atopile' ? 'official' : 'community'}`}>
+            {project.publisher.toLowerCase()}
           </span>
         )}
-        <div className="package-links-spacer" />
       </div>
 
       {/* Row 4: Install bar (project -> version -> install button) */}
@@ -375,7 +411,7 @@ export const PackageCard = memo(function PackageCard({
 
         {/* Version selector */}
         {versions.length > 0 && (
-          <VersionSelect
+          <VersionSelector
             versions={versions}
             selectedVersion={selectedVersion}
             onVersionChange={setSelectedVersion}
@@ -396,18 +432,18 @@ export const PackageCard = memo(function PackageCard({
           {installStatus.installed ? (
             installStatus.needsUpdate ? (
               <>
-                <ArrowUpCircle size={12} />
+                <ArrowUpCircle size={14} />
                 <span>Update</span>
               </>
             ) : (
               <>
-                <Check size={12} />
+                <Check size={14} />
                 <span>Installed</span>
               </>
             )
           ) : (
             <>
-              <Download size={12} />
+              <Download size={14} />
               <span>Install</span>
             </>
           )}
