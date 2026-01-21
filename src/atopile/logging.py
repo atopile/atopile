@@ -227,13 +227,24 @@ class BaseLogger:
     @staticmethod
     def _atopile_log_filter(record: logging.LogRecord) -> bool:
         """Filter to only include atopile and faebryk logs, excluding server/http logs unless running 'ato serve'."""
-        # Filter out httpcore logs unless running 'ato serve'
-        if record.name.startswith("httpcore") and "serve" not in sys.argv:
+        # Check if we're running the server (either via 'ato serve' or 'python -m atopile.server')
+        main_module = sys.modules.get("__main__")
+        is_serving = (
+            "serve" in sys.argv
+            or "atopile.server" in sys.argv
+            or (main_module is not None and main_module.__package__ == "atopile.server")
+        )
+        
+        # When running server, allow ALL logs to console
+        if is_serving:
+            return True
+        # Filter out httpcore logs unless running server
+        if record.name.startswith("httpcore"):
             return False
         if not (record.name.startswith("atopile") or record.name.startswith("faebryk")):
             return False
-        # Filter server logs from console unless running 'ato serve'
-        if record.name.startswith("atopile.server") and "serve" not in sys.argv:
+        # Filter server logs from console unless running server
+        if record.name.startswith("atopile.server"):
             return False
         return True
 
@@ -1298,6 +1309,16 @@ class LogHandler(RichHandler):
 
     def _write_to_sqlite(self, record: logging.LogRecord) -> None:
         """Write log record to SQLite via BuildLogger or TestLogger if available."""
+        # Check if we're running the server (either via 'ato serve' or 'python -m atopile.server')
+        main_module = sys.modules.get("__main__")
+        is_serving = (
+            "serve" in sys.argv
+            or "atopile.server" in sys.argv
+            or (main_module is not None and main_module.__package__ == "atopile.server")
+        )
+        # Skip database writes when running server
+        if is_serving:
+            return
         # Write to build logger if available
         if self._build_logger is not None:
             self._write_to_build_logger(record)
