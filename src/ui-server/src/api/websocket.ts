@@ -16,8 +16,9 @@ const WS_URL =
 
 // Reconnection settings
 const RECONNECT_DELAY_MS = 1000;
-const MAX_RECONNECT_DELAY_MS = 30000;
+const MAX_RECONNECT_DELAY_MS = 10000; // Reduced from 30s for faster reconnection
 const RECONNECT_BACKOFF_MULTIPLIER = 1.5;
+const CONNECTION_TIMEOUT_MS = 5000; // Timeout for connection handshake
 
 // Message types from backend
 interface StateMessage {
@@ -38,7 +39,29 @@ type BackendMessage = StateMessage | ActionResultMessage;
 let ws: WebSocket | null = null;
 let reconnectAttempts = 0;
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+let connectionTimeout: ReturnType<typeof setTimeout> | null = null;
 let isIntentionallyClosed = false;
+
+/**
+ * Clean up any pending timeouts and close the current WebSocket.
+ */
+function cleanup(): void {
+  if (connectionTimeout) {
+    clearTimeout(connectionTimeout);
+    connectionTimeout = null;
+  }
+  if (ws) {
+    // Remove handlers to prevent callbacks during cleanup
+    ws.onopen = null;
+    ws.onmessage = null;
+    ws.onclose = null;
+    ws.onerror = null;
+    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+      ws.close();
+    }
+    ws = null;
+  }
+}
 
 /**
  * Connect to the backend WebSocket.
@@ -50,9 +73,10 @@ export function connect(): void {
     return;
   }
 
+  // If stuck in CONNECTING state, clean up and try again
   if (ws?.readyState === WebSocket.CONNECTING) {
-    console.log('[WS] Connection in progress');
-    return;
+    console.log('[WS] Previous connection stuck, cleaning up');
+    cleanup();
   }
 
   isIntentionallyClosed = false;
@@ -65,6 +89,16 @@ export function connect(): void {
     ws.onmessage = handleMessage;
     ws.onclose = handleClose;
     ws.onerror = handleError;
+
+    // Set connection timeout - if handshake doesn't complete, force reconnect
+    connectionTimeout = setTimeout(() => {
+      if (ws?.readyState === WebSocket.CONNECTING) {
+        console.warn('[WS] Connection timeout - handshake did not complete');
+        cleanup();
+        useStore.getState().setConnected(false);
+        scheduleReconnect();
+      }
+    }, CONNECTION_TIMEOUT_MS);
   } catch (error) {
     console.error('[WS] Failed to create WebSocket:', error);
     scheduleReconnect();
@@ -82,11 +116,7 @@ export function disconnect(): void {
     reconnectTimeout = null;
   }
 
-  if (ws) {
-    ws.close();
-    ws = null;
-  }
-
+  cleanup();
   useStore.getState().setConnected(false);
   console.log('[WS] Disconnected');
 }
@@ -119,6 +149,11 @@ export function isConnected(): boolean {
 // --- Internal handlers ---
 
 function handleOpen(): void {
+  // Clear connection timeout since we connected successfully
+  if (connectionTimeout) {
+    clearTimeout(connectionTimeout);
+    connectionTimeout = null;
+  }
   console.log('[WS] Connected');
   reconnectAttempts = 0;
   useStore.getState().setConnected(true);
@@ -155,6 +190,11 @@ function handleMessage(event: MessageEvent): void {
 }
 
 function handleClose(event: CloseEvent): void {
+  // Clear connection timeout
+  if (connectionTimeout) {
+    clearTimeout(connectionTimeout);
+    connectionTimeout = null;
+  }
   console.log(`[WS] Closed: code=${event.code}, reason=${event.reason}`);
   ws = null;
   useStore.getState().setConnected(false);
@@ -166,10 +206,20 @@ function handleClose(event: CloseEvent): void {
 
 function handleError(event: Event): void {
   console.error('[WS] Error:', event);
+  // Note: The close event usually follows an error event, so reconnection
+  // will be handled by handleClose. However, if the WebSocket is still in
+  // CONNECTING state after an error (edge case), the connection timeout
+  // will handle cleanup and reconnection.
 }
 
 function scheduleReconnect(): void {
   if (isIntentionallyClosed) return;
+
+  // Don't schedule if already scheduled
+  if (reconnectTimeout) {
+    console.log('[WS] Reconnect already scheduled');
+    return;
+  }
 
   // Calculate delay with exponential backoff
   const delay = Math.min(
@@ -180,6 +230,7 @@ function scheduleReconnect(): void {
   console.log(`[WS] Reconnecting in ${delay}ms (attempt ${reconnectAttempts + 1})`);
 
   reconnectTimeout = setTimeout(() => {
+    reconnectTimeout = null; // Clear before calling connect
     reconnectAttempts++;
     connect();
   }, delay);

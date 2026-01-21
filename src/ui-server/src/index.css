@@ -244,9 +244,20 @@ button:focus-visible {
 }
 
 .stdlib-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
   padding: var(--spacing-sm) var(--spacing-md);
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
+}
+.stdlib-toolbar .search-box {
+  flex: 1;
+}
+.stdlib-total {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .stdlib-list {

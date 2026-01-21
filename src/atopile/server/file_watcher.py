@@ -4,7 +4,6 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
-from typing import Any
 
 from faebryk.libs.util import FileChangedWatcher
 

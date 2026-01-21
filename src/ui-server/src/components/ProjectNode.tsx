@@ -119,7 +119,7 @@ export const ProjectNode = memo(function ProjectNode({
         })
         // Fetch modules when expanding (for entry point picker)
         if (willExpand && onProjectExpand) {
-          onProjectExpand(project.path)
+          onProjectExpand(project.root)
         }
       }}
     >

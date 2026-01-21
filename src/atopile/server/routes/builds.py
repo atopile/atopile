@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -20,13 +21,15 @@ router = APIRouter(tags=["builds"])
 @router.get("/api/summary")
 async def get_summary(ctx: AppContext = Depends(get_ctx)):
     """Get build summary including active builds and build history."""
-    return builds_domain.handle_get_summary(ctx)
+    # Run in thread pool to avoid blocking the event loop
+    return await asyncio.to_thread(builds_domain.handle_get_summary, ctx)
 
 
 @router.post("/api/build", response_model=BuildResponse)
 async def start_build(request: BuildRequest):
     """Start a new build."""
-    response = builds_domain.handle_start_build(request)
+    # Run in thread pool to avoid blocking the event loop
+    response = await asyncio.to_thread(builds_domain.handle_start_build, request)
     if not response.success and response.build_id is None:
         raise HTTPException(status_code=400, detail=response.message)
     return response
@@ -83,4 +86,7 @@ async def get_build_history(
     limit: int = Query(50, ge=1, le=500, description="Maximum results"),
 ):
     """Get build history from the database."""
-    return builds_domain.handle_get_build_history(project_root, status, limit)
+    # Run in thread pool to avoid blocking the event loop (DB operations)
+    return await asyncio.to_thread(
+        builds_domain.handle_get_build_history, project_root, status, limit
+    )

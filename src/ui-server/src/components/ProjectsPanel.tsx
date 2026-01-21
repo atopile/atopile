@@ -22,7 +22,7 @@ export const mockProjects: Project[] = [
     id: 'my-board',
     name: 'my-board',
     type: 'project',
-    path: '~/projects/my-board',
+    root: '~/projects/my-board',
     summary: 'Main development board with sensors and connectivity',
     builds: [
       {
@@ -89,7 +89,7 @@ export const mockProjects: Project[] = [
     id: 'sensor-hub',
     name: 'sensor-hub',
     type: 'project',
-    path: '~/projects/sensor-hub',
+    root: '~/projects/sensor-hub',
     summary: 'Multi-sensor aggregation board with I2C hub',
     builds: [
       {
@@ -117,7 +117,7 @@ export const mockProjects: Project[] = [
     id: 'power-module',
     name: 'power-module',
     type: 'project',
-    path: '~/projects/power-module',
+    root: '~/projects/power-module',
     summary: 'High-efficiency power supply with USB-C input',
     builds: [
       {
@@ -162,7 +162,7 @@ export const mockProjects: Project[] = [
     id: 'atopile/bosch-bme280',
     name: 'bosch-bme280',
     type: 'package',
-    path: 'packages/bosch-bme280',
+    root: 'packages/bosch-bme280',
     version: '0.1.2',
     latestVersion: '0.2.0',  // Update available!
     installed: true,
@@ -200,7 +200,7 @@ export const mockProjects: Project[] = [
     id: 'atopile/espressif-esp32-s3',
     name: 'espressif-esp32-s3',
     type: 'package',
-    path: 'packages/espressif-esp32-s3',
+    root: 'packages/espressif-esp32-s3',
     version: '0.1.0',
     latestVersion: '0.1.3',  // Newer version available
     installed: true,
@@ -242,7 +242,7 @@ export const mockProjects: Project[] = [
     id: 'atopile/ti-tlv75901',
     name: 'ti-tlv75901',
     type: 'package',
-    path: 'packages/ti-tlv75901',
+    root: 'packages/ti-tlv75901',
     version: '0.2.0',
     installed: false,
     publisher: 'atopile',
@@ -269,7 +269,7 @@ export const mockProjects: Project[] = [
     id: 'atopile/adi-adxl345',
     name: 'adi-adxl345',
     type: 'package',
-    path: 'packages/adi-adxl345',
+    root: 'packages/adi-adxl345',
     version: '0.1.2',
     installed: false,
     publisher: 'atopile',
@@ -297,7 +297,7 @@ export const mockProjects: Project[] = [
     id: 'atopile/mps-mp2155',
     name: 'mps-mp2155',
     type: 'package',
-    path: 'packages/mps-mp2155',
+    root: 'packages/mps-mp2155',
     version: '0.1.0',
     installed: false,
     publisher: 'atopile',
@@ -320,7 +320,7 @@ export const mockProjects: Project[] = [
     id: 'atopile/buttons',
     name: 'buttons',
     type: 'package',
-    path: 'packages/buttons',
+    root: 'packages/buttons',
     version: '0.4.0',
     latestVersion: '0.5.1',  // Update available!
     installed: true,
@@ -349,7 +349,7 @@ export const mockProjects: Project[] = [
     id: 'atopile/indicator-leds',
     name: 'indicator-leds',
     type: 'package',
-    path: 'packages/indicator-leds',
+    root: 'packages/indicator-leds',
     version: '0.2.5',
     installed: true,
     publisher: 'atopile',
@@ -377,7 +377,7 @@ export const mockProjects: Project[] = [
     id: 'atopile/infineon-dps310',
     name: 'infineon-dps310',
     type: 'package',
-    path: 'packages/infineon-dps310',
+    root: 'packages/infineon-dps310',
     version: '0.1.0',
     installed: false,
     publisher: 'atopile',
@@ -401,7 +401,7 @@ export const mockProjects: Project[] = [
     id: 'community/rp2040-pico',
     name: 'rp2040-pico',
     type: 'package',
-    path: 'packages/rp2040-pico',
+    root: 'packages/rp2040-pico',
     version: '0.3.1',
     installed: false,
     publisher: 'community',
@@ -476,7 +476,7 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
       id: newId,
       name: 'new-project',
       type: 'project',
-      path: `~/projects/${newId}`,
+      root: `~/projects/${newId}`,
       summary: '',
       builds: [
         {
@@ -577,7 +577,7 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
     .map((p, idx) => ({
       id: p.id,
       name: p.name,
-      path: p.path,
+      path: p.root,
       isActive: idx === 0  // First project is active by default
     }))
   
@@ -587,7 +587,7 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
     if (onPackageInstall) {
       // Find the project root for the target project
       const targetProject = localProjects.find(p => p.id === targetProjectId)
-      const projectRoot = targetProject?.path || targetProjectId
+      const projectRoot = targetProject?.root || targetProjectId
       onPackageInstall(packageId, projectRoot)
     } else {
       // Fallback for development/testing
@@ -740,9 +740,9 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
               onFileClick={onFileClick}
               onDependencyVersionChange={onDependencyVersionChange}
               onOpenRepository={onOpenRepository}
-              availableModules={projectModules[project.path] || []}
-              projectFiles={projectFiles[project.path] || []}
-              projectDependencies={projectDependencies[project.path] || []}
+              availableModules={projectModules[project.root] || []}
+              projectFiles={projectFiles[project.root] || []}
+              projectDependencies={projectDependencies[project.root] || []}
             />
           )
         ))}

@@ -2,7 +2,7 @@ import { useState, memo, useCallback, useMemo, useEffect, useRef } from 'react'
 import {
   ChevronDown, ChevronRight, Search, Package, Layers,
   ExternalLink, Copy, Check, AlertTriangle,
-  RefreshCw, Play
+  RefreshCw
 } from 'lucide-react'
 import type {
   BOMComponent as BOMComponentAPI,
@@ -658,7 +658,6 @@ export function BOMPanel({
         <div className="bom-empty-state">
           {is404 ? (
             <>
-              <Play size={24} />
               <span className="empty-title">No BOM data available</span>
               <span className="empty-description">
                 Run a build to generate the Bill of Materials
@@ -681,7 +680,6 @@ export function BOMPanel({
       <div className="bom-panel">
         {toolbar}
         <div className="bom-empty-state">
-          <Play size={24} />
           <span className="empty-title">No BOM data available</span>
           <span className="empty-description">
             Select a project and run a build to generate the Bill of Materials

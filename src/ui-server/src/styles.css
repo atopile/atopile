@@ -5681,10 +5681,18 @@ body {
 
 .stdlib-toolbar {
   display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xs);
+  align-items: center;
+  gap: var(--spacing-sm);
   padding: var(--spacing-sm);
   border-bottom: 1px solid var(--border-subtle);
+}
+.stdlib-toolbar .search-box {
+  flex: 1;
+}
+.stdlib-total {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .stdlib-filters {

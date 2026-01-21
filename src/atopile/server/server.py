@@ -25,9 +25,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from atopile.server import build_history
 from atopile.server import build_queue
+from atopile.server.domains import artifacts as artifacts_domain
 from atopile.server.domains import packages as packages_domain
 from atopile.server import project_discovery
 from atopile.server.app_context import AppContext
+from atopile.server.file_watcher import PollingFileWatcher
 from atopile.server.state import server_state
 from atopile.logging import get_central_log_db
 
@@ -422,6 +424,105 @@ async def _load_packages_background(ctx: AppContext) -> None:
         await server_state.set_packages([], error=str(exc))
 
 
+async def _refresh_stdlib_state() -> None:
+    from atopile.server.state import StdLibItem as StateStdLibItem
+    from atopile.server import stdlib as stdlib_domain
+
+    items = stdlib_domain.refresh_standard_library()
+    state_items = [StateStdLibItem.model_validate(item.model_dump()) for item in items]
+    await server_state.set_stdlib_items(state_items)
+
+
+async def _refresh_bom_state() -> None:
+    selected = server_state._state.selected_project_root
+    if not selected:
+        return
+
+    target_names = server_state._state.selected_target_names or []
+    target = target_names[0] if target_names else "default"
+
+    try:
+        bom_json = artifacts_domain.handle_get_bom(selected, target)
+    except Exception as exc:
+        await server_state.set_bom_data(None, str(exc))
+        return
+
+    if bom_json is None:
+        await server_state.set_bom_data(None, "BOM not found. Run build first.")
+        return
+
+    await server_state.set_bom_data(bom_json)
+
+
+async def _refresh_variables_state() -> None:
+    selected = server_state._state.selected_project_root
+    if not selected:
+        return
+
+    target_names = server_state._state.selected_target_names or []
+    target = target_names[0] if target_names else "default"
+
+    try:
+        variables_json = artifacts_domain.handle_get_variables(selected, target)
+    except Exception as exc:
+        await server_state.set_variables_data(None, str(exc))
+        return
+
+    if variables_json is None:
+        await server_state.set_variables_data(
+            None, "Variables not found. Run build first."
+        )
+        return
+
+    await server_state.set_variables_data(variables_json)
+
+
+async def _watch_stdlib_background() -> None:
+    from atopile.server import stdlib as stdlib_domain
+
+    watcher = PollingFileWatcher(
+        "stdlib",
+        paths=stdlib_domain.get_stdlib_watch_paths(),
+        on_change=lambda _result: _refresh_stdlib_state(),
+        interval_s=1.0,
+    )
+    await watcher.run()
+
+
+async def _watch_bom_background() -> None:
+    def _paths() -> list[Path]:
+        selected = server_state._state.selected_project_root
+        if not selected:
+            return []
+        return [Path(selected) / "build" / "builds"]
+
+    watcher = PollingFileWatcher(
+        "bom",
+        paths_provider=_paths,
+        on_change=lambda _result: _refresh_bom_state(),
+        glob="**/*.bom.json",
+        interval_s=1.0,
+    )
+    await watcher.run()
+
+
+async def _watch_variables_background() -> None:
+    def _paths() -> list[Path]:
+        selected = server_state._state.selected_project_root
+        if not selected:
+            return []
+        return [Path(selected) / "build" / "builds"]
+
+    watcher = PollingFileWatcher(
+        "variables",
+        paths_provider=_paths,
+        on_change=lambda _result: _refresh_variables_state(),
+        glob="**/*.variables.json",
+        interval_s=1.0,
+    )
+    await watcher.run()
+
+
 def create_app(
     summary_file: Optional[Path] = None,
     logs_base: Optional[Path] = None,
@@ -460,6 +561,10 @@ def create_app(
         ws_manager.set_event_loop(loop)
         server_state.set_event_loop(loop)
         server_state.set_workspace_paths(ctx.workspace_paths)
+
+        asyncio.create_task(_watch_stdlib_background())
+        asyncio.create_task(_watch_bom_background())
+        asyncio.create_task(_watch_variables_background())
 
         if not ctx.workspace_paths:
             log.info("No workspace paths configured, skipping initial state population")

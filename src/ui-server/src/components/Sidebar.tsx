@@ -1195,7 +1195,7 @@ export function Sidebar() {
               // Get full path from project root
               const project = projects.find(p => p.id === projectId);
               if (project) {
-                const fullPath = `${project.path}/${filePath}`;
+                const fullPath = `${project.root}/${filePath}`;
                 action('openFile', { file: fullPath });
               }
             }}

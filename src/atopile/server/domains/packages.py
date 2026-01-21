@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import string
 import subprocess
 import threading
 import time
@@ -39,9 +38,50 @@ _REGISTRY_CACHE_TTL = int(os.getenv("ATOPILE_REGISTRY_CACHE_TTL", "0"))
 
 # TODO: HACK - Registry API doesn't support listing all packages (empty query returns 0).
 # Workaround: query multiple search terms and merge results to approximate "get all".
-# These terms were empirically chosen for maximum coverage (~149 packages as of 2025-01).
+# These terms were empirically chosen for maximum coverage (~140 packages as of 2025-01).
+# Single-character searches return few results; multi-character domain terms work better.
 # Proper fix: add a /v1/packages/list endpoint to the registry API.
-_REGISTRY_SEARCH_TERMS = list(string.ascii_lowercase + string.digits)
+_REGISTRY_SEARCH_TERMS = [
+    # Publisher prefixes (most packages are under 'atopile')
+    "atopile",
+    # Domain-specific terms for maximum coverage
+    "sensor",
+    "i2c",
+    "spi",
+    "power",
+    "led",
+    "stm",
+    "usb",
+    "esp",
+    "rp",
+    "adc",
+    "dac",
+    "motor",
+    "battery",
+    "charger",
+    "regulator",
+    "capacitor",
+    "connector",
+    "mcu",
+    "fpga",
+    "rf",
+    "ethernet",
+    "can",
+    "uart",
+    "gpio",
+    "pwm",
+    "clock",
+    "eeprom",
+    "flash",
+    "display",
+    "audio",
+    "accelerometer",
+    "gyro",
+    "magnetometer",
+    "temperature",
+    "pressure",
+    "humidity",
+]
 
 # Track active package operations
 _active_package_ops: dict[str, dict[str, object]] = {}

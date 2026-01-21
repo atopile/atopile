@@ -67,7 +67,7 @@ export interface Project {
   id: string;
   name: string;
   type: 'project' | 'package';
-  path: string;
+  root: string;  // Project root path (matches backend 'root' field)
   version?: string;
   latestVersion?: string;  // Latest available version (for update checking)
   installed?: boolean;
