@@ -172,6 +172,41 @@ CREATE INDEX IF NOT EXISTS idx_logs_logger_name ON logs(logger_name);
 CREATE INDEX IF NOT EXISTS idx_logs_audience ON logs(audience);
 """
 
+# Schema for the test logs table (different from build logs)
+TEST_SCHEMA_SQL = """
+-- Test runs table: maps test run to a unique test_run_id
+CREATE TABLE IF NOT EXISTS test_runs (
+    test_run_id TEXT PRIMARY KEY,
+    run_name TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_test_runs_timestamp ON test_runs(timestamp);
+
+-- Test logs table: all log entries from all test runs
+CREATE TABLE IF NOT EXISTS test_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    test_run_id TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    test TEXT NOT NULL,
+    level TEXT NOT NULL,
+    logger_name TEXT NOT NULL DEFAULT '',
+    audience TEXT NOT NULL DEFAULT 'developer',
+    message TEXT NOT NULL,
+    ato_traceback TEXT,
+    python_traceback TEXT,
+    objects TEXT,
+    FOREIGN KEY (test_run_id) REFERENCES test_runs(test_run_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_test_logs_test_run_id ON test_logs(test_run_id);
+CREATE INDEX IF NOT EXISTS idx_test_logs_test ON test_logs(test);
+CREATE INDEX IF NOT EXISTS idx_test_logs_level ON test_logs(level);
+CREATE INDEX IF NOT EXISTS idx_test_logs_logger_name ON test_logs(logger_name);
+CREATE INDEX IF NOT EXISTS idx_test_logs_audience ON test_logs(audience);
+"""
+
 
 class Audience(StrEnum):
     """Who a log message is intended for."""
@@ -206,11 +241,34 @@ class LogEntry:
     objects: dict | None = None
 
 
+@dataclass
+class TestLogEntry:
+    """A structured test log entry."""
+
+    test_run_id: str
+    timestamp: str
+    test: str  # Name of the Python test being run
+    level: Level
+    message: str
+    logger_name: str = ""
+    audience: Audience = Audience.DEVELOPER
+    ato_traceback: str | None = None
+    python_traceback: str | None = None
+    objects: dict | None = None
+
+
 def get_central_log_db() -> Path:
     """Get the path to the central log database."""
     from faebryk.libs.paths import get_log_dir
 
     return get_log_dir() / "build_logs.db"
+
+
+def get_test_log_db() -> Path:
+    """Get the path to the test log database."""
+    from faebryk.libs.paths import get_log_dir
+
+    return get_log_dir() / "test_logs.db"
 
 
 def generate_build_id(project_path: str, target: str, timestamp: str) -> str:
@@ -219,6 +277,14 @@ def generate_build_id(project_path: str, target: str, timestamp: str) -> str:
 
     # Create a deterministic but unique ID
     content = f"{project_path}:{target}:{timestamp}"
+    return hashlib.sha256(content.encode()).hexdigest()[:16]
+
+
+def generate_test_run_id(run_name: str, timestamp: str) -> str:
+    """Generate a unique test run ID from run name and timestamp."""
+    import hashlib
+
+    content = f"{run_name}:{timestamp}"
     return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
@@ -408,6 +474,313 @@ class SQLiteLogWriter:
             except sqlite3.Error:
                 pass
             self._local.connection = None
+
+
+class SQLiteTestLogWriter:
+    """Thread-safe SQLite test log writer with WAL mode and batching."""
+
+    BATCH_SIZE = 50
+    FLUSH_INTERVAL = 1.0  # seconds
+
+    # Singleton instance for test database
+    _instance: SQLiteTestLogWriter | None = None
+    _instance_lock = threading.Lock()
+
+    @classmethod
+    def get_instance(cls) -> SQLiteTestLogWriter:
+        """Get the singleton instance of the test log writer."""
+        with cls._instance_lock:
+            if cls._instance is None:
+                cls._instance = cls(get_test_log_db())
+            return cls._instance
+
+    @classmethod
+    def close_instance(cls) -> None:
+        """Close the singleton instance."""
+        with cls._instance_lock:
+            if cls._instance is not None:
+                cls._instance.close()
+                cls._instance = None
+
+    def __init__(self, db_path: Path):
+        self._db_path = db_path
+        self._local = threading.local()
+        self._buffer: list[TestLogEntry] = []
+        self._buffer_lock = threading.Lock()
+        self._last_flush = datetime.now()
+        self._closed = False
+        self._init_database()
+
+    def _get_connection(self) -> sqlite3.Connection:
+        """Get thread-local database connection."""
+        if not hasattr(self._local, "connection") or self._local.connection is None:
+            self._local.connection = sqlite3.connect(
+                str(self._db_path),
+                check_same_thread=False,
+                timeout=30.0,
+            )
+            # Configure for concurrent access
+            self._local.connection.execute("PRAGMA journal_mode=WAL")
+            self._local.connection.execute("PRAGMA synchronous=NORMAL")
+            self._local.connection.execute("PRAGMA temp_store=MEMORY")
+            self._local.connection.execute("PRAGMA busy_timeout=30000")
+        return self._local.connection
+
+    def _init_database(self) -> None:
+        """Initialize the database schema."""
+        self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = self._get_connection()
+        conn.executescript(TEST_SCHEMA_SQL)
+        conn.commit()
+
+    def register_test_run(self, run_name: str, timestamp: str) -> str:
+        """
+        Register a new test run and return its test_run_id.
+
+        If a test run with the same name/timestamp already exists,
+        returns the existing test_run_id.
+        """
+        test_run_id = generate_test_run_id(run_name, timestamp)
+        conn = self._get_connection()
+        try:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO test_runs (test_run_id, run_name, timestamp)
+                VALUES (?, ?, ?)
+                """,
+                (test_run_id, run_name, timestamp),
+            )
+            conn.commit()
+        except sqlite3.Error:
+            pass  # Best effort
+        return test_run_id
+
+    def write(self, entry: TestLogEntry) -> None:
+        """Write a test log entry (batched for performance)."""
+        if self._closed:
+            return
+
+        with self._buffer_lock:
+            self._buffer.append(entry)
+            should_flush = (
+                len(self._buffer) >= self.BATCH_SIZE
+                or (datetime.now() - self._last_flush).total_seconds()
+                > self.FLUSH_INTERVAL
+            )
+
+        if should_flush:
+            self.flush()
+
+    def _serialize_objects(self, objects: dict | None) -> str | None:
+        """Serialize objects dict to JSON string."""
+        if objects is None:
+            return None
+        try:
+            return json.dumps(objects)
+        except (TypeError, ValueError):
+            return None
+
+    def flush(self) -> None:
+        """Force write all buffered entries."""
+        with self._buffer_lock:
+            if not self._buffer:
+                return
+            entries = self._buffer.copy()
+            self._buffer.clear()
+            self._last_flush = datetime.now()
+
+        if not entries:
+            return
+
+        conn = self._get_connection()
+        try:
+            conn.executemany(
+                """
+                INSERT INTO test_logs (
+                    test_run_id, timestamp, test, level, logger_name, audience,
+                    message, ato_traceback, python_traceback, objects
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        e.test_run_id,
+                        e.timestamp,
+                        e.test,
+                        e.level,
+                        e.logger_name,
+                        e.audience,
+                        e.message,
+                        e.ato_traceback,
+                        e.python_traceback,
+                        self._serialize_objects(e.objects),
+                    )
+                    for e in entries
+                ],
+            )
+            conn.commit()
+        except sqlite3.Error:
+            # On error, try to reconnect and retry once
+            self._local.connection = None
+            try:
+                conn = self._get_connection()
+                conn.executemany(
+                    """
+                    INSERT INTO test_logs (
+                        test_run_id, timestamp, test, level, logger_name, audience,
+                        message, ato_traceback, python_traceback, objects
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            e.test_run_id,
+                            e.timestamp,
+                            e.test,
+                            e.level,
+                            e.logger_name,
+                            e.audience,
+                            e.message,
+                            e.ato_traceback,
+                            e.python_traceback,
+                            self._serialize_objects(e.objects),
+                        )
+                        for e in entries
+                    ],
+                )
+                conn.commit()
+            except sqlite3.Error:
+                pass  # Best effort - don't crash tests for logging failures
+
+    def close(self) -> None:
+        """Close the writer and flush pending entries."""
+        self._closed = True
+        self.flush()
+        if hasattr(self._local, "connection") and self._local.connection is not None:
+            try:
+                self._local.connection.close()
+            except sqlite3.Error:
+                pass
+            self._local.connection = None
+
+
+class TestLogger:
+    """Typed logging interface for structured test logs."""
+
+    def __init__(self, test_run_id: str, test: str = ""):
+        self._test_run_id = test_run_id
+        self._test = test
+        self._writer: SQLiteTestLogWriter | None = None
+
+    def set_test(self, test: str) -> None:
+        """Update the current test name."""
+        self._test = test
+
+    def set_writer(self, writer: SQLiteTestLogWriter) -> None:
+        """Set the SQLite writer for this logger."""
+        self._writer = writer
+
+    @property
+    def test_run_id(self) -> str:
+        """Get the test run ID for this logger."""
+        return self._test_run_id
+
+    def log(
+        self,
+        level: Level,
+        message: str,
+        *,
+        logger_name: str = "",
+        audience: Audience = Audience.DEVELOPER,
+        ato_traceback: str | None = None,
+        python_traceback: str | None = None,
+        objects: dict | None = None,
+    ) -> None:
+        """Log a structured message to the test database."""
+        if self._writer is None:
+            return
+
+        entry = TestLogEntry(
+            test_run_id=self._test_run_id,
+            timestamp=datetime.now().isoformat(),
+            test=self._test,
+            level=level,
+            message=message,
+            logger_name=logger_name,
+            audience=audience,
+            ato_traceback=ato_traceback,
+            python_traceback=python_traceback,
+            objects=objects,
+        )
+        self._writer.write(entry)
+
+    def flush(self) -> None:
+        """Flush any buffered log entries."""
+        if self._writer is not None:
+            self._writer.flush()
+
+
+# Test logger registry (keyed by test_run_id)
+_test_loggers: dict[str, TestLogger] = {}
+
+
+def get_test_logger(
+    run_name: str,
+    timestamp: str | None = None,
+    test: str = "",
+) -> TestLogger:
+    """
+    Get or create a test logger for a test run.
+
+    All logs go to the test database at ~/.local/share/atopile/test_logs.db.
+    Each test run is identified by a unique test_run_id generated from name+timestamp.
+
+    Args:
+        run_name: Name of the test run (e.g., "pytest-run")
+        timestamp: Test run timestamp (defaults to NOW)
+        test: Initial test name
+
+    Returns:
+        TestLogger instance for this test run
+    """
+    if timestamp is None:
+        timestamp = NOW
+
+    # Get the test writer
+    writer = SQLiteTestLogWriter.get_instance()
+
+    # Register the test run and get its ID
+    test_run_id = writer.register_test_run(run_name, timestamp)
+
+    if test_run_id not in _test_loggers:
+        test_logger = TestLogger(test_run_id, test)
+        test_logger.set_writer(writer)
+        _test_loggers[test_run_id] = test_logger
+    else:
+        test_logger = _test_loggers[test_run_id]
+        test_logger.set_test(test)
+
+    return test_logger
+
+
+def close_test_logger(test_run_id: str) -> None:
+    """Close and flush a test logger by its test run ID."""
+    if test_run_id in _test_loggers:
+        test_logger = _test_loggers.pop(test_run_id)
+        test_logger.flush()
+
+
+def close_all_test_loggers() -> None:
+    """
+    Close all test loggers and the test SQLite writer.
+
+    This should be called at the end of a test session to ensure
+    all logs are flushed and resources are properly released.
+    """
+    # Flush and close all test loggers
+    for test_run_id in list(_test_loggers.keys()):
+        close_test_logger(test_run_id)
+
+    # Close the test writer
+    SQLiteTestLogWriter.close_instance()
 
 
 class BuildLogger:
@@ -772,10 +1145,10 @@ def setup_logging(
 def update_logger_stage(stage: str | None) -> None:
     """
     Update the current stage for database logging.
-    
+
     This updates the build logger's stage so that subsequent log entries
     are tagged with the correct stage name. Also logs that the stage has started.
-    
+
     Args:
         stage: The name of the current build stage, or None to clear it
     """
@@ -789,11 +1162,69 @@ def update_logger_stage(stage: str | None) -> None:
             break
 
 
+def setup_test_logging(
+    run_name: str,
+    test: str = "",
+    timestamp: str | None = None,
+) -> TestLogger | None:
+    """
+    Set up logging for test workers.
+
+    This sets up logging to write to the test_logs.db database instead of
+    build_logs.db. The schema uses test_run_id and test columns instead of
+    build_id and stage.
+
+    Args:
+        run_name: Name of the test run (e.g., "pytest-run")
+        test: Initial test name (the Python test being run)
+        timestamp: Test run timestamp (defaults to NOW)
+
+    Returns:
+        TestLogger instance for this test run
+    """
+    root_logger = logging.getLogger()
+
+    try:
+        # Create a test logger
+        test_logger = get_test_logger(run_name, timestamp, test=test)
+
+        # Attach to root logger's handler
+        for handler in root_logger.handlers:
+            if isinstance(handler, LogHandler):
+                handler._test_logger = test_logger
+                break
+
+        return test_logger
+    except Exception:
+        # Don't fail if database logging setup fails
+        return None
+
+
+def update_test_name(test: str | None) -> None:
+    """
+    Update the current test name for test database logging.
+
+    This updates the test logger's test name so that subsequent log entries
+    are tagged with the correct test name.
+
+    Args:
+        test: The name of the current test, or None to clear it
+    """
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers:
+        if isinstance(handler, LogHandler):
+            test_logger = getattr(handler, "_test_logger", None)
+            if test_logger is not None:
+                test_logger.set_test(test or "")
+                break
+
+
 # Register atexit handler to ensure logs are flushed on process exit
 # This is a safety net for subprocess workers that may exit unexpectedly
 import atexit
 
 atexit.register(close_all_build_loggers)
+atexit.register(close_all_test_loggers)
 
 
 # =============================================================================
@@ -909,6 +1340,7 @@ class LogHandler(RichHandler):
         self._logged_exceptions = set()
         self._is_terminal = force_terminal or console.is_terminal
         self._build_logger = build_logger
+        self._test_logger: TestLogger | None = None
         # Note: We don't add _atopile_log_filter here because we want all logs
         # to go to the database. The filter is applied manually in emit() for
         # console output only.
@@ -1068,7 +1500,17 @@ class LogHandler(RichHandler):
         return Level.DEBUG
 
     def _write_to_sqlite(self, record: logging.LogRecord) -> None:
-        """Write log record to SQLite via BuildLogger if available."""
+        """Write log record to SQLite via BuildLogger or TestLogger if available."""
+        # Write to build logger if available
+        if self._build_logger is not None:
+            self._write_to_build_logger(record)
+
+        # Write to test logger if available
+        if self._test_logger is not None:
+            self._write_to_test_logger(record)
+
+    def _write_to_build_logger(self, record: logging.LogRecord) -> None:
+        """Write log record to build database via BuildLogger."""
         if self._build_logger is None:
             return
 
@@ -1114,6 +1556,57 @@ class LogHandler(RichHandler):
                     )
 
                 self._build_logger.log(
+                    level,
+                    message,
+                    logger_name=record.name,
+                    python_traceback=python_tb,
+                )
+        except Exception:
+            pass  # Don't fail if SQLite logging fails
+
+    def _write_to_test_logger(self, record: logging.LogRecord) -> None:
+        """Write log record to test database via TestLogger."""
+        if self._test_logger is None:
+            return
+
+        try:
+            level = self._level_to_enum(record.levelno)
+
+            # Handle user exceptions specially
+            exc_value = None
+            if record.exc_info and record.exc_info[1] is not None:
+                exc_value = record.exc_info[1]
+
+            if exc_value and isinstance(exc_value, _BaseBaseUserException):
+                # Use unified message extraction
+                message = get_exception_display_message(exc_value)
+
+                # Get Python traceback
+                exc_type, exc_val, exc_tb = record.exc_info  # type: ignore[misc]
+                python_tb = "".join(
+                    traceback.format_exception(exc_type, exc_val, exc_tb)
+                )
+
+                self._test_logger.log(
+                    level,
+                    message,
+                    logger_name=record.name,
+                    audience=Audience.USER,
+                    python_traceback=python_tb,
+                )
+            else:
+                # Regular log message
+                message = record.getMessage()
+
+                # Add Python traceback if present
+                python_tb = None
+                if record.exc_info and record.exc_info[1] is not None:
+                    exc_type, exc_val, exc_tb = record.exc_info
+                    python_tb = "".join(
+                        traceback.format_exception(exc_type, exc_val, exc_tb)
+                    )
+
+                self._test_logger.log(
                     level,
                     message,
                     logger_name=record.name,
