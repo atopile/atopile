@@ -218,13 +218,9 @@ class OrchestratorState:
 
         # Check for TodoWrite tool calls
         todos_updated = False
-        # Debug logging
-        if chunk.tool_name:
-            logger.info(f"[TODO DEBUG] chunk.type={chunk.type}, tool_name={chunk.tool_name}")
         if chunk.type == OutputType.TOOL_USE and chunk.tool_name == "TodoWrite":
-            logger.info(f"[TODO DEBUG] Found TodoWrite! Processing...")
             todos_updated = self._handle_todo_update(agent_id, chunk)
-            logger.info(f"[TODO DEBUG] todos_updated={todos_updated}")
+            logger.debug(f"Updated todos for agent {agent_id}: {todos_updated}")
 
         # Update agent state
         def updater(agent: AgentState) -> AgentState:
