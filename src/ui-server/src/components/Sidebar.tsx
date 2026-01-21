@@ -1373,7 +1373,7 @@ export function Sidebar() {
           />
         </CollapsibleSection>
 
-        {/* Packages Section - auto-size to content, or use manual height if user resized */}
+        {/* Packages Section - auto-size to content with max height, or use manual height if user resized */}
         <CollapsibleSection
           id="packages"
           title="Packages"
@@ -1383,6 +1383,7 @@ export function Sidebar() {
           collapsed={collapsedSections.has('packages')}
           onToggle={() => toggleSection('packages')}
           height={sectionHeights.packages}
+          maxHeight={sectionHeights.packages ? undefined : 350}
           onResizeStart={(e) => handleResizeStart('packages', e)}
         >
           <ProjectsPanel
