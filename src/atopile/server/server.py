@@ -422,14 +422,6 @@ async def _load_packages_background(ctx: AppContext) -> None:
         await server_state.set_packages([], error=str(exc))
 
 
-
-
-
-
-
-
-
-
 def create_app(
     summary_file: Optional[Path] = None,
     logs_base: Optional[Path] = None,
@@ -501,6 +493,7 @@ def create_app(
     app.include_router(packages_routes.router)
 
     return app
+
 
 def find_free_port() -> int:
     """Find a free port to use."""

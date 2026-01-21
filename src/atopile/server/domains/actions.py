@@ -120,9 +120,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             )
 
         if action == "build":
-            project_root = payload.get("projectRoot") or payload.get(
-                "project_root", ""
-            )
+            project_root = payload.get("projectRoot") or payload.get("project_root", "")
             targets = payload.get("targets", [])
             entry = payload.get("entry")
             standalone = payload.get("standalone", False)
@@ -212,9 +210,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     try:
                         project_config = ProjectConfig.from_path(project_path)
                         all_targets = (
-                            list(project_config.builds.keys())
-                            if project_config
-                            else []
+                            list(project_config.builds.keys()) if project_config else []
                         )
                         if all_targets:
                             build_ids = []
@@ -313,9 +309,13 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
         if action == "fetchModules":
             project_root = payload.get("projectRoot", "")
             if project_root:
-                from atopile.server.state import ModuleDefinition as StateModuleDefinition
+                from atopile.server.state import (
+                    ModuleDefinition as StateModuleDefinition,
+                )
 
-                modules = module_discovery.discover_modules_in_project(Path(project_root))
+                modules = module_discovery.discover_modules_in_project(
+                    Path(project_root)
+                )
                 state_modules = [
                     StateModuleDefinition(
                         name=m.name,
@@ -381,14 +381,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 return {"success": False, "error": "No project selected"}
 
             project_path = Path(project_root)
-            bom_path = (
-                project_path / "build" / "builds" / target / f"{target}.bom.json"
-            )
+            bom_path = project_path / "build" / "builds" / target / f"{target}.bom.json"
 
             if not bom_path.exists():
-                await server_state.set_bom_data(
-                    None, "BOM not found. Run build first."
-                )
+                await server_state.set_bom_data(None, "BOM not found. Run build first.")
                 return {"success": True, "info": "BOM not found"}
 
             try:
@@ -436,11 +432,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             project_path = Path(project_root)
             variables_path = (
-                project_path
-                / "build"
-                / "builds"
-                / target
-                / f"{target}.variables.json"
+                project_path / "build" / "builds" / target / f"{target}.variables.json"
             )
 
             if not variables_path.exists():
@@ -518,7 +510,11 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                                 packages_domain.refresh_packages_state(), loop
                             )
                     else:
-                        error_msg = result.stderr.strip() if result.stderr else result.stdout.strip()
+                        error_msg = (
+                            result.stderr.strip()
+                            if result.stderr
+                            else result.stdout.strip()
+                        )
                         error_msg = error_msg[:500] if error_msg else "Unknown error"
                         action_logger.error(
                             f"Failed to install {pkg_spec}: {error_msg}",
@@ -602,26 +598,24 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     )
                     with packages_domain._package_op_lock:
                         if result.returncode == 0:
-                            packages_domain._active_package_ops[op_id][
-                                "status"
-                            ] = "success"
+                            packages_domain._active_package_ops[op_id]["status"] = (
+                                "success"
+                            )
                             loop = server_state._event_loop
                             if loop and loop.is_running():
                                 asyncio.run_coroutine_threadsafe(
                                     packages_domain.refresh_packages_state(), loop
                                 )
                         else:
-                            packages_domain._active_package_ops[op_id][
-                                "status"
-                            ] = "failed"
-                            packages_domain._active_package_ops[op_id][
-                                "error"
-                            ] = result.stderr[:500]
+                            packages_domain._active_package_ops[op_id]["status"] = (
+                                "failed"
+                            )
+                            packages_domain._active_package_ops[op_id]["error"] = (
+                                result.stderr[:500]
+                            )
                 except Exception as exc:
                     with packages_domain._package_op_lock:
-                        packages_domain._active_package_ops[op_id][
-                            "status"
-                        ] = "failed"
+                        packages_domain._active_package_ops[op_id]["status"] = "failed"
                         packages_domain._active_package_ops[op_id]["error"] = str(exc)
 
             threading.Thread(target=run_remove, daemon=True).start()

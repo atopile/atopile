@@ -89,4 +89,3 @@ class PollingFileWatcher:
             len(result.changed),
             len(result.deleted),
         )
-

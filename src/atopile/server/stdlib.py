@@ -9,6 +9,7 @@ import inspect
 import logging
 import textwrap
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -61,12 +62,15 @@ class StdLibResponse(BaseModel):
     total: int
 
 
-_stdlib_typegraph_cache: tuple[
-    "graph.GraphView",
-    "fbrk.TypeGraph",
-    dict[str, type["fabll.Node"]],
-    dict[str, "graph.BoundNode"],
-] | None = None
+_stdlib_typegraph_cache: (
+    tuple[
+        "graph.GraphView",
+        "fbrk.TypeGraph",
+        dict[str, type["fabll.Node"]],
+        dict[str, "graph.BoundNode"],
+    ]
+    | None
+) = None
 
 
 def _get_stdlib_typegraph_cache() -> tuple[
@@ -103,6 +107,21 @@ def _get_stdlib_typegraph_cache() -> tuple[
 
     _stdlib_typegraph_cache = (g, tg, type_map, type_nodes)
     return _stdlib_typegraph_cache
+
+
+def get_stdlib_watch_paths() -> list[Path]:
+    """Return filesystem paths for stdlib allowlist types."""
+    from atopile.compiler.ast_visitor import STDLIB_ALLOWLIST
+
+    paths: set[Path] = set()
+    for obj in STDLIB_ALLOWLIST:
+        try:
+            source = inspect.getsourcefile(obj)
+        except Exception:
+            source = None
+        if source:
+            paths.add(Path(source))
+    return sorted(paths)
 
 
 def _get_item_type_from_typegraph(
@@ -329,9 +348,7 @@ def _extract_children_from_typegraph(
     return children
 
 
-def _extract_usage_example(
-    cls: type, tg: "fbrk.TypeGraph | None"
-) -> str | None:
+def _extract_usage_example(cls: type, tg: "fbrk.TypeGraph | None") -> str | None:
     """Extract usage example from has_usage_example trait using the TypeGraph."""
     if tg is None:
         return None
@@ -476,9 +493,7 @@ def introspect_library() -> list[StdLibItem]:
     for name, obj in type_map.items():
         try:
             type_node = type_nodes.get(name)
-            item_type = _get_item_type_from_typegraph(
-                tg, type_node, obj.__name__
-            )
+            item_type = _get_item_type_from_typegraph(tg, type_node, obj.__name__)
             if item_type is None:
                 continue
 
@@ -531,7 +546,7 @@ def get_standard_library(
     Returns:
         List of standard library items.
     """
-    global _library_cache
+    global _library_cache, _stdlib_typegraph_cache
 
     # Update config if max_depth is provided
     if max_depth is not None:
@@ -542,7 +557,18 @@ def get_standard_library(
 
     if _library_cache is None or force_refresh:
         log.info("Loading standard library data...")
+        _stdlib_typegraph_cache = None
         _library_cache = introspect_library()
         log.info(f"Loaded {len(_library_cache)} standard library items")
 
     return _library_cache
+
+
+def refresh_standard_library(
+    max_depth: int | None = None,
+) -> list[StdLibItem]:
+    """Clear stdlib caches and rebuild."""
+    global _library_cache, _stdlib_typegraph_cache
+    _library_cache = None
+    _stdlib_typegraph_cache = None
+    return get_standard_library(force_refresh=True, max_depth=max_depth)

@@ -225,10 +225,14 @@ async def get_all_registry_packages_async() -> list[PackageInfo]:
             log.warning(f"Failed to search registry for '{term}': {exc}")
             return []
 
-    log.info(f"[registry] Fetching packages with {len(_REGISTRY_SEARCH_TERMS)} parallel queries")
+    log.info(
+        f"[registry] Fetching packages with {len(_REGISTRY_SEARCH_TERMS)} parallel queries"
+    )
 
     # Run all queries in parallel
-    results = await asyncio.gather(*[fetch_term(term) for term in _REGISTRY_SEARCH_TERMS])
+    results = await asyncio.gather(
+        *[fetch_term(term) for term in _REGISTRY_SEARCH_TERMS]
+    )
 
     # Merge results
     packages_map: dict[str, PackageInfo] = {}
@@ -256,7 +260,9 @@ async def enrich_packages_with_registry_async(
         return packages
 
     registry_data = await get_all_registry_packages_async()
-    registry_map: dict[str, PackageInfo] = {pkg.identifier: pkg for pkg in registry_data}
+    registry_map: dict[str, PackageInfo] = {
+        pkg.identifier: pkg for pkg in registry_data
+    }
 
     enriched: dict[str, PackageInfo] = {}
     for identifier, pkg in packages.items():
@@ -362,7 +368,9 @@ def enrich_packages_with_registry(
         return packages
 
     registry_data = get_all_registry_packages()
-    registry_map: dict[str, PackageInfo] = {pkg.identifier: pkg for pkg in registry_data}
+    registry_map: dict[str, PackageInfo] = {
+        pkg.identifier: pkg for pkg in registry_data
+    }
 
     enriched: dict[str, PackageInfo] = {}
     for identifier, pkg in packages.items():
@@ -470,9 +478,7 @@ async def refresh_packages_state(
     )
 
     await server_state.set_packages(list(state_packages), registry_error)
-    log.info(
-        f"Refreshed packages after install/remove: {len(state_packages)} packages"
-    )
+    log.info(f"Refreshed packages after install/remove: {len(state_packages)} packages")
 
 
 def handle_search_registry(

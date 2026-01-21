@@ -214,9 +214,7 @@ def _run_build_subprocess(
                             )
                             last_stages = current_stages
                 except (json.JSONDecodeError, IOError) as exc:
-                    log.debug(
-                        f"Build {build_id}: error reading summary.json: {exc}"
-                    )
+                    log.debug(f"Build {build_id}: error reading summary.json: {exc}")
 
             time.sleep(poll_interval)
 
