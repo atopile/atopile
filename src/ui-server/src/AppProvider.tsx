@@ -4,44 +4,18 @@
  * This component:
  * - Establishes WebSocket connection to the Python backend
  * - Provides the Zustand store to the component tree
- * - Handles connection state display
+ *
+ * Note: Connection status is displayed by individual components (e.g., SidebarNew)
+ * rather than a global banner, since some pages (e.g., LogViewer) have their own
+ * WebSocket connections with separate status tracking.
  */
 
 import React, { ReactNode, useEffect } from 'react';
 import { useConnection } from './hooks/useConnection';
-import { useStore } from './store';
 import { initUILogger } from './ui-logger';
 
 interface AppProviderProps {
   children: ReactNode;
-}
-
-/**
- * Connection status banner for development.
- */
-function ConnectionBanner() {
-  const isConnected = useStore((state) => state.isConnected);
-
-  if (isConnected) return null;
-
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        background: '#dc3545',
-        color: 'white',
-        padding: '4px 8px',
-        fontSize: '12px',
-        textAlign: 'center',
-        zIndex: 9999,
-      }}
-    >
-      Disconnected from backend - reconnecting...
-    </div>
-  );
 }
 
 /**
@@ -54,12 +28,7 @@ export function AppProvider({ children }: AppProviderProps) {
     initUILogger();
   }, []);
 
-  return (
-    <>
-      <ConnectionBanner />
-      {children}
-    </>
-  );
+  return <>{children}</>;
 }
 
 /**
