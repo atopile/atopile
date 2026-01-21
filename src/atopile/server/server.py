@@ -17,7 +17,6 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from atopile.logging import BuildLogger
 from atopile.server import build_history, project_discovery
 from atopile.server.app_context import AppContext
 from atopile.server.domains import artifacts as artifacts_domain
@@ -205,9 +204,6 @@ def create_app(
         workspace_paths=workspace_paths or [],
     )
     app.state.ctx = ctx
-
-    db_path = BuildLogger.get_log_db()
-    ws_manager.set_paths(db_path, logs_base)
 
     if logs_base:
         build_history_db_path = logs_base / "build_history.db"
