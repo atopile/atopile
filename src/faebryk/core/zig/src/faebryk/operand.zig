@@ -151,15 +151,14 @@ pub const EdgeOperand = struct {
         bound_node: graph.BoundNodeReference,
         operand: NodeReference,
         operand_identifier: ?str,
-    ) graph.BoundEdgeReference {
+    ) graph.GraphView.InsertEdgeError!graph.BoundEdgeReference {
         const op_set = get_operands_set_node(bound_node).?;
         const link = EdgeOperand.init(
             op_set.node,
             operand,
             operand_identifier,
         );
-        const bound_edge = bound_node.g.insert_edge(link);
-        return bound_edge;
+        return bound_node.g.insert_edge(link);
     }
 
     pub fn get_name(edge: EdgeReference) !?str {
@@ -293,10 +292,10 @@ test "edge operand basic" {
     const b_operand_c = g.create_and_insert_node();
     const operand_c = b_operand_c.node;
 
-    _ = EdgeComposition.add_child(b_expr, b_operands.node, "operands");
-    _ = EdgeOperand.add_operand(b_expr, operand_a, "lhs");
-    _ = EdgeOperand.add_operand(b_expr, operand_b, "rhs");
-    _ = EdgeOperand.add_operand(b_expr, operand_c, null);
+    _ = try EdgeComposition.add_child(b_expr, b_operands.node, "operands");
+    _ = try EdgeOperand.add_operand(b_expr, operand_a, "lhs");
+    _ = try EdgeOperand.add_operand(b_expr, operand_b, "rhs");
+    _ = try EdgeOperand.add_operand(b_expr, operand_c, null);
 
     const expression_edge_a = EdgeOperand.get_expression_edge(b_operand_a);
     const expression_edge_b = EdgeOperand.get_expression_edge(b_operand_b);

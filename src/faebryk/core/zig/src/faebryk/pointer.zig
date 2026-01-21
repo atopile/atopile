@@ -70,10 +70,9 @@ pub const EdgePointer = struct {
         return E.is_instance(tid);
     }
 
-    pub fn point_to(bound_node: BoundNodeReference, target_node: NodeReference, identifier: ?str, index: ?u15) BoundEdgeReference {
+    pub fn point_to(bound_node: BoundNodeReference, target_node: NodeReference, identifier: ?str, index: ?u15) GraphView.InsertEdgeError!BoundEdgeReference {
         const edge = EdgePointer.init(bound_node.node, target_node, identifier, index);
-        const bound_edge = bound_node.g.insert_edge(edge);
-        return bound_edge;
+        return bound_node.g.insert_edge(edge);
     }
 
     pub fn visit_pointed_edges(
@@ -178,7 +177,7 @@ test "basic" {
     const n2 = g.create_and_insert_node();
     const e12 = EdgePointer.init(n1.node, n2.node, null, 0);
 
-    _ = g.insert_edge(e12);
+    _ = try g.insert_edge(e12);
 
     try std.testing.expect(EdgePointer.is_instance(e12));
     try std.testing.expect(EdgePointer.get_referenced_node(e12).is_same(n2.node));

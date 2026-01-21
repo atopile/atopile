@@ -71,7 +71,7 @@ pub const EdgeInterfaceConnection = struct {
             }
         }
 
-        return bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.node, bn2.node, false));
+        return try bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.node, bn2.node, false));
     }
 
     pub fn connect_shallow(bn1: BoundNodeReference, bn2: BoundNodeReference) !BoundEdgeReference {
@@ -91,7 +91,7 @@ pub const EdgeInterfaceConnection = struct {
             }
         }
 
-        return bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.node, bn2.node, true));
+        return try bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.node, bn2.node, true));
     }
 
     pub fn is_instance(E: EdgeReference) bool {
@@ -484,7 +484,7 @@ test "down_connect" {
     try std.testing.expect(path_hv_link_lv.get_last_node().node.is_same(LV_2.node));
 
     const HV_1_Child = try instantiate_interface(&tg, test_types.electrical);
-    _ = EdgeComposition.add_child(HV_1, HV_1_Child.node, "HV/LV Child");
+    _ = try EdgeComposition.add_child(HV_1, HV_1_Child.node, "HV/LV Child");
 
     _ = try EdgeInterfaceConnection.connect(HV_1, LV_2);
     try expectNoPath(a, HV_1_Child, LV_2);
@@ -511,12 +511,12 @@ test "no_connect_cases" {
     const bn5 = try instantiate_interface(&tg, GenericType);
     const bn6 = try instantiate_interface(&tg, GenericType);
 
-    _ = EdgeComposition.add_child(bn1, bn2.node, null);
-    _ = EdgeComposition.add_child(bn3, bn2.node, null);
+    _ = try EdgeComposition.add_child(bn1, bn2.node, null);
+    _ = try EdgeComposition.add_child(bn3, bn2.node, null);
     _ = try EdgeInterfaceConnection.connect(bn3, bn4);
-    _ = EdgeComposition.add_child(bn5, bn4.node, null);
-    _ = EdgeComposition.add_child(bn6, bn1.node, null);
-    _ = EdgeComposition.add_child(bn6, bn3.node, null);
+    _ = try EdgeComposition.add_child(bn5, bn4.node, null);
+    _ = try EdgeComposition.add_child(bn6, bn1.node, null);
+    _ = try EdgeComposition.add_child(bn6, bn3.node, null);
 
     try expectNoPath(a, bn1, bn2);
     try expectNoPath(a, bn1, bn3);
@@ -939,11 +939,11 @@ test "shallow_edges" {
     const bn5 = try instantiate_interface(&tg, test_types.generic);
     const bn6 = try instantiate_interface(&tg, test_types.generic);
 
-    _ = EdgeComposition.add_child(bn1, bn2.node, null);
-    _ = EdgeComposition.add_child(bn2, bn3.node, null);
+    _ = try EdgeComposition.add_child(bn1, bn2.node, null);
+    _ = try EdgeComposition.add_child(bn2, bn3.node, null);
 
-    _ = EdgeComposition.add_child(bn4, bn5.node, null);
-    _ = EdgeComposition.add_child(bn5, bn6.node, null);
+    _ = try EdgeComposition.add_child(bn4, bn5.node, null);
+    _ = try EdgeComposition.add_child(bn5, bn6.node, null);
 
     _ = try EdgeInterfaceConnection.connect_shallow(bn2, bn5);
 

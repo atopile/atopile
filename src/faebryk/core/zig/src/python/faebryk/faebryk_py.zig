@@ -384,7 +384,15 @@ fn wrap_edge_composition_add_child() type {
                 kwarg_obj.bound_node.*,
                 kwarg_obj.child.*,
                 identifier_copy,
-            );
+            ) catch |err| {
+                allocator.free(identifier_copy);
+                const msg = switch (err) {
+                    error.SourceNodeNotInGraph => "Parent node not in graph",
+                    error.TargetNodeNotInGraph => "Child node not in graph",
+                };
+                py.PyErr_SetString(py.PyExc_ValueError, msg);
+                return null;
+            };
 
             return graph_py.makeBoundEdgePyObject(bound_edge);
         }
@@ -415,7 +423,14 @@ fn wrap_edge_composition_add_anon_child() type {
                 kwarg_obj.bound_node.*,
                 kwarg_obj.child.*,
                 null,
-            );
+            ) catch |err| {
+                const msg = switch (err) {
+                    error.SourceNodeNotInGraph => "Parent node not in graph",
+                    error.TargetNodeNotInGraph => "Child node not in graph",
+                };
+                py.PyErr_SetString(py.PyExc_ValueError, msg);
+                return null;
+            };
 
             return graph_py.makeBoundEdgePyObject(bound_edge);
         }
@@ -1252,7 +1267,15 @@ fn wrap_edge_operand_add_operand() type {
                 kwarg_obj.bound_node.*,
                 kwarg_obj.operand.*,
                 identifier_copy,
-            );
+            ) catch |err| {
+                if (identifier_copy) |copy| allocator.free(copy);
+                const msg = switch (err) {
+                    error.SourceNodeNotInGraph => "Expression node not in graph",
+                    error.TargetNodeNotInGraph => "Operand node not in graph",
+                };
+                py.PyErr_SetString(py.PyExc_ValueError, msg);
+                return null;
+            };
 
             return graph_py.makeBoundEdgePyObject(bound_edge);
         }
@@ -2014,7 +2037,14 @@ fn wrap_edge_type_add_instance() type {
             const bound_edge = faebryk.node_type.EdgeType.add_instance(
                 kwarg_obj.bound_type_node.*,
                 kwarg_obj.bound_instance_node.*,
-            );
+            ) catch |err| {
+                const msg = switch (err) {
+                    error.SourceNodeNotInGraph => "Type node not in graph",
+                    error.TargetNodeNotInGraph => "Instance node not in graph",
+                };
+                py.PyErr_SetString(py.PyExc_ValueError, msg);
+                return null;
+            };
 
             return graph_py.makeBoundEdgePyObject(bound_edge);
         }
@@ -2163,7 +2193,14 @@ fn wrap_edge_next_add_next() type {
             const bound_edge = faebryk.next.EdgeNext.add_next(
                 kwarg_obj.previous_node.*,
                 kwarg_obj.next_node.*,
-            );
+            ) catch |err| {
+                const msg = switch (err) {
+                    error.SourceNodeNotInGraph => "Previous node not in graph",
+                    error.TargetNodeNotInGraph => "Next node not in graph",
+                };
+                py.PyErr_SetString(py.PyExc_ValueError, msg);
+                return null;
+            };
 
             return graph_py.makeBoundEdgePyObject(bound_edge);
         }
@@ -2662,7 +2699,15 @@ fn wrap_edge_pointer_point_to() type {
                 kwarg_obj.target_node.*,
                 if (identifier_copy) |copy| copy else null,
                 index,
-            );
+            ) catch |err| {
+                if (identifier_copy) |copy| kwarg_obj.bound_node.g.allocator.free(copy);
+                const msg = switch (err) {
+                    error.SourceNodeNotInGraph => "Source node not in graph",
+                    error.TargetNodeNotInGraph => "Target node not in graph",
+                };
+                py.PyErr_SetString(py.PyExc_ValueError, msg);
+                return null;
+            };
             return graph_py.makeBoundEdgePyObject(bound_edge);
         }
     };
@@ -3005,7 +3050,14 @@ fn wrap_edgebuilder_insert_edge() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const attributes = bind.castWrapper("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
-            var edge = attributes.data.insert_edge(kwarg_obj.g, kwarg_obj.source.*, kwarg_obj.target.*);
+            var edge = attributes.data.insert_edge(kwarg_obj.g, kwarg_obj.source.*, kwarg_obj.target.*) catch |err| {
+                const msg = switch (err) {
+                    error.SourceNodeNotInGraph => "Edge source node not in graph",
+                    error.TargetNodeNotInGraph => "Edge target node not in graph",
+                };
+                py.PyErr_SetString(py.PyExc_ValueError, msg);
+                return null;
+            };
             return bind.wrap_obj("BoundEdgeReference", &graph_py.bound_edge_type, BoundEdgeWrapper, &edge);
         }
     };
@@ -5075,8 +5127,10 @@ fn wrap_linker_link_type_reference() type {
                 kwarg_obj.target_type_node.*,
             ) catch |err| {
                 py.PyErr_SetString(py.PyExc_ValueError, switch (err) {
-                    faebryk.linker.Linker.Error.TypeReferenceNotInGraph => "Type reference does not belong to provided GraphView",
-                    faebryk.linker.Linker.Error.TargetTypeNotInGraph => "Target type does not belong to provided GraphView",
+                    error.TypeReferenceNotInGraph => "Type reference does not belong to provided GraphView",
+                    error.TargetTypeNotInGraph => "Target type does not belong to provided GraphView",
+                    error.SourceNodeNotInGraph => "Source node not in graph",
+                    error.TargetNodeNotInGraph => "Target node not in graph",
                 });
                 return null;
             };
@@ -5114,8 +5168,10 @@ fn wrap_linker_update_type_reference() type {
                 kwarg_obj.target_type_node.*,
             ) catch |err| {
                 py.PyErr_SetString(py.PyExc_ValueError, switch (err) {
-                    faebryk.linker.Linker.Error.TypeReferenceNotInGraph => "Type reference does not belong to provided GraphView",
-                    faebryk.linker.Linker.Error.TargetTypeNotInGraph => "Target type does not belong to provided GraphView",
+                    error.TypeReferenceNotInGraph => "Type reference does not belong to provided GraphView",
+                    error.TargetTypeNotInGraph => "Target type does not belong to provided GraphView",
+                    error.SourceNodeNotInGraph => "Source node not in graph",
+                    error.TargetNodeNotInGraph => "Target node not in graph",
                 });
                 return null;
             };
@@ -5740,7 +5796,14 @@ fn wrap_edge_trait_add_trait_instance() type {
             const bound_edge = faebryk.trait.EdgeTrait.add_trait_instance(
                 kwarg_obj.bound_node.*,
                 kwarg_obj.trait_instance.*,
-            );
+            ) catch |err| {
+                const msg = switch (err) {
+                    error.SourceNodeNotInGraph => "Trait owner node not in graph",
+                    error.TargetNodeNotInGraph => "Trait instance node not in graph",
+                };
+                py.PyErr_SetString(py.PyExc_ValueError, msg);
+                return null;
+            };
             return graph_py.makeBoundEdgePyObject(bound_edge);
         }
     };

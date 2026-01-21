@@ -37,10 +37,9 @@ pub const EdgeNext = struct {
         };
     }
 
-    pub fn add_next(bound_previous_node: graph.BoundNodeReference, bound_next_node: graph.BoundNodeReference) graph.BoundEdgeReference {
+    pub fn add_next(bound_previous_node: graph.BoundNodeReference, bound_next_node: graph.BoundNodeReference) graph.GraphView.InsertEdgeError!graph.BoundEdgeReference {
         const link = EdgeNext.init(bound_previous_node.node, bound_next_node.node);
-        const bound_edge = bound_previous_node.g.insert_edge(link);
-        return bound_edge;
+        return bound_previous_node.g.insert_edge(link);
     }
 
     pub fn is_instance(E: EdgeReference) bool {
@@ -92,10 +91,10 @@ test "basic chain" {
     // init ---------------------------------------------------------------------------------------
     const en12 = EdgeNext.init(bn1.node, bn2.node);
 
-    const ben12 = g.insert_edge(en12);
+    const ben12 = try g.insert_edge(en12);
 
     // add_next -----------------------------------------------------------------------------------
-    const ben23 = EdgeNext.add_next(bn2, bn3);
+    const ben23 = try EdgeNext.add_next(bn2, bn3);
 
     // is_instance -------------------------------------------------------------------------------
     try std.testing.expect(EdgeNext.is_instance(ben12.edge));

@@ -37,10 +37,9 @@ pub const EdgeType = struct {
         };
     }
 
-    pub fn add_instance(bound_type_node: graph.BoundNodeReference, bound_instance_node: graph.BoundNodeReference) graph.BoundEdgeReference {
+    pub fn add_instance(bound_type_node: graph.BoundNodeReference, bound_instance_node: graph.BoundNodeReference) graph.GraphView.InsertEdgeError!graph.BoundEdgeReference {
         const link = EdgeType.init(bound_type_node.node, bound_instance_node.node);
-        const bound_edge = bound_type_node.g.insert_edge(link);
-        return bound_edge;
+        return bound_type_node.g.insert_edge(link);
     }
 
     pub fn is_instance(E: EdgeReference) bool {
@@ -120,11 +119,11 @@ test "basic typegraph" {
 
     // init ---------------------------------------------------------------------------------------
     const et11 = EdgeType.init(btn1.node, bin1.node);
-    _ = g.insert_edge(et11);
+    _ = try g.insert_edge(et11);
     try std.testing.expect(EdgeType.is_node_instance_of(bin1, btn1.node));
 
     // add_instance -------------------------------------------------------------------------------
-    const bet22 = EdgeType.add_instance(btn2, bin2);
+    const bet22 = try EdgeType.add_instance(btn2, bin2);
     try std.testing.expect(EdgeType.is_node_instance_of(bin2, btn2.node));
 
     // is_edge_instance -------------------------------------------------------------------------------

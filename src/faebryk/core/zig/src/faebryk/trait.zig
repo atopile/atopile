@@ -23,12 +23,12 @@ pub const Trait = struct {
             .ok => |n| n,
             .err => return error.InstantiationFailed,
         };
-        _ = EdgeTrait.add_trait_instance(target, trait_instance.node);
+        _ = try EdgeTrait.add_trait_instance(target, trait_instance.node);
         return trait_instance;
     }
 
     pub fn add_trait_instance_to(target: BoundNodeReference, trait_instance: BoundNodeReference) !BoundNodeReference {
-        _ = EdgeTrait.add_trait_instance(target, trait_instance.node);
+        _ = try EdgeTrait.add_trait_instance(target, trait_instance.node);
         return trait_instance;
     }
 
@@ -38,7 +38,7 @@ pub const Trait = struct {
             .ok => |n| n,
             .err => return error.InstantiationFailed,
         };
-        _ = EdgeTrait.add_trait_instance(trait_type, impl_trait.node);
+        _ = try EdgeTrait.add_trait_instance(trait_type, impl_trait.node);
     }
 
     pub fn try_get_trait(target: BoundNodeReference, trait_type: BoundNodeReference) ?BoundNodeReference {
@@ -173,11 +173,10 @@ pub const EdgeTrait = struct {
         return owner_edge.g.bind(EdgeTrait.get_owner_node(owner_edge.edge));
     }
 
-    pub fn add_trait_instance(bound_node: graph.BoundNodeReference, trait_instance: NodeReference) graph.BoundEdgeReference {
+    pub fn add_trait_instance(bound_node: graph.BoundNodeReference, trait_instance: NodeReference) graph.GraphView.InsertEdgeError!graph.BoundEdgeReference {
         // add existing trait instance to owner node
         const link = EdgeTrait.init(bound_node.node, trait_instance);
-        const bound_edge = bound_node.g.insert_edge(link);
-        return bound_edge;
+        return bound_node.g.insert_edge(link);
     }
 
     // TODO this is wayyyyy to slow for how often we use it

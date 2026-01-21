@@ -39,7 +39,7 @@ pub const EdgeCreationAttributes = struct {
         return edge;
     }
 
-    pub fn insert_edge(self: *const @This(), g: *GraphView, source: NodeReference, target: NodeReference) BoundEdgeReference {
+    pub fn insert_edge(self: *const @This(), g: *GraphView, source: NodeReference, target: NodeReference) GraphView.InsertEdgeError!BoundEdgeReference {
         const edge = self.create_edge(source, target);
         return g.insert_edge(edge);
     }
