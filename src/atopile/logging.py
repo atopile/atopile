@@ -57,14 +57,11 @@ _log_sink_var = ContextVar[io.StringIO | None]("log_sink", default=None)
 # =============================================================================
 
 from atopile.dataclasses import (
-    Audience,
     BuildStatus,
-    Level,
-    LogEntry,
+    Log,
     ProjectState,
     StageCompleteEvent,
     StageStatusEvent,
-    TestLogEntry,
 )
 
 # =============================================================================
@@ -163,7 +160,7 @@ CREATE INDEX IF NOT EXISTS idx_test_logs_audience ON test_logs(audience);
 """
 
 
-# Audience and Level are imported from atopile.dataclasses
+# Log.Audience and Log.Level are imported from atopile.dataclasses
 
 
 class BaseLogger:
@@ -249,11 +246,11 @@ class BaseLogger:
 
     def log(
         self,
-        level: Level,
+        level: Log.Level,
         message: str,
         *,
         logger_name: str = "",
-        audience: Audience = Audience.DEVELOPER,
+        audience: Log.Audience = Log.Audience.DEVELOPER,
         ato_traceback: str | None = None,
         python_traceback: str | None = None,
         objects: dict | None = None,
@@ -277,14 +274,14 @@ class BaseLogger:
         self,
         message: str,
         *,
-        audience: Audience = Audience.DEVELOPER,
+        audience: Log.Audience = Log.Audience.DEVELOPER,
         ato_traceback: str | None = None,
         python_traceback: str | None = None,
         objects: dict | None = None,
     ) -> None:
         """Log a DEBUG level message."""
         self.log(
-            Level.DEBUG,
+            Log.Level.DEBUG,
             message,
             audience=audience,
             ato_traceback=ato_traceback,
@@ -296,14 +293,14 @@ class BaseLogger:
         self,
         message: str,
         *,
-        audience: Audience = Audience.DEVELOPER,
+        audience: Log.Audience = Log.Audience.DEVELOPER,
         ato_traceback: str | None = None,
         python_traceback: str | None = None,
         objects: dict | None = None,
     ) -> None:
         """Log an INFO level message."""
         self.log(
-            Level.INFO,
+            Log.Level.INFO,
             message,
             audience=audience,
             ato_traceback=ato_traceback,
@@ -315,14 +312,14 @@ class BaseLogger:
         self,
         message: str,
         *,
-        audience: Audience = Audience.DEVELOPER,
+        audience: Log.Audience = Log.Audience.DEVELOPER,
         ato_traceback: str | None = None,
         python_traceback: str | None = None,
         objects: dict | None = None,
     ) -> None:
         """Log a WARNING level message."""
         self.log(
-            Level.WARNING,
+            Log.Level.WARNING,
             message,
             audience=audience,
             ato_traceback=ato_traceback,
@@ -334,14 +331,14 @@ class BaseLogger:
         self,
         message: str,
         *,
-        audience: Audience = Audience.DEVELOPER,
+        audience: Log.Audience = Log.Audience.DEVELOPER,
         ato_traceback: str | None = None,
         python_traceback: str | None = None,
         objects: dict | None = None,
     ) -> None:
         """Log an ERROR level message."""
         self.log(
-            Level.ERROR,
+            Log.Level.ERROR,
             message,
             audience=audience,
             ato_traceback=ato_traceback,
@@ -358,10 +355,10 @@ class BaseLogger:
     def _build_entry(
         self,
         *,
-        level: Level,
+        level: Log.Level,
         message: str,
         logger_name: str,
-        audience: Audience,
+        audience: Log.Audience,
         ato_traceback: str | None,
         python_traceback: str | None,
         objects: dict | None,
@@ -369,7 +366,7 @@ class BaseLogger:
         raise NotImplementedError
 
 
-# LogEntry and TestLogEntry are imported from atopile.dataclasses
+# Log.Entry and Log.TestEntry are imported from atopile.dataclasses
 
 
 class SQLiteLogWriter:
@@ -739,15 +736,15 @@ class TestLogger(BaseLogger):
     def _build_entry(
         self,
         *,
-        level: Level,
+        level: Log.Level,
         message: str,
         logger_name: str,
-        audience: Audience,
+        audience: Log.Audience,
         ato_traceback: str | None,
         python_traceback: str | None,
         objects: dict | None,
-    ) -> TestLogEntry:
-        return TestLogEntry(
+    ) -> Log.TestEntry:
+        return Log.TestEntry(
             test_run_id=self._identifier,
             timestamp=datetime.now().isoformat(),
             test=self._context,
@@ -923,15 +920,15 @@ class BuildLogger(BaseLogger):
     def _build_entry(
         self,
         *,
-        level: Level,
+        level: Log.Level,
         message: str,
         logger_name: str,
-        audience: Audience,
+        audience: Log.Audience,
         ato_traceback: str | None,
         python_traceback: str | None,
         objects: dict | None,
-    ) -> LogEntry:
-        return LogEntry(
+    ) -> Log.Entry:
+        return Log.Entry(
             build_id=self._identifier,
             timestamp=datetime.now().isoformat(),
             stage=self._context,
@@ -948,8 +945,8 @@ class BuildLogger(BaseLogger):
         self,
         exc: BaseException,
         *,
-        audience: Audience = Audience.DEVELOPER,
-        level: Level = Level.ERROR,
+        audience: Log.Audience = Log.Audience.DEVELOPER,
+        level: Log.Level = Log.Level.ERROR,
     ) -> None:
         """
         Log an exception with automatic traceback extraction.
@@ -1218,15 +1215,15 @@ class LogHandler(RichHandler):
 
         return log_renderable
 
-    def _level_to_enum(self, levelno: int) -> Level:
+    def _level_to_enum(self, levelno: int) -> Log.Level:
         """Convert logging level number to Level enum."""
         if levelno >= logging.ERROR:
-            return Level.ERROR
+            return Log.Level.ERROR
         elif levelno >= logging.WARNING:
-            return Level.WARNING
+            return Log.Level.WARNING
         elif levelno >= logging.INFO:
-            return Level.INFO
-        return Level.DEBUG
+            return Log.Level.INFO
+        return Log.Level.DEBUG
 
     def _write_to_sqlite(self, record: logging.LogRecord) -> None:
         """Write log record to SQLite via BuildLogger or TestLogger if available."""
@@ -1278,7 +1275,7 @@ class LogHandler(RichHandler):
                     level,
                     message,
                     logger_name=record.name,
-                    audience=Audience.USER,
+                    audience=Log.Audience.USER,
                     ato_traceback=ato_tb,
                     python_traceback=python_tb,
                 )
@@ -1330,7 +1327,7 @@ class LogHandler(RichHandler):
                     level,
                     message,
                     logger_name=record.name,
-                    audience=Audience.USER,
+                    audience=Log.Audience.USER,
                     python_traceback=python_tb,
                 )
             else:
@@ -1426,7 +1423,7 @@ def normalize_log_audience(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
     audience = value.strip().lower()
-    allowed = {member.value for member in Audience}
+    allowed = {member.value for member in Log.Audience}
     return audience if audience in allowed else None
 
 
@@ -1464,8 +1461,8 @@ def load_build_logs(
 
     where_sql = " AND ".join(where_clauses)
     query = f"""
-        SELECT logs.timestamp, logs.logger_name, logs.message,
-               logs.ato_traceback, logs.python_traceback, logs.objects
+        SELECT logs.timestamp, logs.level, logs.audience, logs.logger_name,
+               logs.message, logs.ato_traceback, logs.python_traceback, logs.objects
         FROM logs
         WHERE {where_sql}
         ORDER BY logs.id DESC
@@ -1487,6 +1484,8 @@ def load_build_logs(
         results.append(
             {
                 "timestamp": row["timestamp"],
+                "level": row["level"],
+                "audience": row["audience"],
                 "logger_name": row["logger_name"],
                 "message": row["message"],
                 "ato_traceback": row["ato_traceback"],

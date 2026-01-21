@@ -46,24 +46,6 @@ class StageStatus(str, Enum):
     SKIPPED = "skipped"
 
 
-class Audience(StrEnum):
-    """Who a log message is intended for."""
-
-    USER = "user"
-    DEVELOPER = "developer"
-    AGENT = "agent"
-
-
-class Level(StrEnum):
-    """Log levels."""
-
-    DEBUG = "DEBUG"
-    INFO = "INFO"
-    WARNING = "WARNING"
-    ERROR = "ERROR"
-    ALERT = "ALERT"
-
-
 # =============================================================================
 # Build-related Dataclasses (from logging.py)
 # =============================================================================
@@ -106,36 +88,100 @@ class StageCompleteEvent:
     description: str
 
 
-@dataclass
-class LogEntry:
-    """A structured log entry."""
-
-    build_id: str
-    timestamp: str
-    stage: str
-    level: Level
-    logger_name: str
-    message: str
-    audience: Audience = Audience.DEVELOPER
-    ato_traceback: str | None = None
-    python_traceback: str | None = None
-    objects: dict | None = None
+# =============================================================================
+# Log-related Data Structures
+# =============================================================================
 
 
-@dataclass
-class TestLogEntry:
-    """A structured test log entry."""
+class Log:
+    """Namespace for all log-related data structures."""
 
-    test_run_id: str
-    timestamp: str
-    test: str  # Name of the Python test being run
-    level: Level
-    logger_name: str
-    message: str
-    audience: Audience = Audience.DEVELOPER
-    ato_traceback: str | None = None
-    python_traceback: str | None = None
-    objects: dict | None = None
+    class Audience(StrEnum):
+        """Who a log message is intended for."""
+
+        USER = "user"
+        DEVELOPER = "developer"
+        AGENT = "agent"
+
+    class Level(StrEnum):
+        """Log levels."""
+
+        DEBUG = "DEBUG"
+        INFO = "INFO"
+        WARNING = "WARNING"
+        ERROR = "ERROR"
+        ALERT = "ALERT"
+
+    @dataclass
+    class Entry:
+        """A structured log entry."""
+
+        build_id: str
+        timestamp: str
+        stage: str
+        level: Log.Level
+        logger_name: str
+        message: str
+        audience: Log.Audience = field(default=None)  # Set to Log.Audience.DEVELOPER after class definition
+        ato_traceback: str | None = None
+        python_traceback: str | None = None
+        objects: dict | None = None
+
+    @dataclass
+    class TestEntry:
+        """A structured test log entry."""
+
+        test_run_id: str
+        timestamp: str
+        test: str  # Name of the Python test being run
+        level: Log.Level
+        logger_name: str
+        message: str
+        audience: Log.Audience = field(default=None)  # Set to Log.Audience.DEVELOPER after class definition
+        ato_traceback: str | None = None
+        python_traceback: str | None = None
+        objects: dict | None = None
+
+    class Query(BaseModel):
+        """Query parameters for fetching logs."""
+
+        build_id: str
+        stage: str | None = None
+        log_levels: list[Log.Level] | None = None
+        audience: Log.Audience | None = None
+        count: int = Field(default=500, ge=1)
+
+    class EntryPydantic(BaseModel):
+        """Pydantic model for log entry (API serialization)."""
+
+        timestamp: str
+        level: str
+        audience: str
+        logger_name: str
+        message: str
+        ato_traceback: str | None = None
+        python_traceback: str | None = None
+        objects: Any | None = None
+
+    class Result(BaseModel):
+        """Response containing log entries."""
+
+        type: Literal["logs_result"] = "logs_result"
+        logs: list[Log.EntryPydantic]
+
+    class Error(BaseModel):
+        """Error response for log queries."""
+
+        type: Literal["logs_error"] = "logs_error"
+        error: str
+
+
+# Set default values for dataclass fields after Log class is fully defined
+# (Can't reference Log.Audience.DEVELOPER in field default during class definition)
+Log.Entry.__dataclass_fields__["audience"].default = Log.Audience.DEVELOPER
+Log.TestEntry.__dataclass_fields__["audience"].default = Log.Audience.DEVELOPER
+
+
 
 
 # =============================================================================
@@ -595,36 +641,7 @@ class ProblemsResponse(BaseModel):
     warning_count: int
 
 
-# =============================================================================
-# Log-related Pydantic Models
-# =============================================================================
-
-
-class LogQuery(BaseModel):
-    build_id: str
-    stage: str | None = None
-    log_levels: list[Level] | None = None
-    audience: Audience | None = None
-    count: int = Field(default=500, ge=1)
-
-
-class LogEntryPydantic(BaseModel):
-    timestamp: str
-    logger_name: str
-    message: str
-    ato_traceback: str | None = None
-    python_traceback: str | None = None
-    objects: Any | None = None
-
-
-class LogsResult(BaseModel):
-    type: Literal["logs_result"] = "logs_result"
-    logs: list[LogEntryPydantic]
-
-
-class LogsError(BaseModel):
-    type: Literal["logs_error"] = "logs_error"
-    error: str
+# Log-related models are now in the Log class above
 
 
 # =============================================================================

@@ -14,7 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from atopile.config import ProjectConfig
-from atopile.logging import Audience, BuildLogger
+from atopile.dataclasses import Log
+from atopile.logging import BuildLogger
 from atopile.server.domains import packages as packages_domain
 from atopile.server import problem_parser
 from atopile.server import project_discovery
@@ -552,7 +553,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             action_logger.info(
                 f"Installing {pkg_spec}...",
-                audience=Audience.USER,
+                audience=Log.Audience.USER,
             )
 
             def run_install():
@@ -567,7 +568,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     if result.returncode == 0:
                         action_logger.info(
                             f"Successfully installed {pkg_spec}",
-                            audience=Audience.USER,
+                            audience=Log.Audience.USER,
                         )
                         # Refresh packages state to update UI
                         loop = server_state._event_loop
@@ -584,12 +585,12 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                         error_msg = error_msg[:500] if error_msg else "Unknown error"
                         action_logger.error(
                             f"Failed to install {pkg_spec}: {error_msg}",
-                            audience=Audience.USER,
+                            audience=Log.Audience.USER,
                         )
                 except Exception as exc:
                     action_logger.error(
                         f"Failed to install {pkg_spec}: {exc}",
-                        audience=Audience.USER,
+                        audience=Log.Audience.USER,
                     )
                 finally:
                     action_logger.flush()

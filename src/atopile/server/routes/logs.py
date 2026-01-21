@@ -10,7 +10,7 @@ import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
-from atopile.dataclasses import LogEntryPydantic, LogQuery, LogsError, LogsResult
+from atopile.dataclasses import Log
 from atopile.logging import load_build_logs
 
 log = logging.getLogger(__name__)
@@ -37,9 +37,9 @@ async def websocket_logs(websocket: WebSocket):
         while True:
             data = await websocket.receive_json()
             try:
-                query = LogQuery.model_validate(data)
+                query = Log.Query.model_validate(data)
             except ValidationError as exc:
-                await websocket.send_json(LogsError(error=str(exc)).model_dump())
+                await websocket.send_json(Log.Error(error=str(exc)).model_dump())
                 continue
 
             # Convert enum values to strings for load_build_logs (StrEnum values are strings)
@@ -56,8 +56,8 @@ async def websocket_logs(websocket: WebSocket):
                 count=query.count,
             )
 
-            entries = [LogEntryPydantic.model_validate(entry) for entry in logs]
-            await websocket.send_json(LogsResult(logs=entries).model_dump())
+            entries = [Log.EntryPydantic.model_validate(entry) for entry in logs]
+            await websocket.send_json(Log.Result(logs=entries).model_dump())
     except WebSocketDisconnect:
         log.info("Logs WebSocket client disconnected")
     except Exception as exc:
