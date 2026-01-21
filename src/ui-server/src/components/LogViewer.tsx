@@ -6,6 +6,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import AnsiToHtml from 'ansi-to-html';
+import { useStore } from '../store';
 import './LogViewer.css';
 
 const LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'ALERT'] as const;
@@ -95,7 +96,7 @@ function getInitialParams(): { mode: LogMode; testRunId: string; buildId: string
   const buildId = params.get('build_id') || '';
   const testName = params.get('test_name') || '';
   // Auto-detect mode based on which ID is provided
-  const mode: LogMode = testRunId ? 'test' : (buildId ? 'build' : 'test');
+  const mode: LogMode = testRunId ? 'test' : 'build';
   return { mode, testRunId, buildId, testName };
 }
 
@@ -125,6 +126,8 @@ export function LogViewer() {
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const queuedBuilds = useStore((state) => state.queuedBuilds);
+  const builds = useStore((state) => state.builds);
 
   // Streaming state
   const [streaming, setStreaming] = useState(false);
@@ -132,6 +135,8 @@ export function LogViewer() {
   const autoScrollRef = useRef(true); // Ref version for callbacks
   const lastIdRef = useRef(0);
   const logsContainerRef = useRef<HTMLDivElement>(null);
+  const autoStartedRef = useRef(false);
+  const lastAutoBuildIdRef = useRef<string | null>(null);
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -379,7 +384,6 @@ export function LogViewer() {
   }, [streaming, mode, buildId, testRunId, stage, testName, logLevels, audience]);
 
   // Auto-start streaming when connected with a valid ID from URL params
-  const autoStartedRef = useRef(false);
   useEffect(() => {
     if (autoStartedRef.current) return;
     if (connectionState !== 'connected') return;
@@ -392,6 +396,48 @@ export function LogViewer() {
     autoStartedRef.current = true;
     toggleStreaming();
   }, [connectionState, mode, buildId, testRunId, streaming, toggleStreaming]);
+  // Auto-start streaming when a new build_id is provided
+  useEffect(() => {
+    const trimmedBuildId = buildId.trim();
+    if (mode !== 'build') return;
+    if (!trimmedBuildId) return;
+    if (connectionState !== 'connected') return;
+    if (streaming) return;
+    if (lastAutoBuildIdRef.current === trimmedBuildId) return;
+
+    autoStartedRef.current = true;
+    lastAutoBuildIdRef.current = trimmedBuildId;
+    toggleStreaming();
+  }, [buildId, mode, connectionState, streaming, toggleStreaming]);
+
+  // Populate build_id from the latest active build when available
+  useEffect(() => {
+    if (mode !== 'build') return;
+
+    const candidates = [...queuedBuilds, ...builds].filter((build) => build.buildId);
+    if (candidates.length === 0) return;
+
+    let latest = candidates[0];
+    for (const candidate of candidates) {
+      const candidateTs = candidate.startedAt ?? 0;
+      const latestTs = latest.startedAt ?? 0;
+      if (candidateTs > latestTs) {
+        latest = candidate;
+      }
+    }
+
+    const latestBuildId = latest.buildId ?? '';
+    if (!latestBuildId || latestBuildId === buildId.trim()) return;
+
+    if (streaming && wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ unsubscribe: true }));
+      setStreaming(false);
+    }
+
+    autoStartedRef.current = false;
+    lastAutoBuildIdRef.current = latestBuildId;
+    setBuildId(latestBuildId);
+  }, [queuedBuilds, builds, mode, buildId, streaming]);
 
   return (
     <div className="lv-container">
@@ -424,7 +470,9 @@ export function LogViewer() {
               <input
                 type="text"
                 value={buildId}
-                onChange={(e) => setBuildId(e.target.value)}
+                onChange={(e) => {
+                  setBuildId(e.target.value);
+                }}
                 placeholder="Build ID"
                 className="lv-input"
                 disabled={streaming}

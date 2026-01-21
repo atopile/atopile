@@ -9,11 +9,13 @@ from pathlib import Path
 from typing import Optional
 
 from atopile.buildutil import generate_build_id, generate_build_timestamp
+from atopile.config import ProjectConfig
 from atopile.dataclasses import (
     BuildRequest,
     BuildResponse,
     BuildStatus,
     BuildStatusResponse,
+    BuildTargetInfo,
     MaxConcurrentRequest,
 )
 from atopile.server import build_history, project_discovery
@@ -157,49 +159,102 @@ def validate_build_request(request: BuildRequest) -> str | None:
     return None
 
 
+def _resolve_request_targets(request: BuildRequest) -> list[str]:
+    """Resolve targets for a build request (empty list means all targets)."""
+    if request.targets:
+        return request.targets
+
+    if request.standalone:
+        return ["default"]
+
+    project_path = Path(request.project_root)
+    try:
+        project_config = ProjectConfig.from_path(project_path)
+        targets = list(project_config.builds.keys()) if project_config else []
+        return targets or ["default"]
+    except Exception as exc:
+        log.warning(
+            f"Failed to read targets from ato.yaml at {project_path}: {exc}; "
+            "falling back to 'default'"
+        )
+        return ["default"]
+
+
 def handle_start_build(request: BuildRequest) -> BuildResponse:
     """Start a new build."""
     error = validate_build_request(request)
     if error:
         return BuildResponse(success=False, message=error, build_id=None)
 
-    existing_build_id = _is_duplicate_build(
-        request.project_root, request.targets, request.entry
-    )
-    if existing_build_id:
-        return BuildResponse(
-            success=True,
-            message="Build already in progress",
-            build_id=existing_build_id,
+    targets = _resolve_request_targets(request)
+    if request.standalone and len(targets) > 1:
+        log.warning(
+            "Standalone build requested with multiple targets; "
+            "using the first target only"
         )
+        targets = targets[:1]
 
     build_label = request.entry if request.standalone else "project"
-    with _build_lock:
-        timestamp = generate_build_timestamp()
-        # Use first target for build_id, or "default" if none
-        target_for_id = request.targets[0] if request.targets else "default"
-        build_id = generate_build_id(request.project_root, target_for_id, timestamp)
-        _active_builds[build_id] = {
-            "status": BuildStatus.QUEUED.value,
-            "project_root": request.project_root,
-            "targets": request.targets,
-            "entry": request.entry,
-            "standalone": request.standalone,
-            "frozen": request.frozen,
-            "return_code": None,
-            "error": None,
-            "started_at": time.time(),
-            "timestamp": timestamp,
-            "stages": [],
-        }
+    build_targets: list[BuildTargetInfo] = []
+    new_build_ids: list[str] = []
+    timestamp = generate_build_timestamp()
 
-    _build_queue.enqueue(build_id)
-    _sync_builds_to_state()
+    for target in targets:
+        existing_build_id = _is_duplicate_build(
+            request.project_root, [target], request.entry
+        )
+        if existing_build_id:
+            build_id = existing_build_id
+        else:
+            build_id = generate_build_id(request.project_root, target, timestamp)
+            with _build_lock:
+                _active_builds[build_id] = {
+                    "status": BuildStatus.QUEUED.value,
+                    "project_root": request.project_root,
+                    "targets": [target],
+                    "entry": request.entry,
+                    "standalone": request.standalone,
+                    "frozen": request.frozen,
+                    "return_code": None,
+                    "error": None,
+                    "started_at": time.time(),
+                    "timestamp": timestamp,
+                    "stages": [],
+                }
+            new_build_ids.append(build_id)
+
+        build_targets.append(BuildTargetInfo(target=target, build_id=build_id))
+
+    for build_id in new_build_ids:
+        _build_queue.enqueue(build_id)
+
+    if new_build_ids:
+        _sync_builds_to_state()
+
+    if not build_targets:
+        return BuildResponse(
+            success=False,
+            message="No build targets resolved",
+            build_id=None,
+        )
+
+    if not new_build_ids:
+        message = (
+            "Build already in progress"
+            if len(build_targets) == 1
+            else "Builds already in progress"
+        )
+    elif len(build_targets) == 1:
+        message = f"Build queued for {build_label}"
+    else:
+        message = f"Queued {len(new_build_ids)} builds for {build_label}"
 
     return BuildResponse(
         success=True,
-        message=f"Build queued for {build_label}",
-        build_id=build_id,
+        message=message,
+        build_id=build_targets[0].build_id,
+        targets=targets,
+        build_targets=build_targets,
     )
 
 

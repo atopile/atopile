@@ -1550,9 +1550,9 @@ def build(
     manager.generate_summary()
 
     # Flush and close all build loggers to ensure logs are written to SQLite
-    from atopile.logging import close_all_build_loggers
+    from atopile.logging import BuildLogger
 
-    close_all_build_loggers()
+    BuildLogger.close_all()
 
     failed = [name for name, code in results.items() if code != 0]
 

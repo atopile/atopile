@@ -129,6 +129,7 @@ def _run_build_subprocess(
     frozen: bool,
     entry: str | None,
     standalone: bool,
+    build_timestamp: str | None,
     result_q: queue.Queue,
     cancel_flags: dict[str, bool],
 ) -> None:
@@ -185,6 +186,8 @@ def _run_build_subprocess(
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
         env["ATO_BUILD_ID"] = build_id  # Pass build_id to subprocess
+        if build_timestamp:
+            env["ATO_BUILD_TIMESTAMP"] = build_timestamp
 
         # Determine the root to use for monitoring (different for standalone builds)
         effective_root = (
@@ -691,6 +694,7 @@ class BuildQueue:
             build_info.get("frozen", False),
             build_info.get("entry"),
             build_info.get("standalone", False),
+            build_info.get("timestamp"),
             self._result_q,
             self._cancel_flags,
         )

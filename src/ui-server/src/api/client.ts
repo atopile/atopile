@@ -152,7 +152,13 @@ export const api = {
       ),
 
     start: (projectRoot: string, targets: string[] = [], options?: { entry?: string; standalone?: boolean; frozen?: boolean }) =>
-      fetchJSON<{ success: boolean; message: string; build_id: string }>('/api/build', {
+      fetchJSON<{
+        success: boolean;
+        message: string;
+        build_id?: string;
+        targets?: string[];
+        build_targets?: { target: string; build_id: string }[];
+      }>('/api/build', {
         method: 'POST',
         body: JSON.stringify({
           project_root: projectRoot,

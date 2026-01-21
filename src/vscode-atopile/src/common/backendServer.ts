@@ -23,10 +23,11 @@ interface BuildRequest {
 }
 
 interface BuildResponse {
-    build_id: string;
-    status: string;
-    project_path: string;
-    targets: string[];
+    success: boolean;
+    message: string;
+    build_id?: string;
+    targets?: string[];
+    build_targets?: { target: string; build_id: string }[];
 }
 
 function getApiUrl(): string {

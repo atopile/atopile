@@ -511,6 +511,28 @@ class SQLiteLogWriter:
             pass  # Best effort
         return build_id
 
+    def register_build_id(
+        self, build_id: str, project_path: str, target: str, timestamp: str
+    ) -> str:
+        """
+        Register a build with an explicit build_id.
+
+        This is used when the build_id is provided by an external orchestrator.
+        """
+        conn = self._get_connection()
+        try:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO builds (build_id, project_path, target, timestamp)
+                VALUES (?, ?, ?, ?)
+                """,
+                (build_id, project_path, target, timestamp),
+            )
+            conn.commit()
+        except sqlite3.Error:
+            pass  # Best effort
+        return build_id
+
     def register_test_run(self, test_run_id: str) -> None:
         """Register a test run in the database."""
         conn = self._get_connection()
@@ -756,6 +778,34 @@ class BuildLogger(BaseLogger):
         return build_logger
 
     @classmethod
+    def get_with_id(
+        cls,
+        build_id: str,
+        project_path: str,
+        target: str,
+        timestamp: str | None = None,
+        stage: str = "",
+    ) -> "BuildLogger":
+        """
+        Get or create a build logger using an explicit build_id.
+        """
+        if timestamp is None:
+            timestamp = NOW
+
+        writer = SQLiteLogWriter.get_build_instance()
+        writer.register_build_id(build_id, project_path, target, timestamp)
+
+        if build_id not in cls._loggers:
+            build_logger = cls(build_id, stage)
+            build_logger.set_writer(writer)
+            cls._loggers[build_id] = build_logger
+        else:
+            build_logger = cls._loggers[build_id]
+            build_logger.set_stage(stage)
+
+        return build_logger
+
+    @classmethod
     def get_by_id(cls, build_id: str) -> "BuildLogger | None":
         """Get an existing build logger by its build ID."""
         return cls._loggers.get(build_id)
@@ -812,7 +862,18 @@ class BuildLogger(BaseLogger):
                     target = "default"
 
                 stage_name = stage if stage is not None else "cli"
-                build_logger = cls.get(project_path, target, stage=stage_name)
+                env_build_id = os.environ.get("ATO_BUILD_ID")
+                env_timestamp = os.environ.get("ATO_BUILD_TIMESTAMP") or NOW
+                if env_build_id:
+                    build_logger = cls.get_with_id(
+                        env_build_id,
+                        project_path,
+                        target,
+                        timestamp=env_timestamp,
+                        stage=stage_name,
+                    )
+                else:
+                    build_logger = cls.get(project_path, target, stage=stage_name)
 
                 # Attach build_logger to existing handler
                 for handler in root_logger.handlers:

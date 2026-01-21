@@ -335,12 +335,21 @@ class BuildRequest(BaseModel):
     standalone: bool = False  # Whether to use standalone mode
 
 
+class BuildTargetInfo(BaseModel):
+    """Build target queued by a build request."""
+
+    target: str
+    build_id: str
+
+
 class BuildResponse(BaseModel):
     """Response from build request."""
 
     success: bool
     message: str
     build_id: Optional[str] = None
+    targets: list[str] = Field(default_factory=list)
+    build_targets: list[BuildTargetInfo] = Field(default_factory=list)
 
 
 class BuildStatusResponse(BaseModel):
