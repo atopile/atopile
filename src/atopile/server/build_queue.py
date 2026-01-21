@@ -26,7 +26,6 @@ log = logging.getLogger(__name__)
 
 # Track active builds
 _active_builds: dict[str, dict[str, Any]] = {}
-_build_counter = 0
 _build_lock = threading.RLock()  # Use RLock to allow reentrant locking
 
 
@@ -60,14 +59,6 @@ def _make_build_key(project_root: str, targets: list[str], entry: str | None) ->
     """Create a unique key for a build configuration."""
     content = f"{project_root}:{':'.join(sorted(targets))}:{entry or 'default'}"
     return hashlib.sha256(content.encode()).hexdigest()[:16]
-
-
-def next_build_id() -> str:
-    """Allocate the next build id in a thread-safe way."""
-    global _build_counter
-    with _build_lock:
-        _build_counter += 1
-        return f"build-{_build_counter}-{int(time.time())}"
 
 
 def _is_duplicate_build(build_key: str) -> str | None:
@@ -990,7 +981,6 @@ def cancel_build(build_id: str) -> bool:
 
 __all__ = [
     "_active_builds",
-    "_build_counter",
     "_build_lock",
     "_build_queue",
     "_build_settings",

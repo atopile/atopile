@@ -40,6 +40,7 @@ from rich.traceback import Traceback
 
 import atopile
 import faebryk
+from atopile.buildutil import generate_build_id
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
 from atopile.logging_utils import (
     PLOG,
@@ -499,7 +500,7 @@ class SQLiteLogWriter:
         If a build with the same project/target/timestamp already exists,
         returns the existing build_id.
         """
-        build_id = BuildLogger.generate_build_id(project_path, target, timestamp)
+        build_id = generate_build_id(project_path, target, timestamp)
         conn = self._get_connection()
         try:
             conn.execute(
@@ -772,14 +773,6 @@ class BuildLogger(BaseLogger):
         from faebryk.libs.paths import get_log_dir
 
         return get_log_dir() / "build_logs.db"
-
-    @staticmethod
-    def generate_build_id(project_path: str, target: str, timestamp: str) -> str:
-        """Generate a unique build ID from project, target, and timestamp."""
-        import hashlib
-
-        content = f"{project_path}:{target}:{timestamp}"
-        return hashlib.sha256(content.encode()).hexdigest()[:16]
 
     @staticmethod
     def _emit_event(

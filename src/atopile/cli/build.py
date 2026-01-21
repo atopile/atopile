@@ -18,6 +18,7 @@ import typer
 from rich.console import Console
 from typing_extensions import Annotated
 
+from atopile.buildutil import generate_build_id
 from atopile.dataclasses import BuildReport, BuildStatus, StageStatus
 from atopile.logging import (
     NOW,
@@ -976,12 +977,10 @@ class ParallelBuildManager:
 
     def _get_build_data(self, bp: "BuildProcess") -> dict:
         """Collect minimal data for a single build as a dictionary."""
-        from atopile.logging import BuildLogger
-
         # Generate build_id for this build
         # Use resolved absolute path to ensure consistency with subprocess
         project_path = str(bp.project_root.resolve()) if bp.project_root else "unknown"
-        build_id = BuildLogger.generate_build_id(project_path, bp.name, self._now)
+        build_id = generate_build_id(project_path, bp.name, self._now)
         logger.debug(
             f"Summary build_id: {build_id} (project={project_path}, target={bp.name}, ts={self._now})"  # noqa: E501
         )

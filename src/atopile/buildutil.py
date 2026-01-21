@@ -1,6 +1,8 @@
 import contextlib
+import hashlib
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import faebryk.core.faebrykpy as fbrk
@@ -18,6 +20,30 @@ if TYPE_CHECKING:
     from atopile.compiler.build import BuildFileResult, Linker
 
 logger = logging.getLogger(__name__)
+
+
+def generate_build_id(project_path: str, target: str, timestamp: str) -> str:
+    """
+    Generate a unique build ID from project, target, and timestamp.
+
+    This is the single source of truth for build ID generation.
+    All components (server, CLI, logging) must use this function.
+
+    Args:
+        project_path: Absolute path to the project root
+        target: Build target name
+        timestamp: Timestamp string in format "%Y-%m-%d_%H-%M-%S"
+
+    Returns:
+        16-character hex string (truncated SHA256 hash)
+    """
+    content = f"{project_path}:{target}:{timestamp}"
+    return hashlib.sha256(content.encode()).hexdigest()[:16]
+
+
+def generate_build_timestamp() -> str:
+    """Generate a build timestamp in the standard format."""
+    return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 
 @dataclass

@@ -13,18 +13,17 @@ import time
 from pathlib import Path
 from typing import Any
 
+from atopile.buildutil import generate_build_id, generate_build_timestamp
 from atopile.config import ProjectConfig
 from atopile.dataclasses import Log
 from atopile.logging import BuildLogger
-from atopile.server.domains import packages as packages_domain
-from atopile.server import problem_parser
-from atopile.server import project_discovery
-from atopile.server import module_discovery
-from atopile.server.stdlib import get_standard_library
-from atopile.server import path_utils
+from atopile.server import (
+    module_discovery,
+    path_utils,
+    problem_parser,
+    project_discovery,
+)
 from atopile.server.app_context import AppContext
-from atopile.server.core import projects as core_projects
-from atopile.server.state import server_state
 from atopile.server.build_queue import (
     _active_builds,
     _build_lock,
@@ -33,8 +32,11 @@ from atopile.server.build_queue import (
     _make_build_key,
     _sync_builds_to_state_async,
     cancel_build,
-    next_build_id,
 )
+from atopile.server.core import projects as core_projects
+from atopile.server.domains import packages as packages_domain
+from atopile.server.state import server_state
+from atopile.server.stdlib import get_standard_library
 
 log = logging.getLogger(__name__)
 
@@ -158,7 +160,10 @@ def _handle_build_sync(payload: dict) -> dict:
                             continue
 
                         with _build_lock:
-                            build_id = next_build_id()
+                            timestamp = generate_build_timestamp()
+                            build_id = generate_build_id(
+                                project_root, target_name, timestamp
+                            )
                             _active_builds[build_id] = {
                                 "status": "queued",
                                 "project_root": project_root,
@@ -170,6 +175,7 @@ def _handle_build_sync(payload: dict) -> dict:
                                 "return_code": None,
                                 "error": None,
                                 "started_at": time.time(),
+                                "timestamp": timestamp,
                                 "stages": [],
                             }
 
@@ -207,7 +213,10 @@ def _handle_build_sync(payload: dict) -> dict:
     build_label = entry if standalone else "project"
     log.info(f"Creating single build for targets={targets}, entry={entry}")
     with _build_lock:
-        build_id = next_build_id()
+        timestamp = generate_build_timestamp()
+        # Use first target for build_id, or "default" if none
+        target_for_id = targets[0] if targets else "default"
+        build_id = generate_build_id(project_root, target_for_id, timestamp)
         log.info(f"Allocated build_id={build_id}")
         _active_builds[build_id] = {
             "status": "queued",
@@ -220,6 +229,7 @@ def _handle_build_sync(payload: dict) -> dict:
             "return_code": None,
             "error": None,
             "started_at": time.time(),
+            "timestamp": timestamp,
             "stages": [],
         }
 

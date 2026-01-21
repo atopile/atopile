@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from atopile.buildutil import generate_build_id, generate_build_timestamp
 from atopile.dataclasses import (
     BuildRequest,
     BuildResponse,
@@ -27,7 +28,6 @@ from atopile.server.build_queue import (
     _make_build_key,
     _sync_builds_to_state,
     cancel_build,
-    next_build_id,
 )
 
 log = logging.getLogger(__name__)
@@ -175,7 +175,10 @@ def handle_start_build(request: BuildRequest) -> BuildResponse:
 
     build_label = request.entry if request.standalone else "project"
     with _build_lock:
-        build_id = next_build_id()
+        timestamp = generate_build_timestamp()
+        # Use first target for build_id, or "default" if none
+        target_for_id = request.targets[0] if request.targets else "default"
+        build_id = generate_build_id(request.project_root, target_for_id, timestamp)
         _active_builds[build_id] = {
             "status": BuildStatus.QUEUED.value,
             "project_root": request.project_root,
@@ -187,6 +190,7 @@ def handle_start_build(request: BuildRequest) -> BuildResponse:
             "return_code": None,
             "error": None,
             "started_at": time.time(),
+            "timestamp": timestamp,
             "stages": [],
         }
 
