@@ -543,7 +543,7 @@ export function Sidebar() {
         id: p.root,
         name: p.name,
         type: 'project' as const,
-        path: p.root,
+        root: p.root,  // Use 'root' to match backend and type definition
         builds,
         lastBuildStatus: projectStatus,
         lastBuildTimestamp: mostRecentTimestamp,
@@ -632,7 +632,7 @@ export function Sidebar() {
     if (sel.type === 'project' || sel.type === 'build' || sel.type === 'symbol') {
       // Find the project root for this selection
       const project = projects.find(p => p.id === sel.projectId);
-      const projectRoot = project?.root || project?.path;
+      const projectRoot = project?.root;
       if (projectRoot) {
         action('selectProject', { projectRoot });
       }
