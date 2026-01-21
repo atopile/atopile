@@ -6,17 +6,14 @@ directly by VS Code webview for better IDE integration.
 """
 
 import asyncio
-import hashlib
 import json
 import logging
 import os
-import queue
 import socket
 import sqlite3
 import subprocess
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Optional
@@ -36,10 +33,15 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from atopile.config import ProjectConfig
+from atopile.server import build_history
+from atopile.server import build_queue
+from atopile.server import module_discovery
+from atopile.server import path_utils
+from atopile.server import package_manager
+from atopile.server import problem_parser
+from atopile.server import project_discovery
 from atopile.server.core import launcher as core_launcher
-from atopile.server.core import packages as core_packages
 from atopile.server.core import projects as core_projects
-from atopile.server.models import registry as registry_model
 from atopile.server.stdlib import (
     StdLibItem,
     StdLibItemType,
@@ -50,6 +52,38 @@ from atopile.server.state import server_state
 from atopile.logging import get_central_log_db
 
 log = logging.getLogger(__name__)
+
+# Domain module aliases to keep server.py thin.
+discover_projects_in_paths = project_discovery.discover_projects_in_paths
+discover_modules_in_project = module_discovery.discover_modules_in_project
+
+_active_builds = build_queue._active_builds
+_build_lock = build_queue._build_lock
+_build_queue = build_queue._build_queue
+_build_settings = build_queue._build_settings
+_DEFAULT_MAX_CONCURRENT = build_queue._DEFAULT_MAX_CONCURRENT
+_is_duplicate_build = build_queue._is_duplicate_build
+_make_build_key = build_queue._make_build_key
+_sync_builds_to_state = build_queue._sync_builds_to_state
+_sync_builds_to_state_async = build_queue._sync_builds_to_state_async
+cancel_build = build_queue.cancel_build
+
+init_build_history_db = build_history.init_build_history_db
+save_build_to_history = build_history.save_build_to_history
+load_recent_builds_from_history = build_history.load_recent_builds_from_history
+
+_active_package_ops = package_manager._active_package_ops
+_package_op_lock = package_manager._package_op_lock
+_version_is_newer = package_manager._version_is_newer
+search_registry_packages = package_manager.search_registry_packages
+get_all_registry_packages = package_manager.get_all_registry_packages
+get_package_details_from_registry = package_manager.get_package_details_from_registry
+get_installed_packages_for_project = package_manager.get_installed_packages_for_project
+get_all_installed_packages = package_manager.get_all_installed_packages
+enrich_packages_with_registry = package_manager.enrich_packages_with_registry
+_refresh_packages_async = package_manager.refresh_packages_async
+next_package_op_id = package_manager.next_package_op_id
+next_build_id = build_queue.next_build_id
 
 
 # --- Project Discovery Models ---
@@ -670,1487 +704,15 @@ class ConnectionManager:
 
 # Global connection manager instance
 ws_manager = ConnectionManager()
+build_queue.set_broadcast_sync(ws_manager.broadcast_sync)
 
 
-def extract_modules_from_file(
-    ato_file: Path, project_root: Path
-) -> list[ModuleDefinition]:
-    """
-    Extract all module/interface/component definitions from an .ato file.
 
-    Uses the ANTLR parser to parse the file and extract BlockDefinitions.
-    """
-    return core_projects.extract_modules_from_file(ato_file, project_root)
 
 
-def discover_modules_in_project(project_root: Path) -> list[ModuleDefinition]:
-    """
-    Discover all module definitions in a project by scanning .ato files.
-    """
-    return core_projects.discover_modules_in_project(project_root)
 
 
-def parse_problems_from_log_file(
-    log_file: Path, build_name: str, project_name: str | None = None
-) -> list[Problem]:
-    """
-    Parse problems (warnings and errors) from a JSONL log file.
 
-    Returns a list of Problem objects for all WARNING, ERROR, and ALERT log entries.
-    """
-    import re
-
-    problems: list[Problem] = []
-
-    if not log_file.exists():
-        return problems
-
-    # Skip SQLite database files - they're not JSONL log files
-    if log_file.suffix == ".db":
-        return problems
-
-    try:
-        content = log_file.read_text()
-        lines = content.strip().split("\n")
-
-        for i, line in enumerate(lines):
-            if not line.strip():
-                continue
-
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-
-            level = entry.get("level", "")
-            if level not in ("WARNING", "ERROR", "ALERT"):
-                continue
-
-            # Parse source location from ato_traceback if available
-            file_path = None
-            line_num = None
-            column = None
-
-            ato_traceback = entry.get("ato_traceback", "")
-            if ato_traceback:
-                # Parse: File "path/file.ato", line 23, column 8
-                match = re.search(
-                    r'File "([^"]+)", line (\d+)(?:, column (\d+))?', ato_traceback
-                )
-                if match:
-                    file_path = match.group(1)
-                    line_num = int(match.group(2))
-                    column = int(match.group(3)) if match.group(3) else None
-
-            problems.append(
-                Problem(
-                    id=f"{build_name}-{i}",
-                    level="warning" if level == "WARNING" else "error",
-                    message=entry.get("message", ""),
-                    file=file_path,
-                    line=line_num,
-                    column=column,
-                    stage=entry.get("stage"),
-                    logger=entry.get("logger"),
-                    build_name=build_name,
-                    project_name=project_name,
-                    timestamp=entry.get("timestamp"),
-                    ato_traceback=ato_traceback or None,
-                    exc_info=entry.get("exc_info"),
-                )
-            )
-
-    except Exception as e:
-        log.warning(f"Failed to parse log file {log_file}: {e}")
-
-    return problems
-
-
-def _version_is_newer(installed: str | None, latest: str | None) -> bool:
-    """
-    Check if latest version is newer than installed version.
-
-    Simple semver comparison - handles common version formats.
-    Returns False if either version is None or comparison fails.
-    """
-    return registry_model.version_is_newer(installed, latest)
-
-
-def search_registry_packages(query: str) -> list[PackageInfo]:
-    """
-    Search the package registry for packages matching the query.
-
-    Uses the PackagesAPIClient to query the registry API.
-    Results are cached for 5 minutes.
-    """
-    return registry_model.search_registry_packages(query)
-
-
-def get_all_registry_packages() -> list[PackageInfo]:
-    """
-    Get all packages from the registry by querying multiple search terms.
-
-    The registry API requires a search term (empty/wildcard returns 0 results).
-    This function queries multiple terms and merges results to get all packages.
-    Results are cached for 5 minutes.
-    """
-    return registry_model.get_all_registry_packages()
-
-
-def get_package_details_from_registry(identifier: str) -> PackageDetails | None:
-    """
-    Get detailed package information from the registry.
-
-    Fetches:
-    - Full package info with stats (downloads)
-    - List of releases (versions)
-    """
-    return registry_model.get_package_details_from_registry(identifier)
-
-
-def get_installed_packages_for_project(project_root: Path) -> list[InstalledPackage]:
-    """
-    Read installed packages from a project's ato.yaml dependencies section.
-
-    Supports two formats:
-    1. List format (current):
-       dependencies:
-       - type: registry
-         identifier: atopile/buttons
-         release: 0.3.1
-
-    2. Dict format (legacy):
-       dependencies:
-         "atopile/buttons": "0.3.1"
-    """
-    return core_packages.get_installed_packages_for_project(project_root)
-
-
-def get_all_installed_packages(paths: list[Path]) -> dict[str, PackageInfo]:
-    """
-    Get all installed packages across all projects in the given paths.
-
-    Returns a dict of package_identifier -> PackageInfo, with installed_in
-    tracking which projects have each package.
-    """
-    return core_packages.get_all_installed_packages(paths)
-
-
-def enrich_packages_with_registry(
-    packages: dict[str, PackageInfo],
-) -> dict[str, PackageInfo]:
-    """
-    Enrich installed packages with metadata from the registry.
-
-    Fetches latest_version, summary, homepage, etc. from the registry
-    for each installed package.
-    """
-    return registry_model.enrich_packages_with_registry(packages)
-
-
-def _resolve_workspace_file(path_str: str, workspace_paths: list[Path]) -> Path | None:
-    candidate = Path(path_str)
-    if candidate.exists():
-        return candidate
-
-    if candidate.is_absolute():
-        return None
-
-    for root in workspace_paths:
-        root_path = Path(root)
-        try_path = root_path / candidate
-        if try_path.exists():
-            return try_path
-
-    return None
-
-
-def _resolve_entry_path(project_root: Path, entry: str | None) -> Path | None:
-    if not entry:
-        return None
-
-    entry_file = entry.split(":")[0] if ":" in entry else entry
-    entry_path = Path(entry_file)
-    if not entry_path.is_absolute():
-        entry_path = project_root / entry_file
-    return entry_path
-
-
-def _resolve_layout_path(project_root: Path, build_id: str) -> Path | None:
-    candidates = [
-        project_root / "layouts" / build_id / f"{build_id}.kicad_pcb",
-        project_root / "layouts" / build_id,
-        project_root / "layouts",
-    ]
-    for path in candidates:
-        if path.exists():
-            return path
-    return None
-
-
-def _resolve_3d_path(project_root: Path, build_id: str) -> Path | None:
-    build_dir = project_root / "build" / "builds" / build_id
-    if not build_dir.exists():
-        return None
-
-    candidate = build_dir / f"{build_id}.pcba.glb"
-    if candidate.exists():
-        return candidate
-
-    glb_files = sorted(build_dir.glob("*.glb"))
-    if glb_files:
-        return glb_files[0]
-
-    return build_dir
-
-
-# Track active builds
-_active_builds: dict[str, dict[str, Any]] = {}
-_build_counter = 0
-_build_lock = threading.Lock()
-
-# Build history database
-_build_history_db: Path | None = None
-
-BUILD_HISTORY_SCHEMA = """
-CREATE TABLE IF NOT EXISTS build_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    build_id TEXT UNIQUE NOT NULL,
-    build_key TEXT NOT NULL,
-    project_root TEXT NOT NULL,
-    targets TEXT NOT NULL,
-    entry TEXT,
-    status TEXT NOT NULL,
-    return_code INTEGER,
-    error TEXT,
-    started_at REAL NOT NULL,
-    completed_at REAL,
-    stages TEXT,
-    warnings INTEGER DEFAULT 0,
-    errors INTEGER DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS idx_build_history_project ON build_history(project_root);
-CREATE INDEX IF NOT EXISTS idx_build_history_status ON build_history(status);
-CREATE INDEX IF NOT EXISTS idx_build_history_started ON build_history(started_at DESC);
-"""
-
-
-def init_build_history_db(db_path: Path) -> None:
-    """Initialize the build history SQLite database."""
-    global _build_history_db
-    _build_history_db = db_path
-
-    try:
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(db_path))
-        conn.executescript(BUILD_HISTORY_SCHEMA)
-        conn.commit()
-        conn.close()
-        log.info(f"Initialized build history database: {db_path}")
-    except Exception as e:
-        log.error(f"Failed to initialize build history database: {e}")
-
-
-def save_build_to_history(build_id: str, build_info: dict) -> None:
-    """Save a build record to the history database."""
-    if not _build_history_db:
-        return
-
-    try:
-        conn = sqlite3.connect(str(_build_history_db), timeout=5.0)
-        cursor = conn.cursor()
-
-        # Count warnings/errors from stages
-        stages = build_info.get("stages", [])
-        warnings = sum(s.get("warnings", 0) for s in stages)
-        errors = sum(s.get("errors", 0) for s in stages)
-
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO build_history
-            (build_id, build_key, project_root, targets, entry, status,
-             return_code, error, started_at, completed_at, stages, warnings, errors)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                build_id,
-                build_info.get("build_key", ""),
-                build_info.get("project_root", ""),
-                json.dumps(build_info.get("targets", [])),
-                build_info.get("entry"),
-                build_info.get("status", "unknown"),
-                build_info.get("return_code"),
-                build_info.get("error"),
-                build_info.get("started_at", time.time()),
-                time.time(),  # completed_at
-                json.dumps(stages),
-                warnings,
-                errors,
-            ),
-        )
-        conn.commit()
-        conn.close()
-        log.debug(f"Saved build {build_id} to history")
-    except Exception as e:
-        log.error(f"Failed to save build to history: {e}")
-
-
-def load_recent_builds_from_history(limit: int = 50) -> list[dict]:
-    """Load recent builds from the history database."""
-    if not _build_history_db or not _build_history_db.exists():
-        return []
-
-    try:
-        conn = sqlite3.connect(str(_build_history_db), timeout=5.0)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            SELECT * FROM build_history
-            ORDER BY started_at DESC
-            LIMIT ?
-            """,
-            (limit,),
-        )
-
-        rows = cursor.fetchall()
-        conn.close()
-
-        builds = []
-        for row in rows:
-            builds.append(
-                {
-                    "build_id": row["build_id"],
-                    "build_key": row["build_key"],
-                    "project_root": row["project_root"],
-                    "targets": json.loads(row["targets"]),
-                    "entry": row["entry"],
-                    "status": row["status"],
-                    "return_code": row["return_code"],
-                    "error": row["error"],
-                    "started_at": row["started_at"],
-                    "completed_at": row["completed_at"],
-                    "stages": json.loads(row["stages"]) if row["stages"] else [],
-                    "warnings": row["warnings"],
-                    "errors": row["errors"],
-                }
-            )
-        return builds
-
-    except Exception as e:
-        log.error(f"Failed to load build history: {e}")
-        return []
-
-
-# Track active package operations
-_active_package_ops: dict[str, dict[str, Any]] = {}
-_package_op_counter = 0
-_package_op_lock = threading.Lock()
-
-# Build queue configuration
-MAX_CONCURRENT_BUILDS = 4
-
-
-def _make_build_key(project_root: str, targets: list[str], entry: str | None) -> str:
-    """Create a unique key for a build configuration."""
-    content = f"{project_root}:{':'.join(sorted(targets))}:{entry or 'default'}"
-    return hashlib.sha256(content.encode()).hexdigest()[:16]
-
-
-def _is_duplicate_build(build_key: str) -> str | None:
-    """
-    Check if a build with this key is already running or queued.
-
-    Returns the existing build_id if duplicate, None otherwise.
-    """
-    with _build_lock:
-        for build_id, build in _active_builds.items():
-            if build.get("build_key") == build_key and build["status"] in (
-                "queued",
-                "building",
-            ):
-                return build_id
-    return None
-
-
-def _run_build_subprocess(
-    build_id: str,
-    project_root: str,
-    targets: list[str],
-    frozen: bool,
-    entry: str | None,
-    standalone: bool,
-    result_q: queue.Queue,
-    cancel_flags: dict[str, bool],
-) -> None:
-    """
-    Run a single build in a subprocess and report progress.
-
-    This function runs in a worker thread. It spawns an `ato build` subprocess
-    and monitors it for completion while polling summary.json for stage updates.
-    """
-    # Send "started" message
-    result_q.put(
-        {
-            "type": "started",
-            "build_id": build_id,
-            "project_root": project_root,
-            "targets": targets,
-        }
-    )
-
-    process = None
-    final_stages: list[dict] = []
-    error_msg: str | None = None
-    return_code: int = -1
-
-    try:
-        # Build the command
-        cmd = ["ato", "build", "--verbose"]
-
-        # Determine the summary.json path for real-time monitoring
-        summary_path = Path(project_root) / "build" / "logs" / "latest" / "summary.json"
-
-        if standalone and entry:
-            cmd.append(entry)
-            cmd.append("--standalone")
-            entry_file = entry.split(":")[0] if ":" in entry else entry
-            entry_stem = Path(entry_file).stem
-            standalone_dir = (
-                Path(project_root) / f"standalone_{entry_stem}" / "build" / "logs"
-            )
-            standalone_dir.mkdir(parents=True, exist_ok=True)
-            summary_path = standalone_dir.parent / "logs" / "latest" / "summary.json"
-        else:
-            for target in targets:
-                cmd.extend(["--build", target])
-
-        if frozen:
-            cmd.append("--frozen")
-
-        # Run the build subprocess
-        env = os.environ.copy()
-        env["PYTHONUNBUFFERED"] = "1"
-
-        log.info(
-            f"Build {build_id}: starting subprocess - cmd={' '.join(cmd)}, "
-            f"cwd={project_root}, summary_path={summary_path}"
-        )
-
-        process = subprocess.Popen(
-            cmd,
-            cwd=project_root,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=env,
-        )
-
-        # Poll for completion while monitoring summary.json
-        last_stages: list[dict] = []
-        poll_interval = 0.5
-        stderr_output = ""
-
-        while process.poll() is None:
-            # Check for cancellation
-            if cancel_flags.get(build_id, False):
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                result_q.put(
-                    {
-                        "type": "cancelled",
-                        "build_id": build_id,
-                    }
-                )
-                return  # Exit the function after cancellation
-
-            # Read summary.json for stage updates
-            if summary_path.exists():
-                try:
-                    with open(summary_path, "r") as f:
-                        summary = json.load(f)
-                    # Find the build in summary using the helper function
-                    current_build = _find_build_in_summary(summary, targets, entry)
-                    if current_build:
-                        current_stages = current_build.get("stages", [])
-                        if current_stages != last_stages:
-                            log.debug(
-                                f"Build {build_id}: stage update - "
-                                f"{len(current_stages)} stages"
-                            )
-                            result_q.put(
-                                {
-                                    "type": "stage",
-                                    "build_id": build_id,
-                                    "stages": current_stages,
-                                }
-                            )
-                            last_stages = current_stages
-                except (json.JSONDecodeError, IOError) as e:
-                    log.debug(f"Build {build_id}: error reading summary.json: {e}")
-
-            time.sleep(poll_interval)
-
-        # Process completed
-        return_code = process.returncode
-        stderr_output = process.stderr.read() if process.stderr else ""
-
-        # Get final stages from summary
-        if summary_path.exists():
-            try:
-                with open(summary_path, "r") as f:
-                    summary = json.load(f)
-                final_build = _find_build_in_summary(summary, targets, entry)
-                if final_build:
-                    final_stages = final_build.get("stages", [])
-            except (json.JSONDecodeError, IOError):
-                pass
-
-        if return_code != 0:
-            error_msg = (
-                stderr_output[:500]
-                if stderr_output
-                else f"Build failed with code {return_code}"
-            )
-
-    except Exception as e:
-        error_msg = str(e)
-        return_code = -1
-
-    # Send completion message
-    result_q.put(
-        {
-            "type": "completed",
-            "build_id": build_id,
-            "return_code": return_code,
-            "error": error_msg,
-            "stages": final_stages,
-        }
-    )
-
-
-class BuildQueue:
-    """
-    Manages build execution with concurrency limiting using threading.
-
-    Queues build requests and processes them in worker threads with subprocesses,
-    respecting a maximum concurrent build limit. This approach is simpler than
-    multiprocessing and matches the CLI's ParallelBuildManager pattern.
-    """
-
-    def __init__(self, max_concurrent: int = MAX_CONCURRENT_BUILDS):
-        # Pending builds - use list for reordering capability
-        self._pending: list[str] = []
-        self._pending_lock = threading.Lock()
-
-        # Active builds tracking
-        self._active: set[str] = set()
-        self._active_lock = threading.Lock()
-
-        self._max_concurrent = max_concurrent
-        self._running = False
-
-        # Thread pool for running builds
-        self._executor: ThreadPoolExecutor | None = None
-
-        # Result queue for worker threads to report back
-        self._result_q: queue.Queue[dict[str, Any]] = queue.Queue()
-
-        # Cancel flags (thread-safe dict for signaling cancellation)
-        self._cancel_flags: dict[str, bool] = {}
-        self._cancel_lock = threading.Lock()
-
-        # Orchestrator thread
-        self._orchestrator_thread: threading.Thread | None = None
-
-    def start(self) -> None:
-        """Start the thread pool and orchestrator thread."""
-        if self._running:
-            return
-
-        self._running = True
-
-        # Create thread pool executor
-        self._executor = ThreadPoolExecutor(
-            max_workers=self._max_concurrent, thread_name_prefix="build-worker"
-        )
-
-        # Start orchestrator thread
-        self._orchestrator_thread = threading.Thread(
-            target=self._orchestrate, daemon=True
-        )
-        self._orchestrator_thread.start()
-        log.info(f"BuildQueue: Started (max_concurrent={self._max_concurrent})")
-
-    def enqueue(self, build_id: str) -> bool:
-        """
-        Add a build to the queue.
-
-        Returns True if enqueued, False if already in queue/active.
-        """
-        with self._active_lock:
-            if build_id in self._active:
-                log.debug(f"BuildQueue: {build_id} already active, not enqueueing")
-                return False
-
-        with self._pending_lock:
-            if build_id in self._pending:
-                log.debug(f"BuildQueue: {build_id} already pending, not enqueueing")
-                return False
-            self._pending.append(build_id)
-            log.debug(
-                f"BuildQueue: Enqueued {build_id} "
-                f"(pending={len(self._pending)}, active={len(self._active)})"
-            )
-
-        # Ensure workers are running
-        if not self._running:
-            self.start()
-        return True
-
-    def reorder(self, build_ids: list[str]) -> dict:
-        """
-        Reorder pending builds to match the given order.
-
-        Args:
-            build_ids: Desired order. Can include active build IDs - they're
-                       ignored since active builds can't be reordered.
-
-        Returns dict with:
-            - reordered: list of build IDs that were reordered
-            - already_active: list of build IDs that were already running
-            - new_order: the resulting pending queue order
-        """
-        with self._active_lock:
-            active_set = set(self._active)
-
-        with self._pending_lock:
-            # Separate active from pending in the requested order
-            already_active = [bid for bid in build_ids if bid in active_set]
-            reordered = [bid for bid in build_ids if bid in self._pending]
-
-            # Add any pending builds not in the request (keep at end)
-            remaining = [bid for bid in self._pending if bid not in build_ids]
-            self._pending = reordered + remaining
-
-            log.info(f"BuildQueue: Reordered queue to {self._pending}")
-            return {
-                "reordered": reordered,
-                "already_active": already_active,
-                "new_order": list(self._pending),
-            }
-
-    def move_to_position(self, build_id: str, position: int) -> dict:
-        """
-        Move a pending build to a specific position in the unified queue.
-
-        The unified queue is: [active builds...] + [pending builds...]
-        If the target position is among active builds (0 to n_active-1),
-        the build is moved to the front of the pending queue (first to run next).
-
-        Args:
-            build_id: The build to move (must be pending, not active)
-            position: Target position in the unified queue (0-indexed)
-
-        Returns dict with:
-            - success: whether the move succeeded
-            - message: description of what happened
-            - new_position: the actual position in the unified queue
-            - new_pending_order: the resulting pending queue order
-        """
-        with self._active_lock:
-            active_list = list(self._active)
-            n_active = len(active_list)
-
-            if build_id in self._active:
-                return {
-                    "success": False,
-                    "message": "Cannot move an active build",
-                    "new_position": None,
-                    "new_pending_order": self.get_pending_order(),
-                }
-
-        with self._pending_lock:
-            if build_id not in self._pending:
-                return {
-                    "success": False,
-                    "message": "Build not found in pending queue",
-                    "new_position": None,
-                    "new_pending_order": list(self._pending),
-                }
-
-            # Remove from current position
-            self._pending.remove(build_id)
-
-            # Calculate target position in pending queue
-            # If target is in the "active" zone, put at front of pending
-            if position < n_active:
-                pending_position = 0
-            else:
-                pending_position = min(position - n_active, len(self._pending))
-
-            # Insert at new position
-            self._pending.insert(pending_position, build_id)
-
-            actual_position = n_active + pending_position
-            log.info(
-                f"BuildQueue: Moved {build_id} to position {actual_position} "
-                f"(pending index {pending_position})"
-            )
-
-            return {
-                "success": True,
-                "message": f"Moved to position {actual_position}",
-                "new_position": actual_position,
-                "new_pending_order": list(self._pending),
-            }
-
-    def remove_pending(self, build_id: str) -> dict:
-        """
-        Remove a build from the pending queue.
-
-        Returns dict with:
-            - success: whether the build was found and removed
-            - message: description of what happened
-        Note: Cannot remove active builds - use cancel() for that.
-        """
-        with self._pending_lock:
-            if build_id in self._pending:
-                self._pending.remove(build_id)
-                log.info(f"BuildQueue: Removed {build_id} from pending queue")
-                return {"success": True, "message": "Removed from pending queue"}
-
-        with self._active_lock:
-            if build_id in self._active:
-                return {
-                    "success": False,
-                    "message": "Build is active - use cancel() instead",
-                }
-
-        return {"success": False, "message": "Build not found in queue"}
-
-    def get_queue_state(self) -> dict:
-        """
-        Return the full queue state for UI rendering.
-
-        Returns dict with:
-            - active: list of currently running build IDs (in no particular order)
-            - pending: list of pending build IDs (in queue order)
-            - max_concurrent: maximum concurrent builds
-        """
-        with self._active_lock:
-            active = list(self._active)
-        with self._pending_lock:
-            pending = list(self._pending)
-        return {
-            "active": active,
-            "pending": pending,
-            "max_concurrent": self._max_concurrent,
-        }
-
-    def get_pending_order(self) -> list[str]:
-        """Return the current order of pending builds."""
-        with self._pending_lock:
-            return list(self._pending)
-
-    def _orchestrate(self) -> None:
-        """
-        Orchestrator loop - dispatch builds and apply results.
-
-        Runs in a background thread, handling state updates and WebSocket broadcasts.
-        """
-        while self._running:
-            # Apply any pending results from worker threads
-            self._apply_results()
-
-            # Dispatch next build if we have capacity
-            self._dispatch_next()
-
-            time.sleep(0.05)
-
-    def _apply_results(self) -> None:
-        """Apply results from worker threads."""
-        while True:
-            try:
-                msg = self._result_q.get_nowait()
-            except queue.Empty:
-                break
-
-            build_id = msg.get("build_id")
-            msg_type = msg.get("type")
-
-            if msg_type == "started":
-                building_started_at = time.time()
-                with _build_lock:
-                    if build_id in _active_builds:
-                        _active_builds[build_id]["status"] = "building"
-                        _active_builds[build_id]["building_started_at"] = (
-                            building_started_at
-                        )
-
-                ws_manager.broadcast_sync(
-                    "builds",
-                    "build:started",
-                    {
-                        "build_id": build_id,
-                        "project_root": msg.get("project_root"),
-                        "targets": msg.get("targets"),
-                        "status": "building",
-                        "building_started_at": building_started_at,
-                    },
-                )
-
-                # Sync to server_state for /ws/state clients
-                _sync_builds_to_state()
-
-            elif msg_type == "stage":
-                stages = msg.get("stages", [])
-                with _build_lock:
-                    if build_id in _active_builds:
-                        _active_builds[build_id]["stages"] = stages
-
-                ws_manager.broadcast_sync(
-                    "builds",
-                    "build:stage",
-                    {"build_id": build_id, "stages": stages},
-                )
-
-                # Sync to server_state for /ws/state clients
-                _sync_builds_to_state()
-
-            elif msg_type == "completed":
-                return_code = msg.get("return_code", -1)
-                error = msg.get("error")
-                stages = msg.get("stages", [])
-                status = "success" if return_code == 0 else "failed"
-                duration = 0.0
-
-                with _build_lock:
-                    if build_id in _active_builds:
-                        started_at = _active_builds[build_id].get(
-                            "building_started_at"
-                        ) or _active_builds[build_id].get("started_at")
-                        if started_at:
-                            duration = time.time() - started_at
-                        _active_builds[build_id]["status"] = status
-                        _active_builds[build_id]["return_code"] = return_code
-                        _active_builds[build_id]["error"] = error
-                        _active_builds[build_id]["stages"] = stages
-                        _active_builds[build_id]["duration"] = duration
-
-                        # Count warnings/errors from stages
-                        warnings = sum(
-                            1 for s in stages if s.get("status") == "warning"
-                        )
-                        errors = sum(1 for s in stages if s.get("status") == "error")
-                        _active_builds[build_id]["warnings"] = warnings
-                        _active_builds[build_id]["errors"] = errors
-
-                with self._active_lock:
-                    self._active.discard(build_id)
-
-                with self._cancel_lock:
-                    self._cancel_flags.pop(build_id, None)
-
-                ws_manager.broadcast_sync(
-                    "builds",
-                    "build:completed",
-                    {
-                        "build_id": build_id,
-                        "status": status,
-                        "return_code": return_code,
-                        "error": error,
-                        "stages": stages,
-                        "duration": duration,
-                    },
-                )
-
-                # Sync to server_state for /ws/state clients
-                _sync_builds_to_state()
-
-                # Refresh problems from logs after build completes
-                _sync_problems_to_state()
-
-                # Save to history
-                with _build_lock:
-                    if build_id in _active_builds:
-                        save_build_to_history(build_id, _active_builds[build_id])
-
-                log.info(f"BuildQueue: Build {build_id} completed with status {status}")
-
-            elif msg_type == "cancelled":
-                with _build_lock:
-                    if build_id in _active_builds:
-                        _active_builds[build_id]["status"] = "cancelled"
-
-                with self._active_lock:
-                    self._active.discard(build_id)
-
-                with self._cancel_lock:
-                    self._cancel_flags.pop(build_id, None)
-
-                ws_manager.broadcast_sync(
-                    "builds",
-                    "build:cancelled",
-                    {"build_id": build_id},
-                )
-
-                # Sync to server_state for /ws/state clients
-                _sync_builds_to_state()
-
-    def _dispatch_next(self) -> None:
-        """Dispatch next pending build if capacity available."""
-        if not self._executor:
-            return
-
-        with self._active_lock:
-            if len(self._active) >= self._max_concurrent:
-                return
-
-        # Get next build from pending list
-        with self._pending_lock:
-            if not self._pending:
-                return
-
-            build_id = self._pending.pop(0)
-
-        # Check if build was cancelled while pending
-        with _build_lock:
-            if build_id not in _active_builds:
-                log.debug(f"BuildQueue: {build_id} no longer exists, skipping")
-                return
-            if _active_builds[build_id].get("status") == "cancelled":
-                log.debug(f"BuildQueue: {build_id} was cancelled, skipping")
-                return
-            build_info = _active_builds[build_id].copy()
-
-        with self._active_lock:
-            self._active.add(build_id)
-
-        with self._cancel_lock:
-            self._cancel_flags[build_id] = False
-
-        log.info(
-            f"BuildQueue: Dispatching {build_id} "
-            f"(active={len(self._active)}/{self._max_concurrent})"
-        )
-
-        # Submit task to thread pool
-        self._executor.submit(
-            _run_build_subprocess,
-            build_id,
-            build_info["project_root"],
-            build_info["targets"],
-            build_info.get("frozen", False),
-            build_info.get("entry"),
-            build_info.get("standalone", False),
-            self._result_q,
-            self._cancel_flags,
-        )
-
-    def cancel(self, build_id: str) -> dict:
-        """
-        Cancel a build - either remove from pending or signal worker to stop.
-
-        Returns dict with:
-            - success: whether the cancellation was initiated
-            - message: description of what happened
-            - was_pending: True if removed from pending, False if was active
-        """
-        # First try to remove from pending queue
-        result = self.remove_pending(build_id)
-        if result["success"]:
-            return {
-                "success": True,
-                "message": "Removed from pending queue",
-                "was_pending": True,
-            }
-
-        # If active, signal cancellation
-        with self._active_lock:
-            if build_id in self._active:
-                with self._cancel_lock:
-                    self._cancel_flags[build_id] = True
-                return {
-                    "success": True,
-                    "message": "Cancellation signal sent to active build",
-                    "was_pending": False,
-                }
-
-        return {
-            "success": False,
-            "message": "Build not found in queue",
-            "was_pending": False,
-        }
-
-    def stop(self) -> None:
-        """Stop thread pool and orchestrator thread."""
-        self._running = False
-
-        # Signal all active builds to cancel
-        with self._cancel_lock:
-            for build_id in list(self._cancel_flags.keys()):
-                self._cancel_flags[build_id] = True
-
-        # Wait for orchestrator
-        if self._orchestrator_thread and self._orchestrator_thread.is_alive():
-            self._orchestrator_thread.join(timeout=2.0)
-        self._orchestrator_thread = None
-
-        # Shutdown thread pool
-        if self._executor:
-            self._executor.shutdown(wait=False)
-            self._executor = None
-
-    def clear(self) -> None:
-        """Clear the queue and active set. Used for testing."""
-        self.stop()
-        with self._pending_lock:
-            self._pending.clear()
-        with self._active_lock:
-            self._active.clear()
-        with self._cancel_lock:
-            self._cancel_flags.clear()
-
-    def get_status(self) -> dict:
-        """Return current queue status for debugging."""
-        with self._pending_lock:
-            pending_count = len(self._pending)
-        with self._active_lock:
-            active_count = len(self._active)
-            active_builds = list(self._active)
-        return {
-            "pending_count": pending_count,
-            "active_count": active_count,
-            "active_builds": active_builds,
-            "max_concurrent": self._max_concurrent,
-            "orchestrator_running": self._running,
-        }
-
-    def get_max_concurrent(self) -> int:
-        """Return the current max concurrent builds limit."""
-        return self._max_concurrent
-
-    def set_max_concurrent(self, value: int) -> None:
-        """
-        Set the max concurrent builds limit.
-
-        With ThreadPoolExecutor, we need to recreate the executor to change
-        the max workers. This is done lazily - the new limit takes effect
-        for new dispatches.
-        """
-        new_max = max(1, value)
-        old_max = self._max_concurrent
-        self._max_concurrent = new_max
-        log.info(f"BuildQueue: max_concurrent changed from {old_max} to {new_max}")
-
-        # Recreate executor with new max workers if running
-        if self._running and self._executor:
-            # Don't shutdown existing executor - let running tasks complete
-            # Create new executor for future tasks
-            self._executor = ThreadPoolExecutor(
-                max_workers=new_max, thread_name_prefix="build-worker"
-            )
-
-
-# Get the default max concurrent (CPU count)
-_DEFAULT_MAX_CONCURRENT = os.cpu_count() or 4
-
-# Global build queue instance - starts with default (CPU count)
-_build_queue = BuildQueue(max_concurrent=_DEFAULT_MAX_CONCURRENT)
-
-# Settings state
-_build_settings = {
-    "use_default_max_concurrent": True,
-    "custom_max_concurrent": _DEFAULT_MAX_CONCURRENT,
-}
-
-
-def _get_state_builds():
-    """
-    Convert _active_builds to StateBuild objects.
-
-    Helper function used by both sync and async state sync functions.
-    """
-    from atopile.server.state import Build as StateBuild, BuildStage as StateStage
-
-    with _build_lock:
-        state_builds = []
-        for build_id, build_info in _active_builds.items():
-            # Convert stages if present
-            stages = None
-            if build_info.get("stages"):
-                stages = [
-                    StateStage(
-                        name=s.get("name", ""),
-                        stage_id=s.get("stage_id", s.get("name", "")),
-                        display_name=s.get("display_name"),
-                        elapsed_seconds=s.get("elapsed_seconds", 0.0),
-                        status=s.get("status", "pending"),
-                        infos=s.get("infos", 0),
-                        warnings=s.get("warnings", 0),
-                        errors=s.get("errors", 0),
-                        alerts=s.get("alerts", 0),
-                    )
-                    for s in build_info["stages"]
-                ]
-
-            # Determine display name and build name
-            # name is used by frontend to match builds to targets
-            entry = build_info.get("entry")
-            targets = build_info.get("targets", [])
-            if entry:
-                display_name = entry.split(":")[-1] if ":" in entry else entry
-                build_name = display_name
-            elif targets:
-                display_name = ", ".join(targets)
-                build_name = targets[0] if len(targets) == 1 else display_name
-            else:
-                display_name = "Build"
-                build_name = build_id
-
-            state_builds.append(
-                StateBuild(
-                    name=build_name,
-                    display_name=display_name,
-                    build_id=build_id,
-                    project_name=Path(build_info.get("project_root", "")).name,
-                    status=build_info.get("status", "queued"),
-                    elapsed_seconds=build_info.get("duration", 0.0),
-                    warnings=build_info.get("warnings", 0),
-                    errors=build_info.get("errors", 0),
-                    return_code=build_info.get("return_code"),
-                    error=build_info.get("error"),  # Include error message
-                    project_root=build_info.get("project_root"),
-                    targets=targets,
-                    entry=entry,
-                    started_at=build_info.get("started_at"),
-                    stages=stages,
-                )
-            )
-        return state_builds
-
-
-def _sync_builds_to_state():
-    """
-    Sync _active_builds to server_state for WebSocket broadcast.
-
-    Called when build status changes (from background thread).
-    Uses asyncio.run_coroutine_threadsafe to schedule on main event loop.
-    """
-    state_builds = _get_state_builds()
-    queued_builds = [b for b in state_builds if b.status in ("queued", "building")]
-
-    # Schedule async state update on main event loop
-    loop = server_state._event_loop
-    if loop is not None and loop.is_running():
-        asyncio.run_coroutine_threadsafe(server_state.set_builds(state_builds), loop)
-        asyncio.run_coroutine_threadsafe(
-            server_state.set_queued_builds(queued_builds), loop
-        )
-    else:
-        log.warning("Cannot sync builds to state: event loop not available")
-
-
-async def _sync_builds_to_state_async():
-    """
-    Async version of _sync_builds_to_state.
-
-    Called from async contexts (like WebSocket handlers) where we want
-    to await the state update rather than scheduling it.
-    """
-    state_builds = _get_state_builds()
-    # Set all builds
-    await server_state.set_builds(state_builds)
-    # Set queued builds (active builds only for queue panel)
-    queued_builds = [b for b in state_builds if b.status in ("queued", "building")]
-    await server_state.set_queued_builds(queued_builds)
-
-
-def _sync_problems_to_state():
-    """
-    Sync problems to server_state for WebSocket broadcast.
-
-    Called after build completes to update problems from log files.
-    Uses asyncio.run_coroutine_threadsafe to schedule on main event loop.
-    """
-    loop = server_state._event_loop
-    if loop is not None and loop.is_running():
-        asyncio.run_coroutine_threadsafe(_sync_problems_to_state_async(), loop)
-    else:
-        log.warning("Cannot sync problems to state: event loop not available")
-
-
-async def _sync_problems_to_state_async():
-    """
-    Async function to refresh problems from build logs.
-
-    Reads problems from all project build logs and updates server_state.
-    """
-    from atopile.server.state import Problem as StateProblem
-
-    workspace_paths = server_state._workspace_paths
-    if not workspace_paths:
-        return
-
-    try:
-        projects = discover_projects_in_paths(workspace_paths)
-        all_problems: list[StateProblem] = []
-
-        for project in projects:
-            project_path = Path(project.root)
-            project_summary = (
-                project_path / "build" / "logs" / "latest" / "summary.json"
-            )
-
-            if not project_summary.exists():
-                continue
-
-            try:
-                summary_data = json.loads(project_summary.read_text())
-                builds_data = summary_data.get("builds", [])
-
-                for build in builds_data:
-                    log_file_path = build.get("log_file")
-                    if not log_file_path:
-                        continue
-
-                    log_file = Path(log_file_path)
-                    if not log_file.exists():
-                        continue
-
-                    # Parse problems from log
-                    build_problems = parse_problems_from_log_file(
-                        log_file,
-                        build_name=build.get("name", ""),
-                        project_name=project.name,
-                    )
-
-                    # Convert to state types
-                    for p in build_problems:
-                        all_problems.append(
-                            StateProblem(
-                                id=p.id,
-                                level=p.level,
-                                message=p.message,
-                                file=p.file,
-                                line=p.line,
-                                column=p.column,
-                                stage=p.stage,
-                                logger=p.logger,
-                                build_name=p.build_name,
-                                project_name=p.project_name,
-                                timestamp=p.timestamp,
-                                ato_traceback=p.ato_traceback,
-                                exc_info=p.exc_info,
-                            )
-                        )
-            except Exception as e:
-                log.warning(f"Failed to read problems from {project_summary}: {e}")
-
-        await server_state.set_problems(all_problems)
-        log.info(f"Refreshed problems after build: {len(all_problems)} problems found")
-    except Exception as e:
-        log.error(f"Failed to refresh problems: {e}")
-
-
-async def _refresh_packages_async():
-    """Refresh packages and update server_state. Called after install/remove.
-
-    This mirrors the logic from the refreshPackages action handler to ensure
-    we get ALL packages (installed + registry), not just installed ones.
-    """
-    from atopile.server.state import PackageInfo as StatePackageInfo
-
-    scan_paths = server_state._workspace_paths
-    if not scan_paths:
-        return
-
-    try:
-        packages_map: dict[str, StatePackageInfo] = {}
-        registry_error: str | None = None
-
-        # 1. Get installed packages
-        installed = get_all_installed_packages(scan_paths)
-        for pkg in installed.values():
-            packages_map[pkg.identifier] = StatePackageInfo(
-                identifier=pkg.identifier,
-                name=pkg.name,
-                publisher=pkg.publisher,
-                version=pkg.version,
-                installed=True,
-                installed_in=pkg.installed_in,
-            )
-
-        # 2. Get ALL registry packages (uses multiple search terms)
-        try:
-            registry_packages = get_all_registry_packages()
-            log.info(
-                f"[_refresh_packages_async] Registry returned {len(registry_packages)} packages"
-            )
-
-            # Merge registry data into packages_map
-            for reg_pkg in registry_packages:
-                if reg_pkg.identifier in packages_map:
-                    # Update installed package with registry metadata
-                    existing = packages_map[reg_pkg.identifier]
-                    packages_map[reg_pkg.identifier] = StatePackageInfo(
-                        identifier=existing.identifier,
-                        name=existing.name,
-                        publisher=existing.publisher,
-                        version=existing.version,
-                        latest_version=reg_pkg.latest_version,
-                        description=reg_pkg.description or reg_pkg.summary,
-                        summary=reg_pkg.summary,
-                        homepage=reg_pkg.homepage,
-                        repository=reg_pkg.repository,
-                        license=reg_pkg.license,
-                        installed=True,
-                        installed_in=existing.installed_in,
-                        has_update=_version_is_newer(
-                            existing.version, reg_pkg.latest_version
-                        ),
-                        downloads=reg_pkg.downloads,
-                        version_count=reg_pkg.version_count,
-                        keywords=reg_pkg.keywords or [],
-                    )
-                else:
-                    # Add uninstalled registry package
-                    packages_map[reg_pkg.identifier] = StatePackageInfo(
-                        identifier=reg_pkg.identifier,
-                        name=reg_pkg.name,
-                        publisher=reg_pkg.publisher,
-                        latest_version=reg_pkg.latest_version,
-                        description=reg_pkg.description or reg_pkg.summary,
-                        summary=reg_pkg.summary,
-                        homepage=reg_pkg.homepage,
-                        repository=reg_pkg.repository,
-                        license=reg_pkg.license,
-                        installed=False,
-                        installed_in=[],
-                        has_update=False,
-                        downloads=reg_pkg.downloads,
-                        version_count=reg_pkg.version_count,
-                        keywords=reg_pkg.keywords or [],
-                    )
-
-        except Exception as e:
-            registry_error = str(e)
-            log.warning(f"[_refresh_packages_async] Registry fetch failed: {e}")
-
-        # Sort: installed first, then alphabetically
-        state_packages = sorted(
-            packages_map.values(),
-            key=lambda p: (not p.installed, p.identifier.lower()),
-        )
-
-        await server_state.set_packages(list(state_packages), registry_error)
-        log.info(
-            f"Refreshed packages after install/remove: {len(state_packages)} packages"
-        )
-    except Exception as e:
-        log.error(f"Failed to refresh packages: {e}")
-
-
-def _find_build_in_summary(
-    summary: dict, targets: list[str], entry: str | None = None
-) -> dict | None:
-    """Find the current build in the summary.json data."""
-    builds = summary.get("builds", [])
-    if not builds:
-        return None
-
-    # If we have specific targets, try to match by name
-    if targets:
-        for build in builds:
-            if build.get("name") in targets:
-                return build
-
-    # If we have an entry point, try to match by entry
-    if entry:
-        for build in builds:
-            if entry in build.get("entry", ""):
-                return build
-
-    # Fallback: return the first/most recent build
-    return builds[0] if builds else None
-
-
-def _broadcast_stage_changes(
-    build_id: str, last_stages: list[dict], new_stages: list[dict]
-) -> None:
-    """Broadcast stage changes to WebSocket clients."""
-    # Find newly completed stages or stages with updated status
-    last_stage_map = {s.get("name"): s for s in last_stages}
-
-    for stage in new_stages:
-        stage_name = stage.get("name")
-        old_stage = last_stage_map.get(stage_name)
-
-        # New stage or status changed
-        if not old_stage or old_stage.get("status") != stage.get("status"):
-            ws_manager.broadcast_sync(
-                "builds",
-                "build:stage",
-                {
-                    "build_id": build_id,
-                    "stage": stage,
-                },
-            )
-
-
-def cancel_build(build_id: str) -> bool:
-    """
-    Cancel a running build.
-
-    Returns True if the build was cancelled, False if not found or already completed.
-    """
-    with _build_lock:
-        if build_id not in _active_builds:
-            return False
-
-        build_info = _active_builds[build_id]
-
-        # Check if already completed
-        if build_info["status"] not in ("queued", "building"):
-            return False
-
-        # Mark as cancelled in the build record
-        build_info["status"] = "cancelled"
-        build_info["error"] = "Build cancelled by user"
-
-    # Signal the BuildQueue to cancel the build
-    # This will either remove it from pending or signal the worker thread
-    result = _build_queue.cancel(build_id)
-
-    # If it was pending (not yet started), we need to broadcast cancellation
-    # (active builds will broadcast when the worker detects the cancel flag)
-    if result.get("was_pending"):
-        ws_manager.broadcast_sync(
-            "builds",
-            "build:cancelled",
-            {"build_id": build_id},
-        )
-
-    log.info(f"Build {build_id} cancelled")
-    return True
-
-
-def discover_projects_in_paths(paths: list[Path]) -> list[Project]:
-    """
-    Discover all ato projects in the given paths.
-
-    For each path:
-    - If it contains ato.yaml, treat it as a single project
-    - Otherwise, recursively find all ato.yaml files
-
-    Returns list of Project objects with their build targets.
-    """
-    return core_projects.discover_projects_in_paths(paths)
 
 
 def create_app(
@@ -2294,8 +856,6 @@ def create_app(
 
     async def handle_data_action(action: str, payload: dict) -> dict:
         """Handle data-fetching actions that need access to server.py functions."""
-        global _package_op_counter, _build_counter
-
         log.info(f"handle_data_action called: action={action}, payload={payload}")
 
         try:
@@ -2662,11 +1222,7 @@ def create_app(
 
                                     # Generate build ID for this target
                                     with _build_lock:
-                                        global _build_counter
-                                        _build_counter += 1
-                                        build_id = (
-                                            f"build-{_build_counter}-{int(time.time())}"
-                                        )
+                                        build_id = next_build_id()
 
                                         # Register the build
                                         _active_builds[build_id] = {
@@ -2727,8 +1283,7 @@ def create_app(
                 # Generate build ID
                 build_label = entry if standalone else "project"
                 with _build_lock:
-                    _build_counter += 1
-                    build_id = f"build-{_build_counter}-{int(time.time())}"
+                    build_id = next_build_id()
 
                     # Register the build
                     _active_builds[build_id] = {
@@ -2878,65 +1433,29 @@ def create_app(
                     return {"success": False, "error": str(e)}
 
             elif action == "refreshProblems":
-                # Fetch problems from all projects
+                # Fetch problems from the central log database
                 from atopile.server.state import Problem as StateProblem
 
-                workspace_paths = state.get("workspace_paths", [])
-                projects = discover_projects_in_paths(workspace_paths)
                 all_problems: list[StateProblem] = []
 
-                for project in projects:
-                    project_path = Path(project.root)
-                    project_summary = (
-                        project_path / "build" / "logs" / "latest" / "summary.json"
-                    )
-
-                    if not project_summary.exists():
-                        continue
-
-                    try:
-                        summary_data = json.loads(project_summary.read_text())
-                        builds_data = summary_data.get("builds", [])
-
-                        for build in builds_data:
-                            log_file_path = build.get("log_file")
-                            if not log_file_path:
-                                continue
-
-                            log_file = Path(log_file_path)
-                            if not log_file.exists():
-                                continue
-
-                            # Parse problems from log
-                            build_problems = parse_problems_from_log_file(
-                                log_file,
-                                build_name=build.get("name", ""),
-                                project_name=project.name,
-                            )
-
-                            # Convert to state types
-                            for p in build_problems:
-                                all_problems.append(
-                                    StateProblem(
-                                        id=p.id,
-                                        level=p.level,
-                                        message=p.message,
-                                        file=p.file,
-                                        line=p.line,
-                                        column=p.column,
-                                        stage=p.stage,
-                                        logger=p.logger,
-                                        build_name=p.build_name,
-                                        project_name=p.project_name,
-                                        timestamp=p.timestamp,
-                                        ato_traceback=p.ato_traceback,
-                                        exc_info=p.exc_info,
-                                    )
-                                )
-                    except Exception as e:
-                        log.warning(
-                            f"Failed to read problems from {project_summary}: {e}"
+                for problem in problem_parser._load_problems_from_db():
+                    all_problems.append(
+                        StateProblem(
+                            id=problem.id,
+                            level=problem.level,
+                            message=problem.message,
+                            file=problem.file,
+                            line=problem.line,
+                            column=problem.column,
+                            stage=problem.stage,
+                            logger=problem.logger,
+                            build_name=problem.build_name,
+                            project_name=problem.project_name,
+                            timestamp=problem.timestamp,
+                            ato_traceback=problem.ato_traceback,
+                            exc_info=problem.exc_info,
                         )
+                    )
 
                 await server_state.set_problems(all_problems)
                 return {"success": True}
@@ -3000,8 +1519,7 @@ def create_app(
 
                 # Generate operation ID
                 with _package_op_lock:
-                    _package_op_counter += 1
-                    op_id = f"pkg-install-{_package_op_counter}-{int(time.time())}"
+                    op_id = next_package_op_id("pkg-install")
 
                     _active_package_ops[op_id] = {
                         "action": "install",
@@ -3096,8 +1614,7 @@ def create_app(
 
                 # Generate operation ID
                 with _package_op_lock:
-                    _package_op_counter += 1
-                    op_id = f"pkg-remove-{_package_op_counter}-{int(time.time())}"
+                    op_id = next_package_op_id("pkg-remove")
 
                     _active_package_ops[op_id] = {
                         "action": "remove",
@@ -3230,7 +1747,7 @@ def create_app(
                     return {"success": False, "error": "Missing file path"}
 
                 workspace_paths = state.get("workspace_paths", [])
-                resolved = _resolve_workspace_file(file_path, workspace_paths)
+                resolved = path_utils.resolve_workspace_file(file_path, workspace_paths)
                 if not resolved:
                     return {
                         "success": False,
@@ -3261,7 +1778,7 @@ def create_app(
                     return {"success": False, "error": "Missing projectId or entry"}
 
                 project_path = Path(project_root)
-                entry_path = _resolve_entry_path(project_path, entry)
+                entry_path = path_utils.resolve_entry_path(project_path, entry)
                 if not entry_path or not entry_path.exists():
                     return {"success": False, "error": f"Entry not found: {entry}"}
 
@@ -3275,7 +1792,7 @@ def create_app(
                     return {"success": False, "error": "Missing projectId or buildId"}
 
                 project_path = Path(project_root)
-                target = _resolve_layout_path(project_path, build_id)
+                target = path_utils.resolve_layout_path(project_path, build_id)
                 if not target:
                     return {"success": False, "error": "Layout not found"}
 
@@ -3289,7 +1806,7 @@ def create_app(
                     return {"success": False, "error": "Missing projectId or buildId"}
 
                 project_path = Path(project_root)
-                target = _resolve_layout_path(project_path, build_id)
+                target = path_utils.resolve_layout_path(project_path, build_id)
                 if not target:
                     return {"success": False, "error": "Layout not found"}
 
@@ -3303,7 +1820,7 @@ def create_app(
                     return {"success": False, "error": "Missing projectId or buildId"}
 
                 project_path = Path(project_root)
-                target = _resolve_3d_path(project_path, build_id)
+                target = path_utils.resolve_3d_path(project_path, build_id)
                 if not target:
                     return {"success": False, "error": "3D model not found"}
 
@@ -3820,8 +2337,6 @@ def create_app(
         For standalone builds (without ato.yaml), set `standalone=True` and
         provide the `entry` parameter with format "file.ato:Module".
         """
-        global _build_counter
-
         # Validate project path exists
         project_path = Path(request.project_root)
         if not project_path.exists():
@@ -3870,8 +2385,7 @@ def create_app(
         # Generate build ID
         build_label = request.entry if request.standalone else "project"
         with _build_lock:
-            _build_counter += 1
-            build_id = f"build-{_build_counter}-{int(time.time())}"
+            build_id = next_build_id()
 
             # Register the build
             _active_builds[build_id] = {
@@ -4779,55 +3293,24 @@ def create_app(
         Aggregates problems from all discovered projects in the workspace,
         or from a specific project if project_root is provided.
         """
-        all_problems: list[Problem] = []
+        all_problems = problem_parser._load_problems_from_db()
 
-        # Get workspace paths
-        workspace_paths = state.get("workspace_paths", [])
-        projects = discover_projects_in_paths(workspace_paths)
-
-        # Filter to specific project if provided
         if project_root:
-            projects = [p for p in projects if p.root == project_root]
+            project_name = Path(project_root).name
+            all_problems = [
+                p for p in all_problems if p.project_name == project_name
+            ]
 
-        for project in projects:
-            project_path = Path(project.root)
-            project_summary = (
-                project_path / "build" / "logs" / "latest" / "summary.json"
-            )
-
-            if not project_summary.exists():
-                continue
-
-            try:
-                summary_data = json.loads(project_summary.read_text())
-                builds_data = summary_data.get("builds", [])
-
-                for build in builds_data:
-                    # Filter by build_name if provided
-                    current_build_name = build.get("name", "")
-                    if build_name and current_build_name != build_name:
-                        continue
-
-                    # Get log file path
-                    log_file_path = build.get("log_file")
-                    if not log_file_path:
-                        continue
-
-                    log_file = Path(log_file_path)
-                    if not log_file.exists():
-                        continue
-
-                    # Parse problems from log file
-                    build_problems = parse_problems_from_log_file(
-                        log_file,
-                        build_name=current_build_name,
-                        project_name=project.name,
-                    )
-                    all_problems.extend(build_problems)
-
-            except Exception as e:
-                log.warning(f"Failed to read problems from {project_summary}: {e}")
-                continue
+        if build_name:
+            if ":" in build_name:
+                all_problems = [p for p in all_problems if p.build_name == build_name]
+            else:
+                all_problems = [
+                    p
+                    for p in all_problems
+                    if p.build_name == build_name
+                    or (p.build_name and p.build_name.endswith(f":{build_name}"))
+                ]
 
         # Apply level filter if provided
         if level:
@@ -5216,8 +3699,6 @@ def create_app(
 
         Runs `ato add <package>` in the background.
         """
-        global _package_op_counter
-
         project_path = Path(request.project_root)
         if not project_path.exists():
             raise HTTPException(
@@ -5233,8 +3714,7 @@ def create_app(
 
         # Generate operation ID
         with _package_op_lock:
-            _package_op_counter += 1
-            op_id = f"pkg-install-{_package_op_counter}-{int(time.time())}"
+            op_id = next_package_op_id("pkg-install")
 
             _active_package_ops[op_id] = {
                 "action": "install",
@@ -5288,8 +3768,6 @@ def create_app(
 
         Runs `ato remove <package>` in the background.
         """
-        global _package_op_counter
-
         project_path = Path(request.project_root)
         if not project_path.exists():
             raise HTTPException(
@@ -5299,8 +3777,7 @@ def create_app(
 
         # Generate operation ID
         with _package_op_lock:
-            _package_op_counter += 1
-            op_id = f"pkg-remove-{_package_op_counter}-{int(time.time())}"
+            op_id = next_package_op_id("pkg-remove")
 
             _active_package_ops[op_id] = {
                 "action": "remove",
