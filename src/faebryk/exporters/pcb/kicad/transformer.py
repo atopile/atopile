@@ -1588,6 +1588,11 @@ class PCB_Transformer:
                     y=-obj.at.y,
                     r=(((obj.at.r or 0) + 180) % 360) or None,
                 )
+                if obj.primitives is not None:
+                    PCB_Transformer._flip_obj(obj.primitives)
+            case kicad.pcb.PadPrimitives():
+                for poly in obj.gr_polys:
+                    PCB_Transformer._flip_obj(poly)
             case kicad.pcb.Arc():
                 obj.start.y = -obj.start.y
                 obj.mid.y = -obj.mid.y

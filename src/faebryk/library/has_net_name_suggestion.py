@@ -43,3 +43,20 @@ class has_net_name_suggestion(fabll.Node):
     @property
     def level(self) -> Level | None:
         return self.level_.get().try_extract_singleton_typed(self.Level)
+
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
+        import has_net_name_suggestion, ElectricPower
+
+        power_3v3 = new ElectricPower
+
+        # Give net name suggestions
+        power_3v3.hv.suggest_net_name<name="3V3", level="SUGGESTED">
+
+        # Give net name a required name
+        power_3v3.lv.suggest_net_name<name="GND", level="EXPECTED">
+        """,  # noqa: E501
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )

@@ -66,6 +66,7 @@ STDLIB_ALLOWLIST: AllowListT = (
         F.BJT,
         F.CAN_TTL,
         F.Capacitor,
+        F.CapacitorPolarized,
         F.MultiCapacitor,
         F.Crystal_Oscillator,
         F.Crystal,

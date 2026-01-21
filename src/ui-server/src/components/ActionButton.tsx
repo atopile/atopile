@@ -80,6 +80,11 @@ function getIcon(iconName: string) {
         <path d="M2 3h5l1 1h6v9H2V3zm1 1v8h10V5H7.5l-1-1H3z" />
       </svg>
     ),
+    server: (
+      <svg viewBox="0 0 16 16" fill="currentColor">
+        <path d="M2 2h12v4H2V2zm1 1v2h10V3H3zm-1 5h12v4H2V8zm1 1v2h10V9H3zm-1 5h12v2H2v-2zm1 .5v1h10v-1H3zM4 4h1v1H4V4zm0 6h1v1H4v-1z" />
+      </svg>
+    ),
   };
 
   return icons[iconName] || (

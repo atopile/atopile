@@ -38,7 +38,6 @@ from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.library.has_doc_string import has_doc_string
 from faebryk.library.has_net_name import has_net_name
-from faebryk.library.has_net_name_suggestion import has_net_name_suggestion
 from faebryk.library.has_package_requirements import has_package_requirements
 from faebryk.library.has_solver import has_solver
 from faebryk.library.has_usage_example import has_usage_example
@@ -47,6 +46,7 @@ import faebryk.library.Units as Units
 import faebryk.library.KiCadFootprints as KiCadFootprints
 from faebryk.library.implements_design_check import implements_design_check
 from faebryk.library.Electrical import Electrical
+from faebryk.library.has_net_name_suggestion import has_net_name_suggestion
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.PCB import PCB
@@ -55,9 +55,9 @@ from faebryk.library.is_alias_bus_parameter import is_alias_bus_parameter
 from faebryk.library.is_sum_bus_parameter import is_sum_bus_parameter
 from faebryk.library.Filter import Filter
 import faebryk.library.Lead as Lead
-from faebryk.library.XtalIF import XtalIF
 from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.requires_external_usage import requires_external_usage
+from faebryk.library.XtalIF import XtalIF
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.BJT import BJT
 from faebryk.library.Crystal import Crystal
@@ -139,7 +139,6 @@ __all__ = [
     "has_designator_prefix",
     "has_doc_string",
     "has_net_name",
-    "has_net_name_suggestion",
     "has_package_requirements",
     "has_solver",
     "has_usage_example",
@@ -148,6 +147,7 @@ __all__ = [
     "KiCadFootprints",
     "implements_design_check",
     "Electrical",
+    "has_net_name_suggestion",
     "has_simple_value_representation",
     "is_atomic_part",
     "PCB",
@@ -156,9 +156,9 @@ __all__ = [
     "is_sum_bus_parameter",
     "Filter",
     "Lead",
-    "XtalIF",
     "has_net_name_affix",
     "requires_external_usage",
+    "XtalIF",
     "ElectricPower",
     "BJT",
     "Crystal",

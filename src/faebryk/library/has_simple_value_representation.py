@@ -321,9 +321,14 @@ class TestHasSimpleValueRepresentation:
         val = m._simple_repr.get().get_value()
         assert val == "TM {10..20}V 5A P2 10V P3"
 
-    def test_repr_with_picked_attributes(self):
+    def test_repr_with_picked_attributes(self, monkeypatch):
+        from unittest.mock import Mock
+
         import faebryk.library._F as F
-        from faebryk.libs.picker.lcsc import PickedPartLCSC
+        from faebryk.libs.picker import lcsc
+
+        # Mock lcsc.attach to avoid network calls to LCSC/EasyEDA API
+        monkeypatch.setattr(lcsc, "attach", Mock())
 
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
@@ -339,6 +344,17 @@ class TestHasSimpleValueRepresentation:
                     S(param=param1, prefix="V:", tolerance=True),
                     S(param=param2, suffix="A"),
                 )
+            )
+
+            # Add pickable_by_type trait so Component.attach can work
+            _pickable = fabll.Traits.MakeEdge(
+                F.Pickable.is_pickable_by_type.MakeChild(
+                    endpoint=F.Pickable.is_pickable_by_type.Endpoint.RESISTORS,
+                    params={"param1": param1, "param2": param2},
+                )
+            )
+            _can_attach = fabll.Traits.MakeEdge(
+                F.Footprints.can_attach_to_footprint.MakeChild()
             )
 
         m = _TestModule.bind_typegraph(tg).create_instance(g=g)
@@ -365,19 +381,37 @@ class TestHasSimpleValueRepresentation:
             )
         )
 
-        fabll.Traits.create_and_add_instance_to(
-            node=m, trait=F.Pickable.has_part_picked
-        ).setup(
-            PickedPartLCSC(
-                manufacturer="TestMfr",
-                partno="TestPart",
-                supplier_partno="C12345",
-            )
-        ).set_attributes(
-            {
-                "param1": lit1.is_literal.get(),
-                "param2": lit2.is_literal.get(),
-            }
+        # Use Component.attach to attach the part with attributes
+        from faebryk.libs.picker.api.models import Component
+
+        # Serialize literals for component attributes
+        # Filter out None values as Component expects dict[str, dict]
+        attributes = {}
+        for name, lit in [("param1", lit1), ("param2", lit2)]:
+            serialized = lit.is_literal.get().serialize()
+            if serialized is not None:
+                attributes[name] = serialized
+
+        component = Component(
+            lcsc=12345,
+            manufacturer_name="TestMfr",
+            part_number="TestPart",
+            package="0402",
+            datasheet_url="",
+            description="Test component",
+            is_basic=0,
+            is_preferred=0,
+            stock=100,
+            price=[],
+            attributes=attributes,
+        )
+
+        # Attach the component (this will set has_part_picked and attributes)
+        component.attach(
+            m.get_trait(F.Pickable.is_pickable_by_type).get_trait(
+                F.Pickable.is_pickable
+            ),
+            qty=1,
         )
 
         val = m._simple_repr.get().get_value()

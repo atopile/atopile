@@ -61,6 +61,56 @@ def discover_projects(root: Path) -> list[Path]:
     return sorted(projects)
 
 
+def _write_early_build_summaries(
+    build_tasks: list[tuple[str, Path, str | None]],
+) -> None:
+    """
+    Write minimal "queued" build summaries before ParallelBuildManager is created.
+
+    This reduces the delay between when a build is requested via the dashboard
+    and when the UI can show the build status. The summaries will be overwritten
+    with more complete data once the ParallelBuildManager starts.
+    """
+    import json
+
+    from atopile.logging import generate_build_id
+
+    now = NOW
+
+    for build_name, project_root, _project_name in build_tasks:
+        # Structure: {project_root}/build/builds/{target_name}/build_summary.json
+        build_output_dir = project_root / "build" / "builds" / build_name
+        summary_file = build_output_dir / "build_summary.json"
+
+        # Create directory if needed
+        try:
+            build_output_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            continue
+
+        # Generate build_id to match what ParallelBuildManager will use
+        project_path = str(project_root.resolve())
+        build_id = generate_build_id(project_path, build_name, now)
+
+        # Write minimal summary with "queued" status
+        summary = {
+            "name": build_name,
+            "display_name": build_name,
+            "build_id": build_id,
+            "status": "queued",
+            "elapsed_seconds": 0,
+            "warnings": 0,
+            "errors": 0,
+            "timestamp": now,
+        }
+
+        try:
+            summary_file.write_text(json.dumps(summary, indent=2))
+            logger.debug(f"Wrote early build summary for {build_name}")
+        except Exception:
+            pass  # Don't fail the build if we can't write summary
+
+
 # Semantic status -> (icon, color)
 _STATUS_STYLE = {
     StageStatus.SUCCESS: ("✓", "green"),
@@ -451,6 +501,10 @@ class ParallelBuildManager:
         self._console = Console()
         self._Table = Table
 
+        # Write initial summary immediately so UI shows builds as "queued" right away
+        # This reduces delay between when a build is requested and when the UI updates
+        self._write_live_summary()
+
     def _start_next_build(self) -> bool:
         """Start the next build from the queue. Returns True if a build was started."""
         try:
@@ -831,6 +885,78 @@ class ParallelBuildManager:
 
         return results
 
+    def _print_build_logs(
+        self,
+        bp: "BuildProcess",
+        console: "Console",
+        levels: list[str] | None = None,
+    ) -> None:
+        """Print logs from the SQLite database for a build."""
+        import sqlite3
+
+        from atopile.logging import generate_build_id, get_central_log_db
+
+        # Generate build_id for this build
+        project_path = str(bp.project_root.resolve()) if bp.project_root else "unknown"
+        build_id = generate_build_id(project_path, bp.name, self._now)
+
+        try:
+            db_path = get_central_log_db()
+            if not db_path.exists():
+                return
+
+            conn = sqlite3.connect(str(db_path), timeout=5.0)
+            conn.row_factory = sqlite3.Row
+
+            # Build query with filters
+            conditions = ["build_id = ?"]
+            params: list = [build_id]
+
+            if levels:
+                placeholders = ",".join("?" * len(levels))
+                conditions.append(f"level IN ({placeholders})")
+                params.extend(levels)
+
+            where_clause = " AND ".join(conditions)
+            query = f"""
+                SELECT timestamp, stage, level, message, ato_traceback, python_traceback
+                FROM logs
+                WHERE {where_clause}
+                ORDER BY id
+            """
+
+            cursor = conn.execute(query, params)
+            rows = cursor.fetchall()
+            conn.close()
+
+            # Print logs with color coding
+            for row in rows:
+                level = row["level"]
+                message = row["message"]
+                stage = row["stage"]
+
+                # Color code by level
+                if level == "ERROR" or level == "ALERT":
+                    color = "red"
+                elif level == "WARNING":
+                    color = "yellow"
+                elif level == "INFO":
+                    color = "cyan"
+                else:
+                    color = "white"
+
+                # Format: [STAGE] LEVEL: message
+                console.print(f"[{color}][{stage}] {level}: {message}[/{color}]")
+
+                # Print tracebacks if present
+                if row["ato_traceback"]:
+                    console.print(f"[dim]{row['ato_traceback']}[/dim]")
+                if row["python_traceback"]:
+                    console.print(f"[dim]{row['python_traceback']}[/dim]")
+
+        except Exception as e:
+            logger.debug(f"Failed to query logs for {build_id}: {e}")
+
     def _print_build_result(
         self,
         display_name: str,
@@ -845,10 +971,20 @@ class ParallelBuildManager:
                     f"[yellow]⚠ {display_name} completed with "
                     f"{bp.warnings} warning(s)[/yellow]"
                 )
+                # In verbose mode, print the actual warnings
+                if self.verbose:
+                    console.print("\n[bold yellow]Warnings:[/bold yellow]")
+                    self._print_build_logs(bp, console, levels=["WARNING"])
+                    console.print()
             else:
                 console.print(f"[green]✓ {display_name} completed[/green]")
         else:
             console.print(f"[red]✗ {display_name} failed[/red]")
+            # In verbose mode, print the actual errors
+            if self.verbose:
+                console.print("\n[bold red]Errors:[/bold red]")
+                self._print_build_logs(bp, console, levels=["ERROR", "ALERT"])
+                console.print()
 
     def _run_verbose(self) -> dict[str, int]:
         """Run builds sequentially without live display."""
@@ -982,7 +1118,8 @@ class ParallelBuildManager:
         project_path = str(bp.project_root.resolve()) if bp.project_root else "unknown"
         build_id = generate_build_id(project_path, bp.name, self._now)
         logger.debug(
-            f"Summary build_id: {build_id} (project={project_path}, target={bp.name}, ts={self._now})"  # noqa: E501
+            f"Summary build_id: {build_id} "
+            + f"(project={project_path}, target={bp.name}, ts={self._now})"
         )
 
         data = {
@@ -1160,6 +1297,10 @@ def _build_all_projects(
         len(projects),
         jobs,
     )
+
+    # Write initial "queued" summaries immediately so UI shows builds right away
+    # This happens before ParallelBuildManager is created to minimize delay
+    _write_early_build_summaries(build_tasks)
 
     # Create and run parallel build manager
     manager = ParallelBuildManager(
@@ -1389,8 +1530,8 @@ def build(
             from atopile.server.server import start_dashboard_server
 
             dashboard_server, dashboard_url = start_dashboard_server(
-                project_root,
                 port=DASHBOARD_PORT,
+                project_root=project_root,
             )
             logger.info("Dashboard API available at: %s", dashboard_url)
         except Exception as e:
@@ -1409,9 +1550,9 @@ def build(
     manager.generate_summary()
 
     # Flush and close all build loggers to ensure logs are written to SQLite
-    from atopile.logging import BuildLogger
+    from atopile.logging import close_all_build_loggers
 
-    BuildLogger.close_all()
+    close_all_build_loggers()
 
     failed = [name for name, code in results.items() if code != 0]
 
@@ -1445,17 +1586,27 @@ def build(
                 logger.warning(f"{e}\nReload pcb manually in KiCAD")
 
     # Keep dashboard server running after build completes
+    # Skip waiting in CI environments to prevent hangs
+    is_ci = (
+        os.getenv("CI")
+        or os.getenv("GITHUB_ACTIONS")
+        or os.getenv("CONTINUOUS_INTEGRATION")
+    )
     if dashboard_server:
-        logger.info("Dashboard still available at: %s", dashboard_url)
-        logger.info("Press Ctrl+C to stop")
-        try:
-            # Wait until interrupted (cross-platform)
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            logger.info("Shutting down dashboard...")
-        finally:
+        if is_ci:
+            logger.info("CI environment detected, shutting down dashboard immediately")
             dashboard_server.shutdown()
+        else:
+            logger.info("Dashboard still available at: %s", dashboard_url)
+            logger.info("Press Ctrl+C to stop")
+            try:
+                # Wait until interrupted (cross-platform)
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                logger.info("Shutting down dashboard...")
+            finally:
+                dashboard_server.shutdown()
 
     # Exit with appropriate code after dashboard is closed
     if build_exit_code != 0:

@@ -33,11 +33,11 @@ from atopile.cli import (
     install,
     kicad_ipc,
     package,
+    serve,
     view,
     lsp,
     mcp,
     dev,
-    serve,
 )
 from atopile.logging import handler, logger
 from atopile.errors import UserException, UserNoProjectException
@@ -45,6 +45,7 @@ from atopile.exceptions import (
     UserResourceException,
     iter_leaf_exceptions,
 )
+
 SAFE_MODE_OPTION = ConfigFlag(
     "SAFE_MODE", False, "Handle exceptions gracefully (coredump)"
 )
@@ -173,7 +174,7 @@ def cli(
     #    check_for_update()
 
     configure.setup()
-    
+
     # Set up database logging for all CLI commands (not just builds)
     # This ensures logs from validate, inspect, etc. are also stored in the database
     from atopile.logging import BuildLogger
