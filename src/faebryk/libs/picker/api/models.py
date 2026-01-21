@@ -242,7 +242,7 @@ class Component:
                     preferred=bool(self.is_preferred),
                 ),
             )
-        )
+        ).set_attributes(self.attribute_literals(g=module.g, tg=module.tg))
 
         fabll.Traits.create_and_add_instance_to(
             node=module, trait=F.has_datasheet
