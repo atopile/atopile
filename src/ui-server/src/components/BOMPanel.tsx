@@ -611,6 +611,13 @@ export function BOMPanel({
     )
   }
   
+  // Extract short build ID for display (e.g., "build-42-1674520800" -> "42")
+  const buildIdShort = useMemo(() => {
+    if (!bomData?.build_id) return null
+    const match = bomData.build_id.match(/^build-(\d+)-/)
+    return match ? `#${match[1]}` : bomData.build_id.substring(0, 12)
+  }, [bomData?.build_id])
+
   return (
     <div className="bom-panel">
       {/* Summary bar */}
@@ -632,6 +639,12 @@ export function BOMPanel({
             <AlertTriangle size={12} />
             <span className="summary-value">{outOfStock}</span>
             <span className="summary-label">out of stock</span>
+          </div>
+        )}
+        {buildIdShort && (
+          <div className="bom-summary-item muted" title={`Build: ${bomData?.build_id}`}>
+            <span className="summary-value">{buildIdShort}</span>
+            <span className="summary-label">build</span>
           </div>
         )}
       </div>

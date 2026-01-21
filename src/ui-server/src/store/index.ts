@@ -60,6 +60,7 @@ const initialState: AppState = {
   packageDetailsError: null,
 
   // Build selection
+  selectedBuildId: null,
   selectedBuildName: null,
   selectedProjectName: null,
 
@@ -132,6 +133,7 @@ interface StoreActions {
   setBuilds: (builds: Build[]) => void;
   setQueuedBuilds: (builds: Build[]) => void;
   selectBuild: (buildName: string | null) => void;
+  selectBuildById: (buildId: string | null, buildName?: string | null) => void;
 
   // Packages
   setPackages: (packages: PackageInfo[]) => void;
@@ -225,6 +227,9 @@ export const useStore = create<Store>()(
 
       selectBuild: (buildName) => set({ selectedBuildName: buildName }),
 
+      selectBuildById: (buildId, buildName = null) =>
+        set({ selectedBuildId: buildId, selectedBuildName: buildName }),
+
       // Packages
       setPackages: (packages) => set({ packages, isLoadingPackages: false }),
 
@@ -313,6 +318,11 @@ export const useSelectedProject = () =>
 
 export const useSelectedBuild = () =>
   useStore((state) => {
+    // Prefer buildId if available
+    if (state.selectedBuildId) {
+      return state.builds.find((b) => b.buildId === state.selectedBuildId);
+    }
+    // Fall back to buildName for backwards compatibility
     if (!state.selectedBuildName) return null;
     return state.builds.find(
       (b) => b.displayName === state.selectedBuildName || b.name === state.selectedBuildName

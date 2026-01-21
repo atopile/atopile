@@ -8,6 +8,7 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.config import BuildType, config
+from atopile.dataclasses import CompletedStage
 from atopile.errors import UserToolNotAvailableError
 from atopile.exceptions import accumulate
 from faebryk.core.solver.solver import Solver
@@ -31,9 +32,6 @@ class BuildContext:
     app: fabll.Node | None = None
 
 
-from atopile.dataclasses import CompletedStage
-
-
 @dataclass
 class BuildStepContext:
     build: BuildContext | None
@@ -41,6 +39,7 @@ class BuildStepContext:
     solver: Solver | None = None
     pcb: F.PCB | None = None
     stage: str | None = None
+    build_id: str | None = None  # Build ID from server (via ATO_BUILD_ID env var)
     completed_stages: list[CompletedStage] = field(default_factory=list)
     _stage_start_time: float = field(default=0.0, repr=False)
 

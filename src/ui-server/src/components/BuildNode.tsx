@@ -4,7 +4,7 @@
  * Compact when not selected, expanded with details when selected.
  */
 
-import { useState, useRef, useEffect, memo } from 'react';
+import { useState, useRef, useEffect, memo, useMemo } from 'react';
 import {
   ChevronDown, ChevronRight, Play, Clock, Check, X,
   AlertTriangle, AlertCircle, Circle, SkipForward,
@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import type { Selection, BuildTarget, BuildStage, ModuleDefinition } from './projectsTypes';
 import { SymbolNode } from './SymbolNode';
+import { NameValidationDropdown } from './NameValidationDropdown';
+import { validateName } from '../utils/nameValidation';
 import './BuildNode.css';
 
 // Timer component for running stages - isolated to prevent parent re-renders
@@ -259,11 +261,22 @@ export const BuildNode = memo(function BuildNode({
     }
   }, [isEditingEntry]);
 
+  // Validate build name as user types
+  const nameValidation = useMemo(() => validateName(buildName), [buildName]);
+
   const handleNameSave = () => {
+    // Only save if valid
+    if (!nameValidation.isValid) {
+      return; // Keep editing, don't close
+    }
     setIsEditingName(false);
     if (onUpdateBuild) {
       onUpdateBuild(projectId, build.id, { name: buildName });
     }
+  };
+
+  const handleApplyNameSuggestion = (suggestion: string) => {
+    setBuildName(suggestion);
   };
 
   const handleEntrySearch = (value: string) => {
@@ -321,22 +334,32 @@ export const BuildNode = memo(function BuildNode({
 
           {/* Editable build name - not editable in readOnly mode */}
           {isEditingName && isSelected && !readOnly ? (
-            <input
-              type="text"
-              className="build-name-input"
-              value={buildName}
-              onChange={(e) => setBuildName(e.target.value)}
-              onBlur={handleNameSave}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleNameSave();
-                if (e.key === 'Escape') {
-                  setBuildName(build.name);
-                  setIsEditingName(false);
-                }
-              }}
-              autoFocus
-              onClick={(e) => e.stopPropagation()}
-            />
+            <div className="name-input-wrapper" onClick={(e) => e.stopPropagation()}>
+              <input
+                type="text"
+                className={`build-name-input ${!nameValidation.isValid ? 'invalid' : ''}`}
+                value={buildName}
+                onChange={(e) => setBuildName(e.target.value)}
+                onBlur={() => {
+                  // Only close if valid, otherwise stay open
+                  if (nameValidation.isValid) {
+                    handleNameSave();
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleNameSave();
+                  if (e.key === 'Escape') {
+                    setBuildName(build.name);
+                    setIsEditingName(false);
+                  }
+                }}
+                autoFocus
+              />
+              <NameValidationDropdown
+                validation={nameValidation}
+                onApplySuggestion={handleApplyNameSuggestion}
+              />
+            </div>
           ) : (
             <span
               className={`build-card-name ${isSelected && !readOnly ? 'editable' : ''}`}

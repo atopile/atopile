@@ -11,15 +11,14 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Callable
+from typing import Callable
 
-import pathvalidate
 import typer
 from rich.console import Console
+from typing_extensions import Annotated
 
-from atopile.dataclasses import BuildStatus, StageStatus
+from atopile.dataclasses import BuildReport, BuildStatus, StageStatus
 from atopile.logging import (
     NOW,
     ProjectState,
@@ -71,9 +70,6 @@ _STATUS_STYLE = {
     StageStatus.PENDING: ("○", "dim"),
     StageStatus.SKIPPED: ("⊘", "dim"),
 }
-
-
-from atopile.dataclasses import BuildReport
 
 
 def _format_stage_entry(entry: StageCompleteEvent) -> str:
@@ -790,7 +786,6 @@ class ParallelBuildManager:
             f"{'':>{self._VERBOSE_INDENT}}{_format_stage_entry(entry)}{log_text}"
         )
 
-
     def _write_live_summary(self) -> None:
         """Write per-target build summaries to each target's build output directory."""
         import json
@@ -832,7 +827,6 @@ class ParallelBuildManager:
             return self._run_verbose()
 
         results = self._run_parallel()
-
 
         return results
 
@@ -989,7 +983,7 @@ class ParallelBuildManager:
         project_path = str(bp.project_root.resolve()) if bp.project_root else "unknown"
         build_id = BuildLogger.generate_build_id(project_path, bp.name, self._now)
         logger.debug(
-            f"Summary build_id: {build_id} (project={project_path}, target={bp.name}, ts={self._now})"
+            f"Summary build_id: {build_id} (project={project_path}, target={bp.name}, ts={self._now})"  # noqa: E501
         )
 
         data = {
@@ -1047,8 +1041,11 @@ def _run_single_build() -> None:
 
     from atopile.cli.excepthook import install_worker_excepthook
 
+    # Read build_id from environment (passed by server subprocess)
+    build_id = os.environ.get("ATO_BUILD_ID")
+
     # Create build context to track completed stages
-    ctx = BuildStepContext(build=None)
+    ctx = BuildStepContext(build=None, build_id=build_id)
 
     try:
         with config.select_build(build_name):

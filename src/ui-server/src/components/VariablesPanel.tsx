@@ -35,6 +35,7 @@ interface VariableNode {
 
 interface VariablesData {
   version: string
+  build_id?: string
   nodes: VariableNode[]
 }
 
@@ -429,6 +430,13 @@ export function VariablesPanel({
     return countVariables(variables)
   }, [variables, sourceFilter])
 
+  // Extract short build ID for display (e.g., "build-42-1674520800" -> "#42")
+  const buildIdShort = useMemo(() => {
+    if (!variablesData?.build_id) return null
+    const match = variablesData.build_id.match(/^build-(\d+)-/)
+    return match ? `#${match[1]}` : variablesData.build_id.substring(0, 12)
+  }, [variablesData?.build_id])
+
   return (
     <div className="variables-panel">
       {/* Toolbar */}
@@ -495,6 +503,11 @@ export function VariablesPanel({
       {/* Status bar */}
       <div className="variables-status">
         <span>{totalVariables} variables</span>
+        {buildIdShort && (
+          <span className="build-id-badge" title={`Build: ${variablesData?.build_id}`}>
+            build {buildIdShort}
+          </span>
+        )}
         {copiedValue && (
           <span className="copied-toast">
             <Check size={10} />

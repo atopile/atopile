@@ -65,6 +65,7 @@ class JSONBOMOutput:
     """The full JSON BOM output."""
 
     version: str = "1.0"
+    build_id: str | None = None  # Build ID from server (links to build history)
     components: list[BOMComponent] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -233,11 +234,16 @@ def _get_footprint_name(part: F.Pickable.has_part_picked) -> str:
 
 def make_json_bom(
     components: Iterable[F.Pickable.has_part_picked],
+    build_id: str | None = None,
 ) -> JSONBOMOutput:
     """
     Generate a JSON BOM from picked components.
 
     Components are grouped by their LCSC part number (or MPN if no LCSC).
+
+    Args:
+        components: Iterable of picked part traits
+        build_id: Build ID from server (links to build history)
     """
     # Group components by part identifier
     grouped: dict[str, BOMComponent] = {}
@@ -356,18 +362,25 @@ def make_json_bom(
         key=lambda c: (-c.quantity, c.id),
     )
 
-    return JSONBOMOutput(components=sorted_components)
+    return JSONBOMOutput(build_id=build_id, components=sorted_components)
 
 
 def write_json_bom(
     components: Iterable[F.Pickable.has_part_picked],
     path: Path,
+    build_id: str | None = None,
 ) -> None:
-    """Write a JSON BOM to a file."""
+    """Write a JSON BOM to a file.
+
+    Args:
+        components: Iterable of picked part traits
+        path: Output file path
+        build_id: Build ID from server (links to build history)
+    """
     if not path.parent.exists():
         os.makedirs(path.parent)
 
-    bom = make_json_bom(components)
+    bom = make_json_bom(components, build_id=build_id)
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(bom.to_json())

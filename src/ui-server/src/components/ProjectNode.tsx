@@ -2,7 +2,7 @@
  * ProjectNode component - displays a local project in the sidebar.
  * Includes editable name/description, build targets, files, and dependencies.
  */
-import { useState, useEffect, memo } from 'react'
+import { useState, useEffect, memo, useMemo } from 'react'
 import {
   ChevronDown, ChevronRight, Play, Layers,
   AlertCircle, AlertTriangle, Square
@@ -11,6 +11,8 @@ import { getLastBuildStatusIcon, formatRelativeTime } from './BuildNode'
 import { BuildsCard } from './BuildsCard'
 import { FileExplorer, type FileTreeNode } from './FileExplorer'
 import { DependencyCard, type ProjectDependency } from './DependencyCard'
+import { NameValidationDropdown } from './NameValidationDropdown'
+import { validateName } from '../utils/nameValidation'
 import type {
   Selection,
   BuildTarget,
@@ -128,12 +130,23 @@ export const ProjectNode = memo(function ProjectNode({
   const displayDescription = description || defaultDescription
   const isDefaultDesc = !description
 
+  // Validate project name as user types
+  const nameValidation = useMemo(() => validateName(projectName), [projectName])
+
   const handleNameSave = () => {
+    // Only save if valid
+    if (!nameValidation.isValid) {
+      return // Keep editing, don't close
+    }
     setIsEditingName(false)
     if (onUpdateProject) {
       onUpdateProject(project.id, { name: projectName })
     }
     console.log('Saving name:', projectName)
+  }
+
+  const handleApplySuggestion = (suggestion: string) => {
+    setProjectName(suggestion)
   }
 
   const handleDescriptionSave = () => {
@@ -170,22 +183,32 @@ export const ProjectNode = memo(function ProjectNode({
 
         {/* Editable project name - only editable when expanded */}
         {isEditingName && expanded ? (
-          <input
-            type="text"
-            className="project-name-input"
-            value={projectName}
-            onChange={(e) => setProjectName(e.target.value)}
-            onBlur={handleNameSave}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleNameSave()
-              if (e.key === 'Escape') {
-                setProjectName(project.name)
-                setIsEditingName(false)
-              }
-            }}
-            autoFocus
-            onClick={(e) => e.stopPropagation()}
-          />
+          <div className="name-input-wrapper" onClick={(e) => e.stopPropagation()}>
+            <input
+              type="text"
+              className={`project-name-input ${!nameValidation.isValid ? 'invalid' : ''}`}
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              onBlur={() => {
+                // Only close if valid, otherwise stay open
+                if (nameValidation.isValid) {
+                  handleNameSave()
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleNameSave()
+                if (e.key === 'Escape') {
+                  setProjectName(project.name)
+                  setIsEditingName(false)
+                }
+              }}
+              autoFocus
+            />
+            <NameValidationDropdown
+              validation={nameValidation}
+              onApplySuggestion={handleApplySuggestion}
+            />
+          </div>
         ) : (
           <span
             className={`project-card-name ${expanded ? 'editable' : ''}`}

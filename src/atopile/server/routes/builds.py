@@ -95,3 +95,33 @@ async def get_build_history(
     return await asyncio.to_thread(
         builds_domain.handle_get_build_history, project_root, status, limit
     )
+
+
+@router.get("/api/build/{build_id}/info")
+async def get_build_info(build_id: str):
+    """
+    Get build info by build_id.
+
+    Translates build_id -> (project_root, targets, started_at, etc.)
+    Useful for linking artifacts back to their source build.
+    """
+    result = await asyncio.to_thread(builds_domain.handle_get_build_info, build_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Build not found: {build_id}")
+    return result
+
+
+@router.get("/api/builds")
+async def get_builds_by_project(
+    project_root: Optional[str] = Query(None, description="Filter by project root"),
+    target: Optional[str] = Query(None, description="Filter by target name"),
+    limit: int = Query(50, ge=1, le=500, description="Maximum results"),
+):
+    """
+    Get builds by project and/or target (reverse lookup).
+
+    Translates (project_root, target) -> list of build_ids.
+    """
+    return await asyncio.to_thread(
+        builds_domain.handle_get_builds_by_project, project_root, target, limit
+    )

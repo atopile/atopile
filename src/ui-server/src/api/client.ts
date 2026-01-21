@@ -161,6 +161,33 @@ export const api = {
 
     cancel: (buildId: string) =>
       fetchJSON<{ success: boolean; message: string }>(`/api/build/${buildId}/cancel`, { method: 'POST' }),
+
+    // Build-ID based lookups
+    info: (buildId: string) =>
+      fetchJSON<{
+        build_id: string;
+        project_root: string;
+        targets: string[];
+        started_at: number;
+        completed_at: number | null;
+        status: string;
+        duration: number | null;
+        warnings: number;
+        errors: number;
+      }>(`/api/build/${buildId}/info`),
+
+    byProject: (projectRoot?: string, target?: string, limit: number = 50) => {
+      const params = new URLSearchParams();
+      if (projectRoot) params.set('project_root', projectRoot);
+      if (target) params.set('target', target);
+      params.set('limit', String(limit));
+      return fetchJSON<{ builds: Build[]; total: number }>(`/api/builds?${params}`);
+    },
+
+    // Build-ID based artifact retrieval
+    bom: (buildId: string) => fetchJSON<BOMData>(`/api/build/${buildId}/bom`),
+
+    variables: (buildId: string) => fetchJSON<VariablesData>(`/api/build/${buildId}/variables`),
   },
 
   // Packages

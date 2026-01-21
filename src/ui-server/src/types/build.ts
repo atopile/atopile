@@ -279,6 +279,7 @@ export interface BOMComponent {
 
 export interface BOMData {
   version: string;
+  build_id?: string;  // Build ID that produced this BOM (links to build history)
   components: BOMComponent[];
 }
 
@@ -323,7 +324,8 @@ export interface AppState {
   packageDetailsError: string | null;
 
   // Build selection
-  selectedBuildName: string | null;
+  selectedBuildId: string | null;  // Primary identifier for selected build
+  selectedBuildName: string | null;  // For display/backwards compatibility
   selectedProjectName: string | null;
 
   // Sidebar UI
@@ -453,5 +455,6 @@ export interface VariableNode {
 
 export interface VariablesData {
   version: string;
+  build_id?: string;  // Build ID that produced this variables data (links to build history)
   nodes: VariableNode[];
 }

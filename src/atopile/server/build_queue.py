@@ -18,10 +18,8 @@ from pathlib import Path
 from typing import Any
 
 from atopile.dataclasses import BuildStatus, StageStatus
-from atopile.dataclasses import BuildStatus, StageStatus
-from atopile.server import build_history
+from atopile.server import build_history, problem_parser
 from atopile.server.domains import artifacts as artifacts_domain
-from atopile.server import problem_parser
 from atopile.server.state import server_state
 
 log = logging.getLogger(__name__)
@@ -191,6 +189,7 @@ def _run_build_subprocess(
         # Run the build subprocess
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
+        env["ATO_BUILD_ID"] = build_id  # Pass build_id to subprocess
 
         # Determine the root to use for monitoring (different for standalone builds)
         effective_root = (
@@ -983,7 +982,7 @@ def cancel_build(build_id: str) -> bool:
         build_info["error"] = "Build cancelled by user"
 
     # Signal the BuildQueue to cancel the build
-    result = _build_queue.cancel(build_id)
+    _ = _build_queue.cancel(build_id)
 
     log.info(f"Build {build_id} cancelled")
     return True

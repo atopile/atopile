@@ -71,6 +71,7 @@ class JSONVariablesOutput:
     """The full JSON variables output."""
 
     version: str = "1.0"
+    build_id: str | None = None  # Build ID from server (links to build history)
     nodes: list[VariableNode] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -535,12 +536,18 @@ def _build_tree(flat_nodes: dict[str, VariableNode]) -> list[VariableNode]:
 def make_json_variables(
     app: fabll.Node,
     solver: Solver,
+    build_id: str | None = None,
 ) -> JSONVariablesOutput:
     """
     Generate a JSON variables report from the application module tree.
 
     Walks the module hierarchy and extracts parameters with their
     spec values, actual values (from picked parts), units, and sources.
+
+    Args:
+        app: The application root node
+        solver: The solver used for parameter resolution
+        build_id: Build ID from server (links to build history)
     """
     # Get all modules
     modules = list(
@@ -623,19 +630,27 @@ def make_json_variables(
 
     logger.info(f"JSON Variables: Built tree with {len(pruned_roots)} root nodes")
 
-    return JSONVariablesOutput(nodes=pruned_roots)
+    return JSONVariablesOutput(build_id=build_id, nodes=pruned_roots)
 
 
 def write_json_variables(
     app: fabll.Node,
     solver: Solver,
     path: Path,
+    build_id: str | None = None,
 ) -> None:
-    """Write a JSON variables report to a file."""
+    """Write a JSON variables report to a file.
+
+    Args:
+        app: The application root node
+        solver: The solver used for parameter resolution
+        path: Output file path
+        build_id: Build ID from server (links to build history)
+    """
     if not path.parent.exists():
         os.makedirs(path.parent)
 
-    output = make_json_variables(app, solver)
+    output = make_json_variables(app, solver, build_id=build_id)
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(output.to_json())

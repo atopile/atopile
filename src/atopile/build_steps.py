@@ -107,6 +107,7 @@ class MusterTarget:
     def __call__(self, ctx: BuildStepContext) -> None:
         if not self.virtual:
             import time
+
             from atopile.dataclasses import CompletedStage
 
             try:
@@ -701,7 +702,9 @@ def generate_bom(ctx: BuildStepContext) -> None:
     write_bom(pickable_parts, config.build.paths.output_base.with_suffix(".bom.csv"))
     # Generate JSON BOM (for VSCode extension BOM panel)
     write_json_bom(
-        pickable_parts, config.build.paths.output_base.with_suffix(".bom.json")
+        pickable_parts,
+        config.build.paths.output_base.with_suffix(".bom.json"),
+        build_id=ctx.build_id,
     )
 
 
@@ -889,7 +892,10 @@ def generate_variable_report(ctx: BuildStepContext) -> None:
     app = ctx.require_app()
     solver = ctx.require_solver()
     export_parameters_to_file(
-        app, solver, config.build.paths.output_base.with_suffix(".variables.json")
+        app,
+        solver,
+        config.build.paths.output_base.with_suffix(".variables.json"),
+        build_id=ctx.build_id,
     )
 
 

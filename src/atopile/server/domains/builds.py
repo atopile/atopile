@@ -15,21 +15,20 @@ from atopile.dataclasses import (
     BuildStatusResponse,
     MaxConcurrentRequest,
 )
+from atopile.server import build_history, project_discovery
 from atopile.server.app_context import AppContext
 from atopile.server.build_queue import (
+    _DEFAULT_MAX_CONCURRENT,
     _active_builds,
     _build_lock,
     _build_queue,
     _build_settings,
-    _DEFAULT_MAX_CONCURRENT,
     _is_duplicate_build,
     _make_build_key,
     _sync_builds_to_state,
     cancel_build,
     next_build_id,
 )
-from atopile.server import build_history
-from atopile.server import project_discovery
 
 log = logging.getLogger(__name__)
 
@@ -240,7 +239,7 @@ def handle_get_active_builds() -> dict:
 
     if not _acquire_build_lock(timeout=5.0, context="handle_get_active_builds"):
         log.error(
-            "[DEBUG] handle_get_active_builds: lock acquisition timed out, returning empty"
+            "[DEBUG] handle_get_active_builds: lock acquisition timed out, returning empty"  # noqa: E501
         )
         return {"builds": [], "error": "Lock timeout - build system may be busy"}
 
@@ -350,6 +349,62 @@ def handle_get_build_history(
     return {"builds": builds, "total": len(builds)}
 
 
+def handle_get_build_info(build_id: str) -> dict | None:
+    """
+    Get build info by build_id.
+
+    This provides translation from build_id -> (project, target, timestamp).
+
+    Returns build info dict or None if not found.
+    """
+    # First check active builds (in-memory)
+    with _build_lock:
+        if build_id in _active_builds:
+            build_info = _active_builds[build_id]
+            started_at = build_info.get("started_at", 0)
+            building_started_at = build_info.get("building_started_at")
+            completed_at = None
+            if build_info.get("status") in ("success", "failed", "cancelled"):
+                # Estimate completed_at if not available
+                duration = build_info.get("duration", 0)
+                completed_at = (building_started_at or started_at) + duration
+
+            return {
+                "build_id": build_id,
+                "project_root": build_info.get("project_root"),
+                "targets": build_info.get("targets", []),
+                "entry": build_info.get("entry"),
+                "status": build_info.get("status"),
+                "started_at": started_at,
+                "completed_at": completed_at,
+                "duration": build_info.get("duration"),
+                "warnings": build_info.get("warnings", 0),
+                "errors": build_info.get("errors", 0),
+                "stages": build_info.get("stages", []),
+            }
+
+    # Fall back to build history database
+    return build_history.get_build_info_by_id(build_id)
+
+
+def handle_get_builds_by_project(
+    project_root: Optional[str] = None,
+    target: Optional[str] = None,
+    limit: int = 50,
+) -> dict:
+    """
+    Get builds by project and/or target (reverse lookup).
+
+    This provides translation from (project, target) -> list of build_ids.
+    """
+    builds = build_history.get_builds_by_project_target(
+        project_root=project_root,
+        target=target,
+        limit=limit,
+    )
+    return {"builds": builds, "total": len(builds)}
+
+
 __all__ = [
     "MaxConcurrentRequest",
     "handle_get_summary",
@@ -361,5 +416,7 @@ __all__ = [
     "handle_get_max_concurrent_setting",
     "handle_set_max_concurrent_setting",
     "handle_get_build_history",
+    "handle_get_build_info",
+    "handle_get_builds_by_project",
     "validate_build_request",
 ]

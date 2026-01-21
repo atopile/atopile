@@ -3618,6 +3618,97 @@ body {
   text-decoration-color: var(--text-muted);
 }
 
+/* Name validation dropdown */
+.name-validation-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 100;
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--ctp-red);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  min-width: 180px;
+  max-width: 280px;
+}
+
+.name-validation-dropdown .validation-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ctp-red);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.name-validation-dropdown .validation-icon {
+  flex-shrink: 0;
+}
+
+.name-validation-dropdown .validation-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 5px 8px;
+  background: rgba(249, 80, 21, 0.1);
+  border: 1px solid var(--ato-orange);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.name-validation-dropdown .validation-suggestion:hover {
+  background: rgba(249, 80, 21, 0.2);
+  border-color: var(--ato-orange);
+}
+
+.name-validation-dropdown .suggestion-label {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.name-validation-dropdown .suggestion-value {
+  color: var(--ato-orange);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  background: transparent;
+  padding: 0;
+}
+
+.name-validation-dropdown .suggestion-arrow {
+  margin-left: auto;
+  color: var(--ato-orange);
+  opacity: 0.7;
+}
+
+.name-validation-dropdown .validation-suggestion:hover .suggestion-arrow {
+  opacity: 1;
+  transform: translateX(2px);
+}
+
+/* Wrapper for name input with validation dropdown */
+.name-input-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+/* Invalid state styling for inputs */
+.project-name-input.invalid,
+.build-name-input.invalid {
+  border-color: var(--ctp-red);
+}
+
+.project-name-input.invalid:focus,
+.build-name-input.invalid:focus {
+  box-shadow: 0 0 0 2px rgba(243, 139, 168, 0.2);
+}
+
 /* Entry point picker */
 .entry-picker {
   flex: 1;
@@ -3957,24 +4048,22 @@ body {
   position: relative;
 }
 
-/* Wrapper for indicators that slides left on hover */
+/* Wrapper for indicators that slides left when play/stop button is visible */
 .project-indicators {
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  transition: transform 0.2s ease, opacity 0.2s ease;
+  transition: transform 0.2s ease;
 }
 
-/* Slide left on hover to reveal play button - but only when NOT building */
-.project-card:not(.building):hover .project-indicators {
-  transform: translateX(-26px);
-  opacity: 0.7;
+/* On hover, slide indicators left to make room for play button */
+.project-card:hover .project-indicators {
+  transform: translateX(-30px);
 }
 
-/* When actively building, indicators stay put */
+/* When building, indicators are always shifted (stop button always visible) */
 .project-card.building .project-indicators {
-  transform: none;
-  opacity: 1;
+  transform: translateX(-30px);
 }
 
 /* Last build info (status icon + timestamp) */
@@ -6323,6 +6412,17 @@ body {
   color: var(--text-muted);
   border-top: 1px solid var(--border-subtle);
   background: var(--bg-tertiary);
+  gap: var(--spacing-sm);
+}
+
+.build-id-badge {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 4px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  cursor: default;
 }
 
 .copied-toast {
@@ -6485,6 +6585,20 @@ body {
 
 .bom-summary-item.warning .summary-value {
   color: var(--warning);
+}
+
+.bom-summary-item.muted {
+  margin-left: auto;
+}
+
+.bom-summary-item.muted .summary-value {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.bom-summary-item.muted .summary-label {
+  color: var(--text-muted);
+  font-size: 10px;
 }
 
 /* Toolbar */

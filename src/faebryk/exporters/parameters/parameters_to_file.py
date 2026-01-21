@@ -227,9 +227,18 @@ def _generate_txt_parameters(
     return out
 
 
-def export_parameters_to_file(module: fabll.Node, solver: Solver, path: Path):
-    """Write the JSON variables report for the given module."""
+def export_parameters_to_file(
+    module: fabll.Node, solver: Solver, path: Path, build_id: str | None = None
+):
+    """Write the JSON variables report for the given module.
+
+    Args:
+        module: The application root node
+        solver: The solver used for parameter resolution
+        path: Output file path
+        build_id: Build ID from server (links to build history)
+    """
     from faebryk.exporters.parameters.json_parameters import write_json_variables
 
     logger.info(f"Writing JSON variables to {path}")
-    write_json_variables(module, solver, path)
+    write_json_variables(module, solver, path, build_id=build_id)

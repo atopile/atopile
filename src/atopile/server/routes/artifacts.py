@@ -34,7 +34,7 @@ async def get_bom(
         if result is None:
             raise HTTPException(
                 status_code=404,
-                detail=f"BOM file not found. Run 'ato build' first.",
+                detail="BOM file not found. Run 'ato build' first.",
             )
         return result
     except ValueError as exc:
@@ -132,7 +132,7 @@ async def get_stdlib(
     refresh: bool = Query(False, description="Force refresh the library cache"),
     max_depth: int | None = Query(
         None,
-        description="Maximum depth for nested children. 0=none, 1=one level, 2=default.",
+        description="Maximum depth for nested children. 0=none, 1=one level, 2=default.",  # noqa: E501
         ge=0,
         le=5,
     ),
@@ -150,3 +150,48 @@ async def get_stdlib_item(item_id: str):
     if result is None:
         raise HTTPException(status_code=404, detail=f"Item not found: {item_id}")
     return result
+
+
+# Build-ID based artifact endpoints
+
+
+@router.get("/api/build/{build_id}/bom")
+async def get_bom_by_build_id(build_id: str):
+    """
+    Get the BOM for a specific build by build_id.
+
+    Uses build_id -> (project, target) translation to find the artifact.
+    """
+    try:
+        result = await asyncio.to_thread(
+            artifacts_domain.handle_get_bom_by_build_id, build_id
+        )
+        if result is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"BOM not found for build {build_id}",
+            )
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/api/build/{build_id}/variables")
+async def get_variables_by_build_id(build_id: str):
+    """
+    Get the variables for a specific build by build_id.
+
+    Uses build_id -> (project, target) translation to find the artifact.
+    """
+    try:
+        result = await asyncio.to_thread(
+            artifacts_domain.handle_get_variables_by_build_id, build_id
+        )
+        if result is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Variables not found for build {build_id}",
+            )
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
