@@ -8,8 +8,12 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseModel
-
+from atopile.dataclasses import (
+    BuildRequest,
+    BuildResponse,
+    BuildStatusResponse,
+    MaxConcurrentRequest,
+)
 from atopile.server.app_context import AppContext
 from atopile.server.build_queue import (
     _active_builds,
@@ -25,18 +29,8 @@ from atopile.server.build_queue import (
 )
 from atopile.server import build_history
 from atopile.server import project_discovery
-from atopile.server.schemas.build import (
-    BuildRequest,
-    BuildResponse,
-    BuildStatusResponse,
-)
 
 log = logging.getLogger(__name__)
-
-
-class MaxConcurrentRequest(BaseModel):
-    use_default: bool = True
-    custom_value: int | None = None
 
 
 def handle_get_summary(ctx: AppContext) -> dict:

@@ -1,36 +1,16 @@
 import logging
-from enum import StrEnum
 from typing import Callable
 
 from mcp.server.fastmcp import FastMCP
-from pydantic import BaseModel
+
+from atopile.dataclasses import (
+    Language,
+    NodeInfo,
+    NodeInfoOverview,
+    NodeType,
+)
 
 logger = logging.getLogger(__name__)
-
-
-class Language(StrEnum):
-    FABLL = "fabll(python)"
-    ATO = "ato"
-
-
-class NodeType(StrEnum):
-    MODULE = "Module"
-    INTERFACE = "Interface"
-
-
-class NodeInfo(BaseModel):
-    name: str
-    docstring: str
-    locator: str
-    language: Language
-    code: str
-
-
-class NodeInfoOverview(BaseModel):
-    name: str
-    docstring: str
-    language: Language
-    type: NodeType
 
 
 MCP_DECORATOR = Callable[[FastMCP], Callable]

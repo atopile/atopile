@@ -31,18 +31,7 @@ class BuildContext:
     app: fabll.Node | None = None
 
 
-@dataclass
-class CompletedStage:
-    """A completed build stage with timing and status."""
-
-    name: str
-    stage_id: str
-    elapsed_seconds: float
-    status: str  # 'success', 'warning', 'failed'
-    infos: int = 0
-    warnings: int = 0
-    errors: int = 0
-    alerts: int = 0
+from atopile.dataclasses import CompletedStage
 
 
 @dataclass

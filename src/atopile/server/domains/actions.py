@@ -241,8 +241,8 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
         if action == "refreshProjects":
             scan_paths = ctx.workspace_paths
             if scan_paths:
-                from atopile.server.state import Project as StateProject
-                from atopile.server.state import BuildTarget as StateBuildTarget
+                from atopile.dataclasses import BuildTarget as StateBuildTarget
+                from atopile.dataclasses import Project as StateProject
 
                 # Run blocking project discovery in thread pool
                 projects = await asyncio.to_thread(
@@ -292,7 +292,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             return {"success": True}
 
         if action == "refreshStdlib":
-            from atopile.server.state import StdLibItem as StateStdLibItem
+            from atopile.dataclasses import StdLibItem as StateStdLibItem
 
             # Run blocking stdlib fetch in thread pool
             items = await asyncio.to_thread(get_standard_library)
@@ -359,7 +359,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
         if action == "fetchModules":
             project_root = payload.get("projectRoot", "")
             if project_root:
-                from atopile.server.state import (
+                from atopile.dataclasses import (
                     ModuleDefinition as StateModuleDefinition,
                 )
 
@@ -384,7 +384,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
         if action == "getPackageDetails":
             package_id = payload.get("packageId", "")
             if package_id:
-                from atopile.server.state import PackageDetails as StatePackageDetails
+                from atopile.dataclasses import PackageDetails as StatePackageDetails
 
                 # Run blocking registry fetch in thread pool
                 details = await asyncio.to_thread(
@@ -453,7 +453,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 return {"success": False, "error": str(exc)}
 
         if action == "refreshProblems":
-            from atopile.server.state import Problem as StateProblem
+            from atopile.dataclasses import Problem as StateProblem
 
             # Run blocking DB query in thread pool
             raw_problems = await asyncio.to_thread(
@@ -667,7 +667,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             async def refresh_deps_after_remove():
                 """Refresh project dependencies after package removal."""
-                from atopile.server.state import DependencyInfo
+                from atopile.dataclasses import DependencyInfo
 
                 log.info(f"Refreshing dependencies for project: {project_root}")
 

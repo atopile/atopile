@@ -11,8 +11,9 @@ Directory Structure:
 - server.py: Main FastAPI app and route handlers (being refactored)
 - state.py: ServerState singleton for state management
 - stdlib.py: Standard library introspection
-- schemas/: Pydantic schemas for API types
 - routes/: FastAPI routers by domain (projects, builds, packages, etc.)
+
+Note: All data classes and Pydantic models are defined in atopile.dataclasses
 """
 
 from .server import create_app, DashboardServer, start_dashboard_server

@@ -13,10 +13,7 @@ from typing import Optional
 
 from fastapi import BackgroundTasks, HTTPException
 
-from atopile.server import package_manager
-from atopile.server.app_context import AppContext
-from atopile.server.core import packages as core_packages
-from atopile.server.schemas.package import (
+from atopile.dataclasses import (
     PackageActionRequest,
     PackageActionResponse,
     PackageDetails,
@@ -28,6 +25,9 @@ from atopile.server.schemas.package import (
     RegistrySearchResponse,
     RegistryStatus,
 )
+from atopile.server import package_manager
+from atopile.server.app_context import AppContext
+from atopile.server.core import packages as core_packages
 from atopile.server.state import server_state
 
 log = logging.getLogger(__name__)
@@ -447,7 +447,7 @@ def _fetch_packages_sync(
     Sync helper that fetches installed and registry packages.
     Returns (state_packages_list, registry_error).
     """
-    from atopile.server.state import PackageInfo as StatePackageInfo
+    from atopile.dataclasses import PackageInfo as StatePackageInfo
 
     packages_map: dict[str, StatePackageInfo] = {}
     registry_error: str | None = None

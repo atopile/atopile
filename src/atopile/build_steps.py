@@ -107,7 +107,7 @@ class MusterTarget:
     def __call__(self, ctx: BuildStepContext) -> None:
         if not self.virtual:
             import time
-            from atopile.buildutil import CompletedStage
+            from atopile.dataclasses import CompletedStage
 
             try:
                 # Set up logging for this build stage

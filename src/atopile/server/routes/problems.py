@@ -8,8 +8,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Query
 
+from atopile.dataclasses import ProblemsResponse
 from atopile.server.domains import problems as problems_domain
-from atopile.server.schemas.problem import ProblemsResponse
 
 log = logging.getLogger(__name__)
 

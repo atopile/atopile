@@ -56,52 +56,16 @@ _log_sink_var = ContextVar[io.StringIO | None]("log_sink", default=None)
 # Build Status and Events
 # =============================================================================
 
-
-class Status(str, Enum):
-    """Build status states."""
-
-    QUEUED = "queued"
-    BUILDING = "building"
-    SUCCESS = "success"
-    WARNING = "warning"
-    FAILED = "failed"
-
-
-@dataclass
-class ProjectState:
-    """Aggregate state for a project containing multiple builds."""
-
-    builds: list = field(default_factory=list)
-    status: Status = Status.QUEUED
-    completed: int = 0
-    failed: int = 0
-    warnings: int = 0
-    building: int = 0
-    queued: int = 0
-    total: int = 0
-    current_build: str | None = None
-    current_stage: str | None = None
-    elapsed: float = 0.0
-
-
-@dataclass(frozen=True)
-class StageStatusEvent:
-    name: str
-    description: str
-    progress: int
-    total: int | None
-
-
-@dataclass(frozen=True)
-class StageCompleteEvent:
-    duration: float
-    status: str
-    infos: int
-    warnings: int
-    errors: int
-    alerts: int
-    log_name: str
-    description: str
+from atopile.dataclasses import (
+    Audience,
+    Level,
+    LogEntry,
+    ProjectState,
+    StageCompleteEvent,
+    StageStatusEvent,
+    Status,
+    TestLogEntry,
+)
 
 # =============================================================================
 # Rich Console Configuration (formerly cli/console.py)
@@ -199,21 +163,7 @@ CREATE INDEX IF NOT EXISTS idx_test_logs_audience ON test_logs(audience);
 """
 
 
-class Audience(StrEnum):
-    """Who a log message is intended for."""
-
-    USER = "user"  # End users (syntax errors, build failures)
-    DEVELOPER = "developer"  # Design debugging (parameter resolution)
-    AGENT = "agent"  # AI agents consuming logs programmatically
-
-
-class Level(StrEnum):
-    """Log severity levels."""
-
-    DEBUG = "DEBUG"
-    INFO = "INFO"
-    WARNING = "WARNING"
-    ERROR = "ERROR"
+# Audience and Level are imported from atopile.dataclasses
 
 
 class BaseLogger:
@@ -419,36 +369,7 @@ class BaseLogger:
         raise NotImplementedError
 
 
-@dataclass
-class LogEntry:
-    """A structured log entry."""
-
-    build_id: str
-    timestamp: str
-    stage: str
-    level: Level
-    logger_name: str
-    message: str
-    audience: Audience = Audience.DEVELOPER
-    ato_traceback: str | None = None
-    python_traceback: str | None = None
-    objects: dict | None = None
-
-
-@dataclass
-class TestLogEntry:
-    """A structured test log entry."""
-
-    test_run_id: str
-    timestamp: str
-    test: str  # Name of the Python test being run
-    level: Level
-    logger_name: str
-    message: str
-    audience: Audience = Audience.DEVELOPER
-    ato_traceback: str | None = None
-    python_traceback: str | None = None
-    objects: dict | None = None
+# LogEntry and TestLogEntry are imported from atopile.dataclasses
 
 
 class SQLiteLogWriter:
@@ -1487,11 +1408,18 @@ LOGS_MAX_COUNT = 5000
 LOGS_ALLOWED_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "ALERT"}
 
 
-def normalize_log_level(value: Any) -> str | None:
-    if not isinstance(value, str):
+def normalize_log_levels(value: Any) -> list[str] | None:
+    if not isinstance(value, list):
         return None
-    level = value.strip().upper()
-    return level if level in LOGS_ALLOWED_LEVELS else None
+    levels: list[str] = []
+    for entry in value:
+        if not isinstance(entry, str):
+            return None
+        level = entry.strip().upper()
+        if level not in LOGS_ALLOWED_LEVELS:
+            return None
+        levels.append(level)
+    return levels
 
 
 def normalize_log_audience(value: Any) -> str | None:
@@ -1506,10 +1434,11 @@ def load_build_logs(
     *,
     build_id: str,
     stage: str | None,
-    log_level: str | None,
+    log_levels: list[str] | None,
     audience: str | None,
     count: int,
 ) -> list[dict[str, Any]]:
+    count = max(1, min(count, LOGS_MAX_COUNT))
     db_path = BuildLogger.get_log_db()
     if not db_path.exists():
         return []
@@ -1524,9 +1453,10 @@ def load_build_logs(
         where_clauses.append("logs.stage = ?")
         params.append(stage)
 
-    if log_level:
-        where_clauses.append("logs.level = ?")
-        params.append(log_level)
+    if log_levels:
+        placeholders = ", ".join(["?"] * len(log_levels))
+        where_clauses.append(f"logs.level IN ({placeholders})")
+        params.extend(log_levels)
 
     if audience:
         where_clauses.append("logs.audience = ?")

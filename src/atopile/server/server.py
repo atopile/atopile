@@ -31,8 +31,8 @@ init_build_history_db = build_history.init_build_history_db
 
 async def _load_projects_background(ctx: AppContext) -> None:
     """Background task to load projects without blocking startup."""
-    from atopile.server.state import BuildTarget as StateBuildTarget
-    from atopile.server.state import Project as StateProject
+    from atopile.dataclasses import BuildTarget as StateBuildTarget
+    from atopile.dataclasses import Project as StateProject
 
     try:
         log.info(f"[background] Loading projects from {len(ctx.workspace_paths)} paths")
@@ -71,8 +71,8 @@ async def _load_packages_background(ctx: AppContext) -> None:
 
 
 async def _refresh_stdlib_state() -> None:
+    from atopile.dataclasses import StdLibItem as StateStdLibItem
     from atopile.server import stdlib as stdlib_domain
-    from atopile.server.state import StdLibItem as StateStdLibItem
 
     # Run blocking stdlib refresh in thread pool
     items = await asyncio.to_thread(stdlib_domain.refresh_standard_library)

@@ -811,7 +811,7 @@ def _get_state_builds():
 
     Helper function used by both sync and async state sync functions.
     """
-    from atopile.server.state import Build as StateBuild, BuildStage as StateStage
+    from atopile.dataclasses import Build as StateBuild, BuildStage as StateStage
 
     with _build_lock:
         state_builds = []

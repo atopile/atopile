@@ -12,11 +12,12 @@ from typing import Optional
 
 import yaml
 
-from ..schemas.project import (
+from atopile.dataclasses import (
     BuildTarget,
     BuildTargetStatus,
     FileTreeNode,
     ModuleDefinition,
+    Project,
     Project,
 )
 

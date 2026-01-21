@@ -8,14 +8,10 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from atopile.dataclasses import BuildRequest, BuildResponse, BuildStatusResponse
 from atopile.server.app_context import AppContext
 from atopile.server.domains import builds as builds_domain
 from atopile.server.domains.deps import get_ctx
-from atopile.server.schemas.build import (
-    BuildRequest,
-    BuildResponse,
-    BuildStatusResponse,
-)
 
 log = logging.getLogger(__name__)
 

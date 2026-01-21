@@ -12,7 +12,12 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from atopile.dataclasses import (
+    StdLibChild,
+    StdLibItem,
+    StdLibItemType,
+    StdLibResponse,
+)
 
 log = logging.getLogger(__name__)
 
@@ -21,45 +26,6 @@ log = logging.getLogger(__name__)
 STDLIB_CONFIG = {
     "max_children_depth": 2,  # Maximum depth for nested children (0 = no nesting)
 }
-
-
-class StdLibItemType(str, Enum):
-    """Type of standard library item."""
-
-    INTERFACE = "interface"
-    MODULE = "module"
-    COMPONENT = "component"
-    TRAIT = "trait"
-    PARAMETER = "parameter"
-
-
-class StdLibChild(BaseModel):
-    """A child field within a standard library item."""
-
-    name: str
-    type: str  # The type name (e.g., "Electrical", "ElectricLogic")
-    item_type: StdLibItemType  # Whether it's interface, parameter, etc.
-    children: list["StdLibChild"] = Field(default_factory=list)
-    enum_values: list[str] = Field(default_factory=list)
-
-
-class StdLibItem(BaseModel):
-    """A standard library item (module, interface, trait, etc.)."""
-
-    id: str
-    name: str
-    type: StdLibItemType
-    description: str
-    usage: str | None = None
-    children: list[StdLibChild] = Field(default_factory=list)
-    parameters: list[dict[str, str]] = Field(default_factory=list)
-
-
-class StdLibResponse(BaseModel):
-    """Response for /api/stdlib endpoint."""
-
-    items: list[StdLibItem]
-    total: int
 
 
 _stdlib_typegraph_cache: (

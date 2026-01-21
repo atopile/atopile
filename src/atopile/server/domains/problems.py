@@ -6,8 +6,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+from atopile.dataclasses import ProblemsResponse
 from atopile.server import problem_parser
-from atopile.server.schemas.problem import ProblemsResponse
 
 log = logging.getLogger(__name__)
 

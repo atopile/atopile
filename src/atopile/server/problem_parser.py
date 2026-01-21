@@ -10,8 +10,8 @@ import logging
 import sqlite3
 from pathlib import Path
 
+from atopile.dataclasses import Problem
 from atopile.logging import BuildLogger
-from atopile.server.schemas.problem import Problem
 from atopile.server.state import server_state
 
 log = logging.getLogger(__name__)
@@ -145,7 +145,7 @@ async def sync_problems_to_state_async(developer_mode: bool = False) -> None:
     Args:
         developer_mode: If True, show all audiences. If False, only show 'user' audience.
     """
-    from atopile.server.state import Problem as StateProblem
+    from atopile.dataclasses import Problem as StateProblem
 
     try:
         all_problems: list[StateProblem] = []

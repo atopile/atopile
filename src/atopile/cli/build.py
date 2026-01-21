@@ -98,13 +98,7 @@ _STATUS_STYLE = {
 }
 
 
-@dataclass
-class BuildReport:
-    name: str
-    status: Status
-    warnings: int
-    errors: int
-    stages: list[StageCompleteEvent]
+from atopile.dataclasses import BuildReport
 
 
 def _format_stage_entry(entry: StageCompleteEvent) -> str:

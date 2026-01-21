@@ -7,46 +7,24 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseModel
-
+from atopile.dataclasses import (
+    CreateProjectRequest,
+    CreateProjectResponse,
+    DependenciesResponse,
+    DependencyInfo,
+    FileTreeNode,
+    FilesResponse,
+    ModulesResponse,
+    ProjectsResponse,
+    RenameProjectRequest,
+    RenameProjectResponse,
+)
 from atopile.server.app_context import AppContext
 from atopile.server.core import projects as core_projects
 from atopile.server.domains import packages as packages_domain
 from atopile.server.state import server_state
-from atopile.server.schemas.project import (
-    ProjectsResponse,
-    ModulesResponse,
-    FilesResponse,
-    FileTreeNode,
-    DependenciesResponse,
-    DependencyInfo,
-)
 
 log = logging.getLogger(__name__)
-
-
-class CreateProjectRequest(BaseModel):
-    parent_directory: str
-    name: str | None = None
-
-
-class CreateProjectResponse(BaseModel):
-    success: bool
-    message: str
-    project_root: str | None = None
-    project_name: str | None = None
-
-
-class RenameProjectRequest(BaseModel):
-    project_root: str
-    new_name: str
-
-
-class RenameProjectResponse(BaseModel):
-    success: bool
-    message: str
-    old_root: str
-    new_root: str | None = None
 
 
 def handle_get_projects(ctx: AppContext) -> ProjectsResponse:

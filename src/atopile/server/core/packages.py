@@ -6,22 +6,14 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
-from ..schemas.package import PackageInfo
+from atopile.dataclasses import InstalledPackage, PackageInfo
 from . import projects as core_projects
 
 log = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class InstalledPackage:
-    identifier: str
-    version: str
-    project_root: str
 
 
 def get_installed_packages_for_project(project_root: Path) -> list[InstalledPackage]:

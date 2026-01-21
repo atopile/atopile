@@ -8,15 +8,15 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from atopile.dataclasses import (
+    DependenciesResponse,
+    FilesResponse,
+    ModulesResponse,
+    ProjectsResponse,
+)
 from atopile.server.app_context import AppContext
 from atopile.server.domains import projects as projects_domain
 from atopile.server.domains.deps import get_ctx
-from atopile.server.schemas.project import (
-    ProjectsResponse,
-    ModulesResponse,
-    FilesResponse,
-    DependenciesResponse,
-)
 
 log = logging.getLogger(__name__)
 

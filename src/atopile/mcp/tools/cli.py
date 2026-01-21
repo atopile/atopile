@@ -1,34 +1,23 @@
 import logging
 from pathlib import Path
 
-from pydantic import BaseModel
-
 from atopile import buildutil
+from atopile.dataclasses import (
+    BuildResult,
+    CreatePartError,
+    CreatePartResult,
+    ErrorResult,
+    InstallPackageError,
+    InstallPackageResult,
+    PackageVerifyResult,
+    Result,
+)
 from atopile.logging import BaseLogger
 from atopile.mcp.util import MCPTools
 
 cli_tools = MCPTools()
 
 logger = logging.getLogger(__name__)
-
-
-class Result(BaseModel):
-    success: bool
-    project_dir: str
-
-
-class ErrorResult(Result):
-    error: str
-    error_message: str
-
-
-class BuildResult(Result):
-    target: str
-    logs: str
-
-
-class PackageVerifyResult(Result):
-    logs: str
 
 
 @cli_tools.register()
@@ -65,19 +54,7 @@ def build_project(
     )
 
 
-class CreatePartResult(Result):
-    manufacturer: str
-    part_number: str
-    description: str
-    supplier_id: str
-    stock: int
-    path: str
-    import_statement: str
-
-
-class CreatePartError(ErrorResult):
-    error: str
-    error_message: str
+# CreatePartResult and CreatePartError are imported from atopile.dataclasses
 
 
 @cli_tools.register()
@@ -118,12 +95,7 @@ def search_and_install_jlcpcb_part(
     )
 
 
-class InstallPackageResult(Result):
-    installed_packages: list[str]
-
-
-class InstallPackageError(ErrorResult):
-    pass
+# InstallPackageResult and InstallPackageError are imported from atopile.dataclasses
 
 
 @cli_tools.register()

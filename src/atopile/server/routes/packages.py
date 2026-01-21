@@ -7,10 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 
-from ..app_context import AppContext
-from ..domains import packages as packages_domain
-from ..domains.deps import get_ctx
-from ..schemas.package import (
+from atopile.dataclasses import (
     PackageActionRequest,
     PackageActionResponse,
     PackageDetails,
@@ -19,6 +16,10 @@ from ..schemas.package import (
     PackagesSummaryResponse,
     RegistrySearchResponse,
 )
+
+from ..app_context import AppContext
+from ..domains import packages as packages_domain
+from ..domains.deps import get_ctx
 
 router = APIRouter(tags=["packages"])
 
