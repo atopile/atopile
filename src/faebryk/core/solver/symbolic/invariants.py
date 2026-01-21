@@ -53,7 +53,9 @@ def warning(msg: str):
 
 class AliasClass:
     @classmethod
-    def of(cls, is_or_member: F.Expressions.Is | F.Parameters.can_be_operand):
+    def of(
+        cls, is_or_member: F.Expressions.Is | F.Parameters.can_be_operand
+    ) -> "AliasClass":
         if isinstance(is_or_member, F.Expressions.Is):
             return AliasClassIs(is_or_member)
         aliases = is_or_member.get_operations(F.Expressions.Is, predicates_only=True)

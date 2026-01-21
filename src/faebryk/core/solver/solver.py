@@ -48,7 +48,6 @@ class Solver:
         # and types from decorator
         iterative = [
             structural.remove_unconstrained,
-            expression_groups.associative_flatten,
             expression_groups.idempotent_unpack,
             expression_groups.involutory_fold,
             expression_groups.unary_identity_unpack,

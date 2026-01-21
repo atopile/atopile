@@ -1046,8 +1046,9 @@ class MutationMap:
                 terminal=False,
             ).run()
 
-            logger.debug("Done bootstrap ------")
             mut_map = mut_map.extend(algo_result.mutation_stage)
+
+        logger.debug("Done bootstrap ------")
 
         return mut_map
 
@@ -1198,6 +1199,15 @@ class ExpressionBuilder[
     operands: list[F.Parameters.can_be_operand]
     assert_: bool
     terminate: bool
+
+    @classmethod
+    def from_e(cls, e: F.Expressions.is_expression) -> "ExpressionBuilder[T]":
+        return cls(
+            factory=MutatorUtils.hack_get_expr_type(e),
+            operands=e.get_operands(),
+            assert_=bool(e.try_get_sibling_trait(F.Expressions.is_predicate)),
+            terminate=bool(e.try_get_sibling_trait(is_terminated)),
+        )
 
     def indexed_ops(self) -> dict[int, F.Parameters.can_be_operand]:
         return {i: o for i, o in enumerate(self.operands)}
@@ -1390,6 +1400,19 @@ class Mutator:
 
         return new_expr
 
+    def create_check_and_insert_expression_from_builder(
+        self,
+        builder: ExpressionBuilder,
+        from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
+    ) -> "InsertExpressionResult":
+        return self.create_check_and_insert_expression(
+            builder.factory,
+            *builder.operands,
+            assert_=builder.assert_,
+            terminate=builder.terminate,
+            from_ops=from_ops,
+        )
+
     def create_check_and_insert_expression(
         self,
         expr_factory: type[F.Expressions.ExpressionNodes],
@@ -1549,9 +1572,6 @@ class Mutator:
         """
 
         self.transformations.soft_replaced[current] = new
-        if self.has_been_mutated(current):
-            return
-        self.copy_operand(current, accept_soft=False)
 
     def get_copy(
         self,
@@ -1987,7 +2007,7 @@ class Mutator:
         # important to check after copying unmutated
         # because invariant checking might revert 'new' state
         dirty = self.transformations.is_dirty()
-        if not dirty:
+        if not self.algo.force_copy and not dirty:
             self.G_out.destroy()
             return AlgoResult(
                 mutation_stage=MutationStage.identity(

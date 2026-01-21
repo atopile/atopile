@@ -3,7 +3,7 @@
 
 import logging
 from cmath import pi
-from typing import Callable
+from typing import Callable, Iterable
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -138,6 +138,30 @@ def strip_irrelevant(
         G_in=g,
         G_out=g_out,
     )
+
+
+def _strip_units(
+    mutator: Mutator,
+    operand: F.Parameters.can_be_operand,
+) -> F.Parameters.can_be_operand:
+    if np := fabll.Traits(operand).get_obj_raw().try_cast(F.Literals.Numbers):
+        return (
+            np.convert_to_dimensionless(g=mutator.G_transient, tg=mutator.tg_out)
+            .is_literal.get()
+            .as_operand.get()
+        )
+    if (
+        numparam := fabll.Traits(operand)
+        .get_obj_raw()
+        .try_cast(F.Parameters.NumericParameter)
+    ):
+        if unit := numparam.try_get_units():
+            assert unit._extract_multiplier() == 1.0, (
+                "Parameter units must not use scalar multiplier"
+            )
+            assert unit._extract_offset() == 0.0, "Parameter units must not use offset"
+
+    return operand
 
 
 @algorithm("Canonicalize", single=True, terminal=False)
@@ -316,61 +340,7 @@ def convert_to_canonical_operations(mutator: Mutator):
         for Target, Convertible, Converter in MirroredExpressions
     }
 
-    def _strip_units(
-        operand: F.Parameters.can_be_operand,
-    ) -> F.Parameters.can_be_operand:
-        if np := fabll.Traits(operand).get_obj_raw().try_cast(F.Literals.Numbers):
-            return (
-                np.convert_to_dimensionless(g=mutator.G_transient, tg=mutator.tg_out)
-                .is_literal.get()
-                .as_operand.get()
-            )
-        return operand
-
-    # Canonicalize parameters
-    for param in mutator.get_parameters_of_type(F.Parameters.NumericParameter):
-        if unit := param.try_get_units():
-            assert unit._extract_multiplier() == 1.0, (
-                "Parameter units must not use scalar multiplier"
-            )
-            assert unit._extract_offset() == 0.0, "Parameter units must not use offset"
-        # VA allowed, W allowed, mW not allowed
-        mutator.mutate_parameter(
-            param.is_parameter.get(),
-            # make units dimensionless
-            # strip domain
-        )
-
     exprs = mutator.get_expressions(sort_by_depth=True)
-
-    # Filter expressions that compute ON unit types themselves (e.g. Second^1, Ampere*Second). #noqa: E501
-    # These have is_unit trait as operands (the unit type IS the operand).
-    # NOT expressions like `A is {0.1..0.6}As` where operands HAVE units - those
-    # should pass through and have their units stripped by _strip_units().
-    unit_computation_leaves = {
-        e for e in exprs if e.get_operands_with_trait(F.Units.is_unit)
-    }
-    unit_exprs_all = {
-        parent.get_trait(F.Expressions.is_expression)
-        for e in unit_computation_leaves
-        for parent in e.as_operand.get().get_operations(recursive=True)
-    } | unit_computation_leaves
-    # Preserve depth-sorted order (important: operands must be processed before parents)
-    exprs = [e for e in exprs if e not in unit_exprs_all]
-    for u_expr in unit_exprs_all:
-        # can disable root check because we never want to repr_map unit expressions
-        mutator.remove(u_expr.as_parameter_operatable.get(), no_check_roots=True)
-
-    # Also remove UnitExpression nodes (like As = Ampere*Second).
-    # These have is_parameter_operatable trait but aren't expressions or parameters,
-    # so they would cause errors during _copy_unmutated.
-    for unit_expr in fabll.Traits.get_implementors(
-        F.Units.is_unit_expression.bind_typegraph(mutator.tg_in), mutator.G_in
-    ):
-        mutator.remove(
-            unit_expr.get_sibling_trait(F.Parameters.is_parameter_operatable),
-            no_check_roots=True,
-        )
 
     for e in exprs:
         e_type = not_none(fabll.Traits(e).get_obj_raw().get_type_node()).node()
@@ -389,7 +359,7 @@ def convert_to_canonical_operations(mutator: Mutator):
                 f"{type(e)}({rep}) not supported by solver, converting to {replacement}"
             )
 
-        operands = [_strip_units(o) for o in e.get_operands()]
+        operands = e.get_operands()
         from_ops = [e_po]
 
         # Canonical-expressions need to be mutated to strip the units
@@ -416,6 +386,7 @@ def convert_to_canonical_operations(mutator: Mutator):
 def _create_alias_parameter_for_expression(
     mutator: Mutator,
     expr: F.Expressions.is_expression,
+    expr_copy: F.Expressions.is_expression,
     existing_params: set[F.Parameters.is_parameter],
 ) -> F.Parameters.is_parameter:
     """
@@ -432,24 +403,42 @@ def _create_alias_parameter_for_expression(
     assert len(mutated) <= 1
     if mutated:
         p = next(iter(mutated.values())).as_parameter.force_get()
-        logger.debug(
-            f"Using mutated {p.compact_repr(mutator.print_ctx)} for {expr_repr}"
+        mutator._create_and_insert_expression(
+            ExpressionBuilder(
+                F.Expressions.Is,
+                [expr_copy.as_operand.get(), p.as_operand.get()],
+                assert_=True,
+                terminate=True,
+            )
         )
+        if S_LOG:
+            logger.debug(
+                f"Using mutated {p.compact_repr(mutator.print_ctx)} for {expr_repr}"
+            )
     elif existing_params:
         p_old = next(iter(existing_params))
         p = mutator.mutate_parameter(p_old)
-        logger.debug(
-            f"Using and mutating {p.compact_repr(mutator.print_ctx)} for {expr_repr}"
+        mutator._create_and_insert_expression(
+            ExpressionBuilder(
+                F.Expressions.Is,
+                [expr_copy.as_operand.get(), p.as_operand.get()],
+                assert_=True,
+                terminate=True,
+            )
         )
+        if S_LOG:
+            logger.debug(
+                f"Using and mutating {p.compact_repr(mutator.print_ctx)} for {expr_repr}"
+            )
     else:
-        p = expr.create_representative()
         p = mutator.register_created_parameter(
-            p,
+            expr_copy.create_representative(),
             from_ops=[expr.as_parameter_operatable.get()],
         )
-        logger.debug(
-            f"Using created {p.compact_repr(mutator.print_ctx)} for {expr_repr}"
-        )
+        if S_LOG:
+            logger.debug(
+                f"Using created {p.compact_repr(mutator.print_ctx)} for {expr_repr}"
+            )
 
     for p_old in existing_params:
         p_old_po = p_old.as_parameter_operatable.get()
@@ -462,28 +451,105 @@ def _create_alias_parameter_for_expression(
     return p
 
 
+def _remove_unit_expressions(
+    mutator: Mutator, exprs: Iterable[F.Expressions.is_expression]
+) -> list[F.Expressions.is_expression]:
+    # Filter expressions that compute ON unit types themselves (e.g. Second^1, Ampere*Second). #noqa: E501
+    # These have is_unit trait as operands (the unit type IS the operand).
+    # NOT expressions like `A is {0.1..0.6}As` where operands HAVE units - those
+    # should pass through and have their units stripped by _strip_units().
+    unit_computation_leaves = {
+        e for e in exprs if e.get_operands_with_trait(F.Units.is_unit)
+    }
+    unit_exprs_all = {
+        parent.get_trait(F.Expressions.is_expression)
+        for e in unit_computation_leaves
+        for parent in e.as_operand.get().get_operations(recursive=True)
+    } | unit_computation_leaves
+    exprs = [e for e in exprs if e not in unit_exprs_all]
+    for u_expr in unit_exprs_all:
+        mutator.remove(u_expr.as_parameter_operatable.get(), no_check_roots=True)
+
+    # Also remove UnitExpression nodes (like As = Ampere*Second).
+    # These have is_parameter_operatable trait but aren't expressions or parameters,
+    # so they would cause errors during copy_operand.
+    for unit_expr in fabll.Traits.get_implementors(
+        F.Units.is_unit_expression.bind_typegraph(mutator.tg_in), mutator.G_in
+    ):
+        mutator.remove(
+            unit_expr.get_sibling_trait(F.Parameters.is_parameter_operatable),
+            no_check_roots=True,
+        )
+    return exprs
+
+
 @algorithm("Flatten expressions", single=True, terminal=False)
 def flatten_expressions(mutator: Mutator):
     """
     Flatten nested expressions: f(g(A)) -> f(B), B is! g(A)
     """
 
-    for e in mutator.get_expressions(sort_by_depth=True):
+    # Don't use standard mutation interfaces here because they will trigger invariant checks
+
+    # Strategy
+    # - strip unit expressions
+    # - go from leaf expressionsto root
+    # - operand map
+    #  - strip unit from lits
+    #  - map exprs to repr
+    #  - copy param (strip unit etc)
+    # - copy expr
+
+    exprs = mutator.get_expressions(sort_by_depth=True)
+
+    exprs = _remove_unit_expressions(mutator, exprs)
+    expr_reprs: dict[F.Expressions.is_expression, F.Parameters.can_be_operand] = {}
+
+    def _map_operand(
+        mutator: Mutator, o: F.Parameters.can_be_operand
+    ) -> F.Parameters.can_be_operand:
+        o = _strip_units(mutator, o)
+        if o_e := o.try_get_sibling_trait(F.Expressions.is_expression):
+            o = expr_reprs[o_e]
+        elif (
+            o_p := o.try_get_sibling_trait(F.Parameters.is_parameter)
+        ) and mutator.has_been_mutated(o_p.as_parameter_operatable.get()):
+            return mutator.get_mutated(
+                o_p.as_parameter_operatable.get()
+            ).as_operand.get()
+        return o
+
+    for e in exprs:
         e_po = e.as_parameter_operatable.get()
         e_op = e.as_operand.get()
-        aliases = e_op.get_operations(F.Expressions.Is, predicates_only=True)
+        # aliases are manually created
+        if (
+            fabll.Traits(e).get_obj_raw().isinstance(F.Expressions.Is)
+            and e.try_get_sibling_trait(F.Expressions.is_predicate)
+            and not e.get_operand_literals()
+        ):
+            continue
         # parents = e_op.get_operations() - aliases
+        original_operands = e.get_operands()
+        operands = [_map_operand(mutator, o) for o in original_operands]
+        e_copy = mutator._mutate(
+            e_po,
+            mutator._create_and_insert_expression(
+                ExpressionBuilder.from_e(e).with_(operands=operands)
+            ).is_parameter_operatable.get(),
+        ).as_expression.force_get()
+        if original_operands == operands:
+            mutator.transformations.copied.add(e_po)
 
         # no aliases for predicates
         if e.try_get_sibling_trait(F.Expressions.is_predicate):
             logger.debug(
                 f"No aliases for predicate {e.compact_repr(mutator.print_ctx)}"
             )
-            mutator.soft_replace(
-                e_po, mutator.make_singleton(True).can_be_operand.get()
-            )
+            expr_reprs[e] = mutator.make_singleton(True).can_be_operand.get()
             continue
 
+        aliases = e_op.get_operations(F.Expressions.Is, predicates_only=True)
         alias_params = {
             p
             for alias in aliases
@@ -492,10 +558,9 @@ def flatten_expressions(mutator: Mutator):
             )
         }
 
-        representative = _create_alias_parameter_for_expression(
-            mutator, e, existing_params=alias_params
-        )
-        representative_op = representative.as_operand.get()
+        representative_op = _create_alias_parameter_for_expression(
+            mutator, e, e_copy, existing_params=alias_params
+        ).as_operand.get()
 
-        mutator.soft_replace(e_po, representative_op)
+        expr_reprs[e] = representative_op
         # alias is added by mutate_expression / invariant

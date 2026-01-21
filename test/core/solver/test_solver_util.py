@@ -41,58 +41,6 @@ Flattenable = (
 )
 
 
-@pytest.mark.parametrize(
-    "op",
-    [
-        F.Expressions.Add,
-        F.Expressions.Multiply,
-        F.Expressions.Subtract,
-        F.Expressions.Divide,
-        F.Expressions.And,
-        F.Expressions.Or,
-        F.Expressions.Xor,
-    ],
-)
-def test_flatten_associative(op: type[Flattenable]):
-    E = BoundExpressions()
-    from faebryk.core.solver.symbolic.expression_groups import _flatten_associative
-
-    class MutatorShim:
-        def has_been_mutated(self, po: F.Parameters.is_parameter_operatable) -> bool:
-            return False
-
-    mutator = cast(Mutator, MutatorShim())
-
-    def flatten(is_flattenable: "F.Expressions.is_flattenable"):
-        return _flatten_associative(mutator, is_flattenable)
-
-    # TODO: add logic trait to classify logic expressions
-    if op in [F.Expressions.And.c, F.Expressions.Or.c, F.Expressions.Xor.c]:
-        A, B, C, D, H = [E.bool_parameter_op() for _ in range(5)]
-    else:
-        A, B, C, D, H = [E.parameter_op() for _ in range(5)]
-
-    to_flatten_op = op.c(op.c(A, B), C, op.c(D, H))
-    to_flatten_expression = fabll.Traits(to_flatten_op).get_obj(op)
-    res = flatten(to_flatten_expression.is_flattenable.get())
-
-    # Get the parent class from the classmethod
-    # (e.g., F.Expressions.Add.c -> F.Expressions.Add)
-
-    if not to_flatten_expression.try_get_trait(F.Expressions.is_flattenable):
-        assert len(res.destroyed_operations) == 0
-        return
-
-    if not to_flatten_expression.try_get_trait(F.Expressions.is_associative):
-        assert set(res.extracted_operands) & {A, B, C}
-        assert not set(res.extracted_operands) & {D, E}
-        assert len(res.destroyed_operations) == 1
-        return
-
-    assert set(res.extracted_operands) == {A, B, C, D, H}
-    assert len(res.destroyed_operations) == 2
-
-
 def test_mutator_no_graph_merge():
     E = BoundExpressions()
     p0 = E.parameter_op(units=E.U.V)

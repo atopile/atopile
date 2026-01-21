@@ -10,8 +10,8 @@ import pytest
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.mutator import MutationMap
+from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.symbolic.pure_literal import exec_pure_literal_expression
 from faebryk.core.solver.utils import (
     Contradiction,

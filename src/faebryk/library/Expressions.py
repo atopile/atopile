@@ -746,11 +746,20 @@ class is_expression(fabll.Node):
 
         raise ValueError(f"Unknown parameter type for expression {self}")
 
-    def create_representative(self) -> F.Parameters.is_parameter:
+    def create_representative(
+        self,
+    ) -> F.Parameters.is_parameter:
+        """
+        Warning: Strips unit!
+        """
+        g = self.g
+        tg = self.tg
         p_type = self.get_parameter_type()
-        p_instance = p_type.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+        p_instance = p_type.bind_typegraph(tg=tg).create_instance(g=g)
         if isinstance(p_instance, F.Parameters.NumericParameter):
-            p_instance.setup(domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
+            p_instance.setup(
+                domain=F.Parameters.NumericParameter.DOMAIN_SKIP, is_unit=None
+            )
         elif isinstance(p_instance, F.Parameters.BooleanParameter):
             p_instance.setup()
         else:
@@ -1976,7 +1985,7 @@ class Not(fabll.Node):
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     is_involutory = fabll.Traits.MakeEdge(is_involutory.MakeChild())
 
-    operand = OperandPointer.MakeChild()
+    operand: _ChildField[Unknown] = OperandPointer.MakeChild()
 
     def setup(
         self, operand: "F.Parameters.can_be_operand", assert_: bool = False
@@ -3086,7 +3095,7 @@ class Mapping:
                 Implies.from_operands(
                     case.as_operand.get(),
                     impl.as_operand.get(),
-                ).as_operand.get()
+                ).can_be_operand.get()
                 for case, impl in cases
             ),
         ).is_expression.get()
