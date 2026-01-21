@@ -143,6 +143,8 @@ interface BuildNodeProps {
   onOpenLayout?: (projectId: string, buildId: string) => void;
   onOpen3D?: (projectId: string, buildId: string) => void;
   availableModules?: ModuleDefinition[];
+  // All builds in the project (for duplicate entry validation)
+  allBuilds?: BuildTarget[];
   // Read-only mode for packages: hides build/delete buttons, status icon, progress
   readOnly?: boolean;
 }
@@ -163,6 +165,7 @@ export const BuildNode = memo(function BuildNode({
   onOpenLayout,
   onOpen3D,
   availableModules = [],
+  allBuilds = [],
   readOnly = false
 }: BuildNodeProps) {
   const [showStages, setShowStages] = useState(false);
@@ -172,6 +175,7 @@ export const BuildNode = memo(function BuildNode({
   const [entryPoint, setEntryPoint] = useState(build.entry);
   const [searchQuery, setSearchQuery] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [duplicateWarning, setDuplicateWarning] = useState<{ entry: string; usedBy: string } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Lazy-loaded module children from TypeGraph introspection
@@ -324,12 +328,41 @@ export const BuildNode = memo(function BuildNode({
   };
 
   const handleSelectModule = (module: ModuleDefinition) => {
+    // Check if this entry is already used by another build in the project
+    const existingBuild = allBuilds.find(
+      b => b.id !== build.id && b.entry === module.entry
+    );
+
+    if (existingBuild) {
+      // Show warning popup
+      setDuplicateWarning({ entry: module.entry, usedBy: existingBuild.name });
+      return;
+    }
+
+    // Clear any previous warning when selecting a valid entry
+    setDuplicateWarning(null);
     setEntryPoint(module.entry);
     setIsEditingEntry(false);
     setSearchQuery('');
     if (onUpdateBuild) {
       onUpdateBuild(projectId, build.id, { entry: module.entry });
     }
+  };
+
+  const handleConfirmDuplicate = () => {
+    if (!duplicateWarning) return;
+    // User confirmed they want to use the duplicate entry
+    setEntryPoint(duplicateWarning.entry);
+    setIsEditingEntry(false);
+    setSearchQuery('');
+    setDuplicateWarning(null);
+    if (onUpdateBuild) {
+      onUpdateBuild(projectId, build.id, { entry: duplicateWarning.entry });
+    }
+  };
+
+  const handleCancelDuplicate = () => {
+    setDuplicateWarning(null);
   };
 
   // Check if we have module children (lazy-loaded) or legacy symbols
@@ -541,6 +574,32 @@ export const BuildNode = memo(function BuildNode({
         </div>
       )}
 
+      {/* Duplicate entry warning dialog */}
+      {duplicateWarning && (
+        <div className="build-duplicate-warning" onClick={(e) => e.stopPropagation()}>
+          <div className="duplicate-warning-icon">
+            <AlertTriangle size={16} />
+          </div>
+          <span className="duplicate-warning-text">
+            This entry point is already used by "{duplicateWarning.usedBy}"
+          </span>
+          <div className="duplicate-warning-buttons">
+            <button
+              className="duplicate-warning-btn cancel"
+              onClick={handleCancelDuplicate}
+            >
+              Cancel
+            </button>
+            <button
+              className="duplicate-warning-btn confirm"
+              onClick={handleConfirmDuplicate}
+            >
+              Use Anyway
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Build progress bar - only in edit mode */}
       {!readOnly && isBuilding && (
         <div className="build-progress-container">
@@ -573,6 +632,7 @@ export const BuildNode = memo(function BuildNode({
                       if (e.key === 'Escape') {
                         setSearchQuery('');
                         setIsEditingEntry(false);
+                        setDuplicateWarning(null);
                       }
                       if (e.key === 'Enter' && filteredModules.length === 1) {
                         handleSelectModule(filteredModules[0]);
@@ -585,6 +645,7 @@ export const BuildNode = memo(function BuildNode({
                     onClick={() => {
                       setSearchQuery('');
                       setIsEditingEntry(false);
+                      setDuplicateWarning(null);
                     }}
                   >
                     <X size={10} />

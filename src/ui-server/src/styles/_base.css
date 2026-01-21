@@ -17,6 +17,7 @@ body {
   background: var(--bg-primary);
   -webkit-font-smoothing: antialiased;
   letter-spacing: 0.01em;
+  transition: var(--theme-transition);
 }
 
 /* Refined scrollbars */
@@ -88,8 +89,12 @@ body {
 }
 
 /* Light mode: navy text */
+[data-theme="light"] .header-title {
+  color: var(--ato-navy);
+}
+
 @media (prefers-color-scheme: light) {
-  .header-title {
+  [data-theme="system"] .header-title {
     color: var(--ato-navy);
   }
 }

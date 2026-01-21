@@ -2,13 +2,14 @@
    _variables.css
    CSS Custom Properties and Root Variables
    - Atopile Brand Colors
-   - Catppuccin Mocha Theme
+   - Theme System (Dark/Light/System)
+   - Catppuccin Mocha (Dark) & Latte (Light)
    - Semantic Colors
    - Spacing, Border Radius, Fonts, Transitions
    ============================================ */
 
 :root {
-  /* Atopile Brand Colors */
+  /* Atopile Brand Colors - shared across themes */
   --ato-orange: #f95015;
   --ato-orange-light: #ff6b35;
   --ato-orange-dark: #d94410;
@@ -17,7 +18,52 @@
   --ato-navy: #070a23;
   --ato-navy-light: #0d1233;
 
-  /* Catppuccin Mocha - Dark theme base */
+  /* Spacing - tighter for sleeker look */
+  --spacing-xs: 3px;
+  --spacing-sm: 6px;
+  --spacing-md: 10px;
+  --spacing-lg: 14px;
+  --spacing-xl: 20px;
+
+  /* Border radius - sharper for modern feel */
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 6px;
+
+  /* Font */
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Transitions */
+  --transition-fast: 0.1s ease;
+  --transition-normal: 0.15s ease;
+
+  /* Theme transition for smooth switching */
+  --theme-transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+
+  /* Font Sizes */
+  --font-size-xs: 9px;
+  --font-size-sm: 10px;
+  --font-size-base: 11px;
+  --font-size-md: 12px;
+  --font-size-lg: 13px;
+
+  /* Z-Index Scale */
+  --z-base: 0;
+  --z-elevated: 10;
+  --z-dropdown-trigger: 10;
+  --z-lifted: 100;
+  --z-dropdown: 1000;
+  --z-modal: 2000;
+  --z-toast: 3000;
+}
+
+/* ============================================
+   Dark Theme (Default) - Catppuccin Mocha
+   ============================================ */
+:root,
+[data-theme="dark"] {
+  /* Catppuccin Mocha palette */
   --ctp-rosewater: #f5e0dc;
   --ctp-flamingo: #f2cdcd;
   --ctp-pink: #f5c2e7;
@@ -45,7 +91,7 @@
   --ctp-mantle: #181825;
   --ctp-crust: #11111b;
 
-  /* Semantic colors - with atopile orange as primary accent */
+  /* Semantic colors */
   --bg-primary: var(--ctp-base);
   --bg-secondary: var(--ctp-mantle);
   --bg-tertiary: var(--ctp-surface0);
@@ -59,39 +105,199 @@
   --border-color: var(--ctp-surface1);
   --border-subtle: var(--ctp-surface0);
 
-  /* Primary accent is now atopile orange */
+  /* Primary accent is atopile orange */
   --accent: var(--ato-orange);
   --accent-hover: var(--ato-orange-light);
   --accent-glow: var(--ato-orange-glow);
   --accent-subtle: var(--ato-orange-subtle);
 
-  /* Secondary accent remains mauve for variety */
+  /* Secondary accent */
   --accent-secondary: var(--ctp-mauve);
   --accent-secondary-hover: var(--ctp-lavender);
 
+  /* Status colors */
   --success: var(--ctp-green);
   --warning: var(--ctp-yellow);
   --error: var(--ctp-red);
   --info: var(--ctp-blue);
   --debug: var(--ctp-overlay1);
 
-  /* Spacing - tighter for sleeker look */
-  --spacing-xs: 3px;
-  --spacing-sm: 6px;
-  --spacing-md: 10px;
-  --spacing-lg: 14px;
-  --spacing-xl: 20px;
+  /* Card backgrounds */
+  --bg-card: var(--bg-tertiary);
+  --bg-card-hover: var(--bg-hover);
 
-  /* Border radius - sharper for modern feel */
-  --radius-sm: 3px;
-  --radius-md: 5px;
-  --radius-lg: 6px;
+  /* Interactive States */
+  --hover: rgba(255, 255, 255, 0.04);
+  --active: rgba(255, 255, 255, 0.08);
+  --selected: var(--ato-orange-subtle);
 
-  /* Font */
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  /* Dark mode specific */
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --scrollbar-thumb: var(--ctp-surface2);
+  --scrollbar-track: var(--ctp-mantle);
+}
 
-  /* Transitions */
-  --transition-fast: 0.1s ease;
-  --transition-normal: 0.15s ease;
+/* ============================================
+   Light Theme - Catppuccin Latte
+   ============================================ */
+[data-theme="light"] {
+  /* Catppuccin Latte palette */
+  --ctp-rosewater: #dc8a78;
+  --ctp-flamingo: #dd7878;
+  --ctp-pink: #ea76cb;
+  --ctp-mauve: #8839ef;
+  --ctp-red: #d20f39;
+  --ctp-maroon: #e64553;
+  --ctp-peach: #fe640b;
+  --ctp-yellow: #df8e1d;
+  --ctp-green: #40a02b;
+  --ctp-teal: #179299;
+  --ctp-sky: #04a5e5;
+  --ctp-sapphire: #209fb5;
+  --ctp-blue: #1e66f5;
+  --ctp-lavender: #7287fd;
+  --ctp-text: #4c4f69;
+  --ctp-subtext1: #5c5f77;
+  --ctp-subtext0: #6c6f85;
+  --ctp-overlay2: #7c7f93;
+  --ctp-overlay1: #8c8fa1;
+  --ctp-overlay0: #9ca0b0;
+  --ctp-surface2: #acb0be;
+  --ctp-surface1: #bcc0cc;
+  --ctp-surface0: #ccd0da;
+  --ctp-base: #eff1f5;
+  --ctp-mantle: #e6e9ef;
+  --ctp-crust: #dce0e8;
+
+  /* Semantic colors */
+  --bg-primary: var(--ctp-base);
+  --bg-secondary: var(--ctp-mantle);
+  --bg-tertiary: var(--ctp-surface0);
+  --bg-hover: var(--ctp-surface1);
+  --bg-active: var(--ctp-surface2);
+
+  --text-primary: var(--ctp-text);
+  --text-secondary: var(--ctp-subtext1);
+  --text-muted: var(--ctp-overlay1);
+
+  --border-color: var(--ctp-surface1);
+  --border-subtle: var(--ctp-surface0);
+
+  /* Primary accent - slightly darker orange for light bg */
+  --accent: var(--ato-orange-dark);
+  --accent-hover: var(--ato-orange);
+  --accent-glow: rgba(217, 68, 16, 0.12);
+  --accent-subtle: rgba(217, 68, 16, 0.06);
+
+  /* Secondary accent */
+  --accent-secondary: var(--ctp-mauve);
+  --accent-secondary-hover: var(--ctp-lavender);
+
+  /* Status colors */
+  --success: var(--ctp-green);
+  --warning: var(--ctp-yellow);
+  --error: var(--ctp-red);
+  --info: var(--ctp-blue);
+  --debug: var(--ctp-overlay1);
+
+  /* Card backgrounds */
+  --bg-card: var(--bg-tertiary);
+  --bg-card-hover: var(--bg-hover);
+
+  /* Interactive States - inverted for light mode */
+  --hover: rgba(0, 0, 0, 0.04);
+  --active: rgba(0, 0, 0, 0.08);
+  --selected: var(--accent-subtle);
+
+  /* Light mode specific */
+  --shadow-color: rgba(0, 0, 0, 0.1);
+  --scrollbar-thumb: var(--ctp-surface2);
+  --scrollbar-track: var(--ctp-mantle);
+}
+
+/* ============================================
+   System Theme - Follow OS preference
+   Only applies when data-theme="system"
+   ============================================ */
+@media (prefers-color-scheme: light) {
+  [data-theme="system"] {
+    /* Catppuccin Latte palette */
+    --ctp-rosewater: #dc8a78;
+    --ctp-flamingo: #dd7878;
+    --ctp-pink: #ea76cb;
+    --ctp-mauve: #8839ef;
+    --ctp-red: #d20f39;
+    --ctp-maroon: #e64553;
+    --ctp-peach: #fe640b;
+    --ctp-yellow: #df8e1d;
+    --ctp-green: #40a02b;
+    --ctp-teal: #179299;
+    --ctp-sky: #04a5e5;
+    --ctp-sapphire: #209fb5;
+    --ctp-blue: #1e66f5;
+    --ctp-lavender: #7287fd;
+    --ctp-text: #4c4f69;
+    --ctp-subtext1: #5c5f77;
+    --ctp-subtext0: #6c6f85;
+    --ctp-overlay2: #7c7f93;
+    --ctp-overlay1: #8c8fa1;
+    --ctp-overlay0: #9ca0b0;
+    --ctp-surface2: #acb0be;
+    --ctp-surface1: #bcc0cc;
+    --ctp-surface0: #ccd0da;
+    --ctp-base: #eff1f5;
+    --ctp-mantle: #e6e9ef;
+    --ctp-crust: #dce0e8;
+
+    /* Semantic colors */
+    --bg-primary: var(--ctp-base);
+    --bg-secondary: var(--ctp-mantle);
+    --bg-tertiary: var(--ctp-surface0);
+    --bg-hover: var(--ctp-surface1);
+    --bg-active: var(--ctp-surface2);
+
+    --text-primary: var(--ctp-text);
+    --text-secondary: var(--ctp-subtext1);
+    --text-muted: var(--ctp-overlay1);
+
+    --border-color: var(--ctp-surface1);
+    --border-subtle: var(--ctp-surface0);
+
+    /* Primary accent - slightly darker orange for light bg */
+    --accent: var(--ato-orange-dark);
+    --accent-hover: var(--ato-orange);
+    --accent-glow: rgba(217, 68, 16, 0.12);
+    --accent-subtle: rgba(217, 68, 16, 0.06);
+
+    /* Secondary accent */
+    --accent-secondary: var(--ctp-mauve);
+    --accent-secondary-hover: var(--ctp-lavender);
+
+    /* Status colors */
+    --success: var(--ctp-green);
+    --warning: var(--ctp-yellow);
+    --error: var(--ctp-red);
+    --info: var(--ctp-blue);
+    --debug: var(--ctp-overlay1);
+
+    /* Card backgrounds */
+    --bg-card: var(--bg-tertiary);
+    --bg-card-hover: var(--bg-hover);
+
+    /* Interactive States - inverted for light mode */
+    --hover: rgba(0, 0, 0, 0.04);
+    --active: rgba(0, 0, 0, 0.08);
+    --selected: var(--accent-subtle);
+
+    /* Light mode specific */
+    --shadow-color: rgba(0, 0, 0, 0.1);
+    --scrollbar-thumb: var(--ctp-surface2);
+    --scrollbar-track: var(--ctp-mantle);
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-theme="system"] {
+    /* Uses dark theme (default) - inherit from :root */
+  }
 }

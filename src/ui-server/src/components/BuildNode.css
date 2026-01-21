@@ -92,6 +92,67 @@
   border-color: #e67a99;
 }
 
+/* Duplicate entry warning dialog */
+.build-duplicate-warning {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: rgba(249, 226, 175, 0.1);
+  border-top: 1px solid var(--ctp-yellow);
+}
+
+.duplicate-warning-icon {
+  display: flex;
+  align-items: center;
+  color: var(--ctp-yellow);
+  flex-shrink: 0;
+}
+
+.duplicate-warning-text {
+  font-size: var(--font-size-xs);
+  color: var(--ctp-yellow);
+  font-weight: 500;
+  flex: 1;
+}
+
+.duplicate-warning-buttons {
+  display: flex;
+  gap: var(--spacing-xs);
+  flex-shrink: 0;
+}
+
+.duplicate-warning-btn {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.duplicate-warning-btn.cancel {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.duplicate-warning-btn.cancel:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-default);
+}
+
+.duplicate-warning-btn.confirm {
+  background: var(--ctp-yellow);
+  border: 1px solid var(--ctp-yellow);
+  color: var(--ctp-base);
+}
+
+.duplicate-warning-btn.confirm:hover {
+  background: #e5c566;
+  border-color: #e5c566;
+}
+
 /* Loading and error states for module tree */
 .build-card-symbols.loading,
 .build-card-symbols.error {

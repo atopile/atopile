@@ -568,7 +568,11 @@ class BuildQueue:
                 return_code = msg.get("return_code", -1)
                 error = msg.get("error")
                 stages = msg.get("stages", [])
-                status = BuildStatus.SUCCESS.value if return_code == 0 else BuildStatus.FAILED.value
+                status = (
+                    BuildStatus.SUCCESS.value
+                    if return_code == 0
+                    else BuildStatus.FAILED.value
+                )
                 duration = 0.0
 
                 with _build_lock:
@@ -586,9 +590,15 @@ class BuildQueue:
 
                         # Count warnings/errors from stages
                         warnings = sum(
-                            1 for s in stages if s.get("status") == StageStatus.WARNING.value
+                            1
+                            for s in stages
+                            if s.get("status") == StageStatus.WARNING.value
                         )
-                        errors = sum(1 for s in stages if s.get("status") == StageStatus.ERROR.value)
+                        errors = sum(
+                            1
+                            for s in stages
+                            if s.get("status") == StageStatus.ERROR.value
+                        )
                         _active_builds[build_id]["warnings"] = warnings
                         _active_builds[build_id]["errors"] = errors
 
@@ -611,10 +621,12 @@ class BuildQueue:
                             build_id, _active_builds[build_id]
                         )
 
-                # Refresh BOM data for selected project/target after build completes
+                # Refresh project lastBuild data so frontend shows updated timestamps
                 with _build_lock:
                     build_info = _active_builds.get(build_id)
                 if build_info:
+                    _refresh_project_last_build(build_info)
+                    # Refresh BOM data for selected project/target after build completes
                     _refresh_bom_for_selected(build_info)
 
                 log.info(f"BuildQueue: Build {build_id} completed with status {status}")
@@ -809,7 +821,11 @@ def _get_state_builds():
     """
     from atopile.dataclasses import (
         Build as StateBuild,
+    )
+    from atopile.dataclasses import (
         BuildStage as StateStage,
+    )
+    from atopile.dataclasses import (
         StageStatus,
     )
 
@@ -854,7 +870,9 @@ def _get_state_builds():
                     display_name=display_name,
                     build_id=build_id,
                     project_name=Path(build_info.get("project_root", "")).name,
-                    status=BuildStatus(build_info.get("status", BuildStatus.QUEUED.value)),
+                    status=BuildStatus(
+                        build_info.get("status", BuildStatus.QUEUED.value)
+                    ),
                     elapsed_seconds=build_info.get("duration", 0.0),
                     warnings=build_info.get("warnings", 0),
                     errors=build_info.get("errors", 0),
@@ -879,7 +897,8 @@ def _sync_builds_to_state():
     """
     state_builds = _get_state_builds()
     queued_builds = [
-        b for b in state_builds
+        b
+        for b in state_builds
         if b.status in (BuildStatus.QUEUED, BuildStatus.BUILDING)
     ]
 
@@ -940,6 +959,72 @@ def _refresh_bom_for_selected(build_info: dict[str, Any]) -> None:
         log.warning("Cannot refresh BOM: event loop not available")
 
 
+def _refresh_project_last_build(build_info: dict[str, Any]) -> None:
+    """
+    Refresh project target lastBuild data after a build completes.
+
+    This reloads the build_summary.json for each target in the project and
+    updates the server state so the frontend shows updated timestamps.
+    """
+    from atopile.dataclasses import BuildTarget as StateBuildTarget
+    from atopile.server.core import projects as core_projects
+
+    project_root = build_info.get("project_root")
+    if not project_root:
+        return
+
+    try:
+        project_path = Path(project_root)
+
+        # Find and update the matching project in server state
+        current_projects = list(server_state._state.projects)
+        updated = False
+
+        for i, proj in enumerate(current_projects):
+            if proj.root == project_root:
+                # Reload last_build for each target
+                new_targets = []
+                for t in proj.targets:
+                    last_build = core_projects._load_last_build_for_target(
+                        project_path, t.name
+                    )
+                    new_targets.append(
+                        StateBuildTarget(
+                            name=t.name,
+                            entry=t.entry,
+                            root=t.root,
+                            last_build=last_build,
+                        )
+                    )
+
+                # Create updated project with new targets
+                from atopile.dataclasses import Project as StateProject
+
+                current_projects[i] = StateProject(
+                    root=proj.root,
+                    name=proj.name,
+                    targets=new_targets,
+                )
+                updated = True
+                break
+
+        if updated:
+            # Schedule the state update on the event loop
+            async def update_projects():
+                await server_state.set_projects(current_projects)
+
+            loop = server_state._event_loop
+            if loop is not None and loop.is_running():
+                asyncio.run_coroutine_threadsafe(update_projects(), loop)
+            else:
+                log.warning(
+                    "Cannot refresh project last_build: event loop not available"
+                )
+
+    except Exception as exc:
+        log.warning(f"Failed to refresh project last_build data: {exc}")
+
+
 async def _sync_builds_to_state_async():
     """
     Async version of _sync_builds_to_state.
@@ -952,7 +1037,8 @@ async def _sync_builds_to_state_async():
     await server_state.set_builds(state_builds)
     # Set queued builds (active builds only for queue panel)
     queued_builds = [
-        b for b in state_builds
+        b
+        for b in state_builds
         if b.status in (BuildStatus.QUEUED, BuildStatus.BUILDING)
     ]
     await server_state.set_queued_builds(queued_builds)
@@ -969,7 +1055,10 @@ def cancel_build(build_id: str) -> bool:
             return False
 
         build_info = _active_builds[build_id]
-        if build_info["status"] not in (BuildStatus.QUEUED.value, BuildStatus.BUILDING.value):
+        if build_info["status"] not in (
+            BuildStatus.QUEUED.value,
+            BuildStatus.BUILDING.value,
+        ):
             return False
 
         # Mark as cancelled in the build record

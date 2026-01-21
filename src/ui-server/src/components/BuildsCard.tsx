@@ -141,6 +141,7 @@ export function BuildsCard({
               onOpenLayout={onOpenLayout}
               onOpen3D={onOpen3D}
               availableModules={availableModules}
+              allBuilds={builds}
               readOnly={readOnly}
             />
           ))}

@@ -620,3 +620,41 @@
 .settings-toggle:hover .settings-toggle-slider {
   border-color: var(--ato-orange);
 }
+
+/* Theme Toggle Group */
+.theme-toggle-group {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+
+.theme-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 22px;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 1px);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.theme-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.theme-btn.active {
+  background: var(--ato-orange);
+  color: white;
+}
+
+.theme-btn.active:hover {
+  background: var(--ato-orange-light);
+}

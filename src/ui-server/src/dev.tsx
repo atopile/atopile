@@ -8,7 +8,11 @@ import ReactDOM from 'react-dom/client';
 import { AppProvider } from './AppProvider';
 import { Sidebar } from './components/Sidebar';
 import { LogViewer } from './components/LogViewer';
+import { initializeTheme } from './hooks/useTheme';
 import './index.css';
+
+// Initialize theme before React renders
+initializeTheme();
 
 function DevLayout() {
   return (

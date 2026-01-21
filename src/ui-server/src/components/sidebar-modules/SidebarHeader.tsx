@@ -3,9 +3,10 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Settings, ChevronDown, FolderOpen, Loader2, AlertCircle, Check, GitBranch, Package, Search } from 'lucide-react';
+import { Settings, ChevronDown, FolderOpen, Loader2, AlertCircle, Check, GitBranch, Package, Search, Sun, Moon, Monitor } from 'lucide-react';
 import { sendAction } from '../../api/websocket';
 import { DEFAULT_LOGO } from './sidebarUtils';
+import { useTheme } from '../../hooks/useTheme';
 
 // Send action to backend via WebSocket
 const action = (name: string, data?: Record<string, unknown>) => {
@@ -50,6 +51,9 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
   // Settings dropdown state
   const [showSettings, setShowSettings] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
+
+  // Theme management
+  const { theme, setTheme } = useTheme();
 
   // Max concurrent builds setting
   const detectedCores = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 4 : 4;
@@ -350,6 +354,38 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
               )}
 
               <div className="settings-divider" />
+
+              {/* Theme Setting */}
+              <div className="settings-group">
+                <div className="settings-row">
+                  <span className="settings-label-title">Theme</span>
+                  <div className="settings-inline-control">
+                    <div className="theme-toggle-group">
+                      <button
+                        className={`theme-btn${theme === 'system' ? ' active' : ''}`}
+                        onClick={() => setTheme('system')}
+                        title="Follow system preference"
+                      >
+                        <Monitor size={12} />
+                      </button>
+                      <button
+                        className={`theme-btn${theme === 'light' ? ' active' : ''}`}
+                        onClick={() => setTheme('light')}
+                        title="Light theme"
+                      >
+                        <Sun size={12} />
+                      </button>
+                      <button
+                        className={`theme-btn${theme === 'dark' ? ' active' : ''}`}
+                        onClick={() => setTheme('dark')}
+                        title="Dark theme"
+                      >
+                        <Moon size={12} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
               {/* Parallel Builds Setting */}
               <div className="settings-group">
