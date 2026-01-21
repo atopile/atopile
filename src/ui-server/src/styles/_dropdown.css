@@ -169,6 +169,32 @@
   overflow-y: auto;
 }
 
+.project-dropdown .project-targets {
+  margin-left: var(--spacing-md);
+}
+
+.project-dropdown .dropdown-item.target-item {
+  padding-left: var(--spacing-md);
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+.project-dropdown .project-target-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+  color: var(--text-muted);
+}
+
+.project-dropdown .project-target-toggle-spacer {
+  display: inline-block;
+  width: 14px;
+  margin-right: 4px;
+}
+
 /* Install dropdown container - used for button + toggle pairs */
 .install-dropdown {
   display: flex;

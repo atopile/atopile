@@ -927,6 +927,95 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             await server_state.set_open_3d(str(target))
             return {"success": True}
 
+        # State management actions (previously in state.py)
+        elif action == "selectProject":
+            await server_state.set_selected_project(payload.get("projectRoot"))
+            return {"success": True}
+
+        elif action == "setSelectedTargets":
+            await server_state.set_selected_targets(payload.get("targetNames", []))
+            return {"success": True}
+
+        elif action == "toggleTarget":
+            await server_state.toggle_target(payload.get("targetName", ""))
+            return {"success": True}
+
+        elif action == "toggleTargetExpanded":
+            await server_state.toggle_target_expanded(payload.get("targetName", ""))
+            return {"success": True}
+
+        elif action == "selectBuild":
+            await server_state.set_selected_build(payload.get("buildName"))
+            return {"success": True}
+
+        elif action == "toggleProblemLevelFilter":
+            level = payload.get("level")
+            if level:
+                await server_state.toggle_problem_level_filter(level)
+            return {"success": True}
+
+        elif action == "setDeveloperMode":
+            enabled = payload.get("enabled", False)
+            await server_state.set_developer_mode(enabled)
+            return {"success": True}
+
+        elif action == "setAtopileSource":
+            await server_state.set_atopile_source(payload.get("source", "release"))
+            return {"success": True}
+
+        elif action == "setAtopileVersion":
+            await server_state.set_atopile_version(payload.get("version", ""))
+            return {"success": True}
+
+        elif action == "setAtopieBranch":
+            await server_state.set_atopile_branch(payload.get("branch"))
+            return {"success": True}
+
+        elif action == "setAtopileLocalPath":
+            await server_state.set_atopile_local_path(payload.get("path"))
+            return {"success": True}
+
+        elif action == "browseAtopilePath":
+            return {
+                "success": False,
+                "error": "browseAtopilePath is not supported in the UI server",
+            }
+
+        elif action == "refreshAtopileVersions":
+            from atopile.server.domains import atopile_install
+
+            versions = await atopile_install.fetch_available_versions()
+            await server_state.set_atopile_available_versions(versions)
+            return {"success": True, "versions": versions}
+
+        elif action == "refreshAtopileBranches":
+            from atopile.server.domains import atopile_install
+
+            branches = await atopile_install.fetch_available_branches()
+            await server_state.set_atopile_available_branches(branches)
+            return {"success": True, "branches": branches}
+
+        elif action == "validateAtopilePath":
+            from atopile.server.domains import atopile_install
+
+            path = payload.get("path", "")
+            result = await atopile_install.validate_local_path(path)
+            return {"success": True, **result}
+
+        elif action == "refreshDetectedInstallations":
+            from atopile.server.domains import atopile_install
+
+            installations = await asyncio.to_thread(
+                atopile_install.detect_local_installations
+            )
+            await server_state.set_atopile_detected_installations(installations)
+            return {"success": True, "installations": installations}
+
+        elif action == "setWorkspaceFolders":
+            folders = payload.get("folders", [])
+            await server_state.set_workspace_folders(folders)
+            return {"success": True}
+
         return {"success": False, "error": f"Unknown action: {action}"}
 
     except Exception as exc:

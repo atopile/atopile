@@ -5,10 +5,9 @@
 import { useState, useRef, useEffect, memo } from 'react'
 import {
   ChevronDown, ChevronRight, Package, Download, Check,
-  Search, ArrowUpCircle, Github, Globe, Layers, Loader2
+  Search, ArrowUpCircle, Layers, Loader2, ExternalLink
 } from 'lucide-react'
 import { BuildsCard } from './BuildsCard'
-import { getLastBuildStatusIcon, formatRelativeTime } from './BuildNode'
 import { DependencyCard, type ProjectDependency } from './DependencyCard'
 import { FileExplorer, type FileTreeNode } from './FileExplorer'
 import { api } from '../api/client'
@@ -240,6 +239,7 @@ interface PackageCardProps {
   onOpenLayout?: (projectId: string, buildId: string) => void
   onOpen3D?: (projectId: string, buildId: string) => void
   availableProjects: AvailableProject[]
+  isInstalling?: boolean
 }
 
 // Package card component
@@ -256,7 +256,8 @@ export const PackageCard = memo(function PackageCard({
   onOpenKiCad,
   onOpenLayout,
   onOpen3D,
-  availableProjects
+  availableProjects,
+  isInstalling = false
 }: PackageCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [descExpanded, setDescExpanded] = useState(false)
@@ -362,23 +363,33 @@ export const PackageCard = memo(function PackageCard({
         }
       }}
     >
-      {/* Row 1: Package name */}
+      {/* Row 1: Package name + publisher */}
       <div className="package-card-header">
         <span className="tree-expand">
           {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
         <Package size={16} className="package-icon" />
         <span className="package-name">{project.name}</span>
-        {/* Time since last built - same location as project build timer */}
-        {project.lastBuildTimestamp && (
-          <span className="last-build-info" title={`Last build: ${project.lastBuildStatus || 'unknown'}`}>
-            {project.lastBuildStatus && getLastBuildStatusIcon(project.lastBuildStatus, 10)}
-            <span className="last-build-time">{formatRelativeTime(project.lastBuildTimestamp)}</span>
+        {project.publisher && (
+          <span className={`package-publisher-tag ${project.publisher === 'atopile' ? 'official' : ''}`}>
+            {project.publisher.toLowerCase()}
           </span>
+        )}
+        {project.homepage && (
+          <a
+            href={project.homepage}
+            className="package-external-link"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open homepage"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ExternalLink size={12} />
+          </a>
         )}
       </div>
 
-      {/* Row 2: Description */}
+      {/* Row 2: Description + metadata */}
       {(project.summary || project.description) && (
         <div
           className={`package-card-description ${!expanded ? 'clamped' : ''} ${expanded && !descExpanded ? 'clamped' : ''}`}
@@ -393,46 +404,7 @@ export const PackageCard = memo(function PackageCard({
         </div>
       )}
 
-      {/* Row 3: Links bar (downloads, github, website, publisher) */}
-      <div className="package-links-bar" onClick={(e) => e.stopPropagation()}>
-        {project.downloads !== undefined && project.downloads > 0 && (
-          <span className="package-downloads">
-            <Download size={12} />
-            <span>{formatDownloads(project.downloads)}</span>
-          </span>
-        )}
-        {project.repository && (
-          <a
-            href={project.repository}
-            className="package-link-btn"
-            target="_blank"
-            rel="noopener noreferrer"
-            title="View on GitHub"
-          >
-            <Github size={14} />
-          </a>
-        )}
-        {project.homepage && (
-          <a
-            href={project.homepage}
-            className="package-link-btn has-label"
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Open homepage"
-          >
-            <Globe size={14} />
-            <span>Website</span>
-          </a>
-        )}
-        <div className="package-links-spacer" />
-        {project.publisher && (
-          <span className={`package-publisher-badge ${project.publisher === 'atopile' ? 'official' : 'community'}`}>
-            {project.publisher.toLowerCase()}
-          </span>
-        )}
-      </div>
-
-      {/* Row 4: Install bar (project -> version -> install button) */}
+      {/* Row 3: Install bar (project -> version -> install button) */}
       <div className="package-install-bar" onClick={(e) => e.stopPropagation()}>
         {/* Project selector */}
         <ProjectSelector
@@ -453,15 +425,23 @@ export const PackageCard = memo(function PackageCard({
 
         {/* Install button */}
         <button
-          className={`install-btn ${installStatus.installed ? (installStatus.needsUpdate ? 'update-available' : 'installed') : ''}`}
+          className={`install-btn ${isInstalling ? 'installing' : ''} ${installStatus.installed ? (installStatus.needsUpdate ? 'update-available' : 'installed') : ''}`}
           onClick={handleInstall}
-          title={installStatus.needsUpdate
-            ? `Update to ${selectedVersion} in ${selectedTarget?.name}`
-            : installStatus.installed
-              ? `Installed in ${selectedTarget?.name}`
-              : `Install ${selectedVersion} to ${selectedTarget?.name}`}
+          disabled={isInstalling}
+          title={isInstalling
+            ? 'Installing...'
+            : installStatus.needsUpdate
+              ? `Update to ${selectedVersion} in ${selectedTarget?.name}`
+              : installStatus.installed
+                ? `Installed in ${selectedTarget?.name}`
+                : `Install ${selectedVersion} to ${selectedTarget?.name}`}
         >
-          {installStatus.installed ? (
+          {isInstalling ? (
+            <>
+              <Loader2 size={14} className="spin" />
+              <span>Installing...</span>
+            </>
+          ) : installStatus.installed ? (
             installStatus.needsUpdate ? (
               <>
                 <ArrowUpCircle size={14} />
@@ -519,31 +499,21 @@ export const PackageCard = memo(function PackageCard({
             </div>
           )}
 
-          {/* Package details info */}
+          {/* Package metadata bar */}
           {packageDetails && !detailsLoading && (
-            <div className="package-details-section">
-              {/* Stats row */}
-              <div className="package-stats-row">
-                {packageDetails.downloads !== undefined && packageDetails.downloads > 0 && (
-                  <div className="package-stat">
-                    <span className="stat-value">{formatDownloads(packageDetails.downloads)}</span>
-                    <span className="stat-label">downloads</span>
-                  </div>
-                )}
-                {packageDetails.versionCount > 0 && (
-                  <div className="package-stat">
-                    <span className="stat-value">{packageDetails.versionCount}</span>
-                    <span className="stat-label">versions</span>
-                  </div>
-                )}
-                {packageDetails.license && (
-                  <div className="package-stat">
-                    <span className="stat-value">{packageDetails.license}</span>
-                    <span className="stat-label">license</span>
-                  </div>
-                )}
-              </div>
-
+            <div className="package-meta-bar">
+              {packageDetails.downloads !== undefined && packageDetails.downloads > 0 && (
+                <span className="meta-item">
+                  <Download size={11} />
+                  {formatDownloads(packageDetails.downloads)}
+                </span>
+              )}
+              {packageDetails.versionCount > 0 && (
+                <span className="meta-item">{packageDetails.versionCount} versions</span>
+              )}
+              {packageDetails.license && (
+                <span className="meta-item">{packageDetails.license}</span>
+              )}
             </div>
           )}
 

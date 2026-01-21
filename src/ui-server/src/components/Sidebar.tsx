@@ -205,6 +205,7 @@ export function Sidebar() {
             onOpen3D={handlers.handleOpen3D}
             filterType="packages"
             projects={projects}
+            installingPackageId={state?.installingPackageId}
           />
         </CollapsibleSection>
 
@@ -226,9 +227,7 @@ export function Sidebar() {
             problems={filteredProblems}
             projects={state?.projects?.map(p => ({ id: p.root, name: p.name, root: p.root })) || []}
             selectedProjectRoot={selectedProjectRoot}
-            onSelectProject={(projectRoot) => {
-              action('selectProject', { projectRoot });
-            }}
+            onSelectProject={handlers.handleSelectProject}
             onProblemClick={(problem) => {
               action('openFile', { file: problem.file, line: problem.line, column: problem.column });
             }}
@@ -280,12 +279,9 @@ export function Sidebar() {
             error={state?.variablesError}
             projects={state?.projects}
             selectedProjectRoot={state?.selectedProjectRoot}
-            onSelectProject={(projectRoot) => {
-              useStore.getState().selectProject(projectRoot);
-              if (projectRoot) {
-                action('selectProject', { projectRoot });
-              }
-            }}
+            selectedTargetNames={state?.selectedTargetNames}
+            onSelectProject={handlers.handleSelectProject}
+            onSelectTarget={handlers.handleSelectTarget}
           />
         </CollapsibleSection>
 
@@ -310,12 +306,9 @@ export function Sidebar() {
             error={state?.bomError}
             projects={state?.projects}
             selectedProjectRoot={state?.selectedProjectRoot}
-            onSelectProject={(projectRoot) => {
-              useStore.getState().selectProject(projectRoot);
-              if (projectRoot) {
-                action('selectProject', { projectRoot });
-              }
-            }}
+            selectedTargetNames={state?.selectedTargetNames}
+            onSelectProject={handlers.handleSelectProject}
+            onSelectTarget={handlers.handleSelectTarget}
             onGoToSource={(path, line) => {
               action('openFile', { file: path, line });
             }}

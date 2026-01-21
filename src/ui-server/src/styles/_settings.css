@@ -658,3 +658,58 @@
 .theme-btn.active:hover {
   background: var(--ato-orange-light);
 }
+
+/* Path Validation Status */
+.path-validation-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  padding: 4px 0;
+  color: var(--text-muted);
+}
+
+.path-validation-status.valid {
+  color: var(--ctp-green);
+}
+
+.path-validation-status.invalid {
+  color: var(--ctp-red);
+}
+
+.path-validation-status svg {
+  flex-shrink: 0;
+}
+
+.path-validation-status span {
+  word-break: break-word;
+}
+
+/* Input validation states */
+.settings-input.valid {
+  border-color: var(--ctp-green);
+}
+
+.settings-input.invalid {
+  border-color: var(--ctp-red);
+}
+
+/* Install Status (inline) */
+.install-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--ato-orange);
+  padding: 6px 0 2px;
+}
+
+.install-status svg {
+  flex-shrink: 0;
+}
+
+.install-status span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

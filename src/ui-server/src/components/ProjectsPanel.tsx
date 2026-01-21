@@ -450,9 +450,10 @@ interface ProjectsPanelProps {
   projectModules?: Record<string, ModuleDefinition[]>  // Modules for each project root
   projectFiles?: Record<string, FileTreeNode[]>  // File tree for each project root
   projectDependencies?: Record<string, ProjectDependency[]>  // Dependencies for each project root
+  installingPackageId?: string | null  // ID of package currently being installed
 }
 
-export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onStageFilter, onOpenPackageDetail, onPackageInstall, onCreateProject, onProjectExpand, onOpenSource, onOpenKiCad, onOpenLayout, onOpen3D, onFileClick, onDependencyVersionChange, onRemoveDependency, onAddBuild, onUpdateBuild, onDeleteBuild, filterType = 'all', projects: externalProjects, projectModules = {}, projectFiles = {}, projectDependencies = {} }: ProjectsPanelProps) {
+export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onStageFilter, onOpenPackageDetail, onPackageInstall, onCreateProject, onProjectExpand, onOpenSource, onOpenKiCad, onOpenLayout, onOpen3D, onFileClick, onDependencyVersionChange, onRemoveDependency, onAddBuild, onUpdateBuild, onDeleteBuild, filterType = 'all', projects: externalProjects, projectModules = {}, projectFiles = {}, projectDependencies = {}, installingPackageId }: ProjectsPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
   const [localProjects, setLocalProjects] = useState<Project[]>(externalProjects || mockProjects)
@@ -726,6 +727,7 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
               onOpenLayout={onOpenLayout}
               onOpen3D={onOpen3D}
               availableProjects={availableProjects}
+              isInstalling={installingPackageId === project.id}
             />
           ) : (
             <ProjectNode

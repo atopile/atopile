@@ -16,36 +16,24 @@ import asyncio
 import logging
 import uuid
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 from fastapi import WebSocket
 
 from atopile.dataclasses import (
     AppState,
-    AtopileConfig,
     BOMData,
     Build,
-    BuildStage,
-    BuildStatus,
-    BuildTarget,
-    BuildTargetStatus,
     ConnectedClient,
     DependencyInfo,
     DetectedInstallation,
     FileTreeNode,
-    InstallProgress,
     ModuleDefinition,
     PackageDetails,
     PackageInfo,
-    PackageVersion,
     Problem,
-    ProblemFilter,
     Project,
-    StageStatus,
-    StdLibChild,
     StdLibItem,
-    Variable,
-    VariableNode,
     VariablesData,
 )
 
@@ -258,6 +246,25 @@ class ServerState:
         self._state.atopile.local_path = path
         await self.broadcast_state()
 
+    async def set_atopile_available_versions(self, versions: list[str]) -> None:
+        """Set available atopile versions from PyPI."""
+        self._state.atopile.available_versions = versions
+        await self.broadcast_state()
+
+    async def set_atopile_available_branches(self, branches: list[str]) -> None:
+        """Set available atopile branches from GitHub."""
+        self._state.atopile.available_branches = branches
+        await self.broadcast_state()
+
+    async def set_atopile_detected_installations(
+        self, installations: list[dict]
+    ) -> None:
+        """Set detected local atopile installations."""
+        self._state.atopile.detected_installations = [
+            DetectedInstallation(**inst) for inst in installations
+        ]
+        await self.broadcast_state()
+
     async def toggle_target_expanded(self, target_name: str) -> None:
         """Toggle target expansion in sidebar."""
         if target_name in self._state.expanded_targets:
@@ -349,77 +356,6 @@ class ServerState:
         self._state.variables_error = error
         self._state.is_loading_variables = False
         await self.broadcast_state()
-
-    # --- Action Handlers ---
-
-    async def handle_action(self, action: str, payload: dict) -> dict:
-        """
-        Handle an action from a client.
-
-        Returns a response dict with at least {"success": bool}.
-        """
-        try:
-            if action == "selectProject":
-                await self.set_selected_project(payload.get("projectRoot"))
-                return {"success": True}
-
-            elif action == "toggleTarget":
-                await self.toggle_target(payload.get("targetName", ""))
-                return {"success": True}
-
-            elif action == "toggleTargetExpanded":
-                await self.toggle_target_expanded(payload.get("targetName", ""))
-                return {"success": True}
-
-            elif action == "selectBuild":
-                await self.set_selected_build(payload.get("buildName"))
-                return {"success": True}
-
-            elif action == "toggleProblemLevelFilter":
-                level = payload.get("level")
-                if level:
-                    await self.toggle_problem_level_filter(level)
-                return {"success": True}
-
-            elif action == "setDeveloperMode":
-                enabled = payload.get("enabled", False)
-                await self.set_developer_mode(enabled)
-                return {"success": True}
-
-            elif action == "setAtopileSource":
-                await self.set_atopile_source(payload.get("source", "release"))
-                return {"success": True}
-
-            elif action == "setAtopileVersion":
-                await self.set_atopile_version(payload.get("version", ""))
-                return {"success": True}
-
-            elif action == "setAtopieBranch":
-                await self.set_atopile_branch(payload.get("branch"))
-                return {"success": True}
-
-            elif action == "setAtopileLocalPath":
-                await self.set_atopile_local_path(payload.get("path"))
-                return {"success": True}
-
-            elif action == "browseAtopilePath":
-                return {
-                    "success": False,
-                    "error": "browseAtopilePath is not supported in the UI server",
-                }
-
-            elif action == "setWorkspaceFolders":
-                folders = payload.get("folders", [])
-                await self.set_workspace_folders(folders)
-                return {"success": True}
-
-            else:
-                log.warning(f"Unknown action: {action}")
-                return {"success": False, "error": f"Unknown action: {action}"}
-
-        except Exception as e:
-            log.error(f"Error handling action {action}: {e}")
-            return {"success": False, "error": str(e)}
 
 
 # Global singleton instance

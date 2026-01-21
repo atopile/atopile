@@ -160,6 +160,11 @@ def _get_parameters(
     """Extract parameters from the module."""
     parameters: list[BOMParameter] = []
 
+    def strip_outer_braces(value: str) -> str:
+        if value.startswith("{") and value.endswith("}") and len(value) > 2:
+            return value[1:-1]
+        return value
+
     # Get parameters from is_pickable_by_type if available
     if pbt := module.try_get_trait(F.Pickable.is_pickable_by_type):
         for param in pbt.get_params():
@@ -189,6 +194,7 @@ def _get_parameters(
                 # Skip parameters without concrete values
                 if not value_str:
                     continue
+                value_str = strip_outer_braces(value_str)
 
                 # Try to extract unit from the parameter
                 unit = None

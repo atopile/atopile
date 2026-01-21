@@ -888,6 +888,50 @@ def _get_state_builds():
         return state_builds
 
 
+def _cleanup_completed_builds():
+    """
+    Remove completed/stale builds from _active_builds.
+
+    - Completed builds are kept for 30 seconds, then removed
+    - Builds stuck in "building" status for >1 hour are considered stale
+    """
+    now = time.time()
+    cleanup_delay = 30.0  # Keep completed builds for 30 seconds
+    stale_threshold = 3600.0  # 1 hour - builds shouldn't take this long
+
+    with _build_lock:
+        to_remove = []
+        for build_id, build_info in _active_builds.items():
+            status = build_info.get("status")
+            started_at = build_info.get("started_at", 0)
+
+            if status not in (
+                BuildStatus.QUEUED.value,
+                BuildStatus.BUILDING.value,
+            ):
+                # Build is completed (success, failed, cancelled)
+                duration = build_info.get("duration", 0)
+                completed_at = started_at + duration if started_at else 0
+
+                if completed_at and (now - completed_at) > cleanup_delay:
+                    to_remove.append(build_id)
+            else:
+                # Build is queued or building - check for stale builds
+                # (likely from server restart while build was in progress)
+                if started_at and (now - started_at) > stale_threshold:
+                    log.warning(
+                        f"Build {build_id} stuck in '{status}' for >{stale_threshold}s, "  # noqa: E501
+                        "marking as failed"
+                    )
+                    build_info["status"] = BuildStatus.FAILED.value
+                    build_info["error"] = "Build timed out or server restarted"
+                    to_remove.append(build_id)
+
+        for build_id in to_remove:
+            del _active_builds[build_id]
+            log.debug(f"Cleaned up build {build_id}")
+
+
 def _sync_builds_to_state():
     """
     Sync _active_builds to server_state for WebSocket broadcast.
@@ -895,6 +939,9 @@ def _sync_builds_to_state():
     Called when build status changes (from background thread).
     Uses asyncio.run_coroutine_threadsafe to schedule on main event loop.
     """
+    # Clean up old completed builds first
+    _cleanup_completed_builds()
+
     state_builds = _get_state_builds()
     queued_builds = [
         b

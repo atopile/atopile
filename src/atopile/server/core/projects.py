@@ -46,8 +46,16 @@ def _load_last_build_for_target(
                 # Keep original if format doesn't match
                 pass
 
+        status = data.get("status", "unknown")
+
+        # If status is "building" or "queued", the build was interrupted
+        # (server crashed/restarted while build was in progress)
+        # Treat as "interrupted" so UI doesn't show stale "building" status
+        if status in ("building", "queued"):
+            status = "interrupted"
+
         return BuildTargetStatus(
-            status=data.get("status", "unknown"),
+            status=status,
             timestamp=timestamp,
             elapsed_seconds=data.get("elapsed_seconds"),
             warnings=data.get("warnings", 0),

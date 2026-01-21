@@ -454,5 +454,71 @@ class WebSocketAppStateManager {
     }
 }
 
+/**
+ * Convert UI atopile settings to a VS Code 'atopile.from' setting value.
+ */
+function atopileSettingsToFrom(atopile: AppState['atopile']): string {
+    if (!atopile) return 'atopile';
+
+    switch (atopile.source) {
+        case 'release':
+            // Use version if specified, otherwise just 'atopile'
+            return atopile.currentVersion
+                ? `atopile@${atopile.currentVersion}`
+                : 'atopile';
+        case 'branch':
+            // Use git+ URL for branch
+            return `git+https://github.com/atopile/atopile.git@${atopile.branch || 'main'}`;
+        case 'local':
+            // For local, we use the path directly as the 'ato' setting
+            // Return empty string to indicate local mode
+            return atopile.localPath || '';
+        default:
+            return 'atopile';
+    }
+}
+
 // Singleton instance
 export const appStateManager = new WebSocketAppStateManager();
+
+/**
+ * Initialize atopile settings sync between UI and extension.
+ * Call this after extension activation to connect UI settings to the extension.
+ */
+export function initAtopileSettingsSync(_context: vscode.ExtensionContext): vscode.Disposable {
+    let previousAtopileSettings: string | null = null;
+
+    const disposable = appStateManager.onStateChange(async (state) => {
+        const newSettings = JSON.stringify({
+            source: state.atopile?.source,
+            currentVersion: state.atopile?.currentVersion,
+            branch: state.atopile?.branch,
+            localPath: state.atopile?.localPath,
+        });
+
+        // Only update if settings actually changed
+        if (previousAtopileSettings !== null && previousAtopileSettings !== newSettings) {
+            traceInfo(`Atopile settings changed in UI, updating extension settings`);
+
+            const config = vscode.workspace.getConfiguration('atopile');
+            const atopile = state.atopile;
+
+            if (atopile?.source === 'local' && atopile.localPath) {
+                // For local mode, set the 'ato' setting directly
+                await config.update('ato', atopile.localPath, vscode.ConfigurationTarget.Workspace);
+                await config.update('from', undefined, vscode.ConfigurationTarget.Workspace);
+            } else {
+                // For release/branch mode, set the 'from' setting
+                const fromValue = atopileSettingsToFrom(atopile);
+                await config.update('from', fromValue, vscode.ConfigurationTarget.Workspace);
+                await config.update('ato', undefined, vscode.ConfigurationTarget.Workspace);
+            }
+            // The configuration change will trigger findbin's onDidChangeConfiguration listener
+            // which will fire onDidChangeAtoBinInfoEvent and trigger a server restart
+        }
+
+        previousAtopileSettings = newSettings;
+    });
+
+    return disposable;
+}

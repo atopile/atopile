@@ -188,6 +188,34 @@ async def _watch_variables_background() -> None:
     await watcher.run()
 
 
+async def _load_atopile_install_options() -> None:
+    """Background task to load atopile versions, branches, and detect installations."""
+    from atopile.server.domains import atopile_install
+
+    try:
+        log.info("[background] Loading atopile installation options")
+
+        # Fetch available versions from PyPI
+        versions = await atopile_install.fetch_available_versions()
+        await server_state.set_atopile_available_versions(versions)
+        log.info(f"[background] Loaded {len(versions)} PyPI versions")
+
+        # Fetch available branches from GitHub
+        branches = await atopile_install.fetch_available_branches()
+        await server_state.set_atopile_available_branches(branches)
+        log.info(f"[background] Loaded {len(branches)} GitHub branches")
+
+        # Detect local installations
+        installations = await asyncio.to_thread(
+            atopile_install.detect_local_installations
+        )
+        await server_state.set_atopile_detected_installations(installations)
+        log.info(f"[background] Detected {len(installations)} local installations")
+
+    except Exception as exc:
+        log.error(f"[background] Failed to load atopile install options: {exc}")
+
+
 def create_app(
     summary_file: Optional[Path] = None,
     logs_base: Optional[Path] = None,
@@ -236,6 +264,7 @@ def create_app(
         asyncio.create_task(_watch_stdlib_background())
         asyncio.create_task(_watch_bom_background())
         asyncio.create_task(_watch_variables_background())
+        asyncio.create_task(_load_atopile_install_options())
 
         if not ctx.workspace_paths:
             log.info("No workspace paths configured, skipping initial state population")
@@ -263,6 +292,9 @@ def create_app(
         packages as packages_routes,
     )
     from atopile.server.routes import (
+        parts as parts_routes,
+    )
+    from atopile.server.routes import (
         problems as problems_routes,
     )
     from atopile.server.routes import (
@@ -277,6 +309,7 @@ def create_app(
     app.include_router(projects_routes.router)
     app.include_router(builds_routes.router)
     app.include_router(artifacts_routes.router)
+    app.include_router(parts_routes.router)
     app.include_router(problems_routes.router)
     app.include_router(packages_routes.router)
 

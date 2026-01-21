@@ -7,6 +7,7 @@ import {
 import type { Project } from '../types/build'
 import { api } from '../api/client'
 import { ProjectDropdown, type ProjectOption } from './ProjectDropdown'
+import { smartTruncatePair } from './sidebar-modules/sidebarUtils'
 
 // Variable types
 type VariableType = 'voltage' | 'current' | 'resistance' | 'capacitance' | 'ratio' | 'frequency' | 'power' | 'percentage' | 'dimensionless'
@@ -201,11 +202,9 @@ const VariableNodeComponent = memo(function VariableNodeComponent({
 }) {
   const isExpanded = expandedNodes.has(node.path)
   const hasChildren = (node.children && node.children.length > 0) || (node.variables && node.variables.length > 0)
+  const searchLower = searchQuery.toLowerCase()
 
-  // Pre-compute lowercase search query once
-  const searchLower = useMemo(() => searchQuery.toLowerCase(), [searchQuery])
-
-  // Memoize filtered variables
+  // Memoize filtered variables - filter operation that runs on every node
   const filteredVariables = useMemo(() => {
     if (!node.variables) return []
     return node.variables.filter(v =>
@@ -213,7 +212,7 @@ const VariableNodeComponent = memo(function VariableNodeComponent({
     )
   }, [node.variables, sourceFilter, searchLower])
 
-  // Memoize the filter match check
+  // Memoize the filter match check - recursive check
   const matchesFilters = useMemo(() => {
     // No filtering needed if no search and showing all sources
     if (!searchQuery && sourceFilter === 'all') return true
@@ -226,6 +225,12 @@ const VariableNodeComponent = memo(function VariableNodeComponent({
 
   // Use minimal indentation with visual depth indicator
   const depthIndicator = depth > 0 ? '· '.repeat(depth) : ''
+
+  // Smart truncation for name and type to prevent overflow
+  // Max 35 total characters for name + type combined (fits sidebar width)
+  const [displayName, displayTypeName] = node.typeName
+    ? smartTruncatePair(node.name, node.typeName, 35)
+    : [node.name.length > 35 ? node.name.slice(0, 32) + '…' : node.name, ''];
 
   return (
     <div className={`variable-tree-node depth-${Math.min(depth, 4)}`}>
@@ -242,9 +247,9 @@ const VariableNodeComponent = memo(function VariableNodeComponent({
         )}
         {depth > 0 && <span className="depth-indicator">{depthIndicator}</span>}
         {getNodeIcon(node.type)}
-        <span className="node-name">{node.name}</span>
+        <span className="node-name" title={node.name}>{displayName}</span>
         {node.typeName && (
-          <span className="node-type-name">{node.typeName}</span>
+          <span className="node-type-name" title={node.typeName}>{displayTypeName}</span>
         )}
         {node.variables && node.variables.length > 0 && (
           <span className="var-count">{node.variables.length}</span>
@@ -301,7 +306,9 @@ interface VariablesPanelProps {
   error?: string | null
   projects?: Project[]
   selectedProjectRoot?: string | null
+  selectedTargetNames?: string[]
   onSelectProject?: (projectRoot: string | null) => void
+  onSelectTarget?: (projectRoot: string, targetName: string) => void
 }
 
 export function VariablesPanel({
@@ -310,7 +317,9 @@ export function VariablesPanel({
   error = null,
   projects,
   selectedProjectRoot,
-  onSelectProject
+  selectedTargetNames,
+  onSelectProject,
+  onSelectTarget
 }: VariablesPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
@@ -368,6 +377,7 @@ export function VariablesPanel({
         id: project.root,
         name: project.name,
         root: project.root,
+        targets: project.targets?.map((target) => ({ name: target.name })) ?? [],
         badge: hasVariables ? undefined : 'no variables',
         badgeMuted: true,
       }
@@ -431,11 +441,11 @@ export function VariablesPanel({
   }, [variables, sourceFilter])
 
   // Extract short build ID for display (e.g., "build-42-1674520800" -> "#42")
-  const buildIdShort = useMemo(() => {
+  const buildIdShort = (() => {
     if (!variablesData?.build_id) return null
     const match = variablesData.build_id.match(/^build-(\d+)-/)
     return match ? `#${match[1]}` : variablesData.build_id.substring(0, 12)
-  }, [variablesData?.build_id])
+  })()
 
   return (
     <div className="variables-panel">
@@ -452,13 +462,15 @@ export function VariablesPanel({
             />
           </div>
           {showProjectSelector && (
-            <ProjectDropdown
-              projects={projectOptions}
-              selectedProjectRoot={selectedProjectRoot}
-              onSelectProject={onSelectProject || (() => {})}
-              showAllOption={false}
-              placeholder="Select project"
-            />
+          <ProjectDropdown
+            projects={projectOptions}
+            selectedProjectRoot={selectedProjectRoot}
+            selectedTargetName={selectedTargetNames?.[0] || null}
+            onSelectProject={onSelectProject || (() => {})}
+            onSelectTarget={onSelectTarget}
+            showAllOption={false}
+            placeholder="Select project"
+          />
           )}
         </div>
       </div>

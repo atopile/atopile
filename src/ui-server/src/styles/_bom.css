@@ -974,9 +974,31 @@
   min-height: 150px;
 }
 
-.bom-loading .loading-spinner {
+.loading-spinner {
   animation: spin 1s linear infinite;
+}
+
+.bom-loading .loading-spinner {
   color: var(--ctp-blue);
+}
+
+.inline-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.inline-loading .loading-spinner {
+  width: 12px;
+  height: 12px;
+  color: var(--ctp-blue);
+}
+
+.detail-cell-value.cost .inline-loading {
+  font-family: var(--font-mono);
 }
 
 /* Error state */

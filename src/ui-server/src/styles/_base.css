@@ -106,6 +106,17 @@ body {
   filter: drop-shadow(0 0 4px rgba(249, 80, 21, 0.4));
 }
 
+/* In light mode, the logo needs more contrast */
+[data-theme="light"] .logo {
+  filter: drop-shadow(0 0 2px rgba(217, 68, 16, 0.6));
+}
+
+@media (prefers-color-scheme: light) {
+  [data-theme="system"] .logo {
+    filter: drop-shadow(0 0 2px rgba(217, 68, 16, 0.6));
+  }
+}
+
 .header-actions {
   display: flex;
   gap: 2px;

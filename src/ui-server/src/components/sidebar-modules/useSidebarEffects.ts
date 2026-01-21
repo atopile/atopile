@@ -3,7 +3,7 @@
  * Handles all useEffect logic for the Sidebar component
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { api } from '../../api/client';
 import { useStore } from '../../store';
 
@@ -132,8 +132,11 @@ export function useSidebarEffects({
       });
   }, [selectedProjectRoot, selectedTargetName]);
 
-  // Handle package install action results
+  // Handle package install action results (only errors - success comes when packages refresh)
+  // Also add a timeout fallback to clear stuck installing state
   useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
     const handleActionResult = (event: Event) => {
       const detail = (event as CustomEvent).detail as {
         action?: string;
@@ -144,28 +147,52 @@ export function useSidebarEffects({
       };
 
       if (detail?.action === 'installPackage') {
+        // Only handle errors - the install runs async in background
+        // Success is detected when packages refresh and show as installed
         if (detail.result && !detail.result.success && detail.result.error) {
+          // setInstallError already clears installingPackageId
           useStore.getState().setInstallError(detail.result.error);
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+        } else if (detail.result?.success) {
+          // Start a 60-second timeout as a fallback in case package refresh doesn't clear the state
+          if (timeoutId) clearTimeout(timeoutId);
+          timeoutId = setTimeout(() => {
+            const currentInstalling = useStore.getState().installingPackageId;
+            if (currentInstalling) {
+              console.log('[install-debug] Timeout fallback: clearing stuck installingPackageId');
+              useStore.getState().setInstallingPackage(null);
+            }
+          }, 60000);
         }
       }
     };
     window.addEventListener('atopile:action_result', handleActionResult);
-    return () => window.removeEventListener('atopile:action_result', handleActionResult);
+    return () => {
+      window.removeEventListener('atopile:action_result', handleActionResult);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, []);
 
-  // Clear installing state when packages update (install completed)
+  // Subscribe to store changes to clear installing state when packages refresh
+  // The backend only refreshes packages AFTER install completes, so any refresh
+  // while we have installingPackageId means the install is done
   useEffect(() => {
-    const state = useStore.getState();
-    const installingId = state.installingPackageId;
-    if (!installingId) return;
+    const unsubscribe = useStore.subscribe((state, prevState) => {
+      const installingId = state.installingPackageId;
+      if (!installingId) return;
 
-    const pkg = state.packages?.find(p =>
-      p.identifier === installingId ||
-      `${p.publisher}/${p.name}` === installingId
-    );
-    if (pkg?.installed) {
-      useStore.getState().setInstallingPackage(null);
-    }
+      // If packages were updated while we have an installingPackageId, the install is complete
+      // (The backend only calls refresh_packages_state after install finishes)
+      if (state.packages !== prevState.packages && state.packages) {
+        console.log('[install-debug] Packages refreshed while installing:', installingId);
+        console.log('[install-debug] Clearing installingPackageId');
+        useStore.getState().setInstallingPackage(null);
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
   // Auto-expand: detect unused space and cropped sections

@@ -39,9 +39,9 @@ def _get_item_type(
 
     if type_node is not None:
         try:
-            # Check trait FIRST using is_trait
+            # Check trait FIRST using ImplementsTrait
             if fabll.TypeNodeBoundTG.has_instance_of_type_has_trait(
-                type_node, fabll.is_trait
+                type_node, fabll.ImplementsTrait
             ):
                 return "trait"
             # Check module BEFORE interface (modules are also interfaces)

@@ -1,4 +1,4 @@
-import { useState, memo, useCallback, useMemo, useEffect } from 'react'
+import { useState, memo, useCallback, useMemo, useEffect, useRef } from 'react'
 import {
   ChevronDown, ChevronRight, Search, Package,
   ExternalLink, Copy, Check, AlertTriangle,
@@ -8,7 +8,8 @@ import type {
   BOMComponent as BOMComponentAPI,
   BOMData,
   BOMComponentType,
-  Project
+  Project,
+  LcscPartData
 } from '../types/build'
 import { api } from '../api/client'
 import { ProjectDropdown, type ProjectOption } from './ProjectDropdown'
@@ -41,6 +42,7 @@ interface BOMComponentUI {
   totalCost?: number
   inStock?: boolean
   stockQuantity?: number
+  lcscLoading?: boolean
   parameters?: BOMParameterUI[]
   source?: string        // 'picked' | 'specified' | 'manual'
   path?: string          // Design path (primary/declaration)
@@ -290,6 +292,8 @@ const BOMRow = memo(function BOMRow({
                 <td className={`detail-cell-value ${component.inStock === false ? 'out-of-stock' : 'in-stock'}`}>
                   {component.inStock === false ? (
                     <span className="stock-out"><AlertTriangle size={10} /> Out of stock</span>
+                  ) : component.lcscLoading && component.stockQuantity == null ? (
+                    <span className="inline-loading"><RefreshCw size={10} className="loading-spinner" /> Fetching...</span>
                   ) : (
                     component.stockQuantity ? formatStock(component.stockQuantity) : 'In stock'
                   )}
@@ -297,7 +301,15 @@ const BOMRow = memo(function BOMRow({
               </tr>
               <tr>
                 <td className="detail-cell-label">Unit Cost</td>
-                <td className="detail-cell-value cost">{component.unitCost ? formatCurrency(component.unitCost) : '-'}</td>
+                <td className="detail-cell-value cost">
+                  {component.unitCost != null ? (
+                    formatCurrency(component.unitCost)
+                  ) : component.lcscLoading ? (
+                    <span className="inline-loading"><RefreshCw size={10} className="loading-spinner" /> Fetching...</span>
+                  ) : (
+                    '-'
+                  )}
+                </td>
               </tr>
               <tr>
                 <td className="detail-cell-label">Source</td>
@@ -387,7 +399,9 @@ interface BOMPanelProps {
   onGoToSource?: (path: string, line?: number) => void
   projects?: Project[]
   selectedProjectRoot?: string | null
+  selectedTargetNames?: string[]
   onSelectProject?: (projectRoot: string | null) => void
+  onSelectTarget?: (projectRoot: string, targetName: string) => void
 }
 
 export function BOMPanel({
@@ -397,12 +411,25 @@ export function BOMPanel({
   onGoToSource: externalGoToSource,
   projects,
   selectedProjectRoot,
+  selectedTargetNames,
   onSelectProject,
+  onSelectTarget,
 }: BOMPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [copiedValue, setCopiedValue] = useState<string | null>(null)
   const [bomTargetsByProject, setBomTargetsByProject] = useState<Record<string, string[]>>({})
+  const [lcscParts, setLcscParts] = useState<Record<string, LcscPartData | null>>({})
+  const [lcscLoadingIds, setLcscLoadingIds] = useState<Set<string>>(new Set())
+  const [latestBuildInfo, setLatestBuildInfo] = useState<{
+    build_id?: string
+    started_at?: number
+    completed_at?: number
+  } | null>(null)
+  const [forceRefreshBuildId, setForceRefreshBuildId] = useState<string | null>(null)
+  const lcscRequestIdRef = useRef(0)
+  const lastLcscRefreshBuildIdRef = useRef<string | null>(null)
+  const selectedTargetName = selectedTargetNames?.[0] ?? null
 
   useEffect(() => {
     if (!projects || projects.length === 0) {
@@ -452,18 +479,154 @@ export function BOMPanel({
         id: project.root,
         name: project.name,
         root: project.root,
+        targets: project.targets?.map((target) => ({ name: target.name })) ?? [],
         badge: hasBom ? undefined : 'no BOM',
         badgeMuted: true,
       }
     })
   }, [sortedProjects, bomTargetsByProject])
 
+  useEffect(() => {
+    if (!selectedProjectRoot) {
+      setLatestBuildInfo(null)
+      setForceRefreshBuildId(null)
+      lastLcscRefreshBuildIdRef.current = null
+      return
+    }
+
+    api.builds
+      .byProject(selectedProjectRoot, selectedTargetName ?? undefined, 1)
+      .then((response) => {
+        const build = response.builds?.[0]
+        setLatestBuildInfo(build ? {
+          build_id: build.buildId,
+          started_at: build.startedAt,
+          // completed_at not available on Build type, calculate from startedAt + elapsedSeconds
+          completed_at: build.startedAt && build.elapsedSeconds
+            ? build.startedAt + build.elapsedSeconds
+            : undefined,
+        } : null)
+      })
+      .catch((error) => {
+        console.warn('Failed to load build info', error)
+        setLatestBuildInfo(null)
+      })
+  }, [selectedProjectRoot, selectedTargetName])
+
+  // Check if build is stale (older than 24 hours) to trigger LCSC refresh
+  useEffect(() => {
+    if (!latestBuildInfo?.build_id) return
+    const timestamp = latestBuildInfo.completed_at ?? latestBuildInfo.started_at
+    if (!timestamp) return
+    const ageSeconds = Date.now() / 1000 - timestamp
+    const isBuildStale = ageSeconds > 24 * 60 * 60
+    if (!isBuildStale) return
+    if (lastLcscRefreshBuildIdRef.current === latestBuildInfo.build_id) return
+    setForceRefreshBuildId(latestBuildInfo.build_id)
+  }, [latestBuildInfo])
+
+  const lcscIds = useMemo(() => {
+    if (!bomData?.components?.length) return []
+    const ids = new Set<string>()
+    for (const component of bomData.components) {
+      if (!component.lcsc) continue
+      ids.add(component.lcsc)
+    }
+    return Array.from(ids)
+  }, [bomData?.components])
+
+  const lcscIdsToFetch = useMemo(() => {
+    if (!bomData?.components?.length) return []
+    const ids = new Set<string>()
+    for (const component of bomData.components) {
+      if (!component.lcsc) continue
+      if (component.unitCost != null && component.stock != null) continue
+      ids.add(component.lcsc)
+    }
+    return Array.from(ids)
+  }, [bomData?.components])
+
+  useEffect(() => {
+    const forceRefresh = !!forceRefreshBuildId
+    const idsToRequest = forceRefresh ? lcscIds : lcscIdsToFetch
+    if (idsToRequest.length === 0) return
+    const missing = forceRefresh
+      ? idsToRequest
+      : idsToRequest.filter((id) => !(id in lcscParts))
+    if (missing.length === 0) return
+
+    const requestId = ++lcscRequestIdRef.current
+    setLcscLoadingIds((prev) => {
+      const next = new Set(prev)
+      for (const id of missing) next.add(id)
+      return next
+    })
+    api.parts
+      .lcsc(missing, {
+        projectRoot: selectedProjectRoot ?? undefined,
+        target: selectedTargetName ?? undefined,
+      })
+      .then((response) => {
+        if (requestId !== lcscRequestIdRef.current) return
+        setLcscParts((prev) => ({ ...prev, ...response.parts }))
+      })
+      .catch((error) => {
+        if (requestId !== lcscRequestIdRef.current) return
+        console.warn('Failed to fetch LCSC data', error)
+      })
+      .finally(() => {
+        setLcscLoadingIds((prev) => {
+          const next = new Set(prev)
+          for (const id of missing) next.delete(id)
+          return next
+        })
+        if (forceRefresh && latestBuildInfo?.build_id) {
+          lastLcscRefreshBuildIdRef.current = latestBuildInfo.build_id
+          setForceRefreshBuildId(null)
+        }
+      })
+  }, [
+    lcscIdsToFetch,
+    lcscIds,
+    lcscParts,
+    forceRefreshBuildId,
+    latestBuildInfo,
+    selectedProjectRoot,
+    selectedTargetName,
+  ])
+
   // Memoize API data transformation - no mock data fallback
   const bomComponents = useMemo((): BOMComponentUI[] => {
-    return bomData?.components
-      ? bomData.components.map(transformBOMComponent)
-      : []
-  }, [bomData?.components])
+    if (!bomData?.components) return []
+    return bomData.components.map((component) => {
+      const uiComponent = transformBOMComponent(component)
+      if (!component.lcsc) return uiComponent
+
+      const lcscInfo = lcscParts[component.lcsc]
+      uiComponent.lcscLoading = lcscLoadingIds.has(component.lcsc)
+      if (!lcscInfo) return uiComponent
+
+      if (uiComponent.unitCost == null && lcscInfo.unit_cost != null) {
+        uiComponent.unitCost = lcscInfo.unit_cost
+        uiComponent.totalCost = lcscInfo.unit_cost * uiComponent.quantity
+      }
+      if (uiComponent.inStock == null) {
+        uiComponent.inStock = lcscInfo.stock > 0
+        uiComponent.stockQuantity = lcscInfo.stock
+      }
+      if (!uiComponent.description && lcscInfo.description) {
+        uiComponent.description = lcscInfo.description
+      }
+      if (!uiComponent.manufacturer && lcscInfo.manufacturer) {
+        uiComponent.manufacturer = lcscInfo.manufacturer
+      }
+      if (!uiComponent.mpn && lcscInfo.mpn) {
+        uiComponent.mpn = lcscInfo.mpn
+      }
+
+      return uiComponent
+    })
+  }, [bomData?.components, lcscParts])
 
   // Check if we have BOM data available
   const hasBOMData = bomData?.components && bomData.components.length > 0
@@ -510,7 +673,9 @@ export function BOMPanel({
           <ProjectDropdown
             projects={projectOptions}
             selectedProjectRoot={selectedProjectRoot}
+            selectedTargetName={selectedTargetNames?.[0] || null}
             onSelectProject={onSelectProject || (() => {})}
+            onSelectTarget={onSelectTarget}
             showAllOption={false}
             placeholder="Select project"
           />
@@ -518,11 +683,9 @@ export function BOMPanel({
       </div>
   )
 
-  // Pre-compute lowercase search for performance
-  const searchLower = useMemo(() => searchQuery.toLowerCase(), [searchQuery])
-
   // Memoize filtered and sorted components
   const filteredComponents = useMemo(() => {
+    const searchLower = searchQuery.toLowerCase()
     return bomComponents
       .filter(c => {
         // Search filter
@@ -538,7 +701,7 @@ export function BOMPanel({
         return true
       })
       .sort((a, b) => (b.totalCost || 0) - (a.totalCost || 0))
-  }, [bomComponents, searchLower])
+  }, [bomComponents, searchQuery])
 
   // Memoize totals calculation - single pass for efficiency
   const { totalComponents, totalCost, uniqueParts, outOfStock } = useMemo(() => {
@@ -559,12 +722,11 @@ export function BOMPanel({
   }, [bomComponents])
 
   // Extract short build ID for display (e.g., "build-42-1674520800" -> "#42")
-  // NOTE: This must be before early returns to maintain hook order
-  const buildIdShort = useMemo(() => {
+  const buildIdShort = (() => {
     if (!bomData?.build_id) return null
     const match = bomData.build_id.match(/^build-(\d+)-/)
     return match ? `#${match[1]}` : bomData.build_id.substring(0, 12)
-  }, [bomData?.build_id])
+  })()
 
   // Loading state
   if (isLoading) {

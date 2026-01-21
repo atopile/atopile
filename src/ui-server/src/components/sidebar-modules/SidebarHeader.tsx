@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Settings, ChevronDown, FolderOpen, Loader2, AlertCircle, Check, GitBranch, Package, Search, Sun, Moon, Monitor } from 'lucide-react';
+import { Settings, ChevronDown, FolderOpen, Loader2, AlertCircle, Check, GitBranch, Package, Search, Sun, Moon, Monitor, X } from 'lucide-react';
 import { sendAction } from '../../api/websocket';
 import { DEFAULT_LOGO } from './sidebarUtils';
 import { useTheme } from '../../hooks/useTheme';
@@ -66,6 +66,45 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
   const [showBranchDropdown, setShowBranchDropdown] = useState(false);
   const branchDropdownRef = useRef<HTMLDivElement>(null);
 
+  // Local path validation state
+  const [localPathValidation, setLocalPathValidation] = useState<{
+    isValidating: boolean;
+    valid: boolean | null;
+    version: string | null;
+    error: string | null;
+  }>({ isValidating: false, valid: null, version: null, error: null });
+  const validateDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Track pending install (local state for immediate feedback)
+  const [pendingInstall, setPendingInstall] = useState<{
+    type: 'version' | 'branch' | null;
+    value: string | null;
+  }>({ type: null, value: null });
+
+  // Clear pending install when the actual version/branch matches what we requested
+  // Also timeout after 60 seconds to prevent infinite spinner
+  useEffect(() => {
+    if (pendingInstall.type === 'version' && atopile?.currentVersion === pendingInstall.value) {
+      setPendingInstall({ type: null, value: null });
+      return;
+    }
+    if (pendingInstall.type === 'branch' && atopile?.branch === pendingInstall.value) {
+      setPendingInstall({ type: null, value: null });
+      return;
+    }
+
+    // Timeout after 60 seconds
+    if (pendingInstall.type !== null) {
+      const timeout = setTimeout(() => {
+        setPendingInstall({ type: null, value: null });
+      }, 60000);
+      return () => clearTimeout(timeout);
+    }
+  }, [atopile?.currentVersion, atopile?.branch, pendingInstall]);
+
+  // Helper to check if currently installing (from backend or pending local)
+  const isInstalling = atopile?.isInstalling || pendingInstall.type !== null;
+
   // Close settings dropdown when clicking outside
   useEffect(() => {
     if (!showSettings) return;
@@ -101,22 +140,67 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showBranchDropdown]);
 
+  // Validate local path when it changes
+  useEffect(() => {
+    if (atopile?.source !== 'local' || !atopile?.localPath) {
+      setLocalPathValidation({ isValidating: false, valid: null, version: null, error: null });
+      return;
+    }
+
+    // Debounce validation
+    if (validateDebounceRef.current) {
+      clearTimeout(validateDebounceRef.current);
+    }
+
+    setLocalPathValidation(prev => ({ ...prev, isValidating: true }));
+
+    validateDebounceRef.current = setTimeout(() => {
+      action('validateAtopilePath', { path: atopile.localPath });
+    }, 500);
+
+    return () => {
+      if (validateDebounceRef.current) {
+        clearTimeout(validateDebounceRef.current);
+      }
+    };
+  }, [atopile?.source, atopile?.localPath]);
+
   // Handle action_result events for settings
   useEffect(() => {
     const handleActionResult = (event: Event) => {
-      const detail = (event as CustomEvent).detail as {
+      const message = (event as CustomEvent).detail as {
         action?: string;
-        setting?: {
-          use_default: boolean;
-          custom_value?: number;
-          default_value: number;
+        result?: {
+          success?: boolean;
+          // For getMaxConcurrentSetting
+          setting?: {
+            use_default: boolean;
+            custom_value?: number;
+            default_value: number;
+          };
+          // For validateAtopilePath
+          valid?: boolean;
+          version?: string | null;
+          error?: string | null;
         };
       };
 
-      if (detail?.setting) {
-        setMaxConcurrentUseDefault(detail.setting.use_default);
-        setMaxConcurrentValue(detail.setting.custom_value || detail.setting.default_value);
-        setDefaultMaxConcurrent(detail.setting.default_value);
+      const result = message?.result;
+
+      if (result?.setting) {
+        setMaxConcurrentUseDefault(result.setting.use_default);
+        setMaxConcurrentValue(result.setting.custom_value || result.setting.default_value);
+        setDefaultMaxConcurrent(result.setting.default_value);
+      }
+
+      // Handle validateAtopilePath result
+      if (message?.action === 'validateAtopilePath' && result) {
+        setLocalPathValidation({
+          isValidating: false,
+          valid: result.valid ?? false,
+          version: result.version ?? null,
+          error: result.error ?? null,
+        });
       }
     };
     window.addEventListener('atopile:action_result', handleActionResult);
@@ -180,7 +264,7 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                   <button
                     className={`source-btn${atopile?.source === 'release' ? ' active' : ''}`}
                     onClick={() => action('setAtopileSource', { source: 'release' })}
-                    disabled={atopile?.isInstalling}
+                    disabled={isInstalling}
                     title="Use a released version from PyPI"
                   >
                     <Package size={12} />
@@ -189,7 +273,7 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                   <button
                     className={`source-btn${atopile?.source === 'branch' ? ' active' : ''}`}
                     onClick={() => action('setAtopileSource', { source: 'branch' })}
-                    disabled={atopile?.isInstalling}
+                    disabled={isInstalling}
                     title="Use a git branch from GitHub"
                   >
                     <GitBranch size={12} />
@@ -198,7 +282,7 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                   <button
                     className={`source-btn${atopile?.source === 'local' ? ' active' : ''}`}
                     onClick={() => action('setAtopileSource', { source: 'local' })}
-                    disabled={atopile?.isInstalling}
+                    disabled={isInstalling}
                     title="Use a local installation"
                   >
                     <FolderOpen size={12} />
@@ -218,11 +302,15 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                       className="settings-select"
                       value={atopile?.currentVersion || ''}
                       onChange={(e) => {
-                        action('setAtopileVersion', { version: e.target.value });
+                        const newVersion = e.target.value;
+                        if (newVersion !== atopile?.currentVersion) {
+                          setPendingInstall({ type: 'version', value: newVersion });
+                        }
+                        action('setAtopileVersion', { version: newVersion });
                       }}
-                      disabled={atopile?.isInstalling}
+                      disabled={isInstalling}
                     >
-                      {(atopile?.availableVersions || []).map((v) => (
+                      {(atopile?.availableVersions || []).slice(0, 20).map((v) => (
                         <option key={v} value={v}>
                           {v}{v === atopile?.availableVersions?.[0] ? ' (latest)' : ''}
                         </option>
@@ -230,6 +318,16 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                     </select>
                     <ChevronDown size={12} className="select-chevron" />
                   </div>
+                  {/* Installation status */}
+                  {isInstalling && (
+                    <div className="install-status">
+                      <Loader2 size={12} className="spinner" />
+                      <span>
+                        {atopile?.installProgress?.message ||
+                         (pendingInstall.type === 'version' ? `Installing v${pendingInstall.value}...` : 'Installing...')}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -252,13 +350,13 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                           setShowBranchDropdown(true);
                         }}
                         onFocus={() => setShowBranchDropdown(true)}
-                        disabled={atopile?.isInstalling}
+                        disabled={isInstalling}
                       />
                       {atopile?.branch && !branchSearchQuery && (
                         <span className="branch-current-value">{atopile.branch}</span>
                       )}
                     </div>
-                    {showBranchDropdown && (
+                    {showBranchDropdown && !isInstalling && (
                       <div className="branch-dropdown">
                         {(atopile?.availableBranches || ['main', 'develop'])
                           .filter(b => !branchSearchQuery || b.toLowerCase().includes(branchSearchQuery.toLowerCase()))
@@ -268,6 +366,9 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                               key={b}
                               className={`branch-option${b === atopile?.branch ? ' active' : ''}`}
                               onClick={() => {
+                                if (b !== atopile?.branch) {
+                                  setPendingInstall({ type: 'branch', value: b });
+                                }
                                 action('setAtopieBranch', { branch: b });
                                 setBranchSearchQuery('');
                                 setShowBranchDropdown(false);
@@ -290,6 +391,16 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                   <span className="settings-hint">
                     Installs from git+https://github.com/atopile/atopile.git@{atopile?.branch || 'main'}
                   </span>
+                  {/* Installation status */}
+                  {isInstalling && (
+                    <div className="install-status">
+                      <Loader2 size={12} className="spinner" />
+                      <span>
+                        {atopile?.installProgress?.message ||
+                         (pendingInstall.type === 'branch' ? `Installing ${pendingInstall.value}...` : 'Installing...')}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -322,7 +433,7 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                   <div className="settings-path-input">
                     <input
                       type="text"
-                      className="settings-input"
+                      className={`settings-input${localPathValidation.valid === true ? ' valid' : ''}${localPathValidation.valid === false ? ' invalid' : ''}`}
                       placeholder="/path/to/atopile or ato"
                       value={atopile?.localPath || ''}
                       onChange={(e) => {
@@ -337,6 +448,28 @@ export function SidebarHeader({ logoUri, version, atopile, developerMode }: Side
                       <FolderOpen size={12} />
                     </button>
                   </div>
+
+                  {/* Validation status */}
+                  {atopile?.localPath && (
+                    <div className={`path-validation-status${localPathValidation.valid === true ? ' valid' : ''}${localPathValidation.valid === false ? ' invalid' : ''}`}>
+                      {localPathValidation.isValidating ? (
+                        <>
+                          <Loader2 size={12} className="spinner" />
+                          <span>Validating...</span>
+                        </>
+                      ) : localPathValidation.valid === true ? (
+                        <>
+                          <Check size={12} />
+                          <span>Found atopile{localPathValidation.version ? ` v${localPathValidation.version}` : ''}</span>
+                        </>
+                      ) : localPathValidation.valid === false ? (
+                        <>
+                          <X size={12} />
+                          <span>{localPathValidation.error || 'Invalid path'}</span>
+                        </>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
               )}
 

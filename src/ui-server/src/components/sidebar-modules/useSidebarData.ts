@@ -1,11 +1,9 @@
 /**
  * Custom hook for sidebar data transformations.
- * Contains all memoized computations for transforming state data.
  */
 
 import { useMemo } from 'react';
 import type { QueuedBuild } from '../BuildQueuePanel';
-import { logPerf } from '../../perf';
 import { type Selection, type StageFilter } from './sidebarUtils';
 
 // Local helper functions that work with any build structure
@@ -27,8 +25,10 @@ function findBuildForTarget(
     return b.name === targetName;
   });
 
+  // Fallback: find by name, but only if it's an active build
   if (!build) {
     build = builds.find(b =>
+      (b.status === 'building' || b.status === 'queued') &&
       b.name === targetName &&
       (b.projectName === projectName || b.projectName === null)
     );
@@ -65,8 +65,15 @@ function parseEntryToSymbol(entry: string, modules?: any[]) {
   };
 }
 
-// Use a generic state type to avoid strict type mismatches with the store
-// The actual properties are accessed dynamically
+// Normalize lastBuild status - treat "interrupted", "building", "queued" as "idle"
+// since they indicate stale state from a previous session
+function normalizeLastBuildStatus(status: string | undefined): string {
+  if (!status) return 'idle';
+  if (status === 'failed') return 'error';
+  if (status === 'interrupted' || status === 'building' || status === 'queued') return 'idle';
+  return status;
+}
+
 type SidebarState = any;
 
 interface UseSidebarDataParams {
@@ -76,21 +83,16 @@ interface UseSidebarDataParams {
 }
 
 export function useSidebarData({ state, selection, activeStageFilter }: UseSidebarDataParams) {
-  // Transform state projects to the format our components expect
+  // Transform state projects - KEEP: expensive nested map operations
   const transformedProjects = useMemo((): any[] => {
-    const start = performance.now();
     if (!state?.projects?.length) return [];
 
-    const result = state.projects.map((p: any) => {
-      // Get available modules for this project (for tree view)
+    return state.projects.map((p: any) => {
       const projectModules = state.projectModules?.[p.root] || [];
 
-      // Transform builds/targets with lastBuild info
       const builds = p.targets.map((t: any) => {
-        // UNIFIED: Use shared findBuildForTarget helper
         const build = findBuildForTarget(state.builds, p.name, t.name);
         const rootSymbol = parseEntryToSymbol(t.entry, projectModules);
-        // Get stages from active build or fall back to lastBuild
         const activeStages = build?.stages && build.stages.length > 0 ? build.stages : null;
         const historicalStages = t.lastBuild?.stages;
         const displayStages = activeStages || historicalStages || [];
@@ -99,7 +101,7 @@ export function useSidebarData({ state, selection, activeStageFilter }: UseSideb
           id: t.name,
           name: t.name,
           entry: t.entry,
-          status: build?.status === 'failed' ? 'error' : (build?.status || (t.lastBuild?.status === 'failed' ? 'error' : (t.lastBuild?.status || 'idle'))),
+          status: build?.status === 'failed' ? 'error' : (build?.status || normalizeLastBuildStatus(t.lastBuild?.status)),
           warnings: build?.warnings ?? t.lastBuild?.warnings,
           errors: build?.errors ?? t.lastBuild?.errors,
           elapsedSeconds: build?.elapsedSeconds,
@@ -112,7 +114,7 @@ export function useSidebarData({ state, selection, activeStageFilter }: UseSideb
           symbols: rootSymbol ? [rootSymbol] : [],
           queuePosition: build?.queuePosition,
           lastBuild: t.lastBuild ? {
-            status: t.lastBuild.status === 'failed' ? 'error' : t.lastBuild.status,
+            status: normalizeLastBuildStatus(t.lastBuild.status),
             timestamp: t.lastBuild.timestamp,
             elapsedSeconds: t.lastBuild.elapsedSeconds,
             warnings: t.lastBuild.warnings,
@@ -127,7 +129,6 @@ export function useSidebarData({ state, selection, activeStageFilter }: UseSideb
         };
       });
 
-      // Calculate project-level status from targets
       let projectStatus: 'success' | 'warning' | 'failed' | 'error' | undefined;
       let mostRecentTimestamp: string | undefined;
 
@@ -143,10 +144,8 @@ export function useSidebarData({ state, selection, activeStageFilter }: UseSideb
           projectStatus = 'success';
         }
 
-        if (timestamp) {
-          if (!mostRecentTimestamp || timestamp > mostRecentTimestamp) {
-            mostRecentTimestamp = timestamp;
-          }
+        if (timestamp && (!mostRecentTimestamp || timestamp > mostRecentTimestamp)) {
+          mostRecentTimestamp = timestamp;
         }
       }
 
@@ -160,24 +159,17 @@ export function useSidebarData({ state, selection, activeStageFilter }: UseSideb
         lastBuildTimestamp: mostRecentTimestamp,
       };
     });
-    logPerf('sidebar:transform-projects', performance.now() - start, {
-      projects: result.length,
-      builds: state.builds?.length ?? 0,
-    });
-    return result;
   }, [state?.projects, state?.builds, state?.projectModules]);
 
-  // Transform state packages to the format that ProjectsPanel expects
+  // Transform state packages - KEEP: expensive filter/map operations
   const transformedPackages = useMemo((): any[] => {
     if (!state?.packages?.length) return [];
 
     return state.packages
       .filter((pkg: any) => pkg && pkg.identifier && pkg.name)
       .map((pkg: any) => {
-        // Standard target names for packages
         const targetNames = ['default', 'usage'];
 
-        // Look up builds for this package using the unified helper
         const packageBuilds = targetNames.map(targetName => {
           const build = findBuildForTarget(state.builds, pkg.name, targetName);
 
@@ -202,7 +194,6 @@ export function useSidebarData({ state, selection, activeStageFilter }: UseSideb
           };
         });
 
-        // Calculate package-level last build status
         let packageStatus: 'success' | 'warning' | 'failed' | 'error' | undefined;
         let mostRecentTimestamp: string | undefined;
 
@@ -218,10 +209,8 @@ export function useSidebarData({ state, selection, activeStageFilter }: UseSideb
             packageStatus = 'success';
           }
 
-          if (timestamp) {
-            if (!mostRecentTimestamp || timestamp > mostRecentTimestamp) {
-              mostRecentTimestamp = timestamp;
-            }
+          if (timestamp && (!mostRecentTimestamp || timestamp > mostRecentTimestamp)) {
+            mostRecentTimestamp = timestamp;
           }
         }
 
@@ -250,48 +239,36 @@ export function useSidebarData({ state, selection, activeStageFilter }: UseSideb
       });
   }, [state?.packages, state?.builds]);
 
-  // Combine projects and packages
-  const projects = useMemo((): any[] => {
-    return [...transformedProjects, ...transformedPackages];
-  }, [transformedProjects, transformedPackages]);
+  // Combine projects and packages - NO MEMO: trivial concat
+  const projects = [...transformedProjects, ...transformedPackages];
 
-  // Memoize project/package counts
-  const { projectCount, packageCount } = useMemo(() => {
-    let projCount = 0;
-    let pkgCount = 0;
-    for (const p of projects) {
-      if (p.type === 'package') pkgCount++;
-      else projCount++;
-    }
-    return { projectCount: projCount, packageCount: pkgCount };
-  }, [projects]);
+  // Count projects/packages - NO MEMO: trivial loop
+  let projectCount = 0;
+  let packageCount = 0;
+  for (const p of projects) {
+    if (p.type === 'package') packageCount++;
+    else projectCount++;
+  }
 
-  // Queued builds from state
-  const queuedBuilds = useMemo((): QueuedBuild[] => {
-    return (state?.queuedBuilds || []) as QueuedBuild[];
-  }, [state?.queuedBuilds]);
+  // Queued builds - NO MEMO: just property access with default
+  const queuedBuilds: QueuedBuild[] = (state?.queuedBuilds || []) as QueuedBuild[];
 
-  // Pre-index projects by ID for O(1) lookup during filtering
+  // Index projects by ID - KEEP: creates Map for O(1) lookups used in filtering
   const projectsById = useMemo(() => {
     return new Map(projects.map(p => [p.id, p]));
   }, [projects]);
 
-  // Problems from state
-  const problems = useMemo(() => {
-    return state?.problems || [];
-  }, [state?.problems]);
+  // Problems - NO MEMO: just property access with default
+  const problems = state?.problems || [];
 
-  // Memoized filtered problems with optimized lookups
+  // Filtered problems - KEEP: complex filtering logic
   const filteredProblems = useMemo(() => {
-    const start = performance.now();
     const filter = state?.problemFilter;
 
-    // Helper to normalize stage names for comparison
     const normalizeStage = (name: string): string => {
       return name.toLowerCase().replace(/[-_\s]+/g, '');
     };
 
-    // Check if two stage names match (flexible matching)
     const stageMatches = (filterStage: string, problemStage: string): boolean => {
       if (filterStage === problemStage) return true;
       const normFilter = normalizeStage(filterStage);
@@ -301,8 +278,7 @@ export function useSidebarData({ state, selection, activeStageFilter }: UseSideb
       return false;
     };
 
-    const result = problems.filter((p: any) => {
-      // Filter by active stage filter (from clicking on a stage/build)
+    return problems.filter((p: any) => {
       if (activeStageFilter) {
         if (activeStageFilter.stageName) {
           if (!p.stage) return false;
@@ -320,7 +296,6 @@ export function useSidebarData({ state, selection, activeStageFilter }: UseSideb
         return true;
       }
 
-      // Filter by selection (project/build) when no stage filter
       if (selection.type === 'project' && selection.projectId) {
         const selectedProject = projectsById.get(selection.projectId);
         if (selectedProject && p.projectName && p.projectName !== selectedProject.name) {
@@ -342,23 +317,15 @@ export function useSidebarData({ state, selection, activeStageFilter }: UseSideb
       if (filter.stageIds && filter.stageIds.length > 0 && p.stage && !filter.stageIds.includes(p.stage)) return false;
       return true;
     });
-    logPerf('sidebar:filter-problems', performance.now() - start, {
-      total: problems.length,
-      filtered: result.length,
-    });
-    return result;
   }, [problems, state?.problemFilter, activeStageFilter, selection, projectsById]);
 
-  // Combined error/warning count in single pass
-  const { totalErrors, totalWarnings } = useMemo(() => {
-    let errors = 0;
-    let warnings = 0;
-    for (const p of filteredProblems) {
-      if (p.level === 'error') errors++;
-      else if (p.level === 'warning') warnings++;
-    }
-    return { totalErrors: errors, totalWarnings: warnings };
-  }, [filteredProblems]);
+  // Count errors/warnings - NO MEMO: trivial loop
+  let totalErrors = 0;
+  let totalWarnings = 0;
+  for (const p of filteredProblems) {
+    if (p.level === 'error') totalErrors++;
+    else if (p.level === 'warning') totalWarnings++;
+  }
 
   return {
     projects,

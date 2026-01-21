@@ -238,6 +238,12 @@ def _extract_tolerance_from_value(value_str: str) -> tuple[str, str | None, str 
     return value_str, None, None
 
 
+def _strip_outer_braces(value: str) -> str:
+    if value.startswith("{") and value.endswith("}") and len(value) > 2:
+        return value[1:-1]
+    return value
+
+
 def _is_unconstrained_value(value_str: str) -> bool:
     """
     Check if a value represents an unconstrained/any value.
@@ -309,6 +315,7 @@ def _extract_module_data(
 
     node_type = _get_node_type(module)
     module_source = _get_source_type(module)
+    part_trait = module.try_get_trait(F.Pickable.has_part_picked)
 
     # Extract parameters
     variables: list[Variable] = []
@@ -337,6 +344,7 @@ def _extract_module_data(
             base_value, tolerance, extracted_unit = _extract_tolerance_from_value(
                 value_str
             )
+            base_value = _strip_outer_braces(base_value)
 
             # Get unit - prefer the one from the parameter trait, fall back to extracted
             unit_str = None
@@ -354,44 +362,37 @@ def _extract_module_data(
             # Determine variable type from unit
             var_type = _get_variable_type_from_unit(unit_str)
 
-            # For picked/datasheet params, check if value is actually constrained
-            if module_source in ("picked", "datasheet"):
-                # Check if the value is still unconstrained after picking
-                # If so, the picked component doesn't specify this attribute
-                is_constrained = not _is_unconstrained_value(base_value)
+            actual_value = None
+            actual_tolerance = None
+            if part_trait:
+                try:
+                    if attr_lit := part_trait.get_attribute(param_name):
+                        actual_value_str = attr_lit.pretty_str()
+                        actual_value, actual_tolerance, actual_unit = (
+                            _extract_tolerance_from_value(actual_value_str)
+                        )
+                        if actual_value:
+                            actual_value = _strip_outer_braces(actual_value)
+                        if not unit_str and actual_unit:
+                            unit_str = actual_unit
+                except Exception:
+                    pass
 
-                if is_constrained:
-                    # Component specifies this attribute - show as actual
-                    variables.append(
-                        Variable(
-                            name=param_name,
-                            spec=base_value,
-                            specTolerance=tolerance,
-                            actual=base_value,
-                            actualTolerance=tolerance,
-                            unit=unit_str,
-                            type=var_type,
-                            meetsSpec=True,
-                            source=module_source,
-                        )
+            if module_source in ("picked", "datasheet"):
+                variables.append(
+                    Variable(
+                        name=param_name,
+                        spec=base_value,
+                        specTolerance=tolerance,
+                        actual=actual_value,
+                        actualTolerance=actual_tolerance,
+                        unit=unit_str,
+                        type=var_type,
+                        meetsSpec=None,
+                        source=module_source,
                     )
-                else:
-                    # Component doesn't specify this attribute - no actual value
-                    variables.append(
-                        Variable(
-                            name=param_name,
-                            spec=base_value,
-                            specTolerance=tolerance,
-                            actual=None,
-                            actualTolerance=None,
-                            unit=unit_str,
-                            type=var_type,
-                            meetsSpec=None,
-                            source=module_source,
-                        )
-                    )
+                )
             else:
-                # For derived params, we only have the spec
                 variables.append(
                     Variable(
                         name=param_name,

@@ -56,29 +56,39 @@
   text-overflow: ellipsis;
 }
 
-/* Last build info in package header */
-.package-card-header .last-build-info {
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-/* Publisher badge */
-.package-publisher-badge {
+/* Publisher tag - subtle inline with name */
+.package-publisher-tag {
   font-size: 10px;
   font-weight: 500;
-  padding: 2px 6px;
+  color: var(--text-muted);
+  opacity: 0.7;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.package-publisher-tag.official {
+  color: var(--ato-orange);
+  opacity: 1;
+}
+
+/* External link icon */
+.package-external-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--text-muted);
+  opacity: 0.5;
   border-radius: var(--radius-sm);
   flex-shrink: 0;
+  transition: all var(--transition-fast);
 }
 
-.package-publisher-badge.official {
-  color: var(--ato-orange);
-  background: rgba(255, 160, 60, 0.12);
-}
-
-.package-publisher-badge.community {
-  color: var(--text-muted);
-  background: var(--bg-tertiary);
+.package-external-link:hover {
+  opacity: 1;
+  color: var(--accent);
+  background: var(--bg-hover);
 }
 
 /* Row 2: Description */
@@ -96,57 +106,7 @@
   overflow: hidden;
 }
 
-/* Row 3: Links bar */
-.package-links-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: var(--spacing-sm);
-  padding: var(--spacing-xs) 0;
-  border-top: 1px solid var(--border-subtle);
-}
-
-.package-downloads {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.package-downloads svg {
-  opacity: 0.7;
-}
-
-.package-link-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  color: var(--text-muted);
-  border-radius: var(--radius-sm);
-  transition: all var(--transition-fast);
-}
-
-.package-link-btn:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
-
-.package-link-btn.has-label {
-  width: auto;
-  gap: 4px;
-  padding: 0 8px;
-  font-size: 11px;
-}
-
-.package-links-spacer {
-  flex: 1;
-}
-
-
-/* Row 4: Install bar */
+/* Row 3: Install bar */
 .package-install-bar {
   display: flex;
   flex-direction: row;
@@ -448,38 +408,33 @@
   margin-top: var(--spacing-sm);
 }
 
-/* Package details section */
-.package-details-section {
-  margin-top: var(--spacing-sm);
-}
-
-.package-stats-row {
+/* Package metadata bar - compact inline stats */
+.package-meta-bar {
   display: flex;
-  gap: var(--spacing-md);
-  padding: var(--spacing-sm);
-  background: var(--bg-tertiary);
-  border-radius: var(--radius-sm);
-  margin-bottom: var(--spacing-sm);
-}
-
-.package-stat {
-  display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 2px;
-}
-
-.package-stat .stat-value {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.package-stat .stat-label {
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
   font-size: 10px;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.package-meta-bar .meta-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.package-meta-bar .meta-item:not(:last-child)::after {
+  content: '\00b7';
+  margin-left: var(--spacing-sm);
+  opacity: 0.5;
+}
+
+.package-meta-bar svg {
+  opacity: 0.6;
 }
 
 .package-versions-list {
@@ -531,4 +486,75 @@
 .project-selector:has(.project-selector-menu),
 .version-selector:has(.version-selector-menu) {
   z-index: 1000;
+}
+
+/* Installing state - Green light chaser animation */
+.package-install-bar .install-btn.installing {
+  position: relative;
+  color: var(--ctp-green);
+  background: rgba(166, 227, 161, 0.1);
+  border-color: transparent;
+  overflow: hidden;
+  cursor: wait;
+}
+
+.package-install-bar .install-btn.installing::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 25%,
+    var(--ctp-green) 50%,
+    transparent 75%,
+    transparent 100%
+  );
+  background-size: 300% 100%;
+  animation: light-chase 1.5s linear infinite;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* Add glow effect */
+.package-install-bar .install-btn.installing::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 30%,
+    rgba(166, 227, 161, 0.4) 50%,
+    transparent 70%,
+    transparent 100%
+  );
+  background-size: 300% 100%;
+  animation: light-chase 1.5s linear infinite;
+  filter: blur(4px);
+  z-index: -1;
+}
+
+@keyframes light-chase {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+/* Spinner animation (already defined but ensure it's here) */
+.package-install-bar .install-btn.installing .spin {
+  animation: spin 1s linear infinite;
+}
+
+.package-install-bar .install-btn.installing:disabled {
+  opacity: 1;
 }

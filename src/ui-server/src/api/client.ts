@@ -12,6 +12,7 @@ import type {
   PackageDetails,
   StdLibItem,
   BOMData,
+  LcscPartsResponse,
   Problem,
   ModuleDefinition,
   ModuleChild,
@@ -265,6 +266,19 @@ export const api = {
       fetchJSON<{ targets: string[] }>(
         `/api/variables/targets?project_root=${encodeURIComponent(projectRoot)}`
       ),
+  },
+
+  // Parts (LCSC metadata)
+  parts: {
+    lcsc: (lcscIds: string[], options?: { projectRoot?: string; target?: string | null }) =>
+      fetchJSON<LcscPartsResponse>('/api/parts/lcsc', {
+        method: 'POST',
+        body: JSON.stringify({
+          lcsc_ids: lcscIds,
+          project_root: options?.projectRoot,
+          target: options?.target ?? undefined,
+        }),
+      }),
   },
 
   // Project files/modules

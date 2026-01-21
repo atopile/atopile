@@ -92,12 +92,6 @@
                     "type": "boolean",
                     "default": true
                 },
-                "atopile.setupAlias": {
-                    "description": "Automatically set up 'ato' alias in the terminal (recommended)",
-                    "scope": "resource",
-                    "type": "boolean",
-                    "default": true
-                },
                 "atopile.dashboardApiUrl": {
                     "description": "URL of the atopile build dashboard API server",
                     "scope": "resource",

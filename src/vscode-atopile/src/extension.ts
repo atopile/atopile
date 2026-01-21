@@ -14,7 +14,7 @@ import { onBuildTargetChanged } from './common/target';
 import { Build } from './common/manifest';
 import { openPackageExplorer } from './ui/packagexplorer';
 import * as llm from './common/llm';
-import { appStateManager } from './common/appState';
+import { appStateManager, initAtopileSettingsSync } from './common/appState';
 
 export let g_lsClient: LanguageClient | undefined;
 
@@ -105,6 +105,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     await ui.activate(context);
     await llm.activate(context);
+
+    // Sync atopile settings from UI to extension (triggers reinstall when changed)
+    context.subscriptions.push(initAtopileSettingsSync(context));
 
     context.subscriptions.push(vscode.window.registerUriHandler(new atopileUriHandler()));
 

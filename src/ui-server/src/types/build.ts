@@ -283,6 +283,30 @@ export interface BOMData {
   components: BOMComponent[];
 }
 
+export interface LcscPartPrice {
+  qFrom: number | null;
+  qTo: number | null;
+  price: number;
+}
+
+export interface LcscPartData {
+  lcsc: string;
+  manufacturer: string;
+  mpn: string;
+  package: string;
+  description: string;
+  datasheet_url: string;
+  stock: number;
+  unit_cost: number;
+  is_basic: boolean;
+  is_preferred: boolean;
+  price: LcscPartPrice[];
+}
+
+export interface LcscPartsResponse {
+  parts: Record<string, LcscPartData | null>;
+}
+
 export interface AppState {
   // Connection
   isConnected: boolean;

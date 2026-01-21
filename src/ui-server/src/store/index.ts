@@ -126,6 +126,7 @@ interface StoreActions {
   // Projects
   setProjects: (projects: Project[]) => void;
   selectProject: (projectRoot: string | null) => void;
+  setSelectedTargets: (targetNames: string[]) => void;
   toggleTarget: (targetName: string) => void;
   toggleTargetExpanded: (targetName: string) => void;
 
@@ -193,6 +194,9 @@ export const useStore = create<Store>()(
       setProjects: (projects) => set({ projects }),
 
       selectProject: (projectRoot) => set({ selectedProjectRoot: projectRoot }),
+
+      setSelectedTargets: (targetNames) =>
+        set({ selectedTargetNames: targetNames }),
 
       toggleTarget: (targetName) =>
         set((state) => {
@@ -349,4 +353,3 @@ export const useFilteredProblems = () =>
       return true;
     });
   });
-

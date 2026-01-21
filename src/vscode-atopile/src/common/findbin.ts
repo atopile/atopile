@@ -1,4 +1,4 @@
-import { ConfigurationChangeEvent, Disposable, Event, EventEmitter, ExtensionContext, env, window } from 'vscode';
+import { ConfigurationChangeEvent, Event, EventEmitter, ExtensionContext, window } from 'vscode';
 import { onDidChangePythonInterpreter, IInterpreterDetails, initializePython } from './python';
 import { onDidChangeConfiguration } from './vscodeapi';
 import * as fs from 'fs';
@@ -31,6 +31,24 @@ let g_pyAtoBin: string | null = null;
 
 // Track the build terminal for reuse
 let g_buildTerminal: vscode.Terminal | undefined;
+
+/**
+ * Get the full ato command as a string (for running in terminals).
+ * Unlike getAtoBin(), this returns the command ready to be sent to a terminal.
+ */
+export async function getAtoCommand(settings?: ISettings, subcommand: string[] = []): Promise<string | null> {
+    const atoBin = await getAtoBin(settings);
+    if (!atoBin) {
+        return null;
+    }
+
+    // Build the full command string with proper quoting
+    const commandParts = atoBin.command.map(c => c.includes(' ') ? `'${c}'` : c);
+    if (subcommand.length > 0) {
+        commandParts.push(...subcommand.map(c => c.includes(' ') ? `'${c}'` : c));
+    }
+    return commandParts.join(' ');
+}
 
 export function getExtensionManagedUvPath(context: ExtensionContext): string | null {
     // Determine executable name based on platform
@@ -156,29 +174,6 @@ export async function getAtoBin(settings?: ISettings, timeout_ms?: number): Prom
     return atoBin;
 }
 
-export async function getAtoAlias(settings?: ISettings, timeout_ms?: number): Promise<string | null> {
-    const atoBin = await getAtoBin(settings, timeout_ms);
-    if (!atoBin) {
-        return null;
-    }
-
-    const in_powershell =
-        os.platform() === 'win32' && vscode.env.shell && vscode.env.shell.toLowerCase().includes('powershell');
-
-    let atoAlias = atoBin.command.map((c) => `'${c}'`).join(' ');
-
-    // if running in powershell, need to add & to the command
-    if (in_powershell) {
-        atoAlias = '& ' + atoAlias;
-    }
-
-    let alias = `alias ato="${atoAlias}"`;
-    if (in_powershell) {
-        alias = `Function ato { ${atoAlias} @args }`;
-    }
-
-    return alias;
-}
 
 /**
  * Check if a terminal is still valid (not disposed).
@@ -216,8 +211,9 @@ export async function runAtoCommandInTerminal(
     subcommand: string[],
     hideFromUser: boolean,
 ): Promise<vscode.Terminal> {
-    const alias = await getAtoAlias();
-    if (alias === null) {
+    // Get the full command to run (includes ato binary path + subcommand)
+    const fullCommand = await getAtoCommand(undefined, subcommand);
+    if (fullCommand === null) {
         throw new Error('Ato bin not found');
     }
 
@@ -238,8 +234,8 @@ export async function runAtoCommandInTerminal(
         terminal = terminal_or_name;
     }
 
-    terminal.sendText(alias);
-    terminal.sendText(`ato ${subcommand.map((c) => `'${c}'`).join(' ')}`);
+    // Run the full command directly (no alias setup needed)
+    terminal.sendText(fullCommand);
 
     // Don't show terminal for build commands - user will see output in Atopile Logs panel
     const isBuildCommand = subcommand[0] === 'build';
@@ -250,21 +246,6 @@ export async function runAtoCommandInTerminal(
     return terminal;
 }
 
-/**
- * Sets up ato alias in a newly created terminal
- */
-async function setupAtoAliasInTerminal(terminal: vscode.Terminal): Promise<void> {
-    const settings = await getWorkspaceSettings(await getProjectRoot());
-    if (settings.setupAlias === false) {
-        return;
-    }
-
-    let alias = await getAtoAlias(settings);
-    if (alias === null) {
-        return;
-    }
-    terminal.sendText(alias);
-}
 
 export async function initAtoBin(context: ExtensionContext): Promise<void> {
     g_uv_path_local = getExtensionManagedUvPath(context);
@@ -284,19 +265,8 @@ export async function initAtoBin(context: ExtensionContext): Promise<void> {
             onDidChangeAtoBinInfoEvent.fire({ init: e.init });
         }),
         onDidChangeConfiguration(async (e: ConfigurationChangeEvent) => {
-            if (e.affectsConfiguration(`atopile.ato`) || e.affectsConfiguration('atopile.from') || e.affectsConfiguration('atopile.setupAlias')) {
+            if (e.affectsConfiguration(`atopile.ato`) || e.affectsConfiguration('atopile.from')) {
                 onDidChangeAtoBinInfoEvent.fire({ init: false });
-            }
-        }),
-        // Set up ato alias when new terminals are created
-        window.onDidOpenTerminal(async (terminal) => {
-            traceVerbose(`Terminal created: ${terminal.name}, setting up ato alias`);
-            await setupAtoAliasInTerminal(terminal);
-        }),
-        // rerun alias in all terminals
-        onDidChangeAtoBinInfo(async (_: AtoBinInfo) => {
-            for (const terminal of vscode.window.terminals) {
-                await setupAtoAliasInTerminal(terminal);
             }
         }),
     );
