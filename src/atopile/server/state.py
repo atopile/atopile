@@ -13,10 +13,9 @@ Architecture:
 """
 
 import asyncio
-import json
 import logging
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Optional
 
@@ -24,24 +23,6 @@ from fastapi import WebSocket
 from pydantic import BaseModel, Field
 
 log = logging.getLogger(__name__)
-
-
-# --- Log Entry Types ---
-
-
-LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "ALERT"]
-
-
-class LogEntry(BaseModel):
-    """A single log entry."""
-
-    timestamp: str
-    level: LogLevel
-    logger: str = ""
-    stage: str = ""
-    message: str
-    ato_traceback: Optional[str] = None
-    exc_info: Optional[str] = None
 
 
 # --- Build Types ---
@@ -391,19 +372,6 @@ class AtopileConfig(BaseModel):
     error: Optional[str] = None
 
 
-# --- Log Counts ---
-
-
-class LogCounts(BaseModel):
-    """Log entry counts by level."""
-
-    DEBUG: int = 0
-    INFO: int = 0
-    WARNING: int = 0
-    ERROR: int = 0
-    ALERT: int = 0
-
-
 # --- Main AppState ---
 
 
@@ -450,26 +418,9 @@ class AppState(BaseModel):
     is_loading_package_details: bool = False
     package_details_error: Optional[str] = None
 
-    # Build/Log selection
+    # Build selection
     selected_build_name: Optional[str] = None
     selected_project_name: Optional[str] = None
-    selected_stage_ids: list[str] = Field(default_factory=list)
-    log_entries: list[LogEntry] = Field(default_factory=list)
-    is_loading_logs: bool = False
-    log_file: Optional[str] = None
-
-    # Log viewer UI
-    enabled_log_levels: list[LogLevel] = Field(
-        default_factory=lambda: ["INFO", "WARNING", "ERROR", "ALERT"]
-    )
-    log_search_query: str = ""
-    log_timestamp_mode: Literal["absolute", "delta"] = "absolute"
-    log_auto_scroll: bool = True
-
-    # Log counts
-    log_counts: Optional[LogCounts] = None
-    log_total_count: Optional[int] = None
-    log_has_more: Optional[bool] = None
 
     # Sidebar UI
     expanded_targets: list[str] = Field(default_factory=list)
@@ -731,54 +682,9 @@ class ServerState:
         self._state.is_loading_packages = loading
         await self.broadcast_state()
 
-    async def set_log_entries(self, entries: list[LogEntry]) -> None:
-        """Update log entries."""
-        self._state.log_entries = entries
-        await self.broadcast_state()
-
-    async def append_log_entries(self, entries: list[LogEntry]) -> None:
-        """Append new log entries."""
-        self._state.log_entries.extend(entries)
-        await self.broadcast_state()
-
     async def set_selected_build(self, build_name: Optional[str]) -> None:
-        """Set the selected build for log viewing."""
+        """Set the selected build."""
         self._state.selected_build_name = build_name
-        await self.broadcast_state()
-
-    async def set_enabled_log_levels(self, levels: list[LogLevel]) -> None:
-        """Set enabled log levels."""
-        self._state.enabled_log_levels = levels
-        await self.broadcast_state()
-
-    async def toggle_log_level(self, level: LogLevel) -> None:
-        """Toggle a log level filter."""
-        if level in self._state.enabled_log_levels:
-            self._state.enabled_log_levels.remove(level)
-        else:
-            self._state.enabled_log_levels.append(level)
-        await self.broadcast_state()
-
-    async def set_log_search_query(self, query: str) -> None:
-        """Set log search query."""
-        self._state.log_search_query = query
-        await self.broadcast_state()
-
-    async def set_log_timestamp_mode(self, mode: Literal["absolute", "delta"]) -> None:
-        """Set log timestamp mode."""
-        self._state.log_timestamp_mode = mode
-        await self.broadcast_state()
-
-    async def toggle_log_timestamp_mode(self) -> None:
-        """Toggle between absolute and delta timestamp modes."""
-        self._state.log_timestamp_mode = (
-            "delta" if self._state.log_timestamp_mode == "absolute" else "absolute"
-        )
-        await self.broadcast_state()
-
-    async def set_log_auto_scroll(self, enabled: bool) -> None:
-        """Set log auto-scroll."""
-        self._state.log_auto_scroll = enabled
         await self.broadcast_state()
 
     async def set_atopile_source(self, source: str) -> None:
@@ -893,73 +799,6 @@ class ServerState:
         self._state.is_loading_variables = False
         await self.broadcast_state()
 
-    async def set_log_counts(
-        self,
-        counts: Optional[LogCounts],
-        total: Optional[int] = None,
-        has_more: Optional[bool] = None,
-    ) -> None:
-        """Update log counts."""
-        self._state.log_counts = counts
-        self._state.log_total_count = total
-        self._state.log_has_more = has_more
-        await self.broadcast_state()
-
-    async def set_workspace_folders(self, folders: list[str]) -> None:
-        """
-        Update workspace paths from VS Code and re-discover projects.
-
-        This is called when the frontend connects and sends workspace folders
-        from the VS Code extension.
-        """
-        from atopile.server.core import projects as core_projects
-
-        new_paths = [Path(f) for f in folders if f]
-        if not new_paths:
-            log.info("No workspace folders provided, keeping existing paths")
-            return
-
-        # Check if paths actually changed
-        old_paths_set = set(str(p) for p in self._workspace_paths)
-        new_paths_set = set(str(p) for p in new_paths)
-
-        if old_paths_set == new_paths_set:
-            log.debug("Workspace paths unchanged, skipping re-discovery")
-            return
-
-        log.info(f"Updating workspace paths: {[str(p) for p in new_paths]}")
-        self._workspace_paths = new_paths
-
-        # Re-discover projects with new paths
-        try:
-            self._state.is_loading_projects = True
-            await self.broadcast_state()
-
-            projects = core_projects.discover_projects_in_paths(new_paths)
-            state_projects = [
-                Project(
-                    root=str(p.root),
-                    name=p.name,
-                    targets=[
-                        BuildTarget(name=t.name, entry=t.entry, root=t.root)
-                        for t in p.targets
-                    ],
-                )
-                for p in projects
-            ]
-
-            self._state.projects = state_projects
-            self._state.is_loading_projects = False
-            self._state.projects_error = None
-            log.info(f"Discovered {len(state_projects)} projects from workspace folders")
-            await self.broadcast_state()
-
-        except Exception as e:
-            log.error(f"Failed to discover projects: {e}")
-            self._state.is_loading_projects = False
-            self._state.projects_error = str(e)
-            await self.broadcast_state()
-
     # --- Action Handlers ---
 
     async def handle_action(self, action: str, payload: dict) -> dict:
@@ -983,29 +822,6 @@ class ServerState:
 
             elif action == "selectBuild":
                 await self.set_selected_build(payload.get("buildName"))
-                return {"success": True}
-
-            elif action == "toggleLogLevel":
-                level = payload.get("level")
-                if level:
-                    await self.toggle_log_level(level)
-                return {"success": True}
-
-            elif action == "setLogSearchQuery":
-                await self.set_log_search_query(payload.get("query", ""))
-                return {"success": True}
-
-            elif action == "setLogTimestampMode":
-                mode = payload.get("mode", "absolute")
-                await self.set_log_timestamp_mode(mode)
-                return {"success": True}
-
-            elif action == "toggleLogTimestampMode":
-                await self.toggle_log_timestamp_mode()
-                return {"success": True}
-
-            elif action == "setLogAutoScroll":
-                await self.set_log_auto_scroll(payload.get("enabled", True))
                 return {"success": True}
 
             elif action == "toggleProblemLevelFilter":

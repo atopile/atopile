@@ -9,9 +9,8 @@ import { useStore } from '../store';
 import { useProjects } from '../hooks/useProjects';
 import { useBuilds } from '../hooks/useBuilds';
 import { useProblems } from '../hooks/useProblems';
-import { useLogs } from '../hooks/useLogs';
 import { useConnection } from '../hooks/useConnection';
-import type { Project, Build, Problem, LogEntry } from '../types/build';
+import type { Project, Build, Problem } from '../types/build';
 
 // Mock the websocket module
 vi.mock('../api/websocket', () => ({
@@ -38,10 +37,6 @@ vi.mock('../api/client', () => ({
     problems: {
       list: vi.fn(),
     },
-    logs: {
-      query: vi.fn(),
-      counts: vi.fn(),
-    },
   },
 }));
 
@@ -61,9 +56,6 @@ const resetStore = () => {
     problems: [],
     isLoadingProblems: false,
     problemFilter: { levels: ['error', 'warning'], buildNames: [], stageIds: [] },
-    logEntries: [],
-    enabledLogLevels: ['INFO', 'WARNING', 'ERROR', 'ALERT'],
-    logSearchQuery: '',
     expandedTargets: [],
   });
 };
@@ -277,54 +269,6 @@ describe('useProblems hook', () => {
 
     expect(api.problems.list).toHaveBeenCalled();
     expect(useStore.getState().problems).toEqual(sampleProblems);
-  });
-});
-
-describe('useLogs hook', () => {
-  beforeEach(() => {
-    resetStore();
-    vi.clearAllMocks();
-  });
-
-  const sampleLogs: LogEntry[] = [
-    { timestamp: '2024-01-01T10:00:00Z', level: 'INFO', logger: 'test', stage: 'init', message: 'Info' },
-    { timestamp: '2024-01-01T10:00:01Z', level: 'ERROR', logger: 'test', stage: 'init', message: 'Error' },
-  ];
-
-  it('returns log entries from store', () => {
-    useStore.setState({ logEntries: sampleLogs });
-    const { result } = renderHook(() => useLogs());
-    expect(result.current.logEntries).toEqual(sampleLogs);
-  });
-
-  it('returns filtered logs based on enabled levels', () => {
-    useStore.setState({
-      logEntries: sampleLogs,
-      enabledLogLevels: ['ERROR'],
-    });
-    const { result } = renderHook(() => useLogs());
-    expect(result.current.filteredLogs).toHaveLength(1);
-    expect(result.current.filteredLogs[0].level).toBe('ERROR');
-  });
-
-  it('toggleLogLevel updates store', () => {
-    const { result } = renderHook(() => useLogs());
-
-    act(() => {
-      result.current.toggleLogLevel('INFO');
-    });
-
-    expect(useStore.getState().enabledLogLevels).not.toContain('INFO');
-  });
-
-  it('setSearchQuery updates store', () => {
-    const { result } = renderHook(() => useLogs());
-
-    act(() => {
-      result.current.setSearchQuery('error');
-    });
-
-    expect(useStore.getState().logSearchQuery).toBe('error');
   });
 });
 

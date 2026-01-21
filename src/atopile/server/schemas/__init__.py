@@ -25,9 +25,6 @@ from .build import (
     BuildRequest,
     BuildResponse,
     BuildStatusResponse,
-    LogLevel,
-    LogEntry,
-    LogCounts,
 )
 from .package import (
     PackageInfo,
@@ -67,9 +64,6 @@ __all__ = [
     "BuildRequest",
     "BuildResponse",
     "BuildStatusResponse",
-    "LogLevel",
-    "LogEntry",
-    "LogCounts",
     # Package
     "PackageInfo",
     "PackageVersion",

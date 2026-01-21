@@ -16,8 +16,6 @@ import type {
   StdLibItem,
   BOMData,
   Problem,
-  LogEntry,
-  LogLevel,
   ModuleDefinition,
   FileTreeNode,
   ProjectDependency,
@@ -61,24 +59,9 @@ const initialState: AppState = {
   isLoadingPackageDetails: false,
   packageDetailsError: null,
 
-  // Build/Log selection
+  // Build selection
   selectedBuildName: null,
   selectedProjectName: null,
-  selectedStageIds: [],
-  logEntries: [],
-  isLoadingLogs: false,
-  logFile: null,
-
-  // Log viewer UI
-  enabledLogLevels: ['INFO', 'WARNING', 'ERROR', 'ALERT'],
-  logSearchQuery: '',
-  logTimestampMode: 'absolute',
-  logAutoScroll: true,
-
-  // Log counts
-  logCounts: undefined,
-  logTotalCount: undefined,
-  logHasMore: undefined,
 
   // Sidebar UI
   expandedTargets: [],
@@ -158,14 +141,6 @@ interface StoreActions {
   setLoadingPackageDetails: (loading: boolean) => void;
   setInstallingPackage: (packageId: string | null) => void;
   setInstallError: (error: string | null) => void;
-
-  // Logs
-  setLogEntries: (entries: LogEntry[]) => void;
-  appendLogEntries: (entries: LogEntry[]) => void;
-  toggleLogLevel: (level: LogLevel) => void;
-  setLogSearchQuery: (query: string) => void;
-  toggleLogTimestampMode: () => void;
-  setLogAutoScroll: (enabled: boolean) => void;
 
   // Problems
   setProblems: (problems: Problem[]) => void;
@@ -273,37 +248,6 @@ export const useStore = create<Store>()(
       setInstallError: (error) =>
         set({ installError: error, installingPackageId: null }),
 
-      // Logs
-      setLogEntries: (entries) => set({ logEntries: entries }),
-
-      appendLogEntries: (entries) =>
-        set((state) => ({
-          logEntries: [...state.logEntries, ...entries],
-        })),
-
-      toggleLogLevel: (level) =>
-        set((state) => {
-          const levels = state.enabledLogLevels;
-          if (levels.includes(level)) {
-            return {
-              enabledLogLevels: levels.filter((l) => l !== level),
-            };
-          }
-          return {
-            enabledLogLevels: [...levels, level],
-          };
-        }),
-
-      setLogSearchQuery: (query) => set({ logSearchQuery: query }),
-
-      toggleLogTimestampMode: () =>
-        set((state) => ({
-          logTimestampMode:
-            state.logTimestampMode === 'absolute' ? 'delta' : 'absolute',
-        })),
-
-      setLogAutoScroll: (enabled) => set({ logAutoScroll: enabled }),
-
       // Problems
       setProblems: (problems) => set({ problems, isLoadingProblems: false }),
       setDeveloperMode: (enabled) => set({ developerMode: enabled }),
@@ -396,16 +340,3 @@ export const useFilteredProblems = () =>
     });
   });
 
-export const useFilteredLogs = () =>
-  useStore((state) => {
-    const { logEntries, enabledLogLevels, logSearchQuery } = state;
-    return logEntries.filter((entry) => {
-      if (!enabledLogLevels.includes(entry.level)) return false;
-      if (
-        logSearchQuery &&
-        !entry.message.toLowerCase().includes(logSearchQuery.toLowerCase())
-      )
-        return false;
-      return true;
-    });
-  });

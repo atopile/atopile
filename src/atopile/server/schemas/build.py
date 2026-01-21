@@ -11,7 +11,6 @@ BuildStatus = Literal["queued", "building", "success", "warning", "failed", "can
 StageStatus = Literal[
     "pending", "running", "success", "warning", "failed", "error", "skipped"
 ]
-LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "ALERT"]
 
 
 class BuildStage(BaseModel):
@@ -91,25 +90,3 @@ class BuildStatusResponse(BaseModel):
     targets: list[str]
     return_code: Optional[int] = None
     error: Optional[str] = None
-
-
-class LogEntry(BaseModel):
-    """A single log entry."""
-
-    timestamp: str
-    level: LogLevel
-    logger: str = ""
-    stage: str = ""
-    message: str
-    ato_traceback: Optional[str] = None
-    exc_info: Optional[str] = None
-
-
-class LogCounts(BaseModel):
-    """Log entry counts by level."""
-
-    DEBUG: int = 0
-    INFO: int = 0
-    WARNING: int = 0
-    ERROR: int = 0
-    ALERT: int = 0

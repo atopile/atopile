@@ -13,7 +13,6 @@ import type {
   StdLibItem,
   BOMData,
   Problem,
-  LogEntry,
   ModuleDefinition,
   FileTreeNode,
   VariablesData,
@@ -198,40 +197,6 @@ export const api = {
           project_root: projectRoot,
         }),
       }),
-  },
-
-  // Logs
-  logs: {
-    query: (options?: {
-      buildName?: string;
-      projectName?: string;
-      levels?: string[];
-      search?: string;
-      limit?: number;
-      offset?: number;
-    }) => {
-      const params = new URLSearchParams();
-      if (options?.buildName) params.set('build_name', options.buildName);
-      if (options?.projectName) params.set('project_name', options.projectName);
-      if (options?.levels) params.set('levels', options.levels.join(','));
-      if (options?.search) params.set('search', options.search);
-      if (options?.limit) params.set('limit', String(options.limit));
-      if (options?.offset) params.set('offset', String(options.offset));
-      return fetchJSON<{ logs: LogEntry[]; total: number; max_id: number; has_more: boolean }>(
-        `/api/logs/query?${params}`
-      );
-    },
-
-    counts: (buildName?: string, projectName?: string) => {
-      const params = new URLSearchParams();
-      if (buildName) params.set('build_name', buildName);
-      if (projectName) params.set('project_name', projectName);
-      return fetchJSON<{
-        counts: { DEBUG: number; INFO: number; WARNING: number; ERROR: number; ALERT: number };
-        total: number;
-        has_more: boolean;
-      }>(`/api/logs/counts?${params}`);
-    },
   },
 
   // Problems

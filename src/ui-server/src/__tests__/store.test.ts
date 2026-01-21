@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useStore, useSelectedProject, useSelectedBuild, useFilteredProblems, useFilteredLogs } from '../store';
-import type { Project, Build, Problem, LogEntry } from '../types/build';
+import type { Project, Build, Problem } from '../types/build';
 
 // Helper to reset store state between tests
 const resetStore = () => {
@@ -145,13 +145,6 @@ const sampleProblems: Problem[] = [
   },
 ];
 
-const sampleLogs: LogEntry[] = [
-  { timestamp: '2024-01-01T10:00:00Z', level: 'INFO', logger: 'build', stage: 'init', message: 'Starting build' },
-  { timestamp: '2024-01-01T10:00:01Z', level: 'WARNING', logger: 'compile', stage: 'compile', message: 'Deprecation warning' },
-  { timestamp: '2024-01-01T10:00:02Z', level: 'ERROR', logger: 'compile', stage: 'compile', message: 'Compilation failed' },
-  { timestamp: '2024-01-01T10:00:03Z', level: 'DEBUG', logger: 'system', stage: 'init', message: 'Debug info' },
-];
-
 describe('Zustand Store', () => {
   beforeEach(() => {
     resetStore();
@@ -252,49 +245,6 @@ describe('Zustand Store', () => {
 
       useStore.getState().selectBuild(null);
       expect(useStore.getState().selectedBuildName).toBeNull();
-    });
-  });
-
-  describe('log actions', () => {
-    it('can set log entries', () => {
-      useStore.getState().setLogEntries(sampleLogs);
-      expect(useStore.getState().logEntries).toEqual(sampleLogs);
-    });
-
-    it('can append log entries', () => {
-      useStore.getState().setLogEntries([sampleLogs[0]]);
-      useStore.getState().appendLogEntries([sampleLogs[1]]);
-      expect(useStore.getState().logEntries).toHaveLength(2);
-    });
-
-    it('can toggle log level', () => {
-      expect(useStore.getState().enabledLogLevels).toContain('INFO');
-
-      useStore.getState().toggleLogLevel('INFO');
-      expect(useStore.getState().enabledLogLevels).not.toContain('INFO');
-
-      useStore.getState().toggleLogLevel('INFO');
-      expect(useStore.getState().enabledLogLevels).toContain('INFO');
-    });
-
-    it('can set log search query', () => {
-      useStore.getState().setLogSearchQuery('error');
-      expect(useStore.getState().logSearchQuery).toBe('error');
-    });
-
-    it('can toggle timestamp mode', () => {
-      expect(useStore.getState().logTimestampMode).toBe('absolute');
-
-      useStore.getState().toggleLogTimestampMode();
-      expect(useStore.getState().logTimestampMode).toBe('delta');
-
-      useStore.getState().toggleLogTimestampMode();
-      expect(useStore.getState().logTimestampMode).toBe('absolute');
-    });
-
-    it('can set auto scroll', () => {
-      useStore.getState().setLogAutoScroll(false);
-      expect(useStore.getState().logAutoScroll).toBe(false);
     });
   });
 

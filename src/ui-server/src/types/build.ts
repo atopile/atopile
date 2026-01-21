@@ -314,30 +314,9 @@ export interface AppState {
   isLoadingPackageDetails: boolean;
   packageDetailsError: string | null;
 
-  // Build/Log selection
+  // Build selection
   selectedBuildName: string | null;
-  selectedProjectName: string | null;  // Filter logs by project (when project selected, not specific build)
-  selectedStageIds: string[];
-  logEntries: LogEntry[];
-  isLoadingLogs: boolean;
-  logFile: string | null;
-
-  // Log viewer UI
-  enabledLogLevels: LogLevel[];
-  logSearchQuery: string;
-  logTimestampMode: 'absolute' | 'delta';
-  logAutoScroll: boolean;
-
-  // Log counts (from /api/logs/counts for efficient badge display)
-  logCounts?: {
-    DEBUG: number;
-    INFO: number;
-    WARNING: number;
-    ERROR: number;
-    ALERT: number;
-  };
-  logTotalCount?: number;
-  logHasMore?: boolean;
+  selectedProjectName: string | null;
 
   // Sidebar UI
   expandedTargets: string[];
