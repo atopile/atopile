@@ -939,6 +939,78 @@ class ParallelBuildManager:
 
         return results
 
+    def _print_build_logs(
+        self,
+        bp: "BuildProcess",
+        console: "Console",
+        levels: list[str] | None = None,
+    ) -> None:
+        """Print logs from the SQLite database for a build."""
+        import sqlite3
+
+        from atopile.logging import generate_build_id, get_central_log_db
+
+        # Generate build_id for this build
+        project_path = str(bp.project_root.resolve()) if bp.project_root else "unknown"
+        build_id = generate_build_id(project_path, bp.name, self._now)
+
+        try:
+            db_path = get_central_log_db()
+            if not db_path.exists():
+                return
+
+            conn = sqlite3.connect(str(db_path), timeout=5.0)
+            conn.row_factory = sqlite3.Row
+
+            # Build query with filters
+            conditions = ["build_id = ?"]
+            params: list = [build_id]
+
+            if levels:
+                placeholders = ",".join("?" * len(levels))
+                conditions.append(f"level IN ({placeholders})")
+                params.extend(levels)
+
+            where_clause = " AND ".join(conditions)
+            query = f"""
+                SELECT timestamp, stage, level, message, ato_traceback, python_traceback
+                FROM logs
+                WHERE {where_clause}
+                ORDER BY id
+            """
+
+            cursor = conn.execute(query, params)
+            rows = cursor.fetchall()
+            conn.close()
+
+            # Print logs with color coding
+            for row in rows:
+                level = row["level"]
+                message = row["message"]
+                stage = row["stage"]
+
+                # Color code by level
+                if level == "ERROR" or level == "ALERT":
+                    color = "red"
+                elif level == "WARNING":
+                    color = "yellow"
+                elif level == "INFO":
+                    color = "cyan"
+                else:
+                    color = "white"
+
+                # Format: [STAGE] LEVEL: message
+                console.print(f"[{color}][{stage}] {level}: {message}[/{color}]")
+
+                # Print tracebacks if present
+                if row["ato_traceback"]:
+                    console.print(f"[dim]{row['ato_traceback']}[/dim]")
+                if row["python_traceback"]:
+                    console.print(f"[dim]{row['python_traceback']}[/dim]")
+
+        except Exception as e:
+            logger.debug(f"Failed to query logs for {build_id}: {e}")
+
     def _print_build_result(
         self,
         display_name: str,
@@ -953,10 +1025,20 @@ class ParallelBuildManager:
                     f"[yellow]⚠ {display_name} completed with "
                     f"{bp.warnings} warning(s)[/yellow]"
                 )
+                # In verbose mode, print the actual warnings
+                if self.verbose:
+                    console.print("\n[bold yellow]Warnings:[/bold yellow]")
+                    self._print_build_logs(bp, console, levels=["WARNING"])
+                    console.print()
             else:
                 console.print(f"[green]✓ {display_name} completed[/green]")
         else:
             console.print(f"[red]✗ {display_name} failed[/red]")
+            # In verbose mode, print the actual errors
+            if self.verbose:
+                console.print("\n[bold red]Errors:[/bold red]")
+                self._print_build_logs(bp, console, levels=["ERROR", "ALERT"])
+                console.print()
 
     def _run_verbose(self) -> dict[str, int]:
         """Run builds sequentially without live display."""
