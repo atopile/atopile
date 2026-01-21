@@ -60,9 +60,12 @@ def _extract(
 ) -> F.Literals.is_literal:
     if not isinstance(res, MutationMap):
         assert domain_default
-        return res.simplify_and_extract_superset(
-            op.as_parameter_operatable.force_get().as_parameter.force_get()
-        )
+        op_po = op.as_parameter_operatable.force_get()
+        if e := op_po.as_expression.try_get():
+            p = e.create_representative()
+        else:
+            p = op_po.as_parameter.force_get()
+        return res.simplify_and_extract_superset(p)
     return not_none(
         res.try_extract_superset(
             op.as_parameter_operatable.force_get(),
@@ -1515,18 +1518,6 @@ def test_fold_or_true():
     assert _extract_and_check(C, solver, True)
 
 
-def test_fold_not():
-    E = BoundExpressions()
-    A = E.bool_parameter_op()
-    B = E.bool_parameter_op()
-
-    E.is_subset(A, E.lit_bool(False), assert_=True)
-    E.is_(E.not_(A), B, assert_=True)
-
-    solver = Solver()
-    assert _extract_and_check(B, solver, True)
-
-
 def test_fold_ss_transitive():
     E = BoundExpressions()
     A = E.parameter_op()
@@ -2522,3 +2513,26 @@ def test_lower_estimation_partial_uncorrelation():
         is_fully_tightened = abs(min_val - 9) < 0.01 and abs(max_val - 12) < 0.01
         # Note: partial uncorrelation might still allow some propagation
         # for the A+B subexpression, but not the full D expression
+
+
+def test_fold_not_false():
+    E = BoundExpressions()
+    A = E.bool_parameter_op()
+    E.is_subset(A, E.lit_bool(False), assert_=True)
+
+    e1 = E.not_(A)
+
+    solver = Solver()
+    assert _extract_and_check(e1, solver, True)
+
+
+def test_fold_not_contradiction():
+    E = BoundExpressions()
+    A = E.bool_parameter_op()
+    E.is_subset(A, E.lit_bool(True), assert_=True)
+
+    e1 = E.not_(A, assert_=True)
+
+    solver = Solver()
+    with pytest.raises(Contradiction):
+        _extract_and_check(e1, solver, False)

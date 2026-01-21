@@ -370,7 +370,7 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
     #         )
 
 
-@expression_wise_algorithm(F.Expressions.Power)
+# @expression_wise_algorithm(F.Expressions.Power)
 def fold_pow(expr: F.Expressions.Power, mutator: Mutator):
     """
     ```
@@ -384,46 +384,7 @@ def fold_pow(expr: F.Expressions.Power, mutator: Mutator):
     """
 
     # TODO if (litex0)^negative -> new predicate
-
-    e = expr.is_expression.get()
-    e_op = e.as_operand.get()
-    base, exp = expr.is_expression.get().get_operands()
-
-    if exp_lit := mutator.utils.is_literal(exp):
-        if exp_lit.op_setic_equals_singleton(1):
-            mutator.utils.mutate_unpack_expression(e)
-            return
-
-        # in python 0**0 is also 1
-        if exp_lit.op_setic_equals_singleton(0):
-            mutator.create_check_and_insert_expression(
-                F.Expressions.IsSubset,
-                e_op,
-                mutator.make_singleton(1).can_be_operand.get(),
-                terminate=True,
-                assert_=True,
-            )
-            return
-    if base_lit := mutator.utils.is_literal(base):
-        if base_lit.op_setic_equals_singleton(0):
-            mutator.create_check_and_insert_expression(
-                F.Expressions.IsSubset,
-                e_op,
-                mutator.make_singleton(0).can_be_operand.get(),
-                terminate=True,
-                assert_=True,
-            )
-            # FIXME: exp >! 0
-            return
-        if base_lit.op_setic_equals_singleton(1):
-            mutator.create_check_and_insert_expression(
-                F.Expressions.IsSubset,
-                e_op,
-                mutator.make_singleton(1).can_be_operand.get(),
-                terminate=True,
-                assert_=True,
-            )
-            return
+    pass
 
 
 # @expression_wise_algorithm(Log)
@@ -451,23 +412,6 @@ def fold_round(expr: F.Expressions.Round, mutator: Mutator):
     TODO: Think about round(A + X)
     """
     return
-
-
-@expression_wise_algorithm(F.Expressions.Sin)
-def fold_sin(expr: F.Expressions.Sin, mutator: Mutator):
-    """
-    Sin ss! [-1, 1]
-    #TODO Sin(-A) -> -Sin(A)
-    #TODO Sin(A + 2*pi) -> Sin(A)
-    #TODO Sin(A+B) -> Sin(A)*Cos(B) + Cos(A)*Sin(B)
-    """
-    mutator.create_check_and_insert_expression(
-        F.Expressions.IsSubset,
-        expr.is_expression.get().as_operand.get(),
-        mutator.utils.make_number_literal_from_range(-1, 1).can_be_operand.get(),
-        from_ops=[expr.is_parameter_operatable.get()],
-        assert_=True,
-    )
 
 
 # Constrainable ------------------------------------------------------------------------
@@ -507,48 +451,3 @@ def fold_or(expr: F.Expressions.Or, mutator: Mutator):
                 terminate=True,
                 assert_=True,
             )
-
-
-@expression_wise_algorithm(F.Expressions.Not)
-def fold_not(expr: F.Expressions.Not, mutator: Mutator):
-    """
-    ```
-    ¬(¬A) -> A (done by involutory fold)
-    ¬P | P! -> False
-
-    ¬!(¬A v ¬B v C) -> ¬!(¬!A v ¬!B v C), ¬!C
-    ¬!A -> A ss! False
-    ```
-    """
-    # TODO ¬(A >= B) -> (B > A) ss ¬(A >= B) (only ss because of partial overlap)
-
-    # ¬(¬A) -> A implicit
-    # ¬!(¬A) -> !A implicit
-
-    e = expr.is_expression.get()
-    assert len(e.get_operands()) == 1
-    op = e.get_operands()[0]
-    op_po = op.as_parameter_operatable.force_get()
-    assert op_po
-
-    known_result = None
-    if expr.try_get_trait(F.Expressions.is_predicate):
-        known_result = mutator.make_singleton(True).can_be_operand.get()
-    elif (
-        superset := mutator.utils.try_extract_superset(op_po)
-    ) is not None and superset.op_setic_is_singleton():
-        known_result = superset
-
-    if known_result is not None:
-        negated = (
-            fabll.Traits(known_result)
-            .get_obj(F.Literals.Booleans)
-            .op_not(g=mutator.G_transient, tg=mutator.tg_in)
-        )
-        mutator.create_check_and_insert_expression(
-            F.Expressions.IsSubset,
-            e.as_operand.get(),
-            negated.can_be_operand.get(),
-            terminate=True,
-            assert_=True,
-        )

@@ -411,6 +411,20 @@ class SubsumptionCheck:
             subsumed=[alias.is_expression.get() for alias in existing_aliases],
         )
 
+    @staticmethod
+    def power(mutator: Mutator, builder: "ExpressionBuilder") -> Result:
+        """
+        A^1 -> A
+        """
+        if not (lits := builder.indexed_lits()):
+            return SubsumptionCheck.Result()
+        if exp_lit := lits.get(1):
+            if exp_lit.op_setic_equals_singleton(1):
+                return SubsumptionCheck.Result(
+                    most_constrained_expr=builder.operands[0]
+                )
+        return SubsumptionCheck.Result()
+
 
 def find_subsuming_expression(
     mutator: Mutator,
@@ -424,6 +438,8 @@ def find_subsuming_expression(
             return SubsumptionCheck.or_(mutator, builder)
         case F.Expressions.Is:
             return SubsumptionCheck.is_(mutator, builder)
+        case F.Expressions.Power:
+            return SubsumptionCheck.power(mutator, builder)
         case _:
             return SubsumptionCheck.Result()
 
@@ -662,12 +678,45 @@ class Folds:
             return mutator.make_singleton(True).is_literal.get()
         return None
 
+    @staticmethod
+    def _sin(
+        mutator: Mutator, builder: ExpressionBuilder
+    ) -> F.Literals.is_literal | None:
+        return mutator.utils.make_number_literal_from_range(-1, 1).is_literal.get()
+
+    @staticmethod
+    def _round(
+        mutator: Mutator, builder: ExpressionBuilder
+    ) -> F.Literals.is_literal | None:
+        """
+        ```
+        A^0 -> 1
+        0^A -> 0
+        1^A -> 1
+        ```
+        """
+        if not (lits := builder.indexed_lits()):
+            return None
+
+        if exp_lit := lits.get(1):
+            if exp_lit.op_setic_equals_singleton(0):
+                return mutator.make_singleton(1).is_literal.get()
+        if base_lit := lits.get(0):
+            if base_lit.op_setic_equals_singleton(0):
+                return mutator.make_singleton(0).is_literal.get()
+            if base_lit.op_setic_equals_singleton(1):
+                return mutator.make_singleton(1).is_literal.get()
+
+        return None
+
     def fold(
         mutator: Mutator, builder: ExpressionBuilder
     ) -> F.Literals.is_literal | None:
         match builder.factory:
             case F.Expressions.Or:
                 return Folds._or(mutator, builder)
+            case F.Expressions.Sin:
+                return Folds._sin(mutator, builder)
             case _:
                 return None
 
@@ -689,11 +738,14 @@ def _fold(
     from faebryk.core.solver.symbolic.pure_literal import exec_pure_literal_operands
 
     if not (
-        lit_fold := exec_pure_literal_operands(
+        lit_fold_pure := exec_pure_literal_operands(
             mutator.G_transient, mutator.tg_out, builder.factory, builder.operands
         )
     ) and not (lit_fold := Folds.fold(mutator, builder)):
         return None
+
+    if lit_fold_pure:
+        lit_fold = lit_fold_pure
 
     if I_LOG:
         debug(
@@ -728,14 +780,15 @@ def _fold(
         assert_=True,
         from_ops=[],
     )
-    mutator.create_check_and_insert_expression(
-        F.Expressions.IsSubset,
-        lit_op,
-        alias.as_operand.get(),
-        terminate=True,
-        assert_=True,
-        from_ops=[],
-    )
+    if lit_fold_pure:
+        mutator.create_check_and_insert_expression(
+            F.Expressions.IsSubset,
+            lit_op,
+            alias.as_operand.get(),
+            terminate=True,
+            assert_=True,
+            from_ops=[],
+        )
     return InsertExpressionResult(new_expr_op, True)
 
 
