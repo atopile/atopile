@@ -187,7 +187,7 @@ def remove(
 
 
 @capture("cli:list_start", "cli:list_end")
-def list():
+def list_():
     """
     List all dependencies in the project
     """
@@ -215,4 +215,4 @@ def list():
 dependencies_app.command()(add)
 dependencies_app.command()(remove)
 dependencies_app.command()(sync)
-dependencies_app.command()(list)
+dependencies_app.command(name="list")(list_)
