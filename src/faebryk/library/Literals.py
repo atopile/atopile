@@ -3707,8 +3707,12 @@ class Numbers(fabll.Node):
         """
         from faebryk.library.Units import is_unit
 
-        scale = is_unit._extract_multiplier(self.get_is_unit())
-        offset = is_unit._extract_offset(self.get_is_unit())
+        unit = self.get_is_unit()
+        if unit is None:
+            return self
+
+        scale = is_unit._extract_multiplier(unit)
+        offset = is_unit._extract_offset(unit)
 
         # Generate a numeric set for the scale
         scale_numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(

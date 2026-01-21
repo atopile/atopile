@@ -131,7 +131,9 @@ class AliasClassIs(AliasClass):
     @override
     def try_get_superset(self) -> F.Literals.is_literal | None:
         return (
-            self.representative().as_parameter_operatable.get().try_extract_superset()
+            self.representative()
+            .as_parameter_operatable.force_get()
+            .try_extract_superset()
         )
 
 

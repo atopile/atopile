@@ -109,27 +109,47 @@ class Transformations:
         F.Parameters.is_parameter_operatable, F.Parameters.can_be_operand
     ] = field(default_factory=dict)
 
-    @property
-    def dirty(self) -> bool:
-        non_no_op_mutations = any(
-            not k.is_same(v) for k, v in self.mutated.items() if k not in self.copied
+    def is_dirty(self) -> bool:
+        # Use allow_different_graph=True because mutations go from G_in to G_out
+        # We want to detect actual changes, not just graph differences
+        non_copy = (
+            (k, v)
+            for k, v in self.mutated.items()
+            if k not in self.copied and not k.is_same(v, allow_different_graph=True)
         )
 
-        # if bool(non_no_op_mutations):
-        #     logger.error(f"no_op: {non_no_op_mutations}, ")
-        # if bool(self.removed):
-        #     logger.error(f"removed: {self.removed}, ")
-        # if bool(self.created):
-        #     logger.error(f"created: {self.created}, ")
-        # if bool(self.terminated):
-        #     logger.error(f"terminated: {self.terminated}, ")
-        # if bool(self.asserted):
-        #     logger.error(f"asserted: {self.asserted}, ")
+        created_preds = {
+            k
+            for k in self.created
+            if k.try_get_sibling_trait(F.Expressions.is_predicate)
+        }
+
+        if S_LOG:
+            non_copy = list(non_copy)
+            if bool(non_copy):
+                for k, v in non_copy:
+                    logger.error(
+                        f"DIRTY: non_copy: "
+                        f"{k.compact_repr(self.print_ctx)} -> "
+                        f"{v.compact_repr(self.print_ctx)}"
+                    )
+            if bool(self.removed):
+                logger.error(f"DIRTY: removed={len(self.removed)}")
+            # Filter created to only include truly new expressions
+            # If a "created" expression existed in G_in (was copied), it's not truly new
+            if created_preds:
+                logger.error(
+                    f"DIRTY: new preds={indented_container(k.compact_repr(self.print_ctx) for k in created_preds)}"
+                )
+            if bool(self.terminated):
+                logger.error(f"DIRTY: terminated={len(self.terminated)}")
+            if bool(self.asserted):
+                logger.error(f"DIRTY: asserted={len(self.asserted)}")
 
         return bool(
             self.removed
-            or non_no_op_mutations
-            or self.created
+            or next(iter(non_copy), None) is not None
+            or created_preds
             or self.terminated
             or self.asserted
         )
@@ -161,7 +181,7 @@ class Transformations:
         )
 
     def __str__(self) -> str:
-        if not self.dirty:
+        if not self.is_dirty():
             return "Transformations()"
         assert self.print_ctx
 
@@ -965,92 +985,15 @@ class MutationMap:
         print_context: F.Parameters.ReprContext | None = None,
         relevant: list[F.Parameters.can_be_operand] | None = None,
     ) -> "MutationMap":
+        from faebryk.core.solver.symbolic.canonical import (
+            convert_to_canonical_operations,
+            flatten_expressions,
+            strip_irrelevant,
+        )
+
         if relevant is not None:
-            g_out, tg_out = MutationMap._bootstrap_copy(g, tg)
-            relevant_root_predicates = MutatorUtils.get_relevant_predicates(
-                *relevant,
-            )
-            for root_expr in relevant_root_predicates:
-                root_expr.copy_into(g_out)
-
-            nodes_uuids = {p.instance.node().get_uuid() for p in relevant}
-            for p_out in fabll.Traits.get_implementors(
-                F.Parameters.can_be_operand.bind_typegraph(tg_out)
-            ):
-                if p_out.instance.node().get_uuid() not in nodes_uuids:
-                    continue
-                fabll.Traits.create_and_add_instance_to(p_out, solver_relevant)
-
-            print_context = print_context or F.Parameters.ReprContext()
-            all_ops_out = F.Parameters.is_parameter_operatable.bind_typegraph(
-                tg_out
-            ).get_instances(g=g_out)
-
-            mapping = {
-                F.Parameters.is_parameter_operatable.bind_instance(
-                    g.bind(node=op.instance.node())
-                ): op
-                for op in all_ops_out
-            }
-            # copy over source name
-            for p_old, p_new in mapping.items():
-                if (p_new_p := p_new.as_parameter.try_get()) is None:
-                    continue
-
-                print_context.override_name(
-                    p_new_p,
-                    fabll.Traits(p_old).get_obj_raw().get_full_name(include_uuid=False),
-                )
-
-            if S_LOG:
-                logger.debug(
-                    "Relevant root predicates: "
-                    + indented_container(
-                        [
-                            p.as_expression.get().compact_repr(
-                                context=print_context,
-                                no_lit_suffix=True,
-                                use_name=True,
-                            )
-                            for p in relevant_root_predicates
-                        ]
-                    )
-                )
-                expr_count = len(
-                    fabll.Traits.get_implementors(
-                        F.Expressions.is_expression.bind_typegraph(tg_out)
-                    )
-                )
-                param_count = len(
-                    fabll.Traits.get_implementors(
-                        F.Parameters.is_parameter.bind_typegraph(tg_out)
-                    )
-                )
-                lit_count = len(
-                    fabll.Traits.get_implementors(
-                        F.Literals.is_literal.bind_typegraph(tg_out)
-                    )
-                )
-                logger.debug(
-                    f"|lits|={lit_count}"
-                    f", |exprs|={expr_count}"
-                    f", |params|={param_count} {g_out}"
-                )
-            mut_map = MutationMap(
-                MutationStage(
-                    tg_in=tg,
-                    tg_out=tg_out,
-                    algorithm=algorithm,
-                    iteration=iteration,
-                    print_ctx=print_context,
-                    transformations=Transformations(
-                        print_ctx=print_context,
-                        mutated=mapping,
-                    ),
-                    G_in=g,
-                    G_out=g_out,
-                )
-            )
+            stage = strip_irrelevant(g, tg, relevant, print_context, iteration)
+            mut_map = MutationMap(stage)
         else:
             mut_map = MutationMap(
                 MutationStage.identity(
@@ -1062,17 +1005,15 @@ class MutationMap:
                 )
             )
 
-        # canonicalize
-        from faebryk.core.solver.symbolic.canonical import (
-            convert_to_canonical_operations,
-            flatten_expressions,
-        )
+        if S_LOG:
+            mut_map.last_stage.print_graph_contents()
 
         for algo in (
             flatten_expressions,
             convert_to_canonical_operations,
         ):
-            logger.debug(f"Running {algo.name}")
+            if S_LOG:
+                logger.debug(f"Running {algo.name} -------")
             algo_result = Mutator(
                 mut_map,
                 algo,
@@ -1453,6 +1394,7 @@ class Mutator:
         if res.is_new and (
             out_po := not_none(res.out_operand).as_parameter_operatable.try_get()
         ):
+            logger.error(f"Mark new expr: {out_po.compact_repr(self.print_ctx)}")
             self.transformations.created[out_po] = from_ops
 
         return res
@@ -1465,7 +1407,7 @@ class Mutator:
     ) -> F.Parameters.can_be_operand:
         import faebryk.core.solver.symbolic.invariants as invariants
 
-        # aliases are passed through the alias param
+        # Handle Is! predicates specially to merge alias classes
         if fabll.Traits(expr).get_obj_raw().isinstance(
             F.Expressions.Is
         ) and expr.try_get_sibling_trait(F.Expressions.is_predicate):
@@ -1475,7 +1417,7 @@ class Mutator:
             expression_factory = self.utils.hack_get_expr_type(expr)
 
         e_operands = expr.get_operands()
-        if operands is None or e_operands != list(operands):
+        if operands is None:
             operands = e_operands
 
         expr_po = expr.as_parameter_operatable.get()
@@ -1527,9 +1469,13 @@ class Mutator:
         if (
             operands == e_operands
             and (new_expr_e := new_expr_po.as_expression.try_get())
-            and new_expr_e.get_operands() == c_operands
-        ):
+            and builder.matches(new_expr_e)
+        ) or not res.is_new:
             self.transformations.copied.add(expr_po)
+        # else:
+        #     logger.error(
+        #         f"Not a copy: {expr.compact_repr(self.print_ctx)}: op_eq: {operands == e_operands}, is_new: {res.is_new}, matches: {builder.matches(new_expr_e) if new_expr_e else None}"
+        # )
 
         return out.as_operand.get()
 
@@ -1543,13 +1489,9 @@ class Mutator:
         Except for A is! B
         """
 
-        if self.has_been_mutated(current):
-            copy = self.get_mutated(current)
-            exps = copy.get_operations()  # noqa: F841
-            # FIXME: reenable, but alias classes need to take this into account
-            # assert all(isinstance(o, (Is, IsSubset)) and o.constrained for o in exps)
-
         self.transformations.soft_replaced[current] = new
+        if self.has_been_mutated(current):
+            return
         self.copy_operand(current, accept_soft=False)
 
     def get_copy(
@@ -1576,6 +1518,11 @@ class Mutator:
 
         if m := self.try_get_mutated(obj_po):
             return m.as_operand.get()
+
+        # If the expression was removed, we can't copy it
+        assert not self.is_removed(obj_po), (
+            f"Cannot copy removed operand: {obj_po.compact_repr(self.print_ctx)}"
+        )
 
         # TODO: not sure if ok
         # if obj is new, no need to copy
@@ -1769,9 +1716,18 @@ class Mutator:
             )
 
         if not include_removed:
-            out.difference_update(self.transformations.removed)
+            # Convert removed traits to objects for comparison
+            removed_objs = {
+                fabll.Traits(po).get_obj_raw() for po in self.transformations.removed
+            }
+            out.difference_update(removed_objs)
         if not include_mutated:
-            out.difference_update(self.transformations.mutated.keys())
+            # Convert mutated traits to objects for comparison
+            mutated_objs = {
+                fabll.Traits(po).get_obj_raw()
+                for po in self.transformations.mutated.keys()
+            }
+            out.difference_update(mutated_objs)
 
         if sort_by_depth:
             out = F.Expressions.is_expression.sort_by_depth(out, ascending=True)
@@ -1922,7 +1878,7 @@ class Mutator:
 
     def close(self) -> AlgoResult:
         # optimization: if no mutations, return identity stage
-        if not self.algo.force_copy and not self.transformations.dirty:
+        if not self.algo.force_copy and not self.transformations.is_dirty():
             self.G_transient.destroy()
             self.G_out.destroy()
             return AlgoResult(
@@ -1937,10 +1893,27 @@ class Mutator:
             )
 
         self.check_no_illegal_mutations()
+        if S_LOG:
+            logger.debug("Copying unmutated")
         self._copy_unmutated()
+        self.G_transient.destroy()
+
         # important to check after copying unmutated
         # because invariant checking might revert 'new' state
-        dirty = self.transformations.dirty
+        dirty = self.transformations.is_dirty()
+        if not dirty:
+            self.G_out.destroy()
+            return AlgoResult(
+                mutation_stage=MutationStage.identity(
+                    self.tg_in,
+                    self.mutation_map.G_out,
+                    algorithm=self.algo,
+                    iteration=self.iteration,
+                    print_context=self.print_ctx,
+                ),
+                dirty=False,
+            )
+
         stage = MutationStage(
             tg_in=self.tg_in,
             tg_out=self.tg_out,
@@ -1951,11 +1924,6 @@ class Mutator:
             transformations=self.transformations,
             print_ctx=self.print_ctx,
         )
-
-        self.G_transient.destroy()
-        # Check if original graphs ended up in result
-        # allowed if no copy was needed for graph
-        # TODO
 
         return AlgoResult(mutation_stage=stage, dirty=dirty)
 

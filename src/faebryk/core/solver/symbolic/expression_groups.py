@@ -195,6 +195,11 @@ def associative_flatten(mutator: Mutator):
     root_ops = [e for e in ops if not _involved_in_expr_with_same_type(e)]
 
     for expr in root_ops:
+        # Skip expressions that were removed or mutated by a previous iteration
+        expr_po = expr.as_parameter_operatable.get()
+        if mutator.is_removed(expr_po) or mutator.has_been_mutated(expr_po):
+            continue
+
         expr_flat = expr.get_sibling_trait(F.Expressions.is_flattenable)
         res = _flatten_associative(mutator, expr_flat)
         if not res.destroyed_operations:
