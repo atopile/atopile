@@ -8,7 +8,7 @@ import { useState, useRef, useEffect, memo } from 'react';
 import {
   ChevronDown, ChevronRight, Play, Clock, Check, X,
   AlertTriangle, AlertCircle, Circle, SkipForward,
-  FileCode, Search, Grid3X3, Layout, Cuboid, Box, Square
+  FileCode, Search, Grid3X3, Layout, Cuboid, Box, Square, Trash2
 } from 'lucide-react';
 import type { Selection, BuildTarget, BuildStage, ModuleDefinition } from './projectsTypes';
 import { SymbolNode } from './SymbolNode';
@@ -131,6 +131,7 @@ interface BuildNodeProps {
   onCancelBuild?: (buildId: string) => void;
   onStageFilter?: (stageName: string, buildId?: string, projectId?: string) => void;
   onUpdateBuild?: (projectId: string, buildId: string, updates: Partial<BuildTarget>) => void;
+  onDeleteBuild?: (projectId: string, buildId: string) => void;
   onOpenSource?: (projectId: string, entry: string) => void;
   onOpenKiCad?: (projectId: string, buildId: string) => void;
   onOpenLayout?: (projectId: string, buildId: string) => void;
@@ -147,6 +148,7 @@ export const BuildNode = memo(function BuildNode({
   onCancelBuild,
   onStageFilter,
   onUpdateBuild,
+  onDeleteBuild,
   onOpenSource,
   onOpenKiCad,
   onOpenLayout,
@@ -159,6 +161,7 @@ export const BuildNode = memo(function BuildNode({
   const [buildName, setBuildName] = useState(build.name);
   const [entryPoint, setEntryPoint] = useState(build.entry);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Timer state for live build time display
@@ -318,7 +321,16 @@ export const BuildNode = memo(function BuildNode({
       }}
     >
       {/* Header row - always visible */}
-      <div className="build-card-header">
+      <div
+        className="build-card-header"
+        onClick={(e) => {
+          // If already selected and clicking on the header background, collapse
+          if (isSelected) {
+            e.stopPropagation();
+            onSelect({ type: 'none' });
+          }
+        }}
+      >
         <div className="build-header-left">
           <div className="build-status-icon">
             {getStatusIcon(build.status, 12, build.queuePosition)}
@@ -410,7 +422,7 @@ export const BuildNode = memo(function BuildNode({
             )}
           </div>
 
-          {/* Build play/cancel button */}
+          {/* Build play/cancel/delete button */}
           {isBuilding ? (
             <button
               className="build-target-cancel-btn"
@@ -423,6 +435,17 @@ export const BuildNode = memo(function BuildNode({
               title={`Cancel build ${build.name}`}
             >
               <Square size={10} fill="currentColor" />
+            </button>
+          ) : isSelected ? (
+            <button
+              className="build-target-delete-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowDeleteConfirm(true);
+              }}
+              title={`Delete build ${build.name}`}
+            >
+              <Trash2 size={12} />
             </button>
           ) : (
             <button
@@ -438,6 +461,30 @@ export const BuildNode = memo(function BuildNode({
           )}
         </div>
       </div>
+
+      {/* Delete confirmation dialog */}
+      {showDeleteConfirm && (
+        <div className="build-delete-confirm" onClick={(e) => e.stopPropagation()}>
+          <span className="delete-confirm-text">Delete "{build.name}"?</span>
+          <div className="delete-confirm-buttons">
+            <button
+              className="delete-confirm-btn cancel"
+              onClick={() => setShowDeleteConfirm(false)}
+            >
+              Cancel
+            </button>
+            <button
+              className="delete-confirm-btn confirm"
+              onClick={() => {
+                setShowDeleteConfirm(false);
+                onDeleteBuild?.(projectId, build.id);
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Build progress bar */}
       {isBuilding && (

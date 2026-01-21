@@ -627,7 +627,9 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             log.info("removePackage action handler started")
             package_id = payload.get("packageId", "")
             project_root = payload.get("projectRoot", "")
-            log.info(f"removePackage: package_id={package_id}, project_root={project_root}")
+            log.info(
+                f"removePackage: package_id={package_id}, project_root={project_root}"
+            )
 
             if not package_id or not project_root:
                 return {
@@ -666,6 +668,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             async def refresh_deps_after_remove():
                 """Refresh project dependencies after package removal."""
                 from atopile.server.state import DependencyInfo
+
                 log.info(f"Refreshing dependencies for project: {project_root}")
 
                 installed = await asyncio.to_thread(

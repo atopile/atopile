@@ -5,9 +5,10 @@
 import { useState, memo } from 'react'
 import {
   ChevronDown, ChevronRight, Play, Layers, Check,
-  AlertCircle, AlertTriangle, Plus, Square
+  AlertCircle, AlertTriangle, Square
 } from 'lucide-react'
-import { BuildNode, getLastBuildStatusIcon, formatRelativeTime } from './BuildNode'
+import { getLastBuildStatusIcon, formatRelativeTime } from './BuildNode'
+import { BuildsCard } from './BuildsCard'
 import { FileExplorer, type FileTreeNode } from './FileExplorer'
 import { DependencyCard, type ProjectDependency } from './DependencyCard'
 import type {
@@ -33,6 +34,7 @@ interface ProjectNodeProps {
   onUpdateProject?: (projectId: string, updates: Partial<Project>) => void
   onAddBuild?: (projectId: string) => void
   onUpdateBuild?: (projectId: string, buildId: string, updates: Partial<BuildTarget>) => void
+  onDeleteBuild?: (projectId: string, buildId: string) => void
   onProjectExpand?: (projectRoot: string) => void
   onOpenSource?: (projectId: string, entry: string) => void
   onOpenKiCad?: (projectId: string, buildId: string) => void
@@ -61,6 +63,7 @@ export const ProjectNode = memo(function ProjectNode({
   onUpdateProject,
   onAddBuild,
   onUpdateBuild,
+  onDeleteBuild,
   onProjectExpand,
   onOpenSource,
   onOpenKiCad,
@@ -271,41 +274,23 @@ export const ProjectNode = memo(function ProjectNode({
           </div>
 
           {/* Build targets */}
-          <div className="project-card-builds">
-            {project.builds.map((build, idx) => (
-              <BuildNode
-                key={`${build.id}-${idx}`}
-                build={build}
-                projectId={project.id}
-                selection={selection}
-                onSelect={onSelect}
-                onBuild={onBuild}
-                onCancelBuild={onCancelBuild}
-                onStageFilter={onStageFilter}
-                onUpdateBuild={onUpdateBuild}
-                onOpenSource={onOpenSource}
-                onOpenKiCad={onOpenKiCad}
-                onOpenLayout={onOpenLayout}
-                onOpen3D={onOpen3D}
-                availableModules={availableModules}
-              />
-            ))}
-
-            {/* Add new build button */}
-            <button
-              className="add-build-btn"
-              onClick={(e) => {
-                e.stopPropagation()
-                if (onAddBuild) {
-                  onAddBuild(project.id)
-                }
-              }}
-              title="Add new build target"
-            >
-              <Plus size={12} />
-              <span>Add build</span>
-            </button>
-          </div>
+          <BuildsCard
+            builds={project.builds}
+            projectId={project.id}
+            selection={selection}
+            onSelect={onSelect}
+            onBuild={onBuild}
+            onCancelBuild={onCancelBuild}
+            onStageFilter={onStageFilter}
+            onUpdateBuild={onUpdateBuild}
+            onDeleteBuild={onDeleteBuild}
+            onOpenSource={onOpenSource}
+            onOpenKiCad={onOpenKiCad}
+            onOpenLayout={onOpenLayout}
+            onOpen3D={onOpen3D}
+            onAddBuild={onAddBuild}
+            availableModules={availableModules}
+          />
 
           {/* File Explorer */}
           <FileExplorer

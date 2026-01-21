@@ -120,8 +120,8 @@ export function Sidebar() {
   
   // Local UI state
   const [selection, setSelection] = useState<Selection>({ type: 'none' });
-  // Default collapsed: all sections except 'projects' are collapsed on startup
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(['buildQueue', 'packages', 'problems', 'stdlib', 'variables', 'bom']));
+  // Default collapsed: most sections collapsed on startup, but projects and packages are open
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(['buildQueue', 'problems', 'stdlib', 'variables', 'bom']));
   const [sectionHeights, setSectionHeights] = useState<Record<string, number>>({});
   const [selectedPackage, setSelectedPackage] = useState<SelectedPackage | null>(null);
 
@@ -1194,7 +1194,7 @@ export function Sidebar() {
       </div>
 
       <div className="panel-sections" ref={containerRef}>
-        {/* Projects Section - auto-size with max height, or use manual height if user resized */}
+        {/* Projects Section - auto-size to content, or use manual height if user resized */}
         <CollapsibleSection
           id="projects"
           title="Projects"
@@ -1203,7 +1203,6 @@ export function Sidebar() {
           collapsed={collapsedSections.has('projects')}
           onToggle={() => toggleSection('projects')}
           height={sectionHeights.projects}
-          maxHeight={!sectionHeights.projects ? 400 : undefined}
           onResizeStart={(e) => handleResizeStart('projects', e)}
         >
           <ProjectsPanel
@@ -1258,7 +1257,7 @@ export function Sidebar() {
           />
         </CollapsibleSection>
 
-        {/* Packages Section - auto-size with max height, or use manual height if user resized */}
+        {/* Packages Section - auto-size to content, or use manual height if user resized */}
         <CollapsibleSection
           id="packages"
           title="Packages"
@@ -1268,7 +1267,6 @@ export function Sidebar() {
           collapsed={collapsedSections.has('packages')}
           onToggle={() => toggleSection('packages')}
           height={sectionHeights.packages}
-          maxHeight={!sectionHeights.packages ? 400 : undefined}
           onResizeStart={(e) => handleResizeStart('packages', e)}
         >
           <ProjectsPanel

@@ -442,6 +442,7 @@ interface ProjectsPanelProps {
   onFileClick?: (projectId: string, filePath: string) => void  // Open a file in the editor
   onDependencyVersionChange?: (projectId: string, identifier: string, newVersion: string) => void  // Change dependency version
   onRemoveDependency?: (projectId: string, identifier: string) => void  // Remove a dependency
+  onDeleteBuild?: (projectId: string, buildId: string) => void  // Delete a build target
   filterType?: 'all' | 'projects' | 'packages'
   projects?: Project[]  // Optional - if not provided, uses mockProjects
   projectModules?: Record<string, ModuleDefinition[]>  // Modules for each project root
@@ -449,7 +450,7 @@ interface ProjectsPanelProps {
   projectDependencies?: Record<string, ProjectDependency[]>  // Dependencies for each project root
 }
 
-export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onStageFilter, onOpenPackageDetail, onPackageInstall, onCreateProject, onProjectExpand, onOpenSource, onOpenKiCad, onOpenLayout, onOpen3D, onFileClick, onDependencyVersionChange, onRemoveDependency, filterType = 'all', projects: externalProjects, projectModules = {}, projectFiles = {}, projectDependencies = {} }: ProjectsPanelProps) {
+export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onStageFilter, onOpenPackageDetail, onPackageInstall, onCreateProject, onProjectExpand, onOpenSource, onOpenKiCad, onOpenLayout, onOpen3D, onFileClick, onDependencyVersionChange, onRemoveDependency, onDeleteBuild, filterType = 'all', projects: externalProjects, projectModules = {}, projectFiles = {}, projectDependencies = {} }: ProjectsPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [publisherFilter, setPublisherFilter] = useState<string | null>(null)
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
@@ -549,12 +550,12 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
   
   // Handler to update a build
   const handleUpdateBuild = (projectId: string, buildId: string, updates: Partial<BuildTarget>) => {
-    setLocalProjects(projects => 
+    setLocalProjects(projects =>
       projects.map(p => {
         if (p.id === projectId) {
           return {
             ...p,
-            builds: p.builds.map(b => 
+            builds: p.builds.map(b =>
               b.id === buildId ? { ...b, ...updates } : b
             )
           }
@@ -562,6 +563,33 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
         return p
       })
     )
+  }
+
+  // Handler to delete a build
+  const handleDeleteBuild = (projectId: string, buildId: string) => {
+    // If external callback is provided, use it
+    if (onDeleteBuild) {
+      onDeleteBuild(projectId, buildId)
+      return
+    }
+
+    // Fallback local state update for development/testing
+    setLocalProjects(projects =>
+      projects.map(p => {
+        if (p.id === projectId) {
+          return {
+            ...p,
+            builds: p.builds.filter(b => b.id !== buildId)
+          }
+        }
+        return p
+      })
+    )
+
+    // Clear selection if the deleted build was selected
+    if (selection.type === 'build' && selection.buildId === `${projectId}:${buildId}`) {
+      onSelect({ type: 'none' })
+    }
   }
   
   // Get unique publishers for filter
@@ -732,6 +760,7 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
               onUpdateProject={handleUpdateProject}
               onAddBuild={handleAddBuild}
               onUpdateBuild={handleUpdateBuild}
+              onDeleteBuild={handleDeleteBuild}
               onProjectExpand={onProjectExpand}
               onOpenSource={onOpenSource}
               onOpenKiCad={onOpenKiCad}

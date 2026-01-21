@@ -53,6 +53,9 @@ class Build(BaseModel):
 
     # Stages and logs
     stages: Optional[list[BuildStage]] = None
+    # TODO: Replace this estimate once builds are defined in the graph
+    # This is the expected total number of stages for progress calculation
+    total_stages: int = 14  # Estimated: init, modify-type-graph, instantiate, etc.
     log_dir: Optional[str] = None
     log_file: Optional[str] = None
 

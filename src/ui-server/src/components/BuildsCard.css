@@ -1,0 +1,125 @@
+/**
+ * BuildsCard styles - Collapsible builds section
+ * Matches FileExplorer and DependencyCard styling
+ */
+
+.builds-card {
+  margin-top: var(--spacing-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.builds-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast);
+}
+
+.builds-card-header:hover {
+  background: var(--bg-hover);
+}
+
+.builds-card-expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.builds-card-expand .expand-icon {
+  transition: transform var(--transition-fast);
+  color: var(--text-muted);
+}
+
+.builds-card-expand .expand-icon.expanded {
+  transform: rotate(0deg);
+}
+
+.builds-card-expand .expand-icon:not(.expanded) {
+  transform: rotate(-90deg);
+}
+
+.builds-card-icon {
+  color: var(--ctp-green);
+  flex-shrink: 0;
+}
+
+.builds-card-title {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.builds-count {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+
+.builds-status-badge {
+  font-size: var(--font-size-xs);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+
+.builds-status-badge.building {
+  color: var(--ctp-blue);
+  background: rgba(137, 180, 250, 0.15);
+}
+
+.builds-status-badge.error {
+  color: var(--ctp-red);
+  background: rgba(243, 139, 168, 0.15);
+}
+
+.builds-status-badge.success {
+  color: var(--ctp-green);
+  background: rgba(166, 227, 161, 0.15);
+}
+
+.builds-card-content {
+  padding: var(--spacing-xs);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* Override BuildNode styles when inside BuildsCard for more compact look */
+.builds-card-content .build-card {
+  margin: 0;
+  border-radius: var(--radius-sm);
+}
+
+/* Add build button inside the card */
+.builds-card-content .add-build-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.builds-card-content .add-build-btn:hover {
+  border-color: var(--ctp-green);
+  color: var(--ctp-green);
+  background: rgba(166, 227, 161, 0.1);
+}

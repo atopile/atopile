@@ -16,3 +16,78 @@
  * .build-card-actions, .build-action-btn
  * .build-card-symbols
  */
+
+/* Delete button in header - same positioning as play button */
+.build-target-delete-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ctp-red);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.build-target-delete-btn:hover {
+  background: rgba(243, 139, 168, 0.2);
+  opacity: 1;
+}
+
+/* Delete confirmation dialog */
+.build-delete-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: rgba(243, 139, 168, 0.1);
+  border-top: 1px solid var(--ctp-red);
+}
+
+.delete-confirm-text {
+  font-size: var(--font-size-xs);
+  color: var(--ctp-red);
+  font-weight: 500;
+}
+
+.delete-confirm-buttons {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.delete-confirm-btn {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.delete-confirm-btn.cancel {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.delete-confirm-btn.cancel:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-default);
+}
+
+.delete-confirm-btn.confirm {
+  background: var(--ctp-red);
+  border: 1px solid var(--ctp-red);
+  color: var(--ctp-base);
+}
+
+.delete-confirm-btn.confirm:hover {
+  background: #e67a99;
+  border-color: #e67a99;
+}
