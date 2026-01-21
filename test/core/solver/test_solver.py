@@ -110,6 +110,16 @@ def _extract_and_check(
     return matches
 
 
+def _extract_numbers(
+    solver: Solver, po: F.Parameters.is_parameter_operatable
+) -> F.Literals.Numbers:
+    return (
+        solver.extract_superset(po.as_parameter.force_get())
+        .switch_cast()
+        .cast(F.Literals.Numbers)
+    )
+
+
 def test_solve_phase_one():
     solver = Solver()
     E = BoundExpressions()
@@ -2521,3 +2531,137 @@ def test_lower_estimation_partial_uncorrelation():
         is_fully_tightened = abs(min_val - 9) < 0.01 and abs(max_val - 12) < 0.01
         # Note: partial uncorrelation might still allow some propagation
         # for the A+B subexpression, but not the full D expression
+
+
+def test_solver_continuation_after_constraint_addition():
+    """
+    Test the picking scenario: initial solve -> add constraint -> re-solve.
+    This mimics what happens during part picking:
+    1. Initial solve with multiple parameters
+    2. Pick a part (add IsSuperset constraint to narrow bounds)
+    3. Re-solve to propagate narrower bounds to dependent parameters
+    """
+    import time
+
+    E = BoundExpressions()
+    _, [A, B, C] = _create_letters(E, 3)
+    A_op, B_op, C_op = A.as_operand.get(), B.as_operand.get(), C.as_operand.get()
+
+    # Initial design constraint: A in range 1k-10k``
+    E.is_subset(A_op, E.lit_op_range((1000, 10000)), assert_=True)
+
+    # B = A * 2 (like a ratio constraint)
+    E.is_(B_op, E.multiply(A_op, E.lit_op_single(2)), assert_=True)
+
+    # C = B + 1000
+    E.is_(C_op, E.add(B_op, E.lit_op_single(1000)), assert_=True)
+
+    solver = Solver()
+    t0 = time.perf_counter()
+    solver.simplify(E.g, E.tg, terminal=False, relevant=[A_op, B_op, C_op])
+    initial_solve_time = time.perf_counter() - t0
+
+    B_initial = _extract_numbers(solver, B)
+    C_initial = _extract_numbers(solver, C)
+
+    # Simulate picking a part: narrow A to [4k, 6k] (like selecting a specific resistor)
+    E.is_subset(A_op, E.lit_op_range((4000, 6000)), assert_=True)
+
+    # Re-solve (should be faster)
+    t1 = time.perf_counter()
+    solver.simplify(E.g, E.tg, terminal=False, relevant=[A_op, B_op, C_op])
+    continuation_solve_time = time.perf_counter() - t1
+
+    B_after = _extract_numbers(solver, B)
+    C_after = _extract_numbers(solver, C)
+
+    # Should be tighter than initial
+    assert B_after.get_min_value() >= B_initial.get_min_value(), "B should be tighter"
+    assert B_after.get_max_value() <= B_initial.get_max_value(), "B should be tighter"
+    assert C_after.get_min_value() >= C_initial.get_min_value(), "C should be tighter"
+    assert C_after.get_max_value() <= C_initial.get_max_value(), "C should be tighter"
+
+    # Timing report
+    print("\n=== Solver Continuation Timing Report ===")
+    print(f"Initial solve time:      {initial_solve_time * 1000:.2f} ms")
+    print(f"Continuation solve time: {continuation_solve_time * 1000:.2f} ms")
+    if initial_solve_time > 0:
+        speedup = (
+            initial_solve_time / continuation_solve_time
+            if continuation_solve_time > 0
+            else float("inf")
+        )
+        print(f"Speedup:                 {speedup:.2f}x")
+    print("==========================================\n")
+
+
+def test_solver_continuation_multi_pick_scenario():
+    """
+    Test a more realistic picking scenario with multiple components.
+    Simulates picking 3 components sequentially and verifies constraint propagation.
+    """
+    import time
+
+    E = BoundExpressions()
+    _, params = _create_letters(E, 5)
+    params_ops = [p.as_operand.get() for p in params]
+
+    # Initial constraint: first param in range 1k-100k
+    E.is_subset(params_ops[0], E.lit_op_range((1000, 100000)), assert_=True)
+
+    # Chain dependencies: each param = previous * 0.9
+    for i in range(len(params_ops) - 1):
+        E.is_(
+            params_ops[i + 1],
+            E.multiply(params_ops[i], E.lit_op_single(0.9)),
+            assert_=True,
+        )
+
+    solver = Solver()
+    timings: list[tuple[str, float]] = []
+
+    t0 = time.perf_counter()
+    solver.simplify(E.g, E.tg, terminal=False, relevant=params_ops)
+    timings.append(("Initial solve", time.perf_counter() - t0))
+
+    P4_initial = _extract_numbers(solver, params[4])
+
+    # Pick component 0: add constraint to narrow bounds (like picking a part)
+    E.is_subset(params_ops[0], E.lit_op_range((50000, 60000)), assert_=True)
+    t1 = time.perf_counter()
+    solver.simplify(E.g, E.tg, terminal=False, relevant=params_ops)
+    timings.append(("After pick 1", time.perf_counter() - t1))
+
+    # Verify tightening
+    P4_after1 = _extract_numbers(solver, params[4])
+    assert P4_after1.get_max_value() <= P4_initial.get_max_value(), (
+        "P4 should be tighter after pick 1"
+    )
+
+    # Pick component 2: add another constraint
+    E.is_subset(params_ops[2], E.lit_op_range((35000, 45000)), assert_=True)
+    t2 = time.perf_counter()
+    solver.simplify(E.g, E.tg, terminal=False, relevant=params_ops)
+    timings.append(("After pick 2", time.perf_counter() - t2))
+
+    # Pick component 3
+    E.is_subset(params_ops[3], E.lit_op_range((30000, 42000)), assert_=True)
+    t3 = time.perf_counter()
+    solver.simplify(E.g, E.tg, terminal=False, relevant=params_ops)
+    timings.append(("After pick 3", time.perf_counter() - t3))
+
+    # Final verification
+    P4_final = _extract_numbers(solver, params[4])
+    assert P4_final.get_min_value() >= 0, "P4 min should be positive"
+
+    # Timing report
+    print("\n=== Multi-Pick Solver Continuation Timing Report ===")
+    for name, duration in timings:
+        print(f"{name:20s}: {duration * 1000:8.2f} ms")
+    if len(timings) >= 2:
+        avg_continuation = sum(t for _, t in timings[1:]) / len(timings[1:])
+        initial_time = timings[0][1]
+        if avg_continuation > 0:
+            speedup = initial_time / avg_continuation
+            print(f"{'Avg speedup':20s}: {speedup:8.2f}x")
+    print("=====================================================\n")

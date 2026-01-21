@@ -679,3 +679,202 @@ def test_find_groups_mixed_connected_and_independent():
     r3_group = next(g for g in groups if r3_pickable in g)
     assert r3_group != r1_group
 
+
+def test_is_correlation_predicate_detection():
+    """
+    _is_correlation_predicate should detect Not(Correlated(...)) predicates.
+    """
+    from faebryk.libs.picker.picker import _is_correlation_predicate
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions(g=g, tg=tg)
+
+    p1 = E.parameter_op(units=E.U.Ohm)
+    p2 = E.parameter_op(units=E.U.Ohm)
+
+    corr = E.correlated(p1, p2)
+    not_corr = E.not_(corr)
+
+    not_expr = not_corr.as_parameter_operatable.force_get().as_expression.force_get()
+
+    assert _is_correlation_predicate(not_expr), (
+        f"Failed to detect Not(Correlated(...)) predicate. "
+        f"Expression type: {type(not_expr)}, operands: {list(not_expr.get_operands())}"
+    )
+
+    corr_expr = corr.as_parameter_operatable.force_get().as_expression.force_get()
+    assert _is_correlation_predicate(corr_expr), "Failed to detect Correlated predicate"
+
+
+def test_find_groups_array_modules_independent():
+    """
+    Multiple instances of similar module structures should be independent
+    when they have no shared constraints. This mimics real-world cases like
+    LED strips where each LED driver has its own resistor and capacitor.
+    """
+    from faebryk.libs.picker.picker import find_independent_groups, get_pick_tree
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions(g=g, tg=tg)
+
+    # Create a structure like: App with multiple "LED drivers", each having
+    # a resistor and capacitor with independent constraints
+    class _LedDriver(fabll.Node):
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        resistor = F.Resistor.MakeChild()
+        capacitor = F.Capacitor.MakeChild()
+
+    class _App(fabll.Node):
+        # Multiple independent LED drivers
+        driver1 = _LedDriver.MakeChild()
+        driver2 = _LedDriver.MakeChild()
+        driver3 = _LedDriver.MakeChild()
+        # Plus a completely unrelated resistor
+        standalone_resistor = F.Resistor.MakeChild()
+
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # Constrain each component independently with DIFFERENT literal values
+    # Driver 1
+    E.is_subset(
+        app.driver1.get().resistor.get().resistance.get().can_be_operand.get(),
+        E.lit_op_range(((100, E.U.Ohm), (110, E.U.Ohm))),
+        assert_=True,
+    )
+    E.is_subset(
+        app.driver1.get().capacitor.get().capacitance.get().can_be_operand.get(),
+        E.lit_op_range(((100, E.U.nF), (110, E.U.nF))),
+        assert_=True,
+    )
+
+    # Driver 2 - different values
+    E.is_subset(
+        app.driver2.get().resistor.get().resistance.get().can_be_operand.get(),
+        E.lit_op_range(((200, E.U.Ohm), (220, E.U.Ohm))),
+        assert_=True,
+    )
+    E.is_subset(
+        app.driver2.get().capacitor.get().capacitance.get().can_be_operand.get(),
+        E.lit_op_range(((200, E.U.nF), (220, E.U.nF))),
+        assert_=True,
+    )
+
+    # Driver 3 - different values
+    E.is_subset(
+        app.driver3.get().resistor.get().resistance.get().can_be_operand.get(),
+        E.lit_op_range(((300, E.U.Ohm), (330, E.U.Ohm))),
+        assert_=True,
+    )
+    E.is_subset(
+        app.driver3.get().capacitor.get().capacitance.get().can_be_operand.get(),
+        E.lit_op_range(((300, E.U.nF), (330, E.U.nF))),
+        assert_=True,
+    )
+
+    # Standalone resistor - completely independent
+    E.is_subset(
+        app.standalone_resistor.get().resistance.get().can_be_operand.get(),
+        E.lit_op_range(((1000, E.U.Ohm), (1100, E.U.Ohm))),
+        assert_=True,
+    )
+
+    # Mark all as uncorrelated
+    all_params = [
+        app.driver1.get().resistor.get().resistance.get().can_be_operand.get(),
+        app.driver1.get().capacitor.get().capacitance.get().can_be_operand.get(),
+        app.driver2.get().resistor.get().resistance.get().can_be_operand.get(),
+        app.driver2.get().capacitor.get().capacitance.get().can_be_operand.get(),
+        app.driver3.get().resistor.get().resistance.get().can_be_operand.get(),
+        app.driver3.get().capacitor.get().capacitance.get().can_be_operand.get(),
+        app.standalone_resistor.get().resistance.get().can_be_operand.get(),
+    ]
+    E.not_(E.correlated(*all_params), assert_=True)
+
+    tree = get_pick_tree(app)
+    groups = find_independent_groups(tree.keys())
+
+    assert len(groups) == 7, (
+        f"Expected 7 independent groups but got {len(groups)}. "
+        f"Components with independent constraints are being incorrectly grouped."
+    )
+
+
+def test_find_groups_nested_modules_with_shared_constraint():
+    """
+    When modules share a constraint (e.g., voltage divider), they should
+    be grouped together, but unrelated modules should remain independent.
+    """
+    from faebryk.libs.picker.picker import find_independent_groups, get_pick_tree
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    E = BoundExpressions(g=g, tg=tg)
+
+    class _App(fabll.Node):
+        # Voltage divider - two resistors with shared constraint
+        r_top = F.Resistor.MakeChild()
+        r_bottom = F.Resistor.MakeChild()
+        # Independent components
+        decoupling_cap = F.Capacitor.MakeChild()
+        filter_inductor = F.Inductor.MakeChild()
+
+    app = _App.bind_typegraph(tg=tg).create_instance(g=g)
+
+    r_top_r = app.r_top.get().resistance.get().can_be_operand.get()
+    r_bottom_r = app.r_bottom.get().resistance.get().can_be_operand.get()
+
+    # Voltage divider constraint: r_top + r_bottom within range
+    E.is_subset(
+        E.add(r_top_r, r_bottom_r),
+        E.lit_op_range(((10000, E.U.Ohm), (11000, E.U.Ohm))),
+        assert_=True,
+    )
+
+    # Independent constraints for cap and inductor
+    E.is_subset(
+        app.decoupling_cap.get().capacitance.get().can_be_operand.get(),
+        E.lit_op_range(((100, E.U.nF), (110, E.U.nF))),
+        assert_=True,
+    )
+    E.is_subset(
+        app.filter_inductor.get().inductance.get().can_be_operand.get(),
+        E.lit_op_range(((10, E.U.uH), (11, E.U.uH))),
+        assert_=True,
+    )
+
+    # Mark unrelated params as uncorrelated
+    E.not_(
+        E.correlated(
+            r_top_r,
+            r_bottom_r,
+            app.decoupling_cap.get().capacitance.get().can_be_operand.get(),
+            app.filter_inductor.get().inductance.get().can_be_operand.get(),
+        )
+    )
+
+    tree = get_pick_tree(app)
+    groups = find_independent_groups(tree.keys())
+
+    # Should have 3 groups:
+    # - {r_top, r_bottom} (connected via voltage divider constraint)
+    # - {decoupling_cap}
+    # - {filter_inductor}
+    assert len(groups) == 3, (
+        f"Expected 3 groups but got {len(groups)}. "
+        f"Voltage divider resistors should be grouped, others independent."
+    )
+
+    # Verify r_top and r_bottom are in the same group
+    pickables = list(tree.keys())
+    r_top_pickable = next(
+        p for p in pickables if p.get_pickable_node() == app.r_top.get()
+    )
+    r_bottom_pickable = next(
+        p for p in pickables if p.get_pickable_node() == app.r_bottom.get()
+    )
+    r_top_group = next(g for g in groups if r_top_pickable in g)
+    assert r_bottom_pickable in r_top_group, (
+        "Voltage divider resistors should be grouped"
+    )
