@@ -179,17 +179,36 @@ export class UILogic {
       case 'agent_todos_changed':
         if (event.agent_id && event.data?.todos) {
           const todos = event.data.todos as AgentState['todos'];
-          this.setState((s) => {
-            const agent = s.agents.get(event.agent_id!);
-            if (agent) {
-              const updatedAgent = { ...agent, todos };
-              return {
-                ...s,
-                agents: updateMap(s.agents, event.agent_id!, updatedAgent),
-              };
-            }
-            return s;
-          });
+          const agentId = event.agent_id;
+
+          // Check if agent exists in state
+          const existingAgent = this.state.agents.get(agentId);
+          if (existingAgent) {
+            // Agent exists, update todos directly
+            this.setState((s) => {
+              const agent = s.agents.get(agentId);
+              if (agent) {
+                const updatedAgent = { ...agent, todos };
+                return {
+                  ...s,
+                  agents: updateMap(s.agents, agentId, updatedAgent),
+                };
+              }
+              return s;
+            });
+          } else {
+            // Agent not in state yet - fetch it (will include todos)
+            this.api.agents.get(agentId).then((response) => {
+              if (response.agent) {
+                this.setState((s) => ({
+                  ...s,
+                  agents: updateMap(s.agents, agentId, response.agent),
+                }));
+              }
+            }).catch(() => {
+              // Ignore fetch errors - agent might have been deleted
+            });
+          }
         }
         break;
 
