@@ -207,6 +207,62 @@ class Log:
         type: Literal["logs_error"] = "logs_error"
         error: str
 
+    # -------------------------------------------------------------------------
+    # Streaming models (for real-time log updates)
+    # -------------------------------------------------------------------------
+
+    class StreamQuery(BaseModel):
+        """Query parameters for streaming build logs."""
+
+        build_id: str
+        stage: str | None = None
+        log_levels: list[Log.Level] | None = None
+        audience: Log.Audience | None = None
+        after_id: int = 0  # Cursor - only return logs with id > after_id
+        count: int = Field(default=1000, ge=1, le=5000)
+
+    class TestStreamQuery(BaseModel):
+        """Query parameters for streaming test logs."""
+
+        test_run_id: str
+        test_name: str | None = None
+        log_levels: list[Log.Level] | None = None
+        audience: Log.Audience | None = None
+        after_id: int = 0
+        count: int = Field(default=1000, ge=1, le=5000)
+
+    class StreamEntryPydantic(BaseModel):
+        """Log entry with id for streaming (cursor tracking)."""
+
+        id: int  # Database row id for cursor
+        timestamp: str
+        level: str
+        audience: str
+        logger_name: str
+        message: str
+        ato_traceback: str | None = None
+        python_traceback: str | None = None
+        objects: Any | None = None
+
+    class TestStreamEntryPydantic(StreamEntryPydantic):
+        """Test log entry with id for streaming."""
+
+        test_name: str | None = None
+
+    class StreamResult(BaseModel):
+        """Streaming response with cursor."""
+
+        type: Literal["logs_stream"] = "logs_stream"
+        logs: list[Log.StreamEntryPydantic]
+        last_id: int  # Highest id returned - client sends this back as after_id
+
+    class TestStreamResult(BaseModel):
+        """Streaming response for test logs."""
+
+        type: Literal["test_logs_stream"] = "test_logs_stream"
+        logs: list[Log.TestStreamEntryPydantic]
+        last_id: int
+
 
 # Set default values for dataclass fields after Log class is fully defined
 # (Can't reference Log.Audience.DEVELOPER in field default during class definition)

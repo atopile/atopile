@@ -1503,6 +1503,171 @@ def load_test_logs(
     return results
 
 
+def load_build_logs_stream(
+    *,
+    build_id: str,
+    stage: str | None,
+    log_levels: list[str] | None,
+    audience: str | None,
+    after_id: int,
+    count: int,
+) -> tuple[list[dict[str, Any]], int]:
+    """
+    Load build logs for streaming - returns logs with id > after_id.
+
+    Returns (logs, last_id) where last_id is the highest id returned.
+    Logs are returned in ascending order (oldest first) for appending.
+    """
+    count = max(1, min(count, 5000))
+    db_path = BuildLogger.get_log_db()
+    if not db_path.exists():
+        return [], after_id
+
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+
+    where_clauses = ["logs.build_id = ?", "logs.id > ?"]
+    params: list[Any] = [build_id, after_id]
+
+    if stage:
+        where_clauses.append("logs.stage = ?")
+        params.append(stage)
+
+    if log_levels:
+        placeholders = ", ".join(["?"] * len(log_levels))
+        where_clauses.append(f"logs.level IN ({placeholders})")
+        params.extend(log_levels)
+
+    if audience:
+        where_clauses.append("logs.audience = ?")
+        params.append(audience)
+
+    where_sql = " AND ".join(where_clauses)
+    # ORDER BY id ASC for streaming (oldest first, append to end)
+    query = f"""
+        SELECT logs.id, logs.timestamp, logs.level, logs.audience, logs.logger_name,
+               logs.message, logs.ato_traceback, logs.python_traceback, logs.objects
+        FROM logs
+        WHERE {where_sql}
+        ORDER BY logs.id ASC
+        LIMIT ?
+    """
+
+    params.append(count)
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    results: list[dict[str, Any]] = []
+    last_id = after_id
+
+    for row in rows:
+        last_id = row["id"]  # Track highest id
+        objects = None
+        if row["objects"]:
+            try:
+                objects = json.loads(row["objects"])
+            except json.JSONDecodeError:
+                objects = None
+        results.append(
+            {
+                "id": row["id"],
+                "timestamp": row["timestamp"],
+                "level": row["level"],
+                "audience": row["audience"],
+                "logger_name": row["logger_name"],
+                "message": row["message"],
+                "ato_traceback": row["ato_traceback"],
+                "python_traceback": row["python_traceback"],
+                "objects": objects,
+            }
+        )
+
+    return results, last_id
+
+
+def load_test_logs_stream(
+    *,
+    test_run_id: str,
+    test_name: str | None,
+    log_levels: list[str] | None,
+    audience: str | None,
+    after_id: int,
+    count: int,
+) -> tuple[list[dict[str, Any]], int]:
+    """
+    Load test logs for streaming - returns logs with id > after_id.
+
+    Returns (logs, last_id) where last_id is the highest id returned.
+    Logs are returned in ascending order (oldest first) for appending.
+    """
+    count = max(1, min(count, 5000))
+    db_path = TestLogger.get_log_db()
+    if not db_path.exists():
+        return [], after_id
+
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+
+    where_clauses = ["test_logs.test_run_id = ?", "test_logs.id > ?"]
+    params: list[Any] = [test_run_id, after_id]
+
+    if test_name:
+        where_clauses.append("test_logs.test_name LIKE ?")
+        params.append(f"%{test_name}%")
+
+    if log_levels:
+        placeholders = ", ".join(["?"] * len(log_levels))
+        where_clauses.append(f"test_logs.level IN ({placeholders})")
+        params.extend(log_levels)
+
+    if audience:
+        where_clauses.append("test_logs.audience = ?")
+        params.append(audience)
+
+    where_sql = " AND ".join(where_clauses)
+    query = f"""
+        SELECT test_logs.id, test_logs.timestamp, test_logs.level, test_logs.audience,
+               test_logs.logger_name, test_logs.message, test_logs.ato_traceback,
+               test_logs.python_traceback, test_logs.objects, test_logs.test_name
+        FROM test_logs
+        WHERE {where_sql}
+        ORDER BY test_logs.id ASC
+        LIMIT ?
+    """
+
+    params.append(count)
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    results: list[dict[str, Any]] = []
+    last_id = after_id
+
+    for row in rows:
+        last_id = row["id"]
+        objects = None
+        if row["objects"]:
+            try:
+                objects = json.loads(row["objects"])
+            except json.JSONDecodeError:
+                objects = None
+        results.append(
+            {
+                "id": row["id"],
+                "timestamp": row["timestamp"],
+                "level": row["level"],
+                "audience": row["audience"],
+                "logger_name": row["logger_name"],
+                "message": row["message"],
+                "ato_traceback": row["ato_traceback"],
+                "python_traceback": row["python_traceback"],
+                "objects": objects,
+                "test_name": row["test_name"],
+            }
+        )
+
+    return results, last_id
+
+
 # =============================================================================
 # Module-level initialization
 # =============================================================================

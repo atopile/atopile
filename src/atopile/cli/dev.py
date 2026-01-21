@@ -884,6 +884,19 @@ def test(
 
     from test.runner.main import main
 
+    # Build the log viewer UI before starting tests
+    ui_server_dir = repo_root() / "src" / "ui-server"
+    if ui_server_dir.exists():
+        typer.echo("Building log viewer UI...")
+        result = subprocess.run(
+            ["npx", "vite", "build"],
+            cwd=ui_server_dir,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            typer.echo(f"Warning: Failed to build log viewer: {result.stderr[:200]}")
+
     args = ctx.args
 
     if ci:
