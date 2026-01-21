@@ -1305,23 +1305,36 @@ class Tree[T](dict[T, "Tree[T]"]):
             # merge lists of parallel subtrees
             yield [n for subtree in level for n in subtree]
 
-    def pretty(self) -> str:
-        # TODO this is def broken for actual trees
+    def pretty(
+        self,
+        node_repr: Callable[[T], str] | None = None,
+        _prefix: str = "",
+        _is_root: bool = True,
+    ) -> str:
+        if node_repr is None:
+            node_repr = repr
 
-        out = ""
-        next_levels = [self]
-        while next_levels:
-            for next_level in next_levels:
-                out += " | ".join(f"{p!r}" for p in next_level.keys())
-            next_levels = [
-                children
-                for next_level in next_levels
-                for _, children in next_level.items()
-            ]
-            if any(next_levels):
-                out += indent("\n↓\n", " " * 12)
+        lines: list[str] = []
+        items = list(self.items())
 
-        return out
+        for i, (key, subtree) in enumerate(items):
+            is_last = i == len(items) - 1
+
+            if _is_root:
+                connector = ""
+                child_prefix = ""
+            else:
+                connector = "└── " if is_last else "├── "
+                child_prefix = _prefix + ("    " if is_last else "│   ")
+
+            lines.append(f"{_prefix}{connector}{node_repr(key)}")
+
+            if subtree:
+                lines.append(
+                    subtree.pretty(node_repr, _prefix=child_prefix, _is_root=False)
+                )
+
+        return "\n".join(lines)
 
     def copy(self) -> "Tree[T]":
         return Tree({k: v.copy() for k, v in self.items()})

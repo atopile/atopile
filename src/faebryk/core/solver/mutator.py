@@ -26,6 +26,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from atopile.logging import rich_to_string
 from faebryk.core.solver.algorithm import SolverAlgorithm
 from faebryk.core.solver.utils import (
     S_LOG,
@@ -34,7 +35,6 @@ from faebryk.core.solver.utils import (
     MutatorUtils,
     pretty_expr,
 )
-from atopile.logging import rich_to_string
 from faebryk.libs.util import (
     OrderedSet,
     duplicates,
@@ -381,6 +381,7 @@ class MutationStage:
         transformations: Transformations,
         G_in: graph.GraphView,
         G_out: graph.GraphView,
+        _processed_predicate_uuids: set[int] | None = None,
     ):
         self.algorithm = algorithm
         self.iteration = iteration
@@ -390,7 +391,7 @@ class MutationStage:
         self.tg_out = tg_out
         self.G_in = G_in
         self.G_out = G_out
-
+        self._processed_predicate_uuids: set[int] = _processed_predicate_uuids or set()
         self.input_operables: OrderedSet[F.Parameters.is_parameter_operatable] = (
             OrderedSet(
                 po
@@ -973,8 +974,6 @@ class MutationMap:
         ]:
             raise ValueError(f"Invalid relevant operable(s): {invalid_ops}")
 
-        g_out, tg_out = MutationMap._bootstrap_copy(g, tg)
-
         print_context = (
             print_context or initial_state.print_ctx
             if initial_state is not None
@@ -982,7 +981,6 @@ class MutationMap:
         )
 
         relevant_root_predicates = MutatorUtils.get_relevant_predicates(*relevant)
-
         if S_LOG:
             logger.debug(
                 "Relevant root predicates: "
@@ -998,93 +996,82 @@ class MutationMap:
                 )
             )
 
-        if initial_state is not None:
-            relevant_ops = OrderedSet(
-                op
+        current_pred_uuids = {
+            pred.instance.node().get_uuid() for pred in relevant_root_predicates
+        }
+        prev_pred_uuids = (
+            initial_state.processed_predicate_uuids
+            if initial_state is not None
+            else set()
+        )
+        new_pred_uuids = current_pred_uuids - prev_pred_uuids
+        removed_pred_uuids = prev_pred_uuids - current_pred_uuids
+
+        if initial_state is not None and not new_pred_uuids and not removed_pred_uuids:
+            # no changes
+            return initial_state
+
+        if initial_state is None:
+            g_out, tg_out = cls._bootstrap_copy(g, tg)
+            for pred in relevant_root_predicates:
+                pred.copy_into(g_out)
+        elif not removed_pred_uuids:
+            g_out = initial_state.G_out
+            tg_out = initial_state.tg_out
+            for pred in relevant_root_predicates:
+                if pred.instance.node().get_uuid() in new_pred_uuids:
+                    pred.copy_into(g_out)
+        else:
+            prev_tg_out = initial_state.tg_out
+            g_out = graph.GraphView.create()
+            tg_out = prev_tg_out.copy_into(target_graph=g_out, minimal=True)
+            relevant_op_uuids = {
+                op.instance.node().get_uuid()
                 for pred in relevant_root_predicates
                 for op in pred.as_expression.get().get_operand_operatables()
-            )
-            prev_ops = initial_state.input_operables
-            ops_match = relevant_ops == prev_ops
-            none_removed = all(
-                initial_state.map_forward(op).maps_to is not None
-                for op in relevant_ops & prev_ops
-            )
+            }
+            relevant_op_uuids |= {p.instance.node().get_uuid() for p in relevant}
 
-            if ops_match and none_removed:
-                # exact same relevance set -> reuse initial state directly
-                g_out.destroy()
-                return initial_state
+            # only relevant solved ops from initial_state
+            for op in initial_state.output_operables:
+                if op.instance.node().get_uuid() in relevant_op_uuids:
+                    op.copy_into(g_out)
 
-            # Overlapping ops
-            mapped_ops_in_out = []
-            for op in relevant_ops & prev_ops:
-                mapped = initial_state.map_forward(op)
-                if mapped.maps_to is not None:
-                    mapped.maps_to.copy_into(g_out)
-                    mapped_ops_in_out.append(mapped.maps_to)
-
-            # Predicates that constrain overlapping ops
-            if mapped_ops_in_out:
-                for pred in MutatorUtils.get_relevant_predicates(
-                    *[op.as_operand.get() for op in mapped_ops_in_out]
-                ):
-                    pred.copy_into(g_out)
-
-            if new_ops := [op.as_operand.get() for op in relevant_ops - prev_ops]:
-                for operand in new_ops:
-                    operand.copy_into(g_out)
-
-                for pred in MutatorUtils.get_relevant_predicates(*new_ops):
-                    pred.copy_into(g_out)
-
-            ops_copied_from_initial = set(relevant_ops & prev_ops)
-        else:
+            # plus current predicates
             for pred in relevant_root_predicates:
-                # this enforces invariants provided we later run canonicalization +
-                # an algo with force_copy=True
                 pred.copy_into(g_out)
 
-            ops_copied_from_initial = set()
-
-        for op in relevant:
-            if (
-                op.as_parameter_operatable.force_get() not in ops_copied_from_initial
-                and not op.is_in_graph(g_out)
-            ):
-                op.copy_into(g_out)
-
-        all_ops_out = F.Parameters.is_parameter_operatable.bind_typegraph(
-            tg_out
-        ).get_instances(g=g_out)
-
-        new_mapping = {
+        mapping = {
             F.Parameters.is_parameter_operatable.bind_instance(
                 g.bind(node=op.instance.node())
             ): op
-            for op in all_ops_out
+            for op in F.Parameters.is_parameter_operatable.bind_typegraph(
+                tg_out
+            ).get_instances(g=g_out)
         }
 
         if initial_state is not None:
-            initial_mapping_rebound = {
+            forwarded_pos = {
                 k: F.Parameters.is_parameter_operatable.bind_instance(
                     g_out.bind(node=v.instance.node())
                 )
                 for k, v in initial_state.compressed_mapping_forwards_complete.items()
+                if v.is_in_graph(g_out)
             }
-            full_mapping = initial_mapping_rebound | new_mapping
-            algo_name = "bootstrap_resume"
+            mapping |= forwarded_pos
         else:
-            full_mapping = new_mapping
-            algo_name = "bootstrap"
+            forwarded_pos = None
 
-        # Copy over source names
-        for p_old, p_new in new_mapping.items():
+        for p_old, p_new in mapping.items():
+            if forwarded_pos is not None and p_old in forwarded_pos:
+                continue
+
             if (p_new_p := p_new.as_parameter.try_get()) is not None:
-                owner = fbrk.EdgeTrait.get_owner_node_of(
-                    bound_node=fabll.Traits(p_old).node.instance
-                )
-                if owner is not None:
+                if (
+                    owner := fbrk.EdgeTrait.get_owner_node_of(  # type: ignore
+                        bound_node=fabll.Traits(p_old).node.instance
+                    )
+                ) is not None:
                     print_context.override_name(
                         p_new_p,
                         fabll.Node.bind_instance(instance=owner).get_full_name(
@@ -1093,11 +1080,15 @@ class MutationMap:
                     )
 
         nodes_uuids = {p.instance.node().get_uuid() for p in relevant}
-        for p_out in fabll.Traits.get_implementors(
-            F.Parameters.can_be_operand.bind_typegraph(tg_out)
+
+        for p_out in (
+            p
+            for p in fabll.Traits.get_implementors(
+                F.Parameters.can_be_operand.bind_typegraph(tg_out)
+            )
+            if p.instance.node().get_uuid() in nodes_uuids
+            and not p.has_trait(solver_relevant)
         ):
-            if p_out.instance.node().get_uuid() not in nodes_uuids:
-                continue
             fabll.Traits.create_and_add_instance_to(p_out, solver_relevant)
 
         if S_LOG:
@@ -1126,15 +1117,15 @@ class MutationMap:
             MutationStage(
                 tg_in=tg,
                 tg_out=tg_out,
-                algorithm=algo_name,
+                algorithm="bootstrap_relevant_preds",
                 iteration=iteration,
                 print_ctx=print_context,
                 transformations=Transformations(
-                    print_ctx=print_context,
-                    mutated=full_mapping,
+                    print_ctx=print_context, mutated=mapping
                 ),
                 G_in=g,
                 G_out=g_out,
+                _processed_predicate_uuids=current_pred_uuids,
             )
         )
 
@@ -1148,9 +1139,7 @@ class MutationMap:
         initial_state: "MutationMap | None" = None,
     ) -> "MutationMap":
         mut_map = (
-            MutationMap._identity(tg, g, iteration, print_context)
-            if relevant is None
-            else MutationMap._with_relevance_set(
+            MutationMap._with_relevance_set(
                 g,
                 tg,
                 relevant,
@@ -1158,6 +1147,8 @@ class MutationMap:
                 print_context,
                 initial_state,
             )
+            if relevant
+            else MutationMap._identity(tg, g, iteration, print_context)
         )
 
         # canonicalize
@@ -1209,6 +1200,12 @@ class MutationMap:
     @property
     def print_ctx(self) -> F.Parameters.ReprContext:
         return self.first_stage.print_ctx
+
+    @property
+    def processed_predicate_uuids(self) -> set[int]:
+        return set.union(
+            *(stage._processed_predicate_uuids for stage in self.mutation_stages)
+        )
 
     def get_iteration_mutation(self, algo: SolverAlgorithm) -> "MutationMap | None":
         last = first(
@@ -1364,6 +1361,7 @@ class MutationMap:
                     removed=OrderedSet(removed),
                     created=created,
                 ),
+                _processed_predicate_uuids=self.processed_predicate_uuids,
             )
         )
 
