@@ -538,19 +538,6 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
         )}
       </div>
 
-      {/* Mobile: Always-visible agent name bar */}
-      {isMobile && (
-        <div className="flex items-center justify-between px-3 py-1.5 bg-gray-800/80 border-b border-gray-700/50 text-xs">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="font-medium text-gray-300 truncate">
-              {agent.name || 'Unnamed'}
-            </span>
-            <StatusBadge status={agent.status} isAgent />
-          </div>
-          <span className="text-gray-500">{formatDuration()}</span>
-        </div>
-      )}
-
       {/* Todo list (if agent has todos) */}
       {agent.todos && agent.todos.length > 0 && (
         <TodoList todos={agent.todos} compact={isMobile} />
