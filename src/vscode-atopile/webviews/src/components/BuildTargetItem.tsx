@@ -1,6 +1,7 @@
 /**
  * Build target item component - STATELESS.
- * All state (including expanded) comes from props.
+ * Shows build stages for status display (not filtering).
+ * Clicking the item selects the build for log viewing.
  */
 
 import type { Build, BuildStage, BuildTarget } from '../types/build';
@@ -13,10 +14,10 @@ interface BuildTargetItemProps {
   isChecked: boolean;
   isSelected: boolean;
   isExpanded: boolean;
-  selectedStageIds: string[];
   onToggle: () => void;
   onToggleExpand: () => void;
-  onToggleStage: (stageId: string) => void;
+  onSelect: () => void;
+  onOpenPcb: () => void;
 }
 
 function stripRichText(text: string): string {
@@ -31,33 +32,41 @@ function formatTime(seconds: number): string {
   return `${mins}m ${secs.toFixed(0)}s`;
 }
 
+function formatTimestamp(isoString?: string): string {
+  if (!isoString) return '';
+  try {
+    const date = new Date(isoString);
+    // Check if date is valid
+    if (isNaN(date.getTime())) return '';
+
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+
+    // For older builds, show the date
+    return date.toLocaleDateString();
+  } catch {
+    return '';
+  }
+}
+
 function getCurrentStage(build: Build): string | null {
   if (!build.stages || build.stages.length === 0) return null;
   return build.stages[build.stages.length - 1].name;
 }
 
-function StageItem({
-  stage,
-  isSelected,
-  onSelect,
-}: {
-  stage: BuildStage;
-  isSelected: boolean;
-  onSelect: () => void;
-}) {
-  const time = formatTime(stage.elapsed_seconds);
-
+function StageItem({ stage }: { stage: BuildStage }) {
   return (
-    <button
-      className={`stage-item ${isSelected ? 'selected' : ''}`}
-      onClick={(e) => {
-        e.stopPropagation();
-        onSelect();
-      }}
-    >
+    <div className="stage-item">
       <StatusIcon status={stage.status} size={12} />
       <span className="stage-name">{stripRichText(stage.name)}</span>
-      {time && <span className="stage-time">{time}</span>}
       <div className="stage-stats">
         {stage.warnings > 0 && (
           <span className="stat warning">{stage.warnings}</span>
@@ -66,7 +75,7 @@ function StageItem({
           <span className="stat error">{stage.errors}</span>
         )}
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -76,27 +85,45 @@ export function BuildTargetItem({
   isChecked,
   isSelected,
   isExpanded,
-  selectedStageIds,
   onToggle,
   onToggleExpand,
-  onToggleStage,
+  onSelect,
+  onOpenPcb,
 }: BuildTargetItemProps) {
   const hasStages = build?.stages && build.stages.length > 0;
   const currentStage = build ? getCurrentStage(build) : null;
   const timeStr = build ? formatTime(build.elapsed_seconds) : '';
 
-  const handleExpandClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  // Clicking on the card header expands/collapses stages (if available) and selects the build
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Don't expand if clicking on interactive elements
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('input')) {
+      return;
+    }
+
+    // Select this build for log viewing
+    onSelect();
+
+    // Toggle expand if there are stages
     if (hasStages) {
       onToggleExpand();
     }
   };
 
+  const handlePcbClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onOpenPcb();
+  };
+
   return (
-    <div className={`build-target-item ${isExpanded ? 'expanded' : ''} ${isSelected ? 'selected' : ''}`}>
-      <div className="build-target-header">
-        {/* Checkbox */}
+    <div
+      className={`build-target-card ${isSelected ? 'selected' : ''} ${isExpanded ? 'expanded' : ''}`}
+      onClick={handleCardClick}
+    >
+      {/* Card Header */}
+      <div className="build-target-card-header">
         <input
           type="checkbox"
           checked={isChecked}
@@ -104,28 +131,33 @@ export function BuildTargetItem({
           onClick={(e) => e.stopPropagation()}
         />
 
-        {/* Status icon (if build exists) */}
         {build && (
           <div className="build-status">
             <StatusIcon status={build.status} size={16} />
           </div>
         )}
 
-        {/* Target info */}
-        <div className="build-target-info" onClick={handleExpandClick}>
+        <div className="build-target-info">
           <span className="target-name">{target.name}</span>
           {build ? (
             <span className="build-meta">
               {currentStage && <span className="build-stage">{stripRichText(currentStage)}</span>}
               {currentStage && timeStr && <span className="meta-sep">·</span>}
               {timeStr && <span className="build-time">{timeStr}</span>}
+              {(currentStage || timeStr) && <span className="meta-sep">·</span>}
+              <span className="build-id" title={`Build ID: ${build.build_id}`}>{build.build_id.substring(0, 8)}</span>
+              {formatTimestamp(build.timestamp) && (
+                <>
+                  <span className="meta-sep">·</span>
+                  <span className="build-timestamp" title={build.timestamp}>{formatTimestamp(build.timestamp)}</span>
+                </>
+              )}
             </span>
           ) : (
             <span className="target-entry">{target.entry}</span>
           )}
         </div>
 
-        {/* Indicators */}
         {build && (
           <div className="build-indicators">
             {build.warnings > 0 && (
@@ -141,29 +173,38 @@ export function BuildTargetItem({
           </div>
         )}
 
-        {/* Expand chevron */}
+        {/* Expand chevron in header */}
         {hasStages && (
-          <button className="expand-button" onClick={handleExpandClick}>
-            <div className={`build-chevron ${isExpanded ? 'rotated' : ''}`}>
-              <svg viewBox="0 0 16 16" fill="currentColor">
-                <path d="M6 4l4 4-4 4" />
-              </svg>
-            </div>
-          </button>
+          <div className={`build-chevron ${isExpanded ? 'rotated' : ''}`}>
+            <svg viewBox="0 0 16 16" fill="currentColor">
+              <path d="M6 4l4 4-4 4" />
+            </svg>
+          </div>
         )}
       </div>
 
-      {/* Stages list */}
+      {/* Card Actions */}
+      <div className="build-target-card-actions">
+        <button
+          className="target-action-btn pcb-btn"
+          onClick={handlePcbClick}
+          title="Open PCB in KiCad"
+        >
+          <svg viewBox="0 0 16 16" fill="currentColor">
+            <path d="M2 2h12v12H2V2zm1 1v10h10V3H3zm2 2h2v2H5V5zm4 0h2v2H9V5zm-4 4h2v2H5V9zm4 0h2v2H9V9z" />
+          </svg>
+          <span>PCB</span>
+        </button>
+      </div>
+
+      {/* Collapsible Stages Section */}
       {isExpanded && hasStages && (
-        <div className="build-stages">
-          {build!.stages!.map((stage) => (
-            <StageItem
-              key={stage.stage_id}
-              stage={stage}
-              isSelected={selectedStageIds.includes(stage.stage_id)}
-              onSelect={() => onToggleStage(stage.stage_id)}
-            />
-          ))}
+        <div className="build-stages-section">
+          <div className="build-stages">
+            {build!.stages!.map((stage) => (
+              <StageItem key={stage.stage_id} stage={stage} />
+            ))}
+          </div>
         </div>
       )}
     </div>

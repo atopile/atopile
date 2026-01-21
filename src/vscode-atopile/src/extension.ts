@@ -14,6 +14,7 @@ import { onBuildTargetChanged } from './common/target';
 import { Build } from './common/manifest';
 import { openPackageExplorer } from './ui/packagexplorer';
 import * as llm from './common/llm';
+import { appStateManager } from './common/appState';
 
 export let g_lsClient: LanguageClient | undefined;
 
@@ -99,6 +100,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     await initServer(context);
 
+    // Backend server connection is now tracked via WebSocket in appStateManager
+    // No HTTP polling needed - appStateManager.startListening() handles it
+
     await ui.activate(context);
     await llm.activate(context);
 
@@ -113,6 +117,7 @@ export async function deactivate(): Promise<void> {
     if (g_lsClient) {
         await g_lsClient.stop();
     }
+
 
     deinitializeTelemetry();
 }

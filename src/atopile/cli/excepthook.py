@@ -1,12 +1,12 @@
 import sys
 
-from faebryk.libs.logging import FLOG_FMT
+from atopile.logging import FLOG_FMT
 
 
 def _handle_exception(exc_type, exc_value, exc_traceback):
     # avoid exceptions raised during import
-    from atopile.cli.logging_ import logger
     from atopile.errors import _BaseBaseUserException
+    from atopile.logging import get_exception_display_message, logger
 
     # delayed import to improve startup time
     from faebryk.libs.util import in_debug_session
@@ -21,8 +21,10 @@ def _handle_exception(exc_type, exc_value, exc_traceback):
             debugpy.breakpoint()
 
         # in case we missed logging closer to the source
+        # Use unified message extraction for consistency
         logger.exception(
-            msg=exc_value.message, exc_info=(exc_type, exc_value, exc_traceback)
+            msg=get_exception_display_message(exc_value),
+            exc_info=(exc_type, exc_value, exc_traceback)
         )
 
     elif issubclass(exc_type, BaseExceptionGroup):
@@ -42,7 +44,7 @@ DISCORD_BANNER_TEXT = (
 
 
 def log_discord_banner() -> None:
-    from atopile.cli.logging_ import logger
+    from atopile.logging import logger
 
     logger.info(DISCORD_BANNER_TEXT)
 

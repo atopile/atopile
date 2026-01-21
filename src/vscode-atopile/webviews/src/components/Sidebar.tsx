@@ -16,13 +16,12 @@ const action = (name: string, data?: object) => {
   vscode.postMessage({ type: 'action', action: name, ...data });
 };
 
-// Static action buttons
+// Static action buttons (server button added dynamically based on state)
 const ACTION_BUTTONS = [
-  { id: 'atopile.build', label: 'Build', icon: 'play', tooltip: 'Build selected targets' },
-  { id: 'atopile.openViewer', label: 'Viewer', icon: 'eye', tooltip: 'Open 3D viewer' },
-  { id: 'atopile.openPcb', label: 'PCB', icon: 'circuit-board', tooltip: 'Open PCB in KiCad' },
-  { id: 'atopile.openSchematic', label: 'Schematic', icon: 'file-code', tooltip: 'Open schematic in KiCad' },
+  { id: 'atopile.build', label: 'Build Selected', icon: 'play', tooltip: 'Build selected targets' },
 ];
+
+const SERVER_BUTTON = { id: 'atopile.serve', label: 'Start Server', icon: 'server', tooltip: 'Start the ato server' };
 
 export function Sidebar() {
   // Single piece of state: AppState from extension
@@ -46,15 +45,6 @@ export function Sidebar() {
 
   const selectedProject = state.projects.find(p => p.root === state.selectedProjectRoot);
 
-  const handleToggleStage = (buildName: string, stageId: string) => {
-    // Select the build first if not already selected
-    if (state.selectedBuildName !== buildName) {
-      action('selectBuild', { buildName });
-    }
-    action('toggleStageFilter', { stageId });
-    action('focusLogViewer');
-  };
-
   return (
     <div className="sidebar">
       {/* Header with logo and version */}
@@ -64,6 +54,14 @@ export function Sidebar() {
           <span className="sidebar-title">atopile</span>
           {state.version && <span className="sidebar-version">v{state.version}</span>}
         </div>
+        <button
+          className={`server-status ${state.isBackendRunning ? 'connected' : 'disconnected'}`}
+          title={state.isBackendRunning ? 'Server running' : 'Click to start server'}
+          onClick={() => action('executeCommand', { command: 'atopile.serve' })}
+        >
+          <span className="status-dot" />
+          <span className="status-text">{state.isBackendRunning ? 'Server' : 'Start'}</span>
+        </button>
       </div>
 
       {/* Actions Card */}
@@ -72,6 +70,16 @@ export function Sidebar() {
           <span className="card-title">Actions</span>
         </div>
         <div className="card-content actions-grid">
+          {/* Show Start Server button when server is not running */}
+          {!state.isBackendRunning && (
+            <ActionButton
+              key={SERVER_BUTTON.id}
+              icon={SERVER_BUTTON.icon}
+              label={SERVER_BUTTON.label}
+              tooltip={SERVER_BUTTON.tooltip}
+              onClick={() => action('executeCommand', { command: SERVER_BUTTON.id })}
+            />
+          )}
           {ACTION_BUTTONS.map((btn) => (
             <ActionButton
               key={btn.id}
@@ -145,20 +153,28 @@ export function Sidebar() {
                     <span className="empty-desc">No build targets in ato.yaml</span>
                   </div>
                 ) : (
-                  selectedProject.targets.map((target) => (
-                    <BuildTargetItem
-                      key={target.name}
-                      target={target}
-                      build={state.builds.find(b => b.name === target.name)}
-                      isChecked={state.selectedTargetNames.includes(target.name)}
-                      isSelected={state.selectedBuildName === target.name}
-                      isExpanded={state.expandedTargets.includes(target.name)}
-                      selectedStageIds={state.selectedBuildName === target.name ? state.selectedStageIds : []}
-                      onToggle={() => action('toggleTarget', { name: target.name })}
-                      onToggleExpand={() => action('toggleTargetExpanded', { name: target.name })}
-                      onToggleStage={(stageId) => handleToggleStage(target.name, stageId)}
-                    />
-                  ))
+                  selectedProject.targets.map((target) => {
+                    const build = state.builds.find(b => b.name === target.name);
+                    const isSelected = state.selectedBuildName === build?.display_name;
+                    return (
+                      <BuildTargetItem
+                        key={target.name}
+                        target={target}
+                        build={build}
+                        isChecked={state.selectedTargetNames.includes(target.name)}
+                        isSelected={isSelected}
+                        isExpanded={state.expandedTargets.includes(target.name)}
+                        onToggle={() => action('toggleTarget', { name: target.name })}
+                        onToggleExpand={() => action('toggleTargetExpanded', { name: target.name })}
+                        onSelect={() => {
+                          if (build?.display_name) {
+                            action('selectBuild', { buildName: build.display_name });
+                          }
+                        }}
+                        onOpenPcb={() => action('openPcbForTarget', { name: target.name })}
+                      />
+                    );
+                  })
                 )}
               </div>
             </>

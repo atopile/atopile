@@ -4,7 +4,6 @@
 import logging
 from enum import IntEnum, auto
 
-import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 
@@ -38,6 +37,12 @@ class Capacitor(fabll.Node):
 
     # Alias for backwards compatibility
     power = F.ElectricPower.MakeChild()
+    _asserts = [
+        # max_voltage >= power.voltage
+        F.Expressions.GreaterOrEqual.MakeChild(
+            [max_voltage], [power, F.ElectricPower.voltage], assert_=True
+        )
+    ]
 
     # Connect power to unnamed[0] and unnamed[1]
     _connections = [

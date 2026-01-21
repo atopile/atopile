@@ -44,18 +44,101 @@ function FilterButton({
   isEnabled: boolean;
   onToggle: () => void;
 }) {
-  const isDisabled = count === 0;
   const levelClass = level.toLowerCase();
 
   return (
     <button
-      className={`filter-btn ${levelClass} ${isEnabled && !isDisabled ? 'active' : ''}`}
-      onClick={() => !isDisabled && onToggle()}
-      disabled={isDisabled}
+      className={`filter-btn ${levelClass} ${isEnabled ? 'active' : ''}`}
+      onClick={onToggle}
     >
       {level}
-      <span className="count">{count}</span>
+      {count > 0 && <span className="count">{count}</span>}
     </button>
+  );
+}
+
+function StageFilterDropdown({
+  availableStages,
+  enabledStages,
+}: {
+  availableStages: string[];
+  enabledStages: string[];
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen]);
+
+  // Simple logic:
+  // - enabledStages empty = show all (no filter active, all checkboxes unchecked)
+  // - enabledStages has items = filter to only those stages (those checkboxes checked)
+  const isFiltered = enabledStages.length > 0;
+  const isStageChecked = (stage: string) => enabledStages.includes(stage);
+
+  const hasStages = availableStages.length > 0;
+
+  return (
+    <div className="stage-filter-dropdown" ref={dropdownRef}>
+      <button
+        className={`stage-filter-btn ${isFiltered ? 'filtered' : ''} ${isOpen ? 'open' : ''}`}
+        onClick={() => hasStages && setIsOpen(!isOpen)}
+        disabled={!hasStages}
+        title={hasStages ? 'Filter by build stage' : 'No stages available'}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+        </svg>
+        Stages
+        {hasStages && isFiltered && (
+          <span className="stage-count">
+            {enabledStages.length}/{availableStages.length}
+          </span>
+        )}
+        <svg className={`chevron ${isOpen ? 'open' : ''}`} width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="stage-dropdown-panel">
+          {isFiltered && (
+            <div className="stage-dropdown-actions">
+              <button
+                className="stage-action-btn clear-btn"
+                onClick={() => {
+                  action('clearStageFilters');
+                }}
+              >
+                Clear Filters
+              </button>
+            </div>
+          )}
+          <div className="stage-dropdown-list">
+            {availableStages.map((stage) => (
+              <label key={stage} className="stage-checkbox-item">
+                <input
+                  type="checkbox"
+                  checked={isStageChecked(stage)}
+                  onChange={() => action('toggleStage', { stage })}
+                />
+                <span className="stage-name" title={stage}>{stage}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -211,58 +294,63 @@ export function LogViewer() {
     }
   }, [state?.logAutoScroll]);
 
-  // Filter logs (computed from state)
+  // Client-side filtering by level, stage, and search query
   const filteredEntries = useMemo(() => {
     if (!state) return [];
-    const query = state.logSearchQuery.toLowerCase();
+
     return state.logEntries.filter(entry => {
       // Level filter
-      if (!state.enabledLogLevels.includes(entry.level)) return false;
-      // Stage filter (empty = show all)
-      if (state.selectedStageIds.length > 0 && !state.selectedStageIds.includes(entry.stage)) return false;
-      // Search filter
-      if (query && !entry.message.toLowerCase().includes(query) && !entry.logger.toLowerCase().includes(query)) return false;
+      if (!state.enabledLogLevels.includes(entry.level)) {
+        return false;
+      }
+
+      // Stage filter: empty = show all, non-empty = filter to selected stages
+      if (state.enabledStages.length > 0) {
+        if (!entry.stage || !state.enabledStages.includes(entry.stage)) {
+          return false;
+        }
+      }
+
+      // Search query filter
+      const query = state.logSearchQuery.toLowerCase().trim();
+      if (query) {
+        const matchesQuery =
+          entry.message.toLowerCase().includes(query) ||
+          entry.logger.toLowerCase().includes(query) ||
+          entry.stage?.toLowerCase().includes(query);
+        if (!matchesQuery) {
+          return false;
+        }
+      }
+
       return true;
     });
-  }, [state]);
+  }, [state?.logEntries, state?.enabledLogLevels, state?.enabledStages, state?.logSearchQuery]);
 
-  // Level counts (computed)
-  const levelCounts = useMemo(() => {
-    if (!state) return { DEBUG: 0, INFO: 0, WARNING: 0, ERROR: 0, ALERT: 0 };
-    const entries = state.selectedStageIds.length > 0
-      ? state.logEntries.filter(e => state.selectedStageIds.includes(e.stage))
-      : state.logEntries;
-    return {
-      DEBUG: entries.filter(e => e.level === 'DEBUG').length,
-      INFO: entries.filter(e => e.level === 'INFO').length,
-      WARNING: entries.filter(e => e.level === 'WARNING').length,
-      ERROR: entries.filter(e => e.level === 'ERROR').length,
-      ALERT: entries.filter(e => e.level === 'ALERT').length,
-    };
-  }, [state]);
-
-  // Search matches for highlighting
+  // Search matches for highlighting (all filtered entries match when search is active)
   const searchMatches = useMemo(() => {
     if (!state?.logSearchQuery.trim()) return new Set<number>();
-    const query = state.logSearchQuery.toLowerCase();
     const matches = new Set<number>();
-    filteredEntries.forEach((entry, idx) => {
-      if (
-        entry.message.toLowerCase().includes(query) ||
-        entry.logger.toLowerCase().includes(query) ||
-        entry.stage?.toLowerCase().includes(query)
-      ) {
-        matches.add(idx);
-      }
-    });
+    filteredEntries.forEach((_, idx) => matches.add(idx));
     return matches;
   }, [filteredEntries, state?.logSearchQuery]);
+
+  // Level counts from all logs (unfiltered)
+  // Shows total logs of each type for the filter button badges
+  const levelCounts = useMemo(() => {
+    if (!state) return { DEBUG: 0, INFO: 0, WARNING: 0, ERROR: 0, ALERT: 0 };
+    return {
+      DEBUG: state.logEntries.filter(e => e.level === 'DEBUG').length,
+      INFO: state.logEntries.filter(e => e.level === 'INFO').length,
+      WARNING: state.logEntries.filter(e => e.level === 'WARNING').length,
+      ERROR: state.logEntries.filter(e => e.level === 'ERROR').length,
+      ALERT: state.logEntries.filter(e => e.level === 'ALERT').length,
+    };
+  }, [state?.logEntries]);
 
   if (!state) {
     return <div className="log-viewer loading">Loading...</div>;
   }
-
-  const logFilename = state.logFile?.split('/').pop() || '';
 
   return (
     <div className="log-viewer">
@@ -277,6 +365,11 @@ export function LogViewer() {
               onToggle={() => action('toggleLogLevel', { level })}
             />
           ))}
+          <div className="filter-divider" />
+          <StageFilterDropdown
+            availableStages={state.availableStages}
+            enabledStages={state.enabledStages}
+          />
         </div>
 
         {/* Search input */}
@@ -335,18 +428,6 @@ export function LogViewer() {
 
           <div className="action-divider" />
 
-          {state.logFile && (
-            <>
-              <button className="log-file-btn" onClick={() => action('copyLogPath')} title={`Copy: ${state.logFile}`}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                </svg>
-                {logFilename}
-              </button>
-              <div className="action-divider" />
-            </>
-          )}
           <button
             className={`scroll-btn ${state.logAutoScroll ? 'active' : ''}`}
             onClick={() => action('setLogAutoScroll', { enabled: !state.logAutoScroll })}
@@ -358,6 +439,44 @@ export function LogViewer() {
           </button>
         </div>
       </div>
+
+      {/* Build info bar */}
+      {state.currentBuildInfo && (
+        <div className="log-build-info">
+          <span className="build-info-item build-target" title={`Target: ${state.currentBuildInfo.target}`}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+              <circle cx="12" cy="12" r="6" />
+              <circle cx="12" cy="12" r="2" />
+            </svg>
+            {state.currentBuildInfo.target}
+          </span>
+          <span className="build-info-sep">·</span>
+          <span className="build-info-item" title={state.currentBuildInfo.projectPath}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            </svg>
+            {state.currentBuildInfo.projectPath.split('/').pop() || state.currentBuildInfo.projectPath}
+          </span>
+          <span className="build-info-sep">·</span>
+          <span className="build-info-item" title="Build timestamp">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+            {state.currentBuildInfo.timestamp.replace('_', ' ')}
+          </span>
+          <span className="build-info-sep">·</span>
+          <span className="build-info-item build-id" title={`Build ID: ${state.currentBuildInfo.buildId}`}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <line x1="9" y1="9" x2="15" y2="9" />
+              <line x1="9" y1="15" x2="15" y2="15" />
+            </svg>
+            {state.currentBuildInfo.buildId.substring(0, 8)}
+          </span>
+        </div>
+      )}
 
       <div className="log-content" ref={logRef} onScroll={handleScroll}>
         {state.isLoadingLogs ? (

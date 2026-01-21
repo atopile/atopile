@@ -171,22 +171,22 @@ async function handleAction(message: any): Promise<void> {
             appStateManager.toggleTargetExpanded(message.name);
             break;
 
-        // Build selection
+        // Build selection - always resubscribe to get latest build_id and refresh logs
         case 'selectBuild':
-            await appStateManager.selectBuild(message.buildName);
-            break;
-
-        case 'toggleStageFilter':
-            appStateManager.toggleStageFilter(message.stageId);
-            break;
-
-        case 'clearStageFilter':
-            appStateManager.clearStageFilter();
+            appStateManager.selectBuild(message.buildName);
             break;
 
         // Log viewer UI
         case 'toggleLogLevel':
-            appStateManager.toggleLogLevel(message.level as LogLevel);
+            await appStateManager.toggleLogLevel(message.level as LogLevel);
+            break;
+
+        case 'toggleStage':
+            appStateManager.toggleStage(message.stage);
+            break;
+
+        case 'clearStageFilters':
+            appStateManager.clearStageFilters();
             break;
 
         case 'setLogSearchQuery':
@@ -206,15 +206,42 @@ async function handleAction(message: any): Promise<void> {
             await vscode.commands.executeCommand('atopile.build');
             break;
 
+        case 'buildTarget': {
+            // Build a single target by name
+            const builds = getBuilds();
+            const target = builds.find(b => b.name === message.name);
+            if (target) {
+                await vscode.commands.executeCommand('atopile.build', [target]);
+            }
+            break;
+        }
+
+        case 'openPcbForTarget': {
+            // Open PCB for a specific target by name
+            const builds = getBuilds();
+            const target = builds.find(b => b.name === message.name);
+            if (target) {
+                await vscode.commands.executeCommand('atopile.launch_kicad', target);
+            }
+            break;
+        }
+
         case 'executeCommand':
-            await vscode.commands.executeCommand(message.command);
+            if (message.args) {
+                await vscode.commands.executeCommand(message.command, message.args);
+            } else {
+                await vscode.commands.executeCommand(message.command);
+            }
             break;
 
         case 'copyLogPath': {
+            // Logs are now in a central SQLite database
+            // Copy the build_id for the selected build which can be used to query logs
             const state = appStateManager.getState();
-            if (state.logFile) {
-                await vscode.env.clipboard.writeText(state.logFile);
-                vscode.window.showInformationMessage('Log path copied to clipboard');
+            const selectedBuild = state.builds.find(b => b.display_name === state.selectedBuildName);
+            if (selectedBuild?.build_id) {
+                await vscode.env.clipboard.writeText(selectedBuild.build_id);
+                vscode.window.showInformationMessage('Build ID copied to clipboard');
             }
             break;
         }
@@ -309,13 +336,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
     }
 
-    // Start polling for build updates
-    appStateManager.startPolling(500);
+    // Start listening for build updates via WebSocket
+    appStateManager.startListening();
 
     traceInfo('vscode-panels: activated sidebar and log viewer');
 }
 
 export function deactivate(): void {
-    appStateManager.stopPolling();
+    appStateManager.stopListening();
     appStateManager.dispose();
 }

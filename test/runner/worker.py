@@ -10,7 +10,7 @@ import typer
 # Ensure the current directory is in sys.path
 sys.path.insert(0, os.getcwd())
 
-from faebryk.libs.logging import setup_basic_logging
+from atopile.logging import setup_basic_logging
 from test.runner.common import (
     ORCHESTRATOR_URL_ENV,
     ClaimRequest,

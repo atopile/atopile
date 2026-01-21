@@ -12,7 +12,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.exceptions import UserException, downgrade
+from atopile.exceptions import UserException, downgrade
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
 from faebryk.libs.util import Serializable, SerializableJSONEncoder, md_list, once
@@ -242,7 +242,7 @@ class Component:
                     preferred=bool(self.is_preferred),
                 ),
             )
-        )
+        ).set_attributes(self.attribute_literals(g=module.g, tg=module.tg))
 
         fabll.Traits.create_and_add_instance_to(
             node=module, trait=F.has_datasheet

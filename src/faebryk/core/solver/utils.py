@@ -15,8 +15,8 @@ from typing import (
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from atopile.logging import rich_to_string
 from faebryk.core import graph
-from faebryk.libs.logging import rich_to_string
 from faebryk.libs.util import (
     ConfigFlag,
     ConfigFlagFloat,
@@ -444,9 +444,22 @@ class MutatorUtils:
     def get_relevant_predicates(
         *op: F.Parameters.can_be_operand,
     ) -> OrderedSet[F.Expressions.is_predicate]:
-        # get all root predicates
-        leaves: OrderedSet[F.Parameters.can_be_operand] = OrderedSet(op)
+        if not op:
+            return OrderedSet()
+
+        tg = next(iter(op)).tg
+
+        anticorrelated_pairs = MutatorUtils.get_anticorrelated_pairs(tg)
+        original_params = {
+            p
+            for o in op
+            if (po := o.as_parameter_operatable.try_get())
+            and (p := po.as_parameter.try_get())
+        }
+        visited_params = OrderedSet(original_params)
+        leaves = OrderedSet(op)
         roots: OrderedSet[F.Expressions.is_predicate] = OrderedSet()
+
         while True:
             new_roots = (
                 OrderedSet(
@@ -460,15 +473,27 @@ class MutatorUtils:
 
             # get leaves for transitive predicates
             # A >! B, B >! C => only A >! B is in roots
-            leaves = (
-                OrderedSet(
-                    leaf.as_operand.get()
-                    for root in new_roots
-                    for leaf in root.as_expression.get().get_operand_leaves_operatable()
-                )
-                - leaves
-            )
+            # Skip leaves that are anticorrelated with any original relevant param
+            new_leaves: OrderedSet[F.Parameters.can_be_operand] = OrderedSet()
+            for root in new_roots:
+                for leaf_po in root.as_expression.get().get_operand_leaves_operatable():
+                    if (
+                        leaf_param := leaf_po.as_parameter.try_get()
+                    ) is None or leaf_param in visited_params:
+                        continue
 
+                    # Prevent Not(Correlated(A,B,C,...)) from creating a spurious
+                    # transitive closure
+                    if any(
+                        frozenset({orig, leaf_param}) in anticorrelated_pairs
+                        for orig in original_params
+                    ):
+                        continue
+
+                    new_leaves.add(leaf_po.as_operand.get())
+                    visited_params.add(leaf_param)
+
+            leaves = new_leaves
             roots.update(new_roots)
 
             if not leaves:

@@ -33,18 +33,19 @@ from atopile.cli import (
     install,
     kicad_ipc,
     package,
+    serve,
     view,
     lsp,
     mcp,
     dev,
 )
-from atopile.cli.logging_ import handler, logger
+from atopile.logging import handler, logger
 from atopile.errors import UserException, UserNoProjectException
-from faebryk.libs.exceptions import (
+from atopile.exceptions import (
     UserResourceException,
     iter_leaf_exceptions,
 )
-from faebryk.libs.logging import FLOG_FMT
+from atopile.logging import FLOG_FMT
 
 
 SAFE_MODE_OPTION = ConfigFlag(
@@ -217,6 +218,7 @@ app.add_typer(lsp.lsp_app, name="lsp", hidden=True)
 app.add_typer(mcp.mcp_app, name="mcp", hidden=True)
 app.add_typer(kicad_ipc.kicad_ipc_app, name="kicad-ipc", hidden=True)
 app.add_typer(dev.dev_app, name="dev", hidden=True)
+app.add_typer(serve.serve_app, name="serve", hidden=True)
 
 
 @app.command(hidden=True)

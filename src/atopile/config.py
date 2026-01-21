@@ -52,12 +52,12 @@ from atopile.errors import (
     UserFileNotFoundError,
     UserNoProjectException,
 )
+from atopile.exceptions import UserResourceException
 from atopile.version import (
     DISTRIBUTION_NAME,
     clean_version,
     get_installed_atopile_version,
 )
-from faebryk.libs.exceptions import UserResourceException
 from faebryk.libs.paths import get_config_dir
 from faebryk.libs.test.testutil import in_test
 from faebryk.libs.util import indented_container, md_list
@@ -217,9 +217,6 @@ class ProjectPaths(BaseConfigModel):
     build: Path
     """Build artifact output directory"""
 
-    logs: Path
-    """Build logs directory"""
-
     manifest: Path
     """Build manifest file"""
 
@@ -240,7 +237,6 @@ class ProjectPaths(BaseConfigModel):
         data.setdefault("parts", data["src"] / "parts")
         data.setdefault("layout", data["root"] / "elec" / "layout")
         data["build"] = Path(data.get("build", data["root"] / "build"))
-        data.setdefault("logs", data["build"] / "logs")
         data.setdefault("manifest", data["build"] / "manifest.json")
         data.setdefault("modules", data["root"] / ".ato" / "modules")
 

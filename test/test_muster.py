@@ -9,7 +9,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.build_steps import Muster, MusterTarget
 from atopile.buildutil import BuildStepContext
-from atopile.cli.logging_ import LoggingStage
+from atopile.logging import LoggingStage
 from faebryk.core.solver.solver import Solver
 
 

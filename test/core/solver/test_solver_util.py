@@ -4,12 +4,12 @@
 import logging
 import sys
 from pathlib import Path
-from typing import cast
 
 import pytest
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from atopile.logging import rich_to_string
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import (
     MutationMap,
@@ -18,11 +18,7 @@ from faebryk.core.solver.mutator import (
     Transformations,
 )
 from faebryk.core.solver.solver import Solver
-from faebryk.core.solver.utils import (
-    ContradictionByLiteral,
-    MutatorUtils,
-)
-from faebryk.libs.logging import rich_to_string
+from faebryk.core.solver.utils import ContradictionByLiteral
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 from faebryk.libs.util import not_none

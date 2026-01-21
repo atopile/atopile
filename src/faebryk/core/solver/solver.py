@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Generator
 from dataclasses import dataclass
 from itertools import count
 from typing import TYPE_CHECKING
@@ -16,12 +17,8 @@ from faebryk.core.solver.algorithm import SolverAlgorithm
 
 if TYPE_CHECKING:
     import faebryk.library._F as F
-from faebryk.core.solver.mutator import (
-    MutationMap,
-    MutationStage,
-    Mutator,
-    Transformations,
-)
+from atopile.logging import NET_LINE_WIDTH
+from faebryk.core.solver.mutator import MutationMap, MutationStage, Mutator
 from faebryk.core.solver.symbolic import (
     expression_groups,
     expression_wise,
@@ -32,7 +29,6 @@ from faebryk.core.solver.utils import (
     PRINT_START,
     S_LOG,
 )
-from faebryk.libs.logging import NET_LINE_WIDTH
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import not_none
 
@@ -62,6 +58,9 @@ class Solver:
     class IterationData:
         mutation_map: MutationMap
 
+        def compressed(self) -> "Solver.IterationData":
+            return Solver.IterationData(mutation_map=self.mutation_map.compressed())
+
     @dataclass
     class IterationState:
         dirty: bool
@@ -79,11 +78,12 @@ class Solver:
             except Exception:
                 pass
 
-    def __init__(self) -> None:
-        super().__init__()
+        def compressed(self) -> "Solver.SolverState":
+            return Solver.SolverState(data=self.data.compressed())
 
+    def __init__(self) -> None:
         self.state: Solver.SolverState | None = None
-        self.reusable_state: Solver.SolverState | None = None
+        self._terminal = False
 
     @classmethod
     def _run_iteration(
@@ -153,138 +153,19 @@ class Solver:
         tg: fbrk.TypeGraph,
         relevant: list[F.Parameters.can_be_operand] | None = None,
     ):
-        import faebryk.library._F as F
-
-        # TODO consider not getting full graph of node gs, but scope to only relevant
-
-        if self.reusable_state is None:
-            # TODO: strip graph from all unnecessary nodes
-            # strip = copy only stuff over we are interested in (po and is_lit)
-            # be careful: mutator map resolution is using the original object
-            # if you copy it into the stripped graph its going to be missing
-            # check what is easier:
-            # 1. handle that detail
-            # 2. add the stripping to the canonicalization algorithm, where the mutator will take care of the rest #noqa: E501
-
-            return Solver.SolverState(
-                data=Solver.IterationData(
-                    mutation_map=MutationMap.bootstrap(
-                        tg=tg,
-                        g=g,
-                        print_context=print_context,
-                        relevant=relevant,
-                    )
-                ),
-            )
-
-        raise NotImplementedError("Resuming state not supported yet in new core")
-
-        if print_context is not None:
-            raise ValueError("print_context not allowed when using reusable state")
-
-        mutation_map = self.reusable_state.data.mutation_map
-        p_ops = set(
-            fabll.Traits.get_implementors(
-                F.Parameters.is_parameter_operatable.bind_typegraph(tg), g
-            )
+        initial_state = (
+            self.state.data.mutation_map.compressed() if self.state else None
         )
-        new_p_ops = p_ops - mutation_map.first_stage.input_operables
-
-        # TODO consider using mutator
-        transforms = Transformations.identity(
-            tg,
-            mutation_map.last_stage.G_out,
-            input_print_context=mutation_map.print_ctx,
-        )
-
-        # inject new parameters
-        new_params = [
-            param
-            for p in new_p_ops
-            if (param := p.try_get_sibling_trait(F.Parameters.is_parameter))
-        ]
-        # TODO
-        for p in new_params:
-            # strip units and copy (for decoupling from old graph)
-            # FIXME
-            pass
-            # transforms.mutated[p] = Parameter(
-            #    domain=p.domain,
-            #    tolerance_guess=p.tolerance_guess,
-            #    likely_constrained=p.likely_constrained,
-            #    units=dimensionless,
-            #    soft_set=as_lit(p.soft_set).to_dimensionless()
-            #    if p.soft_set is not None
-            #    else None,
-            #    within=as_lit(p.within).to_dimensionless()
-            #    if p.within is not None
-            #    else None,
-            #    guess=quantity(p.guess, dimensionless) if p.guess is not None else None,  # noqa: E501
-            # )
-
-        # inject new expressions
-        new_exprs = {
-            expr
-            for e in new_p_ops
-            if (expr := e.try_get_sibling_trait(F.Expressions.is_expression))
-        }
-        for e in F.Expressions.is_expression.sort_by_depth(new_exprs, ascending=True):
-            if S_LOG:
-                logger.debug(
-                    f"injecting {e.compact_repr(mutation_map.input_print_context)}"
-                )
-            op_mapped = list[F.Parameters.can_be_operand]()
-            for op in e.get_operands():
-                po = op.try_get_sibling_trait(F.Parameters.is_parameter_operatable)
-                if po:
-                    if po in transforms.mutated:
-                        op_mapped.append(transforms.mutated[po].as_operand())
-                        continue
-                    if mutation_map.is_removed(po):
-                        # TODO
-                        raise Exception("Using removed operand")
-                    if po in mutation_map.first_stage.input_operables:
-                        op_mapped.append(
-                            not_none(mutation_map.map_forward(po).maps_to).as_operand()
-                        )
-                        continue
-                elif lit := op.try_get_sibling_trait(F.Literals.is_literal):
-                    op = lit.as_operand()
-                    if (
-                        n_lit := fabll.Traits(lit)
-                        .get_obj_raw()
-                        .try_cast(F.Literals.Numbers)
-                    ):
-                        op = n_lit.to_dimensionless().get_trait(
-                            F.Parameters.can_be_operand
-                        )
-                op_mapped.append(op)
-            # TODO
-            E_factory: type[fabll.NodeT] = None
-            e_mapped = E_factory.bind_typegraph(tg).create_instance(g).setup(*op_mapped)
-            transforms.mutated[e.as_parameter_operatable()] = e_mapped.get_trait(
-                F.Parameters.is_parameter_operatable
-            )
-            if e.try_get_sibling_trait(F.Expressions.is_predicate):
-                e_mapped.get_trait(F.Expressions.is_assertable).assert_()
-
-        G_in = g
-        # TODO
-        G_out = None
         return Solver.SolverState(
             data=Solver.IterationData(
-                mutation_map.extend(
-                    MutationStage(
-                        tg,
-                        "resume_state",
-                        iteration=0,
-                        transformations=transforms,
-                        print_ctx=mutation_map.print_ctx,
-                        G_in=G_in,
-                        G_out=G_out,
-                    )
+                mutation_map=MutationMap.bootstrap(
+                    tg=tg,
+                    g=g,
+                    print_context=print_context,
+                    relevant=relevant,
+                    initial_state=initial_state,
                 )
-            ),
+            )
         )
 
     # @times_out(TIMEOUT)
@@ -313,6 +194,8 @@ class Solver:
         timings = Times(name="Symbolic Solving")
 
         self.state = self._create_or_resume_state(print_context, g, tg, relevant)
+        assert not self._terminal, "Terminal algorithms already run"
+        self._terminal = terminal
 
         algos = [a for a in self.algorithms.iterative if terminal or not a.terminal]
 
@@ -350,10 +233,6 @@ class Solver:
                 f" and {time.time() - now:.3f} seconds"
             ).ljust(NET_LINE_WIDTH, "=")
         )
-
-        # Partial solving not supported yet
-        # if not terminal:
-        #     self.reusable_state = self.state
 
         G_out = self.state.data.mutation_map.last_stage.G_out
         ifs = F.Expressions.IfThenElse.bind_typegraph(tg).get_instances(G_out)
@@ -414,6 +293,24 @@ class Solver:
         tg = tg or value.tg
         self.simplify(g=g, tg=tg, terminal=terminal, relevant=[value.as_operand.get()])
         return self.extract_superset(value, g=g, tg=tg)
+
+    @classmethod
+    def from_initial_state(cls, state: SolverState) -> Solver:
+        out = Solver()
+        out.state = state
+        return out
+
+    def fork(self) -> Generator[Solver, None, None]:
+        if self.state is None:
+            raise ValueError("Forking failed: state is uninitialized")
+
+        if self._terminal:
+            raise ValueError("Forking failed: terminal algorithms already run")
+
+        compressed = self.state.compressed()
+
+        while True:
+            yield Solver.from_initial_state(compressed)
 
 
 # Tests --------------------------------------------------------------------------------
@@ -482,7 +379,7 @@ def test_solver_basic():
 if __name__ == "__main__":
     import typer
 
-    from faebryk.libs.logging import setup_basic_logging
+    from atopile.logging import setup_basic_logging
 
     setup_basic_logging()
     logger.setLevel(logging.DEBUG)

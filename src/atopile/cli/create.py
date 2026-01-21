@@ -29,7 +29,7 @@ from faebryk.libs.github import (
     GithubRepoNotFound,
     GithubUserNotLoggedIn,
 )
-from faebryk.libs.logging import rich_print_robust
+from atopile.logging import rich_print_robust
 from faebryk.libs.util import (
     get_code_bin_of_terminal,
     in_git_repo,

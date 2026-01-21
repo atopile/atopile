@@ -5,21 +5,12 @@ import logging
 from cmath import pi
 from typing import Callable, Iterable
 
-import faebryk.core.faebrykpy as fbrk
-import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
-from faebryk.core.solver.mutator import (
-    ExpressionBuilder,
-    MutationMap,
-    MutationStage,
-    Mutator,
-    Transformations,
-    solver_relevant,
-)
-from faebryk.core.solver.utils import S_LOG, MutatorUtils
-from faebryk.libs.util import indented_container, not_none
+from faebryk.core.solver.mutator import ExpressionBuilder, Mutator
+from faebryk.core.solver.utils import S_LOG
+from faebryk.libs.util import not_none
 
 Add = F.Expressions.Add
 And = F.Expressions.And
@@ -49,95 +40,6 @@ Xor = F.Expressions.Xor
 logger = logging.getLogger(__name__)
 if S_LOG:
     logger.setLevel(logging.DEBUG)
-
-
-def strip_irrelevant(
-    g: graph.GraphView,
-    tg: fbrk.TypeGraph,
-    relevant: list[F.Parameters.can_be_operand],
-    print_context: F.Parameters.ReprContext | None,
-    iteration: int,
-) -> MutationStage:
-    g_out, tg_out = MutationMap._bootstrap_copy(g, tg)
-    relevant_root_predicates = MutatorUtils.get_relevant_predicates(
-        *relevant,
-    )
-    for root_expr in relevant_root_predicates:
-        root_expr.copy_into(g_out)
-
-    nodes_uuids = {p.instance.node().get_uuid() for p in relevant}
-    for p_out in fabll.Traits.get_implementors(
-        F.Parameters.can_be_operand.bind_typegraph(tg_out)
-    ):
-        if p_out.instance.node().get_uuid() not in nodes_uuids:
-            continue
-        fabll.Traits.create_and_add_instance_to(p_out, solver_relevant)
-
-    print_context = print_context or F.Parameters.ReprContext()
-    all_ops_out = F.Parameters.is_parameter_operatable.bind_typegraph(
-        tg_out
-    ).get_instances(g=g_out)
-
-    mapping = {
-        F.Parameters.is_parameter_operatable.bind_instance(
-            g.bind(node=op.instance.node())
-        ): op
-        for op in all_ops_out
-    }
-    # copy over source name
-    for p_old, p_new in mapping.items():
-        if (p_new_p := p_new.as_parameter.try_get()) is None:
-            continue
-
-        print_context.override_name(
-            p_new_p,
-            fabll.Traits(p_old).get_obj_raw().get_full_name(include_uuid=False),
-        )
-
-    if S_LOG:
-        logger.debug(
-            "Relevant root predicates: "
-            + indented_container(
-                [
-                    p.as_expression.get().compact_repr(
-                        context=print_context,
-                        no_lit_suffix=True,
-                        use_name=True,
-                    )
-                    for p in relevant_root_predicates
-                ]
-            )
-        )
-        expr_count = len(
-            fabll.Traits.get_implementors(
-                F.Expressions.is_expression.bind_typegraph(tg_out)
-            )
-        )
-        param_count = len(
-            fabll.Traits.get_implementors(
-                F.Parameters.is_parameter.bind_typegraph(tg_out)
-            )
-        )
-        lit_count = len(
-            fabll.Traits.get_implementors(F.Literals.is_literal.bind_typegraph(tg_out))
-        )
-        logger.debug(
-            f"|lits|={lit_count}, |exprs|={expr_count}, |params|={param_count} {g_out}"
-        )
-
-    return MutationStage(
-        tg_in=tg,
-        tg_out=tg_out,
-        algorithm="strip_irrelevant",
-        iteration=iteration,
-        print_ctx=print_context,
-        transformations=Transformations(
-            print_ctx=print_context,
-            mutated=mapping,
-        ),
-        G_in=g,
-        G_out=g_out,
-    )
 
 
 def _strip_units(

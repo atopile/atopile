@@ -1588,6 +1588,11 @@ class PCB_Transformer:
                     y=-obj.at.y,
                     r=(((obj.at.r or 0) + 180) % 360) or None,
                 )
+                if obj.primitives is not None:
+                    PCB_Transformer._flip_obj(obj.primitives)
+            case kicad.pcb.PadPrimitives():
+                for poly in obj.gr_polys:
+                    PCB_Transformer._flip_obj(poly)
             case kicad.pcb.Arc():
                 obj.start.y = -obj.start.y
                 obj.mid.y = -obj.mid.y
@@ -1632,7 +1637,9 @@ class PCB_Transformer:
 
         match obj:
             case kicad.pcb.Pad():
-                return obj.name
+                # Include position in identifier to handle duplicate pad names
+                # (e.g., mechanical mounting pads on switches)
+                return (obj.name, _round(obj.at.x, obj.at.y))
             case kicad.pcb.Property():
                 return obj.name
             # geos

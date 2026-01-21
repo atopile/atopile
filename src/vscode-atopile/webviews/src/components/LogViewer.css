@@ -93,6 +93,161 @@
   border-color: var(--brand);
 }
 
+/* Filter divider */
+.filter-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border-subtle);
+  margin: 0 4px;
+}
+
+/* Stage Filter Dropdown */
+.stage-filter-dropdown {
+  position: relative;
+}
+
+.stage-filter-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: transparent;
+}
+
+.stage-filter-btn:hover:not(:disabled) {
+  border-color: var(--text-muted);
+  background: var(--hover);
+}
+
+.stage-filter-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.stage-filter-btn.open {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+
+.stage-filter-btn.filtered {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.stage-filter-btn svg:first-child {
+  width: 12px;
+  height: 12px;
+  opacity: 0.7;
+}
+
+.stage-filter-btn .stage-count {
+  font-size: 10px;
+  opacity: 0.7;
+  font-family: var(--font-mono);
+}
+
+.stage-filter-btn .chevron {
+  transition: transform 0.15s ease;
+  opacity: 0.5;
+}
+
+.stage-filter-btn .chevron.open {
+  transform: rotate(180deg);
+}
+
+.stage-dropdown-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  min-width: 200px;
+  max-width: 300px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  animation: dropdownFadeIn 0.15s ease;
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stage-dropdown-actions {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.stage-action-btn {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.stage-action-btn:hover {
+  background: var(--hover);
+  border-color: var(--text-muted);
+}
+
+.stage-dropdown-list {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: var(--space-1) 0;
+}
+
+.stage-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.stage-checkbox-item:hover {
+  background: var(--hover);
+}
+
+.stage-checkbox-item input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.stage-checkbox-item .stage-name {
+  font-size: 11px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Header Actions */
 .log-actions {
   display: flex;
@@ -235,6 +390,49 @@
   color: var(--text-secondary);
 }
 
+/* Build Info Bar */
+.log-build-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.build-info-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.build-info-item svg {
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.build-info-sep {
+  opacity: 0.4;
+}
+
+.build-info-item.build-target {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.build-info-item.build-target svg {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.build-info-item.build-id {
+  font-family: var(--font-mono);
+  opacity: 0.7;
+}
+
 /* Log Content */
 .log-content {
   flex: 1;
@@ -245,12 +443,11 @@
 /* Log Entry */
 .log-entry {
   display: flex;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-3);
-  border-bottom: 1px solid var(--border-subtle);
+  gap: var(--space-1);
+  padding: 1px var(--space-2);
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 11px;
+  line-height: 1.4;
   align-items: flex-start;
   transition: background 0.1s ease;
 }

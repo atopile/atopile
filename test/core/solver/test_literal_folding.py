@@ -1291,7 +1291,7 @@ def main(target: str):
 if __name__ == "__main__":
     import typer
 
-    from faebryk.libs.logging import setup_basic_logging
+    from atopile.logging import setup_basic_logging
 
     # Reset global graph to avoid solver processing unrelated nodes from strategy init
     # global_g = graph.GraphView.create()

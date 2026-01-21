@@ -41,6 +41,11 @@ class AtoCodeParse:
     class ComponentFile:
         def __init__(self, content: str | Path):
             if isinstance(content, Path):
+                if not content.exists():
+                    raise FileNotFoundError(
+                        f"File {content} does not exist, You might have an empty folder"
+                        f" in {content.parent.parent}, please delete it."
+                    )
                 self.ato = content.read_text("utf-8")
             else:
                 self.ato = content

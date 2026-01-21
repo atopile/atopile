@@ -7,7 +7,7 @@ from pathlib import Path
 from kipy import KiCad
 from kipy.errors import ApiError, ConnectionError
 
-from atopile.cli.logging_ import ALERT
+from atopile.logging import ALERT
 from faebryk.libs.kicad.other_fileformats import C_kicad_config_common
 from faebryk.libs.kicad.paths import get_config_common, get_ipc_socket_path
 from faebryk.libs.util import (

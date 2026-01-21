@@ -10,8 +10,8 @@ from natsort import natsorted
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from atopile.exceptions import UserResourceException
 from faebryk.core import graph
-from faebryk.libs.exceptions import UserResourceException
 from faebryk.libs.kicad.fileformats import Property, kicad
 from faebryk.libs.util import duplicates, md_list
 

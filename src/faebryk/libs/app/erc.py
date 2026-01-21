@@ -14,8 +14,8 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import errors
+from atopile.exceptions import accumulate
 from faebryk.libs.app.checks import check_design
-from faebryk.libs.exceptions import accumulate
 
 if TYPE_CHECKING:
     from atopile.compiler import ast_types as AST

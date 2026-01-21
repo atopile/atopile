@@ -8,8 +8,8 @@ import pytest
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from atopile.exceptions import UserDesignCheckException
 from faebryk.core import graph
-from faebryk.libs.exceptions import UserDesignCheckException
 from faebryk.libs.util import once
 
 logger = logging.getLogger(__name__)

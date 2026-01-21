@@ -16,7 +16,6 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import buildutil, layout
 from atopile.buildutil import BuildContext, BuildStepContext
-from atopile.cli.logging_ import LoggingStage
 from atopile.compiler import format_message
 from atopile.compiler.build import build_stage_2
 from atopile.config import BuildType, config
@@ -26,6 +25,8 @@ from atopile.errors import (
     UserExportError,
     UserPickError,
 )
+from atopile.exceptions import accumulate, iter_leaf_exceptions
+from atopile.logging import LoggingStage
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom
 from faebryk.exporters.documentation.datasheets import export_datasheets
@@ -61,14 +62,10 @@ from faebryk.libs.app.pcb import (
     load_net_names,
 )
 from faebryk.libs.app.picking import save_part_info_to_pcb
-from faebryk.libs.exceptions import accumulate, iter_leaf_exceptions
 from faebryk.libs.kicad.fileformats import Property, kicad
 from faebryk.libs.net_naming import attach_net_names
 from faebryk.libs.nets import bind_electricals_to_fbrk_nets
-from faebryk.libs.picker.picker import (
-    PickError,
-    pick_part_recursively,
-)
+from faebryk.libs.picker.picker import PickError, pick_parts_recursively
 from faebryk.libs.util import DAG, md_table
 
 logger = logging.getLogger(__name__)
@@ -443,7 +440,7 @@ def pick_parts(ctx: BuildStepContext, log_context: LoggingStage) -> None:
         pcb = ctx.require_pcb()
         load_part_info_from_pcb(pcb.transformer.pcb, app.tg)
     try:
-        pick_part_recursively(app, solver, progress=log_context)
+        pick_parts_recursively(app, solver, progress=log_context)
     except* PickError as ex:
         raise ExceptionGroup(
             "Failed to pick parts for some modules",
@@ -664,16 +661,17 @@ def build_design(ctx: BuildStepContext, log_context: LoggingStage) -> None:
 def generate_bom(ctx: BuildStepContext, log_context: LoggingStage) -> None:
     """Generate a BOM for the project."""
     app = ctx.require_app()
-    parts = [
-        m.get_trait(F.Pickable.has_part_picked)
+    pickable_parts = [
+        part
         for m in app.get_children(
             direct_only=False,
             types=fabll.Node,
             required_trait=F.Pickable.has_part_picked,
         )
-        if not m.has_trait(F.has_part_removed)
+        for part in [m.get_trait(F.Pickable.has_part_picked)]
+        if not part.is_removed()
     ]
-    write_bom(parts, config.build.paths.output_base.with_suffix(".bom.csv"))
+    write_bom(pickable_parts, config.build.paths.output_base.with_suffix(".bom.csv"))
 
 
 @muster.register(

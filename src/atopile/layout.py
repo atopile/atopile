@@ -3,11 +3,11 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
+import atopile.exceptions
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-import faebryk.libs.exceptions
 from atopile.address import AddrStr
 from atopile.compiler.ast_visitor import is_ato_module
 from atopile.config import ProjectConfig, config
@@ -138,16 +138,16 @@ def _index_module_layouts(tg: fbrk.TypeGraph) -> "dict[graph.BoundNode, set[Path
     # scan project and all dependencies
     # TODO: only active dependencies
     for filepath in config.project.paths.root.glob("**/ato.yaml"):
-        with faebryk.libs.exceptions.downgrade(Exception, logger=logger):
+        with atopile.exceptions.downgrade(Exception, logger=logger):
             project_config = ProjectConfig.from_path(filepath.parent)
 
             if project_config is None:
-                raise faebryk.libs.exceptions.UserResourceException(
+                raise atopile.exceptions.UserResourceException(
                     f"Failed to load module config: {filepath}"
                 )
 
             for build in project_config.builds.values():
-                with faebryk.libs.exceptions.downgrade(Exception, logger=logger):
+                with atopile.exceptions.downgrade(Exception, logger=logger):
                     if type_node := modules_by_address.get(AddrStr(build.address)):
                         entries[type_node].add(build.paths.layout)
 

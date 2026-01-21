@@ -4,7 +4,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from atopile import buildutil
-from atopile.cli.logging_ import capture_logs, log_exceptions
+from atopile.logging import capture_logs, log_exceptions
 from atopile.mcp.util import MCPTools
 
 cli_tools = MCPTools()

@@ -20,26 +20,21 @@ export interface LogEntry {
 export interface BuildStage {
   name: string;
   stage_id: string;
-  elapsed_seconds: number;
   status: StageStatus;
-  infos: number;
   warnings: number;
   errors: number;
-  alerts: number;
 }
 
 export interface Build {
-  name: string;
+  name: string;  // Target name for matching
   display_name: string;
-  project_name: string | null;
+  build_id: string;
   status: BuildStatus;
   elapsed_seconds: number;
   warnings: number;
   errors: number;
-  return_code: number | null;
-  log_dir?: string;
-  log_file?: string;
   stages?: BuildStage[];
+  timestamp?: string;  // ISO timestamp when the build completed
 }
 
 export interface BuildTarget {
@@ -54,11 +49,22 @@ export interface Project {
   targets: BuildTarget[];
 }
 
+// Info about the currently displayed build's logs
+export interface CurrentBuildInfo {
+  buildId: string;
+  projectPath: string;
+  target: string;
+  timestamp: string;
+}
+
 /**
  * THE SINGLE APP STATE - All state lives here.
  * Extension owns this, webviews receive it read-only.
  */
 export interface AppState {
+  // Backend server status
+  isBackendRunning: boolean;
+
   // Connection
   isConnected: boolean;
 
@@ -72,13 +78,15 @@ export interface AppState {
 
   // Build/Log selection
   selectedBuildName: string | null;
-  selectedStageIds: string[];
+  selectedBuildId: string | null;  // Track the actual build_id being polled
+  currentBuildInfo: CurrentBuildInfo | null;  // Info about currently displayed logs
   logEntries: LogEntry[];
   isLoadingLogs: boolean;
-  logFile: string | null;
 
   // Log viewer UI
   enabledLogLevels: LogLevel[];
+  availableStages: string[];  // Stages available for current build
+  enabledStages: string[];    // Stages to show (empty = all)
   logSearchQuery: string;
   logTimestampMode: 'absolute' | 'delta';
   logAutoScroll: boolean;
