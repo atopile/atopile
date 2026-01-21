@@ -3,7 +3,7 @@
  * Uses UI store synced from the backend via WebSocket.
  */
 
-import { useEffect, useMemo, useRef, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useCallback, useState } from 'react';
 import AnsiToHtml from 'ansi-to-html';
 import { ArrowDownToLine, Clock, Timer } from 'lucide-react';
 import { BuildSelector, type Selection, type Project, type BuildTarget } from './BuildSelector';
@@ -255,7 +255,7 @@ export function LogViewer() {
     toggleTimestampMode,
     setAutoScroll,
   } = useLogs();
-  const { builds, selectedBuildName, selectBuild } = useBuilds();
+  const { allBuilds, selectedBuildName, selectBuild } = useBuilds();
   const logRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -334,12 +334,12 @@ export function LogViewer() {
 
   // Convert state to BuildSelector format (must be before early return to maintain hook order)
   const projects = useMemo(
-    () => buildsToProjects(builds),
-    [builds]
+    () => buildsToProjects(allBuilds),
+    [allBuilds]
   );
   const selection = useMemo(
-    () => buildNameToSelection(selectedBuildName, builds),
-    [selectedBuildName, builds]
+    () => buildNameToSelection(selectedBuildName, allBuilds),
+    [selectedBuildName, allBuilds]
   );
 
   const handleSelectionChange = useCallback((newSelection: Selection) => {

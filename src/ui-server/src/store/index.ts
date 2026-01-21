@@ -186,7 +186,7 @@ type Store = AppState & StoreActions;
 
 export const useStore = create<Store>()(
   devtools(
-    (set, get) => ({
+    (set) => ({
       ...initialState,
 
       // Connection
@@ -349,7 +349,9 @@ export const useSelectedProject = () =>
 export const useSelectedBuild = () =>
   useStore((state) => {
     if (!state.selectedBuildName) return null;
-    return state.builds.find((b) => b.name === state.selectedBuildName);
+    return state.builds.find(
+      (b) => b.displayName === state.selectedBuildName || b.name === state.selectedBuildName
+    );
   });
 
 export const useFilteredProblems = () =>

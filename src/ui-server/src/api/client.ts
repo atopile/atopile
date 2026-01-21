@@ -113,12 +113,6 @@ interface ProblemsResponse {
   problems: Problem[];
 }
 
-interface LogsResponse {
-  logs: LogEntry[];
-  total: number;
-  hasMore: boolean;
-}
-
 interface ModulesResponse {
   modules: ModuleDefinition[];
 }
@@ -190,7 +184,7 @@ export const api = {
       fetchJSON<{ success: boolean; message: string }>('/api/packages/install', {
         method: 'POST',
         body: JSON.stringify({
-          identifier,
+          package_identifier: identifier,
           project_root: projectRoot,
           version,
         }),
@@ -200,7 +194,7 @@ export const api = {
       fetchJSON<{ success: boolean; message: string }>('/api/packages/remove', {
         method: 'POST',
         body: JSON.stringify({
-          identifier,
+          package_identifier: identifier,
           project_root: projectRoot,
         }),
       }),

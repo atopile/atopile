@@ -234,11 +234,6 @@ export function logDataSize(name: string, data: unknown): void {
     `${name}: ${color}${formatted}${COLORS.reset}`
   )
 
-  // Send to dev server
-  const api = getVsCodeApi()
-  if (api) {
-    api.postMessage({ type: 'perf', name: `size:${name}`, duration: bytes / 1024, metadata: { bytes, formatted } })
-  }
 }
 
 /**

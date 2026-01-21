@@ -11,7 +11,7 @@
  */
 
 import { useState } from 'react';
-import { Settings, FolderOpen, AlertCircle } from 'lucide-react';
+import { Settings, AlertCircle } from 'lucide-react';
 import { useProjects, useBuilds, useProblems, useConnection } from '../hooks';
 import { useStore } from '../store';
 import { CollapsibleSection } from './CollapsibleSection';
@@ -81,9 +81,10 @@ export function SidebarNew() {
       <div className="sidebar-content">
         {/* Projects Section - Uses connected component with hooks */}
         <CollapsibleSection
+          id="projects"
           title="Projects"
-          icon={<FolderOpen size={16} />}
-          defaultExpanded={true}
+          collapsed={collapsedSections.has('projects')}
+          onToggle={() => toggleSection('projects')}
           badge={projects.length > 0 ? projects.length : undefined}
         >
           <ProjectsPanelConnected />
@@ -91,8 +92,9 @@ export function SidebarNew() {
 
         {/* Build Queue Section - Uses connected component with hooks */}
         <CollapsibleSection
+          id="buildQueue"
           title="Build Queue"
-          defaultExpanded={!collapsedSections.has('buildQueue')}
+          collapsed={collapsedSections.has('buildQueue')}
           onToggle={() => toggleSection('buildQueue')}
           badge={queuedBuilds.length > 0 ? queuedBuilds.length : undefined}
         >
@@ -101,8 +103,9 @@ export function SidebarNew() {
 
         {/* Problems Section - Uses connected component with hooks */}
         <CollapsibleSection
+          id="problems"
           title="Problems"
-          defaultExpanded={!collapsedSections.has('problems')}
+          collapsed={collapsedSections.has('problems')}
           onToggle={() => toggleSection('problems')}
           badge={
             errorCount + warningCount > 0

@@ -7,6 +7,8 @@ This module isolates external API calls for package metadata.
 from __future__ import annotations
 
 import logging
+import os
+import string
 import time
 
 from ..schemas.package import PackageDetails, PackageInfo, PackageVersion
@@ -16,13 +18,13 @@ log = logging.getLogger(__name__)
 # Registry cache
 _registry_cache: dict[str, list[PackageInfo]] = {}
 _registry_cache_time: float = 0.0
-_REGISTRY_CACHE_TTL = 300  # 5 minutes
+_REGISTRY_CACHE_TTL = int(os.getenv("ATOPILE_REGISTRY_CACHE_TTL", "0"))
 
 # TODO: HACK - Registry API doesn't support listing all packages (empty query returns 0).
 # Workaround: query multiple search terms and merge results to approximate "get all".
 # These terms were empirically chosen for maximum coverage (~149 packages as of 2025-01).
 # Proper fix: add a /v1/packages/list endpoint to the registry API.
-_REGISTRY_SEARCH_TERMS = ["atopile", "i2c", "st", "ti", "ic", "mcu", "esp", "microchip"]
+_REGISTRY_SEARCH_TERMS = list(string.ascii_lowercase + string.digits)
 
 
 def version_is_newer(installed: str | None, latest: str | None) -> bool:
@@ -57,6 +59,8 @@ def version_is_newer(installed: str | None, latest: str | None) -> bool:
 
 
 def _cache_get(key: str) -> list[PackageInfo] | None:
+    if _REGISTRY_CACHE_TTL <= 0:
+        return None
     now = time.time()
     if key in _registry_cache and (now - _registry_cache_time) < _REGISTRY_CACHE_TTL:
         return _registry_cache[key]
@@ -64,6 +68,8 @@ def _cache_get(key: str) -> list[PackageInfo] | None:
 
 
 def _cache_set(key: str, packages: list[PackageInfo]) -> None:
+    if _REGISTRY_CACHE_TTL <= 0:
+        return
     global _registry_cache_time
     _registry_cache[key] = packages
     _registry_cache_time = time.time()
@@ -235,7 +241,7 @@ def enrich_packages_with_registry(
     if not packages:
         return packages
 
-    registry_data = search_registry_packages("")
+    registry_data = get_all_registry_packages()
     registry_map: dict[str, PackageInfo] = {pkg.identifier: pkg for pkg in registry_data}
 
     enriched: dict[str, PackageInfo] = {}

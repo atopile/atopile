@@ -10,8 +10,10 @@
 import { useCallback } from 'react';
 import { useProblems, useProjects, useBuilds } from '../hooks';
 import { useStore } from '../store';
+import { sendAction } from '../api/websocket';
 import { ProblemsPanel } from './ProblemsPanel';
 import type { Problem } from '../types/build';
+import type { Project as BuildSelectorProject, BuildTarget as BuildSelectorTarget } from './BuildSelector';
 
 // Type for selection used in BuildSelector
 interface Selection {
@@ -25,7 +27,7 @@ interface Selection {
 export function ProblemsPanelConnected() {
   const { filteredProblems, problemFilter } = useProblems();
   const { projects, selectedProjectRoot } = useProjects();
-  const { builds, selectBuild } = useBuilds();
+  const { selectBuild } = useBuilds();
   const selectedBuildName = useStore((state) => state.selectedBuildName);
 
   // Build selection state for BuildSelector
@@ -63,7 +65,25 @@ export function ProblemsPanelConnected() {
   }));
 
   // Transform projects for BuildSelector
-  const transformedProjects = projects.map((p) => ({
+  const mapStatus = (status?: string): BuildSelectorTarget['status'] => {
+    switch (status) {
+      case 'building':
+        return 'building';
+      case 'success':
+        return 'success';
+      case 'warning':
+        return 'warning';
+      case 'failed':
+      case 'error':
+        return 'error';
+      case 'queued':
+      case 'cancelled':
+      default:
+        return 'idle';
+    }
+  };
+
+  const transformedProjects: BuildSelectorProject[] = projects.map((p) => ({
     id: p.root,
     name: p.name,
     type: 'project' as const,
@@ -72,20 +92,21 @@ export function ProblemsPanelConnected() {
       id: t.name,
       name: t.name,
       entry: t.entry,
-      status: t.lastBuild?.status || 'idle',
+      status: mapStatus(t.lastBuild?.status),
     })),
   }));
 
   const handleProblemClick = useCallback((problem: Problem) => {
-    // Navigate to problem location
-    // This would typically call a VS Code command to open the file
-    console.log('Navigate to problem:', problem.file, problem.line);
+    if (!problem.file) return;
+    sendAction('openFile', {
+      file: problem.file,
+      line: problem.line,
+      column: problem.column,
+    });
   }, []);
 
   const handleToggleLevelFilter = useCallback((level: 'error' | 'warning') => {
-    // Toggle level filter
-    // For now, we just log - the store would need a toggleProblemLevelFilter action
-    console.log('Toggle level filter:', level);
+    sendAction('toggleProblemLevelFilter', { level });
   }, []);
 
   return (

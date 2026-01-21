@@ -7,7 +7,7 @@
  * - Handles connection state display
  */
 
-import React, { useEffect, ReactNode } from 'react';
+import React, { ReactNode } from 'react';
 import { useConnection } from './hooks/useConnection';
 import { useStore } from './store';
 

@@ -11,11 +11,9 @@
 
 import { useCallback } from 'react';
 import { useProjects, useBuilds } from '../hooks';
-import { useStore } from '../store';
-import { api } from '../api/client';
 import './ProjectsPanelConnected.css';
 
-// Selection type matching ProjectsPanel
+// Selection type for project/build handling
 interface Selection {
   type: 'none' | 'project' | 'build' | 'symbol';
   projectId?: string;
@@ -79,21 +77,11 @@ export function ProjectsPanelConnected() {
     projects,
     selectedProjectRoot,
     selectedTargetNames,
-    expandedTargets,
     selectProject,
     toggleTarget,
-    toggleTargetExpanded,
   } = useProjects();
 
   const { startBuild, cancelBuild, queuedBuilds } = useBuilds();
-  const projectModules = useStore((state) => state.projectModules);
-  const projectFiles = useStore((state) => state.projectFiles);
-  const projectDependencies = useStore((state) => state.projectDependencies);
-
-  // Current selection state
-  const selection: Selection = selectedProjectRoot
-    ? { type: 'project', projectId: selectedProjectRoot }
-    : { type: 'none' };
 
   // Transform store projects to panel format
   const transformedProjects: Project[] = projects.map((p) => {
@@ -158,7 +146,7 @@ export function ProjectsPanelConnected() {
   );
 
   const handleBuild = useCallback(
-    (level: 'project' | 'build' | 'symbol', id: string, label: string) => {
+    (level: 'project' | 'build' | 'symbol', id: string) => {
       if (!selectedProjectRoot) return;
 
       if (level === 'project') {
@@ -184,22 +172,6 @@ export function ProjectsPanelConnected() {
     },
     [cancelBuild]
   );
-
-  const handleProjectExpand = useCallback(async (projectRoot: string) => {
-    // Fetch modules for the expanded project
-    try {
-      const [modulesRes, filesRes, depsRes] = await Promise.all([
-        api.modules.list(projectRoot),
-        api.files.list(projectRoot),
-        api.dependencies.list(projectRoot),
-      ]);
-      useStore.getState().setProjectModules(projectRoot, modulesRes.modules);
-      useStore.getState().setProjectFiles(projectRoot, filesRes.files);
-      useStore.getState().setProjectDependencies(projectRoot, depsRes.dependencies);
-    } catch (error) {
-      console.error('Failed to fetch project data:', error);
-    }
-  }, []);
 
   // Check if targets are selected
   const hasSelectedTargets = selectedTargetNames.length > 0;
@@ -282,7 +254,7 @@ export function ProjectsPanelConnected() {
           <button
             className="build-btn primary"
             onClick={() =>
-              handleBuild('project', selectedProjectRoot!, 'Build')
+              handleBuild('project', selectedProjectRoot!)
             }
           >
             Build ({selectedTargetNames.length} target

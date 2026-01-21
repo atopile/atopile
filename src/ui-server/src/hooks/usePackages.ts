@@ -24,7 +24,7 @@ export function usePackages() {
   const refresh = useCallback(async () => {
     useStore.getState().setLoadingPackages(true);
     try {
-      const response = await api.packages.list();
+      const response = await api.packages.summary();
       useStore.getState().setPackages(response.packages);
     } catch (error) {
       console.error('Failed to refresh packages:', error);

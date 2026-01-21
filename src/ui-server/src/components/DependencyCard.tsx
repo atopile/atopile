@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { Package, ChevronDown, RefreshCw, ExternalLink, Github } from 'lucide-react';
+import { Package, ChevronDown, RefreshCw, Github } from 'lucide-react';
 import './DependencyCard.css';
 
 export interface ProjectDependency {
