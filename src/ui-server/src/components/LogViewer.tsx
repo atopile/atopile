@@ -65,23 +65,37 @@ function highlightText(text: string, search: string): string {
   return text.replace(regex, '<mark class="lv-highlight">$1</mark>');
 }
 
+// Get initial values from URL query params
+function getInitialParams(): { mode: LogMode; testRunId: string; buildId: string; testName: string } {
+  const params = new URLSearchParams(window.location.search);
+  const testRunId = params.get('test_run_id') || '';
+  const buildId = params.get('build_id') || '';
+  const testName = params.get('test_name') || '';
+  // Auto-detect mode based on which ID is provided
+  const mode: LogMode = testRunId ? 'test' : (buildId ? 'build' : 'test');
+  return { mode, testRunId, buildId, testName };
+}
+
 export function LogViewer() {
+  // Get initial values from URL params
+  const initialParams = getInitialParams();
+
   // Mode toggle: build logs vs test logs
-  const [mode, setMode] = useState<LogMode>('build');
+  const [mode, setMode] = useState<LogMode>(initialParams.mode);
 
   // Query parameters - shared
-  const [logLevels, setLogLevels] = useState<LogLevel[]>(['INFO']);
+  const [logLevels, setLogLevels] = useState<LogLevel[]>(['INFO', 'WARNING', 'ERROR', 'ALERT']);
   const [audience, setAudience] = useState<Audience>('developer');
   const [count, setCount] = useState(100);
   const [search, setSearch] = useState('');
 
   // Build log specific parameters
-  const [buildId, setBuildId] = useState('');
+  const [buildId, setBuildId] = useState(initialParams.buildId);
   const [stage, setStage] = useState('');
 
   // Test log specific parameters
-  const [testRunId, setTestRunId] = useState('');
-  const [testName, setTestName] = useState('');
+  const [testRunId, setTestRunId] = useState(initialParams.testRunId);
+  const [testName, setTestName] = useState(initialParams.testName);
 
   // Connection state
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
@@ -121,7 +135,9 @@ export function LogViewer() {
 
     setConnectionState('connecting');
 
-    const ws = new WebSocket('ws://localhost:8501/ws/logs');
+    // Connect to /ws/logs on the same host that served this page
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/logs`);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -276,7 +292,7 @@ export function LogViewer() {
               value={stage}
               onChange={(e) => setStage(e.target.value)}
               placeholder="Stage"
-              className="lv-input lv-input-small"
+              className="lv-input lv-input-medium"
             />
           </>
         ) : (
@@ -293,7 +309,7 @@ export function LogViewer() {
               value={testName}
               onChange={(e) => setTestName(e.target.value)}
               placeholder="Test Name"
-              className="lv-input lv-input-small"
+              className="lv-input lv-input-medium"
             />
           </>
         )}
@@ -374,12 +390,9 @@ export function LogViewer() {
                   <span className={`lv-level-badge ${entry.level.toLowerCase()}`}>
                     {entry.level.slice(0, 4)}
                   </span>
-                  <span className={`lv-audience-badge ${entry.audience}`}>
-                    {entry.audience.slice(0, 3)}
-                  </span>
                   {testLabel && (
-                    <span className="lv-test-badge" title={testLabel}>
-                      {testLabel.length > 20 ? testLabel.slice(-20) : testLabel}
+                    <span className="lv-test-badge">
+                      {testLabel}
                     </span>
                   )}
                   <pre

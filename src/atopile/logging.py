@@ -128,15 +128,11 @@ CREATE INDEX IF NOT EXISTS idx_logs_audience ON logs(audience);
 
 # Schema for the test logs table (different from build logs)
 TEST_SCHEMA_SQL = """
--- Test runs table: maps test run to a unique test_run_id
+-- Test runs table
 CREATE TABLE IF NOT EXISTS test_runs (
     test_run_id TEXT PRIMARY KEY,
-    run_name TEXT NOT NULL,
-    timestamp TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
-
-CREATE INDEX IF NOT EXISTS idx_test_runs_timestamp ON test_runs(timestamp);
 
 -- Test logs table: all log entries from all test runs
 CREATE TABLE IF NOT EXISTS test_logs (
@@ -515,27 +511,17 @@ class SQLiteLogWriter:
             pass  # Best effort
         return build_id
 
-    def register_test_run(self, run_name: str, timestamp: str) -> str:
-        """
-        Register a new test run and return its test_run_id.
-
-        If a test run with the same name/timestamp already exists,
-        returns the existing test_run_id.
-        """
-        test_run_id = TestLogger.generate_test_run_id(run_name, timestamp)
+    def register_test_run(self, test_run_id: str) -> None:
+        """Register a test run in the database."""
         conn = self._get_connection()
         try:
             conn.execute(
-                """
-                INSERT OR IGNORE INTO test_runs (test_run_id, run_name, timestamp)
-                VALUES (?, ?, ?)
-                """,
-                (test_run_id, run_name, timestamp),
+                "INSERT OR IGNORE INTO test_runs (test_run_id) VALUES (?)",
+                (test_run_id,),
             )
             conn.commit()
         except sqlite3.Error:
             pass  # Best effort
-        return test_run_id
 
     def write(self, entry: Any) -> None:
         """Write a log entry (batched for performance)."""
@@ -615,8 +601,6 @@ class SQLiteLogWriter:
 class TestLogger(BaseLogger):
     """Typed logging interface for structured test logs."""
 
-    _loggers: dict[str, "TestLogger"] = {}
-
     def __init__(self, test_run_id: str, test: str = ""):
         super().__init__(test_run_id, test)
 
@@ -627,68 +611,21 @@ class TestLogger(BaseLogger):
 
         return get_log_dir() / "test_logs.db"
 
-    @staticmethod
-    def generate_test_run_id(run_name: str, timestamp: str) -> str:
-        """Generate a unique test run ID from run name and timestamp."""
-        import hashlib
-
-        content = f"{run_name}:{timestamp}"
-        return hashlib.sha256(content.encode()).hexdigest()[:16]
-
-    @classmethod
-    def get(
-        cls,
-        run_name: str,
-        timestamp: str | None = None,
-        test: str = "",
-    ) -> "TestLogger":
-        """
-        Get or create a test logger for a test run.
-
-        All logs go to the test database at ~/.local/share/atopile/test_logs.db.
-        Each test run is identified by a unique test_run_id generated from name+timestamp.
-        """
-        if timestamp is None:
-            timestamp = NOW
-
-        writer = SQLiteLogWriter.get_test_instance()
-        test_run_id = writer.register_test_run(run_name, timestamp)
-
-        if test_run_id not in cls._loggers:
-            test_logger = cls(test_run_id, test)
-            test_logger.set_writer(writer)
-            cls._loggers[test_run_id] = test_logger
-        else:
-            test_logger = cls._loggers[test_run_id]
-            test_logger.set_test(test)
-
-        return test_logger
-
-    @classmethod
-    def close(cls, test_run_id: str) -> None:
-        """Close and flush a test logger by its test run ID."""
-        if test_run_id in cls._loggers:
-            test_logger = cls._loggers.pop(test_run_id)
-            test_logger.flush()
-
     @classmethod
     def close_all(cls) -> None:
         """
-        Close all test loggers and the test SQLite writer.
+        Close the test SQLite writer.
 
         This should be called at the end of a test session to ensure
         all logs are flushed and resources are properly released.
         """
-        for test_run_id in list(cls._loggers.keys()):
-            cls.close(test_run_id)
         SQLiteLogWriter.close_test_instance()
 
     @classmethod
     def setup_logging(
         cls,
-        run_name: str,
+        test_run_id: str,
         test: str = "",
-        timestamp: str | None = None,
     ) -> "TestLogger | None":
         """
         Set up logging for test workers.
@@ -700,7 +637,10 @@ class TestLogger(BaseLogger):
         root_logger = logging.getLogger()
 
         try:
-            test_logger = cls.get(run_name, timestamp, test=test)
+            writer = SQLiteLogWriter.get_test_instance()
+            writer.register_test_run(test_run_id)
+            test_logger = cls(test_run_id, test)
+            test_logger.set_writer(writer)
             for handler in root_logger.handlers:
                 if isinstance(handler, LogHandler):
                     handler._test_logger = test_logger
