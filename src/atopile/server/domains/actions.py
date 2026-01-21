@@ -366,30 +366,30 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 "message": f"Build {build_id} cannot be cancelled (already completed)",
             }
 
-        if action == "fetchModules":
-            project_root = payload.get("projectRoot", "")
-            if project_root:
-                from atopile.dataclasses import (
-                    ModuleDefinition as StateModuleDefinition,
-                )
+        # if action == "fetchModules":
+        #     project_root = payload.get("projectRoot", "")
+        #     if project_root:
+        #         from atopile.dataclasses import (
+        #             ModuleDefinition as StateModuleDefinition,
+        #         )
 
-                # Run blocking module discovery in thread pool
-                modules = await asyncio.to_thread(
-                    module_discovery.discover_modules_in_project, Path(project_root)
-                )
-                state_modules = [
-                    StateModuleDefinition(
-                        name=m.name,
-                        type=m.type,
-                        file=m.file,
-                        entry=m.entry,
-                        line=m.line,
-                        super_type=m.super_type,
-                    )
-                    for m in modules
-                ]
-                await server_state.set_project_modules(project_root, state_modules)
-            return {"success": True}
+        #         # Run blocking module discovery in thread pool
+        #         modules = await asyncio.to_thread(
+        #             module_discovery.discover_modules_in_project, Path(project_root)
+        #         )
+        #         state_modules = [
+        #             StateModuleDefinition(
+        #                 name=m.name,
+        #                 type=m.type,
+        #                 file=m.file,
+        #                 entry=m.entry,
+        #                 line=m.line,
+        #                 super_type=m.super_type,
+        #             )
+        #             for m in modules
+        #         ]
+        #         await server_state.set_project_modules(project_root, state_modules)
+        #     return {"success": True}
 
         if action == "getPackageDetails":
             package_id = payload.get("packageId", "")

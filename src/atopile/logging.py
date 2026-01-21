@@ -863,17 +863,21 @@ class BuildLogger(BaseLogger):
 
                 stage_name = stage if stage is not None else "cli"
                 env_build_id = os.environ.get("ATO_BUILD_ID")
-                env_timestamp = os.environ.get("ATO_BUILD_TIMESTAMP") or NOW
-                if env_build_id:
-                    build_logger = cls.get_with_id(
-                        env_build_id,
-                        project_path,
-                        target,
-                        timestamp=env_timestamp,
-                        stage=stage_name,
+                if not env_build_id:
+                    raise RuntimeError("ATO_BUILD_ID is required for database logging")
+
+                env_timestamp = os.environ.get("ATO_BUILD_TIMESTAMP")
+                if not env_timestamp:
+                    raise RuntimeError(
+                        "ATO_BUILD_TIMESTAMP is required for database logging"
                     )
-                else:
-                    build_logger = cls.get(project_path, target, stage=stage_name)
+                build_logger = cls.get_with_id(
+                    env_build_id,
+                    project_path,
+                    target,
+                    timestamp=env_timestamp,
+                    stage=stage_name,
+                )
 
                 # Attach build_logger to existing handler
                 for handler in root_logger.handlers:
@@ -1269,7 +1273,7 @@ class LogHandler(RichHandler):
                     level,
                     message,
                     logger_name=record.name,
-                    audience=Log.Audience.USER,
+                    audience=Log.Audience.DEVELOPER,
                     ato_traceback=ato_tb,
                     python_traceback=python_tb,
                 )
@@ -1321,7 +1325,7 @@ class LogHandler(RichHandler):
                     level,
                     message,
                     logger_name=record.name,
-                    audience=Log.Audience.USER,
+                    audience=Log.Audience.DEVELOPER,
                     python_traceback=python_tb,
                 )
             else:
@@ -1456,7 +1460,8 @@ def load_build_logs(
     where_sql = " AND ".join(where_clauses)
     query = f"""
         SELECT logs.timestamp, logs.level, logs.audience, logs.logger_name,
-               logs.message, logs.ato_traceback, logs.python_traceback, logs.objects
+               logs.message, logs.stage, logs.ato_traceback, logs.python_traceback,
+               logs.objects
         FROM logs
         WHERE {where_sql}
         ORDER BY logs.id DESC
@@ -1482,6 +1487,7 @@ def load_build_logs(
                 "audience": row["audience"],
                 "logger_name": row["logger_name"],
                 "message": row["message"],
+                "stage": row["stage"],
                 "ato_traceback": row["ato_traceback"],
                 "python_traceback": row["python_traceback"],
                 "objects": objects,
@@ -1607,7 +1613,8 @@ def load_build_logs_stream(
     # ORDER BY id ASC for streaming (oldest first, append to end)
     query = f"""
         SELECT logs.id, logs.timestamp, logs.level, logs.audience, logs.logger_name,
-               logs.message, logs.ato_traceback, logs.python_traceback, logs.objects
+               logs.message, logs.stage, logs.ato_traceback, logs.python_traceback,
+               logs.objects
         FROM logs
         WHERE {where_sql}
         ORDER BY logs.id ASC
@@ -1637,6 +1644,7 @@ def load_build_logs_stream(
                 "audience": row["audience"],
                 "logger_name": row["logger_name"],
                 "message": row["message"],
+                "stage": row["stage"],
                 "ato_traceback": row["ato_traceback"],
                 "python_traceback": row["python_traceback"],
                 "objects": objects,

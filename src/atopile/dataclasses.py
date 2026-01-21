@@ -172,6 +172,7 @@ class Log:
         audience: str
         logger_name: str
         message: str
+        stage: str | None = None
         ato_traceback: str | None = None
         python_traceback: str | None = None
         objects: Any | None = None
@@ -240,6 +241,7 @@ class Log:
         audience: str
         logger_name: str
         message: str
+        stage: str | None = None
         ato_traceback: str | None = None
         python_traceback: str | None = None
         objects: Any | None = None

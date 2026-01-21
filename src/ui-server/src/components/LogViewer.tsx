@@ -22,6 +22,7 @@ interface BuildLogEntry {
   audience: Audience;
   logger_name: string;
   message: string;
+  stage?: string | null;
   ato_traceback?: string | null;
   python_traceback?: string | null;
   objects?: unknown;
@@ -100,6 +101,53 @@ function getInitialParams(): { mode: LogMode; testRunId: string; buildId: string
   return { mode, testRunId, buildId, testName };
 }
 
+// Chevron icon component
+function ChevronDown({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="10"
+      height="10"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
+// Animated traceback details component
+function TraceDetails({
+  label,
+  content,
+  className
+}: {
+  label: string;
+  content: string;
+  className: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className={`lv-trace ${className}`}>
+      <button className="lv-trace-summary" onClick={() => setIsOpen(!isOpen)}>
+        <span className={`lv-trace-arrow ${isOpen ? 'open' : ''}`}>▸</span>
+        {label}
+      </button>
+      {isOpen && (
+        <pre
+          className="lv-trace-content"
+          dangerouslySetInnerHTML={{ __html: ansiConverter.toHtml(content) }}
+        />
+      )}
+    </div>
+  );
+}
+
 export function LogViewer() {
   // Get initial values from URL params
   const initialParams = getInitialParams();
@@ -110,7 +158,6 @@ export function LogViewer() {
   // Query parameters - shared
   const [logLevels, setLogLevels] = useState<LogLevel[]>(['INFO', 'WARNING', 'ERROR', 'ALERT']);
   const [audience, setAudience] = useState<Audience>('developer');
-  const [count, setCount] = useState(100);
   const [search, setSearch] = useState('');
 
   // Build log specific parameters
@@ -125,7 +172,6 @@ export function LogViewer() {
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [loading, setLoading] = useState(false);
   const queuedBuilds = useStore((state) => state.queuedBuilds);
   const builds = useStore((state) => state.builds);
 
@@ -138,10 +184,25 @@ export function LogViewer() {
   const autoStartedRef = useRef(false);
   const lastAutoBuildIdRef = useRef<string | null>(null);
 
+  // Level dropdown state
+  const [levelDropdownOpen, setLevelDropdownOpen] = useState(false);
+  const levelDropdownRef = useRef<HTMLDivElement>(null);
+
   // Keep ref in sync with state
   useEffect(() => {
     autoScrollRef.current = autoScroll;
   }, [autoScroll]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (levelDropdownRef.current && !levelDropdownRef.current.contains(event.target as Node)) {
+        setLevelDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Filter logs by search
   const filteredLogs = search.trim()
@@ -236,7 +297,6 @@ export function LogViewer() {
 
     ws.onmessage = (event) => {
       if (!mountedRef.current) return;
-      setLoading(false);
       try {
         const data = JSON.parse(event.data) as LogResult | LogError;
 
@@ -278,54 +338,6 @@ export function LogViewer() {
       }
     };
   }, [connect]);
-
-  const fetchLogs = useCallback(() => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      setError('Not connected');
-      return;
-    }
-
-    if (mode === 'build' && !buildId.trim()) {
-      setError('Build ID is required');
-      return;
-    }
-
-    if (mode === 'test' && !testRunId.trim()) {
-      setError('Test Run ID is required');
-      return;
-    }
-
-    // Stop any active streaming
-    if (streaming) {
-      setStreaming(false);
-    }
-
-    setLoading(true);
-    setError(null);
-
-    const payload = mode === 'build'
-      ? {
-          build_id: buildId.trim(),
-          stage: stage.trim() || null,
-          log_levels: logLevels.length > 0 ? logLevels : null,
-          audience: audience,
-          count: count,
-        }
-      : {
-          test_run_id: testRunId.trim(),
-          test_name: testName.trim() || null,
-          log_levels: logLevels.length > 0 ? logLevels : null,
-          audience: audience,
-          count: count,
-        };
-
-    try {
-      wsRef.current.send(JSON.stringify(payload));
-    } catch (e) {
-      setLoading(false);
-      setError(`Failed to send: ${e}`);
-    }
-  }, [mode, buildId, stage, testRunId, testName, logLevels, audience, count, streaming]);
 
   const toggleStreaming = useCallback(() => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
@@ -439,55 +451,56 @@ export function LogViewer() {
     setBuildId(latestBuildId);
   }, [queuedBuilds, builds, mode, buildId, streaming]);
 
+  // Get display label for level dropdown
+  const getLevelLabel = () => {
+    return `Log Levels (${logLevels.length})`;
+  };
+
   return (
     <div className="lv-container">
       {/* Fixed Toolbar */}
       <div className="lv-toolbar">
         <div className="lv-controls">
-          <span className={`lv-status-dot ${connectionState}`} title={connectionState} />
+          {/* Left section: Status + Mode + ID */}
+          <div className="lv-controls-left">
+            {/* Status indicator */}
+            <div className={`lv-status ${connectionState}`}>
+              <span className="lv-status-dot" />
+              <span className="lv-status-count">
+                {search ? `${filteredLogs.length}/${logs.length}` : logs.length}
+              </span>
+              {streaming && <span className="lv-live-badge">LIVE</span>}
+            </div>
 
-          {/* Mode Toggle */}
-          <div className="lv-mode-toggle">
-            <button
-              className={`lv-mode-btn ${mode === 'build' ? 'active' : ''}`}
-              onClick={() => setMode('build')}
-              disabled={streaming}
-            >
-              Build
-            </button>
-            <button
-              className={`lv-mode-btn ${mode === 'test' ? 'active' : ''}`}
-              onClick={() => setMode('test')}
-              disabled={streaming}
-            >
-              Test
-            </button>
-          </div>
+            {/* Mode Toggle */}
+            <div className="lv-mode-toggle">
+              <button
+                className={`lv-mode-btn ${mode === 'build' ? 'active' : ''}`}
+                onClick={() => setMode('build')}
+                disabled={streaming}
+              >
+                Build
+              </button>
+              <button
+                className={`lv-mode-btn ${mode === 'test' ? 'active' : ''}`}
+                onClick={() => setMode('test')}
+                disabled={streaming}
+              >
+                Test
+              </button>
+            </div>
 
-          {/* Mode-specific inputs */}
-          {mode === 'build' ? (
-            <>
+            {/* Mode-specific ID input */}
+            {mode === 'build' ? (
               <input
                 type="text"
                 value={buildId}
-                onChange={(e) => {
-                  setBuildId(e.target.value);
-                }}
+                onChange={(e) => setBuildId(e.target.value)}
                 placeholder="Build ID"
                 className="lv-input"
                 disabled={streaming}
               />
-              <input
-                type="text"
-                value={stage}
-                onChange={(e) => setStage(e.target.value)}
-                placeholder="Stage"
-                className="lv-input lv-input-medium"
-                disabled={streaming}
-              />
-            </>
-          ) : (
-            <>
+            ) : (
               <input
                 type="text"
                 value={testRunId}
@@ -496,86 +509,104 @@ export function LogViewer() {
                 className="lv-input"
                 disabled={streaming}
               />
+            )}
+
+            <button
+              className={`lv-btn ${streaming ? 'lv-btn-danger' : 'lv-btn-success'}`}
+              onClick={toggleStreaming}
+              disabled={connectionState !== 'connected'}
+            >
+              {streaming ? 'Stop' : 'Stream'}
+            </button>
+          </div>
+
+          {/* Right section: Filters */}
+          <div className="lv-controls-right">
+            {/* Stage/Test name filter + Search grouped together */}
+            {mode === 'build' ? (
+              <input
+                type="text"
+                value={stage}
+                onChange={(e) => setStage(e.target.value)}
+                placeholder="Stage"
+                className="lv-input lv-input-search"
+                disabled={streaming}
+              />
+            ) : (
               <input
                 type="text"
                 value={testName}
                 onChange={(e) => setTestName(e.target.value)}
                 placeholder="Test Name"
-                className="lv-input lv-input-medium"
+                className="lv-input lv-input-search"
                 disabled={streaming}
               />
-            </>
-          )}
+            )}
 
-          <div className="lv-checkboxes">
-            {LOG_LEVELS.map(level => (
-              <label key={level} className={`lv-checkbox ${level.toLowerCase()}`}>
-                <input
-                  type="checkbox"
-                  checked={logLevels.includes(level)}
-                  onChange={() => toggleLevel(level)}
-                  disabled={streaming}
-                />
-                {level.slice(0, 4)}
-              </label>
-            ))}
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search..."
+              className="lv-input lv-input-search"
+            />
+
+            <span className="lv-separator" />
+
+            {/* Level dropdown */}
+            <div className="lv-dropdown" ref={levelDropdownRef}>
+              <button
+                className={`selector-trigger ${levelDropdownOpen ? 'open' : ''}`}
+                onClick={() => setLevelDropdownOpen(!levelDropdownOpen)}
+                disabled={streaming}
+              >
+                <span className="selector-label">{getLevelLabel()}</span>
+                <ChevronDown className={`selector-chevron ${levelDropdownOpen ? 'rotated' : ''}`} />
+              </button>
+              {levelDropdownOpen && (
+                <div className="selector-dropdown">
+                  {LOG_LEVELS.map(level => (
+                    <label key={level} className="dropdown-item">
+                      <input
+                        type="checkbox"
+                        checked={logLevels.includes(level)}
+                        onChange={() => toggleLevel(level)}
+                      />
+                      <span className={`lv-level-badge ${level.toLowerCase()}`}>{level}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <select
+              value={audience}
+              onChange={(e) => setAudience(e.target.value as Audience)}
+              className="lv-select"
+              disabled={streaming}
+            >
+              {AUDIENCES.map(aud => (
+                <option key={aud} value={aud}>{aud}</option>
+              ))}
+            </select>
+
+            <span className="lv-separator" />
+
+            <button
+              className={`lv-btn lv-btn-small ${autoScroll ? 'lv-btn-active' : ''}`}
+              onClick={() => {
+                const newValue = !autoScroll;
+                autoScrollRef.current = newValue;
+                setAutoScroll(newValue);
+                if (newValue && logsContainerRef.current) {
+                  logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
+                }
+              }}
+              title={autoScroll ? 'Auto-scroll enabled' : 'Auto-scroll disabled'}
+            >
+              {autoScroll ? '⬇ On' : '⬇ Off'}
+            </button>
           </div>
-          <select
-            value={audience}
-            onChange={(e) => setAudience(e.target.value as Audience)}
-            className="lv-select"
-            disabled={streaming}
-          >
-            {AUDIENCES.map(aud => (
-              <option key={aud} value={aud}>{aud}</option>
-            ))}
-          </select>
-          <input
-            type="number"
-            value={count}
-            onChange={(e) => setCount(parseInt(e.target.value) || 100)}
-            min={1}
-            max={10000}
-            className="lv-input lv-input-xs"
-            disabled={streaming}
-          />
-          <button
-            className="lv-btn lv-btn-primary"
-            onClick={fetchLogs}
-            disabled={connectionState !== 'connected' || loading || streaming}
-          >
-            {loading ? '...' : 'Fetch'}
-          </button>
-          <button
-            className={`lv-btn ${streaming ? 'lv-btn-danger' : 'lv-btn-success'}`}
-            onClick={toggleStreaming}
-            disabled={connectionState !== 'connected'}
-          >
-            {streaming ? 'Stop' : 'Stream'}
-          </button>
-          <span className="lv-separator" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filter..."
-            className="lv-input lv-input-search"
-          />
-          <button
-            className={`lv-btn lv-btn-small ${autoScroll ? 'lv-btn-active' : ''}`}
-            onClick={() => {
-              const newValue = !autoScroll;
-              autoScrollRef.current = newValue; // Update ref immediately
-              setAutoScroll(newValue);
-              // If enabling, scroll to bottom immediately
-              if (newValue && logsContainerRef.current) {
-                logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
-              }
-            }}
-            title={autoScroll ? 'Auto-scroll enabled' : 'Auto-scroll disabled'}
-          >
-            {autoScroll ? '⬇ On' : '⬇ Off'}
-          </button>
         </div>
 
         {/* Error Display */}
@@ -584,12 +615,6 @@ export function LogViewer() {
             {error}
           </div>
         )}
-
-        {/* Status bar */}
-        <div className="lv-status-bar">
-          <span>{search ? `${filteredLogs.length}/${logs.length}` : logs.length} logs</span>
-          {streaming && <span className="lv-live-badge">LIVE</span>}
-        </div>
       </div>
 
       {/* Scrollable Log Content */}
@@ -611,21 +636,48 @@ export function LogViewer() {
             // Get test name if in test mode
             const testEntry = entry as TestLogEntry;
             const testLabel = mode === 'test' && testEntry.test_name ? testEntry.test_name : null;
+            // Get stage if available
+            const stageLabel = (entry as BuildLogEntry).stage || null;
             return (
-              <div key={idx} className="lv-entry">
-                <span className="lv-ts">{ts}</span>
-                <span className={`lv-level-badge ${entry.level.toLowerCase()}`}>
-                  {entry.level.slice(0, 4)}
-                </span>
-                {testLabel && (
-                  <span className="lv-test-badge">
-                    {testLabel}
+              <div key={idx} className={`lv-entry ${entry.level.toLowerCase()}`}>
+                <div className="lv-entry-row">
+                  <span className="lv-ts">{ts}</span>
+                  <span className={`lv-level-badge ${entry.level.toLowerCase()}`}>
+                    {entry.level}
                   </span>
+                  {stageLabel && (
+                    <span className="lv-stage-badge">
+                      {stageLabel}
+                    </span>
+                  )}
+                  {testLabel && (
+                    <span className="lv-test-badge">
+                      {testLabel}
+                    </span>
+                  )}
+                  <pre
+                    className="lv-message"
+                    dangerouslySetInnerHTML={{ __html: html }}
+                  />
+                </div>
+                {(entry.ato_traceback || entry.python_traceback) && (
+                  <div className="lv-tracebacks">
+                    {entry.ato_traceback && (
+                      <TraceDetails
+                        label="ato traceback"
+                        content={entry.ato_traceback}
+                        className="lv-trace-ato"
+                      />
+                    )}
+                    {entry.python_traceback && (
+                      <TraceDetails
+                        label="python traceback"
+                        content={entry.python_traceback}
+                        className="lv-trace-python"
+                      />
+                    )}
+                  </div>
                 )}
-                <pre
-                  className="lv-message"
-                  dangerouslySetInnerHTML={{ __html: html }}
-                />
               </div>
             );
           })

@@ -203,7 +203,16 @@ class BuildProcess:
         env = os.environ.copy()
         if self._event_wfd is not None:
             env["ATO_BUILD_EVENT_FD"] = str(self._event_wfd)
-        env["ATO_BUILD_TIMESTAMP"] = NOW
+
+        # Use existing timestamp/build_id if passed from server, otherwise generate
+        # This ensures server-triggered builds use consistent IDs across workers
+        if "ATO_BUILD_TIMESTAMP" not in env:
+            env["ATO_BUILD_TIMESTAMP"] = NOW
+        if "ATO_BUILD_ID" not in env:
+            project_path = str(self.project_root.resolve())
+            timestamp = env["ATO_BUILD_TIMESTAMP"]
+            build_id = generate_build_id(project_path, self.name, timestamp)
+            env["ATO_BUILD_ID"] = build_id
 
         # Pass build options to worker subprocess via environment variables
         # These are picked up by the corresponding CLI options
@@ -892,16 +901,15 @@ class ParallelBuildManager:
         levels: list[str] | None = None,
     ) -> None:
         """Print logs from the SQLite database for a build."""
+        import os
         import sqlite3
 
-        from atopile.logging import generate_build_id, get_central_log_db
+        from atopile.logging import BuildLogger
 
-        # Generate build_id for this build
-        project_path = str(bp.project_root.resolve()) if bp.project_root else "unknown"
-        build_id = generate_build_id(project_path, bp.name, self._now)
+        build_id = os.environ["ATO_BUILD_ID"]
 
         try:
-            db_path = get_central_log_db()
+            db_path = BuildLogger.get_log_db()
             if not db_path.exists():
                 return
 
@@ -1164,7 +1172,6 @@ def _run_single_build() -> None:
     from atopile import buildutil
     from atopile.buildutil import BuildStepContext
     from atopile.config import config
-    from atopile.logging import BuildLogger
 
     # Get the single build target from config
     build_names = list(config.selected_builds)
@@ -1183,18 +1190,17 @@ def _run_single_build() -> None:
     # Create build context to track completed stages
     ctx = BuildStepContext(build=None, build_id=build_id)
 
-    try:
-        with config.select_build(build_name):
-            install_worker_excepthook()
-            buildutil.build(ctx=ctx)
+    with config.select_build(build_name):
+        install_worker_excepthook()
+        buildutil.build(ctx=ctx)
 
-            # Emit completed stages via IPC
-            _emit_completed_stages(ctx.completed_stages)
-    finally:
-        # Flush all buffered logs to SQLite before subprocess exits
-        # This is critical because each subprocess has its own SQLiteLogWriter
-        # instance, and buffered logs would be lost without explicit flush
-        BuildLogger.close_all()
+        # Emit completed stages via IPC
+        _emit_completed_stages(ctx.completed_stages)
+
+    # Note: BuildLogger.close_all() is registered as an atexit handler,
+    # so logs will be flushed during process shutdown. We don't call it
+    # explicitly here because the excepthook needs to log errors AFTER
+    # any exceptions occur, and close_all() would close the writer too early.
 
 
 def _emit_completed_stages(stages: list) -> None:
@@ -1529,9 +1535,14 @@ def build(
         try:
             from atopile.server.server import start_dashboard_server
 
+            # Use the first build target's summary file for the dashboard
+            first_build = build_names[0] if build_names else "default"
+            build_dir = project_root / "build" / "builds" / first_build
+            summary_file = build_dir / "build_summary.json"
             dashboard_server, dashboard_url = start_dashboard_server(
+                summary_file=summary_file,
                 port=DASHBOARD_PORT,
-                project_root=project_root,
+                workspace_paths=[project_root],
             )
             logger.info("Dashboard API available at: %s", dashboard_url)
         except Exception as e:
