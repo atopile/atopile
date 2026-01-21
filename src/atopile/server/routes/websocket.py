@@ -11,6 +11,8 @@ from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from ..domains.actions import handle_data_action
+
 log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["websocket"])
@@ -78,12 +80,10 @@ async def websocket_state(websocket: WebSocket):
                 payload = data.get("payload", {})
                 result = await server_state.handle_action(action, payload)
 
-                # Also handle data-fetching actions that need server.py access
-                from ..server import handle_data_action
-
                 if not result.get("success"):
                     # Try the data action handler
-                    result = await handle_data_action(action, payload)
+                    ctx = websocket.app.state.ctx
+                    result = await handle_data_action(action, payload, ctx)
 
                 # Send result back to client
                 await websocket.send_json(

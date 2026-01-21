@@ -1,0 +1,879 @@
+"""
+WebSocket action handlers.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import subprocess
+import threading
+import time
+from pathlib import Path
+from typing import Any
+
+from atopile.config import ProjectConfig
+from atopile.server import package_manager
+from atopile.server import problem_parser
+from atopile.server import project_discovery
+from atopile.server import module_discovery
+from atopile.server.stdlib import get_standard_library
+from atopile.server import path_utils
+from atopile.server.app_context import AppContext
+from atopile.server.core import projects as core_projects
+from atopile.server.models import registry as registry_model
+from atopile.server.state import server_state
+from atopile.server.build_queue import (
+    _active_builds,
+    _build_lock,
+    _build_queue,
+    _is_duplicate_build,
+    _make_build_key,
+    _sync_builds_to_state_async,
+    cancel_build,
+    next_build_id,
+)
+
+log = logging.getLogger(__name__)
+
+
+async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dict:
+    """Handle data-fetching actions invoked from WebSocket clients."""
+    log.info(f"handle_data_action called: action={action}, payload={payload}")
+
+    try:
+        if action == "refreshProjects":
+            scan_paths = ctx.workspace_paths
+            if scan_paths:
+                from atopile.server.state import Project as StateProject
+                from atopile.server.state import BuildTarget as StateBuildTarget
+
+                projects = project_discovery.discover_projects_in_paths(scan_paths)
+                state_projects = [
+                    StateProject(
+                        root=p.root,
+                        name=p.name,
+                        targets=[
+                            StateBuildTarget(name=t.name, entry=t.entry, root=t.root)
+                            for t in p.targets
+                        ],
+                    )
+                    for p in projects
+                ]
+                await server_state.set_projects(state_projects)
+            return {"success": True}
+
+        if action == "createProject":
+            parent_directory = payload.get("parentDirectory")
+            name = payload.get("name")
+
+            if not parent_directory:
+                if ctx.workspace_paths:
+                    parent_directory = str(ctx.workspace_paths[0])
+                else:
+                    return {"success": False, "error": "Missing parentDirectory"}
+
+            try:
+                project_dir, project_name = core_projects.create_project(
+                    Path(parent_directory), name
+                )
+            except ValueError as exc:
+                return {"success": False, "error": str(exc)}
+
+            await handle_data_action("refreshProjects", {}, ctx)
+            return {
+                "success": True,
+                "project_root": str(project_dir),
+                "project_name": project_name,
+            }
+
+        if action == "refreshPackages":
+            from atopile.server.state import PackageInfo as StatePackageInfo
+
+            packages_map: dict[str, StatePackageInfo] = {}
+            scan_paths = ctx.workspace_paths
+            registry_error: str | None = None
+
+            if scan_paths:
+                installed = package_manager.get_all_installed_packages(scan_paths)
+                for pkg in installed.values():
+                    packages_map[pkg.identifier] = StatePackageInfo(
+                        identifier=pkg.identifier,
+                        name=pkg.name,
+                        publisher=pkg.publisher,
+                        version=pkg.version,
+                        installed=True,
+                        installed_in=pkg.installed_in,
+                    )
+
+            try:
+                registry_packages = package_manager.get_all_registry_packages()
+                log.info(
+                    f"[refreshPackages] Registry returned {len(registry_packages)} packages"
+                )
+
+                for reg_pkg in registry_packages:
+                    if reg_pkg.identifier in packages_map:
+                        existing = packages_map[reg_pkg.identifier]
+                        packages_map[reg_pkg.identifier] = StatePackageInfo(
+                            identifier=existing.identifier,
+                            name=existing.name,
+                            publisher=existing.publisher,
+                            version=existing.version,
+                            latest_version=reg_pkg.latest_version,
+                            description=reg_pkg.description or reg_pkg.summary,
+                            summary=reg_pkg.summary,
+                            homepage=reg_pkg.homepage,
+                            repository=reg_pkg.repository,
+                            license=reg_pkg.license,
+                            installed=True,
+                            installed_in=existing.installed_in,
+                            has_update=package_manager._version_is_newer(
+                                existing.version, reg_pkg.latest_version
+                            ),
+                            downloads=reg_pkg.downloads,
+                            version_count=reg_pkg.version_count,
+                            keywords=reg_pkg.keywords or [],
+                        )
+                    else:
+                        packages_map[reg_pkg.identifier] = StatePackageInfo(
+                            identifier=reg_pkg.identifier,
+                            name=reg_pkg.name,
+                            publisher=reg_pkg.publisher,
+                            latest_version=reg_pkg.latest_version,
+                            description=reg_pkg.description or reg_pkg.summary,
+                            summary=reg_pkg.summary,
+                            homepage=reg_pkg.homepage,
+                            repository=reg_pkg.repository,
+                            license=reg_pkg.license,
+                            installed=False,
+                            installed_in=[],
+                            has_update=False,
+                            downloads=reg_pkg.downloads,
+                            version_count=reg_pkg.version_count,
+                            keywords=reg_pkg.keywords or [],
+                        )
+
+            except Exception as exc:
+                registry_error = str(exc)
+                log.warning(f"[refreshPackages] Registry fetch failed: {exc}")
+
+            state_packages = sorted(
+                packages_map.values(),
+                key=lambda p: (not p.installed, p.identifier.lower()),
+            )
+
+            await server_state.set_packages(list(state_packages), registry_error)
+            return {"success": True}
+
+        if action == "refreshStdlib":
+            from atopile.server.state import StdLibItem as StateStdLibItem
+
+            items = get_standard_library()
+            state_items = [
+                StateStdLibItem(
+                    id=item.id,
+                    name=item.name,
+                    type=item.type,
+                    description=item.description,
+                    usage=item.usage,
+                    children=[],
+                    parameters=[],
+                )
+                for item in items
+            ]
+            await server_state.set_stdlib_items(state_items)
+            return {"success": True}
+
+        if action == "buildPackage":
+            package_id = payload.get("packageId", "")
+            entry = payload.get("entry")
+
+            if not package_id:
+                return {"success": False, "error": "Missing packageId"}
+
+            return await handle_data_action(
+                "build",
+                {
+                    "projectRoot": package_id,
+                    "entry": entry,
+                    "standalone": entry is not None,
+                },
+                ctx,
+            )
+
+        if action == "build":
+            project_root = payload.get("projectRoot") or payload.get(
+                "project_root", ""
+            )
+            targets = payload.get("targets", [])
+            entry = payload.get("entry")
+            standalone = payload.get("standalone", False)
+            frozen = payload.get("frozen", False)
+            level = payload.get("level")
+            payload_id = payload.get("id")
+            payload_label = payload.get("label")
+
+            build_all_targets = False
+            if level and payload_id:
+                if level == "project":
+                    project_root = payload_id
+                    if not targets:
+                        build_all_targets = True
+                elif level == "build":
+                    if ":" in payload_id:
+                        parts = payload_id.rsplit(":", 1)
+                        project_root = parts[0]
+                        if not payload_label and len(parts) > 1:
+                            payload_label = parts[1]
+                    else:
+                        project_root = payload_id
+
+                    if payload_label and not targets:
+                        targets = [payload_label]
+                elif level == "symbol":
+                    project_root = payload_id
+
+            if not project_root:
+                project_root = server_state._state.selected_project_root or ""
+
+            if not targets:
+                targets = server_state._state.selected_target_names or []
+
+            project_path = Path(project_root) if project_root else Path("")
+            if project_root and not project_path.exists():
+                if "/" in project_root and not project_root.startswith("/"):
+                    package_identifier = project_root
+                    packages = server_state._state.packages or []
+                    pkg = next(
+                        (p for p in packages if p.identifier == package_identifier),
+                        None,
+                    )
+                    if pkg and pkg.installed_in:
+                        consuming_project = pkg.installed_in[0]
+                        package_dir = (
+                            Path(consuming_project)
+                            / ".ato"
+                            / "modules"
+                            / package_identifier
+                        )
+                        if package_dir.exists():
+                            project_root = str(package_dir)
+                            project_path = package_dir
+                        else:
+                            project_root = consuming_project
+                            project_path = Path(project_root)
+
+            if not project_root or not project_path.exists():
+                return {
+                    "success": False,
+                    "error": f"Project path does not exist: {project_root}",
+                }
+
+            if standalone:
+                if not entry:
+                    return {
+                        "success": False,
+                        "error": "Standalone builds require an entry point",
+                    }
+                entry_file = entry.split(":")[0] if ":" in entry else entry
+                entry_path = project_path / entry_file
+                if not entry_path.exists():
+                    return {
+                        "success": False,
+                        "error": f"Entry file not found: {entry_path}",
+                    }
+            else:
+                ato_yaml_path = project_path / "ato.yaml"
+                if not ato_yaml_path.exists():
+                    return {
+                        "success": False,
+                        "error": f"No ato.yaml found in: {project_root}",
+                    }
+
+                if build_all_targets:
+                    try:
+                        project_config = ProjectConfig.from_path(project_path)
+                        all_targets = (
+                            list(project_config.builds.keys())
+                            if project_config
+                            else []
+                        )
+                        if all_targets:
+                            build_ids = []
+                            for target_name in all_targets:
+                                target_build_key = _make_build_key(
+                                    project_root, [target_name], entry
+                                )
+                                existing_id = _is_duplicate_build(target_build_key)
+                                if existing_id:
+                                    build_ids.append(existing_id)
+                                    continue
+
+                                with _build_lock:
+                                    build_id = next_build_id()
+                                    _active_builds[build_id] = {
+                                        "status": "queued",
+                                        "project_root": project_root,
+                                        "targets": [target_name],
+                                        "entry": entry,
+                                        "standalone": standalone,
+                                        "frozen": frozen,
+                                        "build_key": target_build_key,
+                                        "return_code": None,
+                                        "error": None,
+                                        "started_at": time.time(),
+                                        "stages": [],
+                                    }
+
+                                _build_queue.enqueue(build_id)
+                                build_ids.append(build_id)
+
+                            await _sync_builds_to_state_async()
+                            return {
+                                "success": True,
+                                "message": f"Queued {len(build_ids)} builds for all targets",
+                                "build_ids": build_ids,
+                                "targets": all_targets,
+                            }
+                        targets = ["default"]
+                    except Exception as exc:
+                        log.warning(
+                            f"Failed to read targets from ato.yaml: {exc}, falling back to 'default'"
+                        )
+                        targets = ["default"]
+
+            build_key = _make_build_key(project_root, targets, entry)
+            existing_build_id = _is_duplicate_build(build_key)
+            if existing_build_id:
+                return {
+                    "success": True,
+                    "message": "Build already in progress",
+                    "build_id": existing_build_id,
+                }
+
+            build_label = entry if standalone else "project"
+            with _build_lock:
+                build_id = next_build_id()
+                _active_builds[build_id] = {
+                    "status": "queued",
+                    "project_root": project_root,
+                    "targets": targets,
+                    "entry": entry,
+                    "standalone": standalone,
+                    "frozen": frozen,
+                    "build_key": build_key,
+                    "return_code": None,
+                    "error": None,
+                    "started_at": time.time(),
+                    "stages": [],
+                }
+
+            _build_queue.enqueue(build_id)
+            await _sync_builds_to_state_async()
+            return {
+                "success": True,
+                "message": f"Build queued for {build_label}",
+                "build_id": build_id,
+            }
+
+        if action == "cancelBuild":
+            build_id = payload.get("buildId", "")
+            if not build_id:
+                return {"success": False, "error": "Missing buildId"}
+
+            if build_id not in _active_builds:
+                return {"success": False, "error": f"Build not found: {build_id}"}
+
+            success = cancel_build(build_id)
+            if success:
+                return {"success": True, "message": f"Build {build_id} cancelled"}
+            return {
+                "success": False,
+                "message": f"Build {build_id} cannot be cancelled (already completed)",
+            }
+
+        if action == "fetchModules":
+            project_root = payload.get("projectRoot", "")
+            if project_root:
+                from atopile.server.state import ModuleDefinition as StateModuleDefinition
+
+                modules = module_discovery.discover_modules_in_project(Path(project_root))
+                state_modules = [
+                    StateModuleDefinition(
+                        name=m.name,
+                        type=m.type,
+                        file=m.file,
+                        entry=m.entry,
+                        line=m.line,
+                        super_type=m.super_type,
+                    )
+                    for m in modules
+                ]
+                await server_state.set_project_modules(project_root, state_modules)
+            return {"success": True}
+
+        if action == "getPackageDetails":
+            package_id = payload.get("packageId", "")
+            if package_id:
+                from atopile.server.state import PackageDetails as StatePackageDetails
+
+                details = package_manager.get_package_details_from_registry(package_id)
+                if details:
+                    state_details = StatePackageDetails(
+                        identifier=details.identifier,
+                        name=details.name,
+                        publisher=details.publisher,
+                        version=details.version,
+                        summary=details.summary,
+                        description=details.description,
+                        homepage=details.homepage,
+                        repository=details.repository,
+                        license=details.license,
+                        downloads=details.downloads,
+                        downloads_this_week=details.downloads_this_week,
+                        downloads_this_month=details.downloads_this_month,
+                        versions=[],
+                        version_count=details.version_count,
+                        installed=details.installed,
+                        installed_version=details.installed_version,
+                        installed_in=details.installed_in,
+                    )
+                    await server_state.set_package_details(state_details)
+                else:
+                    await server_state.set_package_details(
+                        None, f"Package not found: {package_id}"
+                    )
+            return {"success": True}
+
+        if action == "clearPackageDetails":
+            await server_state.set_package_details(None)
+            return {"success": True}
+
+        if action == "refreshBOM":
+            project_root = payload.get("projectRoot", "")
+            target = payload.get("target", "default")
+
+            if not project_root:
+                selected = server_state._state.selected_project_root
+                if selected:
+                    project_root = selected
+
+            if not project_root:
+                await server_state.set_bom_data(None, "No project selected")
+                return {"success": False, "error": "No project selected"}
+
+            project_path = Path(project_root)
+            bom_path = (
+                project_path / "build" / "builds" / target / f"{target}.bom.json"
+            )
+
+            if not bom_path.exists():
+                await server_state.set_bom_data(
+                    None, "BOM not found. Run build first."
+                )
+                return {"success": True, "info": "BOM not found"}
+
+            try:
+                bom_json = json.loads(bom_path.read_text())
+                await server_state.set_bom_data(bom_json)
+                return {"success": True}
+            except Exception as exc:
+                await server_state.set_bom_data(None, str(exc))
+                return {"success": False, "error": str(exc)}
+
+        if action == "refreshProblems":
+            from atopile.server.state import Problem as StateProblem
+
+            all_problems: list[StateProblem] = []
+
+            for problem in problem_parser._load_problems_from_db():
+                all_problems.append(
+                    StateProblem(
+                        id=problem.id,
+                        level=problem.level,
+                        message=problem.message,
+                        file=problem.file,
+                        line=problem.line,
+                        column=problem.column,
+                        stage=problem.stage,
+                        logger=problem.logger,
+                        build_name=problem.build_name,
+                        project_name=problem.project_name,
+                        timestamp=problem.timestamp,
+                        ato_traceback=problem.ato_traceback,
+                        exc_info=problem.exc_info,
+                    )
+                )
+
+            await server_state.set_problems(all_problems)
+            return {"success": True}
+
+        if action == "fetchVariables":
+            project_root = payload.get("projectRoot", "")
+            target = payload.get("target", "default")
+
+            if not project_root:
+                await server_state.set_variables_data(None, "No project specified")
+                return {"success": False, "error": "No project specified"}
+
+            project_path = Path(project_root)
+            variables_path = (
+                project_path
+                / "build"
+                / "builds"
+                / target
+                / f"{target}.variables.json"
+            )
+
+            if not variables_path.exists():
+                await server_state.set_variables_data(
+                    None, "Variables not found. Run build first."
+                )
+                return {"success": True, "info": "Variables not found"}
+
+            try:
+                variables_json = json.loads(variables_path.read_text())
+                await server_state.set_variables_data(variables_json)
+                return {"success": True}
+            except Exception as exc:
+                await server_state.set_variables_data(None, str(exc))
+                return {"success": False, "error": str(exc)}
+
+        if action == "installPackage":
+            package_id = payload.get("packageId", "")
+            project_root = payload.get("projectRoot", "")
+            version = payload.get("version")
+
+            if not package_id or not project_root:
+                return {
+                    "success": False,
+                    "error": "Missing packageId or projectRoot",
+                }
+
+            project_path = Path(project_root)
+            if not project_path.exists():
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            if not (project_path / "ato.yaml").exists():
+                return {
+                    "success": False,
+                    "error": f"No ato.yaml in: {project_root}",
+                }
+
+            with package_manager._package_op_lock:
+                op_id = package_manager.next_package_op_id("pkg-install")
+
+                package_manager._active_package_ops[op_id] = {
+                    "action": "install",
+                    "status": "running",
+                    "package": package_id,
+                    "project_root": project_root,
+                    "error": None,
+                }
+
+            cmd = ["ato", "add", package_id]
+            if version:
+                cmd.append(f"@{version}")
+
+            def run_install():
+                try:
+                    result = subprocess.run(
+                        cmd,
+                        cwd=project_root,
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                    )
+                    with package_manager._package_op_lock:
+                        if result.returncode == 0:
+                            package_manager._active_package_ops[op_id][
+                                "status"
+                            ] = "success"
+                            loop = server_state._event_loop
+                            if loop and loop.is_running():
+                                asyncio.run_coroutine_threadsafe(
+                                    package_manager.refresh_packages_async(), loop
+                                )
+                        else:
+                            package_manager._active_package_ops[op_id][
+                                "status"
+                            ] = "failed"
+                            package_manager._active_package_ops[op_id][
+                                "error"
+                            ] = result.stderr[:500]
+                except Exception as exc:
+                    with package_manager._package_op_lock:
+                        package_manager._active_package_ops[op_id][
+                            "status"
+                        ] = "failed"
+                        package_manager._active_package_ops[op_id]["error"] = str(exc)
+
+            threading.Thread(target=run_install, daemon=True).start()
+
+            return {
+                "success": True,
+                "message": f"Installing {package_id}...",
+                "op_id": op_id,
+            }
+
+        if action == "changeDependencyVersion":
+            package_id = payload.get("identifier") or payload.get("packageId", "")
+            project_root = payload.get("projectRoot") or payload.get("projectId", "")
+            version = payload.get("version")
+
+            if not package_id or not project_root or not version:
+                return {
+                    "success": False,
+                    "error": "Missing identifier, projectRoot, or version",
+                }
+
+            return await handle_data_action(
+                "installPackage",
+                {
+                    "packageId": package_id,
+                    "projectRoot": project_root,
+                    "version": version,
+                },
+                ctx,
+            )
+
+        if action == "removePackage":
+            package_id = payload.get("packageId", "")
+            project_root = payload.get("projectRoot", "")
+
+            if not package_id or not project_root:
+                return {
+                    "success": False,
+                    "error": "Missing packageId or projectRoot",
+                }
+
+            project_path = Path(project_root)
+            if not project_path.exists():
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            with package_manager._package_op_lock:
+                op_id = package_manager.next_package_op_id("pkg-remove")
+
+                package_manager._active_package_ops[op_id] = {
+                    "action": "remove",
+                    "status": "running",
+                    "package": package_id,
+                    "project_root": project_root,
+                    "error": None,
+                }
+
+            cmd = ["ato", "remove", package_id]
+
+            def run_remove():
+                try:
+                    result = subprocess.run(
+                        cmd,
+                        cwd=project_root,
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                    )
+                    with package_manager._package_op_lock:
+                        if result.returncode == 0:
+                            package_manager._active_package_ops[op_id][
+                                "status"
+                            ] = "success"
+                            loop = server_state._event_loop
+                            if loop and loop.is_running():
+                                asyncio.run_coroutine_threadsafe(
+                                    package_manager.refresh_packages_async(), loop
+                                )
+                        else:
+                            package_manager._active_package_ops[op_id][
+                                "status"
+                            ] = "failed"
+                            package_manager._active_package_ops[op_id][
+                                "error"
+                            ] = result.stderr[:500]
+                except Exception as exc:
+                    with package_manager._package_op_lock:
+                        package_manager._active_package_ops[op_id][
+                            "status"
+                        ] = "failed"
+                        package_manager._active_package_ops[op_id]["error"] = str(exc)
+
+            threading.Thread(target=run_remove, daemon=True).start()
+
+            return {
+                "success": True,
+                "message": f"Removing {package_id}...",
+                "op_id": op_id,
+            }
+
+        if action == "fetchFiles":
+            project_root = payload.get("projectRoot", "")
+            if not project_root:
+                return {"success": True, "info": "No project specified"}
+
+            project_path = Path(project_root)
+            if not project_path.exists():
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            file_tree = core_projects.build_file_tree(project_path, project_path)
+            await server_state.set_project_files(project_root, file_tree)
+            return {"success": True}
+
+        if action == "fetchDependencies":
+            project_root = payload.get("projectRoot", "")
+            if not project_root:
+                return {"success": True, "info": "No project specified"}
+
+            project_path = Path(project_root)
+            if not project_path.exists():
+                return {
+                    "success": False,
+                    "error": f"Project not found: {project_root}",
+                }
+
+            from atopile.server.state import DependencyInfo
+
+            installed = package_manager.get_installed_packages_for_project(project_path)
+
+            dependencies: list[DependencyInfo] = []
+            for pkg in installed:
+                parts = pkg.identifier.split("/")
+                publisher = parts[0] if len(parts) > 1 else "unknown"
+                name = parts[-1]
+
+                latest_version = None
+                has_update = False
+                repository = None
+
+                cached_pkg = server_state.packages_by_id.get(pkg.identifier)
+                if cached_pkg:
+                    latest_version = cached_pkg.latest_version
+                    has_update = registry_model.version_is_newer(
+                        pkg.version, latest_version
+                    )
+                    repository = cached_pkg.repository
+
+                dependencies.append(
+                    DependencyInfo(
+                        identifier=pkg.identifier,
+                        version=pkg.version,
+                        latest_version=latest_version,
+                        name=name,
+                        publisher=publisher,
+                        repository=repository,
+                        has_update=has_update,
+                    )
+                )
+
+            await server_state.set_project_dependencies(project_root, dependencies)
+            return {"success": True}
+
+        if action == "openFile":
+            file_path = payload.get("file")
+            line = payload.get("line")
+            column = payload.get("column")
+
+            if not file_path:
+                return {"success": False, "error": "Missing file path"}
+
+            resolved = path_utils.resolve_workspace_file(file_path, ctx.workspace_paths)
+            if not resolved:
+                return {
+                    "success": False,
+                    "error": f"File not found: {file_path}",
+                }
+
+            await server_state.set_open_file(
+                str(resolved),
+                line,
+                column,
+            )
+            return {"success": True}
+
+        if action == "openSource":
+            project_root = payload.get("projectId", "")
+            entry = payload.get("entry", "")
+
+            if not project_root or not entry:
+                return {"success": False, "error": "Missing projectId or entry"}
+
+            project_path = Path(project_root)
+            entry_path = path_utils.resolve_entry_path(project_path, entry)
+            if not entry_path or not entry_path.exists():
+                return {
+                    "success": False,
+                    "error": f"Entry file not found: {entry_path}",
+                }
+
+            await server_state.set_open_file(str(entry_path), None, None)
+            return {"success": True}
+
+        if action == "openLayout":
+            project_root = payload.get("projectId", "")
+            build_id = payload.get("buildId", "")
+
+            if not project_root or not build_id:
+                return {"success": False, "error": "Missing projectId or buildId"}
+
+            project_path = Path(project_root)
+            target = path_utils.resolve_layout_path(project_path, build_id)
+            if not target or not target.exists():
+                return {
+                    "success": False,
+                    "error": f"Layout not found for build: {build_id}",
+                }
+
+            await server_state.set_open_layout(str(target))
+            return {"success": True}
+
+        if action == "openKiCad":
+            project_root = payload.get("projectId", "")
+            build_id = payload.get("buildId", "")
+
+            if not project_root or not build_id:
+                return {"success": False, "error": "Missing projectId or buildId"}
+
+            project_path = Path(project_root)
+            target = path_utils.resolve_layout_path(project_path, build_id)
+            if not target or not target.exists():
+                return {
+                    "success": False,
+                    "error": f"Layout not found for build: {build_id}",
+                }
+
+            await server_state.set_open_kicad(str(target))
+            return {"success": True}
+
+        if action == "open3D":
+            project_root = payload.get("projectId", "")
+            build_id = payload.get("buildId", "")
+
+            if not project_root or not build_id:
+                return {"success": False, "error": "Missing projectId or buildId"}
+
+            project_path = Path(project_root)
+            target = path_utils.resolve_3d_path(project_path, build_id)
+            if not target or not target.exists():
+                return {
+                    "success": False,
+                    "error": f"3D view not found for build: {build_id}",
+                }
+
+            await server_state.set_open_3d(str(target))
+            return {"success": True}
+
+        return {"success": False, "error": f"Unknown action: {action}"}
+
+    except Exception as exc:
+        log.error(f"Error in handle_data_action: {exc}")
+        return {"success": False, "error": str(exc)}
