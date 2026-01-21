@@ -112,16 +112,25 @@ class Log:
         ERROR = "ERROR"
         ALERT = "ALERT"
 
-    @dataclass
-    class Entry:
-        """A structured log entry."""
+    # -------------------------------------------------------------------------
+    # Base dataclasses for log entries
+    # -------------------------------------------------------------------------
 
-        build_id: str
+    @dataclass
+    class _BaseEntry:
+        """Base dataclass with shared required fields for all log entries."""
+
         timestamp: str
-        stage: str
         level: Log.Level
         logger_name: str
         message: str
+
+    @dataclass
+    class Entry(_BaseEntry):
+        """A structured build log entry."""
+
+        build_id: str
+        stage: str
         audience: Log.Audience | None = field(
             default=None
         )  # Set to Log.Audience.DEVELOPER after class definition
@@ -130,15 +139,11 @@ class Log:
         objects: dict | None = None
 
     @dataclass
-    class TestEntry:
+    class TestEntry(_BaseEntry):
         """A structured test log entry."""
 
         test_run_id: str
-        timestamp: str
         test_name: str  # Name of the Python test being run
-        level: Log.Level
-        logger_name: str
-        message: str
         audience: Log.Audience | None = field(
             default=None
         )  # Set to Log.Audience.DEVELOPER after class definition
@@ -146,61 +151,70 @@ class Log:
         python_traceback: str | None = None
         objects: dict | None = None
 
-    class Query(BaseModel):
+    # -------------------------------------------------------------------------
+    # Base Pydantic models for log entry queries
+    # -------------------------------------------------------------------------
+
+    class _BaseQuery(BaseModel):
+        """Base query parameters with shared fields."""
+
+        log_levels: list[Log.Level] | None = None
+        audience: Log.Audience | None = None
+        count: int = Field(default=500, ge=1)
+
+    class BuildQuery(_BaseQuery):
         """Query parameters for fetching build logs."""
 
         build_id: str
         stage: str | None = None
-        log_levels: list[Log.Level] | None = None
-        audience: Log.Audience | None = None
-        count: int = Field(default=500, ge=1)
 
-    class TestQuery(BaseModel):
+    class TestQuery(_BaseQuery):
         """Query parameters for fetching test logs."""
 
         test_run_id: str
         test_name: str | None = None
-        log_levels: list[Log.Level] | None = None
-        audience: Log.Audience | None = None
-        count: int = Field(default=500, ge=1)
 
-    class EntryPydantic(BaseModel):
+    # -------------------------------------------------------------------------
+    # Base Pydantic models for log entry serialization
+    # -------------------------------------------------------------------------
+
+    class _BaseEntryPydantic(BaseModel):
+        """Base Pydantic model with shared fields for log entry serialization."""
+
+        timestamp: str
+        level: str
+        audience: str
+        logger_name: str
+        message: str
+        ato_traceback: str | None = None
+        python_traceback: str | None = None
+        objects: Any | None = None
+
+    class BuildEntryPydantic(_BaseEntryPydantic):
         """Pydantic model for build log entry (API serialization)."""
 
-        timestamp: str
-        level: str
-        audience: str
-        logger_name: str
-        message: str
         stage: str | None = None
-        ato_traceback: str | None = None
-        python_traceback: str | None = None
-        objects: Any | None = None
 
-    class TestEntryPydantic(BaseModel):
+    class TestEntryPydantic(_BaseEntryPydantic):
         """Pydantic model for test log entry (API serialization)."""
 
-        timestamp: str
-        level: str
-        audience: str
-        logger_name: str
-        message: str
         test_name: str | None = None
-        ato_traceback: str | None = None
-        python_traceback: str | None = None
-        objects: Any | None = None
 
-    class Result(BaseModel):
+    # -------------------------------------------------------------------------
+    # Pydantic models for log entry results
+    # -------------------------------------------------------------------------
+
+    class BuildResult(BaseModel):
         """Response containing build log entries."""
 
         type: Literal["logs_result"] = "logs_result"
-        logs: list[Log.EntryPydantic]
+        logs: list["BuildEntryPydantic"]
 
     class TestResult(BaseModel):
         """Response containing test log entries."""
 
         type: Literal["test_logs_result"] = "test_logs_result"
-        logs: list[Log.TestEntryPydantic]
+        logs: list["TestEntryPydantic"]
 
     class Error(BaseModel):
         """Error response for log queries."""
@@ -212,57 +226,51 @@ class Log:
     # Streaming models (for real-time log updates)
     # -------------------------------------------------------------------------
 
-    class StreamQuery(BaseModel):
+    class _BaseStreamQuery(_BaseQuery):
+        """Base streaming query parameters with shared fields."""
+
+        after_id: int = 0  # Cursor - only return logs with id > after_id
+        count: int = Field(default=1000, ge=1, le=5000)
+
+    class BuildStreamQuery(_BaseStreamQuery):
         """Query parameters for streaming build logs."""
 
         build_id: str
         stage: str | None = None
-        log_levels: list[Log.Level] | None = None
-        audience: Log.Audience | None = None
-        after_id: int = 0  # Cursor - only return logs with id > after_id
-        count: int = Field(default=1000, ge=1, le=5000)
 
-    class TestStreamQuery(BaseModel):
+    class TestStreamQuery(_BaseStreamQuery):
         """Query parameters for streaming test logs."""
 
         test_run_id: str
         test_name: str | None = None
-        log_levels: list[Log.Level] | None = None
-        audience: Log.Audience | None = None
-        after_id: int = 0
-        count: int = Field(default=1000, ge=1, le=5000)
 
-    class StreamEntryPydantic(BaseModel):
-        """Log entry with id for streaming (cursor tracking)."""
+    class _BaseStreamEntryPydantic(_BaseEntryPydantic):
+        """Base streaming log entry with id for cursor tracking."""
 
         id: int  # Database row id for cursor
-        timestamp: str
-        level: str
-        audience: str
-        logger_name: str
-        message: str
-        stage: str | None = None
-        ato_traceback: str | None = None
-        python_traceback: str | None = None
-        objects: Any | None = None
 
-    class TestStreamEntryPydantic(StreamEntryPydantic):
+    class BuildStreamEntryPydantic(_BaseStreamEntryPydantic):
+        """Build log entry with id for streaming (cursor tracking)."""
+
+        stage: str | None = None
+
+    class TestStreamEntryPydantic(_BaseStreamEntryPydantic):
         """Test log entry with id for streaming."""
 
         test_name: str | None = None
 
-    class StreamResult(BaseModel):
+    class BuildStreamResult(BaseModel):
         """Streaming response with cursor."""
 
         type: Literal["logs_stream"] = "logs_stream"
-        logs: list[Log.StreamEntryPydantic]
+        logs: list["BuildStreamEntryPydantic"]
         last_id: int  # Highest id returned - client sends this back as after_id
 
     class TestStreamResult(BaseModel):
         """Streaming response for test logs."""
 
         type: Literal["test_logs_stream"] = "test_logs_stream"
-        logs: list[Log.TestStreamEntryPydantic]
+        logs: list["TestStreamEntryPydantic"]
         last_id: int
 
 

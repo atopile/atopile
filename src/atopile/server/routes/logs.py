@@ -31,7 +31,7 @@ STREAM_POLL_INTERVAL = 0.25  # 250ms between polls when streaming
 
 
 def _parse_filter_params(
-    query: Log.Query | Log.TestQuery | Log.StreamQuery | Log.TestStreamQuery,
+    query: Log.BuildQuery | Log.TestQuery | Log.BuildStreamQuery | Log.TestStreamQuery,
 ) -> tuple[list[str] | None, str | None]:
     """Parse common log_levels and audience from a query into string values."""
     log_levels_str = (
@@ -43,7 +43,7 @@ def _parse_filter_params(
 
 async def _push_build_stream(
     websocket: WebSocket,
-    query: Log.StreamQuery,
+    query: Log.BuildStreamQuery,
     after_id: int,
 ) -> int:
     """Push build log updates to client. Returns new last_id."""
@@ -58,9 +58,9 @@ async def _push_build_stream(
     )
 
     if logs:
-        entries = [Log.StreamEntryPydantic.model_validate(entry) for entry in logs]
+        entries = [Log.BuildStreamEntryPydantic.model_validate(entry) for entry in logs]
         await websocket.send_json(
-            Log.StreamResult(logs=entries, last_id=new_last_id).model_dump()
+            Log.BuildStreamResult(logs=entries, last_id=new_last_id).model_dump()
         )
         return new_last_id
     return after_id
@@ -124,7 +124,7 @@ async def websocket_logs(websocket: WebSocket):
 
     # Streaming state
     streaming = False
-    stream_query: Log.StreamQuery | Log.TestStreamQuery | None = None
+    stream_query: Log.BuildStreamQuery | Log.TestStreamQuery | None = None
     last_id = 0
     is_test_mode = False
 
@@ -227,7 +227,7 @@ async def websocket_logs(websocket: WebSocket):
                 # Build logs mode (default)
                 if subscribe:
                     try:
-                        stream_query = Log.StreamQuery.model_validate(data)
+                        stream_query = Log.BuildStreamQuery.model_validate(data)
                     except ValidationError as exc:
                         err = Log.Error(error=str(exc)).model_dump()
                         await websocket.send_json(err)
@@ -247,7 +247,7 @@ async def websocket_logs(websocket: WebSocket):
                     streaming = False
                     stream_query = None
                     try:
-                        query = Log.Query.model_validate(data)
+                        query = Log.BuildQuery.model_validate(data)
                     except ValidationError as exc:
                         err = Log.Error(error=str(exc)).model_dump()
                         await websocket.send_json(err)
@@ -263,10 +263,10 @@ async def websocket_logs(websocket: WebSocket):
                     )
 
                     entries = [
-                        Log.EntryPydantic.model_validate(entry) for entry in logs
+                        Log.BuildEntryPydantic.model_validate(entry) for entry in logs
                     ]
                     await websocket.send_json(
-                        Log.Result(logs=entries).model_dump()
+                        Log.BuildResult(logs=entries).model_dump()
                     )
 
     except WebSocketDisconnect:

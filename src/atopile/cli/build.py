@@ -184,6 +184,7 @@ class BuildProcess:
         self._stage_printer: (
             Callable[[StageCompleteEvent, Path | None], None] | None
         ) = None
+        self.build_id: str | None = None
 
     def start(self) -> None:
         """Start the build subprocess."""
@@ -209,10 +210,18 @@ class BuildProcess:
         if "ATO_BUILD_TIMESTAMP" not in env:
             env["ATO_BUILD_TIMESTAMP"] = NOW
         if "ATO_BUILD_ID" not in env:
-            project_path = str(self.project_root.resolve())
-            timestamp = env["ATO_BUILD_TIMESTAMP"]
-            build_id = generate_build_id(project_path, self.name, timestamp)
-            env["ATO_BUILD_ID"] = build_id
+            # Use pre-generated build_id if available (from ParallelBuildManager)
+            if self.build_id:
+                env["ATO_BUILD_ID"] = self.build_id
+            else:
+                project_path = str(self.project_root.resolve())
+                timestamp = env["ATO_BUILD_TIMESTAMP"]
+                build_id = generate_build_id(project_path, self.name, timestamp)
+                env["ATO_BUILD_ID"] = build_id
+                self.build_id = build_id
+        else:
+            # Store build_id from environment for display purposes
+            self.build_id = env["ATO_BUILD_ID"]
 
         # Pass build options to worker subprocess via environment variables
         # These are picked up by the corresponding CLI options
@@ -497,6 +506,9 @@ class ParallelBuildManager:
                 keep_net_names=self.keep_net_names,
                 keep_designators=self.keep_designators,
             )
+            # Pre-generate build_id so it's available for display before start()
+            project_path = str(project_root.resolve())
+            bp.build_id = generate_build_id(project_path, build_name, self._now)
             self.processes[display_name] = bp
             self._task_queue.put(display_name)
 
@@ -901,12 +913,13 @@ class ParallelBuildManager:
         levels: list[str] | None = None,
     ) -> None:
         """Print logs from the SQLite database for a build."""
-        import os
         import sqlite3
 
         from atopile.logging import BuildLogger
 
-        build_id = os.environ["ATO_BUILD_ID"]
+        if not bp.build_id:
+            return
+        build_id = bp.build_id
 
         try:
             db_path = BuildLogger.get_log_db()
@@ -1035,8 +1048,12 @@ class ParallelBuildManager:
                 return False
 
             bp = self.processes[display_name]
-            if print_headers:
-                console.print(f"[bold cyan]▶ Building {display_name}[/bold cyan]\n")
+            build_id_str = f" (build_id= {bp.build_id})" if bp.build_id else ""
+            # Add newline after header in verbose mode for cleaner stage output
+            newline = "\n" if print_headers else ""
+            console.print(
+                f"[bold cyan]▶ Building {display_name}{build_id_str}[/bold cyan]{newline}"
+            )
             if stage_printer is not None:
                 bp.set_stage_printer(stage_printer)
             bp.start()
@@ -1121,14 +1138,14 @@ class ParallelBuildManager:
 
     def _get_build_data(self, bp: "BuildProcess") -> dict:
         """Collect minimal data for a single build as a dictionary."""
-        # Generate build_id for this build
-        # Use resolved absolute path to ensure consistency with subprocess
-        project_path = str(bp.project_root.resolve()) if bp.project_root else "unknown"
-        build_id = generate_build_id(project_path, bp.name, self._now)
-        logger.debug(
-            f"Summary build_id: {build_id} "
-            + f"(project={project_path}, target={bp.name}, ts={self._now})"
-        )
+        # Use pre-generated build_id from BuildProcess, or generate if not available
+        if bp.build_id:
+            build_id = bp.build_id
+        else:
+            project_path = (
+                str(bp.project_root.resolve()) if bp.project_root else "unknown"
+            )
+            build_id = generate_build_id(project_path, bp.name, self._now)
 
         data = {
             "name": bp.name,  # Target name for matching
