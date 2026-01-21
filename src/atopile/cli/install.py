@@ -89,6 +89,9 @@ def sync(
     #        "--upgrade", "-U", help="Allow package upgrades, ignoring pinned versions"
     #    ),
     # ] = False,
+    pin: Annotated[
+        bool, typer.Option("--pin", "-p", help="Pin versions if not already pinned")
+    ] = False,
     path: Annotated[
         Path | None, typer.Option("--project-path", "-C", help="Path to the project")
     ] = None,
@@ -97,14 +100,29 @@ def sync(
     """
     Update the project's environment
     """
-    from atopile.config import config
+    from atopile.config import RegistryDependencySpec, config
     from faebryk.libs.backend.packages import api
     from faebryk.libs.project.dependencies import ProjectDependencies
 
     config.apply_options(None, working_dir=path)
 
     try:
-        ProjectDependencies(install_missing=True, clean_unmanaged_dirs=True)
+        deps = ProjectDependencies(install_missing=True, clean_unmanaged_dirs=True)
+
+        if pin:
+            # Pin any unpinned registry dependencies to their current installed versions
+            for dep in deps.direct_deps:
+                if (
+                    isinstance(dep.spec, RegistryDependencySpec)
+                    and dep.cfg is not None
+                    and dep.cfg.package is not None
+                ):
+                    dep.spec.release = dep.cfg.package.version
+                    dep.add_to_manifest()
+                    logger.info(
+                        f"Pinned {dep.spec.identifier} to {dep.cfg.package.version}"
+                    )
+
     except (
         api.Errors.PackageNotFoundError,
         api.Errors.ReleaseNotFoundError,
