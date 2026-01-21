@@ -15,6 +15,7 @@ import typer
 
 serve_app = typer.Typer(no_args_is_help=True)
 
+
 def _install_nodejs() -> Optional[int]:
     if sys.platform == "darwin":
         if shutil.which("brew"):
@@ -26,9 +27,13 @@ def _install_nodejs() -> Optional[int]:
                 ["sudo", "apt-get", "install", "-y", "nodejs", "npm"]
             ).returncode
         if shutil.which("dnf"):
-            return subprocess.run(["sudo", "dnf", "install", "-y", "nodejs", "npm"]).returncode
+            return subprocess.run(
+                ["sudo", "dnf", "install", "-y", "nodejs", "npm"]
+            ).returncode
         if shutil.which("yum"):
-            return subprocess.run(["sudo", "yum", "install", "-y", "nodejs", "npm"]).returncode
+            return subprocess.run(
+                ["sudo", "yum", "install", "-y", "nodejs", "npm"]
+            ).returncode
         if shutil.which("pacman"):
             return subprocess.run(
                 ["sudo", "pacman", "-S", "--noconfirm", "nodejs", "npm"]
@@ -87,7 +92,9 @@ def frontend(
         raise typer.BadParameter(f"UI server not found at {ui_server_dir}")
 
     if not shutil.which("npm"):
-        if not typer.confirm("npm not found. Attempt to install Node.js now?", default=False):
+        if not typer.confirm(
+            "npm not found. Attempt to install Node.js now?", default=False
+        ):
             raise typer.BadParameter("npm is required to serve the frontend.")
         result = _install_nodejs()
         if result is None:

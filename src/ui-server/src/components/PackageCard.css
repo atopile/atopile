@@ -1,0 +1,20 @@
+/**
+ * PackageCard styles
+ * Note: Most styles are currently in the main styles.css file.
+ * This file can be used for component-specific overrides.
+ */
+
+/* Styles inherited from styles.css:
+ * .package-card, .package-card-name-row, .package-name
+ * .package-icon, .warn-badge
+ * .package-card-description, .clamped
+ * .package-actions-bar, .package-version-select
+ * .package-publisher-badge, .package-downloads
+ * .package-link-btn, .package-install-wrapper
+ * .package-stats-bar, .package-stat, .package-stat-links
+ * .package-card-builds
+ * .install-dropdown, .install-btn, .install-dropdown-toggle
+ * .install-dropdown-menu, .dropdown-header, .dropdown-search
+ * .dropdown-items, .dropdown-item, .dropdown-empty
+ * .status-badge, .selected-check
+ */

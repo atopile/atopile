@@ -31,6 +31,8 @@ const initialState: AppState = {
 
   // Projects
   projects: [],
+  isLoadingProjects: false,
+  projectsError: null,
   selectedProjectRoot: null,
   selectedTargetNames: [],
 
@@ -42,6 +44,8 @@ const initialState: AppState = {
   packages: [],
   isLoadingPackages: false,
   packagesError: null,
+  installingPackageId: null,
+  installError: null,
 
   // Standard Library
   stdlibItems: [],
@@ -149,6 +153,8 @@ interface StoreActions {
   setPackagesError: (error: string | null) => void;
   setPackageDetails: (details: PackageDetails | null) => void;
   setLoadingPackageDetails: (loading: boolean) => void;
+  setInstallingPackage: (packageId: string | null) => void;
+  setInstallError: (error: string | null) => void;
 
   // Logs
   setLogEntries: (entries: LogEntry[]) => void;
@@ -167,10 +173,12 @@ interface StoreActions {
   // BOM
   setBomData: (data: BOMData | null) => void;
   setLoadingBom: (loading: boolean) => void;
+  setBomError: (error: string | null) => void;
 
   // Variables
   setVariablesData: (data: VariablesData | null) => void;
   setLoadingVariables: (loading: boolean) => void;
+  setVariablesError: (error: string | null) => void;
 
   // Project data
   setProjectModules: (projectRoot: string, modules: ModuleDefinition[]) => void;
@@ -255,6 +263,12 @@ export const useStore = create<Store>()(
       setLoadingPackageDetails: (loading) =>
         set({ isLoadingPackageDetails: loading }),
 
+      setInstallingPackage: (packageId) =>
+        set({ installingPackageId: packageId, installError: null }),
+
+      setInstallError: (error) =>
+        set({ installError: error, installingPackageId: null }),
+
       // Logs
       setLogEntries: (entries) => set({ logEntries: entries }),
 
@@ -294,15 +308,17 @@ export const useStore = create<Store>()(
         set({ stdlibItems: items, isLoadingStdlib: false }),
 
       // BOM
-      setBomData: (data) => set({ bomData: data, isLoadingBom: false }),
+      setBomData: (data) => set({ bomData: data, isLoadingBom: false, bomError: null }),
 
       setLoadingBom: (loading) => set({ isLoadingBom: loading }),
+      setBomError: (error) => set({ bomError: error, isLoadingBom: false }),
 
       // Variables
       setVariablesData: (data) =>
-        set({ currentVariablesData: data, isLoadingVariables: false }),
+        set({ currentVariablesData: data, isLoadingVariables: false, variablesError: null }),
 
       setLoadingVariables: (loading) => set({ isLoadingVariables: loading }),
+      setVariablesError: (error) => set({ variablesError: error, isLoadingVariables: false }),
 
       // Project data
       setProjectModules: (projectRoot, modules) =>

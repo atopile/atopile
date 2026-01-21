@@ -1261,6 +1261,30 @@ body {
   margin-left: var(--spacing-sm);
 }
 
+.panel-toolbar-row .bom-project-select {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.bom-project-select select {
+  padding: 4px var(--spacing-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  transition: all var(--transition-fast);
+}
+
+.bom-project-select select:hover {
+  border-color: var(--border-subtle);
+}
+
+.bom-project-select select:focus {
+  outline: none;
+  border-color: var(--border-default);
+}
+
 /* Separator between filters and build selector */
 .toolbar-separator {
   width: 1px;
@@ -2676,6 +2700,17 @@ body {
   color: var(--text-primary);
 }
 
+.section-loading {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.section-loading svg {
+  animation: spin 1s linear infinite;
+}
+
 .section-badge {
   font-size: 9px;
   color: var(--text-muted);
@@ -3060,6 +3095,33 @@ body {
 .detail-install-btn.update:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+.detail-install-btn.installing {
+  background: var(--ctp-blue);
+  opacity: 0.8;
+}
+
+.detail-install-btn.installing svg {
+  animation: spin 1s linear infinite;
+}
+
+.detail-install-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin-top: var(--spacing-sm);
+  background: rgba(243, 139, 168, 0.1);
+  border: 1px solid var(--ctp-red);
+  border-radius: var(--radius-sm);
+  color: var(--ctp-red);
+  font-size: 11px;
+}
+
+.detail-install-error svg {
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .detail-version-info {
@@ -5402,6 +5464,12 @@ body {
   background: var(--bg-hover);
 }
 
+.install-btn:disabled,
+.install-dropdown-toggle:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Match toggle color to button state */
 .install-btn.update-available + .install-dropdown-toggle {
   background: var(--bg-tertiary);
@@ -5535,6 +5603,11 @@ body {
 .dropdown-item .status-badge.outdated {
   background: rgba(250, 179, 135, 0.2);
   color: var(--ctp-peach);
+}
+
+.dropdown-item .status-badge.muted {
+  background: rgba(108, 112, 134, 0.2);
+  color: var(--text-muted);
 }
 
 .dropdown-item .selected-check {
@@ -8105,167 +8178,3 @@ body {
   background: rgba(243, 139, 168, 0.1);
   color: var(--ctp-red);
 }
-
-/* ============================================
-   File Explorer
-   ============================================ */
-
-.file-explorer {
-  margin-top: var(--spacing-md);
-  border-top: 1px solid var(--border-subtle);
-  padding-top: var(--spacing-sm);
-}
-
-.file-explorer-header {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-xs) 0;
-  color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.file-explorer-header:hover {
-  color: var(--text-primary);
-}
-
-.file-explorer-header svg {
-  color: var(--ctp-overlay1);
-}
-
-.file-explorer-header:hover svg {
-  color: var(--text-muted);
-}
-
-.file-explorer-chevron {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 12px;
-  height: 12px;
-}
-
-.file-explorer-tree {
-  margin-top: var(--spacing-xs);
-}
-
-.file-explorer-empty {
-  padding: var(--spacing-md);
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 10px;
-  font-style: italic;
-}
-
-/* File tree node */
-.file-tree-node {
-  /* Container */
-}
-
-.file-tree-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 4px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-  font-size: 11px;
-}
-
-.file-tree-row:hover {
-  background: var(--bg-hover);
-}
-
-.file-tree-row.folder {
-  font-weight: 500;
-}
-
-.file-tree-row.file:hover {
-  background: var(--bg-active);
-}
-
-/* Folder icons */
-.folder-icon {
-  color: var(--ctp-yellow);
-  flex-shrink: 0;
-}
-
-.folder-icon.open {
-  color: var(--ctp-peach);
-}
-
-/* File icons */
-.file-icon {
-  flex-shrink: 0;
-  color: var(--text-muted);
-}
-
-.file-icon.ato {
-  color: var(--ato-orange);
-}
-
-.file-icon.python {
-  color: var(--ctp-blue);
-}
-
-/* Tree expand/spacer */
-.file-tree-expand {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  color: var(--text-muted);
-}
-
-.file-tree-spacer {
-  width: 14px;
-  flex-shrink: 0;
-}
-
-/* File/folder name */
-.file-tree-name {
-  font-family: var(--font-mono);
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.file-tree-row.folder .file-tree-name {
-  color: var(--text-secondary);
-}
-
-.file-tree-row.file.ato .file-tree-name {
-  color: var(--text-primary);
-}
-
-.file-tree-row.file.py .file-tree-name {
-  color: var(--ctp-subtext1);
-}
-
-/* Children container */
-.file-tree-children {
-  /* Inherits from parent */
-}
-
-/* Hover effect - highlight file row */
-.file-tree-row.file:hover .file-tree-name {
-  color: var(--accent);
-}
-
-.file-tree-row.file.ato:hover .file-icon {
-  color: var(--ato-orange-light);
-}
-
-.file-tree-row.file.py:hover .file-icon {
-  color: var(--ctp-sapphire);
-}
-

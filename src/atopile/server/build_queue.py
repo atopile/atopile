@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from atopile.server import build_history
+from atopile.server.domains import artifacts as artifacts_domain
 from atopile.server import problem_parser
 from atopile.server.state import server_state
 
@@ -609,6 +610,12 @@ class BuildQueue:
                             build_id, _active_builds[build_id]
                         )
 
+                # Refresh BOM data for selected project/target after build completes
+                with _build_lock:
+                    build_info = _active_builds.get(build_id)
+                if build_info:
+                    _refresh_bom_for_selected(build_info)
+
                 log.info(f"BuildQueue: Build {build_id} completed with status {status}")
 
             elif msg_type == "cancelled":
@@ -884,6 +891,52 @@ def _sync_builds_to_state():
         )
     else:
         log.warning("Cannot sync builds to state: event loop not available")
+
+
+def _refresh_bom_for_selected(build_info: dict[str, Any]) -> None:
+    """Refresh BOM data for the currently selected project after a build completes."""
+    selected_project = server_state._state.selected_project_root
+    if not selected_project:
+        return
+
+    project_root = build_info.get("project_root")
+    if not project_root or project_root != selected_project:
+        return
+
+    selected_targets = server_state._state.selected_target_names
+    targets = build_info.get("targets", []) or []
+
+    target = None
+    if selected_targets:
+        if targets:
+            for candidate in selected_targets:
+                if candidate in targets:
+                    target = candidate
+                    break
+        else:
+            target = selected_targets[0]
+    elif targets:
+        target = targets[0]
+
+    if not target:
+        return
+
+    try:
+        bom_json = artifacts_domain.handle_get_bom(project_root, target)
+        if bom_json is None:
+            coroutine = server_state.set_bom_data(
+                None, "BOM not found. Run build first."
+            )
+        else:
+            coroutine = server_state.set_bom_data(bom_json)
+    except Exception as exc:
+        coroutine = server_state.set_bom_data(None, str(exc))
+
+    loop = server_state._event_loop
+    if loop is not None and loop.is_running():
+        asyncio.run_coroutine_threadsafe(coroutine, loop)
+    else:
+        log.warning("Cannot refresh BOM: event loop not available")
 
 
 async def _sync_builds_to_state_async():

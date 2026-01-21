@@ -277,6 +277,8 @@ export interface AppState {
 
   // Projects (from ato.yaml)
   projects: Project[];
+  isLoadingProjects: boolean;
+  projectsError: string | null;
   selectedProjectRoot: string | null;
   selectedTargetNames: string[];
 
@@ -291,6 +293,8 @@ export interface AppState {
   packages: PackageInfo[];
   isLoadingPackages: boolean;
   packagesError: string | null;  // Registry error visibility
+  installingPackageId: string | null;  // Package currently being installed
+  installError: string | null;  // Error from last install attempt
 
   // Standard Library (from dashboard API)
   stdlibItems: StdLibItem[];

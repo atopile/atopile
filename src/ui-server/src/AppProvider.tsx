@@ -7,9 +7,10 @@
  * - Handles connection state display
  */
 
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useEffect } from 'react';
 import { useConnection } from './hooks/useConnection';
 import { useStore } from './store';
+import { initUILogger } from './ui-logger';
 
 interface AppProviderProps {
   children: ReactNode;
@@ -49,6 +50,9 @@ function ConnectionBanner() {
 export function AppProvider({ children }: AppProviderProps) {
   // Initialize WebSocket connection
   useConnection();
+  useEffect(() => {
+    initUILogger();
+  }, []);
 
   return (
     <>

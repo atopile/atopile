@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, GripHorizontal, AlertCircle, AlertTriangle, X, Filter } from 'lucide-react'
+import { ChevronDown, ChevronRight, GripHorizontal, AlertCircle, AlertTriangle, X, Filter, Loader2 } from 'lucide-react'
 
 interface CollapsibleSectionProps {
   id: string
@@ -8,6 +8,7 @@ interface CollapsibleSectionProps {
   errorCount?: number
   warningCount?: number
   warningMessage?: string | null  // Tooltip message for warnings (e.g., "Registry unavailable")
+  loading?: boolean  // Show loading spinner in title bar
   collapsed: boolean
   onToggle: () => void
   onClearFilter?: () => void
@@ -26,6 +27,7 @@ export function CollapsibleSection({
   errorCount,
   warningCount,
   warningMessage,
+  loading,
   collapsed,
   onToggle,
   onClearFilter,
@@ -58,7 +60,14 @@ export function CollapsibleSection({
           {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
         </button>
         <span className="section-title">{title}</span>
-        
+
+        {/* Loading spinner */}
+        {loading && (
+          <span className="section-loading">
+            <Loader2 size={12} className="animate-spin" />
+          </span>
+        )}
+
         {/* Error/Warning counts */}
         {errorCount !== undefined && errorCount > 0 && (
           <span className="section-error-count">

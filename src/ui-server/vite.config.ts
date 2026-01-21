@@ -8,13 +8,35 @@ import type { IncomingMessage, ServerResponse } from 'http';
 const SCREENSHOT_DIR =
   process.env.ATOPILE_SCREENSHOT_DIR || '/tmp/atopile-ui-screenshots';
 const SCREENSHOT_ROUTE = '/__screenshots';
+const UI_LOG_LIMIT = 500;
+const UI_LOG_TIMESTAMP = new Date().toISOString().replace(/[:.]/g, '-');
+const UI_LOG_PATH =
+  process.env.ATOPILE_UI_LOG_PATH ||
+  path.resolve(
+    __dirname,
+    '..',
+    '..',
+    'artifacts',
+    `ui-logs-${UI_LOG_TIMESTAMP}.jsonl`
+  );
+const UI_LOG_LATEST_PATH = path.resolve(
+  __dirname,
+  '..',
+  '..',
+  'artifacts',
+  'ui-logs-latest.jsonl'
+);
 
 type ScreenshotOptions = {
   clickAgent?: boolean;
   agentName?: string;
+  clickSelector?: string;
   scrollTop?: boolean;
   scrollDown?: boolean;
   waitMs?: number;
+  clickWaitMs?: number;
+  uiActions?: { type: 'openSection' | 'closeSection' | 'toggleSection'; sectionId: string }[];
+  uiActionWaitMs?: number;
 };
 
 function sanitizeName(value: string): string {
@@ -92,6 +114,29 @@ async function takeScreenshot(
       }
     }
 
+    if (options.clickSelector) {
+      try {
+        await page.waitForSelector(options.clickSelector, { timeout: 5000 });
+        await page.click(options.clickSelector);
+        await new Promise((resolvePromise) =>
+          setTimeout(resolvePromise, options.clickWaitMs ?? 500)
+        );
+      } catch {
+        // Best-effort: selector not available.
+      }
+    }
+
+    if (options.uiActions && options.uiActions.length > 0) {
+      await page.evaluate((actions) => {
+        actions.forEach((action) => {
+          window.dispatchEvent(new CustomEvent('atopile:ui_action', { detail: action }));
+        });
+      }, options.uiActions);
+      await new Promise((resolvePromise) =>
+        setTimeout(resolvePromise, options.uiActionWaitMs ?? 500)
+      );
+    }
+
     if (options.scrollTop) {
       await page.evaluate(() => {
         const scrollable = document.querySelector('.output-stream');
@@ -120,6 +165,14 @@ async function takeScreenshot(
 }
 
 function screenshotPlugin() {
+  const uiLogs: Array<{
+    ts: string;
+    level: string;
+    message: string;
+    stack?: string;
+  }> = [];
+  const uiLogDir = path.dirname(UI_LOG_PATH);
+
   return {
     name: 'atopile-screenshot-api',
     configureServer(server: { middlewares: { use: Function } }) {
@@ -146,6 +199,52 @@ function screenshotPlugin() {
             return;
           }
 
+          if (req.method === 'POST' && url.pathname === '/api/ui-logs') {
+            try {
+              const body = await readJsonBody(req);
+              if (typeof body === 'object' && body !== null) {
+                const entry = {
+                  ts: typeof body.ts === 'string' ? body.ts : new Date().toISOString(),
+                  level: typeof body.level === 'string' ? body.level : 'error',
+                  message: typeof body.message === 'string' ? body.message : '',
+                  stack: typeof body.stack === 'string' ? body.stack : undefined,
+                };
+                uiLogs.push(entry);
+                if (uiLogs.length > UI_LOG_LIMIT) {
+                  uiLogs.splice(0, uiLogs.length - UI_LOG_LIMIT);
+                }
+                try {
+                  if (!fs.existsSync(uiLogDir)) {
+                    fs.mkdirSync(uiLogDir, { recursive: true });
+                  }
+                  fs.appendFileSync(UI_LOG_PATH, `${JSON.stringify(entry)}\n`);
+                  try {
+                    if (fs.existsSync(UI_LOG_LATEST_PATH)) {
+                      fs.unlinkSync(UI_LOG_LATEST_PATH);
+                    }
+                    fs.symlinkSync(UI_LOG_PATH, UI_LOG_LATEST_PATH);
+                  } catch {
+                    // Best-effort symlink.
+                  }
+                } catch {
+                  // Best-effort log sink.
+                }
+              }
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ ok: true }));
+            } catch {
+              res.statusCode = 400;
+              res.end('Invalid log payload');
+            }
+            return;
+          }
+
+          if (req.method === 'GET' && url.pathname === '/api/ui-logs') {
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ ok: true, logs: uiLogs }));
+            return;
+          }
+
           if (req.method !== 'POST' || url.pathname !== '/api/screenshot') {
             next();
             return;
@@ -161,9 +260,24 @@ function screenshotPlugin() {
             const screenshotPath = await takeScreenshot(targetUrl, name, {
               clickAgent: Boolean(body.clickAgent),
               agentName: typeof body.agentName === 'string' ? body.agentName : undefined,
+              clickSelector:
+                typeof body.clickSelector === 'string' ? body.clickSelector : undefined,
               scrollTop: Boolean(body.scrollTop),
               scrollDown: Boolean(body.scrollDown),
               waitMs: typeof body.waitMs === 'number' ? body.waitMs : undefined,
+              clickWaitMs:
+                typeof body.clickWaitMs === 'number' ? body.clickWaitMs : undefined,
+              uiActions: Array.isArray(body.uiActions)
+                ? body.uiActions.filter(
+                    (action) =>
+                      action &&
+                      typeof action === 'object' &&
+                      typeof action.type === 'string' &&
+                      typeof action.sectionId === 'string'
+                  )
+                : undefined,
+              uiActionWaitMs:
+                typeof body.uiActionWaitMs === 'number' ? body.uiActionWaitMs : undefined,
             });
 
             const filename = path.basename(screenshotPath);

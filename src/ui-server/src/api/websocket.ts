@@ -104,7 +104,7 @@ export function sendAction(action: string, payload?: Record<string, unknown>): v
     JSON.stringify({
       type: 'action',
       action,
-      ...payload,
+      payload: payload || {},
     })
   );
 }

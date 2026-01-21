@@ -19,6 +19,8 @@ interface PackageDetailProps {
   }
   packageDetails: PackageDetails | null
   isLoading: boolean
+  isInstalling: boolean
+  installError: string | null
   error: string | null
   onClose: () => void
   onInstall: (version: string) => void
@@ -61,6 +63,8 @@ export function PackageDetailPanel({
   package: pkg,
   packageDetails,
   isLoading,
+  isInstalling,
+  installError,
   error,
   onClose,
   onInstall,
@@ -209,23 +213,40 @@ export function PackageDetailPanel({
             )}
 
             <button
-              className={`detail-install-btn ${isInstalled ? 'update' : 'install'}`}
+              className={`detail-install-btn ${isInstalled ? 'update' : 'install'} ${isInstalling ? 'installing' : ''}`}
               onClick={() => onInstall(selectedVersion || details?.version || pkg.version || '')}
-              disabled={isLoading}
+              disabled={isLoading || isInstalling}
             >
-              <Download size={14} />
-              {isInstalled ? 'Update' : 'Install'}
+              {isInstalling ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Installing...
+                </>
+              ) : (
+                <>
+                  <Download size={14} />
+                  {isInstalled ? 'Update' : 'Install'}
+                </>
+              )}
             </button>
             <button
               className="detail-build-btn"
               onClick={() => onBuild()}
               title="Build this package (installs if needed)"
-              disabled={isLoading}
+              disabled={isLoading || isInstalling}
             >
               <Play size={14} />
               Build
             </button>
           </div>
+
+          {/* Install error message */}
+          {installError && (
+            <div className="detail-install-error">
+              <AlertCircle size={12} />
+              <span>{installError}</span>
+            </div>
+          )}
 
           {/* Release date info */}
           {availableVersions.length > 0 && (

@@ -52,7 +52,6 @@ vi.mock('../components/VariablesPanel', () => ({
 
 vi.mock('../components/BOMPanel', () => ({
   BOMPanel: vi.fn(() => <div data-testid="bom-panel">BOMPanel</div>),
-  mockBOM: [{ id: '1', mpn: 'TEST-PART', quantity: 5 }],
 }));
 
 vi.mock('../components/PackageDetailPanel', () => ({
@@ -62,6 +61,14 @@ vi.mock('../components/PackageDetailPanel', () => ({
       <button onClick={onClose} data-testid="close-detail">Close</button>
     </div>
   )),
+}));
+
+vi.mock('../api/client', () => ({
+  api: {
+    bom: {
+      get: vi.fn().mockResolvedValue({ version: '1.0', components: [] }),
+    },
+  },
 }));
 
 // Import Sidebar after mocks

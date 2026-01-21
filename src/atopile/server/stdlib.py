@@ -7,10 +7,11 @@ for the dashboard UI.
 
 import inspect
 import logging
+import textwrap
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 log = logging.getLogger(__name__)
 
@@ -37,8 +38,8 @@ class StdLibChild(BaseModel):
     name: str
     type: str  # The type name (e.g., "Electrical", "ElectricLogic")
     item_type: StdLibItemType  # Whether it's interface, parameter, etc.
-    children: list["StdLibChild"] = []
-    enum_values: list[str] = []  # For EnumParameter types, the possible values
+    children: list["StdLibChild"] = Field(default_factory=list)
+    enum_values: list[str] = Field(default_factory=list)
 
 
 class StdLibItem(BaseModel):
@@ -49,8 +50,8 @@ class StdLibItem(BaseModel):
     type: StdLibItemType
     description: str
     usage: str | None = None
-    children: list[StdLibChild] = []
-    parameters: list[dict[str, str]] = []
+    children: list[StdLibChild] = Field(default_factory=list)
+    parameters: list[dict[str, str]] = Field(default_factory=list)
 
 
 class StdLibResponse(BaseModel):
@@ -60,75 +61,93 @@ class StdLibResponse(BaseModel):
     total: int
 
 
-def _get_item_type_from_class(cls: type) -> StdLibItemType | None:
-    """
-    Determine the item type based on class attributes/traits.
+_stdlib_typegraph_cache: tuple[
+    "graph.GraphView",
+    "fbrk.TypeGraph",
+    dict[str, type["fabll.Node"]],
+    dict[str, "graph.BoundNode"],
+] | None = None
 
-    Returns None if the class is not a user-facing library item.
-    """
-    # Import here to avoid circular imports
+
+def _get_stdlib_typegraph_cache() -> tuple[
+    "graph.GraphView",
+    "fbrk.TypeGraph",
+    dict[str, type["fabll.Node"]],
+    dict[str, "graph.BoundNode"],
+]:
+    """Build and cache a stdlib TypeGraph for introspection."""
+    global _stdlib_typegraph_cache
+    if _stdlib_typegraph_cache is not None:
+        return _stdlib_typegraph_cache
+
+    import faebryk.core.faebrykpy as fbrk
+    import faebryk.core.graph as graph
     import faebryk.core.node as fabll
+    from atopile.compiler.ast_visitor import STDLIB_ALLOWLIST
 
-    # Check class attributes for trait markers
-    # Note: these can be _EdgeField or _ChildField depending on how they're defined
-    for attr_name in dir(cls):
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    type_map: dict[str, type[fabll.Node]] = {}
+    type_nodes: dict[str, graph.BoundNode] = {}
+
+    for obj in STDLIB_ALLOWLIST:
+        name = obj.__name__
         try:
-            attr_value = getattr(cls, attr_name, None)
-        except Exception:
+            type_node = fabll.TypeNodeBoundTG.get_or_create_type_in_tg(tg, obj)
+        except Exception as exc:
+            log.warning("Failed to create typegraph node for %s: %s", name, exc)
             continue
+        type_map[name] = obj
+        type_nodes[name] = type_node
 
-        if attr_value is None:
-            continue
+    _stdlib_typegraph_cache = (g, tg, type_map, type_nodes)
+    return _stdlib_typegraph_cache
 
-        # Check for is_interface trait (usually _is_interface)
-        if attr_name == "_is_interface" and isinstance(
-            attr_value, (fabll._EdgeField, fabll._ChildField)
+
+def _get_item_type_from_typegraph(
+    tg: "fbrk.TypeGraph",
+    type_node: "graph.BoundNode | None",
+    type_name: str,
+) -> StdLibItemType | None:
+    """Determine item type using the TypeGraph when possible."""
+    import faebryk.core.node as fabll
+    import faebryk.library._F as F
+
+    if type_node is not None:
+        if fabll.TypeNodeBoundTG.has_instance_of_type_has_trait(
+            type_node, fabll.is_interface
         ):
             return StdLibItemType.INTERFACE
-
-        # Check for is_module trait (usually _is_module)
-        if attr_name == "_is_module" and isinstance(
-            attr_value, (fabll._EdgeField, fabll._ChildField)
+        if fabll.TypeNodeBoundTG.has_instance_of_type_has_trait(
+            type_node, fabll.is_module
         ):
             return StdLibItemType.MODULE
-
-        # Check for is_trait marker (for trait classes)
-        if attr_name == "is_trait" and isinstance(
-            attr_value, (fabll._EdgeField, fabll._ChildField)
+        if fabll.TypeNodeBoundTG.has_instance_of_type_has_trait(
+            type_node, F.Parameters.is_parameter
+        ):
+            return StdLibItemType.PARAMETER
+        if fabll.TypeNodeBoundTG.has_instance_of_type_has_trait(
+            type_node, fabll.ImplementsTrait
         ):
             return StdLibItemType.TRAIT
+
+    if type_name.startswith(("has_", "is_", "can_")):
+        return StdLibItemType.TRAIT
 
     return None
 
 
-def _get_child_type_name(child_field: Any) -> str:
-    """Get the type name from a child field."""
-    import faebryk.core.node as fabll
+def _get_child_item_type(
+    tg: "fbrk.TypeGraph",
+    type_node: "graph.BoundNode | None",
+    type_name: str,
+) -> StdLibItemType:
+    """Determine child item type with TypeGraph fallback."""
+    item_type = _get_item_type_from_typegraph(tg, type_node, type_name)
+    if item_type:
+        return item_type
 
-    if isinstance(child_field, fabll._ChildField):
-        nodetype = child_field.nodetype
-        if isinstance(nodetype, str):
-            return nodetype
-        elif hasattr(nodetype, "__name__"):
-            return nodetype.__name__
-    return "Unknown"
-
-
-def _get_child_item_type(type_name: str) -> StdLibItemType:
-    """Determine the item type based on the type name."""
-    # Import to check types
-    try:
-        import faebryk.library._F as F
-
-        if hasattr(F, type_name):
-            cls = getattr(F, type_name)
-            item_type = _get_item_type_from_class(cls)
-            if item_type:
-                return item_type
-    except Exception:
-        pass
-
-    # Fallback: check naming patterns
     if "Parameter" in type_name or type_name in ("ohm", "V", "A", "F", "H", "Hz", "W"):
         return StdLibItemType.PARAMETER
     return StdLibItemType.INTERFACE
@@ -205,6 +224,9 @@ def _is_user_facing_child(attr_name: str, type_name: str) -> bool:
     User-facing children are interfaces/parameters users interact with.
     Internal attributes include trait markers, design checks, net names, etc.
     """
+    if attr_name.startswith("_"):
+        return False
+
     # Skip common internal/trait attribute names
     internal_names = {
         "can_bridge",
@@ -243,162 +265,88 @@ def _is_user_facing_child(attr_name: str, type_name: str) -> bool:
     return True
 
 
-def _extract_children(
-    cls: type, depth: int = 0, max_depth: int = 2
+def _extract_children_from_typegraph(
+    cls: type,
+    tg: "fbrk.TypeGraph",
+    type_node: "graph.BoundNode",
+    depth: int = 0,
+    max_depth: int = 2,
 ) -> list[StdLibChild]:
-    """
-    Extract children from a class definition.
-
-    Args:
-        cls: The class to introspect
-        depth: Current recursion depth
-        max_depth: Maximum recursion depth for nested children
-    """
-    import faebryk.core.node as fabll
-    import faebryk.library._F as F
+    """Extract children from the TypeGraph for a given type node."""
+    import faebryk.core.faebrykpy as fbrk
 
     children: list[StdLibChild] = []
 
-    for attr_name, attr_value in vars(cls).items():
-        # Skip private/internal attributes
-        if attr_name.startswith("_"):
+    try:
+        make_children = tg.collect_make_children(type_node=type_node)
+    except Exception as exc:
+        log.warning("Failed to collect make children for %s: %s", cls.__name__, exc)
+        return children
+
+    for identifier, make_child in make_children:
+        if not identifier:
+            continue
+        if not _is_user_facing_child(identifier, ""):
             continue
 
-        # Skip non-child attributes
-        if not isinstance(attr_value, (fabll._ChildField, list)):
-            continue
-
-        # Handle array children (e.g., unnamed = [F.Electrical.MakeChild()...])
-        if isinstance(attr_value, list):
-            if attr_value and isinstance(attr_value[0], fabll._ChildField):
-                type_name = _get_child_type_name(attr_value[0])
-                # Skip internal traits
-                if not _is_user_facing_child(attr_name, type_name):
-                    continue
-
-                # Try to extract values from trait arrays (like net_name_suffixes)
-                array_values = _extract_array_trait_values(attr_value)
-
-                children.append(
-                    StdLibChild(
-                        name=f"{attr_name}[]",
-                        type=f"{type_name}[{len(attr_value)}]",
-                        item_type=_get_child_item_type(type_name),
-                        children=[],
-                        enum_values=array_values,
-                    )
-                )
-            continue
-
-        # Handle single child fields
-        if isinstance(attr_value, fabll._ChildField):
-            type_name = _get_child_type_name(attr_value)
-
-            # Skip internal traits
-            if not _is_user_facing_child(attr_name, type_name):
-                continue
-
-            item_type = _get_child_item_type(type_name)
-
-            # Recursively get nested children (but limit depth)
-            nested_children: list[StdLibChild] = []
-            if depth < max_depth and hasattr(F, type_name):
-                try:
-                    nested_cls = getattr(F, type_name)
-                    nested_children = _extract_children(
-                        nested_cls, depth + 1, max_depth
-                    )
-                except Exception:
-                    pass
-
-            # Extract enum values for EnumParameter types
-            enum_values: list[str] = []
-            if type_name == "EnumParameter":
-                enum_values = _extract_enum_values(cls, attr_name)
-
-            children.append(
-                StdLibChild(
-                    name=attr_name,
-                    type=type_name,
-                    item_type=item_type,
-                    children=nested_children,
-                    enum_values=enum_values,
-                )
+        type_ref = tg.get_make_child_type_reference(make_child=make_child)
+        resolved_type = fbrk.Linker.get_resolved_type(type_reference=type_ref)
+        if resolved_type is not None:
+            type_name = fbrk.TypeGraph.get_type_name(type_node=resolved_type)
+        else:
+            type_name = fbrk.TypeGraph.get_type_reference_identifier(
+                type_reference=type_ref
             )
+
+        # Skip internal traits after resolving type name.
+        if not _is_user_facing_child(identifier, type_name):
+            continue
+
+        nested_children: list[StdLibChild] = []
+        if resolved_type is not None and depth < max_depth:
+            nested_children = _extract_children_from_typegraph(
+                cls=cls,
+                tg=tg,
+                type_node=resolved_type,
+                depth=depth + 1,
+                max_depth=max_depth,
+            )
+
+        enum_values: list[str] = []
+        if type_name == "EnumParameter":
+            enum_values = _extract_enum_values(cls, identifier)
+
+        children.append(
+            StdLibChild(
+                name=identifier,
+                type=type_name,
+                item_type=_get_child_item_type(tg, resolved_type, type_name),
+                children=nested_children,
+                enum_values=enum_values,
+            )
+        )
 
     return children
 
 
-def _extract_usage_example(cls: type) -> str | None:
-    """
-    Extract usage example from has_usage_example trait if present.
-
-    The usage example is stored in the class's usage_example trait, which is defined
-    using fabll.Traits.MakeEdge with F.has_usage_example.MakeChild(example=...).
-
-    We extract the example by parsing the source code of the class definition,
-    as the runtime structure is complex and hard to introspect directly.
-    """
-    import re
+def _extract_usage_example(
+    cls: type, tg: "fbrk.TypeGraph | None"
+) -> str | None:
+    """Extract usage example from has_usage_example trait using the TypeGraph."""
+    if tg is None:
+        return None
 
     try:
-        source = inspect.getsource(cls)
-    except (OSError, TypeError):
+        import faebryk.library._F as F
+
+        type_bound = cls.bind_typegraph(tg)
+        usage_trait = type_bound.try_get_type_trait(F.has_usage_example)
+        if usage_trait is None:
+            return None
+        return textwrap.dedent(usage_trait.example).strip()
+    except Exception as exc:
+        log.debug("Failed to get usage example for %s: %s", cls.__name__, exc)
         return None
-
-    # First check if this class has has_usage_example at all
-    if "has_usage_example" not in source:
-        return None
-
-    # Look for usage_example definition with the example string
-    # The format is: F.has_usage_example.MakeChild(\n    example="""...""",
-    # We use a two-step approach:
-    # 1. Find the has_usage_example.MakeChild section
-    # 2. Extract the example= argument value
-
-    # Pattern to find MakeChild section and capture everything until the closing paren
-    makechild_pattern = r"has_usage_example\.MakeChild\(([\s\S]*?)\)\.put_on_type\(\)"
-    makechild_match = re.search(makechild_pattern, source)
-
-    if not makechild_match:
-        # Try without .put_on_type()
-        makechild_pattern = r"has_usage_example\.MakeChild\(([\s\S]*?)\)"
-        makechild_match = re.search(makechild_pattern, source)
-
-    if makechild_match:
-        args_content = makechild_match.group(1)
-
-        # Now extract the example= value from the args
-        # Pattern for triple-quoted strings
-        example_patterns = [
-            r'example\s*=\s*"""([\s\S]*?)"""',
-            r"example\s*=\s*'''([\s\S]*?)'''",
-            r'example\s*=\s*"([^"]*)"',
-            r"example\s*=\s*'([^']*)'",
-        ]
-
-        for pattern in example_patterns:
-            example_match = re.search(pattern, args_content)
-            if example_match:
-                example = example_match.group(1)
-                # Clean up the example text
-                lines = example.strip().split("\n")
-                # Remove common leading whitespace (dedent)
-                if lines:
-                    # Find minimum indentation (excluding empty lines)
-                    min_indent = float("inf")
-                    for line in lines:
-                        if line.strip():
-                            indent = len(line) - len(line.lstrip())
-                            min_indent = min(min_indent, indent)
-                    if min_indent < float("inf"):
-                        lines = [
-                            line[int(min_indent) :] if len(line) >= min_indent else line
-                            for line in lines
-                        ]
-                    return "\n".join(lines).strip()
-
-    return None
 
 
 def _get_docstring(cls: type, item_type: StdLibItemType | None = None) -> str:
@@ -515,66 +463,49 @@ def _get_docstring(cls: type, item_type: StdLibItemType | None = None) -> str:
 
 def introspect_library() -> list[StdLibItem]:
     """
-    Introspect the faebryk standard library and return structured data.
+    Introspect the faebryk standard library via the TypeGraph.
 
     Returns a list of StdLibItem objects representing all user-facing
     modules, interfaces, and traits in the library.
     """
-    import faebryk.library._F as F
-
     items: list[StdLibItem] = []
 
-    # Get all exported names
-    all_names = F.__all__
+    g, tg, type_map, type_nodes = _get_stdlib_typegraph_cache()
+    max_depth = STDLIB_CONFIG.get("max_children_depth", 2)
 
-    for name in all_names:
+    for name, obj in type_map.items():
         try:
-            obj = getattr(F, name, None)
-            if obj is None:
-                continue
-
-            # Skip modules (like Collections, Units, etc.) - we want classes
-            if inspect.ismodule(obj):
-                continue
-
-            # Skip if not a class
-            if not inspect.isclass(obj):
-                continue
-
-            # Determine item type
-            item_type = _get_item_type_from_class(obj)
-            if item_type is None:
-                # Check if it looks like a trait by naming convention
-                if (
-                    name.startswith("has_")
-                    or name.startswith("is_")
-                    or name.startswith("can_")
-                ):
-                    item_type = StdLibItemType.TRAIT
-                else:
-                    continue  # Skip unknown types
-
-            # Extract children (using configurable depth)
-            max_depth = STDLIB_CONFIG.get("max_children_depth", 2)
-            children = _extract_children(obj, depth=0, max_depth=max_depth)
-
-            # Extract usage example
-            usage = _extract_usage_example(obj)
-
-            # Build the item
-            item = StdLibItem(
-                id=name,
-                name=name,
-                type=item_type,
-                description=_get_docstring(obj, item_type),
-                usage=usage,
-                children=children,
+            type_node = type_nodes.get(name)
+            item_type = _get_item_type_from_typegraph(
+                tg, type_node, obj.__name__
             )
+            if item_type is None:
+                continue
 
-            items.append(item)
+            children = []
+            if type_node is not None:
+                children = _extract_children_from_typegraph(
+                    cls=obj,
+                    tg=tg,
+                    type_node=type_node,
+                    depth=0,
+                    max_depth=max_depth,
+                )
 
-        except Exception as e:
-            log.warning(f"Failed to introspect {name}: {e}")
+            usage = _extract_usage_example(obj, tg)
+
+            items.append(
+                StdLibItem(
+                    id=name,
+                    name=name,
+                    type=item_type,
+                    description=_get_docstring(obj, item_type),
+                    usage=usage,
+                    children=children,
+                )
+            )
+        except Exception as exc:
+            log.warning("Failed to introspect %s: %s", name, exc)
             continue
 
     return items

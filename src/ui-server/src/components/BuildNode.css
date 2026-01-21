@@ -1,0 +1,18 @@
+/**
+ * BuildNode styles
+ * Note: Most styles are currently in the main styles.css file.
+ * This file can be used for component-specific overrides.
+ */
+
+/* Styles inherited from styles.css:
+ * .build-card, .build-card-header, .build-card-name
+ * .build-status-icon, .status-icon, .status-dot
+ * .build-indicators, .error-indicator, .warning-indicator
+ * .build-target-play-btn, .build-target-cancel-btn
+ * .build-progress-container, .build-progress-bar, .build-progress-fill
+ * .build-card-entry-row, .entry-path, .entry-picker
+ * .build-stages-section, .stages-toggle, .build-stages-list
+ * .stage-row, .stage-icon, .stage-name, .stage-duration
+ * .build-card-actions, .build-action-btn
+ * .build-card-symbols
+ */

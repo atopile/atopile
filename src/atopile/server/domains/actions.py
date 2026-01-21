@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from atopile.config import ProjectConfig
+from atopile.logging import get_build_logger, Audience
 from atopile.server.domains import packages as packages_domain
 from atopile.server import problem_parser
 from atopile.server import project_discovery
@@ -96,16 +97,7 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
 
             items = get_standard_library()
             state_items = [
-                StateStdLibItem(
-                    id=item.id,
-                    name=item.name,
-                    type=item.type,
-                    description=item.description,
-                    usage=item.usage,
-                    children=[],
-                    parameters=[],
-                )
-                for item in items
+                StateStdLibItem.model_validate(item.model_dump()) for item in items
             ]
             await server_state.set_stdlib_items(state_items)
             return {"success": True}
@@ -489,20 +481,21 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "error": f"No ato.yaml in: {project_root}",
                 }
 
-            with packages_domain._package_op_lock:
-                op_id = packages_domain.next_package_op_id("pkg-install")
+            # Build package spec with optional version
+            pkg_spec = f"{package_id}@{version}" if version else package_id
+            cmd = ["ato", "add", pkg_spec]
 
-                packages_domain._active_package_ops[op_id] = {
-                    "action": "install",
-                    "status": "running",
-                    "package": package_id,
-                    "project_root": project_root,
-                    "error": None,
-                }
+            # Create a logger for this action - logs to central SQLite DB
+            action_logger = get_build_logger(
+                project_path=project_root,
+                target="package-install",
+                stage="install",
+            )
 
-            cmd = ["ato", "add", package_id]
-            if version:
-                cmd.append(f"@{version}")
+            action_logger.info(
+                f"Installing {pkg_spec}...",
+                audience=Audience.USER,
+            )
 
             def run_install():
                 try:
@@ -513,36 +506,38 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                         text=True,
                         timeout=120,
                     )
-                    with packages_domain._package_op_lock:
-                        if result.returncode == 0:
-                            packages_domain._active_package_ops[op_id][
-                                "status"
-                            ] = "success"
-                            loop = server_state._event_loop
-                            if loop and loop.is_running():
-                                asyncio.run_coroutine_threadsafe(
-                                    packages_domain.refresh_packages_state(), loop
-                                )
-                        else:
-                            packages_domain._active_package_ops[op_id][
-                                "status"
-                            ] = "failed"
-                            packages_domain._active_package_ops[op_id][
-                                "error"
-                            ] = result.stderr[:500]
+                    if result.returncode == 0:
+                        action_logger.info(
+                            f"Successfully installed {pkg_spec}",
+                            audience=Audience.USER,
+                        )
+                        # Refresh packages state to update UI
+                        loop = server_state._event_loop
+                        if loop and loop.is_running():
+                            asyncio.run_coroutine_threadsafe(
+                                packages_domain.refresh_packages_state(), loop
+                            )
+                    else:
+                        error_msg = result.stderr.strip() if result.stderr else result.stdout.strip()
+                        error_msg = error_msg[:500] if error_msg else "Unknown error"
+                        action_logger.error(
+                            f"Failed to install {pkg_spec}: {error_msg}",
+                            audience=Audience.USER,
+                        )
                 except Exception as exc:
-                    with packages_domain._package_op_lock:
-                        packages_domain._active_package_ops[op_id][
-                            "status"
-                        ] = "failed"
-                        packages_domain._active_package_ops[op_id]["error"] = str(exc)
+                    action_logger.error(
+                        f"Failed to install {pkg_spec}: {exc}",
+                        audience=Audience.USER,
+                    )
+                finally:
+                    action_logger.flush()
 
             threading.Thread(target=run_install, daemon=True).start()
 
             return {
                 "success": True,
                 "message": f"Installing {package_id}...",
-                "op_id": op_id,
+                "build_id": action_logger.build_id,
             }
 
         if action == "changeDependencyVersion":

@@ -16,6 +16,7 @@ import { PackageDetailPanel } from './PackageDetailPanel';
 import { BuildQueuePanel, type QueuedBuild } from './BuildQueuePanel';
 import { logPerf } from '../perf';
 import { sendAction } from '../api/websocket';
+import { api } from '../api/client';
 import { useStore } from '../store';
 import './Sidebar.css';
 import '../styles.css';
@@ -107,6 +108,15 @@ interface SelectedPackage {
 export function Sidebar() {
   // State from UI store (synced from backend)
   const state = useStore((s) => s);
+
+  const selectedProjectRoot = state?.selectedProjectRoot ?? null;
+  const selectedTargetNames = state?.selectedTargetNames ?? [];
+  const selectedTargetName = useMemo(() => {
+    if (!selectedProjectRoot) return null;
+    if (selectedTargetNames.length > 0) return selectedTargetNames[0];
+    const project = state?.projects?.find((p) => p.root === selectedProjectRoot);
+    return project?.targets?.[0]?.name ?? null;
+  }, [selectedProjectRoot, selectedTargetNames, state?.projects]);
   
   // Local UI state
   const [selection, setSelection] = useState<Selection>({ type: 'none' });
@@ -136,6 +146,8 @@ export function Sidebar() {
   const [branchSearchQuery, setBranchSearchQuery] = useState('');
   const [showBranchDropdown, setShowBranchDropdown] = useState(false);
   const branchDropdownRef = useRef<HTMLDivElement>(null);
+  const bomRequestIdRef = useRef(0);
+  const variablesRequestIdRef = useRef(0);
 
   // Resize refs
   const resizingRef = useRef<string | null>(null);
@@ -162,6 +174,36 @@ export function Sidebar() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showSettings]);
+
+  // Allow external UI actions (e.g., open/close sections)
+  useEffect(() => {
+    const handleUiAction = (event: Event) => {
+      const detail = (event as CustomEvent).detail as {
+        type?: 'openSection' | 'closeSection' | 'toggleSection';
+        sectionId?: string;
+      };
+      if (!detail?.sectionId || !detail?.type) return;
+
+      setCollapsedSections((prev) => {
+        const next = new Set(prev);
+        if (detail.type === 'openSection') {
+          next.delete(detail.sectionId);
+        } else if (detail.type === 'closeSection') {
+          next.add(detail.sectionId);
+        } else if (detail.type === 'toggleSection') {
+          if (next.has(detail.sectionId)) {
+            next.delete(detail.sectionId);
+          } else {
+            next.add(detail.sectionId);
+          }
+        }
+        return next;
+      });
+    };
+
+    window.addEventListener('atopile:ui_action', handleUiAction);
+    return () => window.removeEventListener('atopile:ui_action', handleUiAction);
+  }, []);
 
   // Fetch max concurrent setting when settings open
   useEffect(() => {
@@ -194,17 +236,99 @@ export function Sidebar() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Handle action_result events (e.g., max concurrent setting responses)
+  // Fetch BOM data when project or target selection changes
+  useEffect(() => {
+    if (!selectedProjectRoot) {
+      useStore.getState().setBomData(null);
+      useStore.getState().setBomError(null);
+      return;
+    }
+
+    if (!selectedTargetName) {
+      useStore.getState().setBomData(null);
+      useStore.getState().setBomError('No build targets available for this project.');
+      return;
+    }
+
+    const requestId = ++bomRequestIdRef.current;
+    useStore.getState().setLoadingBom(true);
+    useStore.getState().setBomError(null);
+
+    api.bom
+      .get(selectedProjectRoot, selectedTargetName)
+      .then((data) => {
+        if (requestId !== bomRequestIdRef.current) return;
+        useStore.getState().setBomData(data);
+      })
+      .catch((error) => {
+        if (requestId !== bomRequestIdRef.current) return;
+        const message = error instanceof Error ? error.message : 'Failed to load BOM';
+        useStore.getState().setBomData(null);
+        useStore.getState().setBomError(message);
+      });
+  }, [selectedProjectRoot, selectedTargetName]);
+
+  // Fetch Variables data when project or target selection changes
+  useEffect(() => {
+    if (!selectedProjectRoot) {
+      useStore.getState().setVariablesData(null);
+      useStore.getState().setVariablesError(null);
+      return;
+    }
+
+    if (!selectedTargetName) {
+      useStore.getState().setVariablesData(null);
+      useStore.getState().setVariablesError('No build targets available for this project.');
+      return;
+    }
+
+    const requestId = ++variablesRequestIdRef.current;
+    useStore.getState().setLoadingVariables(true);
+    useStore.getState().setVariablesError(null);
+
+    api.variables
+      .get(selectedProjectRoot, selectedTargetName)
+      .then((data) => {
+        if (requestId !== variablesRequestIdRef.current) return;
+        useStore.getState().setVariablesData(data);
+      })
+      .catch((error) => {
+        if (requestId !== variablesRequestIdRef.current) return;
+        const message = error instanceof Error ? error.message : 'Failed to load variables';
+        useStore.getState().setVariablesData(null);
+        useStore.getState().setVariablesError(message);
+      });
+  }, [selectedProjectRoot, selectedTargetName]);
+
+  // Handle action_result events (e.g., max concurrent setting responses, package install)
   useEffect(() => {
     const handleActionResult = (event: Event) => {
       const detail = (event as CustomEvent).detail as {
         action?: string;
+        success?: boolean;
+        result?: {
+          success?: boolean;
+          error?: string;
+          message?: string;
+        };
         setting?: {
           use_default: boolean;
           custom_value?: number;
           default_value: number;
         };
       };
+
+      // Handle installPackage result
+      if (detail?.action === 'installPackage') {
+        // Note: The initial response just confirms the install started
+        // The actual completion is signaled when packages state updates
+        // But if there's an immediate error, show it
+        if (detail.result && !detail.result.success && detail.result.error) {
+          useStore.getState().setInstallError(detail.result.error);
+        }
+      }
+
+      // Handle settings
       if (detail?.setting) {
         setMaxConcurrentUseDefault(detail.setting.use_default);
         setMaxConcurrentValue(detail.setting.custom_value || detail.setting.default_value);
@@ -214,6 +338,22 @@ export function Sidebar() {
     window.addEventListener('atopile:action_result', handleActionResult);
     return () => window.removeEventListener('atopile:action_result', handleActionResult);
   }, []);
+
+  // Clear installing state when packages update (install completed)
+  useEffect(() => {
+    const installingId = state?.installingPackageId;
+    if (!installingId) return;
+
+    // Check if the package we're installing now appears as installed
+    const pkg = state?.packages?.find(p =>
+      p.identifier === installingId ||
+      `${p.publisher}/${p.name}` === installingId
+    );
+    if (pkg?.installed) {
+      // Package is now installed, clear the installing state
+      useStore.getState().setInstallingPackage(null);
+    }
+  }, [state?.packages, state?.installingPackageId]);
 
   // Auto-expand: detect unused space and cropped sections, expand only as needed
   useEffect(() => {
@@ -492,8 +632,9 @@ export function Sidebar() {
     if (sel.type === 'project' || sel.type === 'build' || sel.type === 'symbol') {
       // Find the project root for this selection
       const project = projects.find(p => p.id === sel.projectId);
-      if (project?.root) {
-        action('selectProject', { root: project.root });
+      const projectRoot = project?.root || project?.path;
+      if (projectRoot) {
+        action('selectProject', { projectRoot });
       }
     }
   };
@@ -1030,6 +1171,7 @@ export function Sidebar() {
           id="projects"
           title="Projects"
           badge={projectCount}
+          loading={state?.isLoadingProjects}
           collapsed={collapsedSections.has('projects')}
           onToggle={() => toggleSection('projects')}
           height={sectionHeights.projects}
@@ -1071,30 +1213,29 @@ export function Sidebar() {
           />
         </CollapsibleSection>
 
-        {/* Build Queue Section - only visible when there are queued builds */}
-        {queuedBuilds.length > 0 && (
-          <CollapsibleSection
-            id="buildQueue"
-            title="Build Queue"
-            badge={queuedBuilds.length}
-            badgeType="count"
-            collapsed={collapsedSections.has('buildQueue')}
-            onToggle={() => toggleSection('buildQueue')}
-            height={collapsedSections.has('buildQueue') ? undefined : sectionHeights.buildQueue}
-            onResizeStart={(e) => handleResizeStart('buildQueue', e)}
-          >
-            <BuildQueuePanel
-              builds={queuedBuilds}
-              onCancelBuild={handleCancelQueuedBuild}
-            />
-          </CollapsibleSection>
-        )}
+        {/* Build Queue Section - always visible */}
+        <CollapsibleSection
+          id="buildQueue"
+          title="Build Queue"
+          badge={queuedBuilds.length > 0 ? queuedBuilds.length : undefined}
+          badgeType="count"
+          collapsed={collapsedSections.has('buildQueue')}
+          onToggle={() => toggleSection('buildQueue')}
+          height={collapsedSections.has('buildQueue') ? undefined : sectionHeights.buildQueue}
+          onResizeStart={(e) => handleResizeStart('buildQueue', e)}
+        >
+          <BuildQueuePanel
+            builds={queuedBuilds}
+            onCancelBuild={handleCancelQueuedBuild}
+          />
+        </CollapsibleSection>
 
         {/* Packages Section - auto-size with max height, or use manual height if user resized */}
         <CollapsibleSection
           id="packages"
           title="Packages"
           badge={packageCount}
+          loading={state?.isLoadingPackages}
           warningMessage={state?.packagesError || null}
           collapsed={collapsedSections.has('packages')}
           onToggle={() => toggleSection('packages')}
@@ -1194,6 +1335,14 @@ export function Sidebar() {
             isLoading={state?.isLoadingVariables}
             error={state?.variablesError}
             onBuild={() => action('build')}
+            projects={state?.projects}
+            selectedProjectRoot={state?.selectedProjectRoot}
+            onSelectProject={(projectRoot) => {
+              useStore.getState().selectProject(projectRoot);
+              if (projectRoot) {
+                action('selectProject', { projectRoot });
+              }
+            }}
           />
         </CollapsibleSection>
 
@@ -1216,6 +1365,14 @@ export function Sidebar() {
             bomData={state?.bomData}
             isLoading={state?.isLoadingBom}
             error={state?.bomError}
+            projects={state?.projects}
+            selectedProjectRoot={state?.selectedProjectRoot}
+            onSelectProject={(projectRoot) => {
+              useStore.getState().selectProject(projectRoot);
+              if (projectRoot) {
+                action('selectProject', { projectRoot });
+              }
+            }}
             onGoToSource={(path, line) => {
               action('openFile', { file: path, line });
             }}
@@ -1230,6 +1387,8 @@ export function Sidebar() {
             package={selectedPackage}
             packageDetails={state?.selectedPackageDetails || null}
             isLoading={state?.isLoadingPackageDetails || false}
+            isInstalling={state?.installingPackageId === selectedPackage.fullName}
+            installError={state?.installError || null}
             error={state?.packageDetailsError || null}
             onClose={() => {
               setSelectedPackage(null);
@@ -1239,6 +1398,8 @@ export function Sidebar() {
               // Install to the currently selected project
               const projectRoot = state?.selectedProjectRoot || (state?.projects?.[0]?.root);
               if (projectRoot) {
+                // Set installing state
+                useStore.getState().setInstallingPackage(selectedPackage.fullName);
                 action('installPackage', {
                   packageId: selectedPackage.fullName,
                   projectRoot,

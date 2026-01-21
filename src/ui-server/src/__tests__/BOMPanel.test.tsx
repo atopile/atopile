@@ -5,7 +5,7 @@
 
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { BOMPanel, mockBOM } from '../components/BOMPanel';
+import { BOMPanel } from '../components/BOMPanel';
 import type { BOMData } from '../types/build';
 
 // Test data
@@ -81,21 +81,6 @@ const defaultProps = {};
 describe('BOMPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  describe('mock data export', () => {
-    it('exports valid mock BOM data', () => {
-      expect(mockBOM).toBeDefined();
-      expect(mockBOM.length).toBeGreaterThan(0);
-
-      // Each mock component should have required fields
-      mockBOM.forEach((component) => {
-        expect(component.id).toBeDefined();
-        expect(component.type).toBeDefined();
-        expect(component.value).toBeDefined();
-        expect(component.quantity).toBeGreaterThan(0);
-      });
-    });
   });
 
   describe('empty state (no BOM data)', () => {

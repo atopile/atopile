@@ -259,6 +259,7 @@ class StdLibChild(BaseModel):
     type: str
     item_type: str
     children: list["StdLibChild"] = Field(default_factory=list)
+    enum_values: list[str] = Field(default_factory=list)
 
 
 class StdLibItem(BaseModel):
@@ -416,6 +417,8 @@ class AppState(BaseModel):
 
     # Projects (from ato.yaml)
     projects: list[Project] = Field(default_factory=list)
+    is_loading_projects: bool = False
+    projects_error: Optional[str] = None
     selected_project_root: Optional[str] = None
     selected_target_names: list[str] = Field(default_factory=list)
 
@@ -659,9 +662,18 @@ class ServerState:
     # --- State Mutation Methods ---
     # Each method modifies state and triggers a broadcast
 
-    async def set_projects(self, projects: list[Project]) -> None:
+    async def set_projects(
+        self, projects: list[Project], error: Optional[str] = None
+    ) -> None:
         """Update projects list."""
         self._state.projects = projects
+        self._state.projects_error = error
+        self._state.is_loading_projects = False
+        await self.broadcast_state()
+
+    async def set_loading_projects(self, loading: bool) -> None:
+        """Set projects loading state."""
+        self._state.is_loading_projects = loading
         await self.broadcast_state()
 
     async def set_selected_project(self, project_root: Optional[str]) -> None:

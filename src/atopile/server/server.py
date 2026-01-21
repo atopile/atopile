@@ -357,21 +357,13 @@ ws_manager = ConnectionManager()
 build_queue.set_broadcast_sync(ws_manager.broadcast_sync)
 
 
-async def _populate_initial_state(ctx: AppContext) -> None:
-    """Populate server state with projects and packages on startup."""
-    if not ctx.workspace_paths:
-        log.info("No workspace paths configured, skipping initial state population")
-        return
-
-    log.info(
-        f"Populating initial state from {len(ctx.workspace_paths)} workspace paths"
-    )
-
+async def _load_projects_background(ctx: AppContext) -> None:
+    """Background task to load projects without blocking startup."""
     from atopile.server.state import Project as StateProject
     from atopile.server.state import BuildTarget as StateBuildTarget
-    from atopile.server.state import PackageInfo as StatePackageInfo
 
     try:
+        log.info(f"[background] Loading projects from {len(ctx.workspace_paths)} paths")
         projects = project_discovery.discover_projects_in_paths(ctx.workspace_paths)
         state_projects = [
             StateProject(
@@ -385,13 +377,20 @@ async def _populate_initial_state(ctx: AppContext) -> None:
             for project in projects
         ]
         await server_state.set_projects(state_projects)
-        log.info(f"Loaded {len(state_projects)} projects")
+        log.info(f"[background] Loaded {len(state_projects)} projects")
     except Exception as exc:
-        log.error(f"Failed to load projects: {exc}")
+        log.error(f"[background] Failed to load projects: {exc}")
+        await server_state.set_projects([], error=str(exc))
+
+
+async def _load_packages_background(ctx: AppContext) -> None:
+    """Background task to load packages without blocking startup."""
+    from atopile.server.state import PackageInfo as StatePackageInfo
 
     try:
+        log.info("[background] Loading packages from registry")
         installed = packages_domain.get_all_installed_packages(ctx.workspace_paths)
-        enriched = packages_domain.enrich_packages_with_registry(installed)
+        enriched = await packages_domain.enrich_packages_with_registry_async(installed)
 
         state_packages = [
             StatePackageInfo(
@@ -417,9 +416,10 @@ async def _populate_initial_state(ctx: AppContext) -> None:
             for p in enriched.values()
         ]
         await server_state.set_packages(state_packages)
-        log.info(f"Loaded {len(state_packages)} packages")
+        log.info(f"[background] Loaded {len(state_packages)} packages")
     except Exception as exc:
-        log.error(f"Failed to load packages: {exc}")
+        log.error(f"[background] Failed to load packages: {exc}")
+        await server_state.set_packages([], error=str(exc))
 
 
 
@@ -463,12 +463,24 @@ def create_app(
         init_build_history_db(build_history_db_path)
 
     @app.on_event("startup")
-    async def capture_event_loop():
+    async def on_startup():
         loop = asyncio.get_running_loop()
         ws_manager.set_event_loop(loop)
         server_state.set_event_loop(loop)
         server_state.set_workspace_paths(ctx.workspace_paths)
-        await _populate_initial_state(ctx)
+
+        if not ctx.workspace_paths:
+            log.info("No workspace paths configured, skipping initial state population")
+            return
+
+        # Set loading states immediately so UI shows spinners
+        await server_state.set_loading_projects(True)
+        await server_state.set_loading_packages(True)
+
+        # Fire background tasks - don't await, server starts immediately
+        asyncio.create_task(_load_projects_background(ctx))
+        asyncio.create_task(_load_packages_background(ctx))
+        log.info("Server started - background loaders running")
 
     from atopile.server.routes import (
         artifacts as artifacts_routes,

@@ -868,9 +868,8 @@ def generate_variable_report(ctx: BuildStepContext, log_context: LoggingStage) -
     """Generate a report of all the variable values in the design."""
     app = ctx.require_app()
     solver = ctx.require_solver()
-    # TODO: support other file formats
     export_parameters_to_file(
-        app, solver, config.build.paths.output_base.with_suffix(".variables.md")
+        app, solver, config.build.paths.output_base.with_suffix(".variables.json")
     )
 
 

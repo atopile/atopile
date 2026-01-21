@@ -202,6 +202,86 @@ def get_all_registry_packages() -> list[PackageInfo]:
     return packages
 
 
+async def get_all_registry_packages_async() -> list[PackageInfo]:
+    """
+    Async version of get_all_registry_packages with parallel fetching.
+
+    Runs registry queries in parallel using a thread pool to avoid blocking
+    the event loop while still benefiting from concurrent HTTP requests.
+    """
+    import asyncio
+
+    cache_key = "all_packages"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        log.debug(f"[registry] Cache HIT for all packages: {len(cached)} packages")
+        return cached
+
+    async def fetch_term(term: str) -> list[PackageInfo]:
+        """Fetch packages for a single search term in a thread."""
+        try:
+            return await asyncio.to_thread(search_registry_packages, term)
+        except Exception as exc:
+            log.warning(f"Failed to search registry for '{term}': {exc}")
+            return []
+
+    log.info(f"[registry] Fetching packages with {len(_REGISTRY_SEARCH_TERMS)} parallel queries")
+
+    # Run all queries in parallel
+    results = await asyncio.gather(*[fetch_term(term) for term in _REGISTRY_SEARCH_TERMS])
+
+    # Merge results
+    packages_map: dict[str, PackageInfo] = {}
+    for result in results:
+        for pkg in result:
+            if pkg.identifier not in packages_map:
+                packages_map[pkg.identifier] = pkg
+
+    packages = list(packages_map.values())
+    log.info(f"[registry] Merged {len(packages)} unique packages from registry (async)")
+    _cache_set(cache_key, packages)
+    return packages
+
+
+async def enrich_packages_with_registry_async(
+    packages: dict[str, PackageInfo],
+) -> dict[str, PackageInfo]:
+    """
+    Async version of enrich_packages_with_registry.
+
+    Fetches latest_version, summary, homepage, etc. from the registry
+    for each installed package using parallel HTTP requests.
+    """
+    if not packages:
+        return packages
+
+    registry_data = await get_all_registry_packages_async()
+    registry_map: dict[str, PackageInfo] = {pkg.identifier: pkg for pkg in registry_data}
+
+    enriched: dict[str, PackageInfo] = {}
+    for identifier, pkg in packages.items():
+        if identifier in registry_map:
+            reg = registry_map[identifier]
+            enriched[identifier] = PackageInfo(
+                identifier=pkg.identifier,
+                name=pkg.name,
+                publisher=pkg.publisher,
+                version=pkg.version,
+                latest_version=reg.latest_version,
+                description=reg.description,
+                summary=reg.summary,
+                homepage=reg.homepage,
+                repository=reg.repository,
+                license=reg.license,
+                installed=True,
+                installed_in=pkg.installed_in,
+            )
+        else:
+            enriched[identifier] = pkg
+
+    return enriched
+
+
 def get_package_details_from_registry(identifier: str) -> PackageDetails | None:
     """
     Get detailed package information from the registry.

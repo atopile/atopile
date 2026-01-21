@@ -1,15 +1,16 @@
-import { useState, memo, useCallback, useMemo } from 'react'
+import { useState, memo, useCallback, useMemo, useEffect, useRef } from 'react'
 import {
-  ChevronDown, ChevronRight, Search, Package,
-  Hash, Layers,
+  ChevronDown, ChevronRight, Search, Package, Layers,
   ExternalLink, Copy, Check, AlertTriangle,
-  RefreshCw, Cpu, Plug, Lightbulb, Radio, Play
+  RefreshCw, Play
 } from 'lucide-react'
 import type {
   BOMComponent as BOMComponentAPI,
   BOMData,
-  BOMComponentType
+  BOMComponentType,
+  Project
 } from '../types/build'
+import { api } from '../api/client'
 
 // Component types (local type alias for UI)
 type ComponentType = BOMComponentType
@@ -91,317 +92,6 @@ function transformBOMComponent(apiComp: BOMComponentAPI): BOMComponentUI {
   }
 }
 
-// Mock BOM data - exported for use in parent components
-export const mockBOM: BOMComponentUI[] = [
-  {
-    id: 'r1',
-    designators: ['R1', 'R2', 'R5', 'R8'],
-    type: 'resistor',
-    value: '10kΩ ±1%',
-    package: '0402',
-    manufacturer: 'Yageo',
-    mpn: 'RC0402FR-0710KL',
-    lcsc: 'C25744',
-    description: 'Thick Film Resistor',
-    quantity: 4,
-    unitCost: 0.002,
-    totalCost: 0.008,
-    inStock: true,
-    stockQuantity: 50000,
-    parameters: [
-      { name: 'Resistance', value: '10', unit: 'kΩ', constraint: '10 ±5%' },
-      { name: 'Tolerance', value: '±1', unit: '%', constraint: '±5' },
-      { name: 'Power Rating', value: '62.5', unit: 'mW', constraint: '> 0.1' },
-    ],
-    source: 'picked',
-    path: 'main.ato:App.feedback_divider.r_top',
-    usages: [
-      { path: 'App.power_supply.feedback_divider.r_top', designator: 'R1', line: 45 },
-      { path: 'App.power_supply.feedback_divider.r_bot', designator: 'R2', line: 46 },
-      { path: 'App.leds.led_resistor', designator: 'R5', line: 78 },
-      { path: 'App.sensors.pulldown', designator: 'R8', line: 92 },
-    ],
-  },
-  {
-    id: 'r2',
-    designators: ['R3', 'R4'],
-    type: 'resistor',
-    value: '4.7kΩ ±1%',
-    package: '0402',
-    manufacturer: 'Yageo',
-    mpn: 'RC0402FR-074K7L',
-    lcsc: 'C25900',
-    description: 'Thick Film Resistor - I2C Pull-up',
-    quantity: 2,
-    unitCost: 0.002,
-    totalCost: 0.004,
-    inStock: true,
-    stockQuantity: 45000,
-    parameters: [
-      { name: 'Resistance', value: '4.7', unit: 'kΩ' },
-    ],
-    source: 'picked',
-    path: 'main.ato:App.i2c_pullups',
-    usages: [
-      { path: 'App.sensors.i2c_pullups.scl_pullup', designator: 'R3', line: 55 },
-      { path: 'App.sensors.i2c_pullups.sda_pullup', designator: 'R4', line: 56 },
-    ],
-  },
-  {
-    id: 'r3',
-    designators: ['R6', 'R7'],
-    type: 'resistor',
-    value: '100kΩ ±1%',
-    package: '0402',
-    manufacturer: 'Yageo',
-    mpn: 'RC0402FR-07100KL',
-    lcsc: 'C25741',
-    description: 'Thick Film Resistor',
-    quantity: 2,
-    unitCost: 0.002,
-    totalCost: 0.004,
-    inStock: true,
-    stockQuantity: 38000,
-    parameters: [
-      { name: 'Resistance', value: '100', unit: 'kΩ' },
-    ],
-    source: 'picked',
-    path: 'main.ato:App.voltage_divider',
-    usages: [
-      { path: 'App.mcu.nrst_pullup', designator: 'R6', line: 102 },
-      { path: 'App.mcu.boot0_pulldown', designator: 'R7', line: 105 },
-    ],
-  },
-  {
-    id: 'c1',
-    designators: ['C1', 'C2', 'C5', 'C6'],
-    type: 'capacitor',
-    value: '100nF',
-    package: '0402',
-    manufacturer: 'Samsung',
-    mpn: 'CL05B104KO5NNNC',
-    lcsc: 'C1525',
-    description: 'MLCC - Decoupling',
-    quantity: 4,
-    unitCost: 0.003,
-    totalCost: 0.012,
-    inStock: true,
-    stockQuantity: 120000,
-    parameters: [
-      { name: 'Capacitance', value: '100', unit: 'nF', constraint: '100 ±20%' },
-      { name: 'Voltage Rating', value: '16', unit: 'V', constraint: '> 5' },
-    ],
-    source: 'picked',
-    path: 'main.ato:App.decoupling',
-    usages: [
-      { path: 'App.mcu.decoupling[0]', designator: 'C1', line: 120 },
-      { path: 'App.mcu.decoupling[1]', designator: 'C2', line: 120 },
-      { path: 'App.sensors.bme280.decoupling', designator: 'C5', line: 145 },
-      { path: 'App.power_supply.ldo.decoupling', designator: 'C6', line: 88 },
-    ],
-  },
-  {
-    id: 'c2',
-    designators: ['C3', 'C4'],
-    type: 'capacitor',
-    value: '10µF',
-    package: '0603',
-    manufacturer: 'Samsung',
-    mpn: 'CL10A106KP8NNNC',
-    lcsc: 'C19702',
-    description: 'MLCC - Bulk',
-    quantity: 2,
-    unitCost: 0.015,
-    totalCost: 0.030,
-    inStock: true,
-    stockQuantity: 85000,
-    parameters: [
-      { name: 'Capacitance', value: '10', unit: 'µF', constraint: '10 ±20%' },
-      { name: 'Voltage Rating', value: '10', unit: 'V', constraint: '> 6.3' },
-    ],
-    source: 'picked',
-    path: 'main.ato:App.power_supply.output_cap',
-    usages: [
-      { path: 'App.power_supply.output_cap', designator: 'C3', line: 112 },
-      { path: 'App.power_supply.input_cap', designator: 'C4', line: 108 },
-    ],
-  },
-  {
-    id: 'c3',
-    designators: ['C7', 'C8'],
-    type: 'capacitor',
-    value: '22pF',
-    package: '0402',
-    manufacturer: 'Murata',
-    mpn: 'GRM1555C1H220JA01D',
-    lcsc: 'C1653',
-    description: 'MLCC - Crystal Load',
-    quantity: 2,
-    unitCost: 0.005,
-    totalCost: 0.010,
-    inStock: true,
-    stockQuantity: 25000,
-    parameters: [
-      { name: 'Capacitance', value: '22', unit: 'pF' },
-    ],
-    source: 'picked',
-    path: 'main.ato:App.mcu.crystal_caps',
-    usages: [
-      { path: 'App.mcu.crystal_caps[0]', designator: 'C7', line: 130 },
-      { path: 'App.mcu.crystal_caps[1]', designator: 'C8', line: 130 },
-    ],
-  },
-  {
-    id: 'u1',
-    designators: ['U1'],
-    type: 'ic',
-    value: 'STM32F405RGT6',
-    package: 'LQFP-64',
-    manufacturer: 'STMicroelectronics',
-    mpn: 'STM32F405RGT6',
-    lcsc: 'C15742',
-    description: 'ARM Cortex-M4 MCU, 168MHz, 1MB Flash',
-    quantity: 1,
-    unitCost: 8.50,
-    totalCost: 8.50,
-    inStock: true,
-    stockQuantity: 1200,
-    parameters: [
-      { name: 'Core', value: 'ARM Cortex-M4', unit: '' },
-      { name: 'Flash', value: '1', unit: 'MB' },
-      { name: 'RAM', value: '192', unit: 'KB' },
-    ],
-    source: 'specified',
-    path: 'main.ato:App.mcu',
-    usages: [
-      { path: 'App.mcu', designator: 'U1', line: 15 },
-    ],
-  },
-  {
-    id: 'u2',
-    designators: ['U2'],
-    type: 'ic',
-    value: 'TLV75901PDRVR',
-    package: 'SOT-23-6',
-    manufacturer: 'Texas Instruments',
-    mpn: 'TLV75901PDRVR',
-    lcsc: 'C181829',
-    description: '300mA LDO, 3.3V Fixed Output',
-    quantity: 1,
-    unitCost: 0.45,
-    totalCost: 0.45,
-    inStock: true,
-    stockQuantity: 5600,
-    parameters: [
-      { name: 'Output Voltage', value: '3.3', unit: 'V' },
-      { name: 'Output Current', value: '300', unit: 'mA' },
-    ],
-    source: 'picked',
-    path: 'main.ato:App.power_supply.ldo',
-    usages: [
-      { path: 'App.power_supply.ldo', designator: 'U2', line: 82 },
-    ],
-  },
-  {
-    id: 'u3',
-    designators: ['U3'],
-    type: 'ic',
-    value: 'BME280',
-    package: 'LGA-8',
-    manufacturer: 'Bosch',
-    mpn: 'BME280',
-    lcsc: 'C92489',
-    description: 'Temp/Humidity/Pressure Sensor',
-    quantity: 1,
-    unitCost: 3.20,
-    totalCost: 3.20,
-    inStock: true,
-    stockQuantity: 890,
-    parameters: [
-      { name: 'Interface', value: 'I2C/SPI', unit: '' },
-      { name: 'Supply Voltage', value: '1.71-3.6', unit: 'V' },
-    ],
-    source: 'specified',
-    path: 'main.ato:App.sensors.bme280',
-    usages: [
-      { path: 'App.sensors.bme280', designator: 'U3', line: 140 },
-    ],
-  },
-  {
-    id: 'y1',
-    designators: ['Y1'],
-    type: 'crystal',
-    value: '8MHz',
-    package: '3215',
-    manufacturer: 'Abracon',
-    mpn: 'ABM8-8.000MHZ-B2-T',
-    lcsc: 'C115962',
-    description: 'Crystal Oscillator',
-    quantity: 1,
-    unitCost: 0.25,
-    totalCost: 0.25,
-    inStock: true,
-    stockQuantity: 3400,
-    parameters: [
-      { name: 'Frequency', value: '8', unit: 'MHz' },
-    ],
-    source: 'picked',
-    path: 'main.ato:App.mcu.crystal',
-    usages: [
-      { path: 'App.mcu.crystal', designator: 'Y1', line: 125 },
-    ],
-  },
-  {
-    id: 'd1',
-    designators: ['D1', 'D2'],
-    type: 'led',
-    value: 'Green LED',
-    package: '0603',
-    manufacturer: 'Everlight',
-    mpn: '19-217/GHC-YR1S2/3T',
-    lcsc: 'C72043',
-    description: 'Status LED - Green',
-    quantity: 2,
-    unitCost: 0.02,
-    totalCost: 0.04,
-    inStock: true,
-    stockQuantity: 18000,
-    parameters: [
-      { name: 'Color', value: 'Green', unit: '' },
-      { name: 'Forward Voltage', value: '2.0-2.4', unit: 'V' },
-    ],
-    source: 'picked',
-    path: 'main.ato:App.leds.status',
-    usages: [
-      { path: 'App.leds.power_led', designator: 'D1', line: 160 },
-      { path: 'App.leds.status_led', designator: 'D2', line: 165 },
-    ],
-  },
-  {
-    id: 'j1',
-    designators: ['J1'],
-    type: 'connector',
-    value: 'USB-C',
-    package: 'SMD',
-    manufacturer: 'Korean Hroparts',
-    mpn: 'TYPE-C-31-M-12',
-    lcsc: 'C165948',
-    description: 'USB Type-C Receptacle',
-    quantity: 1,
-    unitCost: 0.35,
-    totalCost: 0.35,
-    inStock: false,
-    stockQuantity: 0,
-    parameters: [
-      { name: 'Type', value: 'USB-C 2.0', unit: '' },
-    ],
-    source: 'specified',
-    path: 'main.ato:App.usb_connector',
-    usages: [
-      { path: 'App.usb_connector', designator: 'J1', line: 8 },
-    ],
-  },
-]
 
 // Get short type label
 function getTypeLabel(type: ComponentType): string {
@@ -675,15 +365,15 @@ const BOMRow = memo(function BOMRow({
   )
 })
 
-// Type filter options
-type TypeFilter = 'all' | ComponentType
-
 interface BOMPanelProps {
   // API data props - BOM follows the currently selected project
   bomData?: BOMData | null
   isLoading?: boolean
   error?: string | null
   onGoToSource?: (path: string, line?: number) => void
+  projects?: Project[]
+  selectedProjectRoot?: string | null
+  onSelectProject?: (projectRoot: string | null) => void
 }
 
 export function BOMPanel({
@@ -691,11 +381,85 @@ export function BOMPanel({
   isLoading = false,
   error = null,
   onGoToSource: externalGoToSource,
+  projects,
+  selectedProjectRoot,
+  onSelectProject,
 }: BOMPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [copiedValue, setCopiedValue] = useState<string | null>(null)
+  const [bomTargetsByProject, setBomTargetsByProject] = useState<Record<string, string[]>>({})
+  const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false)
+  const [projectSearchQuery, setProjectSearchQuery] = useState('')
+  const projectDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!projects || projects.length === 0) {
+      setBomTargetsByProject({})
+      return
+    }
+
+    let cancelled = false
+    Promise.all(
+      projects.map(async (project) => {
+        try {
+          const result = await api.bom.targets(project.root)
+          return [project.root, result.targets] as const
+        } catch {
+          return [project.root, []] as const
+        }
+      })
+    ).then((entries) => {
+      if (cancelled) return
+      const next: Record<string, string[]> = {}
+      for (const [root, targets] of entries) {
+        next[root] = targets
+      }
+      setBomTargetsByProject(next)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [projects])
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        projectDropdownRef.current &&
+        !projectDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsProjectMenuOpen(false)
+        setProjectSearchQuery('')
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const sortedProjects = useMemo(() => {
+    if (!projects) return []
+    return [...projects].sort((a, b) => {
+      const aHasBom = (bomTargetsByProject[a.root]?.length ?? 0) > 0
+      const bHasBom = (bomTargetsByProject[b.root]?.length ?? 0) > 0
+      if (aHasBom !== bHasBom) return aHasBom ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+  }, [projects, bomTargetsByProject])
+
+  const hasProjects = sortedProjects.length > 0
+  const selectedProject = useMemo(
+    () => sortedProjects.find((project) => project.root === selectedProjectRoot) || null,
+    [sortedProjects, selectedProjectRoot]
+  )
+
+  const filteredProjects = useMemo(() => {
+    if (!projectSearchQuery) return sortedProjects
+    const query = projectSearchQuery.toLowerCase()
+    return sortedProjects.filter((project) =>
+      project.name.toLowerCase().includes(query)
+    )
+  }, [sortedProjects, projectSearchQuery])
 
   // Memoize API data transformation - no mock data fallback
   const bomComponents = useMemo((): BOMComponentUI[] => {
@@ -734,10 +498,149 @@ export function BOMPanel({
     }
   }, [externalGoToSource])
 
+  const toolbar = (
+    <div className="panel-toolbar">
+        <div className="panel-toolbar-row">
+          <div className="search-box">
+            <Search size={14} />
+            <input
+              type="text"
+              placeholder="Search value, MPN..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <div className="install-dropdown bom-project-select" ref={projectDropdownRef}>
+            <button
+              className="install-btn install-btn-wide"
+              onClick={() => {
+                if (!hasProjects) return
+                setIsProjectMenuOpen((prev) => !prev)
+              }}
+              title={selectedProject ? selectedProject.name : 'Select project'}
+              disabled={!hasProjects}
+            >
+              <Layers size={12} />
+              <span>{selectedProject?.name || (hasProjects ? 'Select project' : 'No projects')}</span>
+            </button>
+            <button
+              className="install-dropdown-toggle"
+              onClick={(event) => {
+                event.stopPropagation()
+                if (!hasProjects) return
+                setIsProjectMenuOpen((prev) => !prev)
+              }}
+              title="Change project"
+              disabled={!hasProjects}
+            >
+              <ChevronDown size={12} />
+            </button>
+            {hasProjects && isProjectMenuOpen && (
+              <div
+                className={`install-dropdown-menu ${
+                  sortedProjects.length > 5 ? 'scrollable' : ''
+                }`}
+              >
+                <div className="dropdown-header">Select project:</div>
+                {sortedProjects.length > 5 && (
+                  <div className="dropdown-search">
+                    <Search size={10} />
+                    <input
+                      type="text"
+                      placeholder="Filter projects..."
+                      value={projectSearchQuery}
+                      onChange={(event) => setProjectSearchQuery(event.target.value)}
+                      onClick={(event) => event.stopPropagation()}
+                    />
+                  </div>
+                )}
+                <div className="dropdown-items">
+                  {filteredProjects.map((project) => {
+                    const hasBom = (bomTargetsByProject[project.root]?.length ?? 0) > 0
+                    return (
+                      <button
+                        key={project.root}
+                        className={`dropdown-item ${
+                          project.root === selectedProjectRoot ? 'selected' : ''
+                        }`}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          if (onSelectProject) {
+                            onSelectProject(project.root)
+                          }
+                          setIsProjectMenuOpen(false)
+                          setProjectSearchQuery('')
+                        }}
+                      >
+                        <Layers size={12} />
+                        <span>{project.name}</span>
+                        {!hasBom && (
+                          <span className="status-badge muted">no BOM</span>
+                        )}
+                        {project.root === selectedProjectRoot && (
+                          <Check size={12} className="selected-check" />
+                        )}
+                      </button>
+                    )
+                  })}
+                  {filteredProjects.length === 0 && (
+                    <div className="dropdown-empty">
+                      No projects match "{projectSearchQuery}"
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+  )
+
+  // Pre-compute lowercase search for performance
+  const searchLower = useMemo(() => searchQuery.toLowerCase(), [searchQuery])
+
+  // Memoize filtered and sorted components
+  const filteredComponents = useMemo(() => {
+    return bomComponents
+      .filter(c => {
+        // Search filter
+        if (searchLower) {
+          return (
+            c.value.toLowerCase().includes(searchLower) ||
+            c.mpn?.toLowerCase().includes(searchLower) ||
+            c.lcsc?.toLowerCase().includes(searchLower) ||
+            c.manufacturer?.toLowerCase().includes(searchLower) ||
+            c.description?.toLowerCase().includes(searchLower)
+          )
+        }
+        return true
+      })
+      .sort((a, b) => (b.totalCost || 0) - (a.totalCost || 0))
+  }, [bomComponents, searchLower])
+
+  // Memoize totals calculation - single pass for efficiency
+  const { totalComponents, totalCost, uniqueParts, outOfStock } = useMemo(() => {
+    let total = 0
+    let cost = 0
+    let oos = 0
+    for (const c of bomComponents) {
+      total += c.quantity
+      cost += c.totalCost || 0
+      if (c.inStock === false) oos++
+    }
+    return {
+      totalComponents: total,
+      totalCost: cost,
+      uniqueParts: bomComponents.length,
+      outOfStock: oos
+    }
+  }, [bomComponents])
+
   // Loading state
   if (isLoading) {
     return (
       <div className="bom-panel">
+        {toolbar}
         <div className="bom-loading">
           <RefreshCw size={24} className="loading-spinner" />
           <span>Loading BOM...</span>
@@ -751,6 +654,7 @@ export function BOMPanel({
     const is404 = error.includes('404') || error.includes('not found') || error.includes("Run 'ato build'")
     return (
       <div className="bom-panel">
+        {toolbar}
         <div className="bom-empty-state">
           {is404 ? (
             <>
@@ -775,6 +679,7 @@ export function BOMPanel({
   if (!hasBOMData) {
     return (
       <div className="bom-panel">
+        {toolbar}
         <div className="bom-empty-state">
           <Play size={24} />
           <span className="empty-title">No BOM data available</span>
@@ -785,49 +690,6 @@ export function BOMPanel({
       </div>
     )
   }
-
-  // Pre-compute lowercase search for performance
-  const searchLower = useMemo(() => searchQuery.toLowerCase(), [searchQuery])
-
-  // Memoize filtered and sorted components
-  const filteredComponents = useMemo(() => {
-    return bomComponents
-      .filter(c => {
-        // Type filter
-        if (typeFilter !== 'all' && c.type !== typeFilter) return false
-
-        // Search filter
-        if (searchLower) {
-          return (
-            c.value.toLowerCase().includes(searchLower) ||
-            c.mpn?.toLowerCase().includes(searchLower) ||
-            c.lcsc?.toLowerCase().includes(searchLower) ||
-            c.manufacturer?.toLowerCase().includes(searchLower) ||
-            c.description?.toLowerCase().includes(searchLower)
-          )
-        }
-        return true
-      })
-      .sort((a, b) => (b.totalCost || 0) - (a.totalCost || 0))
-  }, [bomComponents, typeFilter, searchLower])
-
-  // Memoize totals calculation - single pass for efficiency
-  const { totalComponents, totalCost, uniqueParts, outOfStock } = useMemo(() => {
-    let total = 0
-    let cost = 0
-    let oos = 0
-    for (const c of bomComponents) {
-      total += c.quantity
-      cost += c.totalCost || 0
-      if (c.inStock === false) oos++
-    }
-    return {
-      totalComponents: total,
-      totalCost: cost,
-      uniqueParts: bomComponents.length,
-      outOfStock: oos
-    }
-  }, [bomComponents])
   
   return (
     <div className="bom-panel">
@@ -855,71 +717,7 @@ export function BOMPanel({
       </div>
       
       {/* Unified toolbar */}
-      <div className="panel-toolbar">
-        <div className="panel-toolbar-row">
-          <div className="search-box">
-            <Search size={14} />
-            <input
-              type="text"
-              placeholder="Search value, MPN..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          {/* Type filters with icons */}
-          <div className="filter-group">
-          <button 
-            className={`filter-btn ${typeFilter === 'all' ? 'active' : ''}`}
-            onClick={() => setTypeFilter('all')}
-            title="All components"
-          >
-            All
-          </button>
-          <button 
-            className={`filter-btn icon-filter ${typeFilter === 'resistor' ? 'active' : ''}`}
-            onClick={() => setTypeFilter('resistor')}
-            title="Resistors"
-          >
-            <Hash size={12} />
-          </button>
-          <button 
-            className={`filter-btn icon-filter ${typeFilter === 'capacitor' ? 'active' : ''}`}
-            onClick={() => setTypeFilter('capacitor')}
-            title="Capacitors"
-          >
-            <Layers size={12} />
-          </button>
-          <button 
-            className={`filter-btn icon-filter ${typeFilter === 'ic' ? 'active' : ''}`}
-            onClick={() => setTypeFilter('ic')}
-            title="ICs / Chips"
-          >
-            <Cpu size={12} />
-          </button>
-          <button 
-            className={`filter-btn icon-filter ${typeFilter === 'connector' ? 'active' : ''}`}
-            onClick={() => setTypeFilter('connector')}
-            title="Connectors"
-          >
-            <Plug size={12} />
-          </button>
-          <button 
-            className={`filter-btn icon-filter ${typeFilter === 'led' ? 'active' : ''}`}
-            onClick={() => setTypeFilter('led')}
-            title="LEDs"
-          >
-            <Lightbulb size={12} />
-          </button>
-          <button
-            className={`filter-btn icon-filter ${typeFilter === 'crystal' ? 'active' : ''}`}
-            onClick={() => setTypeFilter('crystal')}
-            title="Crystals / Oscillators"
-          >
-            <Radio size={12} />
-          </button>
-          </div>
-        </div>
-      </div>
+      {toolbar}
 
       {/* Component list */}
       <div className="bom-list">
