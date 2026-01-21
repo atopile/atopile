@@ -88,18 +88,23 @@ async def websocket_state(websocket: WebSocket):
                 if inline_payload:
                     payload = {**inline_payload, **payload}
 
-                log.info(f"WebSocket action received: {action}, payload keys: {list(payload.keys())}")
+                log.info(
+                    f"WebSocket action received: {action}, payload keys: {list(payload.keys())}"
+                )
 
                 try:
                     ctx = websocket.app.state.ctx
                     result = await handle_data_action(action, payload, ctx)
-                    log.info(f"handle_data_action returned for {action}: success={result.get('success')}")
+                    log.info(
+                        f"handle_data_action returned for {action}: success={result.get('success')}"
+                    )
 
-                    if (
-                        not result.get("success")
-                        and str(result.get("error", "")).startswith("Unknown action:")
-                    ):
-                        log.info(f"Falling back to server_state.handle_action for {action}")
+                    if not result.get("success") and str(
+                        result.get("error", "")
+                    ).startswith("Unknown action:"):
+                        log.info(
+                            f"Falling back to server_state.handle_action for {action}"
+                        )
                         result = await server_state.handle_action(action, payload)
 
                     # Send result back to client
@@ -109,7 +114,11 @@ async def websocket_state(websocket: WebSocket):
                 except Exception as action_exc:
                     log.exception(f"Exception handling action {action}: {action_exc}")
                     await websocket.send_json(
-                        {"type": "action_result", "action": action, "result": {"success": False, "error": str(action_exc)}}
+                        {
+                            "type": "action_result",
+                            "action": action,
+                            "result": {"success": False, "error": str(action_exc)},
+                        }
                     )
 
     except WebSocketDisconnect:

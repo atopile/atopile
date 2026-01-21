@@ -67,9 +67,11 @@ function normalizeUsagePath(path: string): string {
   return addressPart.split('|')[0]
 }
 
-function getUsageLeafName(path: string): string {
+function getUsageDisplayPath(path: string): string {
   const normalized = normalizeUsagePath(path)
-  return normalized.split('.').pop() || normalized
+  const segments = normalized.split('.')
+  if (segments.length <= 1) return normalized
+  return segments.slice(1).join('.')
 }
 
 // Transform API response to UI format
@@ -336,7 +338,7 @@ const BOMRow = memo(function BOMRow({
                           <div className="usage-instances">
                             {group.instances.map((usage, idx) => {
                               // Extract just the leaf name (e.g., "decoupling[0]" from full path)
-                              const leafName = getUsageLeafName(usage.path)
+                              const leafName = getUsageDisplayPath(usage.path)
                               return (
                                 <div
                                   key={idx}
@@ -361,7 +363,7 @@ const BOMRow = memo(function BOMRow({
                       >
                         <span className="usage-designator">{group.instances[0].designator}</span>
                         <span className="usage-module-path">
-                          {getUsageLeafName(group.instances[0].path)}
+                          {getUsageDisplayPath(group.instances[0].path)}
                         </span>
                         <ExternalLink size={10} className="usage-goto" />
                       </div>

@@ -81,7 +81,9 @@ async def get_max_concurrent_setting():
 @router.post("/api/settings/max-concurrent")
 async def set_max_concurrent_setting(request: builds_domain.MaxConcurrentRequest):
     """Set max concurrent builds setting."""
-    return await asyncio.to_thread(builds_domain.handle_set_max_concurrent_setting, request)
+    return await asyncio.to_thread(
+        builds_domain.handle_set_max_concurrent_setting, request
+    )
 
 
 @router.get("/api/builds/history")

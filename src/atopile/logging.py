@@ -339,9 +339,7 @@ class SQLiteLogWriter:
         conn.executescript(SCHEMA_SQL)
         conn.commit()
 
-    def register_build(
-        self, project_path: str, target: str, timestamp: str
-    ) -> str:
+    def register_build(self, project_path: str, target: str, timestamp: str) -> str:
         """
         Register a new build and return its build_id.
 
@@ -1068,33 +1066,33 @@ def setup_logging(
         stage: Stage name for database logging (defaults to "cli" if enable_database=True)
         use_live_handler: Whether to use LiveLogHandler (for LoggingStage)
         status: LoggingStage instance (required if use_live_handler=True)
-    
+
     Returns:
         BuildLogger instance if database logging is enabled, None otherwise
     """
     root_logger = logging.getLogger()
-    
+
     # Set up database logging if requested
     build_logger = None
     if enable_database:
         try:
             from atopile.config import config
-            
+
             # Try to get project info, but don't fail if not in a project
             try:
                 project_path = str(config.project.paths.root.resolve())
-                target = config.build.name if hasattr(config, 'build') else "cli"
+                target = config.build.name if hasattr(config, "build") else "cli"
             except (RuntimeError, AttributeError):
                 # Not in a project context - use defaults
                 project_path = "cli"
                 target = "default"
-            
+
             # Use provided stage or default to "cli"
             stage_name = stage if stage is not None else "cli"
-            
+
             # Create a build logger
             build_logger = get_build_logger(project_path, target, stage=stage_name)
-            
+
             # Attach to root logger's handler
             for handler in root_logger.handlers:
                 if isinstance(handler, LogHandler):
@@ -1103,19 +1101,19 @@ def setup_logging(
         except Exception:
             # Don't fail if database logging setup fails
             pass
-    
+
     # Set up LiveLogHandler if requested (for LoggingStage)
     if use_live_handler and status is not None and build_logger is not None:
         # Remove existing handlers
         for handler in root_logger.handlers.copy():
             root_logger.removeHandler(handler)
-        
+
         # Create LiveLogHandler
         live_handler = LiveLogHandler(status, build_logger=build_logger)
         live_handler.setFormatter(_DEFAULT_FORMATTER)
         live_handler.setLevel(root_logger.level)
         root_logger.addHandler(live_handler)
-        
+
         # Handle capture log handler if needed
         if _log_sink_var.get() is not None:
             capture_console = Console(file=_log_sink_var.get())
@@ -1123,7 +1121,7 @@ def setup_logging(
             capture_handler.setFormatter(_DEFAULT_FORMATTER)
             capture_handler.setLevel(logging.INFO)
             root_logger.addHandler(capture_handler)
-    
+
     return build_logger
 
 
@@ -1469,7 +1467,9 @@ class LogHandler(RichHandler):
         message_renderable = self.render_message(record, message)
 
         log_renderable = self.render(
-            record=record, traceback=traceback_obj, message_renderable=message_renderable
+            record=record,
+            traceback=traceback_obj,
+            message_renderable=message_renderable,
         )
 
         return log_renderable
@@ -1650,7 +1650,9 @@ class LiveLogHandler(LogHandler):
         **kwargs,
     ):
         # Pass build_logger to parent so it can write to database
-        super().__init__(*args, console=status._console, build_logger=build_logger, **kwargs)
+        super().__init__(
+            *args, console=status._console, build_logger=build_logger, **kwargs
+        )
         self.status = status
         # In worker mode, we only count warnings/errors but don't print to console
         self._suppress_output = status._in_worker_mode
@@ -2106,11 +2108,13 @@ class LoggingStage(Advancable):
             use_live_handler=True,
             status=self,
         )
-        
+
         if build_logger:
             self._build_id = build_logger.build_id
-            logger.debug(f"Logs build_id: {self._build_id} (stage={self.name}, ts={NOW})")
-        
+            logger.debug(
+                f"Logs build_id: {self._build_id} (stage={self.name}, ts={NOW})"
+            )
+
         # Store handlers for cleanup
         self._log_handler = None
         self._capture_log_handler = None
@@ -2365,8 +2369,6 @@ class ReprHighlighter(RegexHighlighter):
         ),
     ]
 
-
-
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
@@ -2384,6 +2386,7 @@ logging.basicConfig(level=logging.DEBUG, handlers=[handler])
 # Set up picker debug logging if enabled
 if PLOG:
     from faebryk.libs.picker.picker import logger as plog
+
     plog.setLevel(logging.DEBUG)
 
 logger = logging.getLogger(__name__)

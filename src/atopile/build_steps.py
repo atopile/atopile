@@ -114,6 +114,7 @@ class MusterTarget:
                 ctx.stage = self.name
                 ctx._stage_start_time = time.time()
                 from atopile.logging import update_logger_stage
+
                 update_logger_stage(self.name)
 
                 self.func(ctx)
@@ -384,9 +385,7 @@ def prepare_build(ctx: BuildStepContext) -> None:
     description="Verify instance graph",
     dependencies=[prepare_build],
 )
-def post_instantiation_graph_check(
-    ctx: BuildStepContext
-) -> None:
+def post_instantiation_graph_check(ctx: BuildStepContext) -> None:
     """
     Run POST_INSTANTIATION_GRAPH_CHECK checks for early graph validation.
 
@@ -431,9 +430,7 @@ def post_instantiation_setup(ctx: BuildStepContext) -> None:
     description="Verify electrical design",
     dependencies=[post_instantiation_setup],
 )
-def post_instantiation_design_check(
-    ctx: BuildStepContext
-) -> None:
+def post_instantiation_design_check(ctx: BuildStepContext) -> None:
     """
     Run POST_INSTANTIATION_DESIGN_CHECK checks for verification and late setup.
 
@@ -807,9 +804,7 @@ def generate_2d_render(ctx: BuildStepContext) -> None:
     dependencies=[generate_3d_models, post_pcb_checks],
     produces_artifact=True,
 )
-def generate_manufacturing_data(
-    ctx: BuildStepContext
-) -> None:
+def generate_manufacturing_data(ctx: BuildStepContext) -> None:
     """
     Generate manufacturing artifacts for the project.
     - DXF

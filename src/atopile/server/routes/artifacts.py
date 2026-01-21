@@ -47,7 +47,7 @@ async def get_bom(
 async def get_bom_targets(
     project_root: str = Query(
         ..., description="Path to the project root (containing ato.yaml)"
-    )
+    ),
 ):
     """Get available targets that have BOM data."""
     try:
@@ -86,7 +86,7 @@ async def get_variables(
 async def get_variables_targets(
     project_root: str = Query(
         ..., description="Path to the project root (containing ato.yaml)"
-    )
+    ),
 ):
     """Get available targets that have variables data."""
     try:

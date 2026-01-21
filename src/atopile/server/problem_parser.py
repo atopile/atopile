@@ -171,7 +171,9 @@ async def sync_problems_to_state_async(developer_mode: bool = False) -> None:
 
         await server_state.set_problems(all_problems)
         audience_desc = "all audiences" if developer_mode else "user audience only"
-        log.info(f"Refreshed problems ({audience_desc}): {len(all_problems)} problems found")
+        log.info(
+            f"Refreshed problems ({audience_desc}): {len(all_problems)} problems found"
+        )
     except Exception as exc:
         log.error(f"Failed to refresh problems: {exc}")
 

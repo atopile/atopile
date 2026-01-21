@@ -829,6 +829,7 @@ class ServerState:
         self._state.developer_mode = enabled
         # Refresh problems with new audience filter
         from atopile.server.problem_parser import sync_problems_to_state_async
+
         await sync_problems_to_state_async(developer_mode=enabled)
         # broadcast_state is called by sync_problems_to_state_async via set_problems
 

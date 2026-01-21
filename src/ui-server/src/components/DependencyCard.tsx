@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { Package, ChevronDown, X } from 'lucide-react';
+import { Package, ChevronDown, X, Loader2 } from 'lucide-react';
 import './DependencyCard.css';
 
 export interface ProjectDependency {
@@ -31,6 +31,7 @@ function DependencyItem({
   onRemove
 }: DependencyItemProps) {
   const [selectedVersion, setSelectedVersion] = useState(dependency.version);
+  const [isRemoving, setIsRemoving] = useState(false);
   const hasUpdate = dependency.hasUpdate ||
     (dependency.latestVersion && dependency.version !== dependency.latestVersion);
 
@@ -79,14 +80,18 @@ function DependencyItem({
 
         {/* Remove button */}
         <button
-          className="dependency-remove-btn"
+          className={`dependency-remove-btn ${isRemoving ? 'removing' : ''}`}
           onClick={(e) => {
             e.stopPropagation();
-            onRemove?.(dependency.identifier);
+            if (!isRemoving) {
+              setIsRemoving(true);
+              onRemove?.(dependency.identifier);
+            }
           }}
-          title={`Remove ${dependency.name}`}
+          disabled={isRemoving}
+          title={isRemoving ? 'Removing...' : `Remove ${dependency.name}`}
         >
-          <X size={12} />
+          {isRemoving ? <Loader2 size={12} className="spin" /> : <X size={12} />}
         </button>
       </div>
     </div>

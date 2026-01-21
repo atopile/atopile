@@ -170,7 +170,29 @@
   transition: all var(--transition-fast);
 }
 
-.dependency-remove-btn:hover {
+.dependency-remove-btn:hover:not(:disabled) {
   color: var(--ctp-red);
   background: rgba(243, 139, 168, 0.15);
+}
+
+.dependency-remove-btn:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.dependency-remove-btn.removing {
+  color: var(--ctp-yellow);
+}
+
+.dependency-remove-btn .spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }

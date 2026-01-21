@@ -53,7 +53,9 @@ def _handle_build_sync(payload: dict) -> dict:
     level = payload.get("level")
     payload_id = payload.get("id")
     payload_label = payload.get("label")
-    log.info(f"Parsed: project_root={project_root}, targets={targets}, level={level}, id={payload_id}")
+    log.info(
+        f"Parsed: project_root={project_root}, targets={targets}, level={level}, id={payload_id}"
+    )
 
     build_all_targets = False
     if level and payload_id:
@@ -93,10 +95,7 @@ def _handle_build_sync(payload: dict) -> dict:
             if pkg and pkg.installed_in:
                 consuming_project = pkg.installed_in[0]
                 package_dir = (
-                    Path(consuming_project)
-                    / ".ato"
-                    / "modules"
-                    / package_identifier
+                    Path(consuming_project) / ".ato" / "modules" / package_identifier
                 )
                 if package_dir.exists():
                     project_root = str(package_dir)
@@ -137,7 +136,9 @@ def _handle_build_sync(payload: dict) -> dict:
             }
 
         if build_all_targets:
-            log.info(f"build_all_targets=True, loading ProjectConfig from {project_path}")
+            log.info(
+                f"build_all_targets=True, loading ProjectConfig from {project_path}"
+            )
             try:
                 project_config = ProjectConfig.from_path(project_path)
                 all_targets = (
@@ -171,7 +172,9 @@ def _handle_build_sync(payload: dict) -> dict:
                                 "stages": [],
                             }
 
-                        log.info(f"Enqueueing build {build_id} for target {target_name}")
+                        log.info(
+                            f"Enqueueing build {build_id} for target {target_name}"
+                        )
                         _build_queue.enqueue(build_id)
                         build_ids.append(build_id)
 
@@ -453,7 +456,9 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             from atopile.server.state import Problem as StateProblem
 
             # Run blocking DB query in thread pool
-            raw_problems = await asyncio.to_thread(problem_parser._load_problems_from_db)
+            raw_problems = await asyncio.to_thread(
+                problem_parser._load_problems_from_db
+            )
 
             all_problems: list[StateProblem] = []
             for problem in raw_problems:
@@ -619,8 +624,10 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
             )
 
         if action == "removePackage":
+            log.info("removePackage action handler started")
             package_id = payload.get("packageId", "")
             project_root = payload.get("projectRoot", "")
+            log.info(f"removePackage: package_id={package_id}, project_root={project_root}")
 
             if not package_id or not project_root:
                 return {
@@ -629,16 +636,19 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                 }
 
             project_path = Path(project_root)
+            log.info(f"removePackage: checking if path exists: {project_path}")
             # Run blocking path check in thread pool
             if not await asyncio.to_thread(project_path.exists):
+                log.warning(f"removePackage: project path not found: {project_root}")
                 return {
                     "success": False,
                     "error": f"Project not found: {project_root}",
                 }
 
+            log.info("removePackage: path exists, creating op tracking entry")
+            # Get op_id first (it has its own lock internally)
+            op_id = packages_domain.next_package_op_id("pkg-remove")
             with packages_domain._package_op_lock:
-                op_id = packages_domain.next_package_op_id("pkg-remove")
-
                 packages_domain._active_package_ops[op_id] = {
                     "action": "remove",
                     "status": "running",
@@ -646,13 +656,17 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     "project_root": project_root,
                     "error": None,
                 }
+            log.info(f"removePackage: op_id={op_id} created")
 
             cmd = ["ato", "remove", package_id]
+            log.info(f"removePackage: cmd={cmd}")
 
-            async def refresh_project_dependencies():
-                """Refresh dependencies for the project after removal."""
-                log.info(f"Refreshing dependencies for project: {project_root}")
+            log.info("removePackage: defining run_remove function")
+
+            async def refresh_deps_after_remove():
+                """Refresh project dependencies after package removal."""
                 from atopile.server.state import DependencyInfo
+                log.info(f"Refreshing dependencies for project: {project_root}")
 
                 installed = await asyncio.to_thread(
                     packages_domain.get_installed_packages_for_project, project_path
@@ -664,32 +678,17 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                     parts = pkg.identifier.split("/")
                     publisher = parts[0] if len(parts) > 1 else "unknown"
                     name = parts[-1]
-
-                    latest_version = None
-                    has_update = False
-                    repository = None
-
-                    cached_pkg = server_state.packages_by_id.get(pkg.identifier)
-                    if cached_pkg:
-                        latest_version = cached_pkg.latest_version
-                        has_update = packages_domain.version_is_newer(
-                            pkg.version, latest_version
-                        )
-                        repository = cached_pkg.repository
-
                     dependencies.append(
                         DependencyInfo(
                             identifier=pkg.identifier,
                             version=pkg.version,
-                            latest_version=latest_version,
                             name=name,
                             publisher=publisher,
-                            repository=repository,
-                            has_update=has_update,
                         )
                     )
 
                 await server_state.set_project_dependencies(project_root, dependencies)
+                log.info(f"Updated project dependencies state for {project_root}")
 
             def run_remove():
                 try:
@@ -701,7 +700,9 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                         text=True,
                         timeout=120,
                     )
-                    log.info(f"ato remove completed with return code: {result.returncode}")
+                    log.info(
+                        f"ato remove completed with return code: {result.returncode}"
+                    )
                     if result.stderr:
                         log.debug(f"ato remove stderr: {result.stderr[:500]}")
                     with packages_domain._package_op_lock:
@@ -718,11 +719,12 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                                 )
                                 # Refresh project-specific dependencies
                                 asyncio.run_coroutine_threadsafe(
-                                    refresh_project_dependencies(), loop
+                                    refresh_deps_after_remove(), loop
                                 )
                             else:
                                 log.warning("Event loop not available to refresh state")
                         else:
+                            log.error(f"ato remove failed: {result.stderr[:500]}")
                             packages_domain._active_package_ops[op_id]["status"] = (
                                 "failed"
                             )
@@ -730,11 +732,14 @@ async def handle_data_action(action: str, payload: dict, ctx: AppContext) -> dic
                                 result.stderr[:500]
                             )
                 except Exception as exc:
+                    log.exception(f"Exception in run_remove: {exc}")
                     with packages_domain._package_op_lock:
                         packages_domain._active_package_ops[op_id]["status"] = "failed"
                         packages_domain._active_package_ops[op_id]["error"] = str(exc)
 
+            log.info("removePackage: starting background thread")
             threading.Thread(target=run_remove, daemon=True).start()
+            log.info("removePackage: thread started, returning success")
 
             return {
                 "success": True,

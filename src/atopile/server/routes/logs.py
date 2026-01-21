@@ -86,9 +86,7 @@ async def query_logs(
 
 @router.get("/api/logs/counts")
 async def get_log_counts(
-    build_name: Optional[str] = Query(
-        None, description="Filter by build/target name"
-    ),
+    build_name: Optional[str] = Query(None, description="Filter by build/target name"),
     project_name: Optional[str] = Query(None, description="Filter by project name"),
     stage: Optional[str] = Query(None, description="Filter by build stage"),
 ):

@@ -34,6 +34,7 @@ class BuildContext:
 @dataclass
 class CompletedStage:
     """A completed build stage with timing and status."""
+
     name: str
     stage_id: str
     elapsed_seconds: float
@@ -151,7 +152,9 @@ def _load_python_app_class() -> type[fabll.Node]:
         ) from e
 
 
-def build(app: fabll.Node | None = None, ctx: BuildStepContext | None = None) -> fabll.Node:
+def build(
+    app: fabll.Node | None = None, ctx: BuildStepContext | None = None
+) -> fabll.Node:
     """Build the project.
 
     Args:

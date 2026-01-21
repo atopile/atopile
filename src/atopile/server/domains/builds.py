@@ -25,7 +25,11 @@ from atopile.server.build_queue import (
 )
 from atopile.server import build_history
 from atopile.server import project_discovery
-from atopile.server.schemas.build import BuildRequest, BuildResponse, BuildStatusResponse
+from atopile.server.schemas.build import (
+    BuildRequest,
+    BuildResponse,
+    BuildStatusResponse,
+)
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +75,10 @@ def handle_get_summary(ctx: AppContext) -> dict:
                 if not build.get("project_name"):
                     build["project_name"] = project.name
 
-                if build.get("display_name") and project.name not in build["display_name"]:
+                if (
+                    build.get("display_name")
+                    and project.name not in build["display_name"]
+                ):
                     build["display_name"] = f"{project.name}:{build['display_name']}"
                 elif build.get("name") and not build.get("display_name"):
                     build["display_name"] = f"{project.name}:{build['name']}"
@@ -163,9 +170,7 @@ def handle_start_build(request: BuildRequest) -> BuildResponse:
     if error:
         return BuildResponse(success=False, message=error, build_id=None)
 
-    build_key = _make_build_key(
-        request.project_root, request.targets, request.entry
-    )
+    build_key = _make_build_key(request.project_root, request.targets, request.entry)
     existing_build_id = _is_duplicate_build(build_key)
     if existing_build_id:
         return BuildResponse(
@@ -239,7 +244,9 @@ def handle_get_active_builds() -> dict:
     builds = []
 
     if not _acquire_build_lock(timeout=5.0, context="handle_get_active_builds"):
-        log.error("[DEBUG] handle_get_active_builds: lock acquisition timed out, returning empty")
+        log.error(
+            "[DEBUG] handle_get_active_builds: lock acquisition timed out, returning empty"
+        )
         return {"builds": [], "error": "Lock timeout - build system may be busy"}
 
     try:

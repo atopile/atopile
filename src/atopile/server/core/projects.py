@@ -12,14 +12,24 @@ from typing import Optional
 
 import yaml
 
-from ..schemas.project import BuildTarget, BuildTargetStatus, FileTreeNode, ModuleDefinition, Project
+from ..schemas.project import (
+    BuildTarget,
+    BuildTargetStatus,
+    FileTreeNode,
+    ModuleDefinition,
+    Project,
+)
 
 log = logging.getLogger(__name__)
 
 
-def _load_last_build_for_target(project_root: Path, target_name: str) -> Optional[BuildTargetStatus]:
+def _load_last_build_for_target(
+    project_root: Path, target_name: str
+) -> Optional[BuildTargetStatus]:
     """Load the last build status for a target from its build_summary.json."""
-    summary_path = project_root / "build" / "builds" / target_name / "build_summary.json"
+    summary_path = (
+        project_root / "build" / "builds" / target_name / "build_summary.json"
+    )
     if not summary_path.exists():
         return None
 
@@ -239,7 +249,9 @@ def build_file_tree(directory: Path, base_path: Path) -> list[FileTreeNode]:
     }
 
     try:
-        items = sorted(directory.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
+        items = sorted(
+            directory.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())
+        )
     except PermissionError:
         return nodes
 
@@ -287,7 +299,9 @@ def build_file_tree(directory: Path, base_path: Path) -> list[FileTreeNode]:
     return nodes
 
 
-def create_project(parent_directory: Path, name: Optional[str] = None) -> tuple[Path, str]:
+def create_project(
+    parent_directory: Path, name: Optional[str] = None
+) -> tuple[Path, str]:
     """
     Create a new minimal atopile project.
     """

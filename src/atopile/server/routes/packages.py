@@ -117,4 +117,3 @@ async def remove_package(
     return await asyncio.to_thread(
         packages_domain.handle_remove_package, request, background_tasks
     )
-

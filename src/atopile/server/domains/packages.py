@@ -48,6 +48,7 @@ def _get_refresh_lock() -> asyncio.Lock:
         _refresh_lock = asyncio.Lock()
     return _refresh_lock
 
+
 # ##############################################################################
 # TODO: HACK - Registry API doesn't support listing all packages!
 # ##############################################################################
@@ -67,23 +68,23 @@ def _get_refresh_lock() -> asyncio.Lock:
 #      instead of re-fetching 17 search queries every time.
 # ##############################################################################
 _REGISTRY_SEARCH_TERMS = [
-    "atopile",    # 96 packages (publisher prefix)
-    "i2c",        # +32 new
-    "led",        # +5 new
-    "spi",        # +2 new
-    "battery",    # +2 new
-    "ethernet",   # +2 new
-    "sensor",     # +1 new
-    "power",      # +1 new
-    "adc",        # +1 new
-    "dac",        # +1 new
+    "atopile",  # 96 packages (publisher prefix)
+    "i2c",  # +32 new
+    "led",  # +5 new
+    "spi",  # +2 new
+    "battery",  # +2 new
+    "ethernet",  # +2 new
+    "sensor",  # +1 new
+    "power",  # +1 new
+    "adc",  # +1 new
+    "dac",  # +1 new
     "connector",  # +1 new
-    "audio",      # +1 new
-    "rp",         # +1 new
-    "mcu",        # +1 new
-    "esp",        # +1 new
+    "audio",  # +1 new
+    "rp",  # +1 new
+    "mcu",  # +1 new
+    "esp",  # +1 new
     "regulator",  # +1 new
-    "uart",       # +1 new
+    "uart",  # +1 new
 ]
 
 # Track active package operations

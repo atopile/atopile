@@ -50,7 +50,9 @@ def _acquire_build_lock(timeout: float = 5.0, context: str = "unknown") -> bool:
     if acquired:
         log.debug(f"[LOCK] Acquired _build_lock from {context}")
     else:
-        log.error(f"[LOCK] TIMEOUT acquiring _build_lock from {context} after {timeout}s")
+        log.error(
+            f"[LOCK] TIMEOUT acquiring _build_lock from {context} after {timeout}s"
+        )
     return acquired
 
 
@@ -58,6 +60,7 @@ def _release_build_lock(context: str = "unknown") -> None:
     """Release _build_lock with logging."""
     log.debug(f"[LOCK] Releasing _build_lock from {context}")
     _build_lock.release()
+
 
 # Build queue configuration
 MAX_CONCURRENT_BUILDS = 4
@@ -249,8 +252,7 @@ def _run_build_subprocess(
             flat_last = [s for stages in last_stages.values() for s in stages]
             if all_current_stages != flat_last:
                 log.debug(
-                    f"Build {build_id}: stage update - "
-                    f"{len(all_current_stages)} stages"
+                    f"Build {build_id}: stage update - {len(all_current_stages)} stages"
                 )
                 result_q.put(
                     {

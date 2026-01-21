@@ -562,6 +562,7 @@ def create_app(
         # Configure a larger thread pool for asyncio.to_thread() to prevent exhaustion
         # Default is min(32, os.cpu_count() + 4), we increase it
         from concurrent.futures import ThreadPoolExecutor
+
         executor = ThreadPoolExecutor(max_workers=64, thread_name_prefix="ato_server_")
         loop.set_default_executor(executor)
         log.info("Configured thread pool with 64 workers")
@@ -570,6 +571,7 @@ def create_app(
         server_state.set_event_loop(loop)
         server_state.set_workspace_paths(ctx.workspace_paths)
 
+        asyncio.create_task(_refresh_stdlib_state())
         asyncio.create_task(_watch_stdlib_background())
         asyncio.create_task(_watch_bom_background())
         asyncio.create_task(_watch_variables_background())

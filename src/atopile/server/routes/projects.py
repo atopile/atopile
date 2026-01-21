@@ -55,7 +55,7 @@ async def get_modules(
 async def get_files(
     project_root: str = Query(
         ..., description="Path to the project root to scan for files"
-    )
+    ),
 ):
     """List all .ato and .py files in a project."""
     result = await asyncio.to_thread(projects_domain.handle_get_files, project_root)
@@ -71,7 +71,7 @@ async def get_files(
 async def get_dependencies(
     project_root: str = Query(
         ..., description="Path to the project root to get dependencies for"
-    )
+    ),
 ):
     """List dependencies for a project from ato.yaml."""
     result = await asyncio.to_thread(
