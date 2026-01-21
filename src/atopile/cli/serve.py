@@ -7,12 +7,42 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import shutil
 from pathlib import Path
 from typing import Optional
 
 import typer
 
 serve_app = typer.Typer(no_args_is_help=True)
+
+def _install_nodejs() -> Optional[int]:
+    if sys.platform == "darwin":
+        if shutil.which("brew"):
+            return subprocess.run(["brew", "install", "node"]).returncode
+        return None
+    if sys.platform.startswith("linux"):
+        if shutil.which("apt-get"):
+            return subprocess.run(
+                ["sudo", "apt-get", "install", "-y", "nodejs", "npm"]
+            ).returncode
+        if shutil.which("dnf"):
+            return subprocess.run(["sudo", "dnf", "install", "-y", "nodejs", "npm"]).returncode
+        if shutil.which("yum"):
+            return subprocess.run(["sudo", "yum", "install", "-y", "nodejs", "npm"]).returncode
+        if shutil.which("pacman"):
+            return subprocess.run(
+                ["sudo", "pacman", "-S", "--noconfirm", "nodejs", "npm"]
+            ).returncode
+        return None
+    if sys.platform == "win32":
+        if shutil.which("choco"):
+            return subprocess.run(["choco", "install", "-y", "nodejs"]).returncode
+        if shutil.which("winget"):
+            return subprocess.run(
+                ["winget", "install", "-e", "--id", "OpenJS.NodeJS"]
+            ).returncode
+        return None
+    return None
 
 
 @serve_app.command()
@@ -55,6 +85,36 @@ def frontend(
 
     if not ui_server_dir.exists():
         raise typer.BadParameter(f"UI server not found at {ui_server_dir}")
+
+    if not shutil.which("npm"):
+        if not typer.confirm("npm not found. Attempt to install Node.js now?", default=False):
+            raise typer.BadParameter("npm is required to serve the frontend.")
+        result = _install_nodejs()
+        if result is None:
+            raise typer.BadParameter(
+                "No supported package manager found. Install Node.js from https://nodejs.org/"
+            )
+        if result != 0:
+            raise typer.Exit(result)
+        if not shutil.which("npm"):
+            raise typer.BadParameter(
+                "npm is still missing after installation attempt. Install Node.js from https://nodejs.org/"
+            )
+
+    node_modules_dir = ui_server_dir / "node_modules"
+    vite_bin = node_modules_dir / ".bin" / ("vite.cmd" if os.name == "nt" else "vite")
+    if not node_modules_dir.exists() or not vite_bin.exists():
+        install_cmd = ["npm", "install"]
+        result = subprocess.run(install_cmd, cwd=str(ui_server_dir))
+        if result.returncode != 0:
+            raise typer.Exit(result.returncode)
+
+    dist_dir = ui_server_dir / "dist"
+    if not dist_dir.exists():
+        build_cmd = ["npm", "run", "build"]
+        result = subprocess.run(build_cmd, cwd=str(ui_server_dir))
+        if result.returncode != 0:
+            raise typer.Exit(result.returncode)
 
     env = None
     if backend:
