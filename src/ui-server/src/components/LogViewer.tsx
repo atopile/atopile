@@ -1,5 +1,6 @@
 /**
  * Minimal Log Viewer - WebSocket wrapper with parameter inputs
+ * Supports both build logs and test logs modes
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
@@ -11,8 +12,9 @@ const AUDIENCES = ['user', 'developer', 'agent'] as const;
 
 type LogLevel = typeof LOG_LEVELS[number];
 type Audience = typeof AUDIENCES[number];
+type LogMode = 'build' | 'test';
 
-interface LogEntry {
+interface BuildLogEntry {
   timestamp: string;
   level: LogLevel;
   audience: Audience;
@@ -23,15 +25,28 @@ interface LogEntry {
   objects?: unknown;
 }
 
-interface LogResult {
+interface TestLogEntry extends BuildLogEntry {
+  test_name?: string | null;
+}
+
+type LogEntry = BuildLogEntry | TestLogEntry;
+
+interface BuildLogResult {
   type: 'logs_result';
-  logs: LogEntry[];
+  logs: BuildLogEntry[];
+}
+
+interface TestLogResult {
+  type: 'test_logs_result';
+  logs: TestLogEntry[];
 }
 
 interface LogError {
   type: 'logs_error';
   error: string;
 }
+
+type LogResult = BuildLogResult | TestLogResult;
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected';
 
@@ -51,13 +66,22 @@ function highlightText(text: string, search: string): string {
 }
 
 export function LogViewer() {
-  // Query parameters
-  const [buildId, setBuildId] = useState('');
-  const [stage, setStage] = useState('');
+  // Mode toggle: build logs vs test logs
+  const [mode, setMode] = useState<LogMode>('build');
+
+  // Query parameters - shared
   const [logLevels, setLogLevels] = useState<LogLevel[]>(['INFO']);
   const [audience, setAudience] = useState<Audience>('developer');
   const [count, setCount] = useState(100);
   const [search, setSearch] = useState('');
+
+  // Build log specific parameters
+  const [buildId, setBuildId] = useState('');
+  const [stage, setStage] = useState('');
+
+  // Test log specific parameters
+  const [testRunId, setTestRunId] = useState('');
+  const [testName, setTestName] = useState('');
 
   // Connection state
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
@@ -142,6 +166,9 @@ export function LogViewer() {
         if (data.type === 'logs_result') {
           setLogs(data.logs);
           setError(null);
+        } else if (data.type === 'test_logs_result') {
+          setLogs(data.logs);
+          setError(null);
         } else if (data.type === 'logs_error') {
           setError(data.error);
         }
@@ -175,21 +202,34 @@ export function LogViewer() {
       return;
     }
 
-    if (!buildId.trim()) {
+    if (mode === 'build' && !buildId.trim()) {
       setError('Build ID is required');
+      return;
+    }
+
+    if (mode === 'test' && !testRunId.trim()) {
+      setError('Test Run ID is required');
       return;
     }
 
     setLoading(true);
     setError(null);
 
-    const payload = {
-      build_id: buildId.trim(),
-      stage: stage.trim() || null,
-      log_levels: logLevels.length > 0 ? logLevels : null,
-      audience: audience,
-      count: count,
-    };
+    const payload = mode === 'build'
+      ? {
+          build_id: buildId.trim(),
+          stage: stage.trim() || null,
+          log_levels: logLevels.length > 0 ? logLevels : null,
+          audience: audience,
+          count: count,
+        }
+      : {
+          test_run_id: testRunId.trim(),
+          test_name: testName.trim() || null,
+          log_levels: logLevels.length > 0 ? logLevels : null,
+          audience: audience,
+          count: count,
+        };
 
     try {
       wsRef.current.send(JSON.stringify(payload));
@@ -197,27 +237,67 @@ export function LogViewer() {
       setLoading(false);
       setError(`Failed to send: ${e}`);
     }
-  }, [buildId, stage, logLevels, audience, count]);
+  }, [mode, buildId, stage, testRunId, testName, logLevels, audience, count]);
 
   return (
     <div className="log-viewer-minimal">
       {/* Query Parameters - Compact */}
       <div className="lv-controls">
         <span className={`lv-status-dot ${connectionState}`} title={connectionState} />
-        <input
-          type="text"
-          value={buildId}
-          onChange={(e) => setBuildId(e.target.value)}
-          placeholder="Build ID"
-          className="lv-input"
-        />
-        <input
-          type="text"
-          value={stage}
-          onChange={(e) => setStage(e.target.value)}
-          placeholder="Stage"
-          className="lv-input lv-input-small"
-        />
+
+        {/* Mode Toggle */}
+        <div className="lv-mode-toggle">
+          <button
+            className={`lv-mode-btn ${mode === 'build' ? 'active' : ''}`}
+            onClick={() => setMode('build')}
+          >
+            Build
+          </button>
+          <button
+            className={`lv-mode-btn ${mode === 'test' ? 'active' : ''}`}
+            onClick={() => setMode('test')}
+          >
+            Test
+          </button>
+        </div>
+
+        {/* Mode-specific inputs */}
+        {mode === 'build' ? (
+          <>
+            <input
+              type="text"
+              value={buildId}
+              onChange={(e) => setBuildId(e.target.value)}
+              placeholder="Build ID"
+              className="lv-input"
+            />
+            <input
+              type="text"
+              value={stage}
+              onChange={(e) => setStage(e.target.value)}
+              placeholder="Stage"
+              className="lv-input lv-input-small"
+            />
+          </>
+        ) : (
+          <>
+            <input
+              type="text"
+              value={testRunId}
+              onChange={(e) => setTestRunId(e.target.value)}
+              placeholder="Test Run ID"
+              className="lv-input"
+            />
+            <input
+              type="text"
+              value={testName}
+              onChange={(e) => setTestName(e.target.value)}
+              placeholder="Test Name"
+              className="lv-input lv-input-small"
+            />
+          </>
+        )}
+
         <div className="lv-checkboxes">
           {LOG_LEVELS.map(level => (
             <label key={level} className={`lv-checkbox ${level.toLowerCase()}`}>
@@ -285,6 +365,9 @@ export function LogViewer() {
               const ts = entry.timestamp.split('T')[1]?.split('.')[0] || entry.timestamp;
               // Convert ANSI then highlight search matches
               const html = highlightText(ansiConverter.toHtml(entry.message), search);
+              // Get test name if in test mode
+              const testEntry = entry as TestLogEntry;
+              const testLabel = mode === 'test' && testEntry.test_name ? testEntry.test_name : null;
               return (
                 <div key={idx} className="lv-entry">
                   <span className="lv-ts">{ts}</span>
@@ -294,6 +377,11 @@ export function LogViewer() {
                   <span className={`lv-audience-badge ${entry.audience}`}>
                     {entry.audience.slice(0, 3)}
                   </span>
+                  {testLabel && (
+                    <span className="lv-test-badge" title={testLabel}>
+                      {testLabel.length > 20 ? testLabel.slice(-20) : testLabel}
+                    </span>
+                  )}
                   <pre
                     className="lv-message"
                     dangerouslySetInnerHTML={{ __html: html }}

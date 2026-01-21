@@ -97,6 +97,38 @@
   flex-shrink: 0;
 }
 
+/* Mode Toggle */
+.lv-mode-toggle {
+  display: flex;
+  gap: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle, #585b70);
+}
+
+.lv-mode-btn {
+  padding: 4px 10px;
+  background: var(--bg-tertiary, #45475a);
+  border: none;
+  color: var(--text-muted, #a6adc8);
+  font-size: 10px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.lv-mode-btn:hover:not(.active) {
+  background: var(--bg-hover, #585b70);
+}
+
+.lv-mode-btn.active {
+  background: var(--accent, #f5a97f);
+  color: #1e1e2e;
+}
+
 /* Checkboxes */
 .lv-checkboxes {
   display: flex;
@@ -299,6 +331,22 @@
 
 .lv-audience-badge.agent {
   color: #94e2d5;
+}
+
+/* Test Badge - Shows test name in test log mode */
+.lv-test-badge {
+  padding: 0 4px;
+  border-radius: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  background: rgba(137, 180, 250, 0.15);
+  color: #89b4fa;
+  flex-shrink: 0;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 1px;
 }
 
 .lv-message {

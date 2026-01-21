@@ -143,7 +143,7 @@ CREATE TABLE IF NOT EXISTS test_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     test_run_id TEXT NOT NULL,
     timestamp TEXT NOT NULL,
-    test TEXT NOT NULL,
+    test_name TEXT NOT NULL,
     level TEXT NOT NULL,
     logger_name TEXT NOT NULL DEFAULT '',
     audience TEXT NOT NULL DEFAULT 'developer',
@@ -155,7 +155,7 @@ CREATE TABLE IF NOT EXISTS test_logs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_test_logs_test_run_id ON test_logs(test_run_id);
-CREATE INDEX IF NOT EXISTS idx_test_logs_test ON test_logs(test);
+CREATE INDEX IF NOT EXISTS idx_test_logs_test_name ON test_logs(test_name);
 CREATE INDEX IF NOT EXISTS idx_test_logs_level ON test_logs(level);
 CREATE INDEX IF NOT EXISTS idx_test_logs_audience ON test_logs(audience);
 """
@@ -182,7 +182,7 @@ class BaseLogger:
             or "atopile.server" in sys.argv
             or (main_module is not None and main_module.__package__ == "atopile.server")
         )
-        
+
         # When running server, allow ALL logs to console
         if is_serving:
             return True
@@ -419,14 +419,14 @@ class SQLiteLogWriter:
                     TEST_SCHEMA_SQL,
                     """
                     INSERT INTO test_logs (
-                        test_run_id, timestamp, test, level, logger_name, audience,
+                        test_run_id, timestamp, test_name, level, logger_name, audience,
                         message, ato_traceback, python_traceback, objects
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     lambda e: (
                         e.test_run_id,
                         e.timestamp,
-                        e.test,
+                        e.test_name,
                         e.level,
                         e.logger_name,
                         e.audience,
@@ -694,7 +694,7 @@ class TestLogger(BaseLogger):
         Set up logging for test workers.
 
         This sets up logging to write to the test_logs.db database instead of
-        build_logs.db. The schema uses test_run_id and test columns instead of
+        build_logs.db. The schema uses test_run_id and test_name columns instead of
         build_id and stage.
         """
         root_logger = logging.getLogger()
@@ -748,7 +748,7 @@ class TestLogger(BaseLogger):
         return Log.TestEntry(
             test_run_id=self._identifier,
             timestamp=datetime.now().isoformat(),
-            test=self._context,
+            test_name=self._context,
             level=level,
             logger_name=logger_name,
             message=message,
@@ -1484,6 +1484,79 @@ def load_build_logs(
                 "ato_traceback": row["ato_traceback"],
                 "python_traceback": row["python_traceback"],
                 "objects": objects,
+            }
+        )
+
+    return results
+
+
+def load_test_logs(
+    *,
+    test_run_id: str,
+    test_name: str | None,
+    log_levels: list[str] | None,
+    audience: str | None,
+    count: int,
+) -> list[dict[str, Any]]:
+    """Load test logs from the test log database."""
+    count = max(1, min(count, LOGS_MAX_COUNT))
+    db_path = TestLogger.get_log_db()
+    if not db_path.exists():
+        return []
+
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+
+    where_clauses = ["test_logs.test_run_id = ?"]
+    params: list[Any] = [test_run_id]
+
+    if test_name:
+        where_clauses.append("test_logs.test_name LIKE ?")
+        params.append(f"%{test_name}%")
+
+    if log_levels:
+        placeholders = ", ".join(["?"] * len(log_levels))
+        where_clauses.append(f"test_logs.level IN ({placeholders})")
+        params.extend(log_levels)
+
+    if audience:
+        where_clauses.append("test_logs.audience = ?")
+        params.append(audience)
+
+    where_sql = " AND ".join(where_clauses)
+    query = f"""
+        SELECT test_logs.timestamp, test_logs.level, test_logs.audience,
+               test_logs.logger_name, test_logs.message, test_logs.ato_traceback,
+               test_logs.python_traceback, test_logs.objects, test_logs.test_name
+        FROM test_logs
+        WHERE {where_sql}
+        ORDER BY test_logs.id DESC
+        LIMIT ?
+    """
+
+    params.append(count)
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    results: list[dict[str, Any]] = []
+    for row in rows:
+        objects = None
+        if row["objects"]:
+            try:
+                objects = json.loads(row["objects"])
+            except json.JSONDecodeError:
+                objects = None
+        results.append(
+            {
+                "timestamp": row["timestamp"],
+                "level": row["level"],
+                "audience": row["audience"],
+                "logger_name": row["logger_name"],
+                "message": row["message"],
+                "ato_traceback": row["ato_traceback"],
+                "python_traceback": row["python_traceback"],
+                "objects": objects,
+                "test_name": row["test_name"],
             }
         )
 

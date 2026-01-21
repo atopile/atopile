@@ -135,7 +135,7 @@ class Log:
 
         test_run_id: str
         timestamp: str
-        test: str  # Name of the Python test being run
+        test_name: str  # Name of the Python test being run
         level: Log.Level
         logger_name: str
         message: str
@@ -147,7 +147,7 @@ class Log:
         objects: dict | None = None
 
     class Query(BaseModel):
-        """Query parameters for fetching logs."""
+        """Query parameters for fetching build logs."""
 
         build_id: str
         stage: str | None = None
@@ -155,8 +155,17 @@ class Log:
         audience: Log.Audience | None = None
         count: int = Field(default=500, ge=1)
 
+    class TestQuery(BaseModel):
+        """Query parameters for fetching test logs."""
+
+        test_run_id: str
+        test_name: str | None = None
+        log_levels: list[Log.Level] | None = None
+        audience: Log.Audience | None = None
+        count: int = Field(default=500, ge=1)
+
     class EntryPydantic(BaseModel):
-        """Pydantic model for log entry (API serialization)."""
+        """Pydantic model for build log entry (API serialization)."""
 
         timestamp: str
         level: str
@@ -167,11 +176,30 @@ class Log:
         python_traceback: str | None = None
         objects: Any | None = None
 
+    class TestEntryPydantic(BaseModel):
+        """Pydantic model for test log entry (API serialization)."""
+
+        timestamp: str
+        level: str
+        audience: str
+        logger_name: str
+        message: str
+        test_name: str | None = None
+        ato_traceback: str | None = None
+        python_traceback: str | None = None
+        objects: Any | None = None
+
     class Result(BaseModel):
-        """Response containing log entries."""
+        """Response containing build log entries."""
 
         type: Literal["logs_result"] = "logs_result"
         logs: list[Log.EntryPydantic]
+
+    class TestResult(BaseModel):
+        """Response containing test log entries."""
+
+        type: Literal["test_logs_result"] = "test_logs_result"
+        logs: list[Log.TestEntryPydantic]
 
     class Error(BaseModel):
         """Error response for log queries."""
