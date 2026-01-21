@@ -8,16 +8,24 @@ from pathlib import Path
 from typing import Optional
 
 from atopile.dataclasses import (
+    AddBuildTargetRequest,
+    AddBuildTargetResponse,
     CreateProjectRequest,
     CreateProjectResponse,
+    DeleteBuildTargetRequest,
+    DeleteBuildTargetResponse,
     DependenciesResponse,
     DependencyInfo,
-    FileTreeNode,
     FilesResponse,
+    FileTreeNode,
     ModulesResponse,
     ProjectsResponse,
     RenameProjectRequest,
     RenameProjectResponse,
+    UpdateBuildTargetRequest,
+    UpdateBuildTargetResponse,
+    UpdateDependencyVersionRequest,
+    UpdateDependencyVersionResponse,
 )
 from atopile.server.app_context import AppContext
 from atopile.server.core import projects as core_projects
@@ -195,15 +203,136 @@ def handle_rename_project(
         raise ValueError(f"Failed to rename project: {exc}")
 
 
+# --- Build Target Management ---
+
+
+def handle_add_build_target(
+    request: AddBuildTargetRequest,
+) -> AddBuildTargetResponse:
+    """Add a new build target to a project."""
+    project_path = Path(request.project_root)
+    if not project_path.exists():
+        raise ValueError(f"Project does not exist: {request.project_root}")
+
+    try:
+        target = core_projects.add_build_target(
+            project_path, request.name, request.entry
+        )
+        return AddBuildTargetResponse(
+            success=True,
+            message=f"Added build target '{request.name}'",
+            target={
+                "name": target.name,
+                "entry": target.entry,
+                "root": target.root,
+            },
+        )
+    except ValueError as exc:
+        raise exc
+    except Exception as exc:
+        log.error(f"Failed to add build target: {exc}")
+        raise ValueError(f"Failed to add build target: {exc}")
+
+
+def handle_update_build_target(
+    request: UpdateBuildTargetRequest,
+) -> UpdateBuildTargetResponse:
+    """Update a build target (rename or change entry point)."""
+    project_path = Path(request.project_root)
+    if not project_path.exists():
+        raise ValueError(f"Project does not exist: {request.project_root}")
+
+    try:
+        target = core_projects.update_build_target(
+            project_path,
+            request.old_name,
+            request.new_name,
+            request.new_entry,
+        )
+        return UpdateBuildTargetResponse(
+            success=True,
+            message=f"Updated build target '{target.name}'",
+            target={
+                "name": target.name,
+                "entry": target.entry,
+                "root": target.root,
+            },
+        )
+    except ValueError as exc:
+        raise exc
+    except Exception as exc:
+        log.error(f"Failed to update build target: {exc}")
+        raise ValueError(f"Failed to update build target: {exc}")
+
+
+def handle_delete_build_target(
+    request: DeleteBuildTargetRequest,
+) -> DeleteBuildTargetResponse:
+    """Delete a build target from a project."""
+    project_path = Path(request.project_root)
+    if not project_path.exists():
+        raise ValueError(f"Project does not exist: {request.project_root}")
+
+    try:
+        core_projects.delete_build_target(project_path, request.name)
+        return DeleteBuildTargetResponse(
+            success=True,
+            message=f"Deleted build target '{request.name}'",
+        )
+    except ValueError as exc:
+        raise exc
+    except Exception as exc:
+        log.error(f"Failed to delete build target: {exc}")
+        raise ValueError(f"Failed to delete build target: {exc}")
+
+
+# --- Dependency Management ---
+
+
+def handle_update_dependency_version(
+    request: UpdateDependencyVersionRequest,
+) -> UpdateDependencyVersionResponse:
+    """Update a dependency's version in ato.yaml."""
+    project_path = Path(request.project_root)
+    if not project_path.exists():
+        raise ValueError(f"Project does not exist: {request.project_root}")
+
+    try:
+        core_projects.update_dependency_version(
+            project_path, request.identifier, request.new_version
+        )
+        return UpdateDependencyVersionResponse(
+            success=True,
+            message=f"Updated '{request.identifier}' to version {request.new_version}",
+        )
+    except ValueError as exc:
+        raise exc
+    except Exception as exc:
+        log.error(f"Failed to update dependency version: {exc}")
+        raise ValueError(f"Failed to update dependency version: {exc}")
+
+
 __all__ = [
     "CreateProjectRequest",
     "CreateProjectResponse",
     "RenameProjectRequest",
     "RenameProjectResponse",
+    "AddBuildTargetRequest",
+    "AddBuildTargetResponse",
+    "UpdateBuildTargetRequest",
+    "UpdateBuildTargetResponse",
+    "DeleteBuildTargetRequest",
+    "DeleteBuildTargetResponse",
+    "UpdateDependencyVersionRequest",
+    "UpdateDependencyVersionResponse",
     "handle_get_projects",
     "handle_get_modules",
     "handle_get_files",
     "handle_get_dependencies",
     "handle_create_project",
     "handle_rename_project",
+    "handle_add_build_target",
+    "handle_update_build_target",
+    "handle_delete_build_target",
+    "handle_update_dependency_version",
 ]

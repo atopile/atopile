@@ -18,7 +18,6 @@ from atopile.dataclasses import (
     FileTreeNode,
     ModuleDefinition,
     Project,
-    Project,
 )
 
 log = logging.getLogger(__name__)
@@ -370,3 +369,172 @@ build/
     (project_dir / ".gitignore").write_text(gitignore_content)
 
     return project_dir, project_name
+
+
+def _load_ato_yaml(project_root: Path) -> tuple[dict, Path]:
+    """Load and return ato.yaml data and path."""
+    ato_file = project_root / "ato.yaml"
+    if not ato_file.exists():
+        raise ValueError(f"ato.yaml not found in {project_root}")
+
+    with open(ato_file, "r") as f:
+        data = yaml.safe_load(f) or {}
+
+    return data, ato_file
+
+
+def _save_ato_yaml(ato_file: Path, data: dict) -> None:
+    """Save ato.yaml preserving structure as much as possible."""
+    with open(ato_file, "w") as f:
+        yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+
+
+def add_build_target(project_root: Path, name: str, entry: str) -> BuildTarget:
+    """
+    Add a new build target to ato.yaml.
+
+    Raises ValueError if target already exists.
+    """
+    data, ato_file = _load_ato_yaml(project_root)
+
+    if "builds" not in data:
+        data["builds"] = {}
+
+    if name in data["builds"]:
+        raise ValueError(f"Build target '{name}' already exists")
+
+    data["builds"][name] = {"entry": entry}
+    _save_ato_yaml(ato_file, data)
+
+    return BuildTarget(name=name, entry=entry, root=str(project_root))
+
+
+def update_build_target(
+    project_root: Path,
+    old_name: str,
+    new_name: Optional[str] = None,
+    new_entry: Optional[str] = None,
+) -> BuildTarget:
+    """
+    Update a build target in ato.yaml.
+
+    Can rename the target and/or change its entry point.
+    Raises ValueError if target not found or new name already exists.
+    """
+    data, ato_file = _load_ato_yaml(project_root)
+
+    if "builds" not in data or old_name not in data["builds"]:
+        raise ValueError(f"Build target '{old_name}' not found")
+
+    target_data = data["builds"][old_name]
+    if not isinstance(target_data, dict):
+        target_data = {"entry": target_data}
+
+    # Update entry if provided
+    if new_entry is not None:
+        target_data["entry"] = new_entry
+
+    # Handle rename
+    final_name = old_name
+    if new_name is not None and new_name != old_name:
+        if new_name in data["builds"]:
+            raise ValueError(f"Build target '{new_name}' already exists")
+
+        # Remove old key and add new one
+        del data["builds"][old_name]
+        final_name = new_name
+
+    data["builds"][final_name] = target_data
+    _save_ato_yaml(ato_file, data)
+
+    # Load last build status for the target
+    last_build = _load_last_build_for_target(project_root, final_name)
+
+    return BuildTarget(
+        name=final_name,
+        entry=target_data.get("entry", ""),
+        root=str(project_root),
+        last_build=last_build,
+    )
+
+
+def delete_build_target(project_root: Path, name: str) -> bool:
+    """
+    Delete a build target from ato.yaml.
+
+    Raises ValueError if target not found.
+    Returns True on success.
+    """
+    data, ato_file = _load_ato_yaml(project_root)
+
+    if "builds" not in data or name not in data["builds"]:
+        raise ValueError(f"Build target '{name}' not found")
+
+    del data["builds"][name]
+    _save_ato_yaml(ato_file, data)
+
+    return True
+
+
+def update_dependency_version(
+    project_root: Path, identifier: str, new_version: str
+) -> bool:
+    """
+    Update a dependency's version in ato.yaml.
+
+    The dependencies section in ato.yaml looks like:
+    dependencies:
+      - atopile/resistors@^1.0.0
+      - atopile/capacitors@^1.0.0
+
+    Or can be:
+    dependencies:
+      atopile/resistors: ^1.0.0
+      atopile/capacitors: ^1.0.0
+
+    Raises ValueError if dependency not found.
+    Returns True on success.
+    """
+    data, ato_file = _load_ato_yaml(project_root)
+
+    if "dependencies" not in data:
+        raise ValueError(f"No dependencies section in {project_root}")
+
+    deps = data["dependencies"]
+
+    # Handle list format: ["atopile/resistors@^1.0.0", ...]
+    if isinstance(deps, list):
+        found = False
+        new_deps = []
+        for dep in deps:
+            if isinstance(dep, str):
+                # Parse "identifier@version" format
+                if "@" in dep:
+                    dep_id, _old_version = dep.rsplit("@", 1)
+                else:
+                    dep_id = dep
+
+                if dep_id == identifier:
+                    new_deps.append(f"{identifier}@{new_version}")
+                    found = True
+                else:
+                    new_deps.append(dep)
+            else:
+                new_deps.append(dep)
+
+        if not found:
+            raise ValueError(f"Dependency '{identifier}' not found")
+
+        data["dependencies"] = new_deps
+
+    # Handle dict format: {"atopile/resistors": "^1.0.0", ...}
+    elif isinstance(deps, dict):
+        if identifier not in deps:
+            raise ValueError(f"Dependency '{identifier}' not found")
+        deps[identifier] = new_version
+
+    else:
+        raise ValueError(f"Unknown dependencies format in {project_root}")
+
+    _save_ato_yaml(ato_file, data)
+    return True

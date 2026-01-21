@@ -341,6 +341,58 @@ class RenameProjectResponse(BaseModel):
     new_root: str | None = None
 
 
+# --- Build Target Management ---
+
+
+class AddBuildTargetRequest(BaseModel):
+    project_root: str
+    name: str
+    entry: str
+
+
+class AddBuildTargetResponse(BaseModel):
+    success: bool
+    message: str
+    target: Optional[dict] = None
+
+
+class UpdateBuildTargetRequest(BaseModel):
+    project_root: str
+    old_name: str
+    new_name: Optional[str] = None
+    new_entry: Optional[str] = None
+
+
+class UpdateBuildTargetResponse(BaseModel):
+    success: bool
+    message: str
+    target: Optional[dict] = None
+
+
+class DeleteBuildTargetRequest(BaseModel):
+    project_root: str
+    name: str
+
+
+class DeleteBuildTargetResponse(BaseModel):
+    success: bool
+    message: str
+
+
+# --- Dependency Management ---
+
+
+class UpdateDependencyVersionRequest(BaseModel):
+    project_root: str
+    identifier: str
+    new_version: str
+
+
+class UpdateDependencyVersionResponse(BaseModel):
+    success: bool
+    message: str
+
+
 # =============================================================================
 # Package-related Pydantic Models
 # =============================================================================
@@ -377,6 +429,13 @@ class PackageVersion(BaseModel):
     size: Optional[int] = None
 
 
+class PackageDependency(BaseModel):
+    """A package dependency."""
+
+    identifier: str
+    version: Optional[str] = None  # Required version/release
+
+
 class PackageDetails(BaseModel):
     """Detailed information about a package from the registry."""
 
@@ -400,6 +459,8 @@ class PackageDetails(BaseModel):
     installed: bool = False
     installed_version: Optional[str] = None
     installed_in: list[str] = Field(default_factory=list)
+    # Dependencies
+    dependencies: list[PackageDependency] = Field(default_factory=list)
 
 
 class PackageSummaryItem(BaseModel):

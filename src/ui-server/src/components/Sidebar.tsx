@@ -5,7 +5,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { Settings, ChevronDown, FolderOpen, Loader2, AlertCircle, Check, GitBranch, Package, Search } from 'lucide-react';
-import type { Build } from '../types/build';
+import type { Build, ModuleDefinition } from '../types/build';
 import { CollapsibleSection } from './CollapsibleSection';
 import { ProjectsPanel } from './ProjectsPanel';
 import { ProblemsPanel } from './ProblemsPanel';
@@ -446,17 +446,35 @@ export function Sidebar() {
   }, [collapsedSections, sectionHeights]);
 
   // Helper to parse entry point (e.g., "main.ato:App") into symbol structure
-  const parseEntryToSymbol = (entry: string) => {
+  // If modules are provided, they become children of the root symbol
+  const parseEntryToSymbol = (entry: string, modules?: ModuleDefinition[]) => {
     if (!entry || !entry.includes(':')) return null;
     const [_file, moduleName] = entry.split(':');
     if (!moduleName) return null;
+
+    // Build children from available modules (excluding the root entry itself)
+    const children = (modules || [])
+      .filter(m => m.entry !== entry)  // Exclude the root module
+      .map(m => ({
+        name: m.name,
+        type: m.type as 'module' | 'interface' | 'component' | 'parameter',
+        path: m.entry,
+        children: [],  // Could be recursive in future
+      }))
+      .sort((a, b) => {
+        // Sort by type first (modules, then components, then interfaces)
+        const typeOrder = { module: 0, component: 1, interface: 2, parameter: 3 };
+        const typeCompare = typeOrder[a.type] - typeOrder[b.type];
+        if (typeCompare !== 0) return typeCompare;
+        // Then by name
+        return a.name.localeCompare(b.name);
+      });
+
     return {
       name: moduleName,
       type: 'module' as const,
       path: entry,
-      // Children would come from build output in the future
-      // For now, just show the root module
-      children: [],
+      children,
     };
   };
 
@@ -468,11 +486,14 @@ export function Sidebar() {
     if (!state?.projects?.length) return [];
 
     const result = state.projects.map(p => {
+      // Get available modules for this project (for tree view)
+      const projectModules = state.projectModules?.[p.root] || [];
+
       // Transform builds/targets with lastBuild info
       const builds = p.targets.map(t => {
         // UNIFIED: Use shared findBuildForTarget helper
         const build = findBuildForTarget(state.builds, p.name, t.name);
-        const rootSymbol = parseEntryToSymbol(t.entry);
+        const rootSymbol = parseEntryToSymbol(t.entry, projectModules);
         // Get stages from active build or fall back to lastBuild
         const activeStages = build?.stages && build.stages.length > 0 ? build.stages : null;
         const historicalStages = t.lastBuild?.stages;
@@ -555,7 +576,7 @@ export function Sidebar() {
       builds: state.builds?.length ?? 0,
     });
     return result;
-  }, [state?.projects, state?.builds]);
+  }, [state?.projects, state?.builds, state?.projectModules]);
 
   // Transform state packages to the format that ProjectsPanel expects
   // UNIFIED: Uses same findBuildForTarget helper as projects
@@ -726,6 +747,99 @@ export function Sidebar() {
   // Open 3D viewer
   const handleOpen3D = (projectId: string, buildId: string) => {
     action('open3D', { projectId, buildId });
+  };
+
+  // --- Build Target Management ---
+
+  // Add a new build target to a project
+  const handleAddBuild = async (projectId: string) => {
+    // projectId is the project root
+    const modules = state?.projectModules?.[projectId] || [];
+    // Find a default entry point - prefer modules named 'App' or just pick the first module
+    const defaultModule = modules.find(m => m.name === 'App' || m.type === 'module') || modules[0];
+    const defaultEntry = defaultModule?.entry || 'main.ato:App';
+
+    // Generate a unique name
+    const existingTargets = state?.projects?.find(p => p.root === projectId)?.targets || [];
+    const existingNames = new Set(existingTargets.map(t => t.name));
+    let newName = 'new-build';
+    let counter = 1;
+    while (existingNames.has(newName)) {
+      newName = `new-build-${counter}`;
+      counter++;
+    }
+
+    try {
+      const result = await api.buildTargets.add(projectId, newName, defaultEntry);
+      if (result.success) {
+        // Refresh projects to get updated target list
+        action('refreshProjects');
+      } else {
+        console.error('Failed to add build target:', result.message);
+      }
+    } catch (error) {
+      console.error('Failed to add build target:', error);
+    }
+  };
+
+  // Update a build target (rename or change entry)
+  const handleUpdateBuild = async (
+    projectId: string,
+    buildId: string,
+    updates: { name?: string; entry?: string }
+  ) => {
+    // buildId is the current target name
+    const oldName = buildId;
+    const newName = updates.name !== oldName ? updates.name : undefined;
+    const newEntry = updates.entry;
+
+    try {
+      const result = await api.buildTargets.update(projectId, oldName, newName, newEntry);
+      if (result.success) {
+        // Refresh projects to get updated target list
+        action('refreshProjects');
+      } else {
+        console.error('Failed to update build target:', result.message);
+      }
+    } catch (error) {
+      console.error('Failed to update build target:', error);
+    }
+  };
+
+  // Delete a build target
+  const handleDeleteBuild = async (projectId: string, buildId: string) => {
+    try {
+      const result = await api.buildTargets.delete(projectId, buildId);
+      if (result.success) {
+        // Refresh projects to get updated target list
+        action('refreshProjects');
+      } else {
+        console.error('Failed to delete build target:', result.message);
+      }
+    } catch (error) {
+      console.error('Failed to delete build target:', error);
+    }
+  };
+
+  // --- Dependency Management ---
+
+  // Update a dependency's version
+  const handleDependencyVersionChange = async (
+    projectId: string,
+    identifier: string,
+    newVersion: string
+  ) => {
+    try {
+      const result = await api.dependencies.updateVersion(projectId, identifier, newVersion);
+      if (result.success) {
+        // Refresh dependencies for this project
+        action('fetchDependencies', { projectRoot: projectId });
+      } else {
+        console.error('Failed to update dependency version:', result.message);
+      }
+    } catch (error) {
+      console.error('Failed to update dependency version:', error);
+    }
   };
 
   const handleResizeStart = useCallback((sectionId: string, e: React.MouseEvent) => {
@@ -1227,14 +1341,15 @@ export function Sidebar() {
                 action('openFile', { file: fullPath });
               }
             }}
+            onAddBuild={handleAddBuild}
+            onUpdateBuild={handleUpdateBuild}
+            onDeleteBuild={handleDeleteBuild}
             filterType="projects"
             projects={projects}
             projectModules={state?.projectModules || {}}
             projectFiles={state?.projectFiles || {}}
             projectDependencies={state?.projectDependencies || {}}
-            onDependencyVersionChange={(projectId, identifier, newVersion) => {
-              action('changeDependencyVersion', { projectId, identifier, version: newVersion });
-            }}
+            onDependencyVersionChange={handleDependencyVersionChange}
             onRemoveDependency={(projectId, identifier) => {
               action('removePackage', { projectRoot: projectId, packageId: identifier });
             }}

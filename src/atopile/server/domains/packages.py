@@ -16,12 +16,13 @@ from fastapi import BackgroundTasks, HTTPException
 from atopile.dataclasses import (
     PackageActionRequest,
     PackageActionResponse,
+    PackageDependency,
     PackageDetails,
     PackageInfo,
-    PackageSummaryItem,
-    PackageVersion,
     PackagesResponse,
     PackagesSummaryResponse,
+    PackageSummaryItem,
+    PackageVersion,
     RegistrySearchResponse,
     RegistryStatus,
 )
@@ -270,7 +271,7 @@ async def get_all_registry_packages_async() -> list[PackageInfo]:
             return []
 
     log.info(
-        f"[registry] Fetching packages with {len(_REGISTRY_SEARCH_TERMS)} parallel queries"
+        f"[registry] Fetching packages with {len(_REGISTRY_SEARCH_TERMS)} parallel queries"  # noqa: E501
     )
 
     # Run all queries in parallel
@@ -339,6 +340,7 @@ def get_package_details_from_registry(identifier: str) -> PackageDetails | None:
     Fetches:
     - Full package info with stats (downloads)
     - List of releases (versions)
+    - Dependencies
     """
     try:
         pkg_response = package_manager.get_package(identifier)
@@ -377,6 +379,18 @@ def get_package_details_from_registry(identifier: str) -> PackageDetails | None:
 
         stats = pkg_info.stats if hasattr(pkg_info, "stats") else None
 
+        # Extract dependencies from the package info
+        dependencies = []
+        if hasattr(pkg_info, "dependencies") and pkg_info.dependencies:
+            requires = getattr(pkg_info.dependencies, "requires", [])
+            for dep in requires:
+                dependencies.append(
+                    PackageDependency(
+                        identifier=dep.identifier,
+                        version=getattr(dep, "release", None),
+                    )
+                )
+
         return PackageDetails(
             identifier=identifier,
             name=name,
@@ -392,6 +406,7 @@ def get_package_details_from_registry(identifier: str) -> PackageDetails | None:
             downloads_this_month=stats.this_month_downloads if stats else None,
             versions=versions,
             version_count=len(versions),
+            dependencies=dependencies,
         )
 
     except Exception as exc:
@@ -467,7 +482,7 @@ def _fetch_packages_sync(
     try:
         registry_packages = get_all_registry_packages()
         log.info(
-            f"[refresh_packages_state] Registry returned {len(registry_packages)} packages"
+            f"[refresh_packages_state] Registry returned {len(registry_packages)} packages"  # noqa: E501
         )
 
         for reg_pkg in registry_packages:

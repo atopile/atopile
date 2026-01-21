@@ -4,7 +4,7 @@
  */
 import { useState, useEffect, memo } from 'react'
 import {
-  ChevronDown, ChevronRight, Play, Layers, Check,
+  ChevronDown, ChevronRight, Play, Layers,
   AlertCircle, AlertTriangle, Square
 } from 'lucide-react'
 import { getLastBuildStatusIcon, formatRelativeTime } from './BuildNode'
@@ -86,7 +86,6 @@ export const ProjectNode = memo(function ProjectNode({
   const totalErrors = project.builds.reduce((sum, b) => sum + (b.errors || 0), 0)
   const totalWarnings = project.builds.reduce((sum, b) => sum + (b.warnings || 0), 0)
   const isBuilding = project.builds.some(b => b.status === 'building')
-  const successCount = project.builds.filter(b => b.status === 'success').length
 
   // Get the maximum elapsed time from all building builds
   const buildingBuilds = project.builds.filter(b => b.status === 'building')
@@ -300,19 +299,6 @@ export const ProjectNode = memo(function ProjectNode({
                 {displayDescription}
               </span>
             )}
-          </div>
-
-          {/* Row 3: Build summary */}
-          <div className="project-card-footer">
-            <div className="project-build-summary">
-              <span className="build-count">{project.builds.length} build{project.builds.length !== 1 ? 's' : ''}</span>
-              {successCount > 0 && (
-                <span className="success-indicator">
-                  <Check size={10} />
-                  {successCount} passed
-                </span>
-              )}
-            </div>
           </div>
 
           {/* Build targets */}

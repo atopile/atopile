@@ -442,6 +442,8 @@ interface ProjectsPanelProps {
   onFileClick?: (projectId: string, filePath: string) => void  // Open a file in the editor
   onDependencyVersionChange?: (projectId: string, identifier: string, newVersion: string) => void  // Change dependency version
   onRemoveDependency?: (projectId: string, identifier: string) => void  // Remove a dependency
+  onAddBuild?: (projectId: string) => void  // Add a new build target
+  onUpdateBuild?: (projectId: string, buildId: string, updates: Partial<BuildTarget>) => void  // Update build target (rename/entry)
   onDeleteBuild?: (projectId: string, buildId: string) => void  // Delete a build target
   filterType?: 'all' | 'projects' | 'packages'
   projects?: Project[]  // Optional - if not provided, uses mockProjects
@@ -450,7 +452,7 @@ interface ProjectsPanelProps {
   projectDependencies?: Record<string, ProjectDependency[]>  // Dependencies for each project root
 }
 
-export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onStageFilter, onOpenPackageDetail, onPackageInstall, onCreateProject, onProjectExpand, onOpenSource, onOpenKiCad, onOpenLayout, onOpen3D, onFileClick, onDependencyVersionChange, onRemoveDependency, onDeleteBuild, filterType = 'all', projects: externalProjects, projectModules = {}, projectFiles = {}, projectDependencies = {} }: ProjectsPanelProps) {
+export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onStageFilter, onOpenPackageDetail, onPackageInstall, onCreateProject, onProjectExpand, onOpenSource, onOpenKiCad, onOpenLayout, onOpen3D, onFileClick, onDependencyVersionChange, onRemoveDependency, onAddBuild, onUpdateBuild, onDeleteBuild, filterType = 'all', projects: externalProjects, projectModules = {}, projectFiles = {}, projectDependencies = {} }: ProjectsPanelProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null)
   const [localProjects, setLocalProjects] = useState<Project[]>(externalProjects || mockProjects)
@@ -513,8 +515,15 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
   
   // Handler to add a new build to a project
   const handleAddBuild = (projectId: string) => {
+    // If external callback is provided, use it
+    if (onAddBuild) {
+      onAddBuild(projectId)
+      return
+    }
+
+    // Fallback local state update for development/testing
     const newBuildId = `build-${Date.now()}`
-    setLocalProjects(projects => 
+    setLocalProjects(projects =>
       projects.map(p => {
         if (p.id === projectId) {
           // Find the next available "new-build-N" number
@@ -522,11 +531,11 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
             .map(b => b.name)
             .filter(name => /^new-build-\d+$/.test(name))
             .map(name => parseInt(name.replace('new-build-', ''), 10))
-          const nextNum = existingNewBuilds.length > 0 
-            ? Math.max(...existingNewBuilds) + 1 
+          const nextNum = existingNewBuilds.length > 0
+            ? Math.max(...existingNewBuilds) + 1
             : 1
           const newBuildName = `new-build-${nextNum}`
-          
+
           return {
             ...p,
             builds: [
@@ -546,9 +555,16 @@ export function ProjectsPanel({ selection, onSelect, onBuild, onCancelBuild, onS
       })
     )
   }
-  
+
   // Handler to update a build
   const handleUpdateBuild = (projectId: string, buildId: string, updates: Partial<BuildTarget>) => {
+    // If external callback is provided, use it
+    if (onUpdateBuild) {
+      onUpdateBuild(projectId, buildId, updates)
+      return
+    }
+
+    // Fallback local state update for development/testing
     setLocalProjects(projects =>
       projects.map(p => {
         if (p.id === projectId) {

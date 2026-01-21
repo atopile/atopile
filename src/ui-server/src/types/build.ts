@@ -137,6 +137,12 @@ export interface PackageVersion {
   size?: number;
 }
 
+// Package dependency info
+export interface PackageDependency {
+  identifier: string;
+  version?: string;
+}
+
 // Detailed package info from registry (from /api/packages/{id}/details)
 export interface PackageDetails {
   identifier: string;
@@ -159,6 +165,8 @@ export interface PackageDetails {
   installed: boolean;
   installedVersion?: string;
   installedIn: string[];
+  // Dependencies
+  dependencies?: PackageDependency[];
 }
 
 // --- Package Summary Types (from /api/packages/summary) ---

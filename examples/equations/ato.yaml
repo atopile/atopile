@@ -8,3 +8,7 @@ builds:
   default:
     entry: equations.ato:App
 
+dependencies:
+- type: registry
+  identifier: atopile/addressable-leds
+  release: 0.2.6

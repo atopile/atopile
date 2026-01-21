@@ -259,6 +259,52 @@ export const api = {
       fetchJSON<DependenciesResponse>(
         `/api/dependencies?project_root=${encodeURIComponent(projectRoot)}`
       ),
+    updateVersion: (projectRoot: string, identifier: string, newVersion: string) =>
+      fetchJSON<{ success: boolean; message: string }>('/api/dependency/update', {
+        method: 'POST',
+        body: JSON.stringify({
+          project_root: projectRoot,
+          identifier,
+          new_version: newVersion,
+        }),
+      }),
+  },
+
+  // Build targets
+  buildTargets: {
+    add: (projectRoot: string, name: string, entry: string) =>
+      fetchJSON<{ success: boolean; message: string; target?: { name: string; entry: string; root: string } }>(
+        '/api/build-target/add',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            project_root: projectRoot,
+            name,
+            entry,
+          }),
+        }
+      ),
+    update: (projectRoot: string, oldName: string, newName?: string, newEntry?: string) =>
+      fetchJSON<{ success: boolean; message: string; target?: { name: string; entry: string; root: string } }>(
+        '/api/build-target/update',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            project_root: projectRoot,
+            old_name: oldName,
+            new_name: newName,
+            new_entry: newEntry,
+          }),
+        }
+      ),
+    delete: (projectRoot: string, name: string) =>
+      fetchJSON<{ success: boolean; message: string }>('/api/build-target/delete', {
+        method: 'POST',
+        body: JSON.stringify({
+          project_root: projectRoot,
+          name,
+        }),
+      }),
   },
 };
 

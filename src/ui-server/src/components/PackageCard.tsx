@@ -92,7 +92,9 @@ function VersionSelector({
   const validVersions = versions.filter(v => v && v !== 'unknown')
   if (validVersions.length === 0) return null
 
-  const displayVersion = selectedVersion || validVersions[0] || ''
+  // Use selectedVersion only if it's valid, otherwise use first valid version
+  const validSelectedVersion = selectedVersion && selectedVersion !== 'unknown' ? selectedVersion : null
+  const displayVersion = validSelectedVersion || validVersions[0] || ''
 
   return (
     <div className="version-selector" ref={dropdownRef}>
@@ -257,7 +259,11 @@ export const PackageCard = memo(function PackageCard({
 }: PackageCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [descExpanded, setDescExpanded] = useState(false)
-  const [selectedVersion, setSelectedVersion] = useState(project.version || project.latestVersion || '')
+  const [selectedVersion, setSelectedVersion] = useState(() => {
+    const version = project.version && project.version !== 'unknown' ? project.version : null
+    const latestVersion = project.latestVersion && project.latestVersion !== 'unknown' ? project.latestVersion : null
+    return version || latestVersion || ''
+  })
   const [selectedProjectId, setSelectedProjectId] = useState(() => {
     return availableProjects.find(p => p.isActive)?.id || availableProjects[0]?.id || ''
   })
@@ -312,29 +318,47 @@ export const PackageCard = memo(function PackageCard({
     onInstall(project.id, selectedProjectId, selectedVersion || undefined)
   }
 
-  // Build available versions list
-  const versions = packageDetails?.versions?.map((v: { version: string }) => v.version) ||
+  // Build available versions list (filter out 'unknown')
+  const rawVersions = packageDetails?.versions?.map((v: { version: string }) => v.version) ||
     (project.latestVersion && project.version && project.latestVersion !== project.version
       ? [project.latestVersion, project.version]
       : project.version ? [project.version] : project.latestVersion ? [project.latestVersion] : [])
+  const versions = rawVersions.filter(v => v && v !== 'unknown')
 
   // Convert dependencies to DependencyCard format
-  const dependencies: ProjectDependency[] = [] // TODO: Add when backend provides
+  const dependencies: ProjectDependency[] = (packageDetails?.dependencies || []).map(dep => {
+    const parts = dep.identifier.split('/')
+    const publisher = parts.length === 2 ? parts[0] : 'unknown'
+    const name = parts.length === 2 ? parts[1] : dep.identifier
+    return {
+      identifier: dep.identifier,
+      version: dep.version || 'latest',
+      name,
+      publisher,
+    }
+  })
 
   // Convert to file tree format
-  const fileTree: FileTreeNode[] = [] // TODO: Add when backend provides
+  const fileTree: FileTreeNode[] = [] // TODO: Add when backend provides files list
 
   return (
     <div
       className={`package-card ${isSelected ? 'selected' : ''} ${expanded ? 'expanded' : ''}`}
       onClick={() => {
-        setExpanded(!expanded)
-        if (expanded) setDescExpanded(false)
-        onSelect({
-          type: 'project',
-          projectId: project.id,
-          label: project.name
-        })
+        if (isSelected) {
+          // If already selected, deselect and collapse
+          setExpanded(false)
+          setDescExpanded(false)
+          onSelect({ type: 'none' })
+        } else {
+          // If not selected, select and expand
+          setExpanded(true)
+          onSelect({
+            type: 'project',
+            projectId: project.id,
+            label: project.name
+          })
+        }
       }}
     >
       {/* Row 1: Package name */}
@@ -483,6 +507,34 @@ export const PackageCard = memo(function PackageCard({
           {detailsError && (
             <div className="package-error">
               <span>Failed to load details: {detailsError}</span>
+            </div>
+          )}
+
+          {/* Package details info */}
+          {packageDetails && !detailsLoading && (
+            <div className="package-details-section">
+              {/* Stats row */}
+              <div className="package-stats-row">
+                {packageDetails.downloads !== undefined && packageDetails.downloads > 0 && (
+                  <div className="package-stat">
+                    <span className="stat-value">{formatDownloads(packageDetails.downloads)}</span>
+                    <span className="stat-label">downloads</span>
+                  </div>
+                )}
+                {packageDetails.versionCount > 0 && (
+                  <div className="package-stat">
+                    <span className="stat-value">{packageDetails.versionCount}</span>
+                    <span className="stat-label">versions</span>
+                  </div>
+                )}
+                {packageDetails.license && (
+                  <div className="package-stat">
+                    <span className="stat-value">{packageDetails.license}</span>
+                    <span className="stat-label">license</span>
+                  </div>
+                )}
+              </div>
+
             </div>
           )}
 

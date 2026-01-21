@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import {
-  X, Package, Download, Home, Globe, ExternalLink,
+  X, Package, Download, Home, ExternalLink,
   CheckCircle, Tag, Calendar, FileCode, Play,
-  Loader2, AlertCircle, TrendingUp, History, Scale
+  Loader2, AlertCircle, TrendingUp, History, Scale, User
 } from 'lucide-react'
 import type { PackageDetails } from '../types/build'
 
@@ -102,7 +102,7 @@ export function PackageDetailPanel({
         <div className="detail-header-left">
           <Package size={20} className="detail-package-icon" />
           <div className="detail-header-info">
-            <h2 className="detail-package-name">{pkg.fullName}</h2>
+            <h2 className="detail-package-name">{pkg.name}</h2>
             <div className="detail-package-meta">
               {(details?.version || pkg.version) && (
                 <span className="detail-version">
@@ -153,6 +153,12 @@ export function PackageDetailPanel({
         {details && !isLoading && (
           <section className="detail-section detail-stats">
             <div className="detail-stats-row">
+              {details.publisher && (
+                <div className="detail-stat">
+                  <User size={14} />
+                  <span>{details.publisher}</span>
+                </div>
+              )}
               <div className="detail-stat">
                 <Download size={14} />
                 <span>{formatDownloads(details.downloads)} downloads</span>
@@ -258,22 +264,13 @@ export function PackageDetailPanel({
         </section>
 
         {/* Links */}
-        {(pkg.homepage || pkg.repository) && (
+        {pkg.homepage && (
           <section className="detail-section detail-links">
-            {pkg.homepage && (
-              <a href={pkg.homepage} className="detail-link" target="_blank" rel="noopener">
-                <Home size={14} />
-                Homepage
-                <ExternalLink size={10} />
-              </a>
-            )}
-            {pkg.repository && (
-              <a href={pkg.repository} className="detail-link" target="_blank" rel="noopener">
-                <Globe size={14} />
-                Repository
-                <ExternalLink size={10} />
-              </a>
-            )}
+            <a href={pkg.homepage} className="detail-link" target="_blank" rel="noopener">
+              <Home size={14} />
+              Homepage
+              <ExternalLink size={10} />
+            </a>
           </section>
         )}
 
