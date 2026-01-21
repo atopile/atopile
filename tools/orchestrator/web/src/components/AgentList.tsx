@@ -87,6 +87,13 @@ export const AgentList = memo(function AgentList({ onSpawnClick }: AgentListProp
     dispatch({ type: 'agents.delete', payload: { agentId } });
   }, [dispatch]);
 
+  const handleRename = useCallback((agentId: string, currentName?: string | null) => {
+    const newName = window.prompt('Enter new name:', currentName || '');
+    if (newName !== null && newName.trim() !== (currentName || '')) {
+      dispatch({ type: 'agents.rename', payload: { agentId, name: newName.trim() } });
+    }
+  }, [dispatch]);
+
   const hasActiveFilters = searchQuery.trim() || statusFilter !== 'all';
   const statusOptions: { value: StatusFilter; label: string }[] = [
     { value: 'all', label: 'All' },
@@ -232,6 +239,7 @@ export const AgentList = memo(function AgentList({ onSpawnClick }: AgentListProp
               onClick={() => handleSelect(agent.id)}
               onTerminate={() => handleTerminate(agent.id)}
               onDelete={() => handleDelete(agent.id)}
+              onRename={() => handleRename(agent.id, agent.name)}
             />
           ))
         )}

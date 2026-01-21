@@ -282,18 +282,16 @@ export function AgentDetail({ agent, onClose }: AgentDetailProps) {
                   <span className={`font-medium text-gray-200 truncate ${isMobile ? 'text-xs max-w-[120px]' : 'text-sm'}`}>
                     {agent.name || <span className="text-gray-500 italic">Unnamed</span>}
                   </span>
-                  {!isMobile && (
-                    <button
-                      className="btn btn-icon btn-sm btn-secondary opacity-50 hover:opacity-100"
-                      onClick={() => {
-                        setEditedName(agent.name || '');
-                        setIsEditingName(true);
-                      }}
-                      title="Rename"
-                    >
-                      <Pencil className="w-3 h-3" />
-                    </button>
-                  )}
+                  <button
+                    className="btn btn-icon btn-sm btn-secondary opacity-50 hover:opacity-100"
+                    onClick={() => {
+                      setEditedName(agent.name || '');
+                      setIsEditingName(true);
+                    }}
+                    title="Rename"
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </button>
                 </>
               )}
               <StatusBadge status={agent.status} isAgent />

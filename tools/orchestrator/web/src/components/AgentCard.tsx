@@ -1,5 +1,5 @@
 import { useEffect, useState, memo } from 'react';
-import { Clock, Cpu, Trash2, Square } from 'lucide-react';
+import { Clock, Cpu, Trash2, Square, Pencil } from 'lucide-react';
 import type { AgentViewModel } from '@/logic/viewmodels';
 import { StatusBadge } from './StatusBadge';
 
@@ -9,9 +9,10 @@ interface AgentCardProps {
   onClick?: () => void;
   onTerminate?: () => void;
   onDelete?: () => void;
+  onRename?: () => void;
 }
 
-export const AgentCard = memo(function AgentCard({ agent, selected, onClick, onTerminate, onDelete }: AgentCardProps) {
+export const AgentCard = memo(function AgentCard({ agent, selected, onClick, onTerminate, onDelete, onRename }: AgentCardProps) {
   const [duration, setDuration] = useState<string>('');
 
   const isActivelyRunning = agent.status === 'running' || agent.status === 'starting';
@@ -102,6 +103,18 @@ export const AgentCard = memo(function AgentCard({ agent, selected, onClick, onT
           <span>{duration || '-'}</span>
         </div>
         <div className="flex items-center gap-1">
+          {onRename && (
+            <button
+              className="p-1 hover:bg-gray-700 rounded transition-colors"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRename();
+              }}
+              title="Rename"
+            >
+              <Pencil className="w-3.5 h-3.5 text-gray-400 hover:text-blue-400" />
+            </button>
+          )}
           {agent.canTerminate && onTerminate && (
             <button
               className="p-1 hover:bg-gray-700 rounded transition-colors"
